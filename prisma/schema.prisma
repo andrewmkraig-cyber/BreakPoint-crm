@@ -55,6 +55,7 @@ model User {
   krispcalls      KrispcallLog[]
   agreements      ClientAgreement[]
   benefitsUpdates ClientBenefits[]
+  benefitsFiles   ClientBenefitsFile[]
 }
 
 enum UserRole {
@@ -147,6 +148,24 @@ model ClientBenefits {
   updatedAt   DateTime @updatedAt
 
   updatedBy User @relation(fields: [updatedById], references: [id], onDelete: Cascade)
+}
+
+// PDFs and docs attached to the benefits tab. Stored alongside ClientAgreement
+// but separate so benefits docs (summaries, carrier packets) never mix into
+// the formal agreement list.
+model ClientBenefitsFile {
+  id           String   @id @default(cuid())
+  clientRfId   Int
+  filename     String
+  mimeType     String
+  size         Int
+  data         Bytes
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([clientRfId, uploadedAt])
 }
 
 model KrispcallLog {

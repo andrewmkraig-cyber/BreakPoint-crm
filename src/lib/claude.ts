@@ -1,0 +1,101 @@
+import Anthropic from "@anthropic-ai/sdk";
+
+// Opus 4.7 per skill default. Sampling params (temperature/top_p/top_k) and
+// budget_tokens are removed on 4.7 — do not re-add them.
+export const CLAUDE_MODEL = "claude-opus-4-7";
+
+let cached: Anthropic | null = null;
+
+export function getClaude(): Anthropic {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) {
+    throw new Error(
+      "ANTHROPIC_API_KEY is not set. Add it to .env.local and to the Vercel project environment.",
+    );
+  }
+  if (!cached) cached = new Anthropic({ apiKey: key });
+  return cached;
+}
+
+export type BenefitsAttachment = {
+  filename: string;
+  mimeType: string;
+  data: Buffer;
+};
+
+// Summarizes benefits material — PDFs and/or pasted text — into a clean,
+// scannable brief for a recruiter sharing benefits with a candidate.
+export async function summarizeBenefits(params: {
+  pastedText?: string;
+  attachments?: BenefitsAttachment[];
+}): Promise<string> {
+  const anthropic = getClaude();
+  const parts = params.attachments ?? [];
+  const pasted = (params.pastedText ?? "").trim();
+
+  if (parts.length === 0 && !pasted) {
+    throw new Error("Nothing to summarize — upload a file or paste some text.");
+  }
+
+  const content: Anthropic.Messages.ContentBlockParam[] = [];
+
+  for (const file of parts) {
+    if (file.mimeType === "application/pdf") {
+      content.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: file.data.toString("base64"),
+        },
+        title: file.filename,
+      });
+    } else {
+      // Non-PDF: inline as text. Works for .txt, .md etc; skips binary Word docs.
+      const maybeText = file.data.toString("utf-8");
+      content.push({
+        type: "text",
+        text: `--- File: ${file.filename} ---\n${maybeText.slice(0, 50_000)}`,
+      });
+    }
+  }
+
+  if (pasted) {
+    content.push({
+      type: "text",
+      text: `--- Pasted notes ---\n${pasted}`,
+    });
+  }
+
+  content.push({
+    type: "text",
+    text:
+      "Summarize the benefits info above into a clean brief a recruiter can share with a candidate. " +
+      "Use short sections with bold labels and bulleted lines. Cover only the categories that are actually present: " +
+      "Health / Dental / Vision (carrier, employee cost, tiers), Retirement / 401(k) (match, vesting), " +
+      "PTO / Vacation / Sick / Holidays, Bonus / Equity / Commission, Remote / Hybrid policy, Stipends / Perks, " +
+      "Eligibility / Waiting Period, and Anything else notable. Skip categories with no info — do not invent. " +
+      "Keep it under ~350 words. Output plain text with line breaks (no markdown fences, no preamble, " +
+      "no trailing commentary). If the source is unclear or mostly empty, say so in one line.",
+  });
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 2000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "low" },
+    system:
+      "You are an executive assistant for a recruiting firm. You turn messy benefits documents into a crisp candidate-facing brief. " +
+      "Be factual — only summarize what's present. Never speculate about coverage levels that aren't stated.",
+    messages: [{ role: "user", content }],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  if (!text) throw new Error("Claude returned no summary text. Try again or adjust the inputs.");
+  return text;
+}

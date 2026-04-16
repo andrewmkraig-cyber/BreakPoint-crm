@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
+import { summarizeBenefits as summarizeBenefitsWithClaude } from "@/lib/claude";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -121,4 +122,91 @@ export async function saveBenefits(clientId: number, body: string): Promise<Save
 
   revalidatePath(`/clients/${clientId}`);
   return { ok: true, value: { updatedAt: row.updatedAt.toISOString() } };
+}
+
+// ---- Benefits files (PDFs/docs attached for summarization or reference) ----
+
+const BENEFITS_ALLOWED_MIME = new Set([
+  "application/pdf",
+  "text/plain",
+  "text/markdown",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
+
+export type UploadBenefitsFileResult = ActionResult<{ id: string }>;
+
+export async function uploadBenefitsFile(clientId: number, formData: FormData): Promise<UploadBenefitsFileResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "No file attached." };
+  if (file.size === 0) return { ok: false, error: "File is empty." };
+  if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: `File is too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB).` };
+  if (!BENEFITS_ALLOWED_MIME.has(file.type)) {
+    return { ok: false, error: "Only PDF, Word, or plain-text files are accepted." };
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const created = await prisma.clientBenefitsFile.create({
+    data: {
+      clientRfId: clientId,
+      filename: file.name,
+      mimeType: file.type,
+      size: file.size,
+      data: buffer,
+      uploadedById: user.id,
+    },
+    select: { id: true },
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true, value: { id: created.id } };
+}
+
+export async function deleteBenefitsFile(fileId: string): Promise<ActionResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const existing = await prisma.clientBenefitsFile.findUnique({
+    where: { id: fileId },
+    select: { clientRfId: true },
+  });
+  if (!existing) return { ok: false, error: "File not found." };
+  await prisma.clientBenefitsFile.delete({ where: { id: fileId } });
+  revalidatePath(`/clients/${existing.clientRfId}`);
+  return { ok: true };
+}
+
+// ---- Summarize with Claude ----
+
+export type SummarizeBenefitsResult = ActionResult<{ summary: string }>;
+
+export async function summarizeBenefitsWithAI(
+  clientId: number,
+  pastedText: string,
+): Promise<SummarizeBenefitsResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const files = await prisma.clientBenefitsFile.findMany({
+    where: { clientRfId: clientId },
+    orderBy: { uploadedAt: "asc" },
+    select: { filename: true, mimeType: true, data: true },
+  });
+
+  try {
+    const summary = await summarizeBenefitsWithClaude({
+      pastedText,
+      attachments: files.map((f) => ({
+        filename: f.filename,
+        mimeType: f.mimeType,
+        data: Buffer.from(f.data),
+      })),
+    });
+    return { ok: true, value: { summary } };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Claude summarization failed";
+    return { ok: false, error: msg };
+  }
 }

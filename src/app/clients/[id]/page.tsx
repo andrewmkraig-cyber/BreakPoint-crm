@@ -45,7 +45,7 @@ export default async function ClientDetailPage({
       ? searchParams.tab
       : "overview";
 
-  const [clients, candidates, contacts, agreements, benefits] = await Promise.all([
+  const [clients, candidates, contacts, agreements, benefits, benefitsFiles] = await Promise.all([
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
@@ -67,6 +67,18 @@ export default async function ClientDetailPage({
         body: true,
         updatedAt: true,
         updatedBy: { select: { name: true, email: true } },
+      },
+    }),
+    prisma.clientBenefitsFile.findMany({
+      where: { clientRfId: id },
+      orderBy: { uploadedAt: "desc" },
+      select: {
+        id: true,
+        filename: true,
+        mimeType: true,
+        size: true,
+        uploadedAt: true,
+        uploadedBy: { select: { name: true, email: true } },
       },
     }),
   ]);
@@ -123,6 +135,7 @@ export default async function ClientDetailPage({
         clientId={id}
         contactsCount={clientContacts.length}
         agreementsCount={agreements.length}
+        benefitsFilesCount={benefitsFiles.length}
         hasBenefits={Boolean(benefits?.body?.trim())}
       />
 
@@ -277,6 +290,14 @@ export default async function ClientDetailPage({
             updatedAt: benefits?.updatedAt?.toISOString() ?? null,
             updatedByName: benefits?.updatedBy?.name ?? benefits?.updatedBy?.email ?? null,
           }}
+          files={benefitsFiles.map((f) => ({
+            id: f.id,
+            filename: f.filename,
+            mimeType: f.mimeType,
+            sizeBytes: f.size,
+            uploadedAt: f.uploadedAt.toISOString(),
+            uploadedByName: f.uploadedBy?.name ?? f.uploadedBy?.email ?? null,
+          }))}
         />
       )}
     </div>
@@ -288,12 +309,14 @@ function Tabs({
   clientId,
   contactsCount,
   agreementsCount,
+  benefitsFilesCount,
   hasBenefits,
 }: {
   tab: ClientTab;
   clientId: number;
   contactsCount: number;
   agreementsCount: number;
+  benefitsFilesCount: number;
   hasBenefits: boolean;
 }) {
   return (
@@ -301,7 +324,13 @@ function Tabs({
       <TabLink label="Overview" href={`/clients/${clientId}?tab=overview`} active={tab === "overview"} />
       <TabLink label="Contacts" count={contactsCount} href={`/clients/${clientId}?tab=contacts`} active={tab === "contacts"} />
       <TabLink label="Agreements" count={agreementsCount} href={`/clients/${clientId}?tab=agreements`} active={tab === "agreements"} />
-      <TabLink label="Benefits" dot={hasBenefits} href={`/clients/${clientId}?tab=benefits`} active={tab === "benefits"} />
+      <TabLink
+        label="Benefits"
+        count={benefitsFilesCount > 0 ? benefitsFilesCount : undefined}
+        dot={hasBenefits && benefitsFilesCount === 0}
+        href={`/clients/${clientId}?tab=benefits`}
+        active={tab === "benefits"}
+      />
     </div>
   );
 }
