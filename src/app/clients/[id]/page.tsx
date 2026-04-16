@@ -26,6 +26,9 @@ import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
 import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 
 export const dynamic = "force-dynamic";
+// Claude summarization on a 25-page PDF can take 30–60s. Default Hobby
+// function timeout is 10s; bump to the Hobby ceiling.
+export const maxDuration = 60;
 
 type ClientTab = "overview" | "contacts" | "agreements" | "benefits";
 
