@@ -3,8 +3,18 @@
 import Link from "next/link";
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, FileText, Loader2, Trash2, Upload } from "lucide-react";
-import { uploadAgreement, deleteAgreement } from "@/app/clients/[id]/actions";
+import {
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Sparkles,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { deleteAgreement, summarizeAgreement, uploadAgreement } from "@/app/clients/[id]/actions";
+import { cn } from "@/lib/utils";
 
 export type AgreementRow = {
   id: string;
@@ -13,34 +23,36 @@ export type AgreementRow = {
   sizeBytes: number;
   uploadedAt: string;
   uploadedByName: string | null;
+  summary: string | null;
+  summaryUpdatedAt: string | null;
 };
 
 export function AgreementsTab({ clientId, items }: { clientId: number; items: AgreementRow[] }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [fileName, setFileName] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
+  const [isUploading, startUpload] = useTransition();
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
+    setUploadError(null);
+    setUploadSuccess(null);
     const form = e.currentTarget;
     const data = new FormData(form);
     const file = data.get("file");
     if (!(file instanceof File) || file.size === 0) {
-      setError("Choose a file before uploading.");
+      setUploadError("Choose a file before uploading.");
       return;
     }
-    startTransition(async () => {
+    startUpload(async () => {
       const result = await uploadAgreement(clientId, data);
       if (!result.ok) {
-        setError(result.error);
+        setUploadError(result.error);
         return;
       }
-      setSuccess(`Uploaded ${file.name}.`);
+      setUploadSuccess(`Uploaded ${file.name}.`);
       form.reset();
       setFileName("");
       router.refresh();
@@ -49,10 +61,10 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
 
   function onDelete(id: string, name: string) {
     if (!confirm(`Delete ${name}? This can't be undone.`)) return;
-    startTransition(async () => {
+    startUpload(async () => {
       const result = await deleteAgreement(id);
       if (!result.ok) {
-        setError(result.error);
+        setUploadError(result.error);
         return;
       }
       router.refresh();
@@ -61,10 +73,7 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
 
   return (
     <div className="space-y-4">
-      <form
-        onSubmit={onSubmit}
-        className="rounded-xl border border-dashed border-border bg-white p-5 shadow-sm"
-      >
+      <form onSubmit={onSubmit} className="rounded-xl border border-dashed border-border bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2 text-sm font-semibold text-navy">
           <Upload className="h-4 w-4 text-brand-dark" /> Upload agreement
         </div>
@@ -86,80 +95,138 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
           </label>
           <button
             type="submit"
-            disabled={isPending}
+            disabled={isUploading}
             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
           >
-            {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+            {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
             Upload
           </button>
         </div>
-        {error && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
-        {success && <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{success}</div>}
+        {uploadError && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>}
+        {uploadSuccess && <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>}
       </form>
 
       <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-        <div className="border-b border-border px-5 py-3 text-sm font-semibold text-navy">
-          Uploaded agreements
-        </div>
+        <div className="border-b border-border px-5 py-3 text-sm font-semibold text-navy">Uploaded agreements</div>
         {items.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-muted-foreground">
-            No agreements uploaded yet.
-          </div>
+          <div className="px-5 py-12 text-center text-sm text-muted-foreground">No agreements uploaded yet.</div>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-5 py-3 font-medium">File</th>
-                <th className="px-5 py-3 font-medium">Size</th>
-                <th className="px-5 py-3 font-medium">Uploaded</th>
-                <th className="px-5 py-3 font-medium">By</th>
-                <th className="px-5 py-3 text-right font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {items.map((a) => (
-                <tr key={a.id} className="transition hover:bg-brand-tint/40">
-                  <td className="px-5 py-3">
-                    <Link
-                      href={`/api/client-agreements/${a.id}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-2 font-medium text-navy hover:text-brand-dark"
-                    >
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                      {a.filename}
-                      <ExternalLink className="h-3 w-3 text-muted-foreground" />
-                    </Link>
-                  </td>
-                  <td className="px-5 py-3 text-navy-400">{formatBytes(a.sizeBytes)}</td>
-                  <td className="px-5 py-3 text-xs text-muted-foreground">
-                    {new Date(a.uploadedAt).toLocaleString()}
-                  </td>
-                  <td className="px-5 py-3 text-xs text-muted-foreground">{a.uploadedByName ?? "—"}</td>
-                  <td className="px-5 py-3 text-right">
-                    <div className="inline-flex items-center gap-2">
-                      <Link
-                        href={`/api/client-agreements/${a.id}?download=1`}
-                        className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
-                      >
-                        Download
-                      </Link>
-                      <button
-                        type="button"
-                        onClick={() => onDelete(a.id, a.filename)}
-                        className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="divide-y divide-border">
+            {items.map((a) => (
+              <AgreementItem key={a.id} agreement={a} onDelete={onDelete} />
+            ))}
+          </ul>
         )}
       </div>
     </div>
+  );
+}
+
+function AgreementItem({
+  agreement,
+  onDelete,
+}: {
+  agreement: AgreementRow;
+  onDelete: (id: string, name: string) => void;
+}) {
+  const router = useRouter();
+  const [expanded, setExpanded] = useState<boolean>(Boolean(agreement.summary));
+  const [summary, setSummary] = useState<string | null>(agreement.summary);
+  const [summaryUpdatedAt, setSummaryUpdatedAt] = useState<string | null>(agreement.summaryUpdatedAt);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const isPdf = agreement.mimeType === "application/pdf";
+
+  function onSummarize() {
+    setError(null);
+    startTransition(async () => {
+      const result = await summarizeAgreement(agreement.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setSummary(result.value.summary);
+      setSummaryUpdatedAt(result.value.summaryUpdatedAt);
+      setExpanded(true);
+      router.refresh();
+    });
+  }
+
+  return (
+    <li className="px-5 py-4">
+      <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/api/client-agreements/${agreement.id}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-2 font-medium text-navy hover:text-brand-dark"
+          >
+            <FileText className="h-4 w-4 text-muted-foreground" />
+            {agreement.filename}
+            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+          </Link>
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+            <span>{formatBytes(agreement.sizeBytes)}</span>
+            <span>{new Date(agreement.uploadedAt).toLocaleString()}</span>
+            {agreement.uploadedByName && <span>by {agreement.uploadedByName}</span>}
+            {summary && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[10px] font-semibold text-brand-dark">
+                <Sparkles className="h-2.5 w-2.5" /> Summarized
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onSummarize}
+            disabled={isPending || !isPdf}
+            title={!isPdf ? "Only PDF agreements can be summarized right now." : undefined}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:opacity-50"
+          >
+            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            {summary ? "Re-summarize" : "Summarize Terms"}
+          </button>
+          {summary && (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+            >
+              {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+              {expanded ? "Hide" : "Show"} summary
+            </button>
+          )}
+          <Link
+            href={`/api/client-agreements/${agreement.id}?download=1`}
+            className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+          >
+            Download
+          </Link>
+          <button
+            type="button"
+            onClick={() => onDelete(agreement.id, agreement.filename)}
+            className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </div>
+      </div>
+
+      {error && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
+
+      {summary && expanded && (
+        <div className={cn("mt-3 rounded-lg border border-border bg-muted/30 p-4")}>
+          <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <Sparkles className="h-3 w-3 text-brand-dark" /> Key terms
+            {summaryUpdatedAt && <span className="normal-case tracking-normal">· updated {new Date(summaryUpdatedAt).toLocaleString()}</span>}
+          </div>
+          <div className="whitespace-pre-wrap text-sm leading-relaxed text-navy">{summary}</div>
+        </div>
+      )}
+    </li>
   );
 }
 

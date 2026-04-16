@@ -23,6 +23,72 @@ export type BenefitsAttachment = {
   data: Buffer;
 };
 
+// Extract and summarize the key terms of a placement fee agreement. PDF-only
+// for now — .doc/.docx binaries aren't natively readable by Claude without
+// server-side text extraction, which we'll add if it becomes a blocker.
+export async function summarizeAgreementTerms(params: {
+  filename: string;
+  mimeType: string;
+  data: Buffer;
+}): Promise<string> {
+  if (params.mimeType !== "application/pdf") {
+    throw new Error("Only PDF agreements can be auto-summarized right now. Re-upload as PDF to use this.");
+  }
+
+  const anthropic = getClaude();
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 2000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    system:
+      "You extract key commercial terms from recruiting / placement fee agreements. You are precise and conservative — " +
+      "you never invent numbers or clauses, and if a term isn't present you say 'Not specified.'",
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: params.data.toString("base64"),
+            },
+            title: params.filename,
+          },
+          {
+            type: "text",
+            text:
+              "Summarize the key terms of this placement / recruiting fee agreement. " +
+              "Output a plain-text brief with bold-labeled sections (no markdown fences, no preamble, no trailing commentary). " +
+              "Cover, in this order:\n\n" +
+              "- Fee Percentage (of what base — first-year base salary? total comp? include formula if present)\n" +
+              "- Guarantee / Replacement Period (number of days, replacement vs refund, pro-rata terms)\n" +
+              "- Payment Terms (net-X days, invoice trigger — start date vs offer accepted, late-fee terms)\n" +
+              "- Candidate Ownership / Exclusivity (ownership window in days, anti-poach scope, non-circumvention)\n" +
+              "- Termination / Notice (notice period, termination rights)\n" +
+              "- Governing Law / Jurisdiction (state, venue, arbitration clause)\n" +
+              "- Other Notable Terms (liability caps, indemnification, confidentiality, background-check responsibility, anything else unusual)\n\n" +
+              "For each section write 1–3 short lines. If a term isn't in the document, write 'Not specified.' — never guess. " +
+              "Keep the whole summary under ~400 words.",
+          },
+        ],
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  if (!text) throw new Error("Claude returned no summary. Try again or check the PDF is readable.");
+  return text;
+}
+
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,
 // scannable brief for a recruiter sharing benefits with a candidate.
 export async function summarizeBenefits(params: {

@@ -3,7 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Mail, Phone as PhoneIcon, Plus, UserPlus, X, ExternalLink } from "lucide-react";
-import { formatPhone } from "@/lib/recruiterflow";
+import { formatPhone, telHref } from "@/lib/recruiterflow";
 import { addContact } from "@/app/clients/[id]/actions";
 import { cn } from "@/lib/utils";
 
@@ -165,7 +165,7 @@ export function ContactsTab({
                   </td>
                   <td className="px-5 py-3 align-top">
                     {c.phone ? (
-                      <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
+                      <a href={telHref(c.phone)} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
                         <PhoneIcon className="h-3 w-3 text-muted-foreground" /> {formatPhone(c.phone)}
                       </a>
                     ) : (

@@ -650,16 +650,31 @@ export function normalizeClient(c: RFClient) {
   };
 }
 
+// All ACE phone displays are normalized to `+1 XXX-XXX-XXXX` — Krispcall's
+// click-to-call expects the +1 prefix on tel: links. Non-US numbers fall
+// through with a `+` prefix on the digits so they still dial out correctly.
 export function formatPhone(raw: string | null | undefined): string {
   if (!raw) return "";
   const digits = raw.replace(/\D/g, "");
   if (digits.length === 10) {
-    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    return `+1 ${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   if (digits.length === 11 && digits.startsWith("1")) {
-    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+    return `+1 ${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
   }
+  if (digits.length > 0) return `+${digits}`;
   return raw;
+}
+
+// Builds a `tel:` href (E.164) so Krispcall click-to-call always receives a
+// leading + and country code.
+export function telHref(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.length === 10) return `tel:+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `tel:+${digits}`;
+  return `tel:+${digits}`;
 }
 
 export function daysBetween(iso: string | null | undefined, now: Date = new Date()): number | null {

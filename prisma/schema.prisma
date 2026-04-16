@@ -124,14 +124,18 @@ model ActionLog {
 // in Postgres for now — volume is low, and keeping it in the same DB avoids a
 // separate object-store dependency. Can swap to Vercel Blob later if volume grows.
 model ClientAgreement {
-  id           String   @id @default(cuid())
-  clientRfId   Int      // RecruiterFlow client/company id
-  filename     String
-  mimeType     String
-  size         Int
-  data         Bytes
-  uploadedById String
-  uploadedAt   DateTime @default(now())
+  id               String    @id @default(cuid())
+  clientRfId       Int       // RecruiterFlow client/company id
+  filename         String
+  mimeType         String
+  size             Int
+  data             Bytes
+  uploadedById     String
+  uploadedAt       DateTime  @default(now())
+  // Claude-generated summary of the contract terms. Persisted so we don't
+  // re-summarize every view; cleared when the user re-generates or deletes.
+  summary          String?   @db.Text
+  summaryUpdatedAt DateTime?
 
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 

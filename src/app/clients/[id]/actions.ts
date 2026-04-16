@@ -5,7 +5,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
-import { summarizeBenefits as summarizeBenefitsWithClaude } from "@/lib/claude";
+import {
+  summarizeAgreementTerms as summarizeAgreementTermsWithClaude,
+  summarizeBenefits as summarizeBenefitsWithClaude,
+} from "@/lib/claude";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -92,6 +95,36 @@ export async function uploadAgreement(clientId: number, formData: FormData): Pro
 
   revalidatePath(`/clients/${clientId}`);
   return { ok: true, value: { id: created.id } };
+}
+
+export type SummarizeAgreementResult = ActionResult<{ summary: string; summaryUpdatedAt: string }>;
+
+export async function summarizeAgreement(agreementId: string): Promise<SummarizeAgreementResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const agreement = await prisma.clientAgreement.findUnique({
+    where: { id: agreementId },
+    select: { clientRfId: true, filename: true, mimeType: true, data: true },
+  });
+  if (!agreement) return { ok: false, error: "Agreement not found." };
+
+  try {
+    const summary = await summarizeAgreementTermsWithClaude({
+      filename: agreement.filename,
+      mimeType: agreement.mimeType,
+      data: Buffer.from(agreement.data),
+    });
+    const now = new Date();
+    await prisma.clientAgreement.update({
+      where: { id: agreementId },
+      data: { summary, summaryUpdatedAt: now },
+    });
+    revalidatePath(`/clients/${agreement.clientRfId}`);
+    return { ok: true, value: { summary, summaryUpdatedAt: now.toISOString() } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Claude summarization failed" };
+  }
 }
 
 export async function deleteAgreement(agreementId: string): Promise<ActionResult> {

@@ -17,6 +17,7 @@ import {
   buildClientCounts,
   emptyJobCounts,
   formatPhone,
+  telHref,
 } from "@/lib/recruiterflow";
 import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
@@ -58,6 +59,8 @@ export default async function ClientDetailPage({
         mimeType: true,
         size: true,
         uploadedAt: true,
+        summary: true,
+        summaryUpdatedAt: true,
         uploadedBy: { select: { name: true, email: true } },
       },
     }),
@@ -166,7 +169,13 @@ export default async function ClientDetailPage({
                 <span>{client.industry || "—"}</span>
               </Detail>
               <Detail label="Phone" icon={<Phone className="h-3 w-3" />}>
-                <span>{formatPhone(client.phone) || "—"}</span>
+                {client.phone ? (
+                  <a href={telHref(client.phone)} className="text-navy hover:text-brand-dark">
+                    {formatPhone(client.phone)}
+                  </a>
+                ) : (
+                  <span>—</span>
+                )}
               </Detail>
               <Detail label="Address" icon={<MapPin className="h-3 w-3" />}>
                 {addressLines.length ? (
@@ -280,6 +289,8 @@ export default async function ClientDetailPage({
             sizeBytes: a.size,
             uploadedAt: a.uploadedAt.toISOString(),
             uploadedByName: a.uploadedBy?.name ?? a.uploadedBy?.email ?? null,
+            summary: a.summary,
+            summaryUpdatedAt: a.summaryUpdatedAt?.toISOString() ?? null,
           }))}
         />
       ) : (
