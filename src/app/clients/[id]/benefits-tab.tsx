@@ -72,19 +72,27 @@ function BenefitsTabInner({
   // Sequential uploads. Parallel startTransition() calls caused a client-side
   // render error on Vercel (bulk File dispatches through server actions).
   // Direct-to-Blob client upload with multipart chunking and a 30s watchdog.
-  // Multipart parallelizes a 5MB PDF into 4MB chunks and is far more reliable
-  // than a single PUT on flaky networks. AbortSignal.timeout() guarantees the
-  // spinner never runs forever — on hang, we surface a toast.
+  // Timestamp logs at each step print to the browser console so we can spot
+  // where real time is going (upload() → handleUploadUrl POST → direct PUT →
+  // register action). Auto-summarize was removed — a 25-page Claude call is
+  // 30–60s and was bloating perceived upload time.
   async function onFiles(chosen: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
     setIsUploading(true);
-    let anySucceeded = false;
     try {
       for (const file of chosen) {
         const toastId = toast.loading(`Uploading ${file.name}…`);
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
+        const tag = `[benefits-upload:${file.name}]`;
+        const t0 = performance.now();
+        const mark = (label: string) => {
+          // eslint-disable-next-line no-console
+          console.log(`${tag} ${label} · +${Math.round(performance.now() - t0)}ms`);
+        };
+        mark("start");
+
         try {
           const blob = await upload(`benefits/${clientId}/${file.name}`, file, {
             access: "public",
@@ -97,6 +105,7 @@ function BenefitsTabInner({
             },
           });
           clearTimeout(timer);
+          mark("blob put finished");
 
           const result = await registerBenefitsFile(clientId, {
             filename: file.name,
@@ -105,15 +114,19 @@ function BenefitsTabInner({
             blobUrl: blob.url,
             blobPathname: blob.pathname,
           });
+          mark("registerBenefitsFile finished");
+
           if (!result || !result.ok) {
             const msg = result?.error ?? "Upload saved to storage but couldn't be registered in Ace.";
             setUploadError(msg);
             toast.error(`Couldn't save ${file.name}`, { id: toastId, description: msg });
             return;
           }
-          anySucceeded = true;
           setUploadSuccess(`Uploaded ${file.name}.`);
-          toast.success(`Uploaded ${file.name}`, { id: toastId });
+          toast.success(`Uploaded ${file.name}`, {
+            id: toastId,
+            description: `Stored in ${Math.round((performance.now() - t0) / 100) / 10}s. Click Generate Summary to summarize.`,
+          });
         } catch (err) {
           clearTimeout(timer);
           const wasAbort = controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError");
@@ -128,57 +141,9 @@ function BenefitsTabInner({
         }
       }
       router.refresh();
-      if (anySucceeded) autoSummarize();
     } finally {
       setIsUploading(false);
     }
-  }
-
-  // Fires right after a successful upload. Claude gets the full PDF as a
-  // document block and returns a short bulleted summary (Medical, Dental,
-  // 401(k), PTO, ...). Any failure is non-fatal — the upload itself already
-  // succeeded and the user sees a separate toast.
-  function autoSummarize() {
-    const summaryToastId = toast.loading("Summarizing benefits with Claude…");
-    startSummarize(async () => {
-      try {
-        const result = await summarizeBenefitsWithAI(clientId, draft);
-        if (!result || !result.ok) {
-          const msg = result?.error ?? "Claude couldn't summarize — file is uploaded, try the Summarize button later.";
-          toast.warning("Summary skipped", { id: summaryToastId, description: msg });
-          return;
-        }
-        // Persist the summary as the benefits body so it sticks across refreshes.
-        const saveResult = await saveBenefits(clientId, result.value.summary);
-        if (saveResult?.ok) {
-          setDraft(result.value.summary);
-          setSaved({
-            body: result.value.summary,
-            updatedAt: saveResult.value.updatedAt,
-            updatedByName: saved.updatedByName,
-          });
-          setEditing(false);
-          toast.success("Benefits summarized", {
-            id: summaryToastId,
-            description: "Review the bullets below and tweak if needed.",
-          });
-          router.refresh();
-        } else {
-          // Summary generated but couldn't save — still show it in the editor.
-          setDraft(result.value.summary);
-          setEditing(true);
-          toast.warning("Couldn't save summary", {
-            id: summaryToastId,
-            description: saveResult?.error ?? "Shown in the editor for manual save.",
-          });
-        }
-      } catch (err) {
-        toast.warning("Summary skipped", {
-          id: summaryToastId,
-          description: err instanceof Error ? err.message : "Claude call failed.",
-        });
-      }
-    });
   }
 
   async function onDeleteFile(id: string) {
@@ -301,7 +266,7 @@ function BenefitsTabInner({
               className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:opacity-60"
             >
               {isSummarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              Summarize with Claude
+              Generate Summary
             </button>
             {!editing && (
               <button

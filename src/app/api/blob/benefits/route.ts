@@ -18,17 +18,28 @@ const ALLOWED = [
 // token — the actual bytes never traverse our serverless function, bypassing
 // the 4.5MB request body limit on Hobby.
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const t0 = Date.now();
+  const tag = "[blob/benefits]";
+  const mark = (label: string) => {
+    // eslint-disable-next-line no-console
+    console.log(`${tag} ${label} · +${Date.now() - t0}ms`);
+  };
+  mark("POST received");
+
   const body = (await request.json()) as HandleUploadBody;
+  mark(`body parsed · type=${(body as { type?: string }).type ?? "?"}`);
 
   try {
     const json = await handleUpload({
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
+        mark("onBeforeGenerateToken start");
         const session = await getServerSession(authOptions);
         if (!session?.user?.email) {
           throw new Error("Not signed in");
         }
+        mark("onBeforeGenerateToken session ok");
         return {
           allowedContentTypes: ALLOWED,
           maximumSizeInBytes: MAX_UPLOAD_BYTES,
@@ -40,13 +51,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           }),
         };
       },
-      onUploadCompleted: async () => {
+      onUploadCompleted: async ({ blob }) => {
+        mark(`onUploadCompleted · size=${blob.contentDisposition ?? ""}`);
         // Client calls registerBenefitsFile() with metadata after upload —
         // no server-side work needed here.
       },
     });
+    mark("handleUpload returned");
     return NextResponse.json(json);
   } catch (err) {
+    mark(`handleUpload threw: ${err instanceof Error ? err.message : String(err)}`);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Upload failed" },
       { status: 400 },
