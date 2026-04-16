@@ -78,7 +78,7 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
           <Upload className="h-4 w-4 text-brand-dark" /> Upload agreement
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          PDFs or Word documents, up to 20MB. Stored privately in ACE. DocuSign auto-import will come later.
+          PDFs or Word documents, up to 20MB. Stored privately in Ace. DocuSign auto-import will come later.
         </p>
         <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
           <label className="flex flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-navy-400 transition hover:border-brand/40 hover:text-navy">

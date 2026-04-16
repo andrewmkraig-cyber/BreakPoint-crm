@@ -17,8 +17,8 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "ACE · BreakPoint Talent",
-  description: "ACE — BreakPoint Talent's internal recruiting CRM",
+  title: "Ace · BreakPoint Talent",
+  description: "Ace — BreakPoint Talent's internal recruiting CRM",
 };
 
 export default function RootLayout({

@@ -650,7 +650,7 @@ export function normalizeClient(c: RFClient) {
   };
 }
 
-// All ACE phone displays are normalized to `+1 XXX-XXX-XXXX` — Krispcall's
+// All Ace phone displays are normalized to `+1 XXX-XXX-XXXX` — Krispcall's
 // click-to-call expects the +1 prefix on tel: links. Non-US numbers fall
 // through with a `+` prefix on the digits so they still dial out correctly.
 export function formatPhone(raw: string | null | undefined): string {

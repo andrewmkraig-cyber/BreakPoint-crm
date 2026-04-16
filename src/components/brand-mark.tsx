@@ -7,7 +7,7 @@ export function BrandMark({ className, withTag = false }: { className?: string; 
         <span className="font-serif text-lg font-semibold leading-none">A</span>
       </div>
       <div className="leading-tight">
-        <div className="font-serif text-base font-semibold tracking-wide text-navy">ACE</div>
+        <div className="font-serif text-base font-semibold tracking-wide text-navy">Ace</div>
         {withTag && <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">BreakPoint Talent</div>}
       </div>
     </div>

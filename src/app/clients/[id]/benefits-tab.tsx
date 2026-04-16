@@ -138,7 +138,7 @@ export function BenefitsTab({
           <div>
             <h2 className="font-serif text-lg font-semibold text-navy">Benefits documents</h2>
             <p className="text-xs text-muted-foreground">
-              Drop PDFs, Word docs, or plain-text carrier packets here. Files are private to ACE.
+              Drop PDFs, Word docs, or plain-text carrier packets here. Files are private to Ace.
             </p>
           </div>
         </div>
