@@ -19,26 +19,56 @@ import {
   formatPhone,
 } from "@/lib/recruiterflow";
 import { cn } from "@/lib/utils";
+import { prisma } from "@/lib/prisma";
 import { ContactsTab } from "@/app/clients/[id]/contacts-tab";
+import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
+import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 
 export const dynamic = "force-dynamic";
+
+type ClientTab = "overview" | "contacts" | "agreements" | "benefits";
 
 export default async function ClientDetailPage({
   params,
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { tab?: "overview" | "contacts" };
+  searchParams?: { tab?: ClientTab };
 }) {
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const tab: "overview" | "contacts" = searchParams?.tab === "contacts" ? "contacts" : "overview";
+  const tab: ClientTab =
+    searchParams?.tab === "contacts" ||
+    searchParams?.tab === "agreements" ||
+    searchParams?.tab === "benefits"
+      ? searchParams.tab
+      : "overview";
 
-  const [clients, candidates, contacts] = await Promise.all([
+  const [clients, candidates, contacts, agreements, benefits] = await Promise.all([
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
+    prisma.clientAgreement.findMany({
+      where: { clientRfId: id },
+      orderBy: { uploadedAt: "desc" },
+      select: {
+        id: true,
+        filename: true,
+        mimeType: true,
+        size: true,
+        uploadedAt: true,
+        uploadedBy: { select: { name: true, email: true } },
+      },
+    }),
+    prisma.clientBenefits.findUnique({
+      where: { clientRfId: id },
+      select: {
+        body: true,
+        updatedAt: true,
+        updatedBy: { select: { name: true, email: true } },
+      },
+    }),
   ]);
 
   const raw = clients.find((c) => c.id === id);
@@ -88,7 +118,13 @@ export default async function ClientDetailPage({
         <Stat label="Open Jobs" value={openJobs.length} tone="muted" />
       </div>
 
-      <Tabs tab={tab} clientId={id} contactsCount={clientContacts.length} />
+      <Tabs
+        tab={tab}
+        clientId={id}
+        contactsCount={clientContacts.length}
+        agreementsCount={agreements.length}
+        hasBenefits={Boolean(benefits?.body?.trim())}
+      />
 
       {tab === "overview" ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -203,7 +239,7 @@ export default async function ClientDetailPage({
             )}
           </div>
         </div>
-      ) : (
+      ) : tab === "contacts" ? (
         <ContactsTab
           clientId={id}
           initialContacts={clientContacts.map((c) => ({
@@ -221,21 +257,56 @@ export default async function ClientDetailPage({
             lastContactedAt: c.latest_activity_time ?? c.added_time ?? null,
           }))}
         />
+      ) : tab === "agreements" ? (
+        <AgreementsTab
+          clientId={id}
+          items={agreements.map((a) => ({
+            id: a.id,
+            filename: a.filename,
+            mimeType: a.mimeType,
+            sizeBytes: a.size,
+            uploadedAt: a.uploadedAt.toISOString(),
+            uploadedByName: a.uploadedBy?.name ?? a.uploadedBy?.email ?? null,
+          }))}
+        />
+      ) : (
+        <BenefitsTab
+          clientId={id}
+          initial={{
+            body: benefits?.body ?? "",
+            updatedAt: benefits?.updatedAt?.toISOString() ?? null,
+            updatedByName: benefits?.updatedBy?.name ?? benefits?.updatedBy?.email ?? null,
+          }}
+        />
       )}
     </div>
   );
 }
 
-function Tabs({ tab, clientId, contactsCount }: { tab: "overview" | "contacts"; clientId: number; contactsCount: number }) {
+function Tabs({
+  tab,
+  clientId,
+  contactsCount,
+  agreementsCount,
+  hasBenefits,
+}: {
+  tab: ClientTab;
+  clientId: number;
+  contactsCount: number;
+  agreementsCount: number;
+  hasBenefits: boolean;
+}) {
   return (
-    <div className="inline-flex rounded-lg border border-border bg-white p-1 shadow-sm">
+    <div className="inline-flex flex-wrap rounded-lg border border-border bg-white p-1 shadow-sm">
       <TabLink label="Overview" href={`/clients/${clientId}?tab=overview`} active={tab === "overview"} />
-      <TabLink label={`Contacts`} count={contactsCount} href={`/clients/${clientId}?tab=contacts`} active={tab === "contacts"} />
+      <TabLink label="Contacts" count={contactsCount} href={`/clients/${clientId}?tab=contacts`} active={tab === "contacts"} />
+      <TabLink label="Agreements" count={agreementsCount} href={`/clients/${clientId}?tab=agreements`} active={tab === "agreements"} />
+      <TabLink label="Benefits" dot={hasBenefits} href={`/clients/${clientId}?tab=benefits`} active={tab === "benefits"} />
     </div>
   );
 }
 
-function TabLink({ label, href, active, count }: { label: string; href: string; active: boolean; count?: number }) {
+function TabLink({ label, href, active, count, dot }: { label: string; href: string; active: boolean; count?: number; dot?: boolean }) {
   return (
     <Link
       href={href}
@@ -245,6 +316,12 @@ function TabLink({ label, href, active, count }: { label: string; href: string; 
       )}
     >
       <span>{label}</span>
+      {dot && (
+        <span
+          aria-hidden
+          className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-brand" : "bg-brand/60")}
+        />
+      )}
       {typeof count === "number" && (
         <span
           className={cn(

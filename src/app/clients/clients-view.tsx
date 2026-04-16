@@ -143,18 +143,11 @@ function Card({ card }: { card: ClientCard }) {
       className="group flex flex-col rounded-xl border border-border bg-white p-5 shadow-sm transition hover:border-brand/40 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="truncate font-serif text-lg font-semibold text-navy group-hover:text-brand-dark">
-              {card.name || "(unnamed)"}
-            </h3>
-            {card.isVerified && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
-                <ShieldCheck className="h-3 w-3" /> Verified
-              </span>
-            )}
-          </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+        <div className="min-w-0 flex-1">
+          <h3 className="break-words font-serif text-lg font-semibold leading-tight text-navy group-hover:text-brand-dark">
+            {card.name || "(unnamed)"}
+          </h3>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             {card.industry && <span>{card.industry}</span>}
             {card.industry && card.location && <span>·</span>}
             {card.location && (
@@ -178,6 +171,14 @@ function Card({ card }: { card: ClientCard }) {
           </span>
         )}
       </div>
+
+      {card.isVerified && (
+        <div className="mt-2">
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
+            <ShieldCheck className="h-3 w-3" /> Verified · signed agreement
+          </span>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-muted/50 p-3 text-center">
         <Stat label="Submitted" value={card.submittedCount} tone="brand" />

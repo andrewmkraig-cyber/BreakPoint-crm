@@ -49,10 +49,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts    Account[]
-  sessions    Session[]
-  actions     ActionLog[]
-  krispcalls  KrispcallLog[]
+  accounts        Account[]
+  sessions        Session[]
+  actions         ActionLog[]
+  krispcalls      KrispcallLog[]
+  agreements      ClientAgreement[]
+  benefitsUpdates ClientBenefits[]
 }
 
 enum UserRole {
@@ -115,6 +117,36 @@ model ActionLog {
   @@index([userId, createdAt])
   @@index([subjectType, subjectId])
   @@index([actionType])
+}
+
+// Manually uploaded client-facing agreements (PDFs etc). We store the binary
+// in Postgres for now — volume is low, and keeping it in the same DB avoids a
+// separate object-store dependency. Can swap to Vercel Blob later if volume grows.
+model ClientAgreement {
+  id           String   @id @default(cuid())
+  clientRfId   Int      // RecruiterFlow client/company id
+  filename     String
+  mimeType     String
+  size         Int
+  data         Bytes
+  uploadedById String
+  uploadedAt   DateTime @default(now())
+
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([clientRfId, uploadedAt])
+}
+
+// Free-form benefits notes per client. Persisted as plain text with line breaks
+// preserved; we can upgrade to markdown/rich text later without a schema change.
+model ClientBenefits {
+  id          String   @id @default(cuid())
+  clientRfId  Int      @unique
+  body        String   @db.Text
+  updatedById String
+  updatedAt   DateTime @updatedAt
+
+  updatedBy User @relation(fields: [updatedById], references: [id], onDelete: Cascade)
 }
 
 model KrispcallLog {

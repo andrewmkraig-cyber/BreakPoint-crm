@@ -3,13 +3,30 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 
-export type AddContactResult = { ok: true; id: number } | { ok: false; error: string };
+type ActionResult<T = void> =
+  | (T extends void ? { ok: true } : { ok: true; value: T })
+  | { ok: false; error: string };
+
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+
+async function requireUserId(): Promise<{ id: string; email: string } | null> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return null;
+  const user = await prisma.user.findUnique({ where: { email: session.user.email }, select: { id: true, email: true } });
+  if (!user?.email) return null;
+  return { id: user.id, email: user.email };
+}
+
+// ---- Contacts ----
+
+export type AddContactResult = ActionResult<{ id: number }>;
 
 export async function addContact(clientId: number, formData: FormData): Promise<AddContactResult> {
-  const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
 
   const first = String(formData.get("first_name") ?? "").trim();
   const last = String(formData.get("last_name") ?? "").trim();
@@ -31,8 +48,77 @@ export async function addContact(clientId: number, formData: FormData): Promise<
       client_company_id: clientId,
     });
     revalidatePath(`/clients/${clientId}`);
-    return { ok: true, id: created.id };
+    return { ok: true, value: { id: created.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create contact" };
   }
+}
+
+// ---- Agreements ----
+
+export type UploadAgreementResult = ActionResult<{ id: string }>;
+
+export async function uploadAgreement(clientId: number, formData: FormData): Promise<UploadAgreementResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { ok: false, error: "No file attached." };
+  if (file.size === 0) return { ok: false, error: "File is empty." };
+  if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: `File is too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB).` };
+
+  const allowed = new Set([
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ]);
+  if (!allowed.has(file.type)) {
+    return { ok: false, error: "Only PDF or Word documents are accepted." };
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const created = await prisma.clientAgreement.create({
+    data: {
+      clientRfId: clientId,
+      filename: file.name,
+      mimeType: file.type,
+      size: file.size,
+      data: buffer,
+      uploadedById: user.id,
+    },
+    select: { id: true },
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true, value: { id: created.id } };
+}
+
+export async function deleteAgreement(agreementId: string): Promise<ActionResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const existing = await prisma.clientAgreement.findUnique({ where: { id: agreementId }, select: { clientRfId: true } });
+  if (!existing) return { ok: false, error: "Agreement not found." };
+  await prisma.clientAgreement.delete({ where: { id: agreementId } });
+  revalidatePath(`/clients/${existing.clientRfId}`);
+  return { ok: true };
+}
+
+// ---- Benefits ----
+
+export type SaveBenefitsResult = ActionResult<{ updatedAt: string }>;
+
+export async function saveBenefits(clientId: number, body: string): Promise<SaveBenefitsResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+
+  const trimmed = body.slice(0, 64_000);
+  const row = await prisma.clientBenefits.upsert({
+    where: { clientRfId: clientId },
+    update: { body: trimmed, updatedById: user.id },
+    create: { clientRfId: clientId, body: trimmed, updatedById: user.id },
+    select: { updatedAt: true },
+  });
+
+  revalidatePath(`/clients/${clientId}`);
+  return { ok: true, value: { updatedAt: row.updatedAt.toISOString() } };
 }
