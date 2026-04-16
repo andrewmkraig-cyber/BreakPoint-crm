@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { parseCandidateFields, type ParsedCandidate } from "@/lib/claude";
+import { fallbackParseCandidate } from "@/lib/resume-fallback";
 import { recruiterflow } from "@/lib/recruiterflow";
 
 type Result<T = void> =
@@ -17,7 +18,16 @@ async function requireSession(): Promise<boolean> {
 
 const MAX_RESUME_BYTES = 15 * 1024 * 1024;
 
-export type ParseResumeResult = Result<{ parsed: ParsedCandidate; filename: string | null; mimeType: string | null; sizeBytes: number }>;
+export type ParseSource = "claude" | "fallback";
+
+export type ParseResumeResult = Result<{
+  parsed: ParsedCandidate;
+  filename: string | null;
+  mimeType: string | null;
+  sizeBytes: number;
+  source: ParseSource;
+  claudeError: string | null;
+}>;
 
 export async function parseCandidate(formData: FormData): Promise<ParseResumeResult> {
   if (!(await requireSession())) return { ok: false, error: "Not signed in." };
@@ -45,11 +55,31 @@ export async function parseCandidate(formData: FormData): Promise<ParseResumeRes
     sizeBytes = file.size;
   }
 
+  if (!resume && !pastedText && !linkedinUrl) {
+    return { ok: false, error: "Upload a resume, paste profile text, or enter a LinkedIn URL first." };
+  }
+
+  // Try Claude first — best-in-class extraction. On any failure (credit error,
+  // rate limit, network), fall back to local text extraction so the user still
+  // gets something to work with.
   try {
     const parsed = await parseCandidateFields({ resume, pastedText, linkedinUrl });
-    return { ok: true, value: { parsed, filename, mimeType, sizeBytes } };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to parse candidate." };
+    return {
+      ok: true,
+      value: { parsed, filename, mimeType, sizeBytes, source: "claude", claudeError: null },
+    };
+  } catch (claudeErr) {
+    const claudeError = claudeErr instanceof Error ? claudeErr.message : "Claude parsing failed.";
+    try {
+      const parsed = await fallbackParseCandidate({ resume, pastedText, linkedinUrl });
+      return {
+        ok: true,
+        value: { parsed, filename, mimeType, sizeBytes, source: "fallback", claudeError },
+      };
+    } catch (fallbackErr) {
+      const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : "Fallback parse failed.";
+      return { ok: false, error: `Claude: ${claudeError}. Fallback: ${fallbackMsg}` };
+    }
   }
 }
 

@@ -20,6 +20,7 @@
     "lucide-react": "^1.8.0",
     "next": "14.2.35",
     "next-auth": "^4.24.14",
+    "pdf-parse": "^2.4.5",
     "prisma": "^6.19.3",
     "react": "^18",
     "react-dom": "^18",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
+    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",

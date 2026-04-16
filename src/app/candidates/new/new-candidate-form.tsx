@@ -2,13 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Loader2, Save, Sparkles, X } from "lucide-react";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { cn } from "@/lib/utils";
 import {
   createCandidate,
   parseCandidate,
   type CreateCandidatePayload,
+  type ParseSource,
 } from "@/app/candidates/new/actions";
 
 type FormState = CreateCandidatePayload & { skillsText: string };
@@ -33,27 +34,26 @@ export function NewCandidateForm() {
   const [pastedText, setPastedText] = useState<string>("");
   const [linkedinUrl, setLinkedinUrl] = useState<string>("");
   const [form, setForm] = useState<FormState>(EMPTY);
-  const [prefilled, setPrefilled] = useState<boolean>(false);
+  const [parseSource, setParseSource] = useState<ParseSource | null>(null);
+  const [claudeError, setClaudeError] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isParsing, startParse] = useTransition();
   const [isSaving, startSave] = useTransition();
 
-  function onFiles(files: File[]) {
-    setResume(files[0] ?? null);
+  function runParse(args: { file?: File; text?: string; url?: string }) {
     setParseError(null);
-  }
+    setClaudeError(null);
+    const nextFile = args.file ?? resume;
+    const nextText = args.text ?? pastedText;
+    const nextUrl = args.url ?? linkedinUrl;
 
-  function onParse() {
-    setParseError(null);
-    if (!resume && !pastedText.trim() && !linkedinUrl.trim()) {
-      setParseError("Upload a resume, paste profile text, or enter a LinkedIn URL first.");
-      return;
-    }
+    if (!nextFile && !nextText.trim() && !nextUrl.trim()) return;
+
     const data = new FormData();
-    if (resume) data.append("resume", resume);
-    if (pastedText.trim()) data.append("pastedText", pastedText.trim());
-    if (linkedinUrl.trim()) data.append("linkedinUrl", linkedinUrl.trim());
+    if (nextFile) data.append("resume", nextFile);
+    if (nextText.trim()) data.append("pastedText", nextText.trim());
+    if (nextUrl.trim()) data.append("linkedinUrl", nextUrl.trim());
 
     startParse(async () => {
       const result = await parseCandidate(data);
@@ -62,21 +62,34 @@ export function NewCandidateForm() {
         return;
       }
       const p = result.value.parsed;
-      setForm({
-        first_name: p.first_name ?? "",
-        last_name: p.last_name ?? "",
-        email: p.email ?? "",
-        phone: p.phone ?? "",
-        current_designation: p.current_designation ?? "",
-        current_organization: p.current_organization ?? "",
-        location: p.location ?? "",
-        linkedin_profile: p.linkedin_profile ?? linkedinUrl.trim() ?? "",
-        skills: p.skills,
-        skillsText: p.skills.join(", "),
-        notes: p.notes ?? "",
-      });
-      setPrefilled(true);
+      setForm((prev) => ({
+        ...prev,
+        first_name: p.first_name ?? prev.first_name,
+        last_name: p.last_name ?? prev.last_name,
+        email: p.email ?? prev.email,
+        phone: p.phone ?? prev.phone,
+        current_designation: p.current_designation ?? prev.current_designation,
+        current_organization: p.current_organization ?? prev.current_organization,
+        location: p.location ?? prev.location,
+        linkedin_profile: p.linkedin_profile ?? nextUrl.trim() ?? prev.linkedin_profile,
+        skills: p.skills.length ? p.skills : prev.skills,
+        skillsText: p.skills.length ? p.skills.join(", ") : prev.skillsText,
+        notes: p.notes ?? prev.notes,
+      }));
+      setParseSource(result.value.source);
+      setClaudeError(result.value.claudeError);
     });
+  }
+
+  function onFiles(files: File[]) {
+    const file = files[0] ?? null;
+    setResume(file);
+    if (file) runParse({ file });
+  }
+
+  function onLinkedinChange(v: string) {
+    setLinkedinUrl(v);
+    setForm((prev) => (prev.linkedin_profile ? prev : { ...prev, linkedin_profile: v }));
   }
 
   function onSave() {
@@ -107,10 +120,13 @@ export function NewCandidateForm() {
     setPastedText("");
     setLinkedinUrl("");
     setForm(EMPTY);
-    setPrefilled(false);
+    setParseSource(null);
+    setClaudeError(null);
     setParseError(null);
     setSaveError(null);
   }
+
+  const showFallbackBanner = parseSource === "fallback";
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -119,19 +135,31 @@ export function NewCandidateForm() {
         <div className="rounded-xl border border-border bg-white shadow-sm">
           <div className="border-b border-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
-            <p className="text-xs text-muted-foreground">PDF works best — Claude reads the document natively.</p>
+            <p className="text-xs text-muted-foreground">
+              Drop a PDF and we&apos;ll parse it automatically. Claude handles the heavy lifting; if Claude is unavailable, a basic extractor fills in name/email/phone.
+            </p>
           </div>
           <div className="p-5">
             <DocumentDropzone
               multiple={false}
+              isBusy={isParsing}
               accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,.txt"
               onFiles={onFiles}
               emptyHint="PDF, DOC/DOCX, or TXT up to 15MB"
             />
             {resume && (
               <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
-                <span className="truncate text-navy">{resume.name}</span>
-                <button type="button" onClick={() => setResume(null)} className="text-muted-foreground hover:text-navy">
+                <span className="truncate text-navy">
+                  {resume.name}
+                  {isParsing && <span className="ml-2 text-muted-foreground">· parsing…</span>}
+                  {!isParsing && parseSource === "claude" && <span className="ml-2 text-brand-dark">· parsed with Claude</span>}
+                  {!isParsing && parseSource === "fallback" && <span className="ml-2 text-amber-700">· basic extraction</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setResume(null)}
+                  className="text-muted-foreground hover:text-navy"
+                >
                   <X className="h-3 w-3" />
                 </button>
               </div>
@@ -143,47 +171,45 @@ export function NewCandidateForm() {
           <div className="border-b border-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-navy">LinkedIn</h2>
             <p className="text-xs text-muted-foreground">
-              Paste the URL — it&apos;ll be saved on the candidate. For full enrichment, also copy-paste the profile text below (LinkedIn blocks automated fetching).
+              URL is saved on the record. For full enrichment, paste the profile text below and re-parse from the resume dropzone (LinkedIn blocks automated URL fetches).
             </p>
           </div>
           <div className="space-y-3 p-5">
-            <Field label="Profile URL" type="url" value={linkedinUrl} onChange={setLinkedinUrl} placeholder="https://linkedin.com/in/…" />
+            <Field label="Profile URL" type="url" value={linkedinUrl} onChange={onLinkedinChange} placeholder="https://linkedin.com/in/…" />
             <div>
               <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Pasted profile text (optional)</label>
               <textarea
                 value={pastedText}
                 onChange={(e) => setPastedText(e.target.value)}
-                rows={8}
-                placeholder="Paste the LinkedIn About / Experience section here for best parsing…"
+                rows={6}
+                placeholder="Paste the LinkedIn About / Experience section here — included in the next parse."
                 className={cn(
                   "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy",
                   "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
                 )}
               />
             </div>
+            <button
+              type="button"
+              onClick={() => runParse({})}
+              disabled={isParsing || (!resume && !pastedText.trim() && !linkedinUrl.trim())}
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              Re-parse with current inputs
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {parseSource && (
           <button
             type="button"
-            onClick={onParse}
-            disabled={isParsing}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:opacity-60"
+            onClick={onReset}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy"
           >
-            {isParsing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {prefilled ? "Re-parse with Claude" : "Parse with Claude"}
+            Clear and start over
           </button>
-          {prefilled && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy"
-            >
-              Clear
-            </button>
-          )}
-        </div>
+        )}
         {parseError && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{parseError}</div>}
       </div>
 
@@ -194,7 +220,11 @@ export function NewCandidateForm() {
             <div>
               <h2 className="font-serif text-base font-semibold text-navy">Candidate fields</h2>
               <p className="text-xs text-muted-foreground">
-                {prefilled ? "Pre-filled by Claude — review and edit before saving." : "Fill these in or parse a resume above."}
+                {parseSource === "claude"
+                  ? "Pre-filled by Claude — review and edit before saving."
+                  : parseSource === "fallback"
+                    ? "Basic extraction only — please review every field."
+                    : "Drop a resume on the left or fill these in manually."}
               </p>
             </div>
             <button
@@ -204,9 +234,20 @@ export function NewCandidateForm() {
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save to RecruiterFlow
+              Save to Ace
             </button>
           </div>
+
+          {showFallbackBanner && (
+            <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div>
+                Claude parsing wasn&apos;t available — we fell back to regex-based extraction. Name, email, and phone are likely correct; title / employer / skills need manual entry.
+                {claudeError && <div className="mt-1 font-mono text-[10px] opacity-70">Claude said: {claudeError}</div>}
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
             <Field label="First name" required value={form.first_name} onChange={(v) => setForm({ ...form, first_name: v })} />
             <Field label="Last name" value={form.last_name} onChange={(v) => setForm({ ...form, last_name: v })} />
