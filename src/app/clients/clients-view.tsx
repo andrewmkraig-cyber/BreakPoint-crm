@@ -19,6 +19,7 @@ export type ClientCard = {
   openJobsCount: number;
   closedJobsCount: number;
   isVerified: boolean;
+  isActive: boolean;
   agreementDate: string | null;
   feePct: number | null;
   billingContact: string | null;
@@ -35,11 +36,26 @@ type Props = {
   totalPages: number;
   pageSize: number;
   q: string;
+  tab: "active" | "inactive";
+  activeCount: number;
+  inactiveCount: number;
   verifiedCount: number;
   error: string | null;
 };
 
-export function ClientsView({ cards, total, page, totalPages, pageSize, q, verifiedCount, error }: Props) {
+export function ClientsView({
+  cards,
+  total,
+  page,
+  totalPages,
+  pageSize,
+  q,
+  tab,
+  activeCount,
+  inactiveCount,
+  verifiedCount,
+  error,
+}: Props) {
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
@@ -67,19 +83,21 @@ export function ClientsView({ cards, total, page, totalPages, pageSize, q, verif
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>
-            {total.toLocaleString()} {total === 1 ? "client" : "clients"}
-            {q ? ` matching "${q}"` : ""}
-          </span>
-          {verifiedCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[11px] font-medium text-brand-dark">
-              <ShieldCheck className="h-3 w-3" /> {verifiedCount} verified
-            </span>
-          )}
-        </div>
+      <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
+        <Tabs tab={tab} activeCount={activeCount} inactiveCount={inactiveCount} buildHref={buildHref} />
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Live from RecruiterFlow</div>
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span>
+          {total.toLocaleString()} {total === 1 ? "client" : "clients"}
+          {q ? ` matching "${q}"` : ""}
+        </span>
+        {verifiedCount > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[11px] font-medium text-brand-dark">
+            <ShieldCheck className="h-3 w-3" /> {verifiedCount} verified
+          </span>
+        )}
       </div>
 
       <form
@@ -133,6 +151,47 @@ export function ClientsView({ cards, total, page, totalPages, pageSize, q, verif
         </div>
       )}
     </div>
+  );
+}
+
+function Tabs({
+  tab,
+  activeCount,
+  inactiveCount,
+  buildHref,
+}: {
+  tab: "active" | "inactive";
+  activeCount: number;
+  inactiveCount: number;
+  buildHref: (overrides: Record<string, string | number | undefined>) => string;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-white p-1 shadow-sm">
+      <TabLink label="Active" count={activeCount} active={tab === "active"} href={buildHref({ tab: "active", page: 1 })} />
+      <TabLink label="Inactive" count={inactiveCount} active={tab === "inactive"} href={buildHref({ tab: "inactive", page: 1 })} />
+    </div>
+  );
+}
+
+function TabLink({ label, count, active, href }: { label: string; count: number; active: boolean; href: string }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active ? "bg-brand-tint text-brand-dark" : "text-navy-400 hover:bg-muted",
+      )}
+    >
+      <span>{label}</span>
+      <span
+        className={cn(
+          "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+          active ? "bg-brand text-white" : "bg-muted text-muted-foreground",
+        )}
+      >
+        {count.toLocaleString()}
+      </span>
+    </Link>
   );
 }
 

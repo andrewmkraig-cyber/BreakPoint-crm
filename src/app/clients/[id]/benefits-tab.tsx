@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { Component, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Save, Sparkles, X } from "lucide-react";
 import { DocumentDropzone } from "@/components/document-dropzone";
+import { BulletedSummary } from "@/components/bulleted-summary";
 import {
   deleteBenefitsFile,
   saveBenefits,
@@ -36,6 +37,22 @@ export function BenefitsTab({
   initial: BenefitsState;
   files: BenefitsFile[];
 }) {
+  return (
+    <ClientErrorBoundary>
+      <BenefitsTabInner clientId={clientId} initial={initial} files={files} />
+    </ClientErrorBoundary>
+  );
+}
+
+function BenefitsTabInner({
+  clientId,
+  initial,
+  files,
+}: {
+  clientId: number;
+  initial: BenefitsState;
+  files: BenefitsFile[];
+}) {
   const router = useRouter();
   const [editing, setEditing] = useState<boolean>(!initial.body);
   const [draft, setDraft] = useState<string>(initial.body);
@@ -44,37 +61,50 @@ export function BenefitsTab({
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [isUploading, startUpload] = useTransition();
+  const [isUploading, setIsUploading] = useState(false);
   const [isSaving, startSave] = useTransition();
   const [isSummarizing, startSummarize] = useTransition();
 
-  function onFiles(chosen: File[]) {
+  // Sequential uploads. Parallel startTransition() calls caused a client-side
+  // render error on Vercel (bulk File dispatches through server actions).
+  async function onFiles(chosen: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
-    for (const file of chosen) {
-      const data = new FormData();
-      data.append("file", file);
-      startUpload(async () => {
+    setIsUploading(true);
+    try {
+      for (const file of chosen) {
+        const data = new FormData();
+        data.append("file", file);
         const result = await uploadBenefitsFile(clientId, data);
         if (!result.ok) {
           setUploadError(result.error);
           return;
         }
         setUploadSuccess(`Uploaded ${file.name}.`);
-        router.refresh();
-      });
+      }
+      router.refresh();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setIsUploading(false);
     }
   }
 
-  function onDeleteFile(id: string) {
-    startUpload(async () => {
+  async function onDeleteFile(id: string) {
+    setUploadError(null);
+    setIsUploading(true);
+    try {
       const result = await deleteBenefitsFile(id);
       if (!result.ok) {
         setUploadError(result.error);
         return;
       }
       router.refresh();
-    });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Delete failed.");
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   function onSave() {
@@ -116,7 +146,6 @@ export function BenefitsTab({
 
   return (
     <div className="space-y-6">
-      {/* File upload */}
       <div className="rounded-xl border border-border bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
           <div>
@@ -151,7 +180,6 @@ export function BenefitsTab({
         </div>
       </div>
 
-      {/* Text / summary */}
       <div className="rounded-xl border border-border bg-white shadow-sm">
         <div className="flex flex-col items-start justify-between gap-3 border-b border-border px-5 py-3 md:flex-row md:items-center">
           <div>
@@ -227,10 +255,10 @@ export function BenefitsTab({
             </div>
           ) : saved.body.trim() ? (
             <>
-              <div className="whitespace-pre-wrap text-sm leading-relaxed text-navy">{saved.body}</div>
+              <BulletedSummary text={saved.body} />
               {saved.updatedAt && (
                 <div className="mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground">
-                  Last updated {new Date(saved.updatedAt).toLocaleString()}
+                  Last updated {safeDateString(saved.updatedAt)}
                   {saved.updatedByName ? ` by ${saved.updatedByName}` : ""}
                 </div>
               )}
@@ -246,3 +274,43 @@ export function BenefitsTab({
   );
 }
 
+function safeDateString(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso;
+  return new Date(t).toLocaleString();
+}
+
+// Minimal error boundary so any unexpected client-side render error renders an
+// inline message instead of Next.js's full-page "Application error" screen.
+class ClientErrorBoundary extends Component<{ children: ReactNode }, { message: string | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { message: null };
+  }
+  static getDerivedStateFromError(error: unknown) {
+    return { message: error instanceof Error ? error.message : String(error) };
+  }
+  componentDidCatch(error: unknown) {
+    // eslint-disable-next-line no-console
+    console.error("BenefitsTab crashed:", error);
+  }
+  render() {
+    if (this.state.message) {
+      return (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-5 text-sm text-red-800">
+          <div className="font-semibold">Something went wrong rendering the Benefits tab.</div>
+          <div className="mt-1 font-mono text-xs">{this.state.message}</div>
+          <button
+            type="button"
+            onClick={() => this.setState({ message: null })}
+            className="mt-3 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+          >
+            Try again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}

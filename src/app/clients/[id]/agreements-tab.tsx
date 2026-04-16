@@ -12,6 +12,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
+import { BulletedSummary } from "@/components/bulleted-summary";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { deleteAgreement, summarizeAgreement, uploadAgreement } from "@/app/clients/[id]/actions";
 import { cn } from "@/lib/utils";
@@ -31,36 +32,46 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
   const router = useRouter();
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
-  const [isUploading, startUpload] = useTransition();
+  const [isUploading, setIsUploading] = useState(false);
 
-  function onFiles(files: File[]) {
+  // Sequential — parallel startTransition in a loop caused a client-side render
+  // error under Next 14's server action dispatch on Vercel.
+  async function onFiles(files: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
-    for (const file of files) {
-      const data = new FormData();
-      data.append("file", file);
-      startUpload(async () => {
+    setIsUploading(true);
+    try {
+      for (const file of files) {
+        const data = new FormData();
+        data.append("file", file);
         const result = await uploadAgreement(clientId, data);
         if (!result.ok) {
           setUploadError(result.error);
           return;
         }
         setUploadSuccess(`Uploaded ${file.name}.`);
-        router.refresh();
-      });
+      }
+      router.refresh();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setIsUploading(false);
     }
   }
 
-  function onDelete(id: string, name: string) {
+  async function onDelete(id: string, name: string) {
     if (!confirm(`Delete ${name}? This can't be undone.`)) return;
-    startUpload(async () => {
+    setIsUploading(true);
+    try {
       const result = await deleteAgreement(id);
       if (!result.ok) {
         setUploadError(result.error);
         return;
       }
       router.refresh();
-    });
+    } finally {
+      setIsUploading(false);
+    }
   }
 
   return (
@@ -204,7 +215,7 @@ function AgreementItem({
             <Sparkles className="h-3 w-3 text-brand-dark" /> Key terms
             {summaryUpdatedAt && <span className="normal-case tracking-normal">· updated {new Date(summaryUpdatedAt).toLocaleString()}</span>}
           </div>
-          <div className="whitespace-pre-wrap text-sm leading-relaxed text-navy">{summary}</div>
+          <BulletedSummary text={summary} />
         </div>
       )}
     </li>

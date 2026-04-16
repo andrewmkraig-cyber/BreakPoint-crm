@@ -189,12 +189,12 @@ export async function summarizeAgreementTerms(params: {
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 2000,
+    max_tokens: 1200,
     thinking: { type: "adaptive" },
     output_config: { effort: "medium" },
     system:
       "You extract key commercial terms from recruiting / placement fee agreements. You are precise and conservative — " +
-      "you never invent numbers or clauses, and if a term isn't present you say 'Not specified.'",
+      "you never invent numbers or clauses, and if a term isn't present you write 'Not specified.'",
     messages: [
       {
         role: "user",
@@ -211,18 +211,19 @@ export async function summarizeAgreementTerms(params: {
           {
             type: "text",
             text:
-              "Summarize the key terms of this placement / recruiting fee agreement. " +
-              "Output a plain-text brief with bold-labeled sections (no markdown fences, no preamble, no trailing commentary). " +
-              "Cover, in this order:\n\n" +
-              "- Fee Percentage (of what base — first-year base salary? total comp? include formula if present)\n" +
-              "- Guarantee / Replacement Period (number of days, replacement vs refund, pro-rata terms)\n" +
-              "- Payment Terms (net-X days, invoice trigger — start date vs offer accepted, late-fee terms)\n" +
-              "- Candidate Ownership / Exclusivity (ownership window in days, anti-poach scope, non-circumvention)\n" +
-              "- Termination / Notice (notice period, termination rights)\n" +
-              "- Governing Law / Jurisdiction (state, venue, arbitration clause)\n" +
-              "- Other Notable Terms (liability caps, indemnification, confidentiality, background-check responsibility, anything else unusual)\n\n" +
-              "For each section write 1–3 short lines. If a term isn't in the document, write 'Not specified.' — never guess. " +
-              "Keep the whole summary under ~400 words.",
+              "Extract the key commercial terms from this placement / recruiting fee agreement. " +
+              "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown code fences. " +
+              "Each line is: `- **Label:** value`. Keep values short and factual (numbers, percentages, day counts, state names). " +
+              "If a term isn't stated in the document, write the value as 'Not specified.' — never guess.\n\n" +
+              "Produce these bullets, in this order (skip any that aren't in the doc except the six core ones which always appear):\n" +
+              "- **Fee Percentage:** (percentage + base — e.g. '25% of first-year base salary')\n" +
+              "- **Payment Terms:** (e.g. 'Net 15 from start date')\n" +
+              "- **Guarantee Period:** (e.g. '90 days, prorated replacement')\n" +
+              "- **Minimum Fee:** (dollar amount, or 'None')\n" +
+              "- **Candidate Ownership Period:** (e.g. '12 months from introduction')\n" +
+              "- **Governing Law:** (state/jurisdiction)\n" +
+              "- **{Other term label}:** (add a bullet for any other notable/custom term — indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
+              "No other content. Just the bullets.",
           },
         ],
       },
@@ -286,22 +287,35 @@ export async function summarizeBenefits(params: {
   content.push({
     type: "text",
     text:
-      "Summarize the benefits info above into a clean brief a recruiter can share with a candidate. " +
-      "Use short sections with bold labels and bulleted lines. Cover only the categories that are actually present: " +
-      "Health / Dental / Vision (carrier, employee cost, tiers), Retirement / 401(k) (match, vesting), " +
-      "PTO / Vacation / Sick / Holidays, Bonus / Equity / Commission, Remote / Hybrid policy, Stipends / Perks, " +
-      "Eligibility / Waiting Period, and Anything else notable. Skip categories with no info — do not invent. " +
-      "Keep it under ~350 words. Output plain text with line breaks (no markdown fences, no preamble, " +
-      "no trailing commentary). If the source is unclear or mostly empty, say so in one line.",
+      "Extract the key benefits facts for a candidate. " +
+      "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown code fences. " +
+      "Each line is: `- **Label:** value`. Keep values short and factual — numbers, carriers, waiting-period days, match percentages. " +
+      "Do not invent details. If a category isn't in the source, skip the bullet.\n\n" +
+      "Produce bullets for whichever of these are present:\n" +
+      "- **Health:** (carrier, employee cost, plan tiers)\n" +
+      "- **Dental:** (carrier, employee cost)\n" +
+      "- **Vision:** (carrier, employee cost)\n" +
+      "- **HSA/FSA:** (employer contribution, if any)\n" +
+      "- **401(k):** (match %, vesting, eligibility)\n" +
+      "- **PTO:** (days/year, accrual rate)\n" +
+      "- **Holidays:** (number/year)\n" +
+      "- **Parental Leave:** (weeks paid)\n" +
+      "- **Bonus / Commission / Equity:** (structure)\n" +
+      "- **Remote / Hybrid:** (policy)\n" +
+      "- **Stipends / Perks:** (commuter, home office, wellness, etc.)\n" +
+      "- **Eligibility / Waiting Period:** (days to enroll)\n" +
+      "- **{Other}:** add a bullet per notable item not covered above. Omit if nothing else is notable.\n\n" +
+      "No other content. Just the bullets. If the source is empty or unreadable, output exactly one line: " +
+      "'- **Source:** No readable benefits info.'",
   });
 
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
-    max_tokens: 2000,
+    max_tokens: 1200,
     thinking: { type: "adaptive" },
     output_config: { effort: "low" },
     system:
-      "You are an executive assistant for a recruiting firm. You turn messy benefits documents into a crisp candidate-facing brief. " +
+      "You extract benefits facts from carrier packets, HR PDFs, and recruiter notes. " +
       "Be factual — only summarize what's present. Never speculate about coverage levels that aren't stated.",
     messages: [{ role: "user", content }],
   });
