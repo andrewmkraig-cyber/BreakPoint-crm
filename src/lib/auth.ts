@@ -28,7 +28,10 @@ export const authOptions: NextAuthOptions = {
       },
     }),
   ],
-  session: { strategy: "database" },
+  // JWT strategy is required for `next-auth/middleware` to recognize the session.
+  // The PrismaAdapter still persists User + Account rows (so we can look up the
+  // stored Google access/refresh tokens later for Gmail + Calendar calls).
+  session: { strategy: "jwt" },
   pages: {
     signIn: "/sign-in",
   },
@@ -38,10 +41,17 @@ export const authOptions: NextAuthOptions = {
       const hd = (profile as { hd?: string } | null | undefined)?.hd;
       return email.endsWith(`@${ALLOWED_DOMAIN}`) || hd === ALLOWED_DOMAIN;
     },
-    async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-        session.user.role = (user as { role?: string }).role ?? "ADMIN";
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.role = (user as { role?: string }).role ?? "ADMIN";
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (session.user && token) {
+        session.user.id = (token.id as string) ?? token.sub ?? "";
+        session.user.role = (token.role as string) ?? "ADMIN";
       }
       return session;
     },
