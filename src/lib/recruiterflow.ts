@@ -70,7 +70,7 @@ export type RFCandidate = {
   tags?: Array<string | { id?: number; name?: string }> | null;
   attributes?: Array<string | { id?: number; name?: string }> | null;
   notes?: Array<{ id?: number; note?: string; added_time?: string; added_by?: RFUserRef | null }> | null;
-  files?: Array<{ id?: number; name?: string; url?: string; file_type?: string; added_time?: string }> | null;
+  files?: RFFile[] | null;
   jobs?: RFCandidateJob[] | null;
   added_time?: string;
   added_by?: RFUserRef | null;
@@ -110,6 +110,29 @@ export type RFJob = {
   [key: string]: unknown;
 };
 
+export type RFClientJobRef = {
+  id: number;
+  title?: string;
+  name?: string;
+  department_name?: string | null;
+  candidates_submitted?: number | null;
+  candidates_hired?: number | null;
+  last_opened?: string | null;
+  job_visibility_id?: number | null;
+};
+
+export type RFFile = {
+  id?: number;
+  filename?: string;
+  name?: string;
+  link?: string;
+  url?: string;
+  file_type?: string;
+  file_category_id?: number;
+  upload_time?: string;
+  is_primary?: boolean;
+};
+
 export type RFClient = {
   id: number;
   name: string;
@@ -121,8 +144,8 @@ export type RFClient = {
   overview?: string | null;
   location?: RFLocation | null;
   phone_number?: Array<string | { number?: string; type?: string }> | null;
-  open_jobs?: Array<{ id: number; title?: string; name?: string }> | null;
-  closed_jobs?: Array<{ id: number; title?: string; name?: string }> | null;
+  open_jobs?: RFClientJobRef[] | null;
+  closed_jobs?: RFClientJobRef[] | null;
   tags?: Array<string | { id?: number; name?: string }> | null;
   custom_fields?: Array<{ id?: number; name?: string; value?: unknown }> | null;
   added_time?: string | null;
@@ -132,7 +155,7 @@ export type RFClient = {
   lead_owner?: RFUserRef | null;
   status?: { id?: number | null; name?: string | null } | null;
   revenue?: { number?: number | null; currency?: string | null } | null;
-  files?: Array<{ id?: number; name?: string; url?: string; file_type?: string }> | null;
+  files?: RFFile[] | null;
   notes?: unknown;
   [key: string]: unknown;
 };
@@ -335,14 +358,14 @@ export const recruiterflow = {
 
   async createContact(body: {
     first_name: string;
-    last_name: string;
+    last_name?: string;
     email?: string;
     phone_number?: string;
     current_designation?: string;
     client_company_id?: number;
     linkedin_profile?: string;
   }): Promise<RFContact> {
-    return rfFetch<RFContact>("/contact", { method: "POST", body });
+    return rfFetch<RFContact>("/contact/add", { method: "POST", body });
   },
 };
 
@@ -456,6 +479,32 @@ export function emptyJobCounts(): JobPipelineCounts {
   return { submitted: 0, interviewing: 0, offer: 0, pendingStart: 0, hired: 0, totalActive: 0 };
 }
 
+function tallyBucket(counts: JobPipelineCounts, bucket: PipelineBucket): void {
+  switch (bucket) {
+    case "submitted":
+      counts.submitted += 1;
+      counts.totalActive += 1;
+      break;
+    case "interviewing":
+      counts.interviewing += 1;
+      counts.totalActive += 1;
+      break;
+    case "offer":
+      counts.offer += 1;
+      counts.totalActive += 1;
+      break;
+    case "pending_start":
+      counts.pendingStart += 1;
+      counts.totalActive += 1;
+      break;
+    case "hired":
+      counts.hired += 1;
+      break;
+    default:
+      break;
+  }
+}
+
 // Builds a jobId → counts map by flattening every candidate's `jobs[]` array.
 // Counts only the 5 pipeline stages we care about; "sourced" and "rejected" are ignored.
 export function buildJobCounts(candidates: RFCandidate[]): Map<number, JobPipelineCounts> {
@@ -464,32 +513,25 @@ export function buildJobCounts(candidates: RFCandidate[]): Map<number, JobPipeli
     const jobs = Array.isArray(c.jobs) ? c.jobs : [];
     for (const j of jobs) {
       if (typeof j?.job_id !== "number") continue;
-      const bucket = canonicalStage(j.stage_name);
       const prev = map.get(j.job_id) ?? emptyJobCounts();
-      switch (bucket) {
-        case "submitted":
-          prev.submitted += 1;
-          prev.totalActive += 1;
-          break;
-        case "interviewing":
-          prev.interviewing += 1;
-          prev.totalActive += 1;
-          break;
-        case "offer":
-          prev.offer += 1;
-          prev.totalActive += 1;
-          break;
-        case "pending_start":
-          prev.pendingStart += 1;
-          prev.totalActive += 1;
-          break;
-        case "hired":
-          prev.hired += 1;
-          break;
-        default:
-          break;
-      }
+      tallyBucket(prev, canonicalStage(j.stage_name));
       map.set(j.job_id, prev);
+    }
+  }
+  return map;
+}
+
+// Builds a clientCompanyId → counts map, same rules as buildJobCounts.
+export function buildClientCounts(candidates: RFCandidate[]): Map<number, JobPipelineCounts> {
+  const map = new Map<number, JobPipelineCounts>();
+  for (const c of candidates) {
+    const jobs = Array.isArray(c.jobs) ? c.jobs : [];
+    for (const j of jobs) {
+      const clientId = j?.client_company_id;
+      if (typeof clientId !== "number") continue;
+      const prev = map.get(clientId) ?? emptyJobCounts();
+      tallyBucket(prev, canonicalStage(j.stage_name));
+      map.set(clientId, prev);
     }
   }
   return map;
@@ -559,6 +601,65 @@ export function flattenPipeline(candidates: RFCandidate[]): PipelineRow[] {
     }
   }
   return rows;
+}
+
+function getCustomField(fields: RFClient["custom_fields"] | RFJob["custom_fields"], match: (name: string) => boolean): unknown {
+  if (!Array.isArray(fields)) return undefined;
+  return fields.find((f) => typeof f?.name === "string" && match(f.name.toLowerCase()))?.value;
+}
+
+export function normalizeClient(c: RFClient) {
+  const website = c.domain ? (c.domain.startsWith("http") ? c.domain : `https://${c.domain}`) : null;
+  const locationLabel = c.location
+    ? c.location.location ??
+      [c.location.city, c.location.state].filter(Boolean).join(", ")
+    : "";
+  const signedFlag = getCustomField(c.custom_fields, (n) => n.includes("signed agreement"));
+  const agreementDate = getCustomField(c.custom_fields, (n) => n === "agreement date" || n.includes("agreement date"));
+  const feePct = getCustomField(c.custom_fields, (n) => n.includes("avg fee") || n.includes("fee %") || n.includes("fee percent"));
+  const billingContact = getCustomField(c.custom_fields, (n) => n.includes("billing contact"));
+
+  const agreementFile =
+    Array.isArray(c.files) ? c.files.find((f) => typeof f?.filename === "string" && f.filename.toLowerCase().includes("agreement")) ?? null : null;
+
+  const isVerified = Boolean(signedFlag) || Boolean(agreementFile);
+
+  const firstPhone = Array.isArray(c.phone_number) && c.phone_number.length > 0
+    ? (typeof c.phone_number[0] === "string" ? c.phone_number[0] : c.phone_number[0]?.number ?? null)
+    : null;
+
+  return {
+    id: c.id,
+    name: c.name || "(unnamed)",
+    domain: c.domain ?? null,
+    website,
+    industry: c.industry ?? null,
+    linkedIn: c.linkedin_page ?? null,
+    location: locationLabel ?? "",
+    locationRaw: c.location ?? null,
+    phone: firstPhone,
+    openJobsCount: Array.isArray(c.open_jobs) ? c.open_jobs.length : 0,
+    closedJobsCount: Array.isArray(c.closed_jobs) ? c.closed_jobs.length : 0,
+    isVerified,
+    agreementDate: typeof agreementDate === "string" ? agreementDate : null,
+    feePct: typeof feePct === "number" ? feePct : typeof feePct === "string" ? parseFloat(feePct) || null : null,
+    billingContact: typeof billingContact === "string" ? billingContact.trim() || null : null,
+    agreementFileUrl: agreementFile?.link ?? null,
+    agreementFileName: agreementFile?.filename ?? null,
+    statusName: c.status?.name ?? null,
+  };
+}
+
+export function formatPhone(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return raw;
 }
 
 export function daysBetween(iso: string | null | undefined, now: Date = new Date()): number | null {

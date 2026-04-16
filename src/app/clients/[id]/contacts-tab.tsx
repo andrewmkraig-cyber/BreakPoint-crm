@@ -1,0 +1,231 @@
+"use client";
+
+import { useState, useTransition, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2, Mail, Phone as PhoneIcon, Plus, UserPlus, X, ExternalLink } from "lucide-react";
+import { formatPhone } from "@/lib/recruiterflow";
+import { addContact } from "@/app/clients/[id]/actions";
+import { cn } from "@/lib/utils";
+
+export type ContactRow = {
+  id: number;
+  name: string;
+  title: string;
+  email: string;
+  phone: string;
+  linkedIn: string | null;
+  lastContactedAt: string | null;
+};
+
+export function ContactsTab({
+  clientId,
+  initialContacts,
+}: {
+  clientId: number;
+  initialContacts: ContactRow[];
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    setSuccess(null);
+    const form = e.currentTarget;
+    const data = new FormData(form);
+
+    startTransition(async () => {
+      const result = await addContact(clientId, data);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setSuccess("Contact added to RecruiterFlow.");
+      form.reset();
+      setOpen(false);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-muted-foreground">
+          {initialContacts.length === 0
+            ? "No contacts on file yet."
+            : `${initialContacts.length} ${initialContacts.length === 1 ? "contact" : "contacts"} on file`}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen((v) => !v);
+            setError(null);
+            setSuccess(null);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+        >
+          {open ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+          {open ? "Close" : "Add contact"}
+        </button>
+      </div>
+
+      {success && (
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{success}</div>
+      )}
+
+      {open && (
+        <form onSubmit={onSubmit} className="rounded-xl border border-border bg-white p-5 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-border pb-3 text-sm font-semibold text-navy">
+            <UserPlus className="h-4 w-4 text-brand-dark" /> New contact
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="First name" name="first_name" required autoFocus />
+            <Field label="Last name" name="last_name" />
+            <Field label="Title" name="current_designation" placeholder="e.g. VP Engineering" />
+            <Field label="Email" name="email" type="email" placeholder="name@company.com" />
+            <Field label="Phone" name="phone_number" placeholder="(555) 555-5555" />
+            <Field label="LinkedIn URL" name="linkedin_profile" placeholder="https://linkedin.com/in/…" />
+          </div>
+          {error && (
+            <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>
+          )}
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+            >
+              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Save contact
+            </button>
+          </div>
+        </form>
+      )}
+
+      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+        <table className="w-full text-left text-sm">
+          <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <tr>
+              <th className="px-5 py-3 font-medium">Name</th>
+              <th className="px-5 py-3 font-medium">Title</th>
+              <th className="px-5 py-3 font-medium">Email</th>
+              <th className="px-5 py-3 font-medium">Phone</th>
+              <th className="px-5 py-3 font-medium">Last Activity</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {initialContacts.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                  No contacts for this client yet. Add one with the button above and it will be written back to RecruiterFlow.
+                </td>
+              </tr>
+            ) : (
+              initialContacts.map((c) => (
+                <tr key={c.id} className="transition hover:bg-brand-tint/40">
+                  <td className="px-5 py-3 align-top">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-navy-400">
+                        {initials(c.name)}
+                      </div>
+                      <div>
+                        <div className="font-medium text-navy">{c.name}</div>
+                        {c.linkedIn && (
+                          <a
+                            href={c.linkedIn}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
+                          >
+                            LinkedIn <ExternalLink className="h-2.5 w-2.5" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3 align-top text-navy-400">{c.title || "—"}</td>
+                  <td className="px-5 py-3 align-top">
+                    {c.email ? (
+                      <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
+                        <Mail className="h-3 w-3 text-muted-foreground" /> {c.email}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 align-top">
+                    {c.phone ? (
+                      <a href={`tel:${c.phone}`} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
+                        <PhoneIcon className="h-3 w-3 text-muted-foreground" /> {formatPhone(c.phone)}
+                      </a>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3 align-top text-xs text-muted-foreground">
+                    {c.lastContactedAt ? new Date(c.lastContactedAt).toLocaleDateString() : "—"}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  label,
+  name,
+  type = "text",
+  required,
+  placeholder,
+  autoFocus,
+}: {
+  label: string;
+  name: string;
+  type?: string;
+  required?: boolean;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
+      </span>
+      <input
+        name={name}
+        type={type}
+        required={required}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        className={cn(
+          "mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60",
+          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+        )}
+      />
+    </label>
+  );
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase() ?? "")
+    .join("");
+}
