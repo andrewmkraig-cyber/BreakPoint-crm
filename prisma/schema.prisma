@@ -154,18 +154,21 @@ model ClientBenefits {
   updatedBy User @relation(fields: [updatedById], references: [id], onDelete: Cascade)
 }
 
-// PDFs and docs attached to the benefits tab. Stored alongside ClientAgreement
-// but separate so benefits docs (summaries, carrier packets) never mix into
-// the formal agreement list.
+// PDFs and docs attached to the benefits tab. Large files (>4.5MB) bypass the
+// Vercel serverless function body limit via @vercel/blob client uploads, so
+// blobUrl is the canonical storage. `data` is retained (nullable) for any
+// legacy rows uploaded before the Blob cutover and is not written for new rows.
 model ClientBenefitsFile {
-  id           String   @id @default(cuid())
-  clientRfId   Int
-  filename     String
-  mimeType     String
-  size         Int
-  data         Bytes
-  uploadedById String
-  uploadedAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  clientRfId    Int
+  filename      String
+  mimeType      String
+  size          Int
+  blobUrl       String?
+  blobPathname  String?
+  data          Bytes?
+  uploadedById  String
+  uploadedAt    DateTime @default(now())
 
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 

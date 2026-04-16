@@ -3,13 +3,14 @@
 import { Component, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Save, Sparkles, X } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { BulletedSummary } from "@/components/bulleted-summary";
 import {
   deleteBenefitsFile,
+  registerBenefitsFile,
   saveBenefits,
   summarizeBenefitsWithAI,
-  uploadBenefitsFile,
 } from "@/app/clients/[id]/actions";
 import { cn } from "@/lib/utils";
 
@@ -67,17 +68,30 @@ function BenefitsTabInner({
 
   // Sequential uploads. Parallel startTransition() calls caused a client-side
   // render error on Vercel (bulk File dispatches through server actions).
+  // Direct-to-Blob client upload: browser streams bytes straight to Vercel
+  // Blob, server only records metadata. Bypasses the 4.5MB serverless
+  // function body limit that was crashing with "Cannot read properties of
+  // undefined (reading 'ok')".
   async function onFiles(chosen: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
     setIsUploading(true);
     try {
       for (const file of chosen) {
-        const data = new FormData();
-        data.append("file", file);
-        const result = await uploadBenefitsFile(clientId, data);
-        if (!result.ok) {
-          setUploadError(result.error);
+        const blob = await upload(`benefits/${clientId}/${file.name}`, file, {
+          access: "public",
+          handleUploadUrl: "/api/blob/benefits",
+          contentType: file.type || undefined,
+        });
+        const result = await registerBenefitsFile(clientId, {
+          filename: file.name,
+          mimeType: file.type,
+          size: file.size,
+          blobUrl: blob.url,
+          blobPathname: blob.pathname,
+        });
+        if (!result || !result.ok) {
+          setUploadError(result?.error ?? "Upload saved to storage but couldn't be registered in Ace.");
           return;
         }
         setUploadSuccess(`Uploaded ${file.name}.`);

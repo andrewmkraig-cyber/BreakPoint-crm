@@ -158,37 +158,35 @@ export async function saveBenefits(clientId: number, body: string): Promise<Save
 }
 
 // ---- Benefits files (PDFs/docs attached for summarization or reference) ----
+// Stored in Vercel Blob (private) — browser uploads directly, we only persist
+// metadata here. Bypasses the Vercel 4.5MB serverless function body limit.
 
-const BENEFITS_ALLOWED_MIME = new Set([
-  "application/pdf",
-  "text/plain",
-  "text/markdown",
-  "application/msword",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-]);
+export type RegisterBenefitsFileResult = ActionResult<{ id: string }>;
 
-export type UploadBenefitsFileResult = ActionResult<{ id: string }>;
-
-export async function uploadBenefitsFile(clientId: number, formData: FormData): Promise<UploadBenefitsFileResult> {
+export async function registerBenefitsFile(
+  clientId: number,
+  meta: {
+    filename: string;
+    mimeType: string;
+    size: number;
+    blobUrl: string;
+    blobPathname: string;
+  },
+): Promise<RegisterBenefitsFileResult> {
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
 
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { ok: false, error: "No file attached." };
-  if (file.size === 0) return { ok: false, error: "File is empty." };
-  if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: `File is too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB).` };
-  if (!BENEFITS_ALLOWED_MIME.has(file.type)) {
-    return { ok: false, error: "Only PDF, Word, or plain-text files are accepted." };
-  }
+  if (!meta.blobUrl || !meta.blobPathname) return { ok: false, error: "Missing blob URL." };
+  if (!meta.filename.trim()) return { ok: false, error: "Missing filename." };
 
-  const buffer = Buffer.from(await file.arrayBuffer());
   const created = await prisma.clientBenefitsFile.create({
     data: {
       clientRfId: clientId,
-      filename: file.name,
-      mimeType: file.type,
-      size: file.size,
-      data: buffer,
+      filename: meta.filename,
+      mimeType: meta.mimeType,
+      size: meta.size,
+      blobUrl: meta.blobUrl,
+      blobPathname: meta.blobPathname,
       uploadedById: user.id,
     },
     select: { id: true },
@@ -203,9 +201,17 @@ export async function deleteBenefitsFile(fileId: string): Promise<ActionResult> 
   if (!user) return { ok: false, error: "Not signed in." };
   const existing = await prisma.clientBenefitsFile.findUnique({
     where: { id: fileId },
-    select: { clientRfId: true },
+    select: { clientRfId: true, blobUrl: true },
   });
   if (!existing) return { ok: false, error: "File not found." };
+  if (existing.blobUrl) {
+    try {
+      const { del } = await import("@vercel/blob");
+      await del(existing.blobUrl);
+    } catch {
+      // If the blob is already gone, continue — we still want to clear the metadata row.
+    }
+  }
   await prisma.clientBenefitsFile.delete({ where: { id: fileId } });
   revalidatePath(`/clients/${existing.clientRfId}`);
   return { ok: true };
@@ -225,21 +231,39 @@ export async function summarizeBenefitsWithAI(
   const files = await prisma.clientBenefitsFile.findMany({
     where: { clientRfId: clientId },
     orderBy: { uploadedAt: "asc" },
-    select: { filename: true, mimeType: true, data: true },
+    select: { filename: true, mimeType: true, data: true, blobUrl: true },
   });
 
   try {
-    const summary = await summarizeBenefitsWithClaude({
-      pastedText,
-      attachments: files.map((f) => ({
-        filename: f.filename,
-        mimeType: f.mimeType,
-        data: Buffer.from(f.data),
-      })),
-    });
+    const attachments = await Promise.all(
+      files.map(async (f) => {
+        let data: Buffer;
+        if (f.blobUrl) {
+          // Fetch private blobs server-side using the RW token (fetch with auth
+          // via @vercel/blob's `head()` returns a signed URL we can fetch).
+          data = await fetchBlobBytes(f.blobUrl);
+        } else if (f.data) {
+          data = Buffer.from(f.data);
+        } else {
+          throw new Error(`File ${f.filename} has no data or blob URL.`);
+        }
+        return { filename: f.filename, mimeType: f.mimeType, data };
+      }),
+    );
+    const summary = await summarizeBenefitsWithClaude({ pastedText, attachments });
     return { ok: true, value: { summary } };
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Claude summarization failed";
     return { ok: false, error: msg };
   }
+}
+
+async function fetchBlobBytes(url: string): Promise<Buffer> {
+  const { head } = await import("@vercel/blob");
+  // For private blob stores, head() returns a short-lived downloadUrl.
+  const meta = (await head(url)) as { downloadUrl?: string; url?: string };
+  const downloadUrl = meta.downloadUrl ?? meta.url ?? url;
+  const res = await fetch(downloadUrl, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Failed to fetch blob (${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
 }
