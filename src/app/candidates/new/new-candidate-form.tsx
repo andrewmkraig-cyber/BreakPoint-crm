@@ -81,10 +81,11 @@ export function NewCandidateForm() {
     });
   }
 
+  // No auto-Claude on drop. Global rule: all AI calls are explicit — user
+  // clicks the "Parse with Claude" button when they want parsing.
   function onFiles(files: File[]) {
     const file = files[0] ?? null;
     setResume(file);
-    if (file) runParse({ file });
   }
 
   function onLinkedinChange(v: string) {
@@ -136,7 +137,7 @@ export function NewCandidateForm() {
           <div className="border-b border-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
             <p className="text-xs text-muted-foreground">
-              Drop a PDF and we&apos;ll parse it automatically. Claude handles the heavy lifting; if Claude is unavailable, a basic extractor fills in name/email/phone.
+              Drop a PDF, then click <span className="font-semibold text-navy">Parse with Claude</span> below. If Claude is unavailable, a basic extractor fills in name / email / phone.
             </p>
           </div>
           <div className="p-5">
@@ -152,6 +153,7 @@ export function NewCandidateForm() {
                 <span className="truncate text-navy">
                   {resume.name}
                   {isParsing && <span className="ml-2 text-muted-foreground">· parsing…</span>}
+                  {!isParsing && !parseSource && <span className="ml-2 text-muted-foreground">· ready to parse</span>}
                   {!isParsing && parseSource === "claude" && <span className="ml-2 text-brand-dark">· parsed with Claude</span>}
                   {!isParsing && parseSource === "fallback" && <span className="ml-2 text-amber-700">· basic extraction</span>}
                 </span>
@@ -193,10 +195,10 @@ export function NewCandidateForm() {
               type="button"
               onClick={() => runParse({})}
               disabled={isParsing || (!resume && !pastedText.trim() && !linkedinUrl.trim())}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-navy px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              Re-parse with current inputs
+              {parseSource ? "Re-parse with Claude" : "Parse with Claude"}
             </button>
           </div>
         </div>
