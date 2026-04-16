@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
 import { Search, Loader2 } from "lucide-react";
@@ -96,8 +97,20 @@ export function CandidatesView({
               </tr>
             )}
             {candidates.map((c) => (
-              <tr key={c.id} className="transition hover:bg-brand-tint/40">
-                <td className="px-5 py-3 font-medium text-navy">{c.name}</td>
+              <tr
+                key={c.id}
+                className="cursor-pointer transition hover:bg-brand-tint/40"
+                onClick={() => router.push(`/candidates/${c.id}`)}
+              >
+                <td className="px-5 py-3 font-medium text-navy">
+                  <Link
+                    href={`/candidates/${c.id}`}
+                    className="hover:text-brand-dark"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {c.name}
+                  </Link>
+                </td>
                 <td className="px-5 py-3 text-navy-400">{c.title || "—"}</td>
                 <td className="px-5 py-3 text-navy-400">{c.employer || "—"}</td>
                 <td className="px-5 py-3 text-navy-400">{c.location || "—"}</td>

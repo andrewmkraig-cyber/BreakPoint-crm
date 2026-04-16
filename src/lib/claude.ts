@@ -25,6 +25,156 @@ export type BenefitsAttachment = {
   data: Buffer;
 };
 
+export type ParsedCandidate = {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  current_designation: string | null;
+  current_organization: string | null;
+  location: string | null;
+  linkedin_profile: string | null;
+  skills: string[];
+  notes: string | null;
+};
+
+const EMPTY_CANDIDATE: ParsedCandidate = {
+  first_name: null,
+  last_name: null,
+  email: null,
+  phone: null,
+  current_designation: null,
+  current_organization: null,
+  location: null,
+  linkedin_profile: null,
+  skills: [],
+  notes: null,
+};
+
+// Parses a resume PDF and/or a pasted chunk of text (LinkedIn profile text,
+// recruiter notes) into structured candidate fields for editing in the UI.
+// LinkedIn URL is passed through so we can echo it into the final record —
+// LinkedIn blocks automated URL fetches, so we don't attempt to scrape here.
+export async function parseCandidateFields(params: {
+  resume?: { filename: string; mimeType: string; data: Buffer };
+  pastedText?: string;
+  linkedinUrl?: string;
+}): Promise<ParsedCandidate> {
+  const resume = params.resume;
+  const pasted = (params.pastedText ?? "").trim();
+  const linkedinUrl = (params.linkedinUrl ?? "").trim();
+
+  if (!resume && !pasted && !linkedinUrl) {
+    throw new Error("Upload a resume, paste profile text, or enter a LinkedIn URL first.");
+  }
+
+  const anthropic = getClaude();
+  const content: Anthropic.Messages.ContentBlockParam[] = [];
+
+  if (resume) {
+    if (resume.mimeType === "application/pdf") {
+      content.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: resume.data.toString("base64"),
+        },
+        title: resume.filename,
+      });
+    } else {
+      content.push({
+        type: "text",
+        text: `--- Resume (${resume.filename}) ---\n${resume.data.toString("utf-8").slice(0, 80_000)}`,
+      });
+    }
+  }
+
+  if (pasted) {
+    content.push({
+      type: "text",
+      text: `--- Pasted profile / notes ---\n${pasted}`,
+    });
+  }
+
+  if (linkedinUrl) {
+    content.push({
+      type: "text",
+      text: `--- LinkedIn URL (store, do not fabricate fields from this) ---\n${linkedinUrl}`,
+    });
+  }
+
+  content.push({
+    type: "text",
+    text:
+      "Extract candidate fields from the source above. Return ONLY a JSON object with this exact shape — no prose, no markdown fences, no preamble:\n" +
+      "{\n" +
+      '  "first_name": string|null,\n' +
+      '  "last_name": string|null,\n' +
+      '  "email": string|null,\n' +
+      '  "phone": string|null,\n' +
+      '  "current_designation": string|null,\n' +
+      '  "current_organization": string|null,\n' +
+      '  "location": string|null,\n' +
+      '  "linkedin_profile": string|null,\n' +
+      '  "skills": string[],\n' +
+      '  "notes": string|null\n' +
+      "}\n\n" +
+      "Rules:\n" +
+      "- Use null (not empty string) for any field not present in the source.\n" +
+      "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. Use the most recent role listed.\n" +
+      "- 'location' should be 'City, ST' if US, otherwise 'City, Country'.\n" +
+      "- 'phone' keep the digits and country code as given; don't reformat.\n" +
+      "- 'skills' is a short deduplicated array of 5–12 hard skills. Omit soft skills.\n" +
+      "- 'linkedin_profile' is the full URL if one is present in the source. If only a LinkedIn URL was provided as input, echo it here.\n" +
+      "- 'notes' is a short (2–4 sentence) summary of the candidate's experience highlights. Null if nothing notable.\n" +
+      "- Never invent data. If a field is uncertain or missing, return null.",
+  });
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 1500,
+    system:
+      "You extract candidate fields from resumes and profiles for a recruiting CRM. " +
+      "You return strict JSON matching the schema the user provides. You never fabricate fields. " +
+      "If a source is empty or unreadable, return the schema with all fields set to null (and skills: []).",
+    messages: [{ role: "user", content }],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  const parsed = safeParseJSON(text);
+  if (!parsed) {
+    throw new Error("Claude didn't return valid JSON. Try again, or paste the profile text into the notes field manually.");
+  }
+
+  return {
+    ...EMPTY_CANDIDATE,
+    ...parsed,
+    skills: Array.isArray(parsed.skills) ? parsed.skills.filter((s: unknown): s is string => typeof s === "string") : [],
+    linkedin_profile: parsed.linkedin_profile ?? linkedinUrl ?? null,
+  };
+}
+
+function safeParseJSON(raw: string): Partial<ParsedCandidate> | null {
+  const tryParse = (s: string): Partial<ParsedCandidate> | null => {
+    try {
+      return JSON.parse(s) as Partial<ParsedCandidate>;
+    } catch {
+      return null;
+    }
+  };
+  const direct = tryParse(raw);
+  if (direct) return direct;
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) return null;
+  return tryParse(match[0]);
+}
+
 // Extract and summarize the key terms of a placement fee agreement. PDF-only
 // for now — .doc/.docx binaries aren't natively readable by Claude without
 // server-side text extraction, which we'll add if it becomes a blocker.

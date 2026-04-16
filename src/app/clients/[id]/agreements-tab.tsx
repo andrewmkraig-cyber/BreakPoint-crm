@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, useTransition, type FormEvent } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -11,8 +11,8 @@ import {
   Loader2,
   Sparkles,
   Trash2,
-  Upload,
 } from "lucide-react";
+import { DocumentDropzone } from "@/components/document-dropzone";
 import { deleteAgreement, summarizeAgreement, uploadAgreement } from "@/app/clients/[id]/actions";
 import { cn } from "@/lib/utils";
 
@@ -29,34 +29,26 @@ export type AgreementRow = {
 
 export function AgreementsTab({ clientId, items }: { clientId: number; items: AgreementRow[] }) {
   const router = useRouter();
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState<string>("");
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [isUploading, startUpload] = useTransition();
 
-  function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  function onFiles(files: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
-    const form = e.currentTarget;
-    const data = new FormData(form);
-    const file = data.get("file");
-    if (!(file instanceof File) || file.size === 0) {
-      setUploadError("Choose a file before uploading.");
-      return;
+    for (const file of files) {
+      const data = new FormData();
+      data.append("file", file);
+      startUpload(async () => {
+        const result = await uploadAgreement(clientId, data);
+        if (!result.ok) {
+          setUploadError(result.error);
+          return;
+        }
+        setUploadSuccess(`Uploaded ${file.name}.`);
+        router.refresh();
+      });
     }
-    startUpload(async () => {
-      const result = await uploadAgreement(clientId, data);
-      if (!result.ok) {
-        setUploadError(result.error);
-        return;
-      }
-      setUploadSuccess(`Uploaded ${file.name}.`);
-      form.reset();
-      setFileName("");
-      router.refresh();
-    });
   }
 
   function onDelete(id: string, name: string) {
@@ -73,38 +65,27 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
 
   return (
     <div className="space-y-4">
-      <form onSubmit={onSubmit} className="rounded-xl border border-dashed border-border bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-2 text-sm font-semibold text-navy">
-          <Upload className="h-4 w-4 text-brand-dark" /> Upload agreement
+      <div className="rounded-xl border border-border bg-white shadow-sm">
+        <div className="border-b border-border px-5 py-3">
+          <h3 className="font-serif text-base font-semibold text-navy">Upload agreement</h3>
+          <p className="text-xs text-muted-foreground">
+            PDFs or Word documents, up to 20MB. Stored privately in Ace. DocuSign auto-import will come later.
+          </p>
         </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          PDFs or Word documents, up to 20MB. Stored privately in Ace. DocuSign auto-import will come later.
-        </p>
-        <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center">
-          <label className="flex flex-1 cursor-pointer items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-navy-400 transition hover:border-brand/40 hover:text-navy">
-            <span className="truncate">{fileName || "Choose a file…"}</span>
-            <span className="rounded-md bg-white px-2 py-1 text-[11px] font-medium text-brand-dark">Browse</span>
-            <input
-              ref={fileRef}
-              name="file"
-              type="file"
-              accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-              className="hidden"
-              onChange={(e) => setFileName(e.target.files?.[0]?.name ?? "")}
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={isUploading}
-            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
-          >
-            {isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-            Upload
-          </button>
+        <div className="p-5">
+          <DocumentDropzone
+            accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            multiple={false}
+            isBusy={isUploading}
+            onFiles={onFiles}
+            emptyHint="PDF or DOC/DOCX up to 20MB"
+          />
+          {uploadError && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>}
+          {uploadSuccess && !uploadError && (
+            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>
+          )}
         </div>
-        {uploadError && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>}
-        {uploadSuccess && <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>}
-      </form>
+      </div>
 
       <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         <div className="border-b border-border px-5 py-3 text-sm font-semibold text-navy">Uploaded agreements</div>

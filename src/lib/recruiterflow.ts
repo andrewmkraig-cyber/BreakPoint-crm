@@ -367,6 +367,22 @@ export const recruiterflow = {
   }): Promise<RFContact> {
     return rfFetch<RFContact>("/contact/add", { method: "POST", body });
   },
+
+  async createCandidate(body: {
+    first_name: string;
+    last_name?: string;
+    email?: string;
+    phone_number?: string;
+    current_designation?: string;
+    current_organization?: string;
+    location?: string;
+    linkedin_profile?: string;
+    skills?: string[];
+    source_name?: string;
+    notes?: string;
+  }): Promise<RFCandidate> {
+    return rfFetch<RFCandidate>("/candidate/add", { method: "POST", body });
+  },
 };
 
 // ---- Normalizers / helpers ----

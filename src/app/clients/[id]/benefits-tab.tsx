@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useRef, useState, useTransition, type DragEvent, type FormEvent } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ExternalLink, FileText, Loader2, Pencil, Save, Sparkles, Trash2, Upload, X } from "lucide-react";
+import { Loader2, Pencil, Save, Sparkles, X } from "lucide-react";
+import { DocumentDropzone } from "@/components/document-dropzone";
 import {
   deleteBenefitsFile,
   saveBenefits,
@@ -37,7 +37,6 @@ export function BenefitsTab({
   files: BenefitsFile[];
 }) {
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [editing, setEditing] = useState<boolean>(!initial.body);
   const [draft, setDraft] = useState<string>(initial.body);
   const [saved, setSaved] = useState<BenefitsState>(initial);
@@ -45,44 +44,29 @@ export function BenefitsTab({
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const [isUploading, startUpload] = useTransition();
   const [isSaving, startSave] = useTransition();
   const [isSummarizing, startSummarize] = useTransition();
 
-  function doUpload(file: File) {
+  function onFiles(chosen: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
-    const data = new FormData();
-    data.append("file", file);
-    startUpload(async () => {
-      const result = await uploadBenefitsFile(clientId, data);
-      if (!result.ok) {
-        setUploadError(result.error);
-        return;
-      }
-      setUploadSuccess(`Uploaded ${file.name}.`);
-      router.refresh();
-    });
+    for (const file of chosen) {
+      const data = new FormData();
+      data.append("file", file);
+      startUpload(async () => {
+        const result = await uploadBenefitsFile(clientId, data);
+        if (!result.ok) {
+          setUploadError(result.error);
+          return;
+        }
+        setUploadSuccess(`Uploaded ${file.name}.`);
+        router.refresh();
+      });
+    }
   }
 
-  function onFileInputChange(e: FormEvent<HTMLInputElement>) {
-    const list = (e.currentTarget as HTMLInputElement).files;
-    if (!list?.length) return;
-    Array.from(list).forEach((f) => doUpload(f));
-    if (inputRef.current) inputRef.current.value = "";
-  }
-
-  function onDrop(e: DragEvent<HTMLLabelElement>) {
-    e.preventDefault();
-    setIsDragging(false);
-    const dropped = e.dataTransfer.files;
-    if (!dropped?.length) return;
-    Array.from(dropped).forEach((f) => doUpload(f));
-  }
-
-  function onDeleteFile(id: string, name: string) {
-    if (!confirm(`Delete ${name}?`)) return;
+  function onDeleteFile(id: string) {
     startUpload(async () => {
       const result = await deleteBenefitsFile(id);
       if (!result.ok) {
@@ -143,74 +127,26 @@ export function BenefitsTab({
           </div>
         </div>
         <div className="p-5">
-          <label
-            htmlFor={`benefits-upload-${clientId}`}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragLeave={() => setIsDragging(false)}
-            onDrop={onDrop}
-            className={cn(
-              "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-6 py-10 text-center transition",
-              isDragging ? "border-brand bg-brand-tint/40 text-navy" : "border-border bg-muted/30 text-muted-foreground hover:border-brand/40 hover:bg-brand-tint/20",
-            )}
-          >
-            <Upload className={cn("h-6 w-6", isDragging ? "text-brand-dark" : "text-muted-foreground")} />
-            <div className="text-sm font-semibold text-navy">
-              {isUploading ? "Uploading…" : "Drop files to upload"}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              or <span className="font-medium text-brand-dark">click to browse</span> — PDF, DOC/DOCX, TXT up to 20MB
-            </div>
-            <input
-              ref={inputRef}
-              id={`benefits-upload-${clientId}`}
-              type="file"
-              multiple
-              accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,text/plain,.txt,text/markdown,.md"
-              onChange={onFileInputChange}
-              className="hidden"
-            />
-          </label>
-
+          <DocumentDropzone
+            isBusy={isUploading}
+            onFiles={onFiles}
+            onDelete={onDeleteFile}
+            emptyHint="PDF, DOC/DOCX, or TXT up to 20MB"
+            files={files.map((f) => ({
+              id: f.id,
+              filename: f.filename,
+              mimeType: f.mimeType,
+              sizeBytes: f.sizeBytes,
+              uploadedAt: f.uploadedAt,
+              uploadedByName: f.uploadedByName,
+              downloadHref: `/api/client-benefits-files/${f.id}`,
+            }))}
+          />
           {uploadError && (
             <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{uploadError}</div>
           )}
           {uploadSuccess && !uploadError && (
             <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{uploadSuccess}</div>
-          )}
-
-          {files.length > 0 && (
-            <ul className="mt-4 divide-y divide-border rounded-lg border border-border">
-              {files.map((f) => (
-                <li key={f.id} className="flex items-center justify-between px-4 py-2 text-sm">
-                  <Link
-                    href={`/api/client-benefits-files/${f.id}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex min-w-0 items-center gap-2 text-navy hover:text-brand-dark"
-                  >
-                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate font-medium">{f.filename}</span>
-                    <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
-                  </Link>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[11px] text-muted-foreground">{formatBytes(f.sizeBytes)}</span>
-                    <span className="hidden text-[11px] text-muted-foreground md:inline">
-                      {new Date(f.uploadedAt).toLocaleDateString()}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => onDeleteFile(f.id, f.filename)}
-                      className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
           )}
         </div>
       </div>
@@ -310,8 +246,3 @@ export function BenefitsTab({
   );
 }
 
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
