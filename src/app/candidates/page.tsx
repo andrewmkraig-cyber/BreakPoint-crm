@@ -14,7 +14,7 @@ export default async function CandidatesPage({
   let error: string | null = null;
 
   try {
-    const list = await recruiterflow.listCandidates({ query, perPage: 50 });
+    const list = await recruiterflow.listAllCandidates({ query, perPage: 100 });
     candidates = list.map(normalizeCandidate);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch candidates";

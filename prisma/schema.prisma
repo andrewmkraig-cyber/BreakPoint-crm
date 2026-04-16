@@ -1,4 +1,4 @@
-// BreakPoint CRM - Prisma schema
+// ACE (BreakPoint Talent CRM) - Prisma schema
 // RecruiterFlow holds candidate/job/client data. Postgres holds local state only.
 
 generator client {

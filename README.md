@@ -1,8 +1,8 @@
-# BreakPoint CRM
+# ACE
 
 Internal recruiting CRM for BreakPoint Talent, built on top of RecruiterFlow.
 
-RecruiterFlow (RF) is the system of record: all candidate / job / client / contact data lives there. This app is the daily-driver UI — cleaner, faster, and tailored to the full-desk workflow. We read/write to RF via its REST API. Local Postgres (Neon) holds only what RF doesn't: email templates, settings, user accounts, KPI cache, call logs, action history.
+RecruiterFlow (RF) is the system of record: all candidate / job / client / contact data lives there. ACE is the daily-driver UI — cleaner, faster, and tailored to the full-desk workflow. We read/write to RF via its REST API. Local Postgres (Neon) holds only what RF doesn't: email templates, settings, user accounts, KPI cache, call logs, action history.
 
 ## Stack
 

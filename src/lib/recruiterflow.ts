@@ -103,6 +103,30 @@ export const recruiterflow = {
     if (Array.isArray(res)) return res;
     return res?.data ?? [];
   },
+
+  // Walks every page of /candidate/list until RF returns a short page (end).
+  // Caps at `maxPages * perPage` records as a safety net so a bad filter never
+  // fires a runaway request against RF.
+  async listAllCandidates(params: {
+    query?: string;
+    perPage?: number;
+    maxPages?: number;
+  } = {}): Promise<RFCandidate[]> {
+    const perPage = params.perPage ?? 100;
+    const maxPages = params.maxPages ?? 40;
+    const out: RFCandidate[] = [];
+    for (let page = 1; page <= maxPages; page++) {
+      const batch = await this.listCandidates({
+        query: params.query,
+        page,
+        perPage,
+      });
+      out.push(...batch);
+      if (batch.length < perPage) break;
+    }
+    return out;
+  },
+
   async getCandidate(id: number): Promise<RFCandidate> {
     return rfFetch<RFCandidate>(`/candidate/${id}`);
   },
