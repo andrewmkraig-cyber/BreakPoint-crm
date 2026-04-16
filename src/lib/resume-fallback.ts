@@ -2,6 +2,7 @@
 // regexes for email / phone. Everything here is conservative — we'd rather
 // leave a field blank than populate it with garbage.
 import type { ParsedCandidate } from "@/lib/claude";
+import { normalizeToE164 } from "@/lib/recruiterflow";
 
 const EMPTY: ParsedCandidate = {
   first_name: null,
@@ -47,7 +48,7 @@ export async function fallbackParseCandidate(params: {
   if (email) result.email = email;
 
   const phone = findPhone(text);
-  if (phone) result.phone = phone;
+  if (phone) result.phone = normalizeToE164(phone);
 
   // LinkedIn URL explicit input or match in text.
   const linkedIn = linkedinUrl || findLinkedIn(text);

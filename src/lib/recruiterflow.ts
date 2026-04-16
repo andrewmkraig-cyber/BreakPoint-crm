@@ -682,6 +682,23 @@ export function formatPhone(raw: string | null | undefined): string {
   return raw;
 }
 
+// Normalizes a raw phone to storage form with country code. If a `+` prefix is
+// already present we trust it (won't double-add). 10-digit bare numbers are
+// treated as US and get `+1` prepended. 11-digit numbers starting with 1 are
+// treated as US with a missing `+` and get normalized. Unknown shapes pass
+// through unchanged so we never corrupt international numbers we don't
+// recognize.
+export function normalizeToE164(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const trimmed = String(raw).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("+")) return trimmed;
+  const digits = trimmed.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return trimmed;
+}
+
 // Builds a `tel:` href (E.164) so Krispcall click-to-call always receives a
 // leading + and country code.
 export function telHref(raw: string | null | undefined): string {

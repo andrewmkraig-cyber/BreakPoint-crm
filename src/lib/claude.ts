@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { normalizeToE164 } from "@/lib/recruiterflow";
 
 // Opus 4.7 per skill default. Sampling params (temperature/top_p/top_k) and
 // budget_tokens are removed on 4.7 — do not re-add them.
@@ -153,6 +154,7 @@ export async function parseCandidateFields(params: {
   return {
     ...EMPTY_CANDIDATE,
     ...parsed,
+    phone: normalizeToE164(parsed.phone),
     skills: Array.isArray(parsed.skills) ? parsed.skills.filter((s: unknown): s is string => typeof s === "string") : [],
     linkedin_profile: parsed.linkedin_profile ?? linkedinUrl ?? null,
   };
