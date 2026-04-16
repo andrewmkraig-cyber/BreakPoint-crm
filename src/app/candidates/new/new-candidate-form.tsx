@@ -46,13 +46,16 @@ export function NewCandidateForm() {
 
   const [resumeUploadId, setResumeUploadId] = useState<string | null>(null);
 
-  function runParse() {
+  function runParse(args: { file?: File } = {}) {
     setParseError(null);
     setClaudeError(null);
+    // Prefer the file passed in (from the drop handler, where state hasn't
+    // flushed yet) over the React state.
+    const nextFile = args.file ?? resume;
     const nextText = pastedText;
     const nextUrl = linkedinUrl;
 
-    if (!resume && !nextText.trim() && !nextUrl.trim()) {
+    if (!nextFile && !nextText.trim() && !nextUrl.trim()) {
       toast.error("Nothing to parse", { description: "Drop a resume, paste text, or enter a LinkedIn URL." });
       return;
     }
@@ -61,11 +64,10 @@ export function NewCandidateForm() {
 
     startParse(async () => {
       try {
-        let uploadId = resumeUploadId;
-        // Chunked upload the file (or re-upload if user dropped a new file).
-        if (resume && !uploadId) {
+        let uploadId = args.file ? null : resumeUploadId;
+        if (nextFile && !uploadId) {
           const res = await uploadFileInChunks(
-            resume,
+            nextFile,
             "/api/uploads/resume",
             {},
             {
@@ -122,16 +124,17 @@ export function NewCandidateForm() {
     });
   }
 
-  // No auto-Claude on drop. Global rule: all AI calls are explicit — user
-  // clicks the "Parse with Claude" button when they want parsing.
+  // Auto-parse on drop per the auto-vs-manual rule — resume parsing is
+  // structured data extraction, so it runs immediately. (Summaries /
+  // writeups stay explicit-button-only.)
   function onFiles(files: File[]) {
     const file = files[0] ?? null;
-    // Fire-and-forget cleanup of any previous upload when the user picks
-    // a new file, so the staging table doesn't accumulate dead rows.
+    // Clean up any prior staging row so the table doesn't accumulate dead rows.
     if (resumeUploadId) void discardResumeUpload(resumeUploadId);
     setResume(file);
     setResumeUploadId(null);
     setParseSource(null);
+    if (file) runParse({ file });
   }
 
   function onLinkedinChange(v: string) {
@@ -188,7 +191,7 @@ export function NewCandidateForm() {
           <div className="border-b border-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
             <p className="text-xs text-muted-foreground">
-              Drop a PDF, then click <span className="font-semibold text-navy">Parse with Claude</span> below. If Claude is unavailable, a basic extractor fills in name / email / phone.
+              Drop a PDF and we&apos;ll parse it automatically. If Claude is unavailable, a basic extractor fills in name / email / phone. Re-parse manually after editing the LinkedIn fields below.
             </p>
           </div>
           <div className="p-5">
