@@ -1,10 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-// Pinned to Sonnet 4 (2025-05-14) while we debug account-level billing on the
-// Anthropic workspace. Swap back to "claude-opus-4-7" once credits are usable.
-// Older model: do NOT pass `thinking: {type: "adaptive"}` or `output_config.effort` —
-// those are 4.6+ only and will 400 here.
-export const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+// Opus 4.7 per skill default. Sampling params (temperature/top_p/top_k) and
+// budget_tokens are removed on 4.7 — do not re-add them.
+export const CLAUDE_MODEL = "claude-opus-4-7";
 
 let cached: Anthropic | null = null;
 
@@ -192,6 +190,8 @@ export async function summarizeAgreementTerms(params: {
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 2000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
     system:
       "You extract key commercial terms from recruiting / placement fee agreements. You are precise and conservative — " +
       "you never invent numbers or clauses, and if a term isn't present you say 'Not specified.'",
@@ -298,6 +298,8 @@ export async function summarizeBenefits(params: {
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 2000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "low" },
     system:
       "You are an executive assistant for a recruiting firm. You turn messy benefits documents into a crisp candidate-facing brief. " +
       "Be factual — only summarize what's present. Never speculate about coverage levels that aren't stated.",
