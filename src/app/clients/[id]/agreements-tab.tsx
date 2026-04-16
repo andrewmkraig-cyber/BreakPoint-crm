@@ -14,7 +14,9 @@ import {
 } from "lucide-react";
 import { BulletedSummary } from "@/components/bulleted-summary";
 import { DocumentDropzone } from "@/components/document-dropzone";
-import { deleteAgreement, summarizeAgreement, uploadAgreement } from "@/app/clients/[id]/actions";
+import { toast } from "sonner";
+import { deleteAgreement, summarizeAgreement } from "@/app/clients/[id]/actions";
+import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
 
 export type AgreementRow = {
@@ -34,26 +36,36 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Sequential — parallel startTransition in a loop caused a client-side render
-  // error under Next 14's server action dispatch on Vercel.
+  // Chunked base64 upload to Postgres — same path as benefits files. Bypasses
+  // the 4.5MB Vercel Hobby function body limit.
   async function onFiles(files: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
     setIsUploading(true);
     try {
       for (const file of files) {
-        const data = new FormData();
-        data.append("file", file);
-        const result = await uploadAgreement(clientId, data);
-        if (!result.ok) {
-          setUploadError(result.error);
+        const toastId = toast.loading(`Uploading ${file.name}…`);
+        try {
+          await uploadFileInChunks(
+            file,
+            "/api/uploads/agreement",
+            { clientId },
+            {
+              onProgress: (pct) => {
+                toast.loading(`Uploading ${file.name} — ${pct}%`, { id: toastId });
+              },
+            },
+          );
+          setUploadSuccess(`Uploaded ${file.name}.`);
+          toast.success(`Uploaded ${file.name}`, { id: toastId });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : "Upload failed.";
+          setUploadError(msg);
+          toast.error(`Couldn't upload ${file.name}`, { id: toastId, description: msg });
           return;
         }
-        setUploadSuccess(`Uploaded ${file.name}.`);
       }
       router.refresh();
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed.");
     } finally {
       setIsUploading(false);
     }

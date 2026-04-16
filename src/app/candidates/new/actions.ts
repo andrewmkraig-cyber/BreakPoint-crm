@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { parseCandidateFields, type ParsedCandidate } from "@/lib/claude";
+import { prisma } from "@/lib/prisma";
 import { fallbackParseCandidate } from "@/lib/resume-fallback";
 import { recruiterflow } from "@/lib/recruiterflow";
 
@@ -16,8 +17,6 @@ async function requireSession(): Promise<boolean> {
   return Boolean(session?.user?.email);
 }
 
-const MAX_RESUME_BYTES = 15 * 1024 * 1024;
-
 export type ParseSource = "claude" | "fallback";
 
 export type ParseResumeResult = Result<{
@@ -29,39 +28,46 @@ export type ParseResumeResult = Result<{
   claudeError: string | null;
 }>;
 
-export async function parseCandidate(formData: FormData): Promise<ParseResumeResult> {
+// Client chunked-uploads the resume first via /api/uploads/resume, then passes
+// the resulting uploadId here. We read the assembled bytes from the
+// ResumeUpload staging row, run the parser, and delete the staging row.
+export async function parseCandidate(args: {
+  resumeUploadId?: string | null;
+  pastedText?: string;
+  linkedinUrl?: string;
+}): Promise<ParseResumeResult> {
   if (!(await requireSession())) return { ok: false, error: "Not signed in." };
 
-  const file = formData.get("resume");
-  const pastedText = String(formData.get("pastedText") ?? "").trim();
-  const linkedinUrl = String(formData.get("linkedinUrl") ?? "").trim();
+  const pastedText = (args.pastedText ?? "").trim();
+  const linkedinUrl = (args.linkedinUrl ?? "").trim();
+  const uploadId = args.resumeUploadId?.trim() || null;
 
   let resume: { filename: string; mimeType: string; data: Buffer } | undefined;
   let filename: string | null = null;
   let mimeType: string | null = null;
   let sizeBytes = 0;
 
-  if (file instanceof File && file.size > 0) {
-    if (file.size > MAX_RESUME_BYTES) {
-      return { ok: false, error: `Resume is too large (max ${MAX_RESUME_BYTES / (1024 * 1024)}MB).` };
-    }
+  if (uploadId) {
+    const row = await prisma.resumeUpload.findUnique({
+      where: { id: uploadId },
+      select: { filename: true, mimeType: true, size: true, data: true, uploadComplete: true },
+    });
+    if (!row) return { ok: false, error: "Resume upload not found." };
+    if (!row.uploadComplete) return { ok: false, error: "Resume upload not finished — try again." };
     resume = {
-      filename: file.name,
-      mimeType: file.type,
-      data: Buffer.from(await file.arrayBuffer()),
+      filename: row.filename,
+      mimeType: row.mimeType,
+      data: Buffer.from(row.data),
     };
-    filename = file.name;
-    mimeType = file.type;
-    sizeBytes = file.size;
+    filename = row.filename;
+    mimeType = row.mimeType;
+    sizeBytes = row.size;
   }
 
   if (!resume && !pastedText && !linkedinUrl) {
     return { ok: false, error: "Upload a resume, paste profile text, or enter a LinkedIn URL first." };
   }
 
-  // Try Claude first — best-in-class extraction. On any failure (credit error,
-  // rate limit, network), fall back to local text extraction so the user still
-  // gets something to work with.
   try {
     const parsed = await parseCandidateFields({ resume, pastedText, linkedinUrl });
     return {
@@ -81,6 +87,13 @@ export async function parseCandidate(formData: FormData): Promise<ParseResumeRes
       return { ok: false, error: `Claude: ${claudeError}. Fallback: ${fallbackMsg}` };
     }
   }
+}
+
+// Called after a candidate is saved so the staging resume row is cleaned up.
+// No-op if the id is missing or already deleted.
+export async function discardResumeUpload(uploadId: string | null | undefined): Promise<void> {
+  if (!uploadId) return;
+  await prisma.resumeUpload.deleteMany({ where: { id: uploadId } });
 }
 
 export type CreateCandidatePayload = {

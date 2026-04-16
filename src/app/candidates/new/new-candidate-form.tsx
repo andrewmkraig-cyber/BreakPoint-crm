@@ -3,10 +3,13 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, Save, Sparkles, X } from "lucide-react";
+import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
+import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
 import {
   createCandidate,
+  discardResumeUpload,
   parseCandidate,
   type CreateCandidatePayload,
   type ParseSource,
@@ -41,43 +44,81 @@ export function NewCandidateForm() {
   const [isParsing, startParse] = useTransition();
   const [isSaving, startSave] = useTransition();
 
-  function runParse(args: { file?: File; text?: string; url?: string }) {
+  const [resumeUploadId, setResumeUploadId] = useState<string | null>(null);
+
+  function runParse() {
     setParseError(null);
     setClaudeError(null);
-    const nextFile = args.file ?? resume;
-    const nextText = args.text ?? pastedText;
-    const nextUrl = args.url ?? linkedinUrl;
+    const nextText = pastedText;
+    const nextUrl = linkedinUrl;
 
-    if (!nextFile && !nextText.trim() && !nextUrl.trim()) return;
+    if (!resume && !nextText.trim() && !nextUrl.trim()) {
+      toast.error("Nothing to parse", { description: "Drop a resume, paste text, or enter a LinkedIn URL." });
+      return;
+    }
 
-    const data = new FormData();
-    if (nextFile) data.append("resume", nextFile);
-    if (nextText.trim()) data.append("pastedText", nextText.trim());
-    if (nextUrl.trim()) data.append("linkedinUrl", nextUrl.trim());
+    const toastId = toast.loading("Preparing resume…");
 
     startParse(async () => {
-      const result = await parseCandidate(data);
-      if (!result.ok) {
-        setParseError(result.error);
-        return;
+      try {
+        let uploadId = resumeUploadId;
+        // Chunked upload the file (or re-upload if user dropped a new file).
+        if (resume && !uploadId) {
+          const res = await uploadFileInChunks(
+            resume,
+            "/api/uploads/resume",
+            {},
+            {
+              onProgress: (pct) => {
+                toast.loading(`Uploading resume — ${pct}%`, { id: toastId });
+              },
+            },
+          );
+          uploadId = res.id;
+          setResumeUploadId(res.id);
+        }
+
+        toast.loading("Parsing with Claude…", { id: toastId });
+        const result = await parseCandidate({
+          resumeUploadId: uploadId,
+          pastedText: nextText,
+          linkedinUrl: nextUrl,
+        });
+
+        if (!result.ok) {
+          setParseError(result.error);
+          toast.error("Parse failed", { id: toastId, description: result.error });
+          return;
+        }
+        const p = result.value.parsed;
+        setForm((prev) => ({
+          ...prev,
+          first_name: p.first_name ?? prev.first_name,
+          last_name: p.last_name ?? prev.last_name,
+          email: p.email ?? prev.email,
+          phone: p.phone ?? prev.phone,
+          current_designation: p.current_designation ?? prev.current_designation,
+          current_organization: p.current_organization ?? prev.current_organization,
+          location: p.location ?? prev.location,
+          linkedin_profile: p.linkedin_profile ?? nextUrl.trim() ?? prev.linkedin_profile,
+          skills: p.skills.length ? p.skills : prev.skills,
+          skillsText: p.skills.length ? p.skills.join(", ") : prev.skillsText,
+          notes: p.notes ?? prev.notes,
+        }));
+        setParseSource(result.value.source);
+        setClaudeError(result.value.claudeError);
+        toast.success(result.value.source === "claude" ? "Parsed with Claude" : "Basic extraction only", {
+          id: toastId,
+          description:
+            result.value.source === "claude"
+              ? "Review and edit any field before saving."
+              : result.value.claudeError ?? undefined,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Parse failed.";
+        setParseError(msg);
+        toast.error("Couldn't parse resume", { id: toastId, description: msg });
       }
-      const p = result.value.parsed;
-      setForm((prev) => ({
-        ...prev,
-        first_name: p.first_name ?? prev.first_name,
-        last_name: p.last_name ?? prev.last_name,
-        email: p.email ?? prev.email,
-        phone: p.phone ?? prev.phone,
-        current_designation: p.current_designation ?? prev.current_designation,
-        current_organization: p.current_organization ?? prev.current_organization,
-        location: p.location ?? prev.location,
-        linkedin_profile: p.linkedin_profile ?? nextUrl.trim() ?? prev.linkedin_profile,
-        skills: p.skills.length ? p.skills : prev.skills,
-        skillsText: p.skills.length ? p.skills.join(", ") : prev.skillsText,
-        notes: p.notes ?? prev.notes,
-      }));
-      setParseSource(result.value.source);
-      setClaudeError(result.value.claudeError);
     });
   }
 
@@ -85,7 +126,12 @@ export function NewCandidateForm() {
   // clicks the "Parse with Claude" button when they want parsing.
   function onFiles(files: File[]) {
     const file = files[0] ?? null;
+    // Fire-and-forget cleanup of any previous upload when the user picks
+    // a new file, so the staging table doesn't accumulate dead rows.
+    if (resumeUploadId) void discardResumeUpload(resumeUploadId);
     setResume(file);
+    setResumeUploadId(null);
+    setParseSource(null);
   }
 
   function onLinkedinChange(v: string) {
@@ -110,14 +156,19 @@ export function NewCandidateForm() {
       const result = await createCandidate(payload);
       if (!result.ok) {
         setSaveError(result.error);
+        toast.error("Couldn't save candidate", { description: result.error });
         return;
       }
+      if (resumeUploadId) void discardResumeUpload(resumeUploadId);
+      toast.success(`Saved ${payload.first_name} ${payload.last_name}`.trim());
       router.push(`/candidates/${result.value.id}`);
     });
   }
 
   function onReset() {
+    if (resumeUploadId) void discardResumeUpload(resumeUploadId);
     setResume(null);
+    setResumeUploadId(null);
     setPastedText("");
     setLinkedinUrl("");
     setForm(EMPTY);
@@ -193,7 +244,7 @@ export function NewCandidateForm() {
             </div>
             <button
               type="button"
-              onClick={() => runParse({})}
+              onClick={() => runParse()}
               disabled={isParsing || (!resume && !pastedText.trim() && !linkedinUrl.trim())}
               className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-navy px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:cursor-not-allowed disabled:opacity-50"
             >

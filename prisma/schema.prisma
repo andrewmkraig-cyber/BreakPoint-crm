@@ -56,6 +56,7 @@ model User {
   agreements      ClientAgreement[]
   benefitsUpdates ClientBenefits[]
   benefitsFiles   ClientBenefitsFile[]
+  resumeUploads   ResumeUpload[]
 }
 
 enum UserRole {
@@ -130,6 +131,7 @@ model ClientAgreement {
   mimeType         String
   size             Int
   data             Bytes
+  uploadComplete   Boolean   @default(true)
   uploadedById     String
   uploadedAt       DateTime  @default(now())
   // Claude-generated summary of the contract terms. Persisted so we don't
@@ -159,20 +161,38 @@ model ClientBenefits {
 // blobUrl is the canonical storage. `data` is retained (nullable) for any
 // legacy rows uploaded before the Blob cutover and is not written for new rows.
 model ClientBenefitsFile {
-  id            String   @id @default(cuid())
-  clientRfId    Int
-  filename      String
-  mimeType      String
-  size          Int
-  blobUrl       String?
-  blobPathname  String?
-  data          Bytes?
-  uploadedById  String
-  uploadedAt    DateTime @default(now())
+  id             String   @id @default(cuid())
+  clientRfId     Int
+  filename       String
+  mimeType       String
+  size           Int
+  blobUrl        String?  // legacy Vercel Blob URL; nullable for new chunked rows
+  blobPathname   String?
+  data           Bytes?   // primary storage for chunk-assembled files
+  uploadComplete Boolean  @default(true)
+  uploadedById   String
+  uploadedAt     DateTime @default(now())
 
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 
   @@index([clientRfId, uploadedAt])
+}
+
+// Staging table for chunk-uploaded resume PDFs. Transient: parseCandidate
+// reads bytes here, runs Claude/fallback, then the row is deleted.
+model ResumeUpload {
+  id             String   @id @default(cuid())
+  filename       String
+  mimeType       String
+  size           Int
+  data           Bytes
+  uploadComplete Boolean  @default(false)
+  uploaderId     String
+  createdAt      DateTime @default(now())
+
+  uploader User @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@index([uploaderId, createdAt])
 }
 
 model KrispcallLog {

@@ -54,7 +54,7 @@ export default async function ClientDetailPage({
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
     prisma.clientAgreement.findMany({
-      where: { clientRfId: id },
+      where: { clientRfId: id, uploadComplete: true },
       orderBy: { uploadedAt: "desc" },
       select: {
         id: true,
@@ -76,7 +76,7 @@ export default async function ClientDetailPage({
       },
     }),
     prisma.clientBenefitsFile.findMany({
-      where: { clientRfId: id },
+      where: { clientRfId: id, uploadComplete: true },
       orderBy: { uploadedAt: "desc" },
       select: {
         id: true,

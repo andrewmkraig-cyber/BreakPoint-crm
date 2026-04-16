@@ -14,7 +14,6 @@ type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
   | { ok: false; error: string };
 
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 async function requireUserId(): Promise<{ id: string; email: string } | null> {
   const session = await getServerSession(authOptions);
@@ -59,43 +58,8 @@ export async function addContact(clientId: number, formData: FormData): Promise<
 }
 
 // ---- Agreements ----
-
-export type UploadAgreementResult = ActionResult<{ id: string }>;
-
-export async function uploadAgreement(clientId: number, formData: FormData): Promise<UploadAgreementResult> {
-  const user = await requireUserId();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  const file = formData.get("file");
-  if (!(file instanceof File)) return { ok: false, error: "No file attached." };
-  if (file.size === 0) return { ok: false, error: "File is empty." };
-  if (file.size > MAX_UPLOAD_BYTES) return { ok: false, error: `File is too large (max ${MAX_UPLOAD_BYTES / (1024 * 1024)}MB).` };
-
-  const allowed = new Set([
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  ]);
-  if (!allowed.has(file.type)) {
-    return { ok: false, error: "Only PDF or Word documents are accepted." };
-  }
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const created = await prisma.clientAgreement.create({
-    data: {
-      clientRfId: clientId,
-      filename: file.name,
-      mimeType: file.type,
-      size: file.size,
-      data: buffer,
-      uploadedById: user.id,
-    },
-    select: { id: true },
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  return { ok: true, value: { id: created.id } };
-}
+// Uploads go through /api/uploads/agreement (chunked). Summarize and delete
+// stay as server actions because they're small one-shot calls.
 
 export type SummarizeAgreementResult = ActionResult<{ summary: string; summaryUpdatedAt: string }>;
 
@@ -158,43 +122,8 @@ export async function saveBenefits(clientId: number, body: string): Promise<Save
 }
 
 // ---- Benefits files (PDFs/docs attached for summarization or reference) ----
-// Stored in Vercel Blob (private) — browser uploads directly, we only persist
-// metadata here. Bypasses the Vercel 4.5MB serverless function body limit.
-
-export type RegisterBenefitsFileResult = ActionResult<{ id: string }>;
-
-export async function registerBenefitsFile(
-  clientId: number,
-  meta: {
-    filename: string;
-    mimeType: string;
-    size: number;
-    blobUrl: string;
-    blobPathname: string;
-  },
-): Promise<RegisterBenefitsFileResult> {
-  const user = await requireUserId();
-  if (!user) return { ok: false, error: "Not signed in." };
-
-  if (!meta.blobUrl || !meta.blobPathname) return { ok: false, error: "Missing blob URL." };
-  if (!meta.filename.trim()) return { ok: false, error: "Missing filename." };
-
-  const created = await prisma.clientBenefitsFile.create({
-    data: {
-      clientRfId: clientId,
-      filename: meta.filename,
-      mimeType: meta.mimeType,
-      size: meta.size,
-      blobUrl: meta.blobUrl,
-      blobPathname: meta.blobPathname,
-      uploadedById: user.id,
-    },
-    select: { id: true },
-  });
-
-  revalidatePath(`/clients/${clientId}`);
-  return { ok: true, value: { id: created.id } };
-}
+// Chunked base64 uploads go through /api/uploads/benefits-file directly — no
+// server action for insert. Delete stays here because it's a simple one-shot.
 
 export async function deleteBenefitsFile(fileId: string): Promise<ActionResult> {
   const user = await requireUserId();

@@ -3,16 +3,15 @@
 import { Component, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Save, Sparkles, X } from "lucide-react";
-import { upload } from "@vercel/blob/client";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { BulletedSummary } from "@/components/bulleted-summary";
 import {
   deleteBenefitsFile,
-  registerBenefitsFile,
   saveBenefits,
   summarizeBenefitsWithAI,
 } from "@/app/clients/[id]/actions";
+import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
 
 const UPLOAD_TIMEOUT_MS = 30_000;
@@ -71,11 +70,10 @@ function BenefitsTabInner({
 
   // Sequential uploads. Parallel startTransition() calls caused a client-side
   // render error on Vercel (bulk File dispatches through server actions).
-  // Direct-to-Blob client upload with multipart chunking and a 30s watchdog.
-  // Timestamp logs at each step print to the browser console so we can spot
-  // where real time is going (upload() → handleUploadUrl POST → direct PUT →
-  // register action). Auto-summarize was removed — a 25-page Claude call is
-  // 30–60s and was bloating perceived upload time.
+  // Chunked base64 upload to Postgres (2MB raw slices → ~2.8MB JSON POSTs,
+  // under Vercel Hobby's 4.5MB function body limit). Bypasses Vercel Blob
+  // entirely. Each chunk appends to the ClientBenefitsFile.data column;
+  // the final chunk flips uploadComplete to true.
   async function onFiles(chosen: File[]) {
     setUploadError(null);
     setUploadSuccess(null);
@@ -85,51 +83,32 @@ function BenefitsTabInner({
         const toastId = toast.loading(`Uploading ${file.name}…`);
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), UPLOAD_TIMEOUT_MS);
-        const tag = `[benefits-upload:${file.name}]`;
         const t0 = performance.now();
-        const mark = (label: string) => {
-          // eslint-disable-next-line no-console
-          console.log(`${tag} ${label} · +${Math.round(performance.now() - t0)}ms`);
-        };
-        mark("start");
-
         try {
-          const blob = await upload(`benefits/${clientId}/${file.name}`, file, {
-            access: "public",
-            handleUploadUrl: "/api/blob/benefits",
-            contentType: file.type || undefined,
-            multipart: true,
-            abortSignal: controller.signal,
-            onUploadProgress: ({ percentage }) => {
-              toast.loading(`Uploading ${file.name} — ${Math.round(percentage)}%`, { id: toastId });
+          await uploadFileInChunks(
+            file,
+            "/api/uploads/benefits-file",
+            { clientId },
+            {
+              signal: controller.signal,
+              onProgress: (pct) => {
+                toast.loading(`Uploading ${file.name} — ${pct}%`, { id: toastId });
+              },
             },
-          });
+          );
           clearTimeout(timer);
-          mark("blob put finished");
 
-          const result = await registerBenefitsFile(clientId, {
-            filename: file.name,
-            mimeType: file.type,
-            size: file.size,
-            blobUrl: blob.url,
-            blobPathname: blob.pathname,
-          });
-          mark("registerBenefitsFile finished");
-
-          if (!result || !result.ok) {
-            const msg = result?.error ?? "Upload saved to storage but couldn't be registered in Ace.";
-            setUploadError(msg);
-            toast.error(`Couldn't save ${file.name}`, { id: toastId, description: msg });
-            return;
-          }
+          const seconds = Math.round((performance.now() - t0) / 100) / 10;
           setUploadSuccess(`Uploaded ${file.name}.`);
           toast.success(`Uploaded ${file.name}`, {
             id: toastId,
-            description: `Stored in ${Math.round((performance.now() - t0) / 100) / 10}s. Click Generate Summary to summarize.`,
+            description: `Stored in ${seconds}s. Click Generate Summary to summarize.`,
           });
         } catch (err) {
           clearTimeout(timer);
-          const wasAbort = controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError");
+          const wasAbort =
+            controller.signal.aborted ||
+            (err instanceof DOMException && err.name === "AbortError");
           const msg = wasAbort
             ? `Upload of ${file.name} timed out after ${UPLOAD_TIMEOUT_MS / 1000}s. Try again or check your connection.`
             : err instanceof Error
