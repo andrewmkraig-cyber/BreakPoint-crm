@@ -6,6 +6,7 @@ import { FileText, Loader2, Save, Sparkles, UploadCloud, X } from "lucide-react"
 import { toast } from "sonner";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import { createJob, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
+import { PlainProse } from "@/components/plain-prose";
 import { cn } from "@/lib/utils";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
@@ -263,8 +264,16 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
             value={description}
             onChange={setDescription}
             rows={10}
-            placeholder="Blank canvas. Paste or write the job description — or upload a JD above and let Claude reformat it into the BreakPoint format (A bit about us / Why join us / Job Details)."
+            placeholder="Blank canvas. Paste or write the job description — or upload a JD above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
           />
+          {description.trim() && (
+            <div className="rounded-lg border border-border bg-muted/30 p-4">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Preview
+              </div>
+              <PlainProse text={description} />
+            </div>
+          )}
         </div>
       </div>
 

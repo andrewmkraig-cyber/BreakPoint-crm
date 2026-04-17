@@ -1,5 +1,4 @@
 import Anthropic from "@anthropic-ai/sdk";
-import mammoth from "mammoth";
 import { normalizeToE164 } from "@/lib/recruiterflow";
 
 // DOCX mime types and filename suffixes we can extract text from via mammoth.
@@ -11,9 +10,40 @@ function looksLikeDocx(filename: string, mimeType: string): boolean {
   return filename.toLowerCase().endsWith(".docx");
 }
 
+// Dynamic import so mammoth stays out of the edge bundle and Next's loader
+// doesn't try to inline its runtime-require-based zip plumbing.
 async function extractDocxText(data: Buffer): Promise<string> {
-  const result = await mammoth.extractRawText({ buffer: data });
+  const mammoth = await import("mammoth");
+  const extract = mammoth.extractRawText ?? mammoth.default?.extractRawText;
+  if (typeof extract !== "function") {
+    throw new Error("DOCX parser failed to load. Try uploading as a PDF instead.");
+  }
+  const result = await extract({ buffer: data });
   return result.value ?? "";
+}
+
+// Strip any residual markdown Claude may emit even when instructed not to.
+// Converts # / ## / ### headers into plain text, collapses **bold** and _italic_
+// markers, and rewrites "- " / "* " bullet lines to use the • glyph.
+export function stripMarkdownToPlain(text: string): string {
+  const lines = text.split(/\r?\n/);
+  const out: string[] = [];
+  for (const raw of lines) {
+    let line = raw;
+    // Drop leading heading markers (## / ### / # etc).
+    line = line.replace(/^\s{0,3}#{1,6}\s*/, "");
+    // Convert "* text" / "- text" bullets to "• text" (leading whitespace preserved).
+    line = line.replace(/^(\s*)[-*+]\s+/, "$1• ");
+    // Drop **bold** / __bold__ wrappers while keeping inner text.
+    line = line.replace(/\*\*(.+?)\*\*/g, "$1");
+    line = line.replace(/__(.+?)__/g, "$1");
+    // Drop single-* italic wrappers only when they look like pairs, not inside words.
+    line = line.replace(/(^|\s)\*(?!\s)(.+?)(?<!\s)\*(?=\s|$|[.,;:!?)])/g, "$1$2");
+    line = line.replace(/(^|\s)_(?!\s)(.+?)(?<!\s)_(?=\s|$|[.,;:!?)])/g, "$1$2");
+    out.push(line);
+  }
+  // Collapse 3+ blank lines → 2 blanks.
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // Opus 4.7 per skill default. Sampling params (temperature/top_p/top_k) and
@@ -255,7 +285,7 @@ export async function summarizeAgreementTerms(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no summary. Try again or check the PDF is readable.");
-  return text;
+  return stripMarkdownToPlain(text);
 }
 
 // Takes an uploaded job description (PDF / DOCX / pasted text) and produces
@@ -337,33 +367,38 @@ export async function generateJobDescription(params: {
     type: "text",
     text:
       "Reformat the source above into an anonymous BreakPoint Talent job description. " +
-      "Strip any client name, logos, recruiter names, email addresses, and phone numbers — this is the candidate-facing " +
-      "write-up that recruiters send before the client is disclosed." +
+      "Strip any client name, logos, recruiter names, email addresses, and phone numbers." +
       titleHint +
       "\n\n" +
-      "OUTPUT PLAIN TEXT ONLY. No markdown symbols. Do NOT use ##, **, _, or - for bullets. " +
-      "Use the bullet character • (U+2022) for every bullet point. No code fences. " +
-      "Separate each section with a single blank line.\n\n" +
-      "Produce EXACTLY this structure, in this order:\n\n" +
+      "HARD FORMAT RULES — the grader rejects any output that violates these:\n" +
+      "1. Plain text ONLY. No markdown anywhere.\n" +
+      "2. No '#' characters. No '##'. No '###'. Section titles sit on their own line, unadorned.\n" +
+      "3. No '**' anywhere. Not around headers, not around labels, nowhere.\n" +
+      "4. Bullet lines start with the glyph '•' followed by a single space. Never '-'. Never '*'. Never '1.'.\n" +
+      "5. One blank line between sections. No leading or trailing blank lines.\n\n" +
+      "Produce EXACTLY this structure (the literal section titles below, nothing more, nothing less):\n\n" +
       "A Bit About Us\n" +
-      "[2–4 sentence paragraph describing the company in generic terms — industry, size, stage, mission. " +
-      "No client name. Use neutral phrasing like 'Our client is…' or 'The team is…'. " +
-      "Do not fabricate facts; if the source doesn't say something, omit it.]\n\n" +
+      "<2–4 sentence paragraph describing the company in generic terms — industry, size, stage, mission. Neutral phrasing like 'Our client is…' or 'The team is…'. No client name. No fabrication.>\n\n" +
       "Why Join Us\n" +
-      "• [4–6 bullets of genuine selling points — growth, team, mission, comp structure, remote/hybrid, culture. " +
-      "Each bullet one line, punchy.]\n\n" +
+      "• <selling point>\n" +
+      "• <selling point>\n" +
+      "• <selling point>\n" +
+      "• <selling point>\n" +
+      "(4–6 total bullets — growth, team, mission, comp, culture, remote/hybrid, etc.)\n\n" +
       "Job Details\n\n" +
       "Key Responsibilities and Duties\n" +
-      "• [5–8 bullets describing what the person will actually do day to day. Concrete, verb-led.]\n\n" +
+      "• <verb-led responsibility>\n" +
+      "• <verb-led responsibility>\n" +
+      "• <verb-led responsibility>\n" +
+      "(5–8 total bullets, concrete and day-to-day)\n\n" +
       "You Should Have Most of the Following\n" +
-      "• [5–10 bullets of qualifications / skills / experience — hard requirements and preferred alike.]\n\n" +
-      "Rules:\n" +
-      "- Headers ('A Bit About Us', 'Why Join Us', 'Job Details', 'Key Responsibilities and Duties', 'You Should Have Most of the Following') sit on their own lines with no symbols around them.\n" +
-      "- 'Key Responsibilities and Duties' and 'You Should Have Most of the Following' are subsections *inside* the Job Details section — there is no separate 'Job Details' body, just those two subsection headers.\n" +
-      "- Every bullet starts with '• ' (bullet glyph + space).\n" +
-      "- No markdown. No asterisks. No hyphens at the start of a line.\n" +
-      "- Never invent facts. Never mention 'BreakPoint' or 'the recruiter' in the body.\n" +
-      "- Confident, concise, recruiter voice.",
+      "• <qualification / skill / experience>\n" +
+      "• <qualification / skill / experience>\n" +
+      "• <qualification / skill / experience>\n" +
+      "(5–10 total bullets — hard requirements and preferred alike)\n\n" +
+      "The words 'Job Details' appear alone on their own line; the only body under 'Job Details' is the two subsections. " +
+      "Do NOT write a 'Job Details' paragraph or bullets beyond the two subsections. " +
+      "Never mention 'BreakPoint' or 'the recruiter' in the body. Confident, concise recruiter voice.",
   });
 
   const response = await anthropic.messages.create({
@@ -372,8 +407,10 @@ export async function generateJobDescription(params: {
     thinking: { type: "adaptive" },
     output_config: { effort: "medium" },
     system:
-      "You turn client-supplied job descriptions into anonymous, recruiter-voice write-ups for BreakPoint Talent. " +
-      "Be factual, concise, and never fabricate details the source doesn't provide. Keep section structure exactly as specified.",
+      "You turn client-supplied job descriptions into anonymous plain-text write-ups for BreakPoint Talent. " +
+      "CRITICAL: output is plain text, never markdown. Never emit #, ##, **, or hyphen bullets. " +
+      "Bullets always use the • glyph. Section titles sit on their own line, unadorned. " +
+      "Stick to the structure the user specifies. Never fabricate facts.",
     messages: [{ role: "user", content }],
   });
 
@@ -384,7 +421,10 @@ export async function generateJobDescription(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no description. Try again with cleaner source material.");
-  return text;
+
+  // Final safety net: strip any markdown Claude may have slipped in, convert
+  // stray dash bullets to • glyphs, drop heading markers.
+  return stripMarkdownToPlain(text);
 }
 
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,
@@ -481,5 +521,5 @@ export async function summarizeBenefits(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no summary text. Try again or adjust the inputs.");
-  return text;
+  return stripMarkdownToPlain(text);
 }

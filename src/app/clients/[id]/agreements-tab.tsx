@@ -12,7 +12,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { BulletedSummary } from "@/components/bulleted-summary";
+import { PlainProse } from "@/components/plain-prose";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { toast } from "sonner";
 import { deleteAgreement, summarizeAgreement } from "@/app/clients/[id]/actions";
@@ -227,7 +227,7 @@ function AgreementItem({
             <Sparkles className="h-3 w-3 text-brand-dark" /> Key terms
             {summaryUpdatedAt && <span className="normal-case tracking-normal">· updated {new Date(summaryUpdatedAt).toLocaleString()}</span>}
           </div>
-          <BulletedSummary text={summary} />
+          <PlainProse text={summary} />
         </div>
       )}
     </li>
