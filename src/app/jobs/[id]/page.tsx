@@ -166,10 +166,10 @@ function DT({ label, value, icon }: { label: string; value: string; icon?: React
 function Stat({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "green" | "muted" }) {
   return (
     <div className="flex items-baseline justify-between gap-3 rounded-xl border border-border bg-white px-4 py-2.5 shadow-sm">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div
         className={cn(
-          "font-serif text-3xl font-bold leading-none",
+          "font-serif text-4xl font-extrabold leading-none tracking-tight",
           tone === "green" ? "text-brand-dark" : tone === "muted" ? "text-muted-foreground" : "text-navy",
         )}
       >

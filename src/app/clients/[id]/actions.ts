@@ -187,6 +187,56 @@ export async function summarizeBenefitsWithAI(
   }
 }
 
+// ---- Company (client/update) ----
+
+export type UpdateClientInput = {
+  id: number;
+  website: string;
+  linkedin: string;
+  phone: string;
+  industry: string;
+  street1: string;
+  street2: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+};
+
+export async function updateClientCompany(input: UpdateClientInput): Promise<ActionResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!Number.isFinite(input.id)) return { ok: false, error: "Missing client id." };
+
+  const domain = input.website.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
+
+  try {
+    const res = (await recruiterflow.updateClient({
+      id: input.id,
+      domain: domain || undefined,
+      industry: input.industry || undefined,
+      linkedin_page: input.linkedin.trim() || undefined,
+      phone_number: input.phone.trim() || undefined,
+      location: {
+        street_address_1: input.street1.trim() || undefined,
+        street_address_2: input.street2.trim() || undefined,
+        city: input.city.trim() || undefined,
+        state: input.state.trim() || undefined,
+        postal_code: input.postalCode.trim() || undefined,
+        country: input.country.trim() || undefined,
+      },
+    })) as { RESULT?: string };
+    if (res && typeof res === "object" && "RESULT" in res && res.RESULT && res.RESULT !== "SUCCESS") {
+      return { ok: false, error: `RecruiterFlow returned ${res.RESULT}` };
+    }
+    revalidatePath(`/clients/${input.id}`);
+    revalidatePath(`/clients`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update client." };
+  }
+}
+
 async function fetchBlobBytes(url: string): Promise<Buffer> {
   const { head } = await import("@vercel/blob");
   // For private blob stores, head() returns a short-lived downloadUrl.

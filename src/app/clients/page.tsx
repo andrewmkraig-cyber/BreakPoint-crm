@@ -38,8 +38,11 @@ export default async function ClientsPage({
       const pc = counts.get(c.id) ?? emptyJobCounts();
       const hasOpenJob = Array.isArray(raw.open_jobs) && raw.open_jobs.length > 0;
       const hadRecentPlacement = recentPlacementIds.has(c.id);
+      // Compact "City, ST" for the list card — drop street, zip, country, etc.
+      const cityState = [raw.location?.city, raw.location?.state].filter(Boolean).join(", ");
       return {
         ...c,
+        location: cityState || c.location,
         submittedCount: pc.submitted,
         interviewingCount: pc.interviewing,
         hiredCount: pc.hired,

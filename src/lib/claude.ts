@@ -401,30 +401,69 @@ export async function generateJobDescription(params: {
       "Never mention 'BreakPoint' or 'the recruiter' in the body. Confident, concise recruiter voice.",
   });
 
-  const response = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 2000,
-    thinking: { type: "adaptive" },
-    output_config: { effort: "medium" },
-    system:
-      "You turn client-supplied job descriptions into anonymous plain-text write-ups for BreakPoint Talent. " +
-      "CRITICAL: output is plain text, never markdown. Never emit #, ##, **, or hyphen bullets. " +
-      "Bullets always use the • glyph. Section titles sit on their own line, unadorned. " +
-      "Stick to the structure the user specifies. Never fabricate facts.",
-    messages: [{ role: "user", content }],
-  });
+  const system =
+    "You turn client-supplied job descriptions into anonymous plain-text write-ups for BreakPoint Talent. " +
+    "CRITICAL: output is plain text, never markdown. Never emit #, ##, **, or hyphen bullets. " +
+    "Bullets always use the • glyph. Section titles sit on their own line, unadorned. " +
+    "Every response must contain all four headers: 'A Bit About Us', 'Why Join Us', 'Job Details', " +
+    "'Key Responsibilities and Duties', AND 'You Should Have Most of the Following'. " +
+    "Stick to the structure the user specifies. Never fabricate facts.";
 
-  const text = response.content
-    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
+  async function runOnce(messages: Anthropic.Messages.MessageParam[]): Promise<string> {
+    const response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 4000,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+      system,
+      messages,
+    });
+    const raw = response.content
+      .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+    return stripMarkdownToPlain(raw);
+  }
 
-  if (!text) throw new Error("Claude returned no description. Try again with cleaner source material.");
+  const firstPass = await runOnce([{ role: "user", content }]);
+  if (!firstPass) throw new Error("Claude returned no description. Try again with cleaner source material.");
 
-  // Final safety net: strip any markdown Claude may have slipped in, convert
-  // stray dash bullets to • glyphs, drop heading markers.
-  return stripMarkdownToPlain(text);
+  const missing = missingRequiredJdHeaders(firstPass);
+  if (missing.length === 0) return firstPass;
+
+  // Retry once if required headers didn't make it. Include the first pass as
+  // assistant prior context and call out the missing pieces explicitly.
+  const retryContent: Anthropic.Messages.ContentBlockParam[] = [
+    {
+      type: "text",
+      text:
+        "The previous draft is missing these required section headers: " +
+        missing.join(", ") +
+        ". " +
+        "Please produce the full JD again with ALL required sections present, using plain text (no #, no **, no hyphen bullets — only • glyphs). " +
+        "Keep the structure: A Bit About Us, Why Join Us, Job Details (containing Key Responsibilities and Duties AND You Should Have Most of the Following).",
+    },
+  ];
+  const secondPass = await runOnce([
+    { role: "user", content },
+    { role: "assistant", content: firstPass },
+    { role: "user", content: retryContent },
+  ]);
+  return secondPass || firstPass;
+}
+
+const REQUIRED_JD_HEADERS = [
+  "A Bit About Us",
+  "Why Join Us",
+  "Job Details",
+  "Key Responsibilities and Duties",
+  "You Should Have Most of the Following",
+] as const;
+
+function missingRequiredJdHeaders(text: string): string[] {
+  const lower = text.toLowerCase();
+  return REQUIRED_JD_HEADERS.filter((h) => !lower.includes(h.toLowerCase()));
 }
 
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,

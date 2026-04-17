@@ -441,8 +441,34 @@ export const recruiterflow = {
       rank?: number;
     }>;
     tags?: string[];
+    jobs?: Array<{ job_id: number; stage_name?: string }>;
   }): Promise<{ RESULT?: string } | RFCandidate> {
     return rfFetch("/candidate/update", { method: "POST", body });
+  },
+
+  // Partial client/company update. Same pattern as /candidate/update — unknown
+  // fields ignored, omitted fields left alone. Nested fields that RF accepts
+  // include website/domain, industry, linkedin, phone, and location.
+  async updateClient(body: {
+    id: number;
+    name?: string;
+    domain?: string;
+    industry?: string;
+    linkedin_page?: string;
+    phone_number?: string | string[];
+    location?:
+      | string
+      | {
+          location?: string;
+          city?: string;
+          state?: string;
+          country?: string;
+          postal_code?: string;
+          street_address_1?: string;
+          street_address_2?: string;
+        };
+  }): Promise<{ RESULT?: string } | RFClient> {
+    return rfFetch("/client/update", { method: "POST", body });
   },
 };
 

@@ -4,9 +4,6 @@ import {
   ArrowLeft,
   ExternalLink,
   FileText,
-  Globe,
-  MapPin,
-  Phone,
   ShieldCheck,
   Briefcase,
 } from "lucide-react";
@@ -17,14 +14,13 @@ import {
   buildClientCounts,
   buildJobCounts,
   emptyJobCounts,
-  formatPhone,
-  telHref,
 } from "@/lib/recruiterflow";
 import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { ContactsTab } from "@/app/clients/[id]/contacts-tab";
 import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
 import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
+import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
 
 export const dynamic = "force-dynamic";
 // Claude summarization on a 25-page PDF can take 30–60s. Default Hobby
@@ -101,12 +97,18 @@ export default async function ClientDetailPage({
   const openJobs = Array.isArray(raw.open_jobs) ? raw.open_jobs : [];
   const closedJobs = Array.isArray(raw.closed_jobs) ? raw.closed_jobs : [];
 
-  const addressLines: string[] = [];
-  if (raw.location?.street_address_1) addressLines.push(raw.location.street_address_1);
-  if (raw.location?.street_address_2) addressLines.push(raw.location.street_address_2);
-  const cityStateZip = [raw.location?.city, raw.location?.state, raw.location?.postal_code].filter(Boolean).join(", ");
-  if (cityStateZip) addressLines.push(cityStateZip);
-  if (raw.location?.country) addressLines.push(raw.location.country);
+  const companyInitial: CompanyState = {
+    website: client.domain ?? "",
+    linkedin: client.linkedIn ?? "",
+    phone: client.phone ?? "",
+    industry: client.industry ?? "",
+    street1: raw.location?.street_address_1 ?? "",
+    street2: raw.location?.street_address_2 ?? "",
+    city: raw.location?.city ?? "",
+    state: raw.location?.state ?? "",
+    postalCode: raw.location?.postal_code ?? "",
+    country: raw.location?.country ?? "",
+  };
 
   return (
     <div className="space-y-6">
@@ -149,52 +151,7 @@ export default async function ClientDetailPage({
 
       {tab === "overview" ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <div className="rounded-xl border border-border bg-white p-5 shadow-sm lg:col-span-2">
-            <h2 className="font-serif text-lg font-semibold text-navy">Company</h2>
-            <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-              <Detail label="Website" icon={<Globe className="h-3 w-3" />}>
-                {client.website ? (
-                  <a href={client.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-dark hover:underline">
-                    {client.domain || client.website} <ExternalLink className="h-3 w-3" />
-                  </a>
-                ) : (
-                  <span>—</span>
-                )}
-              </Detail>
-              <Detail label="LinkedIn">
-                {client.linkedIn ? (
-                  <a href={client.linkedIn} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-dark hover:underline">
-                    Company page <ExternalLink className="h-3 w-3" />
-                  </a>
-                ) : (
-                  <span>—</span>
-                )}
-              </Detail>
-              <Detail label="Industry">
-                <span>{client.industry || "—"}</span>
-              </Detail>
-              <Detail label="Phone" icon={<Phone className="h-3 w-3" />}>
-                {client.phone ? (
-                  <a href={telHref(client.phone)} className="text-navy hover:text-brand-dark">
-                    {formatPhone(client.phone)}
-                  </a>
-                ) : (
-                  <span>—</span>
-                )}
-              </Detail>
-              <Detail label="Address" icon={<MapPin className="h-3 w-3" />}>
-                {addressLines.length ? (
-                  <div className="space-y-0.5 text-navy">
-                    {addressLines.map((line, i) => (
-                      <div key={i}>{line}</div>
-                    ))}
-                  </div>
-                ) : (
-                  <span>—</span>
-                )}
-              </Detail>
-            </dl>
-          </div>
+          <EditableCompany clientId={id} initial={companyInitial} />
 
           <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
             <h2 className="font-serif text-lg font-semibold text-navy">Fee Agreement</h2>
@@ -260,9 +217,6 @@ export default async function ClientDetailPage({
                               <Briefcase className="h-4 w-4 text-muted-foreground" />
                               <span>{j.name ?? j.title ?? "(untitled)"}</span>
                             </Link>
-                            {j.department_name && (
-                              <div className="pl-6 text-xs text-muted-foreground">{j.department_name}</div>
-                            )}
                           </td>
                           <td className="px-5 py-2.5">
                             <span
@@ -432,8 +386,8 @@ function Stat({ label, value, tone = "default" }: { label: string; value: string
   const effective = (typeof value === "number" && value === 0) ? "text-muted-foreground/60" : cls;
   return (
     <div className="flex items-baseline justify-between gap-3 rounded-xl border border-border bg-white px-4 py-2.5 shadow-sm">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("font-serif text-3xl font-bold leading-none", effective)}>{value}</div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={cn("font-serif text-4xl font-extrabold leading-none tracking-tight", effective)}>{value}</div>
     </div>
   );
 }
