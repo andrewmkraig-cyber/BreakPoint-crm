@@ -245,6 +245,76 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
   }
 }
 
+// ---- Cancel Placement ----
+//
+// Moves a Hired row out of the Hired bucket by flipping its Placement stage to
+// "cancelled" and logging the reason. Kept as a Placement row so we don't lose
+// fee/billing history for audit.
+
+export type CancellationReason =
+  | "candidate_resigned"
+  | "client_terminated"
+  | "failed_background_check"
+  | "other";
+
+export type CancelPlacementInput = {
+  placementId: string;
+  reason: CancellationReason;
+  detail: string;
+};
+
+const VALID_CANCEL_REASON: ReadonlySet<CancellationReason> = new Set<CancellationReason>([
+  "candidate_resigned",
+  "client_terminated",
+  "failed_background_check",
+  "other",
+]);
+
+export async function cancelPlacement(input: CancelPlacementInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  if (!VALID_CANCEL_REASON.has(input.reason)) return { ok: false, error: "Invalid cancellation reason." };
+
+  try {
+    const existing = await prisma.placement.findUnique({
+      where: { id: input.placementId },
+      select: { candidateRfId: true, jobRfId: true, clientRfId: true },
+    });
+    if (!existing) return { ok: false, error: "Placement not found." };
+
+    await prisma.placement.update({
+      where: { id: input.placementId },
+      data: {
+        stage: "cancelled",
+        invoicingFlagged: false,
+        syncedToRf: false,
+      },
+    });
+
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "cancel_placement",
+        subjectType: "candidate",
+        subjectId: String(existing.candidateRfId),
+        metadata: {
+          placementId: input.placementId,
+          jobRfId: existing.jobRfId,
+          clientRfId: existing.clientRfId,
+          reason: input.reason,
+          detail: input.detail || null,
+        },
+      },
+    });
+
+    revalidatePath(`/candidates/${existing.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to cancel placement." };
+  }
+}
+
 export async function deletePlacement(placementId: string): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };

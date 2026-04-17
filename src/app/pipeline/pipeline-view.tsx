@@ -83,9 +83,8 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
+      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
         <StageTabs stage={stage} counts={counts} buildHref={buildHref} />
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Live from RecruiterFlow</div>
       </div>
 
       <form
@@ -140,7 +139,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                   </>
                 ) : (
                   <>
-                    <th className="px-5 py-3 font-medium">Stage</th>
+                    <th className="px-5 py-3 text-center font-medium">Stage</th>
                     <th className="px-5 py-3 font-medium">Last Action</th>
                     <th className="px-5 py-3 text-right font-medium">Days in Stage</th>
                   </>
@@ -206,7 +205,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                     <HiredCells row={r} />
                   ) : (
                     <>
-                      <td className="px-5 py-3 align-top">
+                      <td className="px-5 py-3 align-top text-center">
                         <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
                       </td>
                       <td className="px-5 py-3 align-top text-xs text-muted-foreground">

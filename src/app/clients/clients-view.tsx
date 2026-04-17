@@ -83,9 +83,8 @@ export function ClientsView({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
+      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
         <Tabs tab={tab} activeCount={activeCount} inactiveCount={inactiveCount} buildHref={buildHref} />
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Live from RecruiterFlow</div>
       </div>
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground">

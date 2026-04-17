@@ -65,12 +65,15 @@ export default async function PipelinePage({
     const allRows: PipelineRow[] = [];
 
     for (const p of placements) {
+      // Cancelled placements are excluded from the pipeline view entirely.
+      if (p.stage === "cancelled") continue;
       const key = `${p.candidateRfId}:${p.jobRfId}`;
       seen.add(key);
       const rfEntry = flat.find(
         (r) => r.candidateId === p.candidateRfId && r.jobId === p.jobRfId,
       );
       const stageName = p.stage as Stage;
+      if (!(stageName in counts)) continue;
       counts[stageName] += 1;
       allRows.push({
         candidateId: p.candidateRfId,
@@ -146,7 +149,6 @@ export default async function PipelinePage({
   return (
     <div>
       <PageHeader
-        eyebrow="Desk"
         title="Pipeline"
         description="Every active submittal across your open jobs. One row per candidate-per-job. Kept candidates are tagged, not bucketed as their own stage."
       />

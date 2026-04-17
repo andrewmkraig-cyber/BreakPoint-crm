@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Save } from "lucide-react";
+import { FileText, Loader2, Save, Sparkles, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
-import { createJob } from "@/app/jobs/new/actions";
+import { createJob, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
 import { cn } from "@/lib/utils";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
@@ -25,6 +25,44 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
   const [description, setDescription] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
+
+  const jdInputRef = useRef<HTMLInputElement>(null);
+  const [jdFile, setJdFile] = useState<File | null>(null);
+  const [isGenerating, startGenerate] = useTransition();
+
+  function onPickJd(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setJdFile(f);
+  }
+
+  function clearJd() {
+    setJdFile(null);
+    if (jdInputRef.current) jdInputRef.current.value = "";
+  }
+
+  function onGenerate() {
+    setErr(null);
+    startGenerate(async () => {
+      let filePayload: { filename: string; mimeType: string; base64: string } | null = null;
+      if (jdFile) {
+        const buffer = await jdFile.arrayBuffer();
+        const base64 = arrayBufferToBase64(buffer);
+        filePayload = { filename: jdFile.name, mimeType: jdFile.type || "application/octet-stream", base64 };
+      }
+      const result = await generateJobDescriptionFromSource({
+        jobTitle: title.trim(),
+        sourceText: description,
+        file: filePayload,
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't generate job description", { description: result.error });
+        return;
+      }
+      setDescription(result.value.text);
+      toast.success("Job description generated", { description: "Edit before saving if needed." });
+    });
+  }
 
   const loNum = salaryLow === "" ? null : Number(salaryLow);
   const hiNum = salaryHigh === "" ? null : Number(salaryHigh);
@@ -168,8 +206,65 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
             className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
         </label>
-        <div className="md:col-span-2">
-          <LabeledTextarea label="Description" value={description} onChange={setDescription} rows={6} placeholder="Paste or write the job description. Leave blank to fill it in later." />
+        <div className="md:col-span-2 space-y-2">
+          <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex min-w-0 items-center gap-2 text-sm">
+              {jdFile ? (
+                <>
+                  <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
+                  <span className="truncate font-medium text-navy">{jdFile.name}</span>
+                  <span className="text-xs text-muted-foreground">{formatSize(jdFile.size)}</span>
+                  <button
+                    type="button"
+                    onClick={clearJd}
+                    className="ml-1 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-navy"
+                    aria-label="Remove uploaded JD"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="text-muted-foreground">Upload a JD file (PDF/DOCX) to reformat with Claude, or skip and write below.</span>
+                </>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => jdInputRef.current?.click()}
+                disabled={isGenerating}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+              >
+                <UploadCloud className="h-3.5 w-3.5" />
+                {jdFile ? "Replace file" : "Upload JD"}
+              </button>
+              <button
+                type="button"
+                onClick={onGenerate}
+                disabled={isGenerating || (!jdFile && !description.trim())}
+                className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+              >
+                {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                Generate Job Description with Claude
+              </button>
+              <input
+                ref={jdInputRef}
+                type="file"
+                accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={onPickJd}
+              />
+            </div>
+          </div>
+          <LabeledTextarea
+            label="Description"
+            value={description}
+            onChange={setDescription}
+            rows={10}
+            placeholder="Blank canvas. Paste or write the job description — or upload a JD above and let Claude reformat it into the BreakPoint format (A bit about us / Why join us / Job Details)."
+          />
         </div>
       </div>
 
@@ -201,6 +296,22 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
       </div>
     </div>
   );
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const CHUNK = 8192;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+  }
+  return btoa(binary);
+}
+
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function SalaryField({

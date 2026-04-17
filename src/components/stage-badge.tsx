@@ -1,16 +1,17 @@
 import { cn } from "@/lib/utils";
 import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
 
-// Active pipeline stages progress from lightest brand tint → solid brand green.
-// Inactive buckets (applied/sourced/other) stay muted; rejected stays red.
+// Active pipeline stages share one green shade so side-by-side rows read
+// consistently. Inactive buckets (applied/sourced/other) stay muted; rejected
+// stays red.
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
   applied: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
   sourced: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
-  submitted: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/30",
-  interviewing: "bg-brand/25 text-brand-dark ring-1 ring-inset ring-brand/40",
-  offer: "bg-brand/50 text-white ring-1 ring-inset ring-brand",
-  pending_start: "bg-brand text-white ring-1 ring-inset ring-brand-dark",
-  hired: "bg-brand-dark text-white ring-1 ring-inset ring-brand-dark",
+  submitted: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
+  interviewing: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
+  offer: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
+  pending_start: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
+  hired: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
   rejected: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
   other: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
 };

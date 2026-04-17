@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Ban,
   Briefcase,
   CalendarClock,
   CheckCircle2,
@@ -22,6 +23,7 @@ import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
 import { StageBadge } from "@/components/stage-badge";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import {
+  cancelPlacement,
   confirmStart,
   recordOffer,
   recordPlacement,
@@ -96,6 +98,7 @@ export function PlacementActions({
   const [scheduleFor, setScheduleFor] = useState<PlacementContextJob | null>(null);
   const [rejectFor, setRejectFor] = useState<PlacementContextJob | null>(null);
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
+  const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
 
   if (jobs.length === 0) {
     return (
@@ -118,6 +121,7 @@ export function PlacementActions({
             onSchedule={() => setScheduleFor(j)}
             onReject={() => setRejectFor(j)}
             onUnreject={() => setUnrejectFor(j)}
+            onCancel={() => setCancelFor(j)}
           />
         ))}
       </div>
@@ -164,6 +168,14 @@ export function PlacementActions({
           onClose={() => setUnrejectFor(null)}
         />
       )}
+      {cancelFor && cancelFor.placement && (
+        <CancelPlacementDialog
+          placementId={cancelFor.placement.id}
+          jobTitle={cancelFor.jobTitle}
+          clientName={cancelFor.clientName}
+          onClose={() => setCancelFor(null)}
+        />
+      )}
     </>
   );
 }
@@ -176,6 +188,7 @@ function JobActionRow({
   onSchedule,
   onReject,
   onUnreject,
+  onCancel,
 }: {
   job: PlacementContextJob;
   onOffer: () => void;
@@ -184,6 +197,7 @@ function JobActionRow({
   onSchedule: () => void;
   onReject: () => void;
   onUnreject: () => void;
+  onCancel: () => void;
 }) {
   const effective: Bucket = (job.placement?.stage ?? job.rfStageBucket) as Bucket;
   const isActive = ACTIVE_BUCKETS.has(effective);
@@ -203,28 +217,18 @@ function JobActionRow({
             <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
             <span className="truncate">{job.jobTitle}</span>
           </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-center gap-1">
           {job.clientName && (
-            <div className="text-center text-xs font-semibold text-navy-400">{job.clientName}</div>
+            <div className="mt-0.5 pl-[1.375rem] text-xs text-muted-foreground">{job.clientName}</div>
           )}
-          <div className="flex items-center gap-1.5">
-            <StageBadge
-              bucket={effective}
-              label={job.rfStageName ?? null}
-              suffix={badgeSuffix}
-              onClick={isRejected ? onUnreject : undefined}
-              title={isRejected ? "Click to unreject this candidate for this job" : undefined}
-            />
-            {job.placement && !job.placement.syncedToRf && (
-              <span
-                title="Stage recorded in Ace only — RF /external has no stage-change endpoint yet. Move the candidate manually in RecruiterFlow to keep them in sync."
-                className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800"
-              >
-                Ace only
-              </span>
-            )}
-          </div>
+        </div>
+        <div className="shrink-0">
+          <StageBadge
+            bucket={effective}
+            label={job.rfStageName ?? null}
+            suffix={badgeSuffix}
+            onClick={isRejected ? onUnreject : undefined}
+            title={isRejected ? "Click to unreject this candidate for this job" : undefined}
+          />
         </div>
       </div>
 
@@ -275,10 +279,19 @@ function JobActionRow({
           </button>
         )}
         {isHired && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
-            <CheckCircle2 className="h-3 w-3" /> Hired
-            {job.placement?.startConfirmedAt ? ` · ${formatDate(job.placement.startConfirmedAt)}` : ""}
-          </span>
+          <>
+            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
+              <CheckCircle2 className="h-3 w-3" /> Hired
+              {job.placement?.startConfirmedAt ? ` · ${formatDate(job.placement.startConfirmedAt)}` : ""}
+            </span>
+            <button
+              type="button"
+              onClick={onCancel}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+            >
+              <Ban className="h-3.5 w-3.5" /> Cancel Placement
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -983,6 +996,92 @@ function UnrejectDialog({
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reactivate" />
+    </Modal>
+  );
+}
+
+// ---------------- Cancel Placement dialog ----------------
+
+const CANCEL_REASONS = [
+  { value: "candidate_resigned", label: "Candidate Resigned" },
+  { value: "client_terminated", label: "Client Terminated" },
+  { value: "failed_background_check", label: "Failed Background Check" },
+  { value: "other", label: "Other" },
+] as const;
+
+type CancelReasonValue = (typeof CANCEL_REASONS)[number]["value"];
+
+function CancelPlacementDialog({
+  placementId,
+  jobTitle,
+  clientName,
+  onClose,
+}: {
+  placementId: string;
+  jobTitle: string;
+  clientName: string;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [reason, setReason] = useState<CancelReasonValue>("candidate_resigned");
+  const [detail, setDetail] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  function onConfirm() {
+    setErr(null);
+    if (reason === "other" && !detail.trim()) {
+      setErr("Please describe the reason.");
+      return;
+    }
+    startSave(async () => {
+      const result = await cancelPlacement({ placementId, reason, detail: detail.trim() });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't cancel placement", { description: result.error });
+        return;
+      }
+      toast.success("Placement cancelled", {
+        description: "Candidate moved out of Hired. Reason logged to activity.",
+      });
+      onClose();
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal title="Cancel placement" subtitle={`${jobTitle}${clientName ? ` · ${clientName}` : ""}`} onClose={onClose}>
+      <p className="text-sm text-muted-foreground">
+        This moves the candidate out of Hired and logs the cancellation. Invoicing flag is cleared; the placement
+        record is kept for audit.
+      </p>
+
+      <label className="mt-4 block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Reason</span>
+        <select
+          value={reason}
+          onChange={(e) => setReason(e.target.value as CancelReasonValue)}
+          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        >
+          {CANCEL_REASONS.map((r) => (
+            <option key={r.value} value={r.value}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="mt-3">
+        <LabeledTextarea
+          label={reason === "other" ? "Details (required)" : "Details (optional)"}
+          value={detail}
+          onChange={setDetail}
+          rows={3}
+        />
+      </div>
+
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Cancel placement" />
     </Modal>
   );
 }

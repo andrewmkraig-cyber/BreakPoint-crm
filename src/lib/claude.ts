@@ -242,6 +242,99 @@ export async function summarizeAgreementTerms(params: {
   return text;
 }
 
+// Takes an uploaded job description (PDF or raw text) plus any recruiter
+// notes and produces an anonymous BreakPoint-formatted JD with three
+// sections: "A bit about us", "Why join us", and "Job Details".
+// Anonymous = client name / contact info stripped; rewritten as a BreakPoint
+// Talent presentation of the opportunity.
+export async function generateJobDescription(params: {
+  sourceFile?: { filename: string; mimeType: string; data: Buffer };
+  sourceText?: string;
+  jobTitle?: string;
+}): Promise<string> {
+  const anthropic = getClaude();
+  const pasted = (params.sourceText ?? "").trim();
+  const file = params.sourceFile;
+  if (!file && !pasted) {
+    throw new Error("Upload a JD file or paste some source text to generate from.");
+  }
+
+  const content: Anthropic.Messages.ContentBlockParam[] = [];
+
+  if (file) {
+    if (file.mimeType === "application/pdf") {
+      content.push({
+        type: "document",
+        source: {
+          type: "base64",
+          media_type: "application/pdf",
+          data: file.data.toString("base64"),
+        },
+        title: file.filename,
+      });
+    } else {
+      // DOCX binaries won't parse directly; other text-ish formats pass through.
+      const maybeText = file.data.toString("utf-8");
+      content.push({
+        type: "text",
+        text: `--- File: ${file.filename} ---\n${maybeText.slice(0, 80_000)}`,
+      });
+    }
+  }
+
+  if (pasted) {
+    content.push({
+      type: "text",
+      text: `--- Pasted source ---\n${pasted}`,
+    });
+  }
+
+  const titleHint = params.jobTitle?.trim() ? `\nJob title (for reference): ${params.jobTitle.trim()}` : "";
+
+  content.push({
+    type: "text",
+    text:
+      "Reformat the source above into an anonymous BreakPoint Talent job description. " +
+      "Strip any client name, logos, recruiter names, email addresses, and phone numbers — this is the candidate-facing " +
+      "write-up that recruiters send before the client is disclosed." +
+      titleHint +
+      "\n\n" +
+      "Output EXACTLY three sections in this order, using plain markdown headings (##). No intro, no outro, no code fences:\n\n" +
+      "## A bit about us\n" +
+      "2–4 sentences describing the company in generic terms (industry, size, stage, mission). No client name. " +
+      "Use neutral language like 'Our client is…' / 'The team is…'. " +
+      "Don't fabricate facts; if the source doesn't say, omit the detail.\n\n" +
+      "## Why join us\n" +
+      "4–6 bullet points of genuine selling points (growth, team, mission, comp structure, remote/hybrid, culture). " +
+      "Use '-' bullets. Keep each bullet one line and punchy.\n\n" +
+      "## Job Details\n" +
+      "A grouped list of the concrete role details. Use '-' bullets with **bold labels**, e.g. '- **Role:** Senior ...'. " +
+      "Cover (skip any missing): Role, Location, Employment Type, Compensation, Key Responsibilities, Must-haves, Nice-to-haves, Interview Process. " +
+      "For multi-item fields (responsibilities, must-haves), use nested bullets.\n\n" +
+      "Tone: confident, concise, recruiter-voice. Never invent facts. Never mention 'BreakPoint' or 'the recruiter' in the body.",
+  });
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 2000,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "medium" },
+    system:
+      "You turn client-supplied job descriptions into anonymous, recruiter-voice write-ups for BreakPoint Talent. " +
+      "Be factual, concise, and never fabricate details the source doesn't provide. Keep section structure exactly as specified.",
+    messages: [{ role: "user", content }],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  if (!text) throw new Error("Claude returned no description. Try again with cleaner source material.");
+  return text;
+}
+
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,
 // scannable brief for a recruiter sharing benefits with a candidate.
 export async function summarizeBenefits(params: {

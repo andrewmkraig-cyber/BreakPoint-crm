@@ -41,13 +41,10 @@ export function CandidatesView({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <div>
-          {candidates.length === 0
-            ? "No candidates"
-            : `${candidates.length.toLocaleString()} candidate${candidates.length === 1 ? "" : "s"}${initialQuery ? ` matching "${initialQuery}"` : ""}`}
-        </div>
-        <div className="uppercase tracking-wider">Live from RecruiterFlow</div>
+      <div className="text-xs text-muted-foreground">
+        {candidates.length === 0
+          ? "No candidates"
+          : `${candidates.length.toLocaleString()} candidate${candidates.length === 1 ? "" : "s"}${initialQuery ? ` matching "${initialQuery}"` : ""}`}
       </div>
       <form
         onSubmit={onSubmit}

@@ -3,11 +3,63 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { generateJobDescription } from "@/lib/claude";
 import { recruiterflow } from "@/lib/recruiterflow";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
   | { ok: false; error: string };
+
+export type GenerateJDInput = {
+  jobTitle: string;
+  sourceText: string;
+  file:
+    | {
+        filename: string;
+        mimeType: string;
+        base64: string;
+      }
+    | null;
+};
+
+// Max inline size for the JD upload — 4MB fits comfortably under Vercel Hobby's
+// 4.5MB body cap. Larger JDs get split or pasted as text.
+const MAX_JD_BYTES = 4 * 1024 * 1024;
+
+export async function generateJobDescriptionFromSource(input: GenerateJDInput): Promise<ActionResult<{ text: string }>> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+
+  if (!input.file && !input.sourceText.trim()) {
+    return { ok: false, error: "Upload a JD or paste source text first." };
+  }
+
+  let buffer: Buffer | undefined;
+  if (input.file) {
+    try {
+      buffer = Buffer.from(input.file.base64, "base64");
+    } catch {
+      return { ok: false, error: "Couldn't decode the uploaded file." };
+    }
+    if (buffer.byteLength === 0) return { ok: false, error: "Uploaded file is empty." };
+    if (buffer.byteLength > MAX_JD_BYTES) {
+      return { ok: false, error: `JD upload too large (max ${MAX_JD_BYTES / (1024 * 1024)}MB).` };
+    }
+  }
+
+  try {
+    const text = await generateJobDescription({
+      sourceFile: input.file && buffer
+        ? { filename: input.file.filename, mimeType: input.file.mimeType, data: buffer }
+        : undefined,
+      sourceText: input.sourceText,
+      jobTitle: input.jobTitle,
+    });
+    return { ok: true, value: { text } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to generate job description." };
+  }
+}
 
 export type NewJobInput = {
   title: string;
