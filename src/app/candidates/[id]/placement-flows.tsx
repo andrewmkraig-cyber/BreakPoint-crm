@@ -29,7 +29,6 @@ import {
   cancelPlacement,
   confirmStart,
   deliverCandidateConfirmation,
-  generateSubmittalEmailBody,
   moveCancelledToAceStage,
   reapplyCancelledPlacement,
   recordOffer,
@@ -1677,13 +1676,33 @@ function SubmittalEmailCompose({
         };
       }}
       onGenerate={async () => {
-        const result = await generateSubmittalEmailBody({
-          candidateRfId,
-          jobTitle: job.jobTitle,
-          clientName: job.clientName,
+        const res = await fetch("/api/generate-submittal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            candidateRfId,
+            jobRfId: job.jobRfId,
+            jobTitle: job.jobTitle,
+            clientName: job.clientName,
+          }),
         });
-        if (!result.ok) throw new Error(result.error);
-        return result.value.body;
+        // Explicit content-type check so a stray HTML response (sign-in page,
+        // dev middleware, etc.) is rejected loud and clear instead of being
+        // dumped into the textarea.
+        const contentType = res.headers.get("content-type") ?? "";
+        if (!contentType.includes("application/json")) {
+          throw new Error(
+            `Server returned ${contentType || "unknown content-type"} (status ${res.status}). Reload the tab and try again.`,
+          );
+        }
+        const data = (await res.json()) as { text?: string; error?: string };
+        if (!res.ok || data.error) {
+          throw new Error(data.error || `Generate failed (${res.status}).`);
+        }
+        if (typeof data.text !== "string" || !data.text.trim()) {
+          throw new Error("Generator returned empty text.");
+        }
+        return data.text;
       }}
       onSend={async (draft: EmailDraft) => {
         const result = await sendSubmittalEmail({

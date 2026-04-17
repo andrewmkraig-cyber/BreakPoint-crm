@@ -16,9 +16,9 @@ export type AppPreferences = {
 const DEFAULT_SIGNATURE =
   "Andrew Kraig\n" +
   "Managing Partner & Founder\n" +
+  "BreakPoint Talent\n" +
   "andrew@breakpointtalent.com\n" +
-  "216-488-5565\n" +
-  "www.breakpointtalent.com";
+  "216-488-5565";
 
 const DEFAULT_PREFS: AppPreferences = {
   autoSendCandidateConfirmation: true,
@@ -79,10 +79,38 @@ export async function updateAppPreferences(patch: Partial<AppPreferences>): Prom
   return next;
 }
 
+const LEGACY_DEFAULT_SIGNATURE =
+  "Andrew Kraig\n" +
+  "Managing Partner & Founder\n" +
+  "andrew@breakpointtalent.com\n" +
+  "216-488-5565\n" +
+  "www.breakpointtalent.com";
+
 export async function ensureDefaultPreferences(): Promise<void> {
   const row = await prisma.setting.findUnique({ where: { key: PREFS_KEY } });
-  if (row) return;
-  await prisma.setting.create({ data: { key: PREFS_KEY, value: DEFAULT_PREFS } });
+  if (!row) {
+    await prisma.setting.create({ data: { key: PREFS_KEY, value: DEFAULT_PREFS } });
+    return;
+  }
+  // One-shot migration: replace the old seeded Andrew signature with the
+  // current default. Only triggers if the stored value matches the legacy
+  // default exactly — user edits are left untouched.
+  const stored = normalize(row.value);
+  const andrewSig = stored.emailSignatures["andrew@breakpointtalent.com"];
+  if (andrewSig === LEGACY_DEFAULT_SIGNATURE) {
+    await prisma.setting.update({
+      where: { key: PREFS_KEY },
+      data: {
+        value: {
+          ...stored,
+          emailSignatures: {
+            ...stored.emailSignatures,
+            "andrew@breakpointtalent.com": DEFAULT_SIGNATURE,
+          },
+        },
+      },
+    });
+  }
 }
 
 export async function getRecruiterPhone(email: string | null | undefined): Promise<string> {

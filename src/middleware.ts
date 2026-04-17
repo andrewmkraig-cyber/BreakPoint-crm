@@ -28,6 +28,8 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api/auth|sign-in|_next/static|_next/image|favicon.ico).*)",
+    // Skip all /api routes so they can self-auth and return JSON (otherwise
+    // the sign-in HTML would leak into JSON callers like /api/generate-submittal).
+    "/((?!api|sign-in|_next/static|_next/image|favicon.ico).*)",
   ],
 };
