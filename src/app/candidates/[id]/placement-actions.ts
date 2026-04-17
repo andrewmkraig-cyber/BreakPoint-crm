@@ -9,7 +9,15 @@ import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail } from "@/lib/gmail";
 import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import { getAppPreferences, getRecruiterPhone } from "@/lib/preferences";
-import { CANDIDATE_CONFIRMATION_TRIGGER } from "@/app/settings/template-constants";
+import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
+import type { RFCandidate } from "@/lib/recruiterflow";
+import {
+  CANDIDATE_CONFIRMATION_TRIGGER,
+  CANDIDATE_REJECTION_TRIGGER,
+  INTERVIEW_CONFIRMATION_TRIGGER,
+  OFFER_ACCEPTANCE_TRIGGER,
+  REFERENCE_CHECK_REQUEST_TRIGGER,
+} from "@/app/settings/template-constants";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -828,5 +836,366 @@ export async function deliverCandidateConfirmation(
     return { ok: true, value: { mode: "drafted", id: draft.id, threadId: draft.threadId } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to deliver candidate confirmation." };
+  }
+}
+
+// ---- Shared merge-field + template delivery plumbing for trigger-fired emails ----
+//
+// Each auto-triggered flow (reject, offer accepted, interview scheduled,
+// reference check) calls fireTriggerForCandidateJob with a trigger key and
+// overrides. We fetch the candidate once, build every known merge field, and
+// hand off to fireTemplatedEmail. Callers pick the To/Cc recipients and any
+// flow-specific overrides ([Offer Amount], [Start Date], [Job Description]).
+
+type TriggerFireInput = {
+  trigger: string;
+  candidateRfId: number;
+  jobTitle: string;
+  jobLocation?: string;
+  jobDescription?: string;
+  clientCompanyName: string;
+  clientContactFullName?: string;
+  clientContactFirstName?: string;
+  to: string[];
+  cc?: string[];
+  offerAmount?: string;
+  startDate?: string;
+  mode?: "send" | "draft";
+};
+
+type TriggerFireOutcome = {
+  fire: FireResult;
+  candidateEmail: string;
+};
+
+async function fireTriggerForCandidateJob(input: TriggerFireInput): Promise<TriggerFireOutcome> {
+  const userId = await requireUserId();
+  if (!userId) {
+    return { fire: { status: "error", error: "Not signed in." }, candidateEmail: "" };
+  }
+  const session = await getServerSession(authOptions);
+  const fromEmail = session?.user?.email ?? "";
+  const fromName = session?.user?.name ?? null;
+
+  let candidateEmail = "";
+  let candidateFirstName = "";
+  let candidateLastName = "";
+  try {
+    const c = await recruiterflow.getCandidate(input.candidateRfId);
+    candidateEmail = normalizeCandidateEmail(c);
+    candidateFirstName = c.first_name ?? (c.name ?? "").split(/\s+/)[0] ?? "";
+    candidateLastName = c.last_name ?? (c.name ?? "").split(/\s+/).slice(1).join(" ") ?? "";
+  } catch {
+    // Non-fatal: send without candidate-specific values; caller can still pick a recipient.
+  }
+
+  const recruiterPhone = await getRecruiterPhone(fromEmail);
+
+  const values: MergeFieldValues = {
+    candidateFirstName,
+    candidateLastName,
+    candidateFullName: [candidateFirstName, candidateLastName].filter(Boolean).join(" "),
+    candidateEmail,
+    clientCompanyName: input.clientCompanyName,
+    clientContactFullName: input.clientContactFullName ?? "",
+    clientContactFirstName: input.clientContactFirstName ?? "",
+    jobTitle: input.jobTitle,
+    jobLocation: input.jobLocation ?? "",
+    jobDescription: input.jobDescription ?? "",
+    offerAmount: input.offerAmount ?? "",
+    startDate: input.startDate ?? "",
+    recruiterName: fromName ?? "",
+    recruiterEmail: fromEmail,
+    recruiterPhone,
+  };
+
+  const fire = await fireTemplatedEmail({
+    trigger: input.trigger,
+    userId,
+    fromEmail,
+    fromName,
+    to: input.to,
+    cc: input.cc ?? [],
+    values,
+    mode: input.mode ?? "send",
+  });
+
+  return { fire, candidateEmail };
+}
+
+function normalizeCandidateEmail(c: RFCandidate): string {
+  if (Array.isArray(c.email)) return c.email[0] ?? "";
+  return c.email ?? "";
+}
+
+async function logFire(args: {
+  candidateRfId: number;
+  actionType: string;
+  metadata: Record<string, unknown>;
+  fire: FireResult;
+  userId: string;
+}): Promise<void> {
+  try {
+    await prisma.actionLog.create({
+      data: {
+        userId: args.userId,
+        actionType: args.actionType,
+        subjectType: "candidate",
+        subjectId: String(args.candidateRfId),
+        metadata: {
+          ...args.metadata,
+          fireStatus: args.fire.status,
+          fireDetail:
+            args.fire.status === "sent"
+              ? { gmailMessageId: args.fire.result.id, gmailThreadId: args.fire.result.threadId, subject: args.fire.subject }
+              : args.fire.status === "drafted"
+                ? { gmailDraftId: args.fire.result.id, gmailThreadId: args.fire.result.threadId, subject: args.fire.subject }
+                : args.fire.status === "skipped"
+                  ? { reason: args.fire.reason }
+                  : { error: args.fire.error },
+        },
+      },
+    });
+  } catch {
+    // ActionLog failures never block an email. Silent.
+  }
+}
+
+// ---- Candidate Rejection email ----
+
+export type SendRejectionEmailInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  jobTitle: string;
+  clientCompanyName: string;
+};
+
+export type RejectionEmailResult = {
+  status: FireResult["status"];
+  subject?: string;
+  to?: string;
+  reason?: string;
+  error?: string;
+};
+
+export async function sendRejectionEmail(input: SendRejectionEmailInput): Promise<Result<RejectionEmailResult>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const c = await recruiterflow.getCandidate(input.candidateRfId);
+    const candidateEmail = normalizeCandidateEmail(c);
+    if (!candidateEmail) {
+      return {
+        ok: true,
+        value: { status: "skipped", reason: "no_recipient" },
+      };
+    }
+    const outcome = await fireTriggerForCandidateJob({
+      trigger: CANDIDATE_REJECTION_TRIGGER,
+      candidateRfId: input.candidateRfId,
+      jobTitle: input.jobTitle,
+      clientCompanyName: input.clientCompanyName,
+      to: [candidateEmail],
+    });
+    await logFire({
+      candidateRfId: input.candidateRfId,
+      actionType: "candidate_rejection_email",
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        to: candidateEmail,
+      },
+      fire: outcome.fire,
+      userId,
+    });
+    return { ok: true, value: toRejectionResult(outcome.fire, candidateEmail) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Rejection email failed." };
+  }
+}
+
+function toRejectionResult(fire: FireResult, to: string): RejectionEmailResult {
+  switch (fire.status) {
+    case "sent":
+      return { status: "sent", subject: fire.subject, to };
+    case "drafted":
+      return { status: "drafted", subject: fire.subject, to };
+    case "skipped":
+      return { status: "skipped", reason: fire.reason };
+    case "error":
+      return { status: "error", error: fire.error };
+  }
+}
+
+// ---- Offer Acceptance email ----
+
+export type SendOfferAcceptanceInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  jobTitle: string;
+  clientCompanyName: string;
+  clientContactFullName?: string;
+  clientContactFirstName?: string;
+  offerAmount: string;
+  startDate: string;
+  to: string[];
+};
+
+export async function sendOfferAcceptanceEmail(
+  input: SendOfferAcceptanceInput,
+): Promise<Result<RejectionEmailResult>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const c = await recruiterflow.getCandidate(input.candidateRfId);
+    const candidateEmail = normalizeCandidateEmail(c);
+    const outcome = await fireTriggerForCandidateJob({
+      trigger: OFFER_ACCEPTANCE_TRIGGER,
+      candidateRfId: input.candidateRfId,
+      jobTitle: input.jobTitle,
+      clientCompanyName: input.clientCompanyName,
+      clientContactFullName: input.clientContactFullName,
+      clientContactFirstName: input.clientContactFirstName,
+      offerAmount: input.offerAmount,
+      startDate: input.startDate,
+      to: input.to,
+      cc: candidateEmail ? [candidateEmail] : [],
+    });
+    await logFire({
+      candidateRfId: input.candidateRfId,
+      actionType: "offer_acceptance_email",
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        to: input.to,
+        cc: candidateEmail ? [candidateEmail] : [],
+        offerAmount: input.offerAmount,
+        startDate: input.startDate,
+      },
+      fire: outcome.fire,
+      userId,
+    });
+    return { ok: true, value: toRejectionResult(outcome.fire, input.to[0] ?? "") };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Offer acceptance email failed." };
+  }
+}
+
+// ---- Interview Confirmation email ----
+
+export type SendInterviewConfirmationInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  jobTitle: string;
+  jobLocation?: string;
+  jobDescription?: string;
+  clientCompanyName: string;
+  scheduledAt: string; // ISO
+};
+
+export async function sendInterviewConfirmationEmail(
+  input: SendInterviewConfirmationInput,
+): Promise<Result<RejectionEmailResult>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const c = await recruiterflow.getCandidate(input.candidateRfId);
+    const candidateEmail = normalizeCandidateEmail(c);
+    if (!candidateEmail) {
+      return { ok: true, value: { status: "skipped", reason: "no_recipient" } };
+    }
+    let jobDescription = input.jobDescription?.trim() ? input.jobDescription : "";
+    let jobLocation = input.jobLocation ?? "";
+    if (!jobDescription || !jobLocation) {
+      try {
+        const j = await recruiterflow.getJob(input.jobRfId);
+        if (!jobDescription) {
+          const raw = j as unknown as { description?: string; job_description?: string };
+          jobDescription = (raw.description ?? raw.job_description ?? "").toString();
+        }
+        if (!jobLocation) {
+          jobLocation = Array.isArray(j.locations) && j.locations.length > 0 ? j.locations.join(", ") : "";
+        }
+      } catch {
+        // Non-fatal — template renders [Job Description] as empty.
+      }
+    }
+    const outcome = await fireTriggerForCandidateJob({
+      trigger: INTERVIEW_CONFIRMATION_TRIGGER,
+      candidateRfId: input.candidateRfId,
+      jobTitle: input.jobTitle,
+      jobLocation,
+      jobDescription,
+      clientCompanyName: input.clientCompanyName,
+      to: [candidateEmail],
+    });
+    await logFire({
+      candidateRfId: input.candidateRfId,
+      actionType: "interview_confirmation_email",
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        to: candidateEmail,
+        scheduledAt: input.scheduledAt,
+      },
+      fire: outcome.fire,
+      userId,
+    });
+    return { ok: true, value: toRejectionResult(outcome.fire, candidateEmail) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Interview confirmation email failed." };
+  }
+}
+
+// ---- Reference Check Request ----
+
+export type RequestReferencesInput = {
+  candidateRfId: number;
+  jobRfId?: number;
+  clientRfId?: number;
+  jobTitle?: string;
+  clientCompanyName?: string;
+};
+
+export async function sendReferenceCheckRequest(
+  input: RequestReferencesInput,
+): Promise<Result<RejectionEmailResult>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const c = await recruiterflow.getCandidate(input.candidateRfId);
+    const candidateEmail = normalizeCandidateEmail(c);
+    if (!candidateEmail) {
+      return { ok: true, value: { status: "skipped", reason: "no_recipient" } };
+    }
+    const outcome = await fireTriggerForCandidateJob({
+      trigger: REFERENCE_CHECK_REQUEST_TRIGGER,
+      candidateRfId: input.candidateRfId,
+      jobTitle: input.jobTitle ?? "",
+      clientCompanyName: input.clientCompanyName ?? "",
+      to: [candidateEmail],
+    });
+    await logFire({
+      candidateRfId: input.candidateRfId,
+      actionType: "reference_check_request_email",
+      metadata: {
+        jobRfId: input.jobRfId ?? null,
+        clientRfId: input.clientRfId ?? null,
+        to: candidateEmail,
+      },
+      fire: outcome.fire,
+      userId,
+    });
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    return { ok: true, value: toRejectionResult(outcome.fire, candidateEmail) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Reference check email failed." };
   }
 }

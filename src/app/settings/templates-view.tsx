@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
 import { MERGE_FIELDS } from "@/lib/merge-fields";
+import { TRIGGER_OPTIONS, labelForTrigger } from "@/app/settings/template-constants";
 import { deleteEmailTemplate, upsertEmailTemplate, type EmailTemplateInput } from "@/app/settings/templates-actions";
 
 export type TemplateRow = {
@@ -74,6 +75,8 @@ function newTemplate(): TemplateRow {
 function TemplateCard({ tpl, onEdit }: { tpl: TemplateRow; onEdit: () => void }) {
   const router = useRouter();
   const [isDeleting, startDelete] = useTransition();
+  const [isToggling, startToggle] = useTransition();
+  const [active, setActive] = useState(tpl.isActive);
 
   function onDelete() {
     if (!confirm(`Delete "${tpl.name}"? This can't be undone.`)) return;
@@ -88,25 +91,47 @@ function TemplateCard({ tpl, onEdit }: { tpl: TemplateRow; onEdit: () => void })
     });
   }
 
+  function onToggleActive(next: boolean) {
+    setActive(next);
+    startToggle(async () => {
+      const result = await upsertEmailTemplate({
+        id: tpl.id,
+        name: tpl.name,
+        subject: tpl.subject,
+        body: tpl.body,
+        trigger: tpl.trigger,
+        audience: tpl.audience,
+        isActive: next,
+      });
+      if (!result.ok) {
+        setActive(!next);
+        toast.error("Couldn't update template", { description: result.error });
+        return;
+      }
+      toast.success(next ? "Template enabled" : "Template disabled");
+      router.refresh();
+    });
+  }
+
   return (
     <li className="rounded-xl border border-border bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h3 className="font-serif text-base font-semibold text-navy">{tpl.name}</h3>
-            {tpl.trigger && (
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-navy-400">
-                {tpl.trigger}
-              </span>
-            )}
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
+                tpl.trigger
+                  ? "bg-brand-tint text-brand-dark"
+                  : "bg-muted text-navy-400",
+              )}
+            >
+              Trigger: {labelForTrigger(tpl.trigger)}
+            </span>
             {tpl.audience && (
-              <span className="inline-flex items-center rounded-full bg-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
+              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-navy-400">
                 {tpl.audience}
-              </span>
-            )}
-            {!tpl.isActive && (
-              <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-700">
-                Inactive
               </span>
             )}
           </div>
@@ -115,22 +140,46 @@ function TemplateCard({ tpl, onEdit }: { tpl: TemplateRow; onEdit: () => void })
             {tpl.body}
           </pre>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onEdit}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
-          >
-            <Pencil className="h-3 w-3" /> Edit
-          </button>
-          <button
-            type="button"
-            onClick={onDelete}
-            disabled={isDeleting}
-            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-[11px] font-medium text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
-          >
-            {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-          </button>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <label className="inline-flex items-center gap-2 text-[11px] text-navy">
+            <button
+              type="button"
+              role="switch"
+              aria-checked={active}
+              onClick={() => onToggleActive(!active)}
+              disabled={isToggling}
+              className={cn(
+                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                active ? "bg-brand" : "bg-muted-foreground/30",
+                isToggling && "opacity-60",
+              )}
+            >
+              <span
+                className={cn(
+                  "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
+                  active ? "translate-x-4" : "translate-x-0.5",
+                )}
+              />
+            </button>
+            {active ? "Active" : "Inactive"}
+          </label>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+            >
+              <Pencil className="h-3 w-3" /> Edit
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={isDeleting}
+              className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-[11px] font-medium text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+            >
+              {isDeleting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            </button>
+          </div>
         </div>
       </div>
     </li>
@@ -258,7 +307,23 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <LabeledField label="Trigger (optional)" value={trigger} onChange={setTrigger} placeholder="e.g. client_submittal" />
+            <label className="block text-sm">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Trigger</span>
+              <select
+                value={trigger}
+                onChange={(e) => setTrigger(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              >
+                {TRIGGER_OPTIONS.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                {TRIGGER_OPTIONS.find((t) => t.value === trigger)?.description ?? ""}
+              </span>
+            </label>
             <label className="block text-sm">
               <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Audience</span>
               <select

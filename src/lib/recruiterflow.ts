@@ -284,6 +284,10 @@ export const recruiterflow = {
 
   // ---- Jobs ----
 
+  async getJob(id: number): Promise<RFJob> {
+    return rfFetch<RFJob>(`/job/${id}`, { revalidate: 30 });
+  },
+
   async listJobs(params: {
     page?: number;
     perPage?: number;

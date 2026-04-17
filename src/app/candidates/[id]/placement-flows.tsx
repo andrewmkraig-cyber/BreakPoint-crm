@@ -15,6 +15,7 @@ import {
   Save,
   Sparkles,
   UploadCloud,
+  UserCheck,
   UserX,
   X,
 } from "lucide-react";
@@ -32,6 +33,10 @@ import {
   recordPlacement,
   rejectCandidateJob,
   scheduleInterview,
+  sendInterviewConfirmationEmail,
+  sendOfferAcceptanceEmail,
+  sendReferenceCheckRequest,
+  sendRejectionEmail,
   sendSubmittalEmail,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
@@ -122,6 +127,41 @@ export function PlacementActions({
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
   const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [isReferencePending, startReferenceRequest] = useTransition();
+  const router = useRouter();
+
+  function onRequestReferences() {
+    if (!candidateEmail) {
+      toast.error("No candidate email on file", {
+        description: "Add an email to the candidate profile first.",
+      });
+      return;
+    }
+    startReferenceRequest(async () => {
+      const result = await sendReferenceCheckRequest({ candidateRfId });
+      if (!result.ok) {
+        toast.error("Couldn't send reference request", { description: result.error });
+        return;
+      }
+      const v = result.value;
+      if (v.status === "sent") {
+        toast.success("Reference request sent", { description: `Sent to ${v.to}.` });
+      } else if (v.status === "drafted") {
+        toast.success("Reference request saved", { description: "Saved to your Gmail Drafts." });
+      } else if (v.status === "skipped") {
+        toast.message(
+          v.reason === "missing"
+            ? "No Reference Check Request template found. Set one in Settings."
+            : v.reason === "inactive"
+              ? "Reference Check Request template is inactive."
+              : "No candidate email on file.",
+        );
+      } else {
+        toast.error("Reference request failed", { description: v.error });
+      }
+      router.refresh();
+    });
+  }
 
   return (
     <>
@@ -129,13 +169,24 @@ export function PlacementActions({
         <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Jobs ({jobs.length})
         </div>
-        <button
-          type="button"
-          onClick={() => setSubmitOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
-        >
-          <Plus className="h-3.5 w-3.5" /> Submit to Job
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onRequestReferences}
+            disabled={isReferencePending}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+          >
+            {isReferencePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
+            Request References
+          </button>
+          <button
+            type="button"
+            onClick={() => setSubmitOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+          >
+            <Plus className="h-3.5 w-3.5" /> Submit to Job
+          </button>
+        </div>
       </div>
 
       {jobs.length === 0 && (
@@ -191,6 +242,7 @@ export function PlacementActions({
       {rejectFor && (
         <RejectDialog
           candidateRfId={candidateRfId}
+          candidateFullName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
           job={rejectFor}
           onClose={() => setRejectFor(null)}
         />
@@ -376,8 +428,11 @@ function OfferDialog({
     job.placement?.offerStartDate ? job.placement.offerStartDate.slice(0, 10) : "",
   );
   const [notes, setNotes] = useState(job.placement?.offerNotes ?? "");
+  const [accepted, setAccepted] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
+
+  const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
 
   function onSave() {
     setErr(null);
@@ -385,6 +440,20 @@ function OfferDialog({
     if (salaryNum != null && salaryNum < 0) {
       setErr("Salary can't be negative.");
       return;
+    }
+    if (accepted) {
+      if (!salaryNum) {
+        setErr("Offer amount required to mark as accepted.");
+        return;
+      }
+      if (!startDate) {
+        setErr("Start date required to mark as accepted.");
+        return;
+      }
+      if (!primaryContact?.email) {
+        setErr("No client contact email on file — add one before marking accepted.");
+        return;
+      }
     }
     startSave(async () => {
       const result = await recordOffer({
@@ -402,7 +471,48 @@ function OfferDialog({
         toast.error("Couldn't save offer", { description: result.error });
         return;
       }
-      toast.success("Offer recorded");
+
+      if (accepted && salaryNum && startDate && primaryContact?.email) {
+        const cc = job.clientContacts
+          .filter((c) => c.email && c.email !== primaryContact.email)
+          .map((c) => c.email);
+        const offerAmount = formatMoney(salaryNum, currency);
+        const emailResult = await sendOfferAcceptanceEmail({
+          candidateRfId,
+          jobRfId: job.jobRfId,
+          clientRfId: job.clientRfId,
+          jobTitle: job.jobTitle,
+          clientCompanyName: job.clientName,
+          clientContactFullName: primaryContact.name,
+          clientContactFirstName: primaryContact.name.trim().split(/\s+/)[0] ?? "",
+          offerAmount,
+          startDate: formatDate(startDate),
+          to: [primaryContact.email, ...cc],
+        });
+        if (emailResult.ok) {
+          const v = emailResult.value;
+          if (v.status === "sent") {
+            toast.success("Offer acceptance email sent", { description: `Sent "${v.subject}" to ${v.to}.` });
+          } else if (v.status === "drafted") {
+            toast.success("Offer recorded", { description: "Acceptance email saved to your Gmail Drafts." });
+          } else if (v.status === "skipped") {
+            toast.success("Offer recorded", {
+              description:
+                v.reason === "missing"
+                  ? "No Offer Acceptance template found. Set one in Settings."
+                  : v.reason === "inactive"
+                    ? "Offer Acceptance template is inactive. Enable it in Settings to auto-send."
+                    : "Acceptance email skipped (no recipient).",
+            });
+          } else {
+            toast.success("Offer recorded", { description: `Acceptance email failed: ${v.error}` });
+          }
+        } else {
+          toast.success("Offer recorded", { description: `Acceptance email failed: ${emailResult.error}` });
+        }
+      } else {
+        toast.success("Offer recorded");
+      }
       onClose();
       router.refresh();
     });
@@ -421,8 +531,23 @@ function OfferDialog({
           <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
         </div>
       </div>
+      <label className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs">
+        <input
+          type="checkbox"
+          checked={accepted}
+          onChange={(e) => setAccepted(e.target.checked)}
+          className="mt-0.5 h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+        />
+        <span>
+          <span className="font-semibold text-navy">Candidate accepted this offer</span>
+          <span className="block text-muted-foreground">
+            When checked, sending saves the offer and auto-emails the client (CC the candidate) using your
+            Offer Acceptance template with [Offer Amount] and [Start Date] filled in.
+          </span>
+        </span>
+      </label>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} />
+      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel={accepted ? "Save & send acceptance" : "Save"} />
     </Modal>
   );
 }
@@ -862,9 +987,35 @@ function ScheduleInterviewDialog({
         toast.error("Couldn't schedule interview", { description: result.error });
         return;
       }
-      toast.success("Interview scheduled", {
-        description: "Calendar invite will go out when that integration lands.",
+      const emailResult = await sendInterviewConfirmationEmail({
+        candidateRfId,
+        jobRfId: job.jobRfId,
+        clientRfId: job.clientRfId,
+        jobTitle: job.jobTitle,
+        clientCompanyName: job.clientName,
+        scheduledAt: new Date(scheduledAt).toISOString(),
       });
+      if (emailResult.ok) {
+        const v = emailResult.value;
+        if (v.status === "sent") {
+          toast.success("Interview scheduled", { description: `Confirmation email sent to ${v.to}.` });
+        } else if (v.status === "drafted") {
+          toast.success("Interview scheduled", { description: "Confirmation email saved to your Gmail Drafts." });
+        } else if (v.status === "skipped") {
+          toast.success("Interview scheduled", {
+            description:
+              v.reason === "no_recipient"
+                ? "No candidate email on file — email skipped."
+                : v.reason === "missing"
+                  ? "No Interview Confirmation template found. Set one in Settings."
+                  : "Interview Confirmation template is inactive.",
+          });
+        } else {
+          toast.success("Interview scheduled", { description: `Confirmation email failed: ${v.error}` });
+        }
+      } else {
+        toast.success("Interview scheduled", { description: `Confirmation email failed: ${emailResult.error}` });
+      }
       onClose();
       router.refresh();
     });
@@ -928,10 +1079,12 @@ function ScheduleInterviewDialog({
 
 function RejectDialog({
   candidateRfId,
+  candidateFullName,
   job,
   onClose,
 }: {
   candidateRfId: number;
+  candidateFullName: string;
   job: PlacementContextJob;
   onClose: () => void;
 }) {
@@ -941,10 +1094,7 @@ function RejectDialog({
   const [isPending, startSave] = useTransition();
 
   const previousStage = job.placement?.stage ?? job.rfStageBucket;
-  const previousLabel =
-    previousStage in PIPELINE_LABELS
-      ? PIPELINE_LABELS[previousStage as keyof typeof PIPELINE_LABELS]
-      : (job.rfStageName ?? previousStage);
+  const nameLabel = candidateFullName || "this candidate";
 
   function onConfirm() {
     setErr(null);
@@ -961,9 +1111,44 @@ function RejectDialog({
         toast.error("Couldn't reject candidate", { description: result.error });
         return;
       }
-      toast.success("Rejection recorded", {
-        description: "Move the candidate to Rejected in RecruiterFlow to finalize.",
+      const emailResult = await sendRejectionEmail({
+        candidateRfId,
+        jobRfId: job.jobRfId,
+        clientRfId: job.clientRfId,
+        jobTitle: job.jobTitle,
+        clientCompanyName: job.clientName,
       });
+
+      if (emailResult.ok) {
+        const v = emailResult.value;
+        if (v.status === "sent") {
+          toast.success("Rejection email sent", {
+            description: `Sent "${v.subject}" to ${v.to}.`,
+          });
+        } else if (v.status === "drafted") {
+          toast.success("Rejection recorded", {
+            description: "Auto-send disabled — draft saved to your Gmail Drafts.",
+          });
+        } else if (v.status === "skipped") {
+          toast.success("Rejection recorded", {
+            description:
+              v.reason === "no_recipient"
+                ? "No candidate email on file — email skipped."
+                : v.reason === "missing"
+                  ? "No Candidate Rejection template found. Set one in Settings."
+                  : "Candidate Rejection template is inactive. Enable it in Settings to auto-send.",
+          });
+        } else {
+          toast.success("Rejection recorded", {
+            description: `Email send failed: ${v.error}`,
+          });
+        }
+      } else {
+        toast.success("Rejection recorded", {
+          description: `Email send failed: ${emailResult.error}`,
+        });
+      }
+
       onClose();
       router.refresh();
     });
@@ -971,19 +1156,19 @@ function RejectDialog({
 
   return (
     <Modal title="Reject candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
-      <p className="text-sm text-muted-foreground">
-        This logs the rejection to activity. Since RecruiterFlow has no stage-change API, move the candidate to a
-        rejection stage in RF to keep them in sync.
+      <p className="text-sm text-navy">
+        <span className="font-semibold">Reject {nameLabel} for {job.jobTitle}?</span>{" "}
+        This will send them a rejection email using the Candidate Rejection template.
       </p>
-      <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs">
-        <div className="text-muted-foreground">Current stage</div>
-        <div className="mt-0.5 font-semibold text-navy">{previousLabel}</div>
-      </div>
       <div className="mt-3">
-        <LabeledTextarea label="Reason (optional)" value={reason} onChange={setReason} rows={3} />
+        <LabeledTextarea label="Internal reason (optional — not sent)" value={reason} onChange={setReason} rows={3} />
+      </div>
+      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        The candidate-facing email comes from your Candidate Rejection template in Settings. Edit it there to change
+        what they receive.
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reject" />
+      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reject & Send Email" />
     </Modal>
   );
 }

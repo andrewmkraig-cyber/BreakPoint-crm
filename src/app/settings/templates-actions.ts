@@ -10,6 +10,7 @@ import {
   CLIENT_SUBMITTAL_TRIGGER,
   INTERVIEW_CONFIRMATION_TRIGGER,
   OFFER_ACCEPTANCE_TRIGGER,
+  REFERENCE_CHECK_REQUEST_TRIGGER,
 } from "@/app/settings/template-constants";
 
 type Result<T = void> =
@@ -151,6 +152,28 @@ const CANDIDATE_REJECTION_DEFAULT = {
     "[Recruiter Phone]",
 } as const;
 
+const REFERENCE_CHECK_DEFAULT = {
+  name: "Reference Check Request",
+  subject: "Quick favor - reference check",
+  trigger: REFERENCE_CHECK_REQUEST_TRIGGER,
+  audience: "candidate",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "Things are moving in the right direction with [Client Company Name] on the [Job Title] role. " +
+    "Before we go further, I'd like to line up a quick reference check.\n\n" +
+    "Please reply to this email with three professional references — ideally direct managers or senior colleagues from recent roles. " +
+    "For each, include:\n" +
+    "• Full name\n" +
+    "• Title and company\n" +
+    "• Relationship to you\n" +
+    "• Phone and email\n\n" +
+    "I keep it short and respectful — usually a 10–15 minute call. Let me know if any of them prefer email.\n\n" +
+    "Thanks,\n\n" +
+    "[Recruiter Name]\n" +
+    "BreakPoint Talent\n" +
+    "[Recruiter Phone]",
+} as const;
+
 const INTERVIEW_CONFIRMATION_DEFAULT = {
   name: "Interview Confirmation",
   subject: "Interview Confirmed - [Job Title] with [Client Company Name]",
@@ -173,6 +196,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
     OFFER_ACCEPTANCE_DEFAULT,
     CANDIDATE_REJECTION_DEFAULT,
     INTERVIEW_CONFIRMATION_DEFAULT,
+    REFERENCE_CHECK_DEFAULT,
   ] as const;
 
   for (const tpl of defaults) {
