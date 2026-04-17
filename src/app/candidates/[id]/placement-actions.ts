@@ -7,8 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail } from "@/lib/gmail";
-import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
-import { getAppPreferences, getRecruiterPhone } from "@/lib/preferences";
+import { applyMergeFields } from "@/lib/merge-fields";
+import { buildFullMergeValues } from "@/lib/merge-context";
+import { getAppPreferences } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
@@ -893,6 +894,8 @@ export type DeliverCandidateConfirmationInput = {
   candidateEmail: string;
   candidateFirstName: string;
   candidateLastName: string;
+  jobRfId: number;
+  clientRfId: number;
   clientCompanyName: string;
   clientContactFullName?: string;
   clientContactFirstName?: string;
@@ -921,50 +924,33 @@ export async function deliverCandidateConfirmation(
   const fromEmail = session?.user?.email ?? "";
   const fromName = session?.user?.name ?? undefined;
 
-  const [template, prefs, recruiterPhone] = await Promise.all([
+  const [template, prefs] = await Promise.all([
     prisma.emailTemplate.findFirst({
       where: { trigger: CANDIDATE_CONFIRMATION_TRIGGER, isActive: true },
       orderBy: { updatedAt: "desc" },
     }),
     getAppPreferences(),
-    getRecruiterPhone(fromEmail),
   ]);
 
   if (!template) {
     return { ok: false, error: "Candidate confirmation template missing. Check Settings → Templates." };
   }
 
-  // Re-fetch full candidate so merge fields always resolve even if the caller
-  // passed through sparse data from listAllCandidates.
-  let extractedFirst = input.candidateFirstName?.trim() || "";
-  let extractedLast = input.candidateLastName?.trim() || "";
-  let extractedFull = [extractedFirst, extractedLast].filter(Boolean).join(" ");
-  let extractedEmail = input.candidateEmail;
-  try {
-    const fresh = await recruiterflow.getCandidate(input.candidateRfId);
-    const e = extractCandidateFields(fresh);
-    extractedFirst = e.firstName || extractedFirst;
-    extractedLast = e.lastName || extractedLast;
-    extractedFull = e.fullName || extractedFull;
-    extractedEmail = e.email || extractedEmail;
-  } catch {
-    // Fall back to caller-supplied values if RF is unreachable.
-  }
-
-  const values: MergeFieldValues = {
-    candidateFirstName: extractedFirst,
-    candidateLastName: extractedLast,
-    candidateFullName: extractedFull,
-    candidateEmail: extractedEmail,
-    clientCompanyName: input.clientCompanyName,
-    clientContactFullName: input.clientContactFullName ?? "",
-    clientContactFirstName: input.clientContactFirstName ?? "",
-    jobTitle: input.jobTitle,
-    jobLocation: input.jobLocation ?? "",
-    recruiterName: fromName,
-    recruiterEmail: fromEmail,
-    recruiterPhone,
-  };
+  // Resolve every merge field fresh from RF + preferences. Overrides keep
+  // any authoritative strings the caller already computed (e.g. formatted
+  // fields) without blanking when falsy.
+  const values = await buildFullMergeValues({
+    candidateRfId: input.candidateRfId,
+    jobRfId: input.jobRfId,
+    clientRfId: input.clientRfId,
+    overrides: {
+      clientCompanyName: input.clientCompanyName,
+      clientContactFullName: input.clientContactFullName,
+      clientContactFirstName: input.clientContactFirstName,
+      jobTitle: input.jobTitle,
+      jobLocation: input.jobLocation,
+    },
+  });
 
   const subject = applyMergeFields(template.subject, values);
   const body = applyMergeFields(template.body, values);
@@ -1038,10 +1024,12 @@ export async function deliverCandidateConfirmation(
 type TriggerFireInput = {
   trigger: string;
   candidateRfId: number;
-  jobTitle: string;
+  jobRfId?: number;
+  clientRfId?: number;
+  jobTitle?: string;
   jobLocation?: string;
   jobDescription?: string;
-  clientCompanyName: string;
+  clientCompanyName?: string;
   clientContactFullName?: string;
   clientContactFirstName?: string;
   to: string[];
@@ -1065,40 +1053,23 @@ async function fireTriggerForCandidateJob(input: TriggerFireInput): Promise<Trig
   const fromEmail = session?.user?.email ?? "";
   const fromName = session?.user?.name ?? null;
 
-  let candidateEmail = "";
-  let candidateFirstName = "";
-  let candidateLastName = "";
-  let candidateFullName = "";
-  try {
-    const c = await recruiterflow.getCandidate(input.candidateRfId);
-    const extracted = extractCandidateFields(c);
-    candidateEmail = extracted.email;
-    candidateFirstName = extracted.firstName;
-    candidateLastName = extracted.lastName;
-    candidateFullName = extracted.fullName;
-  } catch {
-    // Non-fatal: send without candidate-specific values; caller can still pick a recipient.
-  }
+  const values = await buildFullMergeValues({
+    candidateRfId: input.candidateRfId,
+    jobRfId: input.jobRfId,
+    clientRfId: input.clientRfId,
+    overrides: {
+      clientCompanyName: input.clientCompanyName,
+      clientContactFullName: input.clientContactFullName,
+      clientContactFirstName: input.clientContactFirstName,
+      jobTitle: input.jobTitle,
+      jobLocation: input.jobLocation,
+      jobDescription: input.jobDescription,
+      offerAmount: input.offerAmount,
+      startDate: input.startDate,
+    },
+  });
 
-  const recruiterPhone = await getRecruiterPhone(fromEmail);
-
-  const values: MergeFieldValues = {
-    candidateFirstName,
-    candidateLastName,
-    candidateFullName,
-    candidateEmail,
-    clientCompanyName: input.clientCompanyName,
-    clientContactFullName: input.clientContactFullName ?? "",
-    clientContactFirstName: input.clientContactFirstName ?? "",
-    jobTitle: input.jobTitle,
-    jobLocation: input.jobLocation ?? "",
-    jobDescription: input.jobDescription ?? "",
-    offerAmount: input.offerAmount ?? "",
-    startDate: input.startDate ?? "",
-    recruiterName: fromName ?? "",
-    recruiterEmail: fromEmail,
-    recruiterPhone,
-  };
+  const candidateEmail = values.candidateEmail ?? "";
 
   const fire = await fireTemplatedEmail({
     trigger: input.trigger,
@@ -1186,6 +1157,8 @@ export async function sendRejectionEmail(input: SendRejectionEmailInput): Promis
     const outcome = await fireTriggerForCandidateJob({
       trigger: CANDIDATE_REJECTION_TRIGGER,
       candidateRfId: input.candidateRfId,
+      jobRfId: input.jobRfId,
+      clientRfId: input.clientRfId,
       jobTitle: input.jobTitle,
       clientCompanyName: input.clientCompanyName,
       to: [candidateEmail],
@@ -1247,6 +1220,8 @@ export async function sendOfferAcceptanceEmail(
     const outcome = await fireTriggerForCandidateJob({
       trigger: OFFER_ACCEPTANCE_TRIGGER,
       candidateRfId: input.candidateRfId,
+      jobRfId: input.jobRfId,
+      clientRfId: input.clientRfId,
       jobTitle: input.jobTitle,
       clientCompanyName: input.clientCompanyName,
       clientContactFullName: input.clientContactFullName,
@@ -1320,6 +1295,8 @@ export async function sendInterviewConfirmationEmail(
     const outcome = await fireTriggerForCandidateJob({
       trigger: INTERVIEW_CONFIRMATION_TRIGGER,
       candidateRfId: input.candidateRfId,
+      jobRfId: input.jobRfId,
+      clientRfId: input.clientRfId,
       jobTitle: input.jobTitle,
       jobLocation,
       jobDescription,
@@ -1369,8 +1346,10 @@ export async function sendReferenceCheckRequest(
     const outcome = await fireTriggerForCandidateJob({
       trigger: REFERENCE_CHECK_REQUEST_TRIGGER,
       candidateRfId: input.candidateRfId,
-      jobTitle: input.jobTitle ?? "",
-      clientCompanyName: input.clientCompanyName ?? "",
+      jobRfId: input.jobRfId,
+      clientRfId: input.clientRfId,
+      jobTitle: input.jobTitle,
+      clientCompanyName: input.clientCompanyName,
       to: [candidateEmail],
     });
     await logFire({

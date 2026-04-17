@@ -56,6 +56,29 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
   const body = applyMergeFields(look.template.body, input.values);
   const html = plainToHtml(body);
 
+  // Debug log: so we can trace blank-token reports in Vercel logs. Shows
+  // which template was fired, the raw vs resolved subject, and which merge
+  // values were populated at send time.
+  // eslint-disable-next-line no-console
+  console.log("[templated-email]", {
+    trigger: input.trigger,
+    template: look.template.name,
+    rawSubject: look.template.subject,
+    resolvedSubject: subject,
+    populated: {
+      candidateFirstName: input.values.candidateFirstName || "(blank)",
+      candidateLastName: input.values.candidateLastName || "(blank)",
+      clientCompanyName: input.values.clientCompanyName || "(blank)",
+      clientContactFullName: input.values.clientContactFullName || "(blank)",
+      jobTitle: input.values.jobTitle || "(blank)",
+      jobLocation: input.values.jobLocation || "(blank)",
+      offerAmount: input.values.offerAmount || "(blank)",
+      startDate: input.values.startDate || "(blank)",
+      recruiterName: input.values.recruiterName || "(blank)",
+      recruiterPhone: input.values.recruiterPhone || "(blank)",
+    },
+  });
+
   try {
     const cc = (input.cc ?? []).map((e) => e.trim()).filter(Boolean);
     if (input.mode === "send") {

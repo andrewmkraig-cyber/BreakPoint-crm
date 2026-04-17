@@ -48,13 +48,25 @@ function escapeForRegex(s: string): string {
 // matching value from the values map. Missing values become empty strings so
 // the output never exposes raw tokens. Case-sensitive to avoid accidentally
 // munging unrelated bracketed text in bodies.
+// Falls through empty strings (unlike `??`) so incomplete callers still
+// benefit from the constructed fallback (e.g. candidateFullName built from
+// firstName + lastName when the caller passed fullName: "").
+function nonEmpty(...candidates: Array<string | undefined | null>): string {
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim() !== "") return c;
+  }
+  return "";
+}
+
 export function applyMergeFields(text: string, values: MergeFieldValues): string {
+  const fullName = nonEmpty(
+    values.candidateFullName,
+    [values.candidateFirstName, values.candidateLastName].filter(Boolean).join(" "),
+  );
   const map: Record<MergeFieldToken, string> = {
     "[Candidate First Name]": values.candidateFirstName ?? "",
     "[Candidate Last Name]": values.candidateLastName ?? "",
-    "[Candidate Full Name]":
-      values.candidateFullName ??
-      [values.candidateFirstName, values.candidateLastName].filter(Boolean).join(" "),
+    "[Candidate Full Name]": fullName,
     "[Candidate Email]": values.candidateEmail ?? "",
     "[Client Contact Full Name]": values.clientContactFullName ?? "",
     "[Client Contact First Name]": values.clientContactFirstName ?? "",

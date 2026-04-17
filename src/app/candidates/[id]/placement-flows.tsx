@@ -1707,6 +1707,8 @@ function SubmittalEmailCompose({
             candidateEmail,
             candidateFirstName,
             candidateLastName,
+            jobRfId: job.jobRfId,
+            clientRfId: job.clientRfId,
             clientCompanyName: job.clientName,
             clientContactFullName: primaryContact?.name ?? "",
             clientContactFirstName: primaryFirst,
