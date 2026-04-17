@@ -13,6 +13,7 @@ type Stage = keyof typeof PIPELINE_LABELS;
 export type PlacementDetails = {
   id: string;
   stage: "offer" | "pending_start" | "hired";
+  syncedToRf: boolean;
   acceptedSalary: number | null;
   acceptedCurrency: string | null;
   feePercentage: number | null;
@@ -205,7 +206,7 @@ export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, c
                   ) : (
                     <>
                       <td className="px-5 py-3 align-top">
-                        <StageChip stageName={r.stageName} bucket={r.bucket} />
+                        <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
                       </td>
                       <td className="px-5 py-3 align-top text-xs text-muted-foreground">
                         {r.lastActionAt ? new Date(r.lastActionAt).toLocaleString() : "—"}
@@ -387,7 +388,15 @@ function StageTab({ label, count, active, href }: { label: string; count: number
   );
 }
 
-function StageChip({ stageName, bucket }: { stageName: string; bucket: Stage }) {
+function StageChip({
+  stageName,
+  bucket,
+  placement,
+}: {
+  stageName: string;
+  bucket: Stage;
+  placement?: PlacementDetails | null;
+}) {
   const cls = {
     submitted: "bg-brand-tint text-brand-dark",
     interviewing: "bg-blue-50 text-blue-700",
@@ -395,9 +404,20 @@ function StageChip({ stageName, bucket }: { stageName: string; bucket: Stage }) 
     pending_start: "bg-purple-50 text-purple-700",
     hired: "bg-emerald-50 text-emerald-700",
   }[bucket];
+  const aceOnly = placement && !placement.syncedToRf;
   return (
-    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold", cls)}>
-      {stageName || PIPELINE_LABELS[bucket]}
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold", cls)}>
+        {stageName || PIPELINE_LABELS[bucket]}
+      </span>
+      {aceOnly && (
+        <span
+          title="Stage is Ace-only — RF /external has no stage-change endpoint. Move in RecruiterFlow manually to keep them in sync."
+          className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800"
+        >
+          Ace only
+        </span>
+      )}
     </span>
   );
 }

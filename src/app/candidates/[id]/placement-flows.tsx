@@ -43,6 +43,7 @@ export type PlacementContextJob = {
 export type PlacementSnapshot = {
   id: string;
   stage: "offer" | "pending_start" | "hired";
+  syncedToRf: boolean;
   offerSalary: number | null;
   offerCurrency: string | null;
   offerTitle: string | null;
@@ -148,7 +149,11 @@ function JobActionRow({
         <div className="mt-0.5 text-xs text-muted-foreground">
           {job.clientName}
           {" · "}
-          <StageChip effective={effective} hasPlacement={Boolean(job.placement)} />
+          <StageChip
+            effective={effective}
+            hasPlacement={Boolean(job.placement)}
+            syncedToRf={job.placement?.syncedToRf ?? false}
+          />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -190,7 +195,15 @@ function JobActionRow({
   );
 }
 
-function StageChip({ effective, hasPlacement }: { effective: string; hasPlacement: boolean }) {
+function StageChip({
+  effective,
+  hasPlacement,
+  syncedToRf,
+}: {
+  effective: string;
+  hasPlacement: boolean;
+  syncedToRf: boolean;
+}) {
   const label = effective.replace(/_/g, " ");
   const cls = {
     submitted: "text-brand-dark",
@@ -203,9 +216,16 @@ function StageChip({ effective, hasPlacement }: { effective: string; hasPlacemen
     other: "text-muted-foreground",
   }[effective as keyof { submitted: 0 }] ?? "text-muted-foreground";
   return (
-    <span className={cn("font-medium capitalize", cls)}>
-      {label}
-      {hasPlacement ? " (Ace)" : ""}
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn("font-medium capitalize", cls)}>{label}</span>
+      {hasPlacement && !syncedToRf && (
+        <span
+          title="Stage recorded in Ace only — RF /external has no stage-change endpoint yet. Move the candidate manually in RecruiterFlow to keep them in sync."
+          className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800"
+        >
+          Ace only
+        </span>
+      )}
     </span>
   );
 }

@@ -146,6 +146,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       ? {
           id: local.id,
           stage: local.stage as PlacementSnapshot["stage"],
+          syncedToRf: local.syncedToRf,
           offerSalary: local.offerSalary,
           offerCurrency: local.offerCurrency,
           offerTitle: local.offerTitle,

@@ -220,6 +220,11 @@ model Placement {
   invoicingFlagged      Boolean   @default(false)
   invoicedAt            DateTime?
 
+  // True if the last stage change was successfully pushed to RF. Currently
+  // always false because RF /external has no stage-change endpoint; the UI
+  // shows an "(Ace only)" badge when this is false.
+  syncedToRf            Boolean   @default(false)
+
   createdById           String
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt

@@ -179,6 +179,7 @@ function toPlacementDetails(p: PlacementRow): PlacementDetails {
   return {
     id: p.id,
     stage: p.stage as "offer" | "pending_start" | "hired",
+    syncedToRf: p.syncedToRf,
     acceptedSalary: p.acceptedSalary,
     acceptedCurrency: p.acceptedCurrency,
     feePercentage: p.feePercentage,

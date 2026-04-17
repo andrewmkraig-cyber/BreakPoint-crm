@@ -16,6 +16,28 @@ async function requireUserId(): Promise<string | null> {
   return u?.id ?? null;
 }
 
+// General rule: always attempt RF sync for stage changes; fall back to
+// Ace-only when RF can't accept the new stage. This helper is the single
+// choke point — flip its body to a real API call the moment RF exposes a
+// stage-change endpoint, and every action below gets sync for free.
+//
+// Current state (2026-04-16): RF /external returns 404 on every plausible
+// stage-change URL shape, and POST /candidate/update with a jobs array
+// returns {RESULT: "SUCCESS"} but silently ignores stage_name changes
+// (verified end-to-end). So this helper always reports `synced: false`
+// with a short reason; the UI surfaces that as an "(Ace only)" badge.
+async function trySyncRfStage(args: {
+  candidateRfId: number;
+  jobRfId: number;
+  aceStage: "offer" | "pending_start" | "hired";
+}): Promise<{ synced: boolean; reason: string | null }> {
+  void args; // keep the param surface so a future real sync call is a one-line flip
+  return {
+    synced: false,
+    reason: "RF /external doesn't expose pipeline stage changes — Ace-only.",
+  };
+}
+
 // ---- Offer Received ----
 
 export type RecordOfferInput = {
@@ -29,10 +51,16 @@ export type RecordOfferInput = {
   notes: string;
 };
 
-export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id: string }>> {
+export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id: string; syncedToRf: boolean }>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const startDate = input.startDate ? new Date(input.startDate) : null;
+
+  const sync = await trySyncRfStage({
+    candidateRfId: input.candidateRfId,
+    jobRfId: input.jobRfId,
+    aceStage: "offer",
+  });
 
   try {
     const row = await prisma.placement.upsert({
@@ -48,6 +76,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         offerTitle: input.title || null,
         offerStartDate: startDate,
         offerNotes: input.notes || null,
+        syncedToRf: sync.synced,
         createdById: userId,
       },
       update: {
@@ -58,12 +87,13 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         offerTitle: input.title || null,
         offerStartDate: startDate,
         offerNotes: input.notes || null,
+        syncedToRf: sync.synced,
       },
-      select: { id: true },
+      select: { id: true, syncedToRf: true },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/inbox`);
-    return { ok: true, value: { id: row.id } };
+    return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record offer." };
   }
@@ -89,10 +119,16 @@ export type RecordPlacementInput = {
   notes: string;
 };
 
-export async function recordPlacement(input: RecordPlacementInput): Promise<Result<{ id: string }>> {
+export async function recordPlacement(input: RecordPlacementInput): Promise<Result<{ id: string; syncedToRf: boolean }>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   if (!input.expectedStartDate) return { ok: false, error: "Expected start date is required." };
+
+  const sync = await trySyncRfStage({
+    candidateRfId: input.candidateRfId,
+    jobRfId: input.jobRfId,
+    aceStage: "pending_start",
+  });
 
   try {
     const row = await prisma.placement.upsert({
@@ -115,6 +151,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
         hiringManagerEmail: input.hiringManagerEmail || null,
         expectedStartDate: new Date(input.expectedStartDate),
         placementNotes: input.notes || null,
+        syncedToRf: sync.synced,
         createdById: userId,
       },
       update: {
@@ -132,12 +169,13 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
         hiringManagerEmail: input.hiringManagerEmail || null,
         expectedStartDate: new Date(input.expectedStartDate),
         placementNotes: input.notes || null,
+        syncedToRf: sync.synced,
       },
-      select: { id: true },
+      select: { id: true, syncedToRf: true },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/inbox`);
-    return { ok: true, value: { id: row.id } };
+    return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record placement." };
   }
@@ -176,6 +214,18 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
     const placement = await prisma.placement.findUnique({ where: { id: input.placementId }, select: { candidateRfId: true } });
     if (!placement) return { ok: false, error: "Placement not found." };
 
+    const existing = await prisma.placement.findUnique({
+      where: { id: input.placementId },
+      select: { jobRfId: true, candidateRfId: true },
+    });
+    const sync = existing
+      ? await trySyncRfStage({
+          candidateRfId: existing.candidateRfId,
+          jobRfId: existing.jobRfId,
+          aceStage: "hired",
+        })
+      : { synced: false, reason: null };
+
     await prisma.placement.update({
       where: { id: input.placementId },
       data: {
@@ -184,6 +234,7 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
         startConfirmationFile: new Uint8Array(buffer),
         startConfirmationMime: input.mimeType || "image/png",
         invoicingFlagged: true,
+        syncedToRf: sync.synced,
       },
     });
     revalidatePath(`/candidates/${placement.candidateRfId}`);
