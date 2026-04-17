@@ -4,7 +4,13 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { CANDIDATE_CONFIRMATION_TRIGGER, CLIENT_SUBMITTAL_TRIGGER } from "@/app/settings/template-constants";
+import {
+  CANDIDATE_CONFIRMATION_TRIGGER,
+  CANDIDATE_REJECTION_TRIGGER,
+  CLIENT_SUBMITTAL_TRIGGER,
+  INTERVIEW_CONFIRMATION_TRIGGER,
+  OFFER_ACCEPTANCE_TRIGGER,
+} from "@/app/settings/template-constants";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -114,8 +120,60 @@ const CANDIDATE_CONFIRMATION_DEFAULT = {
     "www.breakpointtalent.com",
 } as const;
 
+const OFFER_ACCEPTANCE_DEFAULT = {
+  name: "Offer Acceptance",
+  subject: "Acceptance of Offer - [Candidate Full Name] - [Client Company Name]",
+  trigger: OFFER_ACCEPTANCE_TRIGGER,
+  audience: "client",
+  body:
+    "Hi [Client Contact First Name],\n\n" +
+    "I have the candidate CC'd on this email.\n\n" +
+    "Great news - [Candidate Full Name] accepts your offer of [Offer Amount] and is targeting a [Start Date] start date.\n\n" +
+    "Feel free to communicate directly from here regarding new hire paperwork or onboarding.\n\n" +
+    "[Candidate Full Name] - congratulations again, they are excited to welcome you to the team!\n\n" +
+    "[Recruiter Name]\n" +
+    "BreakPoint Talent\n" +
+    "[Recruiter Phone]",
+} as const;
+
+const CANDIDATE_REJECTION_DEFAULT = {
+  name: "Candidate Rejection",
+  subject: "[Job Title] - [Client Company Name]",
+  trigger: CANDIDATE_REJECTION_TRIGGER,
+  audience: "candidate",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "I wanted to reach out and let you know that unfortunately the client has moved forward with another candidate for this role.\n\n" +
+    "I really appreciate your time throughout this process. I will absolutely keep you in mind and reach out if something comes up that I think would be a strong fit for you.\n\n" +
+    "Thanks again and I will be in touch.\n\n" +
+    "[Recruiter Name]\n" +
+    "BreakPoint Talent\n" +
+    "[Recruiter Phone]",
+} as const;
+
+const INTERVIEW_CONFIRMATION_DEFAULT = {
+  name: "Interview Confirmation",
+  subject: "Interview Confirmed - [Job Title] with [Client Company Name]",
+  trigger: INTERVIEW_CONFIRMATION_TRIGGER,
+  audience: "candidate",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "Congratulations - you are confirmed for an interview with [Client Company Name] for the [Job Title] role.\n\n" +
+    "Make sure to review the below information prior to the interview, and come prepared with a few questions to show you looked into them a bit.\n\n" +
+    "[Job Description]\n\n" +
+    "[Recruiter Name]\n" +
+    "BreakPoint Talent\n" +
+    "[Recruiter Phone]",
+} as const;
+
 export async function ensureDefaultTemplates(): Promise<void> {
-  const defaults = [CLIENT_SUBMITTAL_DEFAULT, CANDIDATE_CONFIRMATION_DEFAULT] as const;
+  const defaults = [
+    CLIENT_SUBMITTAL_DEFAULT,
+    CANDIDATE_CONFIRMATION_DEFAULT,
+    OFFER_ACCEPTANCE_DEFAULT,
+    CANDIDATE_REJECTION_DEFAULT,
+    INTERVIEW_CONFIRMATION_DEFAULT,
+  ] as const;
 
   for (const tpl of defaults) {
     const existing = await prisma.emailTemplate.findFirst({ where: { trigger: tpl.trigger } });
