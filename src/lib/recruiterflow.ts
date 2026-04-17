@@ -383,6 +383,45 @@ export const recruiterflow = {
   }): Promise<RFCandidate> {
     return rfFetch<RFCandidate>("/candidate/add", { method: "POST", body });
   },
+
+  // Partial update. /candidate/update accepts any subset of fields; unknown
+  // fields are silently ignored and omitted fields are left alone. All nested
+  // array modifications (add/remove note, experience, skill, education) go
+  // through this by sending the whole replacement array.
+  async updateCandidate(body: {
+    id: number;
+    first_name?: string;
+    last_name?: string;
+    email?: string | string[];
+    phone_number?: string | string[];
+    current_designation?: string;
+    current_organization?: string;
+    linkedin_profile?: string;
+    candidate_summary?: string;
+    location?: { location?: string; city?: string; state?: string; country?: string } | string;
+    expected_salary?: { number?: number | null; currency?: string | null } | null;
+    skills?: string[];
+    notes?: Array<{ id?: number; note: string }>;
+    experience?: Array<{
+      designation?: string;
+      organization?: string;
+      from?: [number | null, number | null];
+      to?: [number | null, number | null];
+      description?: string | null;
+      rank?: number;
+    }>;
+    education?: Array<{
+      school?: string;
+      degree?: string;
+      from?: [number | null, number | null];
+      to?: [number | null, number | null];
+      description?: string | null;
+      rank?: number;
+    }>;
+    tags?: string[];
+  }): Promise<{ RESULT?: string } | RFCandidate> {
+    return rfFetch("/candidate/update", { method: "POST", body });
+  },
 };
 
 // ---- Normalizers / helpers ----
