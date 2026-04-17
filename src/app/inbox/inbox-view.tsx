@@ -10,6 +10,20 @@ import { cn } from "@/lib/utils";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 
+export type PlacementDetails = {
+  id: string;
+  stage: "offer" | "pending_start" | "hired";
+  acceptedSalary: number | null;
+  acceptedCurrency: string | null;
+  feePercentage: number | null;
+  feeTotal: number | null;
+  billingContactName: string | null;
+  billingContactEmail: string | null;
+  expectedStartDate: string | null;
+  startConfirmedAt: string | null;
+  invoicingFlagged: boolean;
+};
+
 export type InboxRow = {
   candidateId: number;
   candidateName: string;
@@ -22,6 +36,7 @@ export type InboxRow = {
   lastActionAt: string | null;
   daysInStage: number | null;
   isKept: boolean;
+  placement: PlacementDetails | null;
 };
 
 type InboxViewProps = {
@@ -107,15 +122,33 @@ export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, c
                 <th className="px-5 py-3 font-medium">Candidate</th>
                 <th className="px-5 py-3 font-medium">Job</th>
                 <th className="px-5 py-3 font-medium">Client</th>
-                <th className="px-5 py-3 font-medium">Stage</th>
-                <th className="px-5 py-3 font-medium">Last Action</th>
-                <th className="px-5 py-3 text-right font-medium">Days in Stage</th>
+                {stage === "pending_start" ? (
+                  <>
+                    <th className="px-5 py-3 font-medium">Start Date</th>
+                    <th className="px-5 py-3 text-right font-medium">Days Until</th>
+                    <th className="px-5 py-3 font-medium">Action</th>
+                  </>
+                ) : stage === "hired" ? (
+                  <>
+                    <th className="px-5 py-3 font-medium">Salary</th>
+                    <th className="px-5 py-3 font-medium">Fee</th>
+                    <th className="px-5 py-3 font-medium">Start Date</th>
+                    <th className="px-5 py-3 font-medium">Billing Contact</th>
+                    <th className="px-5 py-3 font-medium">Invoicing</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-5 py-3 font-medium">Stage</th>
+                    <th className="px-5 py-3 font-medium">Last Action</th>
+                    <th className="px-5 py-3 text-right font-medium">Days in Stage</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {rows.length === 0 && !error && (
                 <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={stage === "hired" ? 8 : 6} className="px-5 py-12 text-center text-sm text-muted-foreground">
                     No candidates in {PIPELINE_LABELS[stage]}
                     {q ? ` matching "${q}"` : ""}.
                   </td>
@@ -164,30 +197,39 @@ export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, c
                     </Link>
                   </td>
                   <td className="px-5 py-3 align-top text-navy-400">{r.clientName || "—"}</td>
-                  <td className="px-5 py-3 align-top">
-                    <StageChip stageName={r.stageName} bucket={r.bucket} />
-                  </td>
-                  <td className="px-5 py-3 align-top text-xs text-muted-foreground">
-                    {r.lastActionAt ? new Date(r.lastActionAt).toLocaleString() : "—"}
-                  </td>
-                  <td className="px-5 py-3 align-top text-right">
-                    {r.daysInStage == null ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : (
-                      <span
-                        className={cn(
-                          "inline-flex min-w-8 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
-                          r.daysInStage >= 14
-                            ? "bg-red-50 text-red-700"
-                            : r.daysInStage >= 7
-                              ? "bg-amber-50 text-amber-700"
-                              : "bg-muted text-navy-400",
+
+                  {stage === "pending_start" ? (
+                    <PendingStartCells row={r} />
+                  ) : stage === "hired" ? (
+                    <HiredCells row={r} />
+                  ) : (
+                    <>
+                      <td className="px-5 py-3 align-top">
+                        <StageChip stageName={r.stageName} bucket={r.bucket} />
+                      </td>
+                      <td className="px-5 py-3 align-top text-xs text-muted-foreground">
+                        {r.lastActionAt ? new Date(r.lastActionAt).toLocaleString() : "—"}
+                      </td>
+                      <td className="px-5 py-3 align-top text-right">
+                        {r.daysInStage == null ? (
+                          <span className="text-muted-foreground">—</span>
+                        ) : (
+                          <span
+                            className={cn(
+                              "inline-flex min-w-8 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
+                              r.daysInStage >= 14
+                                ? "bg-red-50 text-red-700"
+                                : r.daysInStage >= 7
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-muted text-navy-400",
+                            )}
+                          >
+                            {r.daysInStage}d
+                          </span>
                         )}
-                      >
-                        {r.daysInStage}d
-                      </span>
-                    )}
-                  </td>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -204,6 +246,99 @@ export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, c
       </div>
     </div>
   );
+}
+
+function PendingStartCells({ row }: { row: InboxRow }) {
+  const p = row.placement;
+  const startDate = p?.expectedStartDate ? new Date(p.expectedStartDate) : null;
+  const daysUntil = startDate ? Math.ceil((startDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+  const overdue = daysUntil != null && daysUntil < 0;
+  const soon = daysUntil != null && daysUntil >= 0 && daysUntil <= 7;
+  return (
+    <>
+      <td className="px-5 py-3 align-top text-sm text-navy">
+        {startDate ? startDate.toLocaleDateString() : <span className="text-muted-foreground">—</span>}
+      </td>
+      <td className="px-5 py-3 align-top text-right">
+        {daysUntil == null ? (
+          <span className="text-muted-foreground">—</span>
+        ) : (
+          <span
+            className={cn(
+              "inline-flex min-w-8 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
+              overdue
+                ? "bg-red-50 text-red-700"
+                : soon
+                  ? "bg-amber-50 text-amber-700"
+                  : "bg-emerald-50 text-emerald-700",
+            )}
+          >
+            {overdue ? `${Math.abs(daysUntil)}d late` : daysUntil === 0 ? "today" : `${daysUntil}d`}
+          </span>
+        )}
+      </td>
+      <td className="px-5 py-3 align-top">
+        <Link
+          href={`/candidates/${row.candidateId}`}
+          onClick={(e) => e.stopPropagation()}
+          className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+        >
+          Confirm Start
+        </Link>
+      </td>
+    </>
+  );
+}
+
+function HiredCells({ row }: { row: InboxRow }) {
+  const p = row.placement;
+  return (
+    <>
+      <td className="px-5 py-3 align-top text-sm text-navy">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
+      <td className="px-5 py-3 align-top text-sm text-navy">
+        {formatMoney(p?.feeTotal ?? null, p?.acceptedCurrency)}
+        {p?.feePercentage != null && (
+          <span className="ml-1 text-[11px] text-muted-foreground">({p.feePercentage}%)</span>
+        )}
+      </td>
+      <td className="px-5 py-3 align-top text-sm text-muted-foreground">
+        {p?.expectedStartDate ? new Date(p.expectedStartDate).toLocaleDateString() : "—"}
+      </td>
+      <td className="px-5 py-3 align-top text-xs">
+        {p?.billingContactName ? (
+          <div>
+            <div className="text-navy">{p.billingContactName}</div>
+            {p.billingContactEmail && (
+              <a
+                href={`mailto:${p.billingContactEmail}`}
+                onClick={(e) => e.stopPropagation()}
+                className="text-brand-dark hover:underline"
+              >
+                {p.billingContactEmail}
+              </a>
+            )}
+          </div>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </td>
+      <td className="px-5 py-3 align-top">
+        {p?.invoicingFlagged ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+            Flagged
+          </span>
+        ) : (
+          <span className="text-muted-foreground text-xs">—</span>
+        )}
+      </td>
+    </>
+  );
+}
+
+function formatMoney(n: number | null, currency: string | null | undefined): string {
+  if (!n) return "—";
+  const sym = (currency ?? "USD").toUpperCase() === "USD" ? "$" : `${(currency ?? "USD").toUpperCase()} `;
+  return `${sym}${n.toLocaleString()}`;
 }
 
 function StageTabs({

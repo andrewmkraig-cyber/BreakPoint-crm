@@ -3,31 +3,32 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Bookmark,
-  Briefcase,
-  CalendarPlus,
   ExternalLink,
   FileText,
-  NotebookPen,
-  Send,
-  XCircle,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
   canonicalStage,
+  normalizeClient,
   PIPELINE_LABELS,
   daysBetween,
   type RFCandidate,
   type RFFile,
+  type RFCandidateJob,
 } from "@/lib/recruiterflow";
-import { cn } from "@/lib/utils";
 import { EditableContact, type ContactState } from "@/app/candidates/[id]/editable-contact";
 import { EditableEmployment, type EmploymentState } from "@/app/candidates/[id]/editable-employment";
 import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
 import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-notes";
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
+import {
+  PlacementActions,
+  type PlacementContextJob,
+  type PlacementSnapshot,
+} from "@/app/candidates/[id]/placement-flows";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -54,8 +55,10 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [candidates, activity] = await Promise.all([
+  const [candidates, clients, placements, activity] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
+    recruiterflow.listAllClients({ perPage: 100 }),
+    prisma.placement.findMany({ where: { candidateRfId: id } }),
     prisma.actionLog.findMany({
       where: { subjectType: "candidate", subjectId: String(id) },
       orderBy: { createdAt: "desc" },
@@ -128,6 +131,52 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
 
   const linkedSubmittals = (Array.isArray(c.jobs) ? c.jobs : []).filter((j) => typeof j?.job_id === "number");
 
+  // Build the placement-action context: one row per linked job with RF stage,
+  // local Placement snapshot (if any), and the client's default fee %.
+  const placementByJob = new Map<number, (typeof placements)[number]>();
+  for (const p of placements) placementByJob.set(p.jobRfId, p);
+
+  const placementJobs: PlacementContextJob[] = linkedSubmittals.map((j: RFCandidateJob) => {
+    const jobRfId = j.job_id!;
+    const clientRfId = j.client_company_id ?? 0;
+    const clientRaw = clients.find((cl) => cl.id === clientRfId);
+    const client = clientRaw ? normalizeClient(clientRaw) : null;
+    const local = placementByJob.get(jobRfId);
+    const snapshot: PlacementSnapshot | null = local
+      ? {
+          id: local.id,
+          stage: local.stage as PlacementSnapshot["stage"],
+          offerSalary: local.offerSalary,
+          offerCurrency: local.offerCurrency,
+          offerTitle: local.offerTitle,
+          offerStartDate: local.offerStartDate?.toISOString() ?? null,
+          offerNotes: local.offerNotes,
+          acceptedSalary: local.acceptedSalary,
+          acceptedCurrency: local.acceptedCurrency,
+          feePercentage: local.feePercentage,
+          feeTotal: local.feeTotal,
+          minFee: local.minFee,
+          guaranteePeriodDays: local.guaranteePeriodDays,
+          billingContactName: local.billingContactName,
+          billingContactEmail: local.billingContactEmail,
+          hiringManagerName: local.hiringManagerName,
+          hiringManagerEmail: local.hiringManagerEmail,
+          expectedStartDate: local.expectedStartDate?.toISOString() ?? null,
+          placementNotes: local.placementNotes,
+          startConfirmedAt: local.startConfirmedAt?.toISOString() ?? null,
+        }
+      : null;
+    return {
+      jobRfId,
+      jobTitle: j.title ?? j.name ?? "(untitled job)",
+      clientRfId,
+      clientName: client?.name ?? j.client_company_name ?? "",
+      clientFeePct: client?.feePct ?? null,
+      rfStageBucket: canonicalStage(j.stage_name),
+      placement: snapshot,
+    };
+  });
+
   return (
     <div className="space-y-6">
       <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
@@ -154,7 +203,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         }
       />
 
-      <ActionRow />
+      <PlacementActions candidateRfId={id} jobs={placementJobs} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-2">
@@ -264,49 +313,6 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         </ul>
       </div>
     </div>
-  );
-}
-
-function ActionRow() {
-  return (
-    <div className="flex flex-wrap gap-2">
-      <ActionButton icon={<Send className="h-3.5 w-3.5" />} label="Submit" />
-      <ActionButton icon={<XCircle className="h-3.5 w-3.5" />} label="Reject" tone="red" />
-      <ActionButton icon={<CalendarPlus className="h-3.5 w-3.5" />} label="Schedule Interview" />
-      <ActionButton icon={<Bookmark className="h-3.5 w-3.5" />} label="Keep" tone="amber" />
-      <ActionButton icon={<Briefcase className="h-3.5 w-3.5" />} label="Apply to Job" />
-      <ActionButton icon={<NotebookPen className="h-3.5 w-3.5" />} label="Add Note" />
-    </div>
-  );
-}
-
-function ActionButton({
-  icon,
-  label,
-  tone = "default",
-}: {
-  icon: React.ReactNode;
-  label: string;
-  tone?: "default" | "red" | "amber";
-}) {
-  const toneCls = {
-    default: "border-border bg-white text-navy hover:border-brand/40 hover:text-brand-dark",
-    red: "border-border bg-white text-red-700 hover:border-red-300 hover:bg-red-50",
-    amber: "border-border bg-white text-amber-800 hover:border-amber-300 hover:bg-amber-50",
-  }[tone];
-  return (
-    <button
-      type="button"
-      disabled
-      title="Coming Day 3"
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm transition disabled:cursor-not-allowed disabled:opacity-60",
-        toneCls,
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
 

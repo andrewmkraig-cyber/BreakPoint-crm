@@ -57,6 +57,7 @@ model User {
   benefitsUpdates ClientBenefits[]
   benefitsFiles   ClientBenefitsFile[]
   resumeUploads   ResumeUpload[]
+  placements      Placement[]
 }
 
 enum UserRole {
@@ -176,6 +177,57 @@ model ClientBenefitsFile {
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 
   @@index([clientRfId, uploadedAt])
+}
+
+// One row per candidate-job placement lifecycle. Ace owns the stage locally
+// because RF has no stage-change API exposed on /external. `stage` transitions
+// offer → pending_start → hired; the previous stages' columns stick around so
+// the full placement history is on one row.
+model Placement {
+  id                    String    @id @default(cuid())
+  candidateRfId         Int
+  jobRfId               Int
+  clientRfId            Int
+  stage                 String    // "offer" | "pending_start" | "hired"
+
+  // Offer details
+  offerReceivedAt       DateTime?
+  offerSalary           Int?      // annual base in whole currency units
+  offerCurrency         String?   @default("USD")
+  offerTitle            String?
+  offerStartDate        DateTime?
+  offerNotes            String?   @db.Text
+
+  // Placement (offer accepted, fee locked) details
+  placedAt              DateTime?
+  acceptedSalary        Int?
+  acceptedCurrency      String?   @default("USD")
+  feePercentage         Float?
+  feeTotal              Int?
+  minFee                Int?
+  guaranteePeriodDays   Int?
+  billingContactName    String?
+  billingContactEmail   String?
+  hiringManagerName     String?
+  hiringManagerEmail    String?
+  expectedStartDate     DateTime?
+  placementNotes        String?   @db.Text
+
+  // Hired (start confirmed) details
+  startConfirmedAt      DateTime?
+  startConfirmationFile Bytes?
+  startConfirmationMime String?
+  invoicingFlagged      Boolean   @default(false)
+  invoicedAt            DateTime?
+
+  createdById           String
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  createdBy             User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@unique([candidateRfId, jobRfId])
+  @@index([clientRfId, stage])
+  @@index([stage, expectedStartDate])
 }
 
 // Staging table for chunk-uploaded resume PDFs. Transient: parseCandidate

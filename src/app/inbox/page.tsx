@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/page-header";
-import { InboxView, type InboxRow } from "@/app/inbox/inbox-view";
+import { InboxView, type InboxRow, type PlacementDetails } from "@/app/inbox/inbox-view";
+import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
   flattenPipeline,
@@ -38,17 +39,68 @@ export default async function InboxPage({
   let error: string | null = null;
 
   try {
-    const candidates = await recruiterflow.listAllCandidates({ perPage: 100 });
-    const flat = flattenPipeline(candidates);
-    const inPipeline = flat.filter((r) => isPipelineStage(r.bucket));
+    const [candidates, placements] = await Promise.all([
+      recruiterflow.listAllCandidates({ perPage: 100 }),
+      prisma.placement.findMany(),
+    ]);
 
-    for (const r of inPipeline) {
-      counts[r.bucket as Stage] += 1;
+    // Build a quick lookup of local placements by candidate-job pair; local
+    // placement stage always wins over RF's stage_name because the user moved
+    // the placement through Ace's flow.
+    const placementByKey = new Map<string, (typeof placements)[number]>();
+    for (const p of placements) {
+      placementByKey.set(`${p.candidateRfId}:${p.jobRfId}`, p);
     }
 
-    rows = inPipeline
-      .filter((r) => r.bucket === stage)
-      .map<InboxRow>((r) => ({
+    const flat = flattenPipeline(candidates);
+    const candidateNameById = new Map<number, string>();
+    for (const c of candidates) {
+      candidateNameById.set(
+        c.id,
+        c.name ??
+          [c.first_name, c.last_name].filter(Boolean).join(" ") ??
+          "(unnamed)",
+      );
+    }
+
+    // Fold in local placements first so an Ace-owned Pending Start / Hired
+    // row always shows under the right tab, even if RF still thinks the
+    // candidate is in Interviewing / Offer.
+    const seen = new Set<string>();
+    const allRows: InboxRow[] = [];
+
+    for (const p of placements) {
+      const key = `${p.candidateRfId}:${p.jobRfId}`;
+      seen.add(key);
+      const rfEntry = flat.find(
+        (r) => r.candidateId === p.candidateRfId && r.jobId === p.jobRfId,
+      );
+      const stageName = p.stage as Stage;
+      counts[stageName] += 1;
+      allRows.push({
+        candidateId: p.candidateRfId,
+        candidateName: candidateNameById.get(p.candidateRfId) ?? rfEntry?.candidateName ?? "(unknown)",
+        candidateTitle: rfEntry?.candidateTitle ?? "",
+        jobId: p.jobRfId,
+        jobTitle: rfEntry?.jobTitle ?? "",
+        clientName: rfEntry?.clientName ?? "",
+        stageName: PIPELINE_LABELS[stageName as keyof typeof PIPELINE_LABELS] ?? p.stage,
+        bucket: stageName,
+        lastActionAt: p.updatedAt.toISOString(),
+        daysInStage: daysBetween(p.updatedAt.toISOString()),
+        isKept: rfEntry?.isKept ?? false,
+        placement: toPlacementDetails(p),
+      });
+    }
+
+    // Fall back to RF-only rows for candidate-job pairs we don't have local
+    // placements for.
+    for (const r of flat) {
+      if (!isPipelineStage(r.bucket)) continue;
+      const key = `${r.candidateId}:${r.jobId}`;
+      if (seen.has(key)) continue;
+      counts[r.bucket] += 1;
+      allRows.push({
         candidateId: r.candidateId,
         candidateName: r.candidateName,
         candidateTitle: r.candidateTitle,
@@ -56,11 +108,15 @@ export default async function InboxPage({
         jobTitle: r.jobTitle,
         clientName: r.clientName,
         stageName: r.stageName,
-        bucket: r.bucket as Stage,
+        bucket: r.bucket,
         lastActionAt: r.stageMovedAt,
         daysInStage: daysBetween(r.stageMovedAt),
         isKept: r.isKept,
-      }));
+        placement: null,
+      });
+    }
+
+    rows = allRows.filter((r) => r.bucket === stage);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch pipeline";
   }
@@ -75,11 +131,20 @@ export default async function InboxPage({
     );
   }
 
-  rows.sort((a, b) => {
-    const ta = a.lastActionAt ? new Date(a.lastActionAt).getTime() : 0;
-    const tb = b.lastActionAt ? new Date(b.lastActionAt).getTime() : 0;
-    return tb - ta;
-  });
+  // Pending Start: soonest start first. Hired: most recent placement first.
+  if (stage === "pending_start") {
+    rows.sort((a, b) => {
+      const ta = a.placement?.expectedStartDate ? new Date(a.placement.expectedStartDate).getTime() : Infinity;
+      const tb = b.placement?.expectedStartDate ? new Date(b.placement.expectedStartDate).getTime() : Infinity;
+      return ta - tb;
+    });
+  } else {
+    rows.sort((a, b) => {
+      const ta = a.lastActionAt ? new Date(a.lastActionAt).getTime() : 0;
+      const tb = b.lastActionAt ? new Date(b.lastActionAt).getTime() : 0;
+      return tb - ta;
+    });
+  }
 
   const total = rows.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -106,6 +171,24 @@ export default async function InboxPage({
       />
     </div>
   );
+}
+
+type PlacementRow = Awaited<ReturnType<typeof prisma.placement.findMany>>[number];
+
+function toPlacementDetails(p: PlacementRow): PlacementDetails {
+  return {
+    id: p.id,
+    stage: p.stage as "offer" | "pending_start" | "hired",
+    acceptedSalary: p.acceptedSalary,
+    acceptedCurrency: p.acceptedCurrency,
+    feePercentage: p.feePercentage,
+    feeTotal: p.feeTotal,
+    billingContactName: p.billingContactName,
+    billingContactEmail: p.billingContactEmail,
+    expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
+    startConfirmedAt: p.startConfirmedAt?.toISOString() ?? null,
+    invoicingFlagged: p.invoicingFlagged,
+  };
 }
 
 function isPipelineStage(b: PipelineBucket): b is Stage {
