@@ -466,6 +466,93 @@ function missingRequiredJdHeaders(text: string): string[] {
   return REQUIRED_JD_HEADERS.filter((h) => !lower.includes(h.toLowerCase()));
 }
 
+// Candidate submittal writeup for a specific job. Produces the exact
+// BreakPoint format the recruiter pastes into the submittal email. Plain text
+// only — no markdown — because it goes into a plain-text email body (the
+// composer's textarea). Sections are fixed and lines under each header are
+// short/scannable.
+export type SubmittalInput = {
+  candidate: {
+    firstName: string;
+    lastName: string;
+    title: string;
+    employer: string;
+    location: string;
+    skills: string[];
+    experienceSummary: string;
+    notes: string;
+    expectedSalary: string;
+    linkedin: string;
+  };
+  job: {
+    title: string;
+    clientName: string;
+  };
+};
+
+export async function generateSubmittalWriteup(input: SubmittalInput): Promise<string> {
+  const anthropic = getClaude();
+  const fullName = [input.candidate.firstName, input.candidate.lastName].filter(Boolean).join(" ") || "Candidate";
+
+  const dataBlock =
+    `Candidate: ${fullName}\n` +
+    `Current title: ${input.candidate.title || "—"}\n` +
+    `Current employer: ${input.candidate.employer || "—"}\n` +
+    `Location: ${input.candidate.location || "—"}\n` +
+    `Expected salary: ${input.candidate.expectedSalary || "—"}\n` +
+    `LinkedIn: ${input.candidate.linkedin || "—"}\n` +
+    `Skills: ${(input.candidate.skills || []).slice(0, 15).join(", ") || "—"}\n` +
+    `Experience summary: ${input.candidate.experienceSummary || "—"}\n` +
+    `Recruiter notes: ${input.candidate.notes || "—"}\n\n` +
+    `Target role: ${input.job.title}\n` +
+    `Client: ${input.job.clientName || "—"}`;
+
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 1400,
+    system:
+      "You write candidate submittal emails for BreakPoint Talent recruiters. " +
+      "Plain text only — no markdown symbols, no asterisks, no hashes, no dashes for bullets. " +
+      "Use the EXACT section headers the user specifies, on their own lines. " +
+      "Confident, concise, recruiter voice. Never fabricate facts not in the source data.",
+    messages: [
+      {
+        role: "user",
+        content:
+          "Write a candidate submittal email body using this EXACT structure (plain text, no markdown):\n\n" +
+          `About ${fullName}\n` +
+          "<2–4 sentence paragraph introducing the candidate — who they are, where they are now, why they're on the market or interested in this role>\n\n" +
+          "What He Brings\n" +
+          "<3–5 sentences on the candidate's strengths and relevant experience for the target role — concrete, not generic>\n\n" +
+          "Technically:\n" +
+          "<2–4 sentences on hard skills / stack / tools / certifications — specific to what the role needs>\n\n" +
+          "Comp Target:\n" +
+          "<one line — expected salary or range; if unknown, say 'Open / to be discussed'>\n\n" +
+          "Location:\n" +
+          "<one line — city, state + remote/hybrid/on-site posture>\n\n" +
+          "LinkedIn:\n" +
+          "<one line — the LinkedIn URL, or 'Not provided'>\n\n" +
+          "Rules:\n" +
+          "- Use 'She' instead of 'He' in headers/pronouns when appropriate — infer from the name if possible, otherwise use 'they'.\n" +
+          "- Do NOT include a 'Dear …' greeting or a sign-off — the recruiter's email signature handles those.\n" +
+          "- Do NOT write 'Let me know if you'd like to set up an interview' — the caller appends that line.\n" +
+          "- Never invent facts that aren't in the source data. Omit anything the data doesn't support.\n\n" +
+          "Source data:\n" +
+          dataBlock,
+      },
+    ],
+  });
+
+  const text = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  if (!text) throw new Error("Claude returned no submittal writeup. Try again.");
+  return stripMarkdownToPlain(text);
+}
+
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,
 // scannable brief for a recruiter sharing benefits with a candidate.
 export async function summarizeBenefits(params: {

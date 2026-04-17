@@ -1,0 +1,89 @@
+"use server";
+
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { createGmailDraft, plainToHtml, sendGmail, type SendEmailResult } from "@/lib/gmail";
+
+type Result<T = void> =
+  | (T extends void ? { ok: true } : { ok: true; value: T })
+  | { ok: false; error: string };
+
+export type ComposeEmailInput = {
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyText: string;
+  threadId?: string;
+};
+
+async function requireUser(): Promise<{ id: string; email: string; name: string | null } | null> {
+  const s = await getServerSession(authOptions);
+  if (!s?.user?.email) return null;
+  const u = await prisma.user.findUnique({
+    where: { email: s.user.email },
+    select: { id: true, email: true, name: true },
+  });
+  return u ? { id: u.id, email: u.email ?? "", name: u.name ?? null } : null;
+}
+
+function validate(input: ComposeEmailInput): string | null {
+  const to = input.to.filter((e) => e.trim());
+  if (to.length === 0) return "At least one recipient is required.";
+  if (!input.subject.trim()) return "Subject is required.";
+  if (!input.bodyText.trim()) return "Body is required.";
+  return null;
+}
+
+export async function sendEmailAction(input: ComposeEmailInput): Promise<Result<SendEmailResult>> {
+  const user = await requireUser();
+  if (!user || !user.email) return { ok: false, error: "Not signed in." };
+
+  const problem = validate(input);
+  if (problem) return { ok: false, error: problem };
+
+  try {
+    const out = await sendGmail({
+      userId: user.id,
+      from: user.email,
+      fromName: user.name ?? undefined,
+      to: input.to.map((e) => e.trim()).filter(Boolean),
+      cc: (input.cc ?? []).map((e) => e.trim()).filter(Boolean),
+      bcc: (input.bcc ?? []).map((e) => e.trim()).filter(Boolean),
+      subject: input.subject.trim(),
+      bodyText: input.bodyText,
+      bodyHtml: plainToHtml(input.bodyText),
+      threadId: input.threadId,
+    });
+    return { ok: true, value: out };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Email send failed." };
+  }
+}
+
+export async function createEmailDraftAction(input: ComposeEmailInput): Promise<Result<SendEmailResult>> {
+  const user = await requireUser();
+  if (!user || !user.email) return { ok: false, error: "Not signed in." };
+
+  const problem = validate(input);
+  if (problem) return { ok: false, error: problem };
+
+  try {
+    const out = await createGmailDraft({
+      userId: user.id,
+      from: user.email,
+      fromName: user.name ?? undefined,
+      to: input.to.map((e) => e.trim()).filter(Boolean),
+      cc: (input.cc ?? []).map((e) => e.trim()).filter(Boolean),
+      bcc: (input.bcc ?? []).map((e) => e.trim()).filter(Boolean),
+      subject: input.subject.trim(),
+      bodyText: input.bodyText,
+      bodyHtml: plainToHtml(input.bodyText),
+      threadId: input.threadId,
+    });
+    return { ok: true, value: out };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Email draft failed." };
+  }
+}

@@ -26,13 +26,16 @@ import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-he
 import {
   cancelPlacement,
   confirmStart,
+  createCandidateConfirmationDraft,
+  generateSubmittalEmailBody,
   recordOffer,
   recordPlacement,
   rejectCandidateJob,
   scheduleInterview,
-  submitCandidateToJob,
+  sendSubmittalEmail,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
+import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 
 export type ClientContactRef = {
   id: number;
@@ -47,6 +50,7 @@ export type OpenJobOption = {
   clientRfId: number;
   clientName: string;
   alreadyLinked: boolean;
+  clientContacts: ClientContactRef[];
 };
 
 export type PlacementContextJob = {
@@ -97,10 +101,14 @@ const ACTIVE_BUCKETS: ReadonlySet<Bucket> = new Set<Bucket>([
 
 export function PlacementActions({
   candidateRfId,
+  candidateFirstName,
+  candidateEmail,
   jobs,
   openJobs,
 }: {
   candidateRfId: number;
+  candidateFirstName: string;
+  candidateEmail: string;
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
 }) {
@@ -203,6 +211,8 @@ export function PlacementActions({
       {submitOpen && (
         <SubmitToJobDialog
           candidateRfId={candidateRfId}
+          candidateFirstName={candidateFirstName}
+          candidateEmail={candidateEmail}
           openJobs={openJobs}
           onClose={() => setSubmitOpen(false)}
         />
@@ -1117,25 +1127,34 @@ function CancelPlacementDialog({
   );
 }
 
-// ---------------- Submit to Job dialog ----------------
+// ---------------- Submit to Job flow ----------------
+//
+// Two-step UX: pick the open job, then compose the submittal email. After
+// sending, the candidate confirmation ("Great News…") is auto-drafted in
+// Gmail for the recruiter to review and send manually.
 
 function SubmitToJobDialog({
   candidateRfId,
+  candidateFirstName,
+  candidateEmail,
   openJobs,
   onClose,
 }: {
   candidateRfId: number;
+  candidateFirstName: string;
+  candidateEmail: string;
   openJobs: OpenJobOption[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
-  const [isPending, startSave] = useTransition();
+  const [composing, setComposing] = useState(false);
 
   const picked = openJobs.find((o) => String(o.jobRfId) === selectedId) ?? null;
+  const hasAvailable = openJobs.some((j) => !j.alreadyLinked);
 
-  function onSave() {
+  function onPickJob() {
     setErr(null);
     if (!picked) {
       setErr("Pick an open job to submit to.");
@@ -1145,29 +1164,24 @@ function SubmitToJobDialog({
       setErr("Candidate is already linked to this job.");
       return;
     }
-    startSave(async () => {
-      const result = await submitCandidateToJob({
-        candidateRfId,
-        jobRfId: picked.jobRfId,
-        clientRfId: picked.clientRfId,
-        jobTitle: picked.jobTitle,
-        clientName: picked.clientName,
-      });
-      if (!result.ok) {
-        setErr(result.error);
-        toast.error("Couldn't submit candidate", { description: result.error });
-        return;
-      }
-      toast.success("Submittal logged", {
-        description:
-          "Add the candidate to the job in RecruiterFlow to finalize — RF has no submit API exposed to Ace yet.",
-      });
-      onClose();
-      router.refresh();
-    });
+    setComposing(true);
   }
 
-  const hasAvailable = openJobs.some((j) => !j.alreadyLinked);
+  if (composing && picked) {
+    return (
+      <SubmittalEmailCompose
+        candidateRfId={candidateRfId}
+        candidateFirstName={candidateFirstName}
+        candidateEmail={candidateEmail}
+        job={picked}
+        onBack={() => setComposing(false)}
+        onDone={() => {
+          onClose();
+          router.refresh();
+        }}
+      />
+    );
+  }
 
   return (
     <Modal title="Submit to Job" subtitle="Pick an open job for this candidate" onClose={onClose}>
@@ -1196,15 +1210,103 @@ function SubmitToJobDialog({
         <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-navy">
           <div className="font-semibold">{picked.jobTitle}</div>
           <div className="text-muted-foreground">{picked.clientName || "—"}</div>
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            {picked.clientContacts.length > 0
+              ? `${picked.clientContacts.length} contact${picked.clientContacts.length === 1 ? "" : "s"} on file — first becomes the To:, rest are Cc.`
+              : "No client contacts on file — you'll need to enter the recipient manually."}
+          </div>
         </div>
       )}
-      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        This logs the submittal in Ace. RF&apos;s /external API can&apos;t move candidates between jobs yet, so also add
-        them to this job in RecruiterFlow to keep both systems in sync.
-      </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Submit" />
+      <ModalFooter onCancel={onClose} onSave={onPickJob} saving={false} saveLabel="Continue" />
     </Modal>
+  );
+}
+
+function SubmittalEmailCompose({
+  candidateRfId,
+  candidateFirstName,
+  candidateEmail,
+  job,
+  onBack,
+  onDone,
+}: {
+  candidateRfId: number;
+  candidateFirstName: string;
+  candidateEmail: string;
+  job: OpenJobOption;
+  onBack: () => void;
+  onDone: () => void;
+}) {
+  const fullName = candidateFirstName; // display only; Claude gets first+last elsewhere
+  const [primary, ...rest] = job.clientContacts.filter((c) => c.email);
+  const toList = primary?.email ? [primary.email] : [];
+  const ccList = rest.map((c) => c.email).filter(Boolean);
+  const subject = `Candidate Submittal - ${fullName} | ${job.jobTitle}`;
+
+  return (
+    <EmailComposer
+      title="Submittal email"
+      subtitle={`${fullName} → ${job.jobTitle}${job.clientName ? ` · ${job.clientName}` : ""}`}
+      initial={{
+        to: toList,
+        cc: ccList,
+        bcc: [],
+        subject,
+        body: "",
+      }}
+      onClose={onBack}
+      sendLabel="Send Submittal"
+      sendingLabel="Sending…"
+      helperText="Closing line 'Let me know if you'd like to set up an interview with him/her.' is included automatically when you generate."
+      onGenerate={async () => {
+        const result = await generateSubmittalEmailBody({
+          candidateRfId,
+          jobTitle: job.jobTitle,
+          clientName: job.clientName,
+        });
+        if (!result.ok) throw new Error(result.error);
+        return result.value.body;
+      }}
+      onSend={async (draft: EmailDraft) => {
+        const result = await sendSubmittalEmail({
+          candidateRfId,
+          jobRfId: job.jobRfId,
+          clientRfId: job.clientRfId,
+          jobTitle: job.jobTitle,
+          clientName: job.clientName,
+          to: draft.to,
+          cc: draft.cc,
+          subject: draft.subject,
+          body: draft.body,
+        });
+        if (!result.ok) throw new Error(result.error);
+
+        // Best-effort: draft the "Great News" candidate confirmation.
+        if (candidateEmail) {
+          const draftResult = await createCandidateConfirmationDraft({
+            candidateRfId,
+            candidateEmail,
+            candidateFirstName,
+            clientName: job.clientName,
+          });
+          if (draftResult.ok) {
+            toast.success("Submittal sent", {
+              description: "Candidate confirmation saved to your Gmail Drafts — review and send.",
+            });
+          } else {
+            toast.success("Submittal sent", {
+              description: `Candidate confirmation draft failed: ${draftResult.error}`,
+            });
+          }
+        } else {
+          toast.success("Submittal sent", {
+            description: "No candidate email on file — skipped the confirmation draft.",
+          });
+        }
+        onDone();
+      }}
+    />
   );
 }
 

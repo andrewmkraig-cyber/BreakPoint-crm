@@ -228,8 +228,10 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
 
       <PlacementActions
         candidateRfId={id}
+        candidateFirstName={c.first_name ?? (c.name ?? "").split(/\s+/)[0] ?? ""}
+        candidateEmail={normalizeEmail(c.email)}
         jobs={placementJobs}
-        openJobs={buildOpenJobOptions({ allJobs, clients, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
+        openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
@@ -348,10 +350,12 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
 function buildOpenJobOptions({
   allJobs,
   clients,
+  contacts,
   linkedJobIds,
 }: {
   allJobs: RFJob[];
   clients: RFClient[];
+  contacts: Awaited<ReturnType<typeof recruiterflow.listAllContacts>>;
   linkedJobIds: Set<number>;
 }): OpenJobOption[] {
   const clientById = new Map<number, RFClient>();
@@ -362,16 +366,28 @@ function buildOpenJobOptions({
     .map((raw) => {
       const j = normalizeJob(raw);
       const client = j.companyId != null ? clientById.get(j.companyId) : null;
+      const clientContacts = (j.companyId != null ? contacts.filter((ct) => ct.client_company_id === j.companyId) : [])
+        .map((ct) => {
+          const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
+          const fullName =
+            [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
+          return {
+            id: ct.id,
+            name: fullName,
+            title: ct.current_designation ?? "",
+            email: firstEmail,
+          };
+        });
       return {
         jobRfId: j.id,
         jobTitle: j.title,
         clientRfId: j.companyId ?? 0,
         clientName: client ? normalizeClient(client).name : j.company,
         alreadyLinked: linkedJobIds.has(j.id),
+        clientContacts,
       } satisfies OpenJobOption;
     })
     .sort((a, b) => {
-      // Unlinked jobs first, then by client name, then job title.
       if (a.alreadyLinked !== b.alreadyLinked) return a.alreadyLinked ? 1 : -1;
       const c = (a.clientName || "").localeCompare(b.clientName || "");
       if (c !== 0) return c;

@@ -5,6 +5,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
+import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
+import { createGmailDraft, plainToHtml, sendGmail } from "@/lib/gmail";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -522,5 +524,231 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to schedule interview." };
+  }
+}
+
+// ---- Submittal email flow ----
+//
+// generateSubmittalEmailBody: Claude-written writeup using candidate + job
+// data, with the trailing "Let me know if you'd like to set up an interview"
+// closer appended here (not in the Claude prompt) so it's always present.
+//
+// sendSubmittalEmail: actually sends the email via Gmail AND records an
+// ActionLog "submit" row so the activity log picks it up.
+//
+// createCandidateConfirmationDraft: after submittal send, builds a draft in
+// the recruiter's Gmail Drafts folder addressed to the candidate, using the
+// "Great News" format. Not auto-sent.
+
+export async function generateSubmittalEmailBody(args: {
+  candidateRfId: number;
+  jobTitle: string;
+  clientName: string;
+}): Promise<Result<{ body: string }>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const c = await recruiterflow.getCandidate(args.candidateRfId);
+    const firstName = c.first_name ?? (c.name ?? "").split(/\s+/)[0] ?? "";
+    const lastName = c.last_name ?? (c.name ?? "").split(/\s+/).slice(1).join(" ") ?? "";
+    const expectedSalary = (c.expected_salary ?? null) as
+      | { number?: number | null; currency?: string | null }
+      | null;
+    const salaryStr = expectedSalary?.number
+      ? `${expectedSalary.currency ?? "USD"} ${expectedSalary.number.toLocaleString()}`
+      : "";
+    const experienceSummary = summarizeExperience(c.experience);
+    const notes = summarizeNotes(c.notes);
+    const locationLabel =
+      c.location?.location ?? [c.location?.city, c.location?.state].filter(Boolean).join(", ") ?? "";
+
+    const input: SubmittalInput = {
+      candidate: {
+        firstName,
+        lastName,
+        title: c.current_designation ?? "",
+        employer: c.current_organization ?? "",
+        location: locationLabel,
+        skills: Array.isArray(c.skills)
+          ? (c.skills as unknown[]).filter((s): s is string => typeof s === "string")
+          : [],
+        experienceSummary,
+        notes,
+        expectedSalary: salaryStr,
+        linkedin: c.linkedin_profile ?? "",
+      },
+      job: {
+        title: args.jobTitle,
+        clientName: args.clientName,
+      },
+    };
+
+    const writeup = await generateSubmittalWriteup(input);
+    const body = `${writeup.trim()}\n\nLet me know if you'd like to set up an interview with him/her.`;
+    return { ok: true, value: { body } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to generate submittal body." };
+  }
+}
+
+function summarizeExperience(raw: unknown): string {
+  if (!Array.isArray(raw)) return "";
+  return raw
+    .slice(0, 4)
+    .map((e) => {
+      const r = e as { designation?: string; organization?: string; from?: [number | null, number | null]; to?: [number | null, number | null] };
+      const span = [r.from?.[1], r.to?.[1]].filter(Boolean).join("–");
+      return [r.designation, r.organization, span].filter(Boolean).join(" · ");
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function summarizeNotes(raw: unknown): string {
+  if (!Array.isArray(raw)) return "";
+  return raw
+    .slice(0, 3)
+    .map((n) => (n as { note?: string }).note ?? "")
+    .filter(Boolean)
+    .join("\n");
+}
+
+export type SendSubmittalInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  jobTitle: string;
+  clientName: string;
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+};
+
+export type SubmittalSendResult = {
+  messageId: string;
+  threadId: string;
+};
+
+export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Result<SubmittalSendResult>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  if (input.to.length === 0) return { ok: false, error: "At least one recipient (To) required." };
+  if (!input.subject.trim()) return { ok: false, error: "Subject required." };
+  if (!input.body.trim()) return { ok: false, error: "Body required." };
+
+  const session = await getServerSession(authOptions);
+  const fromEmail = session?.user?.email ?? "";
+  const fromName = session?.user?.name ?? undefined;
+
+  try {
+    const sent = await sendGmail({
+      userId,
+      from: fromEmail,
+      fromName,
+      to: input.to,
+      cc: input.cc,
+      subject: input.subject.trim(),
+      bodyText: input.body,
+      bodyHtml: plainToHtml(input.body),
+    });
+
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "submit",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          jobTitle: input.jobTitle,
+          clientName: input.clientName,
+          targetStage: "submitted",
+          emailSent: true,
+          gmailMessageId: sent.id,
+          gmailThreadId: sent.threadId,
+          to: input.to,
+          cc: input.cc,
+          subject: input.subject,
+        },
+      },
+    });
+
+    // Best-effort RF push: append the job_id to the candidate's jobs[] with
+    // a Client Submission stage. Swallow errors — the email has already gone
+    // out and the ActionLog captures the intent.
+    try {
+      const rf = await recruiterflow.getCandidate(input.candidateRfId);
+      const existingJobs = Array.isArray(rf.jobs) ? rf.jobs : [];
+      const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
+      if (!alreadyLinked) {
+        const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
+        for (const j of existingJobs) {
+          if (typeof j?.job_id !== "number") continue;
+          const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
+          if (j.stage_name) entry.stage_name = j.stage_name;
+          nextJobs.push(entry);
+        }
+        nextJobs.push({ job_id: input.jobRfId, stage_name: "Client Submission" });
+        await recruiterflow.updateCandidate({ id: input.candidateRfId, jobs: nextJobs });
+      }
+    } catch {
+      // ignored — RF sync failure doesn't undo a sent email
+    }
+
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true, value: { messageId: sent.id, threadId: sent.threadId } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to send submittal email." };
+  }
+}
+
+export type CreateCandidateConfirmDraftInput = {
+  candidateRfId: number;
+  candidateEmail: string;
+  candidateFirstName: string;
+  clientName: string;
+};
+
+export async function createCandidateConfirmationDraft(
+  input: CreateCandidateConfirmDraftInput,
+): Promise<Result<{ draftId: string }>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  if (!input.candidateEmail) return { ok: false, error: "Candidate email not on file." };
+
+  const session = await getServerSession(authOptions);
+  const fromEmail = session?.user?.email ?? "";
+  const fromName = session?.user?.name ?? undefined;
+
+  const greeting = input.candidateFirstName ? `Hi ${input.candidateFirstName},` : "Hi,";
+  const body =
+    `${greeting}\n\n` +
+    `Great news — you've been submitted to ${input.clientName || "the client"}.\n\n` +
+    `Please reply "Understood!" so I know you're tracking.\n\n` +
+    `A few ground rules while we're working this together:\n` +
+    `• Please don't apply directly to the company or reach out to them.\n` +
+    `• Let me know right away if you've applied or interviewed there before.\n` +
+    `• I'll be your single point of contact until an interview is scheduled.\n\n` +
+    `I'll circle back as soon as I have feedback from the client.\n\n` +
+    `Thanks,\n`;
+
+  try {
+    const draft = await createGmailDraft({
+      userId,
+      from: fromEmail,
+      fromName,
+      to: [input.candidateEmail],
+      subject: "Great News - You've Been Submitted!",
+      bodyText: body,
+      bodyHtml: plainToHtml(body),
+    });
+    return { ok: true, value: { draftId: draft.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to create candidate draft." };
   }
 }
