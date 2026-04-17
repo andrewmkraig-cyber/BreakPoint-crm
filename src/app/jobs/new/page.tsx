@@ -31,12 +31,12 @@ export default async function NewJobPage() {
       <PageHeader
         eyebrow="Requisitions"
         title="New Job"
-        description="Create a new job. We push it to RecruiterFlow so the rest of Ace sees it everywhere."
+        description="Create a new job in Ace."
       />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <div className="font-semibold">Couldn&apos;t load clients from RecruiterFlow.</div>
+          <div className="font-semibold">Couldn&apos;t load clients.</div>
           <div className="mt-1 font-mono text-xs">{error}</div>
         </div>
       )}

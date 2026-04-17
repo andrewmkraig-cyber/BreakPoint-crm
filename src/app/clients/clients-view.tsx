@@ -122,7 +122,7 @@ export function ClientsView({
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <div className="font-semibold">Couldn&apos;t load clients from RecruiterFlow.</div>
+          <div className="font-semibold">Couldn&apos;t load clients.</div>
           <div className="mt-1 font-mono text-xs">{error}</div>
         </div>
       )}
@@ -130,7 +130,7 @@ export function ClientsView({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.length === 0 && !error ? (
           <div className="col-span-full rounded-xl border border-border bg-white p-12 text-center text-sm text-muted-foreground">
-            No clients returned from RecruiterFlow{q ? ` for "${q}"` : ""}.
+            No clients{q ? ` match "${q}"` : ""}.
           </div>
         ) : (
           cards.map((c) => <Card key={c.id} card={c} />)

@@ -39,13 +39,13 @@ import {
   scheduleInterview,
   sendInterviewConfirmationEmail,
   sendOfferAcceptanceEmail,
-  sendReferenceCheckRequest,
   sendRejectionEmail,
   sendSubmittalEmail,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
+import { sendEmailAction } from "@/app/email/actions";
 
 export type ClientContactRef = {
   id: number;
@@ -135,8 +135,7 @@ export function PlacementActions({
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
   const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
-  const [isReferencePending, startReferenceRequest] = useTransition();
-  const router = useRouter();
+  const [referenceOpen, setReferenceOpen] = useState(false);
 
   function onRequestReferences() {
     if (!candidateEmail) {
@@ -145,30 +144,7 @@ export function PlacementActions({
       });
       return;
     }
-    startReferenceRequest(async () => {
-      const result = await sendReferenceCheckRequest({ candidateRfId });
-      if (!result.ok) {
-        toast.error("Couldn't send reference request", { description: result.error });
-        return;
-      }
-      const v = result.value;
-      if (v.status === "sent") {
-        toast.success("Reference request sent", { description: `Sent to ${v.to}.` });
-      } else if (v.status === "drafted") {
-        toast.success("Reference request saved", { description: "Saved to your Gmail Drafts." });
-      } else if (v.status === "skipped") {
-        toast.message(
-          v.reason === "missing"
-            ? "No Reference Check Request template found. Set one in Settings."
-            : v.reason === "inactive"
-              ? "Reference Check Request template is inactive."
-              : "No candidate email on file.",
-        );
-      } else {
-        toast.error("Reference request failed", { description: v.error });
-      }
-      router.refresh();
-    });
+    setReferenceOpen(true);
   }
 
   return (
@@ -181,10 +157,9 @@ export function PlacementActions({
           <button
             type="button"
             onClick={onRequestReferences}
-            disabled={isReferencePending}
             className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
           >
-            {isReferencePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <UserCheck className="h-3.5 w-3.5" />}
+            <UserCheck className="h-3.5 w-3.5" />
             Request References
           </button>
           <button
@@ -280,7 +255,72 @@ export function PlacementActions({
           onClose={() => setSubmitOpen(false)}
         />
       )}
+      {referenceOpen && (
+        <ReferenceCheckCompose
+          candidateFirstName={candidateFirstName}
+          candidateLastName={candidateLastName}
+          candidateEmail={candidateEmail}
+          onClose={() => setReferenceOpen(false)}
+        />
+      )}
     </>
+  );
+}
+
+function ReferenceCheckCompose({
+  candidateFirstName,
+  candidateLastName,
+  candidateEmail,
+  onClose,
+}: {
+  candidateFirstName: string;
+  candidateLastName: string;
+  candidateEmail: string;
+  onClose: () => void;
+}) {
+  const fullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ");
+  return (
+    <EmailComposer
+      title="Reference check request"
+      subtitle={fullName ? `${fullName} · ${candidateEmail}` : candidateEmail}
+      initial={{
+        to: candidateEmail ? [candidateEmail] : [],
+        cc: [],
+        bcc: [],
+        subject: "",
+        body: "",
+      }}
+      showTemplatePicker
+      templateFilter={(t) => t.trigger === "reference_check_request" || t.audience === "candidate"}
+      resolveTemplate={(t) => {
+        const values = {
+          candidateFirstName,
+          candidateLastName,
+          candidateFullName: fullName,
+          candidateEmail,
+        };
+        return {
+          subject: applyMergeFieldsClient(t.subject, values),
+          body: applyMergeFieldsClient(t.body, values),
+        };
+      }}
+      onClose={onClose}
+      sendLabel="Send Reference Request"
+      sendingLabel="Sending…"
+      helperText="Pick the Reference Check Request template from Use Template (or any candidate-facing template)."
+      onSend={async (draft: EmailDraft) => {
+        const result = await sendEmailAction({
+          to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
+          subject: draft.subject,
+          bodyText: draft.body,
+        });
+        if (!result.ok) throw new Error(result.error);
+        toast.success("Reference request sent", { description: `Sent to ${draft.to.join(", ")}.` });
+        onClose();
+      }}
+    />
   );
 }
 
@@ -496,7 +536,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!confirm("Remove this candidate from the job entirely? This deletes the row and attempts to detach the job in RecruiterFlow.")) {
+                    if (!confirm("Remove this candidate from the job entirely? This deletes the row.")) {
                       setOpen(false);
                       return;
                     }
@@ -1371,9 +1411,7 @@ function UnrejectDialog({
         toast.error("Couldn't reactivate candidate", { description: result.error });
         return;
       }
-      toast.success("Candidate reactivated", {
-        description: "Move them back to a live stage in RecruiterFlow to finalize.",
-      });
+      toast.success("Candidate reactivated");
       onClose();
       router.refresh();
     });
@@ -1382,12 +1420,9 @@ function UnrejectDialog({
   return (
     <Modal title="Reactivate candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <p className="text-sm text-muted-foreground">
-        This candidate was rejected for this job. Reactivating sends them back into the pipeline at{" "}
+        Reactivating sends this candidate back into the pipeline at{" "}
         <strong>{PIPELINE_LABELS[targetStage]}</strong> and logs the action to activity.
       </p>
-      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        Since RF has no stage-change API, also move them in RecruiterFlow to keep both systems in sync.
-      </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reactivate" />
     </Modal>
@@ -1597,26 +1632,29 @@ function SubmittalEmailCompose({
   onDone: () => void;
 }) {
   const fullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ") || candidateFirstName;
-  const [primary, ...rest] = job.clientContacts.filter((c) => c.email);
-  const toList = primary?.email ? [primary.email] : [];
-  const ccList = rest.map((c) => c.email).filter(Boolean);
   const subject = `Candidate Submittal - ${fullName} | ${job.jobTitle}`;
+  const contactOptions = job.clientContacts.map((c) => ({
+    id: String(c.id),
+    name: c.name,
+    email: c.email,
+  }));
 
   return (
     <EmailComposer
       title="Submittal email"
       subtitle={`${fullName} → ${job.jobTitle}${job.clientName ? ` · ${job.clientName}` : ""}`}
       initial={{
-        to: toList,
-        cc: ccList,
+        to: [],
+        cc: [],
         bcc: [],
         subject,
         body: "",
       }}
+      recipientOptions={contactOptions}
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
-      helperText="Pick Use Template for a manual-fill skeleton, or Generate with Claude for an AI-written draft."
+      helperText="Pick a client contact for To and any Cc recipients. Then Use Template or Generate with Claude."
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
       resolveTemplate={(t) => {

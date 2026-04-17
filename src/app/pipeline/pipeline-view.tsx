@@ -111,7 +111,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <div className="font-semibold">Couldn&apos;t load the pipeline from RecruiterFlow.</div>
+          <div className="font-semibold">Couldn&apos;t load the pipeline.</div>
           <div className="mt-1 font-mono text-xs">{error}</div>
         </div>
       )}
@@ -390,26 +390,12 @@ function StageTab({ label, count, active, href }: { label: string; count: number
 function StageChip({
   stageName,
   bucket,
-  placement,
 }: {
   stageName: string;
   bucket: Stage;
   placement?: PlacementDetails | null;
 }) {
-  const aceOnly = placement && !placement.syncedToRf;
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <StageBadge bucket={bucket} label={stageName || PIPELINE_LABELS[bucket]} />
-      {aceOnly && (
-        <span
-          title="Stage is Ace-only — RF /external has no stage-change endpoint. Move in RecruiterFlow manually to keep them in sync."
-          className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800"
-        >
-          Ace only
-        </span>
-      )}
-    </span>
-  );
+  return <StageBadge bucket={bucket} label={stageName || PIPELINE_LABELS[bucket]} />;
 }
 
 function initials(name: string): string {

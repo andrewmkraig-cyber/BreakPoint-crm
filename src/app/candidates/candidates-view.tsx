@@ -69,7 +69,7 @@ export function CandidatesView({
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-          <div className="font-semibold">Couldn&apos;t load candidates from RecruiterFlow.</div>
+          <div className="font-semibold">Couldn&apos;t load candidates.</div>
           <div className="mt-1 font-mono text-xs">{error}</div>
         </div>
       )}
@@ -89,7 +89,7 @@ export function CandidatesView({
             {candidates.length === 0 && !error && (
               <tr>
                 <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                  No candidates returned from RecruiterFlow{initialQuery ? ` for "${initialQuery}"` : ""}.
+                  No candidates{initialQuery ? ` match "${initialQuery}"` : ""}.
                 </td>
               </tr>
             )}

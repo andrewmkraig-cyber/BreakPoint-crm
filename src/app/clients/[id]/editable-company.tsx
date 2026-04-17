@@ -70,7 +70,7 @@ export function EditableCompany({
         toast.error("Couldn't save client", { description: result.error });
         return;
       }
-      toast.success("Company updated", { description: "Pushed to RecruiterFlow." });
+      toast.success("Company updated");
       setEditing(false);
       router.refresh();
     });

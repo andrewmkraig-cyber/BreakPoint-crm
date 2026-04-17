@@ -134,6 +134,6 @@ export async function createCandidate(payload: CreateCandidatePayload): Promise<
     revalidatePath("/candidates");
     return { ok: true, value: { id: created.id } };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to create candidate in RecruiterFlow." };
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to create candidate." };
   }
 }

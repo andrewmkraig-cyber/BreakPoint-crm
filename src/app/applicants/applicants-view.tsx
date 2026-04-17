@@ -163,7 +163,7 @@ function ApplicantRowView({ row }: { row: ApplicantRow }) {
       setStatus(next);
       toast.success(
         next === "moved_to_pipeline"
-          ? "Moved to Pipeline — move the candidate to Submitted in RecruiterFlow to finalize."
+          ? "Moved to Pipeline"
           : `Marked ${STATUS_LABEL[next].toLowerCase()}`,
       );
       router.refresh();

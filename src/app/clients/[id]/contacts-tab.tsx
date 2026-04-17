@@ -44,7 +44,7 @@ export function ContactsTab({
         setError(result.error);
         return;
       }
-      setSuccess("Contact added to RecruiterFlow.");
+      setSuccess("Contact added.");
       form.reset();
       setOpen(false);
       router.refresh();
@@ -128,7 +128,7 @@ export function ContactsTab({
             {initialContacts.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                  No contacts for this client yet. Add one with the button above and it will be written back to RecruiterFlow.
+                  No contacts for this client yet. Add one with the button above.
                 </td>
               </tr>
             ) : (

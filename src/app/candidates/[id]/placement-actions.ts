@@ -10,7 +10,7 @@ import { createGmailDraft, plainToHtml, sendGmail } from "@/lib/gmail";
 import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import { getAppPreferences, getRecruiterPhone } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
-import type { RFCandidate } from "@/lib/recruiterflow";
+import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
 import {
   CANDIDATE_CONFIRMATION_TRIGGER,
@@ -484,9 +484,8 @@ export async function removeCancelledFromJob(input: RemoveFromJobInput): Promise
     });
     revalidatePath(`/candidates/${p.candidateRfId}`);
     revalidatePath(`/pipeline`);
-    if (!rfSynced && rfError) {
-      return { ok: false, error: `Row removed from Ace, but RF didn't accept the job removal: ${rfError}` };
-    }
+    // Ace is source of truth — if RF refused the jobs[] edit, that's captured
+    // in ActionLog metadata (rfSynced/rfError). We return success either way.
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Remove failed." };
@@ -637,9 +636,8 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
-    if (!rfSynced && rfError) {
-      return { ok: false, error: `Submittal logged, but RF sync failed: ${rfError}. Add the candidate in RecruiterFlow.` };
-    }
+    // Ace is source of truth — RF sync is best-effort. Never block the caller
+    // on RF errors; they're captured in the ActionLog metadata for audit.
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to submit candidate." };
@@ -710,8 +708,7 @@ export async function generateSubmittalEmailBody(args: {
 
   try {
     const c = await recruiterflow.getCandidate(args.candidateRfId);
-    const firstName = c.first_name ?? (c.name ?? "").split(/\s+/)[0] ?? "";
-    const lastName = c.last_name ?? (c.name ?? "").split(/\s+/).slice(1).join(" ") ?? "";
+    const { firstName, lastName } = extractCandidateFields(c);
     const expectedSalary = (c.expected_salary ?? null) as
       | { number?: number | null; currency?: string | null }
       | null;
@@ -912,10 +909,28 @@ export async function deliverCandidateConfirmation(
     return { ok: false, error: "Candidate confirmation template missing. Check Settings → Templates." };
   }
 
+  // Re-fetch full candidate so merge fields always resolve even if the caller
+  // passed through sparse data from listAllCandidates.
+  let extractedFirst = input.candidateFirstName?.trim() || "";
+  let extractedLast = input.candidateLastName?.trim() || "";
+  let extractedFull = [extractedFirst, extractedLast].filter(Boolean).join(" ");
+  let extractedEmail = input.candidateEmail;
+  try {
+    const fresh = await recruiterflow.getCandidate(input.candidateRfId);
+    const e = extractCandidateFields(fresh);
+    extractedFirst = e.firstName || extractedFirst;
+    extractedLast = e.lastName || extractedLast;
+    extractedFull = e.fullName || extractedFull;
+    extractedEmail = e.email || extractedEmail;
+  } catch {
+    // Fall back to caller-supplied values if RF is unreachable.
+  }
+
   const values: MergeFieldValues = {
-    candidateFirstName: input.candidateFirstName,
-    candidateLastName: input.candidateLastName,
-    candidateEmail: input.candidateEmail,
+    candidateFirstName: extractedFirst,
+    candidateLastName: extractedLast,
+    candidateFullName: extractedFull,
+    candidateEmail: extractedEmail,
     clientCompanyName: input.clientCompanyName,
     clientContactFullName: input.clientContactFullName ?? "",
     clientContactFirstName: input.clientContactFirstName ?? "",
@@ -1028,11 +1043,14 @@ async function fireTriggerForCandidateJob(input: TriggerFireInput): Promise<Trig
   let candidateEmail = "";
   let candidateFirstName = "";
   let candidateLastName = "";
+  let candidateFullName = "";
   try {
     const c = await recruiterflow.getCandidate(input.candidateRfId);
-    candidateEmail = normalizeCandidateEmail(c);
-    candidateFirstName = c.first_name ?? (c.name ?? "").split(/\s+/)[0] ?? "";
-    candidateLastName = c.last_name ?? (c.name ?? "").split(/\s+/).slice(1).join(" ") ?? "";
+    const extracted = extractCandidateFields(c);
+    candidateEmail = extracted.email;
+    candidateFirstName = extracted.firstName;
+    candidateLastName = extracted.lastName;
+    candidateFullName = extracted.fullName;
   } catch {
     // Non-fatal: send without candidate-specific values; caller can still pick a recipient.
   }
@@ -1042,7 +1060,7 @@ async function fireTriggerForCandidateJob(input: TriggerFireInput): Promise<Trig
   const values: MergeFieldValues = {
     candidateFirstName,
     candidateLastName,
-    candidateFullName: [candidateFirstName, candidateLastName].filter(Boolean).join(" "),
+    candidateFullName,
     candidateEmail,
     clientCompanyName: input.clientCompanyName,
     clientContactFullName: input.clientContactFullName ?? "",
@@ -1071,7 +1089,7 @@ async function fireTriggerForCandidateJob(input: TriggerFireInput): Promise<Trig
   return { fire, candidateEmail };
 }
 
-function normalizeCandidateEmail(c: RFCandidate): string {
+function normalizeCandidateEmail(c: import("@/lib/recruiterflow").RFCandidate): string {
   if (Array.isArray(c.email)) return c.email[0] ?? "";
   return c.email ?? "";
 }

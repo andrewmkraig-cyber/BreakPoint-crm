@@ -122,7 +122,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
         toast.error("Couldn't create job", { description: result.error });
         return;
       }
-      toast.success("Job created", { description: "Pushed to RecruiterFlow." });
+      toast.success("Job created");
       if (result.value.id) {
         router.push(`/jobs/${result.value.id}`);
       } else {

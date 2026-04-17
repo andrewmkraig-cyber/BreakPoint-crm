@@ -9,6 +9,7 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
+import { extractCandidateFields } from "@/lib/candidate-fields";
 import {
   recruiterflow,
   canonicalStage,
@@ -74,8 +75,19 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     }),
   ]);
 
-  const c = candidates.find((x) => x.id === id);
-  if (!c) notFound();
+  const listed = candidates.find((x) => x.id === id);
+  if (!listed) notFound();
+
+  // listAllCandidates returns sparse records; /candidate/:id has the full
+  // first_name/last_name split the merge fields rely on. Fall back to the
+  // listed record if the individual fetch fails.
+  let c: typeof listed = listed;
+  try {
+    c = await recruiterflow.getCandidate(id);
+  } catch {
+    // keep the listed record
+  }
+  const extractedName = extractCandidateFields(c);
 
   const name =
     c.name ??
@@ -250,9 +262,9 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
 
       <PlacementActions
         candidateRfId={id}
-        candidateFirstName={c.first_name ?? (c.name ?? "").split(/\s+/)[0] ?? ""}
-        candidateLastName={c.last_name ?? (c.name ?? "").split(/\s+/).slice(1).join(" ") ?? ""}
-        candidateEmail={normalizeEmail(c.email)}
+        candidateFirstName={extractedName.firstName}
+        candidateLastName={extractedName.lastName}
+        candidateEmail={extractedName.email}
         jobs={placementJobs}
         openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
       />
@@ -297,7 +309,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
             ) : (
               <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
                 <FileText className="h-6 w-6 text-muted-foreground" />
-                No resume on file in RecruiterFlow.
+                No resume on file.
               </div>
             )}
           </div>
@@ -355,7 +367,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
               <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-muted-foreground/50" />
               <div>
                 <div className="text-sm text-navy">
-                  <span className="font-medium">Added to RecruiterFlow</span>
+                  <span className="font-medium">Added to Ace</span>
                   {c.added_by?.name && <span className="text-muted-foreground"> by {c.added_by.name}</span>}
                 </div>
                 <div className="text-[11px] text-muted-foreground">{new Date(c.added_time).toLocaleString()}</div>

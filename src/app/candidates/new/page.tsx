@@ -12,7 +12,7 @@ export default function NewCandidatePage() {
       <PageHeader
         eyebrow="Pool"
         title="New candidate"
-        description="Drop a resume PDF, paste profile text, or enter a LinkedIn URL. Claude parses whatever you provide; review and edit before saving to RecruiterFlow."
+        description="Drop a resume PDF, paste profile text, or enter a LinkedIn URL. Claude parses whatever you provide; review and edit before saving."
       />
       <NewCandidateForm />
     </div>

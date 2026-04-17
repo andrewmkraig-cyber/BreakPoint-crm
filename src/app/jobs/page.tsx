@@ -102,7 +102,7 @@ export default async function JobsPage({
       <PageHeader
         eyebrow="Requisitions"
         title="Jobs"
-        description="Active and inactive requisitions from RecruiterFlow. Counts come from each candidate's pipeline stage."
+        description="Active and inactive requisitions. Counts come from each candidate's pipeline stage."
         actions={<JobsHeaderActions />}
       />
       <JobsView

@@ -16,6 +16,8 @@ export type EmailDraft = {
 
 export type ResolveTemplateFn = (template: ActiveTemplateSummary) => Promise<{ subject: string; body: string }> | { subject: string; body: string };
 
+export type ContactOption = { id: string; name: string; email: string };
+
 export type EmailComposerProps = {
   title: string;
   subtitle?: string;
@@ -36,6 +38,11 @@ export type EmailComposerProps = {
   showTemplatePicker?: boolean;
   resolveTemplate?: ResolveTemplateFn;
   templateFilter?: (t: ActiveTemplateSummary) => boolean;
+  // When provided, the To / Cc text inputs are swapped for contact pickers:
+  // To is a single-select dropdown, Cc is a multi-select chip list. Useful
+  // for scoped flows (submittal) where recipients must come from a curated
+  // client contact list.
+  recipientOptions?: ContactOption[];
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -56,6 +63,7 @@ export function EmailComposer({
   showTemplatePicker = false,
   resolveTemplate,
   templateFilter,
+  recipientOptions,
 }: EmailComposerProps) {
   const [to, setTo] = useState<string>(initial.to.join(", "));
   const [cc, setCc] = useState<string>(initial.cc.join(", "));
@@ -125,6 +133,15 @@ export function EmailComposer({
     startGenerate(async () => {
       try {
         const text = await onGenerate(draftValue());
+        // Defensive — reject anything that isn't a clean string. If a server
+        // action got middleware-redirected to a sign-in/error HTML response,
+        // it can reach us as HTML-ish content that should not land in the body.
+        if (typeof text !== "string") {
+          throw new Error("Generator returned a non-string response.");
+        }
+        if (/^<!DOCTYPE|^<html|<script\b|__next_f\.push\(/i.test(text.slice(0, 1000))) {
+          throw new Error("Generator returned a page instead of text. Reload the tab and try again — your session may have expired.");
+        }
         setBody(text);
         toast.success("Draft generated", { description: "Edit before sending if needed." });
       } catch (e) {
@@ -177,28 +194,41 @@ export function EmailComposer({
         </div>
 
         <div className="flex flex-col gap-2 px-5 py-3 text-sm">
-          <Row label="To">
-            <Input value={to} onChange={setTo} placeholder="name@example.com, name2@example.com" />
-          </Row>
-          {showCcBcc ? (
+          {recipientOptions ? (
             <>
-              <Row label="Cc">
-                <Input value={cc} onChange={setCc} placeholder="cc@example.com" />
+              <Row label="To">
+                <ContactSinglePicker value={to} onChange={setTo} options={recipientOptions} />
               </Row>
-              <Row label="Bcc">
-                <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+              <Row label="Cc">
+                <ContactMultiPicker value={cc} onChange={setCc} options={recipientOptions} />
               </Row>
             </>
           ) : (
-            <div className="pl-16">
-              <button
-                type="button"
-                onClick={() => setShowCcBcc(true)}
-                className="text-xs font-medium text-brand-dark hover:underline"
-              >
-                Add Cc / Bcc
-              </button>
-            </div>
+            <>
+              <Row label="To">
+                <Input value={to} onChange={setTo} placeholder="name@example.com, name2@example.com" />
+              </Row>
+              {showCcBcc ? (
+                <>
+                  <Row label="Cc">
+                    <Input value={cc} onChange={setCc} placeholder="cc@example.com" />
+                  </Row>
+                  <Row label="Bcc">
+                    <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+                  </Row>
+                </>
+              ) : (
+                <div className="pl-16">
+                  <button
+                    type="button"
+                    onClick={() => setShowCcBcc(true)}
+                    className="text-xs font-medium text-brand-dark hover:underline"
+                  >
+                    Add Cc / Bcc
+                  </button>
+                </div>
+              )}
+            </>
           )}
           <Row label="Subject">
             <Input value={subject} onChange={setSubject} placeholder="Subject" />
@@ -343,4 +373,105 @@ function confirmReplace(current: string, incoming: string): boolean {
   if (!current.trim()) return true;
   if (current.trim() === incoming.trim()) return false;
   return window.confirm("Replace the current text with the template?");
+}
+
+function ContactSinglePicker({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: ContactOption[];
+}) {
+  return (
+    <select
+      value={value.trim()}
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+    >
+      <option value="">Select a contact…</option>
+      {options.map((c) => (
+        <option key={c.id} value={c.email} disabled={!c.email}>
+          {c.name}{c.email ? ` — ${c.email}` : " — no email on file"}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+function ContactMultiPicker({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: ContactOption[];
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = new Set(
+    value
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+
+  function toggle(email: string) {
+    if (!email) return;
+    const next = new Set(selected);
+    if (next.has(email)) next.delete(email);
+    else next.add(email);
+    onChange(Array.from(next).join(", "));
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-2 py-1.5 text-left text-sm text-navy hover:border-brand/40"
+      >
+        <span className="truncate">
+          {selected.size === 0 ? (
+            <span className="text-muted-foreground">Pick contacts…</span>
+          ) : (
+            Array.from(selected).join(", ")
+          )}
+        </span>
+        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+            <ul className="max-h-64 overflow-y-auto py-1">
+              {options.length === 0 && (
+                <li className="px-3 py-2 text-xs text-muted-foreground">No contacts on file.</li>
+              )}
+              {options.map((c) => (
+                <li key={c.id}>
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
+                    <input
+                      type="checkbox"
+                      checked={c.email ? selected.has(c.email) : false}
+                      onChange={() => toggle(c.email)}
+                      disabled={!c.email}
+                      className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{c.name}</span>
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {c.email || "No email on file"}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
