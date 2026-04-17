@@ -619,16 +619,19 @@ function ConfirmStartDialog({
   const [isPending, startSave] = useTransition();
 
   // Block the browser's default behavior of opening a dropped image in a new
-  // tab if the user releases the mouse outside the dropzone.
+  // tab if the user releases the mouse outside the dropzone. Use capture phase
+  // so we preventDefault before any handler (inside or outside React) can react.
   useEffect(() => {
     const block = (e: Event) => {
       e.preventDefault();
     };
-    window.addEventListener("dragover", block);
-    window.addEventListener("drop", block);
+    window.addEventListener("dragenter", block, true);
+    window.addEventListener("dragover", block, true);
+    window.addEventListener("drop", block, true);
     return () => {
-      window.removeEventListener("dragover", block);
-      window.removeEventListener("drop", block);
+      window.removeEventListener("dragenter", block, true);
+      window.removeEventListener("dragover", block, true);
+      window.removeEventListener("drop", block, true);
     };
   }, []);
 
@@ -642,19 +645,26 @@ function ConfirmStartDialog({
     handleFile(e.target.files?.[0] ?? null);
   }
 
-  function onDragOver(e: DragEvent<HTMLLabelElement>) {
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
+    setDragActive(true);
+  }
+
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     if (!dragActive) setDragActive(true);
   }
 
-  function onDragLeave(e: DragEvent<HTMLLabelElement>) {
+  function onDragLeave(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
   }
 
-  function onDrop(e: DragEvent<HTMLLabelElement>) {
+  function onDrop(e: DragEvent<HTMLDivElement>) {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
@@ -696,9 +706,17 @@ function ConfirmStartDialog({
         Upload a screenshot of the start confirmation (email, portal, HR tool). This seals the placement and flags it
         for invoicing.
       </p>
-      <label
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => inputRef.current?.click()}
-        onDragEnter={onDragOver}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragEnter={onDragEnter}
         onDragOver={onDragOver}
         onDragLeave={onDragLeave}
         onDrop={onDrop}
@@ -719,7 +737,7 @@ function ConfirmStartDialog({
           className="hidden"
           onChange={onPick}
         />
-      </label>
+      </div>
       {previewUrl && (
         <div className="mt-3 overflow-hidden rounded-lg border border-border bg-white">
           {/* eslint-disable-next-line @next/next/no-img-element */}

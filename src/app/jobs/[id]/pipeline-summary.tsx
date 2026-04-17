@@ -46,14 +46,15 @@ const STAGE_LABELS: Record<PipelineBucket, string> = {
   other: "Other",
 };
 
+// Same green-brand progression as StageBadge so pipeline visuals match across pages.
 const STAGE_TONE: Record<PipelineBucket, string> = {
-  applied: "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300",
-  sourced: "border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300",
-  submitted: "border-brand/30 bg-brand-tint text-brand-dark hover:border-brand/50",
-  interviewing: "border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300",
-  offer: "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300",
-  pending_start: "border-purple-200 bg-purple-50 text-purple-700 hover:border-purple-300",
-  hired: "border-emerald-200 bg-emerald-50 text-emerald-700 hover:border-emerald-300",
+  applied: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
+  sourced: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
+  submitted: "border-brand/30 bg-brand-tint text-brand-dark hover:border-brand/60",
+  interviewing: "border-brand/40 bg-brand/25 text-brand-dark hover:border-brand/70",
+  offer: "border-brand bg-brand/50 text-white hover:bg-brand/60",
+  pending_start: "border-brand-dark bg-brand text-white hover:bg-brand-dark",
+  hired: "border-brand-dark bg-brand-dark text-white hover:brightness-110",
   rejected: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
   other: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
 };

@@ -1,16 +1,18 @@
 import { cn } from "@/lib/utils";
 import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
 
+// Active pipeline stages progress from lightest brand tint → solid brand green.
+// Inactive buckets (applied/sourced/other) stay muted; rejected stays red.
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
-  applied: "bg-slate-50 text-slate-700",
-  submitted: "bg-brand-tint text-brand-dark",
-  interviewing: "bg-blue-50 text-blue-700",
-  offer: "bg-amber-50 text-amber-700",
-  pending_start: "bg-purple-50 text-purple-700",
-  hired: "bg-emerald-50 text-emerald-700",
-  sourced: "bg-muted text-navy-400",
-  rejected: "bg-red-50 text-red-700",
-  other: "bg-muted text-navy-400",
+  applied: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
+  sourced: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
+  submitted: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/30",
+  interviewing: "bg-brand/25 text-brand-dark ring-1 ring-inset ring-brand/40",
+  offer: "bg-brand/50 text-white ring-1 ring-inset ring-brand",
+  pending_start: "bg-brand text-white ring-1 ring-inset ring-brand-dark",
+  hired: "bg-brand-dark text-white ring-1 ring-inset ring-brand-dark",
+  rejected: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
+  other: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
 };
 
 const BUCKET_LABEL: Record<PipelineBucket, string> = {
@@ -55,9 +57,9 @@ export function StageBadge({
       onClick={onClick}
       title={title}
       className={cn(
-        "inline-flex min-w-24 items-center justify-center rounded-full px-3 py-1 text-center text-[11px] font-bold uppercase tracking-wide",
+        "inline-flex h-6 min-w-[6.5rem] items-center justify-center whitespace-nowrap rounded-full px-3 text-center text-[11px] font-bold uppercase leading-none tracking-wide",
         BUCKET_CLASS[bucket],
-        interactive && "cursor-pointer transition hover:brightness-95 focus:outline-none focus:ring-2 focus:ring-brand/30",
+        interactive && "cursor-pointer transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-brand/40",
         className,
       )}
     >

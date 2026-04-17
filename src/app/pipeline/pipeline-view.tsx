@@ -283,7 +283,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
         <Link
           href={`/candidates/${row.candidateId}`}
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full bg-brand px-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-brand-dark"
+          className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full bg-brand px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-white shadow-sm transition hover:bg-brand-dark"
         >
           Confirm Start
         </Link>
