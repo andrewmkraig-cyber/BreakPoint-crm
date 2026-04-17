@@ -715,7 +715,9 @@ export type DeliverCandidateConfirmationInput = {
   candidateEmail: string;
   candidateFirstName: string;
   candidateLastName: string;
-  clientName: string;
+  clientCompanyName: string;
+  clientContactFullName?: string;
+  clientContactFirstName?: string;
   jobTitle: string;
   jobLocation?: string;
 };
@@ -758,7 +760,9 @@ export async function deliverCandidateConfirmation(
     candidateFirstName: input.candidateFirstName,
     candidateLastName: input.candidateLastName,
     candidateEmail: input.candidateEmail,
-    clientName: input.clientName,
+    clientCompanyName: input.clientCompanyName,
+    clientContactFullName: input.clientContactFullName ?? "",
+    clientContactFirstName: input.clientContactFirstName ?? "",
     jobTitle: input.jobTitle,
     jobLocation: input.jobLocation ?? "",
     recruiterName: fromName,

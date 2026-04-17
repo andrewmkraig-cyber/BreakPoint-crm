@@ -102,10 +102,10 @@ const CANDIDATE_CONFIRMATION_DEFAULT = {
   audience: "candidate",
   body:
     "Hi [Candidate First Name],\n\n" +
-    "Good news - your profile has been submitted to [Client Name].\n\n" +
+    "Good news - your profile has been submitted to [Client Company Name].\n\n" +
     "Please read below and then hit reply on this email and state: Understood!\n\n" +
-    "This email serves as confirmation that BreakPoint Talent has reviewed your resume and submitted it directly to our client, [Client Name], for their [Job Title] position.\n\n" +
-    "Please do not apply directly nor contact [Client Name]. We will be managing all feedback and next steps on your behalf.\n\n" +
+    "This email serves as confirmation that BreakPoint Talent has reviewed your resume and submitted it directly to our client, [Client Company Name], for their [Job Title] position.\n\n" +
+    "Please do not apply directly nor contact [Client Company Name]. We will be managing all feedback and next steps on your behalf.\n\n" +
     "We will keep you posted on feedback/next steps once we hear from them.\n\n" +
     "[Recruiter Name]\n" +
     "Managing Partner & Founder\n" +
@@ -128,6 +128,33 @@ export async function ensureDefaultTemplates(): Promise<void> {
         trigger: tpl.trigger,
         audience: tpl.audience,
         isActive: true,
+      },
+    });
+  }
+
+  await migrateClientNameToken();
+}
+
+// One-shot migration: any existing template subject/body still using the old
+// [Client Name] token gets rewritten to [Client Company Name]. Idempotent —
+// templates that don't reference it are skipped; templates that already use
+// the new token are left alone.
+async function migrateClientNameToken(): Promise<void> {
+  const rows = await prisma.emailTemplate.findMany({
+    select: { id: true, subject: true, body: true },
+  });
+  const needle = /\[Client Name\]/g;
+  for (const row of rows) {
+    const subjectHit = needle.test(row.subject);
+    needle.lastIndex = 0;
+    const bodyHit = needle.test(row.body);
+    needle.lastIndex = 0;
+    if (!subjectHit && !bodyHit) continue;
+    await prisma.emailTemplate.update({
+      where: { id: row.id },
+      data: {
+        subject: row.subject.replace(/\[Client Name\]/g, "[Client Company Name]"),
+        body: row.body.replace(/\[Client Name\]/g, "[Client Company Name]"),
       },
     });
   }

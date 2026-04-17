@@ -6,7 +6,9 @@ export const MERGE_FIELDS = [
   { token: "[Candidate First Name]", label: "Candidate First Name" },
   { token: "[Candidate Last Name]", label: "Candidate Last Name" },
   { token: "[Candidate Email]", label: "Candidate Email" },
-  { token: "[Client Name]", label: "Client Name" },
+  { token: "[Client Contact Full Name]", label: "Client Contact Full Name" },
+  { token: "[Client Contact First Name]", label: "Client Contact First Name" },
+  { token: "[Client Company Name]", label: "Client Company Name" },
   { token: "[Job Title]", label: "Job Title" },
   { token: "[Job Location]", label: "Job Location" },
   { token: "[Job Description]", label: "Job Description" },
@@ -21,7 +23,9 @@ export type MergeFieldValues = {
   candidateFirstName?: string;
   candidateLastName?: string;
   candidateEmail?: string;
-  clientName?: string;
+  clientContactFullName?: string;
+  clientContactFirstName?: string;
+  clientCompanyName?: string;
   jobTitle?: string;
   jobLocation?: string;
   jobDescription?: string;
@@ -43,7 +47,9 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     "[Candidate First Name]": values.candidateFirstName ?? "",
     "[Candidate Last Name]": values.candidateLastName ?? "",
     "[Candidate Email]": values.candidateEmail ?? "",
-    "[Client Name]": values.clientName ?? "",
+    "[Client Contact Full Name]": values.clientContactFullName ?? "",
+    "[Client Contact First Name]": values.clientContactFirstName ?? "",
+    "[Client Company Name]": values.clientCompanyName ?? "",
     "[Job Title]": values.jobTitle ?? "",
     "[Job Location]": values.jobLocation ?? "",
     "[Job Description]": values.jobDescription ?? "",

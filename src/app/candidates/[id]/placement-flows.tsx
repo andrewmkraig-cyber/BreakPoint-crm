@@ -1291,12 +1291,16 @@ function SubmittalEmailCompose({
         if (!result.ok) throw new Error(result.error);
 
         if (candidateEmail) {
+          const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
+          const primaryFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
           const confirmResult = await deliverCandidateConfirmation({
             candidateRfId,
             candidateEmail,
             candidateFirstName,
             candidateLastName,
-            clientName: job.clientName,
+            clientCompanyName: job.clientName,
+            clientContactFullName: primaryContact?.name ?? "",
+            clientContactFirstName: primaryFirst,
             jobTitle: job.jobTitle,
           });
           if (confirmResult.ok) {
