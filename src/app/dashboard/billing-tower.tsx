@@ -48,9 +48,11 @@ export function BillingTower() {
 
 function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/50 p-5">
-      <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="mt-2 font-serif text-3xl font-semibold text-navy">{value}</div>
+    <div className="rounded-xl border border-border bg-muted/50 px-4 py-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+        <div className="font-serif text-3xl font-bold leading-none text-navy">{value}</div>
+      </div>
       <p className="mt-2 text-xs text-muted-foreground">{hint}</p>
     </div>
   );

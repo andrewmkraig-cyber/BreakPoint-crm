@@ -126,12 +126,10 @@ export default async function JobsPage({
 function JobsHeaderActions() {
   return (
     <Link
-      href="https://recruiterflow.com/jobs/add"
-      target="_blank"
-      rel="noreferrer"
-      className="inline-flex items-center rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+      href="/jobs/new"
+      className="inline-flex items-center rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
     >
-      New job in RecruiterFlow ↗
+      New Job in Ace
     </Link>
   );
 }

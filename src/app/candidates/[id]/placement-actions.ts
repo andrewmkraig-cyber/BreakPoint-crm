@@ -92,7 +92,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
       select: { id: true, syncedToRf: true },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
-    revalidatePath(`/inbox`);
+    revalidatePath(`/pipeline`);
     return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record offer." };
@@ -174,7 +174,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       select: { id: true, syncedToRf: true },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
-    revalidatePath(`/inbox`);
+    revalidatePath(`/pipeline`);
     return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record placement." };
@@ -238,7 +238,7 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
       },
     });
     revalidatePath(`/candidates/${placement.candidateRfId}`);
-    revalidatePath(`/inbox`);
+    revalidatePath(`/pipeline`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to confirm start." };
@@ -253,9 +253,122 @@ export async function deletePlacement(placementId: string): Promise<Result> {
     if (!p) return { ok: false, error: "Not found." };
     await prisma.placement.delete({ where: { id: placementId } });
     revalidatePath(`/candidates/${p.candidateRfId}`);
-    revalidatePath(`/inbox`);
+    revalidatePath(`/pipeline`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Delete failed." };
+  }
+}
+
+// ---- Reject / Unreject / Schedule Interview ----
+//
+// These write to ActionLog only. RF /external has no stage-change endpoint,
+// so "sync" is manual — recruiter moves the candidate in RF themselves.
+// We persist the intent here so the activity log shows who did what, when.
+
+export type RejectCandidateInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  previousStage: string | null;
+  reason: string;
+};
+
+export async function rejectCandidateJob(input: RejectCandidateInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "reject",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          previousStage: input.previousStage,
+          reason: input.reason || null,
+        },
+      },
+    });
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reject candidate." };
+  }
+}
+
+export type UnrejectCandidateInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  targetStage: string; // previous stage or "submitted" fallback
+};
+
+export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "unreject",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          targetStage: input.targetStage,
+        },
+      },
+    });
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to unreject candidate." };
+  }
+}
+
+export type ScheduleInterviewInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  scheduledAt: string; // ISO datetime
+  interviewerName: string;
+  interviewerEmail: string;
+  notes: string;
+};
+
+export async function scheduleInterview(input: ScheduleInterviewInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  if (!input.scheduledAt) return { ok: false, error: "Interview date/time is required." };
+  const when = new Date(input.scheduledAt);
+  if (Number.isNaN(when.getTime())) return { ok: false, error: "Invalid date/time." };
+  try {
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "schedule_interview",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          scheduledAt: when.toISOString(),
+          interviewerName: input.interviewerName || null,
+          interviewerEmail: input.interviewerEmail || null,
+          notes: input.notes || null,
+        },
+      },
+    });
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to schedule interview." };
   }
 }

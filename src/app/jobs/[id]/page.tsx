@@ -9,9 +9,9 @@ import {
   emptyJobCounts,
   flattenPipeline,
   canonicalStage,
-  PIPELINE_LABELS,
 } from "@/lib/recruiterflow";
-import { cn } from "@/lib/utils";
+import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
+import { cn, formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +28,15 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
   const job = normalizeJob(raw);
   const counts = buildJobCounts(candidates).get(id) ?? emptyJobCounts();
-  const submittalRows = flattenPipeline(candidates).filter((r) => r.jobId === id);
+  const flatForJob = flattenPipeline(candidates).filter((r) => r.jobId === id);
+  const pipelineRows: JobPipelineRow[] = flatForJob.map((r) => ({
+    candidateId: r.candidateId,
+    candidateName: r.candidateName,
+    candidateTitle: r.candidateTitle,
+    stageName: r.stageName,
+    bucket: canonicalStage(r.stageName),
+    stageMovedAt: r.stageMovedAt,
+  }));
 
   const billingContact = raw.custom_fields?.find((f) => f.name?.toLowerCase() === "billing contact")?.value as string | undefined;
   const feePct = raw.custom_fields?.find((f) => f.name?.toLowerCase().includes("client fee"))?.value as number | undefined;
@@ -75,7 +83,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             <DT label="Location" value={job.location || "—"} icon={<MapPin className="h-3 w-3" />} />
             <DT label="Job Type" value={[job.jobType, job.employmentType].filter(Boolean).join(" · ") || "—"} />
             <DT label="Status (RF)" value={job.statusName || (job.isOpen ? "Active" : "Closed")} />
-            <DT label="Last Edited" value={job.lastEditedAt ? new Date(job.lastEditedAt).toLocaleString() : "—"} />
+            <DT label="Last Edited" value={formatDate(job.lastEditedAt)} />
             <DT label="Billing Contact" value={billingContact || "—"} />
             <DT label="Fee" value={feePct ? `${feePct}%${estFee ? ` (est. $${estFee.toLocaleString()})` : ""}` : "—"} />
           </dl>
@@ -115,46 +123,22 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+      <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
+        <div className="flex items-center justify-between">
           <h2 className="font-serif text-lg font-semibold text-navy">Pipeline</h2>
           <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             <Users className="h-3 w-3" />
-            {submittalRows.length} {submittalRows.length === 1 ? "candidate" : "candidates"}
+            {pipelineRows.length} {pipelineRows.length === 1 ? "candidate" : "candidates"}
           </div>
         </div>
-        {submittalRows.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-muted-foreground">
+        {pipelineRows.length === 0 ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
             No candidates have been added to this job yet.
           </div>
         ) : (
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-5 py-3 font-medium">Candidate</th>
-                <th className="px-5 py-3 font-medium">Stage</th>
-                <th className="px-5 py-3 font-medium">Last Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {submittalRows.map((r) => (
-                <tr key={`${r.candidateId}-${r.jobId}`} className="transition hover:bg-brand-tint/40">
-                  <td className="px-5 py-3">
-                    <Link href={`/candidates/${r.candidateId}`} className="font-medium text-navy hover:text-brand-dark">
-                      {r.candidateName}
-                    </Link>
-                    <div className="text-xs text-muted-foreground">{r.candidateTitle || "—"}</div>
-                  </td>
-                  <td className="px-5 py-3">
-                    <StageChip stageName={r.stageName} />
-                  </td>
-                  <td className="px-5 py-3 text-xs text-muted-foreground">
-                    {r.stageMovedAt ? new Date(r.stageMovedAt).toLocaleString() : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="mt-4">
+            <JobPipelineSummary rows={pipelineRows} />
+          </div>
         )}
       </div>
 
@@ -181,39 +165,17 @@ function DT({ label, value, icon }: { label: string; value: string; icon?: React
 
 function Stat({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "green" | "muted" }) {
   return (
-    <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-border bg-white px-4 py-2.5 shadow-sm">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
       <div
         className={cn(
-          "mt-1 font-serif text-2xl font-semibold",
+          "font-serif text-3xl font-bold leading-none",
           tone === "green" ? "text-brand-dark" : tone === "muted" ? "text-muted-foreground" : "text-navy",
         )}
       >
         {value}
       </div>
     </div>
-  );
-}
-
-function StageChip({ stageName }: { stageName: string }) {
-  const bucket = canonicalStage(stageName);
-  const label = (bucket in PIPELINE_LABELS
-    ? PIPELINE_LABELS[bucket as keyof typeof PIPELINE_LABELS]
-    : stageName) || "—";
-  const cls = {
-    submitted: "bg-brand-tint text-brand-dark",
-    interviewing: "bg-blue-50 text-blue-700",
-    offer: "bg-amber-50 text-amber-700",
-    pending_start: "bg-purple-50 text-purple-700",
-    hired: "bg-emerald-50 text-emerald-700",
-    sourced: "bg-muted text-navy-400",
-    rejected: "bg-red-50 text-red-700",
-    other: "bg-muted text-navy-400",
-  }[bucket];
-  return (
-    <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold", cls)}>
-      {stageName || label}
-    </span>
   );
 }
 

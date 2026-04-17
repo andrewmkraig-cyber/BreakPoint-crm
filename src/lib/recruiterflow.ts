@@ -384,6 +384,28 @@ export const recruiterflow = {
     return rfFetch<RFCandidate>("/candidate/add", { method: "POST", body });
   },
 
+  // Creates a job in RF via /job/add. RF hasn't published public docs for this
+  // endpoint; field names are inferred from /job/list response shape and from
+  // the /candidate/add convention (flat body, snake_case). If RF returns a
+  // non-SUCCESS RESULT, the caller surfaces it.
+  async createJob(body: {
+    title: string;
+    client_company_id?: number;
+    department?: string;
+    locations?: string[];
+    job_type?: string;
+    employment_type?: string;
+    salary_range_start?: number;
+    salary_range_end?: number;
+    salary_range_currency?: string;
+    salary_frequency?: string;
+    number_of_openings?: number;
+    description?: string;
+    is_open?: boolean;
+  }): Promise<RFJob | { RESULT?: string; id?: number; job_id?: number }> {
+    return rfFetch("/job/add", { method: "POST", body });
+  },
+
   // Partial update. /candidate/update accepts any subset of fields; unknown
   // fields are silently ignored and omitted fields are left alone. All nested
   // array modifications (add/remove note, experience, skill, education) go
@@ -480,9 +502,18 @@ export function normalizeJob(j: RFJob) {
   };
 }
 
-export type PipelineBucket = "submitted" | "interviewing" | "offer" | "pending_start" | "hired" | "sourced" | "rejected" | "other";
+export type PipelineBucket =
+  | "applied"
+  | "sourced"
+  | "submitted"
+  | "interviewing"
+  | "offer"
+  | "pending_start"
+  | "hired"
+  | "rejected"
+  | "other";
 
-export const PIPELINE_LABELS: Record<Exclude<PipelineBucket, "sourced" | "rejected" | "other">, string> = {
+export const PIPELINE_LABELS: Record<Exclude<PipelineBucket, "applied" | "sourced" | "rejected" | "other">, string> = {
   submitted: "Submitted",
   interviewing: "Interviewing",
   offer: "Offer",
@@ -518,6 +549,7 @@ export function canonicalStage(stageName: string | null | undefined): PipelineBu
     return "interviewing";
   }
   if (s.includes("submit") || s.includes("client submission")) return "submitted";
+  if (s.includes("applied") || s === "application" || s.includes("application received")) return "applied";
   return "other";
 }
 

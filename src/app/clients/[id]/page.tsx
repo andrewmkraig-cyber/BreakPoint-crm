@@ -15,6 +15,7 @@ import {
   recruiterflow,
   normalizeClient,
   buildClientCounts,
+  buildJobCounts,
   emptyJobCounts,
   formatPhone,
   telHref,
@@ -94,6 +95,7 @@ export default async function ClientDetailPage({
 
   const client = normalizeClient(raw);
   const counts = buildClientCounts(candidates).get(id) ?? emptyJobCounts();
+  const jobCountsById = buildJobCounts(candidates);
   const clientContacts = contacts.filter((c) => c.client_company_id === id);
 
   const openJobs = Array.isArray(raw.open_jobs) ? raw.open_jobs : [];
@@ -191,9 +193,6 @@ export default async function ClientDetailPage({
                   <span>—</span>
                 )}
               </Detail>
-              <Detail label="Status (RF)">
-                <span>{client.statusName || "—"}</span>
-              </Detail>
             </dl>
           </div>
 
@@ -236,31 +235,62 @@ export default async function ClientDetailPage({
             {openJobs.length + closedJobs.length === 0 ? (
               <div className="px-5 py-12 text-center text-sm text-muted-foreground">No jobs yet for this client.</div>
             ) : (
-              <ul className="divide-y divide-border">
-                {[...openJobs, ...closedJobs].map((j) => (
-                  <li key={j.id}>
-                    <Link
-                      href={`/jobs/${j.id}`}
-                      className="flex items-center justify-between px-5 py-3 transition hover:bg-brand-tint/40"
-                    >
-                      <div className="flex items-center gap-3 text-sm">
-                        <Briefcase className="h-4 w-4 text-muted-foreground" />
-                        <div>
-                          <div className="font-medium text-navy">{j.name ?? j.title ?? "(untitled)"}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {j.department_name ?? ""}
-                            {openJobs.includes(j) ? " · Active" : " · Closed"}
-                          </div>
-                        </div>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        {typeof j.candidates_submitted === "number" ? `${j.candidates_submitted} submitted` : ""}
-                        {typeof j.candidates_hired === "number" ? ` · ${j.candidates_hired} hired` : ""}
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                    <tr>
+                      <th className="px-5 py-2.5 font-medium">Job</th>
+                      <th className="px-5 py-2.5 font-medium">Status</th>
+                      <th className="px-5 py-2.5 text-right font-medium">Submitted</th>
+                      <th className="px-5 py-2.5 text-right font-medium">Interviewing</th>
+                      <th className="px-5 py-2.5 text-right font-medium">Hired</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {[...openJobs, ...closedJobs].map((j) => {
+                      const isOpen = openJobs.includes(j);
+                      const c = jobCountsById.get(j.id) ?? emptyJobCounts();
+                      return (
+                        <tr key={j.id} className="transition hover:bg-brand-tint/40">
+                          <td className="px-5 py-2.5">
+                            <Link
+                              href={`/jobs/${j.id}`}
+                              className="flex items-center gap-2 font-medium text-navy hover:text-brand-dark"
+                            >
+                              <Briefcase className="h-4 w-4 text-muted-foreground" />
+                              <span>{j.name ?? j.title ?? "(untitled)"}</span>
+                            </Link>
+                            {j.department_name && (
+                              <div className="pl-6 text-xs text-muted-foreground">{j.department_name}</div>
+                            )}
+                          </td>
+                          <td className="px-5 py-2.5">
+                            <span
+                              className={cn(
+                                "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                                isOpen
+                                  ? "bg-emerald-50 text-emerald-700"
+                                  : "bg-muted text-navy-400",
+                              )}
+                            >
+                              {isOpen ? "Active" : "Closed"}
+                            </span>
+                          </td>
+                          <td className="px-5 py-2.5 text-right">
+                            <JobCountPill value={c.submitted} tone="submitted" />
+                          </td>
+                          <td className="px-5 py-2.5 text-right">
+                            <JobCountPill value={c.interviewing} tone="interviewing" />
+                          </td>
+                          <td className="px-5 py-2.5 text-right">
+                            <JobCountPill value={c.hired} tone="hired" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </div>
@@ -401,10 +431,24 @@ function Stat({ label, value, tone = "default" }: { label: string; value: string
   }[tone];
   const effective = (typeof value === "number" && value === 0) ? "text-muted-foreground/60" : cls;
   return (
-    <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
-      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 font-serif text-2xl font-semibold", effective)}>{value}</div>
+    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-border bg-white px-4 py-2.5 shadow-sm">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={cn("font-serif text-3xl font-bold leading-none", effective)}>{value}</div>
     </div>
+  );
+}
+
+function JobCountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "hired" }) {
+  if (!value) return <span className="text-muted-foreground/60">0</span>;
+  const cls = {
+    submitted: "bg-brand-tint text-brand-dark",
+    interviewing: "bg-blue-50 text-blue-700",
+    hired: "bg-emerald-50 text-emerald-700",
+  }[tone];
+  return (
+    <span className={cn("inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold", cls)}>
+      {value}
+    </span>
   );
 }
 

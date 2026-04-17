@@ -6,7 +6,8 @@ import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { Bookmark, Loader2, Search } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/recruiterflow";
-import { cn } from "@/lib/utils";
+import { StageBadge } from "@/components/stage-badge";
+import { cn, formatDate } from "@/lib/utils";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 
@@ -25,7 +26,7 @@ export type PlacementDetails = {
   invoicingFlagged: boolean;
 };
 
-export type InboxRow = {
+export type PipelineRow = {
   candidateId: number;
   candidateName: string;
   candidateTitle: string;
@@ -40,8 +41,8 @@ export type InboxRow = {
   placement: PlacementDetails | null;
 };
 
-type InboxViewProps = {
-  rows: InboxRow[];
+type PipelineViewProps = {
+  rows: PipelineRow[];
   total: number;
   page: number;
   totalPages: number;
@@ -54,7 +55,7 @@ type InboxViewProps = {
 
 const STAGE_ORDER: Stage[] = ["submitted", "interviewing", "offer", "pending_start", "hired"];
 
-export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, counts, error }: InboxViewProps) {
+export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q, counts, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
@@ -70,7 +71,7 @@ export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, c
       if (v === undefined || v === "" || v === null) next.delete(k);
       else next.set(k, String(v));
     }
-    return `/inbox?${next.toString()}`;
+    return `/pipeline?${next.toString()}`;
   };
 
   function onSubmitSearch(e: FormEvent) {
@@ -209,7 +210,7 @@ export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, c
                         <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
                       </td>
                       <td className="px-5 py-3 align-top text-xs text-muted-foreground">
-                        {r.lastActionAt ? new Date(r.lastActionAt).toLocaleString() : "—"}
+                        {formatDate(r.lastActionAt)}
                       </td>
                       <td className="px-5 py-3 align-top text-right">
                         {r.daysInStage == null ? (
@@ -249,7 +250,7 @@ export function InboxView({ rows, total, page, totalPages, pageSize, stage, q, c
   );
 }
 
-function PendingStartCells({ row }: { row: InboxRow }) {
+function PendingStartCells({ row }: { row: PipelineRow }) {
   const p = row.placement;
   const startDate = p?.expectedStartDate ? new Date(p.expectedStartDate) : null;
   const daysUntil = startDate ? Math.ceil((startDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
@@ -274,7 +275,7 @@ function PendingStartCells({ row }: { row: InboxRow }) {
                   : "bg-emerald-50 text-emerald-700",
             )}
           >
-            {overdue ? `${Math.abs(daysUntil)}d late` : daysUntil === 0 ? "today" : `${daysUntil}d`}
+            {overdue ? `${Math.abs(daysUntil)}d late` : daysUntil === 0 ? "Today" : `${daysUntil}d`}
           </span>
         )}
       </td>
@@ -282,7 +283,7 @@ function PendingStartCells({ row }: { row: InboxRow }) {
         <Link
           href={`/candidates/${row.candidateId}`}
           onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+          className="inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full bg-brand px-3 text-[11px] font-bold text-white shadow-sm transition hover:bg-brand-dark"
         >
           Confirm Start
         </Link>
@@ -291,7 +292,7 @@ function PendingStartCells({ row }: { row: InboxRow }) {
   );
 }
 
-function HiredCells({ row }: { row: InboxRow }) {
+function HiredCells({ row }: { row: PipelineRow }) {
   const p = row.placement;
   return (
     <>
@@ -303,7 +304,7 @@ function HiredCells({ row }: { row: InboxRow }) {
         )}
       </td>
       <td className="px-5 py-3 align-top text-sm text-muted-foreground">
-        {p?.expectedStartDate ? new Date(p.expectedStartDate).toLocaleDateString() : "—"}
+        {formatDate(p?.expectedStartDate)}
       </td>
       <td className="px-5 py-3 align-top text-xs">
         {p?.billingContactName ? (
@@ -397,19 +398,10 @@ function StageChip({
   bucket: Stage;
   placement?: PlacementDetails | null;
 }) {
-  const cls = {
-    submitted: "bg-brand-tint text-brand-dark",
-    interviewing: "bg-blue-50 text-blue-700",
-    offer: "bg-amber-50 text-amber-700",
-    pending_start: "bg-purple-50 text-purple-700",
-    hired: "bg-emerald-50 text-emerald-700",
-  }[bucket];
   const aceOnly = placement && !placement.syncedToRf;
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={cn("inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold", cls)}>
-        {stageName || PIPELINE_LABELS[bucket]}
-      </span>
+      <StageBadge bucket={bucket} label={stageName || PIPELINE_LABELS[bucket]} />
       {aceOnly && (
         <span
           title="Stage is Ace-only — RF /external has no stage-change endpoint. Move in RecruiterFlow manually to keep them in sync."

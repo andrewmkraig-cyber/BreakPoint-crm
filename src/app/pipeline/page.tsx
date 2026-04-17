@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/page-header";
-import { InboxView, type InboxRow, type PlacementDetails } from "@/app/inbox/inbox-view";
+import { PipelineView, type PipelineRow, type PlacementDetails } from "@/app/pipeline/pipeline-view";
 import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
@@ -16,7 +16,7 @@ const STAGES: Stage[] = ["submitted", "interviewing", "offer", "pending_start", 
 
 const PAGE_SIZE = 25;
 
-export default async function InboxPage({
+export default async function PipelinePage({
   searchParams,
 }: {
   searchParams?: { stage?: string; q?: string; page?: string };
@@ -28,7 +28,7 @@ export default async function InboxPage({
   const pageParam = parseInt(searchParams?.page ?? "1", 10);
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
-  let rows: InboxRow[] = [];
+  let rows: PipelineRow[] = [];
   const counts: Record<Stage, number> = {
     submitted: 0,
     interviewing: 0,
@@ -44,9 +44,6 @@ export default async function InboxPage({
       prisma.placement.findMany(),
     ]);
 
-    // Build a quick lookup of local placements by candidate-job pair; local
-    // placement stage always wins over RF's stage_name because the user moved
-    // the placement through Ace's flow.
     const placementByKey = new Map<string, (typeof placements)[number]>();
     for (const p of placements) {
       placementByKey.set(`${p.candidateRfId}:${p.jobRfId}`, p);
@@ -63,11 +60,9 @@ export default async function InboxPage({
       );
     }
 
-    // Fold in local placements first so an Ace-owned Pending Start / Hired
-    // row always shows under the right tab, even if RF still thinks the
-    // candidate is in Interviewing / Offer.
+    // Local placements win over RF's stage_name because Ace drove the move.
     const seen = new Set<string>();
-    const allRows: InboxRow[] = [];
+    const allRows: PipelineRow[] = [];
 
     for (const p of placements) {
       const key = `${p.candidateRfId}:${p.jobRfId}`;
@@ -93,8 +88,6 @@ export default async function InboxPage({
       });
     }
 
-    // Fall back to RF-only rows for candidate-job pairs we don't have local
-    // placements for.
     for (const r of flat) {
       if (!isPipelineStage(r.bucket)) continue;
       const key = `${r.candidateId}:${r.jobId}`;
@@ -131,7 +124,6 @@ export default async function InboxPage({
     );
   }
 
-  // Pending Start: soonest start first. Hired: most recent placement first.
   if (stage === "pending_start") {
     rows.sort((a, b) => {
       const ta = a.placement?.expectedStartDate ? new Date(a.placement.expectedStartDate).getTime() : Infinity;
@@ -154,11 +146,11 @@ export default async function InboxPage({
   return (
     <div>
       <PageHeader
-        eyebrow="Pipeline"
-        title="Inbox"
+        eyebrow="Desk"
+        title="Pipeline"
         description="Every active submittal across your open jobs. One row per candidate-per-job. Kept candidates are tagged, not bucketed as their own stage."
       />
-      <InboxView
+      <PipelineView
         rows={pageRows}
         total={total}
         page={safePage}

@@ -1,26 +1,41 @@
 "use client";
 
-import { useRef, useState, useTransition, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
+  CalendarClock,
   CheckCircle2,
   DollarSign,
   Handshake,
   Loader2,
+  RotateCcw,
   Save,
   Sparkles,
   UploadCloud,
+  UserX,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
+import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
+import { StageBadge } from "@/components/stage-badge";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import {
   confirmStart,
   recordOffer,
   recordPlacement,
+  rejectCandidateJob,
+  scheduleInterview,
+  unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
+
+export type ClientContactRef = {
+  id: number;
+  name: string;
+  title: string;
+  email: string;
+};
 
 export type PlacementContextJob = {
   jobRfId: number;
@@ -28,15 +43,10 @@ export type PlacementContextJob = {
   clientRfId: number;
   clientName: string;
   clientFeePct: number | null;
-  rfStageBucket:
-    | "submitted"
-    | "interviewing"
-    | "offer"
-    | "pending_start"
-    | "hired"
-    | "sourced"
-    | "rejected"
-    | "other";
+  rfStageBucket: PipelineBucket;
+  rfStageName: string | null;
+  rfStageMovedAt: string | null;
+  clientContacts: ClientContactRef[];
   placement: PlacementSnapshot | null;
 };
 
@@ -64,6 +74,15 @@ export type PlacementSnapshot = {
   startConfirmedAt: string | null;
 };
 
+type Bucket = PipelineBucket;
+
+const ACTIVE_BUCKETS: ReadonlySet<Bucket> = new Set<Bucket>([
+  "submitted",
+  "interviewing",
+  "offer",
+  "pending_start",
+]);
+
 export function PlacementActions({
   candidateRfId,
   jobs,
@@ -74,6 +93,9 @@ export function PlacementActions({
   const [offerFor, setOfferFor] = useState<PlacementContextJob | null>(null);
   const [placementFor, setPlacementFor] = useState<PlacementContextJob | null>(null);
   const [confirmFor, setConfirmFor] = useState<PlacementContextJob | null>(null);
+  const [scheduleFor, setScheduleFor] = useState<PlacementContextJob | null>(null);
+  const [rejectFor, setRejectFor] = useState<PlacementContextJob | null>(null);
+  const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
 
   if (jobs.length === 0) {
     return (
@@ -93,6 +115,9 @@ export function PlacementActions({
             onOffer={() => setOfferFor(j)}
             onPlacement={() => setPlacementFor(j)}
             onConfirm={() => setConfirmFor(j)}
+            onSchedule={() => setScheduleFor(j)}
+            onReject={() => setRejectFor(j)}
+            onUnreject={() => setUnrejectFor(j)}
           />
         ))}
       </div>
@@ -118,6 +143,27 @@ export function PlacementActions({
           onClose={() => setConfirmFor(null)}
         />
       )}
+      {scheduleFor && (
+        <ScheduleInterviewDialog
+          candidateRfId={candidateRfId}
+          job={scheduleFor}
+          onClose={() => setScheduleFor(null)}
+        />
+      )}
+      {rejectFor && (
+        <RejectDialog
+          candidateRfId={candidateRfId}
+          job={rejectFor}
+          onClose={() => setRejectFor(null)}
+        />
+      )}
+      {unrejectFor && (
+        <UnrejectDialog
+          candidateRfId={candidateRfId}
+          job={unrejectFor}
+          onClose={() => setUnrejectFor(null)}
+        />
+      )}
     </>
   );
 }
@@ -127,36 +173,71 @@ function JobActionRow({
   onOffer,
   onPlacement,
   onConfirm,
+  onSchedule,
+  onReject,
+  onUnreject,
 }: {
   job: PlacementContextJob;
   onOffer: () => void;
   onPlacement: () => void;
   onConfirm: () => void;
+  onSchedule: () => void;
+  onReject: () => void;
+  onUnreject: () => void;
 }) {
-  const effective = job.placement?.stage ?? job.rfStageBucket;
+  const effective: Bucket = (job.placement?.stage ?? job.rfStageBucket) as Bucket;
+  const isActive = ACTIVE_BUCKETS.has(effective);
   const isInterviewing = effective === "interviewing" || effective === "submitted";
   const isOffer = effective === "offer";
   const isPendingStart = effective === "pending_start";
   const isHired = effective === "hired";
+  const isRejected = effective === "rejected";
+
+  const badgeSuffix = badgeSuffixFor(effective, job);
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-border bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-      <div className="min-w-0">
-        <div className="flex items-center gap-2 text-sm font-semibold text-navy">
-          <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="truncate">{job.jobTitle}</span>
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 text-sm font-semibold text-navy">
+            <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="truncate">{job.jobTitle}</span>
+          </div>
         </div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {job.clientName}
-          {" · "}
-          <StageChip
-            effective={effective}
-            hasPlacement={Boolean(job.placement)}
-            syncedToRf={job.placement?.syncedToRf ?? false}
-          />
+        <div className="flex shrink-0 flex-col items-center gap-1">
+          {job.clientName && (
+            <div className="text-center text-xs font-semibold text-navy-400">{job.clientName}</div>
+          )}
+          <div className="flex items-center gap-1.5">
+            <StageBadge
+              bucket={effective}
+              label={job.rfStageName ?? null}
+              suffix={badgeSuffix}
+              onClick={isRejected ? onUnreject : undefined}
+              title={isRejected ? "Click to unreject this candidate for this job" : undefined}
+            />
+            {job.placement && !job.placement.syncedToRf && (
+              <span
+                title="Stage recorded in Ace only — RF /external has no stage-change endpoint yet. Move the candidate manually in RecruiterFlow to keep them in sync."
+                className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800"
+              >
+                Ace only
+              </span>
+            )}
+          </div>
         </div>
       </div>
+
       <div className="flex flex-wrap items-center gap-2">
+        {isActive && !isPendingStart && (
+          <button
+            type="button"
+            onClick={onSchedule}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+          >
+            <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
+          </button>
+        )}
         {(isInterviewing || isOffer) && (
           <button
             type="button"
@@ -184,10 +265,19 @@ function JobActionRow({
             <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Start
           </button>
         )}
+        {isActive && (
+          <button
+            type="button"
+            onClick={onReject}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+          >
+            <UserX className="h-3.5 w-3.5" /> Reject
+          </button>
+        )}
         {isHired && (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
-            <CheckCircle2 className="h-3 w-3" /> Hired{" "}
-            {job.placement?.startConfirmedAt ? ` · ${new Date(job.placement.startConfirmedAt).toLocaleDateString()}` : ""}
+            <CheckCircle2 className="h-3 w-3" /> Hired
+            {job.placement?.startConfirmedAt ? ` · ${formatDate(job.placement.startConfirmedAt)}` : ""}
           </span>
         )}
       </div>
@@ -195,39 +285,19 @@ function JobActionRow({
   );
 }
 
-function StageChip({
-  effective,
-  hasPlacement,
-  syncedToRf,
-}: {
-  effective: string;
-  hasPlacement: boolean;
-  syncedToRf: boolean;
-}) {
-  const label = effective.replace(/_/g, " ");
-  const cls = {
-    submitted: "text-brand-dark",
-    interviewing: "text-blue-700",
-    offer: "text-amber-700",
-    pending_start: "text-purple-700",
-    hired: "text-emerald-700",
-    sourced: "text-muted-foreground",
-    rejected: "text-red-700",
-    other: "text-muted-foreground",
-  }[effective as keyof { submitted: 0 }] ?? "text-muted-foreground";
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn("font-medium capitalize", cls)}>{label}</span>
-      {hasPlacement && !syncedToRf && (
-        <span
-          title="Stage recorded in Ace only — RF /external has no stage-change endpoint yet. Move the candidate manually in RecruiterFlow to keep them in sync."
-          className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800"
-        >
-          Ace only
-        </span>
-      )}
-    </span>
-  );
+function badgeSuffixFor(effective: Bucket, job: PlacementContextJob): string | null {
+  if (effective === "rejected") {
+    return job.rfStageMovedAt ? formatDate(job.rfStageMovedAt) : null;
+  }
+  if (effective === "pending_start") {
+    const d = job.placement?.expectedStartDate ?? null;
+    return d ? formatDate(d) : null;
+  }
+  if (effective === "hired") {
+    const d = job.placement?.startConfirmedAt ?? null;
+    return d ? formatDate(d) : null;
+  }
+  return null;
 }
 
 // ---------------- Offer dialog ----------------
@@ -255,6 +325,10 @@ function OfferDialog({
   function onSave() {
     setErr(null);
     const salaryNum = parseCompensation(salary);
+    if (salaryNum != null && salaryNum < 0) {
+      setErr("Salary can't be negative.");
+      return;
+    }
     startSave(async () => {
       const result = await recordOffer({
         candidateRfId,
@@ -311,10 +385,17 @@ function PlacementDialog({
   const seedSalary = job.placement?.acceptedSalary ?? job.placement?.offerSalary ?? null;
   const seedFeePct = job.placement?.feePercentage ?? job.clientFeePct ?? null;
   const [acceptedSalary, setAcceptedSalary] = useState(seedSalary ? String(seedSalary) : "");
-  const [acceptedCurrency, setAcceptedCurrency] = useState(job.placement?.acceptedCurrency ?? job.placement?.offerCurrency ?? "USD");
+  const [acceptedCurrency, setAcceptedCurrency] = useState(
+    job.placement?.acceptedCurrency ?? job.placement?.offerCurrency ?? "USD",
+  );
   const [feePct, setFeePct] = useState(seedFeePct != null ? String(seedFeePct) : "");
   const [minFee, setMinFee] = useState(job.placement?.minFee ? String(job.placement.minFee) : "");
-  const [guarantee, setGuarantee] = useState(job.placement?.guaranteePeriodDays ? String(job.placement.guaranteePeriodDays) : "");
+  const [guarantee, setGuarantee] = useState(
+    job.placement?.guaranteePeriodDays ? String(job.placement.guaranteePeriodDays) : "",
+  );
+  const [billingContactId, setBillingContactId] = useState<string>(
+    seedBillingContactId(job.clientContacts, job.placement),
+  );
   const [billingName, setBillingName] = useState(job.placement?.billingContactName ?? "");
   const [billingEmail, setBillingEmail] = useState(job.placement?.billingContactEmail ?? "");
   const [hiringName, setHiringName] = useState(job.placement?.hiringManagerName ?? "");
@@ -333,27 +414,55 @@ function PlacementDialog({
   const salaryNum = parseCompensation(acceptedSalary);
   const pctNum = parseFloat(feePct) || 0;
   const minFeeNum = parseCompensation(minFee);
+  const guaranteeNum = guarantee ? Number(guarantee) : null;
   const rawFee = salaryNum && pctNum ? Math.round(salaryNum * (pctNum / 100)) : 0;
   const feeTotal = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
   const usedMinFee = minFeeNum != null && rawFee < minFeeNum;
 
+  function onBillingContactChange(id: string) {
+    setBillingContactId(id);
+    if (id === "custom" || id === "") {
+      return;
+    }
+    const match = job.clientContacts.find((c) => String(c.id) === id);
+    if (match) {
+      setBillingName(match.name);
+      setBillingEmail(match.email ?? "");
+    }
+  }
+
+  function validate(): string | null {
+    if (salaryNum == null) return "Accepted salary required.";
+    if (salaryNum < 0) return "Salary can't be negative.";
+    if (!pctNum) return "Fee percentage required.";
+    if (pctNum < 0) return "Fee percentage can't be negative.";
+    if (minFeeNum != null && minFeeNum < 0) return "Minimum fee can't be negative.";
+    if (guaranteeNum != null && (Number.isNaN(guaranteeNum) || guaranteeNum < 0)) {
+      return "Guarantee period can't be negative.";
+    }
+    if (!startDate) return "Expected start date required.";
+    return null;
+  }
+
   function onSave() {
     setErr(null);
-    if (!salaryNum) return setErr("Accepted salary required.");
-    if (!pctNum) return setErr("Fee percentage required.");
-    if (!startDate) return setErr("Expected start date required.");
+    const problem = validate();
+    if (problem) {
+      setErr(problem);
+      return;
+    }
 
     startSave(async () => {
       const result = await recordPlacement({
         candidateRfId,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
-        acceptedSalary: salaryNum,
+        acceptedSalary: salaryNum!,
         acceptedCurrency: acceptedCurrency.toUpperCase().slice(0, 3),
         feePercentage: pctNum,
         feeTotal,
         minFee: minFeeNum,
-        guaranteePeriodDays: guarantee ? Number(guarantee) : null,
+        guaranteePeriodDays: guaranteeNum,
         billingContactName: billingName.trim(),
         billingContactEmail: billingEmail.trim(),
         hiringManagerName: hiringName.trim(),
@@ -372,29 +481,47 @@ function PlacementDialog({
     });
   }
 
+  const selectedContact = useMemo(
+    () => job.clientContacts.find((c) => String(c.id) === billingContactId) ?? null,
+    [billingContactId, job.clientContacts],
+  );
+
   return (
     <Modal title="Placement" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose} wide>
       <div className="rounded-lg border border-brand/30 bg-brand-tint/20 p-3 text-xs text-brand-dark">
         <div className="flex items-start gap-2">
           <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <div>
-            Client agreement default: <strong>{job.clientFeePct != null ? `${job.clientFeePct}% fee` : "no fee % on file"}</strong>.
-            Override below if this placement has different terms.
+            Client agreement default:{" "}
+            <strong>{job.clientFeePct != null ? `${job.clientFeePct}% fee` : "no fee % on file"}</strong>. Override
+            below if this placement has different terms.
           </div>
         </div>
       </div>
       <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LabeledField label="Accepted salary" value={acceptedSalary} onChange={setAcceptedSalary} placeholder="120000 or 120k" />
+        <LabeledField
+          label="Accepted salary"
+          value={acceptedSalary}
+          onChange={setAcceptedSalary}
+          placeholder="120000 or 120k"
+        />
         <LabeledField label="Currency" value={acceptedCurrency} onChange={setAcceptedCurrency} />
-        <LabeledField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" />
-        <LabeledField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" />
-        <LabeledField label="Guarantee period (days)" value={guarantee} onChange={setGuarantee} placeholder="90" />
+        <NumericField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" min={0} step="0.1" />
+        <NumericField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" min={0} />
+        <NumericField
+          label="Guarantee period (days)"
+          value={guarantee}
+          onChange={setGuarantee}
+          placeholder="90"
+          min={0}
+          step="1"
+        />
         <LabeledField label="Expected start date" type="date" value={startDate} onChange={setStartDate} />
       </div>
 
       <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Calculated fee</div>
-        <div className="mt-1 text-2xl font-serif font-semibold text-navy">
+        <div className="mt-1 font-serif text-2xl font-semibold text-navy">
           {formatMoney(feeTotal, acceptedCurrency)}
           {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
         </div>
@@ -409,8 +536,36 @@ function PlacementDialog({
 
       <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Billing contact</h3>
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <LabeledField label="Name" value={billingName} onChange={setBillingName} />
-        <LabeledField label="Email" type="email" value={billingEmail} onChange={setBillingEmail} />
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Contact</span>
+          <select
+            value={billingContactId}
+            onChange={(e) => onBillingContactChange(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            <option value="">Select a contact…</option>
+            {job.clientContacts.map((c) => (
+              <option key={c.id} value={String(c.id)}>
+                {c.name}
+                {c.title ? ` · ${c.title}` : ""}
+              </option>
+            ))}
+            <option value="custom">Other (enter manually)</option>
+          </select>
+        </label>
+        {billingContactId === "custom" || billingContactId === "" ? (
+          <LabeledField label="Name" value={billingName} onChange={setBillingName} />
+        ) : (
+          <div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Email</div>
+            <div className="mt-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-navy">
+              {selectedContact?.email || <span className="text-muted-foreground">No email on file</span>}
+            </div>
+          </div>
+        )}
+        {(billingContactId === "custom" || billingContactId === "") && (
+          <LabeledField label="Email" type="email" value={billingEmail} onChange={setBillingEmail} />
+        )}
       </div>
       <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Hiring manager</h3>
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -428,6 +583,22 @@ function PlacementDialog({
   );
 }
 
+function seedBillingContactId(
+  contacts: ClientContactRef[],
+  placement: PlacementSnapshot | null,
+): string {
+  if (!placement?.billingContactEmail && !placement?.billingContactName) return "";
+  const byEmail = contacts.find(
+    (c) => c.email && placement.billingContactEmail && c.email.toLowerCase() === placement.billingContactEmail.toLowerCase(),
+  );
+  if (byEmail) return String(byEmail.id);
+  const byName = contacts.find(
+    (c) => placement.billingContactName && c.name.toLowerCase() === placement.billingContactName.toLowerCase(),
+  );
+  if (byName) return String(byName.id);
+  return "custom";
+}
+
 // ---------------- Confirm Start dialog ----------------
 
 function ConfirmStartDialog({
@@ -443,13 +614,57 @@ function ConfirmStartDialog({
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
-  function onPick(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null;
+  // Block the browser's default behavior of opening a dropped image in a new
+  // tab if the user releases the mouse outside the dropzone.
+  useEffect(() => {
+    const block = (e: Event) => {
+      e.preventDefault();
+    };
+    window.addEventListener("dragover", block);
+    window.addEventListener("drop", block);
+    return () => {
+      window.removeEventListener("dragover", block);
+      window.removeEventListener("drop", block);
+    };
+  }, []);
+
+  function handleFile(f: File | null) {
     setFile(f);
     setPreviewUrl(f ? URL.createObjectURL(f) : null);
+    setErr(null);
+  }
+
+  function onPick(e: ChangeEvent<HTMLInputElement>) {
+    handleFile(e.target.files?.[0] ?? null);
+  }
+
+  function onDragOver(e: DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!dragActive) setDragActive(true);
+  }
+
+  function onDragLeave(e: DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+  }
+
+  function onDrop(e: DragEvent<HTMLLabelElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    const dropped = e.dataTransfer?.files?.[0];
+    if (!dropped) return;
+    if (!dropped.type.startsWith("image/")) {
+      setErr("Only image files are supported.");
+      return;
+    }
+    handleFile(dropped);
   }
 
   async function onSave() {
@@ -478,17 +693,24 @@ function ConfirmStartDialog({
   return (
     <Modal title="Confirm start" subtitle={jobTitle} onClose={onClose}>
       <p className="text-sm text-muted-foreground">
-        Upload a screenshot of the start confirmation (email, portal, HR tool). This seals the placement and flags it for invoicing.
+        Upload a screenshot of the start confirmation (email, portal, HR tool). This seals the placement and flags it
+        for invoicing.
       </p>
       <label
         onClick={() => inputRef.current?.click()}
+        onDragEnter={onDragOver}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
         className={cn(
           "mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 px-6 py-8 text-center transition hover:border-brand/40 hover:bg-brand-tint/20",
-          file ? "border-brand/40 bg-brand-tint/20" : "",
+          (file || dragActive) && "border-brand/40 bg-brand-tint/20",
         )}
       >
         <UploadCloud className="h-5 w-5 text-muted-foreground" />
-        <div className="text-sm font-semibold text-navy">{file ? file.name : "Click to upload screenshot"}</div>
+        <div className="text-sm font-semibold text-navy">
+          {file ? file.name : dragActive ? "Drop screenshot here" : "Click or drag a screenshot here"}
+        </div>
         <div className="text-xs text-muted-foreground">PNG / JPG up to 4MB</div>
         <input
           ref={inputRef}
@@ -506,6 +728,243 @@ function ConfirmStartDialog({
       )}
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Confirm start" />
+    </Modal>
+  );
+}
+
+// ---------------- Schedule Interview dialog ----------------
+
+function ScheduleInterviewDialog({
+  candidateRfId,
+  job,
+  onClose,
+}: {
+  candidateRfId: number;
+  job: PlacementContextJob;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [interviewerId, setInterviewerId] = useState<string>("");
+  const [interviewerName, setInterviewerName] = useState("");
+  const [interviewerEmail, setInterviewerEmail] = useState("");
+  const [notes, setNotes] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  function onInterviewerChange(id: string) {
+    setInterviewerId(id);
+    if (id === "custom" || id === "") return;
+    const match = job.clientContacts.find((c) => String(c.id) === id);
+    if (match) {
+      setInterviewerName(match.name);
+      setInterviewerEmail(match.email ?? "");
+    }
+  }
+
+  function onSave() {
+    setErr(null);
+    if (!scheduledAt) {
+      setErr("Pick a date and time.");
+      return;
+    }
+    if (!interviewerName.trim()) {
+      setErr("Interviewer name required.");
+      return;
+    }
+    startSave(async () => {
+      const result = await scheduleInterview({
+        candidateRfId,
+        jobRfId: job.jobRfId,
+        clientRfId: job.clientRfId,
+        scheduledAt: new Date(scheduledAt).toISOString(),
+        interviewerName: interviewerName.trim(),
+        interviewerEmail: interviewerEmail.trim(),
+        notes: notes.trim(),
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't schedule interview", { description: result.error });
+        return;
+      }
+      toast.success("Interview scheduled", {
+        description: "Calendar invite will go out when that integration lands.",
+      });
+      onClose();
+      router.refresh();
+    });
+  }
+
+  const hasContacts = job.clientContacts.length > 0;
+
+  return (
+    <Modal title="Schedule interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+      <div className="grid grid-cols-1 gap-3">
+        <div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Job</div>
+          <div className="mt-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-navy">
+            {job.jobTitle}
+          </div>
+        </div>
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+          <input
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+        </label>
+        {hasContacts && (
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Interviewer (client contact)</span>
+            <select
+              value={interviewerId}
+              onChange={(e) => onInterviewerChange(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="">Select an interviewer…</option>
+              {job.clientContacts.map((c) => (
+                <option key={c.id} value={String(c.id)}>
+                  {c.name}
+                  {c.title ? ` · ${c.title}` : ""}
+                </option>
+              ))}
+              <option value="custom">Other (enter manually)</option>
+            </select>
+          </label>
+        )}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <LabeledField label="Interviewer name" value={interviewerName} onChange={setInterviewerName} />
+          <LabeledField label="Interviewer email" type="email" value={interviewerEmail} onChange={setInterviewerEmail} />
+        </div>
+        <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
+      </div>
+      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        Calendar invite delivery lands with the calendar integration on Day 4. For now we log the interview to activity.
+      </div>
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Schedule" />
+    </Modal>
+  );
+}
+
+// ---------------- Reject dialog ----------------
+
+function RejectDialog({
+  candidateRfId,
+  job,
+  onClose,
+}: {
+  candidateRfId: number;
+  job: PlacementContextJob;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  const previousStage = job.placement?.stage ?? job.rfStageBucket;
+  const previousLabel =
+    previousStage in PIPELINE_LABELS
+      ? PIPELINE_LABELS[previousStage as keyof typeof PIPELINE_LABELS]
+      : (job.rfStageName ?? previousStage);
+
+  function onConfirm() {
+    setErr(null);
+    startSave(async () => {
+      const result = await rejectCandidateJob({
+        candidateRfId,
+        jobRfId: job.jobRfId,
+        clientRfId: job.clientRfId,
+        previousStage,
+        reason: reason.trim(),
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't reject candidate", { description: result.error });
+        return;
+      }
+      toast.success("Rejection recorded", {
+        description: "Move the candidate to Rejected in RecruiterFlow to finalize.",
+      });
+      onClose();
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal title="Reject candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+      <p className="text-sm text-muted-foreground">
+        This logs the rejection to activity. Since RecruiterFlow has no stage-change API, move the candidate to a
+        rejection stage in RF to keep them in sync.
+      </p>
+      <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs">
+        <div className="text-muted-foreground">Current stage</div>
+        <div className="mt-0.5 font-semibold text-navy">{previousLabel}</div>
+      </div>
+      <div className="mt-3">
+        <LabeledTextarea label="Reason (optional)" value={reason} onChange={setReason} rows={3} />
+      </div>
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reject" />
+    </Modal>
+  );
+}
+
+// ---------------- Unreject dialog ----------------
+
+function UnrejectDialog({
+  candidateRfId,
+  job,
+  onClose,
+}: {
+  candidateRfId: number;
+  job: PlacementContextJob;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  // We don't currently store the pre-rejection stage locally, so fall back to
+  // "submitted" per the UX spec.
+  const targetStage = "submitted";
+
+  function onConfirm() {
+    setErr(null);
+    startSave(async () => {
+      const result = await unrejectCandidateJob({
+        candidateRfId,
+        jobRfId: job.jobRfId,
+        clientRfId: job.clientRfId,
+        targetStage,
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't reactivate candidate", { description: result.error });
+        return;
+      }
+      toast.success("Candidate reactivated", {
+        description: "Move them back to a live stage in RecruiterFlow to finalize.",
+      });
+      onClose();
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal title="Reactivate candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+      <p className="text-sm text-muted-foreground">
+        This candidate was rejected for this job. Reactivating sends them back into the pipeline at{" "}
+        <strong>{PIPELINE_LABELS[targetStage]}</strong> and logs the action to activity.
+      </p>
+      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        Since RF has no stage-change API, also move them in RecruiterFlow to keep both systems in sync.
+      </div>
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reactivate" />
     </Modal>
   );
 }
@@ -560,6 +1019,12 @@ function ModalFooter({
   saving: boolean;
   saveLabel?: string;
 }) {
+  const lowered = saveLabel.toLowerCase();
+  const SaveIcon = lowered === "reject"
+    ? UserX
+    : lowered === "reactivate"
+      ? RotateCcw
+      : Save;
   return (
     <div className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
       <button
@@ -576,10 +1041,52 @@ function ModalFooter({
         disabled={saving}
         className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
       >
-        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+        {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <SaveIcon className="h-3 w-3" />}
         {saveLabel}
       </button>
     </div>
+  );
+}
+
+function NumericField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  min,
+  step,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  min?: number;
+  step?: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        value={value}
+        min={min}
+        step={step}
+        placeholder={placeholder}
+        onChange={(e) => {
+          const next = e.target.value;
+          if (next === "") {
+            onChange("");
+            return;
+          }
+          const n = Number(next);
+          if (Number.isNaN(n)) return;
+          if (min != null && n < min) return;
+          onChange(next);
+        }}
+        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+      />
+    </label>
   );
 }
 

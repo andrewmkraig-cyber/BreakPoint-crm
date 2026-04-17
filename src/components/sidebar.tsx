@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
+  GitBranch,
   Inbox,
   Briefcase,
   Building2,
@@ -16,7 +17,8 @@ import { BrandMark } from "@/components/brand-mark";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/candidates", label: "Candidates", icon: Users },
-  { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/pipeline", label: "Pipeline", icon: GitBranch },
+  { href: "/applicants", label: "Applicants", icon: Inbox },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
   { href: "/clients", label: "Clients", icon: Building2 },
   { href: "/settings", label: "Settings", icon: Settings },

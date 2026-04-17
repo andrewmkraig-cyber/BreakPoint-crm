@@ -55,9 +55,10 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [candidates, clients, placements, activity] = await Promise.all([
+  const [candidates, clients, contacts, placements, activity] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllClients({ perPage: 100 }),
+    recruiterflow.listAllContacts({ perPage: 100 }),
     prisma.placement.findMany({ where: { candidateRfId: id } }),
     prisma.actionLog.findMany({
       where: { subjectType: "candidate", subjectId: String(id) },
@@ -167,6 +168,19 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
           startConfirmedAt: local.startConfirmedAt?.toISOString() ?? null,
         }
       : null;
+    const clientContacts = contacts
+      .filter((ct) => ct.client_company_id === clientRfId)
+      .map((ct) => {
+        const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
+        const fullName =
+          [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
+        return {
+          id: ct.id,
+          name: fullName,
+          title: ct.current_designation ?? "",
+          email: firstEmail,
+        };
+      });
     return {
       jobRfId,
       jobTitle: j.title ?? j.name ?? "(untitled job)",
@@ -174,6 +188,9 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       clientName: client?.name ?? j.client_company_name ?? "",
       clientFeePct: client?.feePct ?? null,
       rfStageBucket: canonicalStage(j.stage_name),
+      rfStageName: j.stage_name ?? null,
+      rfStageMovedAt: j.stage_moved ?? null,
+      clientContacts,
       placement: snapshot,
     };
   });
