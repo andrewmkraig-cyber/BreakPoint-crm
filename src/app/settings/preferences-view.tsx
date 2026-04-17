@@ -5,22 +5,26 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { setAutoSendCandidateConfirmation, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
+import { setAutoSendCandidateConfirmation, setMyEmailSignature, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
 
 export function PreferencesView({
   autoSend,
   myPhone,
+  mySignature,
   myEmail,
 }: {
   autoSend: boolean;
   myPhone: string;
+  mySignature: string;
   myEmail: string;
 }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState(autoSend);
   const [phone, setPhone] = useState(myPhone);
+  const [signature, setSignature] = useState(mySignature);
   const [isTogglePending, startToggle] = useTransition();
   const [isPhonePending, startPhone] = useTransition();
+  const [isSigPending, startSig] = useTransition();
 
   function onToggle(next: boolean) {
     setEnabled(next);
@@ -44,6 +48,18 @@ export function PreferencesView({
         return;
       }
       toast.success("Phone saved");
+      router.refresh();
+    });
+  }
+
+  function onSaveSignature() {
+    startSig(async () => {
+      const result = await setMyEmailSignature(signature);
+      if (!result.ok) {
+        toast.error("Couldn't save signature", { description: result.error });
+        return;
+      }
+      toast.success("Signature saved");
       router.refresh();
     });
   }
@@ -102,6 +118,32 @@ export function PreferencesView({
             className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
           >
             {isPhonePending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+        <div className="mb-2">
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Email signature</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Auto-appended to every email sent from Ace — submittals, rejections, candidate confirmations, reference
+            requests, manual emails. Don&apos;t paste a signature inside a template body or you&apos;ll duplicate.
+          </div>
+        </div>
+        <textarea
+          value={signature}
+          onChange={(e) => setSignature(e.target.value)}
+          rows={6}
+          className="mt-2 w-full resize-vertical whitespace-pre-wrap rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        />
+        <div className="mt-2 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onSaveSignature}
+            disabled={isSigPending || signature === mySignature}
+            className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+          >
+            {isSigPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />} Save signature
           </button>
         </div>
       </div>

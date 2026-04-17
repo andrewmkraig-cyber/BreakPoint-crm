@@ -25,7 +25,7 @@ const BUCKET_LABEL: Record<PipelineBucket, string> = {
   pending_start: PIPELINE_LABELS.pending_start,
   hired: PIPELINE_LABELS.hired,
   sourced: "Sourced",
-  rejected: "Rejected",
+  rejected: "Disqualified",
   cancelled: "Placement Cancelled",
   other: "Other",
 };
@@ -33,7 +33,7 @@ const BUCKET_LABEL: Record<PipelineBucket, string> = {
 // Buckets where the bucket label must win even when an RF stage_name is
 // available — used for terminal Ace-local states that shouldn't leak RF's
 // last known stage ("Client Submission" etc.) into the visible badge.
-const TERMINAL_BUCKETS: ReadonlySet<PipelineBucket> = new Set<PipelineBucket>(["cancelled"]);
+const TERMINAL_BUCKETS: ReadonlySet<PipelineBucket> = new Set<PipelineBucket>(["cancelled", "rejected"]);
 
 function bucketLabel(bucket: PipelineBucket, override?: string | null): string {
   // Terminal Ace-local buckets (cancelled) always render the bucket's own

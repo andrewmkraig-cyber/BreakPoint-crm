@@ -33,6 +33,11 @@ export default async function SettingsPage() {
 
   const myEmail = session?.user?.email ?? "";
   const myPhone = prefs.recruiterPhones[myEmail] ?? prefs.recruiterPhones[myEmail.toLowerCase()] ?? "";
+  const mySignature =
+    prefs.emailSignatures[myEmail] ??
+    prefs.emailSignatures[myEmail.toLowerCase()] ??
+    prefs.emailSignatures["andrew@breakpointtalent.com"] ??
+    "";
 
   return (
     <div className="space-y-6">
@@ -49,7 +54,12 @@ export default async function SettingsPage() {
             Controls how Ace behaves around email delivery.
           </p>
         </div>
-        <PreferencesView autoSend={prefs.autoSendCandidateConfirmation} myPhone={myPhone} myEmail={myEmail} />
+        <PreferencesView
+          autoSend={prefs.autoSendCandidateConfirmation}
+          myPhone={myPhone}
+          mySignature={mySignature}
+          myEmail={myEmail}
+        />
       </section>
 
       <section className="rounded-xl border border-border bg-white p-5 shadow-sm">

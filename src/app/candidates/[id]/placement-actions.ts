@@ -510,6 +510,31 @@ export async function rejectCandidateJob(input: RejectCandidateInput): Promise<R
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   try {
+    // Upsert an Ace-local Placement row so the candidate profile shows
+    // DISQUALIFIED · <date> regardless of what RF's stage_name is. The
+    // updatedAt timestamp is what renders as the disqualification date.
+    await prisma.placement.upsert({
+      where: {
+        candidateRfId_jobRfId: {
+          candidateRfId: input.candidateRfId,
+          jobRfId: input.jobRfId,
+        },
+      },
+      create: {
+        candidateRfId: input.candidateRfId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        stage: "rejected",
+        createdById: userId,
+        syncedToRf: false,
+      },
+      update: {
+        stage: "rejected",
+        syncedToRf: false,
+        invoicingFlagged: false,
+      },
+    });
+
     await prisma.actionLog.create({
       data: {
         userId,

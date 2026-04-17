@@ -10,12 +10,23 @@ const PREFS_KEY = "app.preferences";
 export type AppPreferences = {
   autoSendCandidateConfirmation: boolean;
   recruiterPhones: Record<string, string>;
+  emailSignatures: Record<string, string>;
 };
+
+const DEFAULT_SIGNATURE =
+  "Andrew Kraig\n" +
+  "Managing Partner & Founder\n" +
+  "andrew@breakpointtalent.com\n" +
+  "216-488-5565\n" +
+  "www.breakpointtalent.com";
 
 const DEFAULT_PREFS: AppPreferences = {
   autoSendCandidateConfirmation: true,
   recruiterPhones: {
     "andrew@breakpointtalent.com": "216-488-5565",
+  },
+  emailSignatures: {
+    "andrew@breakpointtalent.com": DEFAULT_SIGNATURE,
   },
 };
 
@@ -25,13 +36,16 @@ function normalize(raw: unknown): AppPreferences {
     autoSendCandidateConfirmation: typeof obj.autoSendCandidateConfirmation === "boolean"
       ? obj.autoSendCandidateConfirmation
       : DEFAULT_PREFS.autoSendCandidateConfirmation,
-    recruiterPhones: isPhoneMap(obj.recruiterPhones)
+    recruiterPhones: isStringMap(obj.recruiterPhones)
       ? { ...DEFAULT_PREFS.recruiterPhones, ...obj.recruiterPhones }
       : DEFAULT_PREFS.recruiterPhones,
+    emailSignatures: isStringMap(obj.emailSignatures)
+      ? { ...DEFAULT_PREFS.emailSignatures, ...obj.emailSignatures }
+      : DEFAULT_PREFS.emailSignatures,
   };
 }
 
-function isPhoneMap(v: unknown): v is Record<string, string> {
+function isStringMap(v: unknown): v is Record<string, string> {
   if (!v || typeof v !== "object") return false;
   return Object.values(v as Record<string, unknown>).every((x) => typeof x === "string");
 }
@@ -52,6 +66,10 @@ export async function updateAppPreferences(patch: Partial<AppPreferences>): Prom
       ...current.recruiterPhones,
       ...(patch.recruiterPhones ?? {}),
     },
+    emailSignatures: {
+      ...current.emailSignatures,
+      ...(patch.emailSignatures ?? {}),
+    },
   };
   await prisma.setting.upsert({
     where: { key: PREFS_KEY },
@@ -71,4 +89,16 @@ export async function getRecruiterPhone(email: string | null | undefined): Promi
   if (!email) return "";
   const prefs = await getAppPreferences();
   return prefs.recruiterPhones[email.toLowerCase()] ?? prefs.recruiterPhones[email] ?? "";
+}
+
+// Returns the user's saved email signature. Falls back to the Andrew default
+// so every outbound email has a sane sign-off even before a user has set
+// theirs.
+export async function getEmailSignature(email: string | null | undefined): Promise<string> {
+  const prefs = await getAppPreferences();
+  if (email) {
+    const hit = prefs.emailSignatures[email.toLowerCase()] ?? prefs.emailSignatures[email];
+    if (hit != null) return hit;
+  }
+  return prefs.emailSignatures["andrew@breakpointtalent.com"] ?? DEFAULT_SIGNATURE;
 }

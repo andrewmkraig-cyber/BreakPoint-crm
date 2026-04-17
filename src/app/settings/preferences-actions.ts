@@ -36,3 +36,17 @@ export async function setMyRecruiterPhone(phone: string): Promise<Result> {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save phone." };
   }
 }
+
+export async function setMyEmailSignature(signature: string): Promise<Result> {
+  const email = await requireEmail();
+  if (!email) return { ok: false, error: "Not signed in." };
+  try {
+    await updateAppPreferences({
+      emailSignatures: { [email]: signature },
+    });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to save signature." };
+  }
+}

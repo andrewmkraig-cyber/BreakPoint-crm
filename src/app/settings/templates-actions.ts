@@ -102,6 +102,9 @@ const CLIENT_SUBMITTAL_DEFAULT = {
     "Let me know if you'd like to set up an interview with them.",
 } as const;
 
+// NOTE: Templates are seeded WITHOUT signatures. Signature is appended at
+// send time from the user's Preferences so it can't duplicate.
+
 const CANDIDATE_CONFIRMATION_DEFAULT = {
   name: "Candidate Submission Confirmation",
   subject: "BreakPoint Talent has reviewed and submitted your profile for [Job Title]",
@@ -113,12 +116,7 @@ const CANDIDATE_CONFIRMATION_DEFAULT = {
     "Please read below and then hit reply on this email and state: Understood!\n\n" +
     "This email serves as confirmation that BreakPoint Talent has reviewed your resume and submitted it directly to our client, [Client Company Name], for their [Job Title] position.\n\n" +
     "Please do not apply directly nor contact [Client Company Name]. We will be managing all feedback and next steps on your behalf.\n\n" +
-    "We will keep you posted on feedback/next steps once we hear from them.\n\n" +
-    "[Recruiter Name]\n" +
-    "Managing Partner & Founder\n" +
-    "[Recruiter Email]\n" +
-    "[Recruiter Phone]\n" +
-    "www.breakpointtalent.com",
+    "We will keep you posted on feedback/next steps once we hear from them.",
 } as const;
 
 const OFFER_ACCEPTANCE_DEFAULT = {
@@ -131,10 +129,7 @@ const OFFER_ACCEPTANCE_DEFAULT = {
     "I have the candidate CC'd on this email.\n\n" +
     "Great news - [Candidate Full Name] accepts your offer of [Offer Amount] and is targeting a [Start Date] start date.\n\n" +
     "Feel free to communicate directly from here regarding new hire paperwork or onboarding.\n\n" +
-    "[Candidate Full Name] - congratulations again, they are excited to welcome you to the team!\n\n" +
-    "[Recruiter Name]\n" +
-    "BreakPoint Talent\n" +
-    "[Recruiter Phone]",
+    "[Candidate Full Name] - congratulations again, they are excited to welcome you to the team!",
 } as const;
 
 const CANDIDATE_REJECTION_DEFAULT = {
@@ -146,10 +141,7 @@ const CANDIDATE_REJECTION_DEFAULT = {
     "Hi [Candidate First Name],\n\n" +
     "I wanted to reach out and let you know that unfortunately the client has moved forward with another candidate for this role.\n\n" +
     "I really appreciate your time throughout this process. I will absolutely keep you in mind and reach out if something comes up that I think would be a strong fit for you.\n\n" +
-    "Thanks again and I will be in touch.\n\n" +
-    "[Recruiter Name]\n" +
-    "BreakPoint Talent\n" +
-    "[Recruiter Phone]",
+    "Thanks again and I will be in touch.",
 } as const;
 
 const REFERENCE_CHECK_DEFAULT = {
@@ -168,10 +160,7 @@ const REFERENCE_CHECK_DEFAULT = {
     "• Relationship to you\n" +
     "• Phone and email\n\n" +
     "I keep it short and respectful — usually a 10–15 minute call. Let me know if any of them prefer email.\n\n" +
-    "Thanks,\n\n" +
-    "[Recruiter Name]\n" +
-    "BreakPoint Talent\n" +
-    "[Recruiter Phone]",
+    "Thanks,",
 } as const;
 
 const INTERVIEW_CONFIRMATION_DEFAULT = {
@@ -183,10 +172,7 @@ const INTERVIEW_CONFIRMATION_DEFAULT = {
     "Hi [Candidate First Name],\n\n" +
     "Congratulations - you are confirmed for an interview with [Client Company Name] for the [Job Title] role.\n\n" +
     "Make sure to review the below information prior to the interview, and come prepared with a few questions to show you looked into them a bit.\n\n" +
-    "[Job Description]\n\n" +
-    "[Recruiter Name]\n" +
-    "BreakPoint Talent\n" +
-    "[Recruiter Phone]",
+    "[Job Description]",
 } as const;
 
 export async function ensureDefaultTemplates(): Promise<void> {
@@ -215,6 +201,43 @@ export async function ensureDefaultTemplates(): Promise<void> {
   }
 
   await migrateClientNameToken();
+  await stripSignatureBlocksFromTemplates();
+}
+
+// Scrubs the trailing "[Recruiter Name] / Managing Partner / [Recruiter Email]
+// / [Recruiter Phone] / www.breakpointtalent.com" block from any template
+// body that includes it. Keeps the rest of the body untouched. Idempotent —
+// templates without a matching tail block are left alone. Signatures are now
+// appended at send time, so baking them into the template would duplicate.
+async function stripSignatureBlocksFromTemplates(): Promise<void> {
+  const rows = await prisma.emailTemplate.findMany({ select: { id: true, body: true } });
+  for (const row of rows) {
+    const stripped = stripTrailingSignatureBlock(row.body);
+    if (stripped === row.body) continue;
+    await prisma.emailTemplate.update({
+      where: { id: row.id },
+      data: { body: stripped },
+    });
+  }
+}
+
+function stripTrailingSignatureBlock(body: string): string {
+  // Find the last occurrence of the [Recruiter Name] merge field and, if it
+  // begins a trailing signature block (followed by a title/phone/email line
+  // or www.breakpointtalent.com), truncate from there. Tolerates whitespace.
+  const marker = "[Recruiter Name]";
+  const idx = body.lastIndexOf(marker);
+  if (idx === -1) return body;
+  const tail = body.slice(idx);
+  // Heuristic: tail is a signature if it contains [Recruiter Phone] OR
+  // [Recruiter Email] OR www.breakpointtalent.com within the next ~8 lines.
+  const tailLines = tail.split(/\r?\n/).slice(0, 10).join("\n").toLowerCase();
+  const looksLikeSig =
+    tailLines.includes("[recruiter phone]") ||
+    tailLines.includes("[recruiter email]") ||
+    tailLines.includes("www.breakpointtalent.com");
+  if (!looksLikeSig) return body;
+  return body.slice(0, idx).replace(/\s+$/, "");
 }
 
 // One-shot migration: any existing template subject/body still using the old

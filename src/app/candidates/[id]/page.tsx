@@ -205,6 +205,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
           cancelledAt: local.stage === "cancelled" ? local.updatedAt.toISOString() : null,
           cancellationReason: local.stage === "cancelled" ? cancelReasonByPlacement.get(local.id)?.reason ?? null : null,
           cancellationDetail: local.stage === "cancelled" ? cancelReasonByPlacement.get(local.id)?.detail ?? null : null,
+          rejectedAt: local.stage === "rejected" ? local.updatedAt.toISOString() : null,
         }
       : null;
     const clientContacts = contacts

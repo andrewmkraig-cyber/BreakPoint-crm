@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getEmailSignature } from "@/lib/preferences";
 
 // Gmail API helpers. We keep a single refresh token per user in the Account
 // row NextAuth's PrismaAdapter populated on first sign-in. For every Gmail
@@ -146,9 +147,29 @@ export function plainToHtml(text: string): string {
   return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #0f1b2d; white-space: pre-wrap;">${esc}</div>`;
 }
 
+// Attach the user's stored signature to the body exactly once. If the body
+// already ends with that signature (or contains it anywhere), we don't add
+// another copy. Templates are expected to NOT bake in a signature so this
+// append is the single source.
+export function appendSignature(body: string, signature: string): string {
+  const trimmedBody = body.replace(/\s+$/, "");
+  const sig = (signature ?? "").replace(/\s+$/, "");
+  if (!sig) return trimmedBody;
+  if (trimmedBody.includes(sig)) return trimmedBody;
+  return `${trimmedBody}\n\n${sig}`;
+}
+
+async function withSignature(input: SendEmailInput): Promise<SendEmailInput> {
+  const signature = await getEmailSignature(input.from);
+  const bodyText = appendSignature(input.bodyText, signature);
+  const bodyHtml = input.bodyHtml ? appendSignature(input.bodyHtml, plainToHtml(signature)) : plainToHtml(bodyText);
+  return { ...input, bodyText, bodyHtml };
+}
+
 export async function sendGmail(input: SendEmailInput): Promise<SendEmailResult> {
   const accessToken = await getFreshAccessToken(input.userId);
-  const raw = base64UrlEncode(buildRfc2822(input));
+  const signed = await withSignature(input);
+  const raw = base64UrlEncode(buildRfc2822(signed));
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: {
@@ -168,7 +189,8 @@ export async function sendGmail(input: SendEmailInput): Promise<SendEmailResult>
 
 export async function createGmailDraft(input: SendEmailInput): Promise<SendEmailResult> {
   const accessToken = await getFreshAccessToken(input.userId);
-  const raw = base64UrlEncode(buildRfc2822(input));
+  const signed = await withSignature(input);
+  const raw = base64UrlEncode(buildRfc2822(signed));
   const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
     method: "POST",
     headers: {

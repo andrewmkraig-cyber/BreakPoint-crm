@@ -78,10 +78,11 @@ export type PlacementContextJob = {
 
 export type PlacementSnapshot = {
   id: string;
-  stage: "offer" | "pending_start" | "hired" | "cancelled" | "sourced" | "applied";
+  stage: "offer" | "pending_start" | "hired" | "cancelled" | "rejected" | "sourced" | "applied";
   cancelledAt: string | null;
   cancellationReason: string | null;
   cancellationDetail: string | null;
+  rejectedAt: string | null;
   syncedToRf: boolean;
   offerSalary: number | null;
   offerCurrency: string | null;
@@ -188,7 +189,6 @@ export function PlacementActions({
             onConfirm={() => setConfirmFor(j)}
             onSchedule={() => setScheduleFor(j)}
             onReject={() => setRejectFor(j)}
-            onUnreject={() => setUnrejectFor(j)}
             onCancel={() => setCancelFor(j)}
           />
         ))}
@@ -331,7 +331,6 @@ function JobActionRow({
   onConfirm,
   onSchedule,
   onReject,
-  onUnreject,
   onCancel,
 }: {
   job: PlacementContextJob;
@@ -340,7 +339,6 @@ function JobActionRow({
   onConfirm: () => void;
   onSchedule: () => void;
   onReject: () => void;
-  onUnreject: () => void;
   onCancel: () => void;
 }) {
   const effective: Bucket = (job.placement?.stage ?? job.rfStageBucket) as Bucket;
@@ -375,10 +373,8 @@ function JobActionRow({
         <div className="shrink-0">
           <StageBadge
             bucket={effective}
-            label={isCancelled ? null : job.rfStageName ?? null}
+            label={isCancelled || isRejected ? null : job.rfStageName ?? null}
             suffix={badgeSuffix}
-            onClick={isRejected ? onUnreject : undefined}
-            title={isRejected ? "Click to unreject this candidate for this job" : undefined}
           />
         </div>
       </div>
@@ -420,10 +416,14 @@ function JobActionRow({
             <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Start
           </button>
         )}
-        {isActive && (
+        {!isRejected && !isCancelled && !isHired && (
           <button
             type="button"
-            onClick={onReject}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onReject();
+            }}
             className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50"
           >
             <UserX className="h-3.5 w-3.5" /> Reject
@@ -563,7 +563,8 @@ function badgeSuffixFor(effective: Bucket, job: PlacementContextJob): string | n
     return d ? formatDate(d) : null;
   }
   if (effective === "rejected") {
-    return job.rfStageMovedAt ? formatDate(job.rfStageMovedAt) : null;
+    const d = job.placement?.rejectedAt ?? job.rfStageMovedAt ?? null;
+    return d ? formatDate(d) : null;
   }
   if (effective === "pending_start") {
     const d = job.placement?.expectedStartDate ?? null;
