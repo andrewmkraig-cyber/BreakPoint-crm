@@ -229,6 +229,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       <PlacementActions
         candidateRfId={id}
         candidateFirstName={c.first_name ?? (c.name ?? "").split(/\s+/)[0] ?? ""}
+        candidateLastName={c.last_name ?? (c.name ?? "").split(/\s+/).slice(1).join(" ") ?? ""}
         candidateEmail={normalizeEmail(c.email)}
         jobs={placementJobs}
         openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}

@@ -7,6 +7,9 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail } from "@/lib/gmail";
+import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
+import { getAppPreferences, getRecruiterPhone } from "@/lib/preferences";
+import { CANDIDATE_CONFIRMATION_TRIGGER } from "@/app/settings/template-constants";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -707,16 +710,29 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
   }
 }
 
-export type CreateCandidateConfirmDraftInput = {
+export type DeliverCandidateConfirmationInput = {
   candidateRfId: number;
   candidateEmail: string;
   candidateFirstName: string;
+  candidateLastName: string;
   clientName: string;
+  jobTitle: string;
+  jobLocation?: string;
 };
 
-export async function createCandidateConfirmationDraft(
-  input: CreateCandidateConfirmDraftInput,
-): Promise<Result<{ draftId: string }>> {
+export type CandidateConfirmationResult = {
+  mode: "sent" | "drafted";
+  id: string;
+  threadId: string;
+};
+
+// After a successful client submittal we kick off the candidate confirmation.
+// Pulls the "candidate_submission_confirmation" template from the DB, resolves
+// every merge-field token against candidate / job / recruiter values, then
+// either sends (autoSendCandidateConfirmation = true) or drops a Gmail draft.
+export async function deliverCandidateConfirmation(
+  input: DeliverCandidateConfirmationInput,
+): Promise<Result<CandidateConfirmationResult>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   if (!input.candidateEmail) return { ok: false, error: "Candidate email not on file." };
@@ -725,30 +741,88 @@ export async function createCandidateConfirmationDraft(
   const fromEmail = session?.user?.email ?? "";
   const fromName = session?.user?.name ?? undefined;
 
-  const greeting = input.candidateFirstName ? `Hi ${input.candidateFirstName},` : "Hi,";
-  const body =
-    `${greeting}\n\n` +
-    `Great news — you've been submitted to ${input.clientName || "the client"}.\n\n` +
-    `Please reply "Understood!" so I know you're tracking.\n\n` +
-    `A few ground rules while we're working this together:\n` +
-    `• Please don't apply directly to the company or reach out to them.\n` +
-    `• Let me know right away if you've applied or interviewed there before.\n` +
-    `• I'll be your single point of contact until an interview is scheduled.\n\n` +
-    `I'll circle back as soon as I have feedback from the client.\n\n` +
-    `Thanks,\n`;
+  const [template, prefs, recruiterPhone] = await Promise.all([
+    prisma.emailTemplate.findFirst({
+      where: { trigger: CANDIDATE_CONFIRMATION_TRIGGER, isActive: true },
+      orderBy: { updatedAt: "desc" },
+    }),
+    getAppPreferences(),
+    getRecruiterPhone(fromEmail),
+  ]);
+
+  if (!template) {
+    return { ok: false, error: "Candidate confirmation template missing. Check Settings → Templates." };
+  }
+
+  const values: MergeFieldValues = {
+    candidateFirstName: input.candidateFirstName,
+    candidateLastName: input.candidateLastName,
+    candidateEmail: input.candidateEmail,
+    clientName: input.clientName,
+    jobTitle: input.jobTitle,
+    jobLocation: input.jobLocation ?? "",
+    recruiterName: fromName,
+    recruiterEmail: fromEmail,
+    recruiterPhone,
+  };
+
+  const subject = applyMergeFields(template.subject, values);
+  const body = applyMergeFields(template.body, values);
+  const autoSend = prefs.autoSendCandidateConfirmation;
 
   try {
+    if (autoSend) {
+      const sent = await sendGmail({
+        userId,
+        from: fromEmail,
+        fromName,
+        to: [input.candidateEmail],
+        subject,
+        bodyText: body,
+        bodyHtml: plainToHtml(body),
+      });
+      await prisma.actionLog.create({
+        data: {
+          userId,
+          actionType: "candidate_confirmation_sent",
+          subjectType: "candidate",
+          subjectId: String(input.candidateRfId),
+          metadata: {
+            to: input.candidateEmail,
+            subject,
+            gmailMessageId: sent.id,
+            gmailThreadId: sent.threadId,
+          },
+        },
+      });
+      return { ok: true, value: { mode: "sent", id: sent.id, threadId: sent.threadId } };
+    }
+
     const draft = await createGmailDraft({
       userId,
       from: fromEmail,
       fromName,
       to: [input.candidateEmail],
-      subject: "Great News - You've Been Submitted!",
+      subject,
       bodyText: body,
       bodyHtml: plainToHtml(body),
     });
-    return { ok: true, value: { draftId: draft.id } };
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "candidate_confirmation_drafted",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          to: input.candidateEmail,
+          subject,
+          gmailDraftId: draft.id,
+          gmailThreadId: draft.threadId,
+        },
+      },
+    });
+    return { ok: true, value: { mode: "drafted", id: draft.id, threadId: draft.threadId } };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to create candidate draft." };
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to deliver candidate confirmation." };
   }
 }

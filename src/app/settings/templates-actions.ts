@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { CANDIDATE_CONFIRMATION_TRIGGER, CLIENT_SUBMITTAL_TRIGGER } from "@/app/settings/template-constants";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -72,45 +73,49 @@ export async function deleteEmailTemplate(id: string): Promise<Result> {
 // Seeds the two default templates if they aren't already present. Idempotent —
 // only creates rows when the trigger key is missing, so user edits aren't
 // clobbered.
+
+const CLIENT_SUBMITTAL_DEFAULT = {
+  name: "Client Submittal",
+  subject: "Candidate Submittal - [Candidate First Name] [Candidate Last Name] | [Job Title]",
+  trigger: CLIENT_SUBMITTAL_TRIGGER,
+  audience: "client",
+  body:
+    "About [Candidate First Name] [Candidate Last Name]\n" +
+    "<2–4 sentence intro to the candidate>\n\n" +
+    "What They Bring\n" +
+    "<3–5 sentences on strengths and relevant experience>\n\n" +
+    "Technically:\n" +
+    "<hard skills, stack, tools>\n\n" +
+    "Comp Target:\n" +
+    "<expected salary / open>\n\n" +
+    "Location:\n" +
+    "<city, state + remote/hybrid/on-site>\n\n" +
+    "LinkedIn:\n" +
+    "<LinkedIn URL>\n\n" +
+    "Let me know if you'd like to set up an interview with them.",
+} as const;
+
+const CANDIDATE_CONFIRMATION_DEFAULT = {
+  name: "Candidate Submission Confirmation",
+  subject: "BreakPoint Talent has reviewed and submitted your profile for [Job Title]",
+  trigger: CANDIDATE_CONFIRMATION_TRIGGER,
+  audience: "candidate",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "Good news - your profile has been submitted to [Client Name].\n\n" +
+    "Please read below and then hit reply on this email and state: Understood!\n\n" +
+    "This email serves as confirmation that BreakPoint Talent has reviewed your resume and submitted it directly to our client, [Client Name], for their [Job Title] position.\n\n" +
+    "Please do not apply directly nor contact [Client Name]. We will be managing all feedback and next steps on your behalf.\n\n" +
+    "We will keep you posted on feedback/next steps once we hear from them.\n\n" +
+    "[Recruiter Name]\n" +
+    "Managing Partner & Founder\n" +
+    "[Recruiter Email]\n" +
+    "[Recruiter Phone]\n" +
+    "www.breakpointtalent.com",
+} as const;
+
 export async function ensureDefaultTemplates(): Promise<void> {
-  const defaults = [
-    {
-      name: "Client Submittal",
-      subject: "Candidate Submittal - {{candidate_name}} | {{job_title}}",
-      trigger: "client_submittal",
-      audience: "client",
-      body:
-        "About {{candidate_name}}\n" +
-        "<2–4 sentence intro to the candidate>\n\n" +
-        "What {{he_or_she}} Brings\n" +
-        "<3–5 sentences on strengths and relevant experience>\n\n" +
-        "Technically:\n" +
-        "<hard skills, stack, tools>\n\n" +
-        "Comp Target:\n" +
-        "<expected salary / open>\n\n" +
-        "Location:\n" +
-        "<city, state + remote/hybrid/on-site>\n\n" +
-        "LinkedIn:\n" +
-        "<LinkedIn URL>\n\n" +
-        "Let me know if you'd like to set up an interview with {{him_or_her}}.",
-    },
-    {
-      name: "Candidate Submission Confirmation",
-      subject: "Great News - You've Been Submitted!",
-      trigger: "candidate_submission_confirmation",
-      audience: "candidate",
-      body:
-        "Hi {{candidate_first_name}},\n\n" +
-        "Great news — you've been submitted to {{client_name}}.\n\n" +
-        "Please reply \"Understood!\" so I know you're tracking.\n\n" +
-        "A few ground rules while we're working this together:\n" +
-        "• Please don't apply directly to the company or reach out to them.\n" +
-        "• Let me know right away if you've applied or interviewed there before.\n" +
-        "• I'll be your single point of contact until an interview is scheduled.\n\n" +
-        "I'll circle back as soon as I have feedback from the client.\n\n" +
-        "Thanks,",
-    },
-  ];
+  const defaults = [CLIENT_SUBMITTAL_DEFAULT, CANDIDATE_CONFIRMATION_DEFAULT] as const;
 
   for (const tpl of defaults) {
     const existing = await prisma.emailTemplate.findFirst({ where: { trigger: tpl.trigger } });

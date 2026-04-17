@@ -26,7 +26,7 @@ import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-he
 import {
   cancelPlacement,
   confirmStart,
-  createCandidateConfirmationDraft,
+  deliverCandidateConfirmation,
   generateSubmittalEmailBody,
   recordOffer,
   recordPlacement,
@@ -102,12 +102,14 @@ const ACTIVE_BUCKETS: ReadonlySet<Bucket> = new Set<Bucket>([
 export function PlacementActions({
   candidateRfId,
   candidateFirstName,
+  candidateLastName,
   candidateEmail,
   jobs,
   openJobs,
 }: {
   candidateRfId: number;
   candidateFirstName: string;
+  candidateLastName: string;
   candidateEmail: string;
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
@@ -212,6 +214,7 @@ export function PlacementActions({
         <SubmitToJobDialog
           candidateRfId={candidateRfId}
           candidateFirstName={candidateFirstName}
+          candidateLastName={candidateLastName}
           candidateEmail={candidateEmail}
           openJobs={openJobs}
           onClose={() => setSubmitOpen(false)}
@@ -1136,12 +1139,14 @@ function CancelPlacementDialog({
 function SubmitToJobDialog({
   candidateRfId,
   candidateFirstName,
+  candidateLastName,
   candidateEmail,
   openJobs,
   onClose,
 }: {
   candidateRfId: number;
   candidateFirstName: string;
+  candidateLastName: string;
   candidateEmail: string;
   openJobs: OpenJobOption[];
   onClose: () => void;
@@ -1172,6 +1177,7 @@ function SubmitToJobDialog({
       <SubmittalEmailCompose
         candidateRfId={candidateRfId}
         candidateFirstName={candidateFirstName}
+        candidateLastName={candidateLastName}
         candidateEmail={candidateEmail}
         job={picked}
         onBack={() => setComposing(false)}
@@ -1226,6 +1232,7 @@ function SubmitToJobDialog({
 function SubmittalEmailCompose({
   candidateRfId,
   candidateFirstName,
+  candidateLastName,
   candidateEmail,
   job,
   onBack,
@@ -1233,12 +1240,13 @@ function SubmittalEmailCompose({
 }: {
   candidateRfId: number;
   candidateFirstName: string;
+  candidateLastName: string;
   candidateEmail: string;
   job: OpenJobOption;
   onBack: () => void;
   onDone: () => void;
 }) {
-  const fullName = candidateFirstName; // display only; Claude gets first+last elsewhere
+  const fullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ") || candidateFirstName;
   const [primary, ...rest] = job.clientContacts.filter((c) => c.email);
   const toList = primary?.email ? [primary.email] : [];
   const ccList = rest.map((c) => c.email).filter(Boolean);
@@ -1282,26 +1290,30 @@ function SubmittalEmailCompose({
         });
         if (!result.ok) throw new Error(result.error);
 
-        // Best-effort: draft the "Great News" candidate confirmation.
         if (candidateEmail) {
-          const draftResult = await createCandidateConfirmationDraft({
+          const confirmResult = await deliverCandidateConfirmation({
             candidateRfId,
             candidateEmail,
             candidateFirstName,
+            candidateLastName,
             clientName: job.clientName,
+            jobTitle: job.jobTitle,
           });
-          if (draftResult.ok) {
+          if (confirmResult.ok) {
             toast.success("Submittal sent", {
-              description: "Candidate confirmation saved to your Gmail Drafts — review and send.",
+              description:
+                confirmResult.value.mode === "sent"
+                  ? "Candidate confirmation auto-sent."
+                  : "Candidate confirmation saved to your Gmail Drafts — review and send.",
             });
           } else {
             toast.success("Submittal sent", {
-              description: `Candidate confirmation draft failed: ${draftResult.error}`,
+              description: `Candidate confirmation failed: ${confirmResult.error}`,
             });
           }
         } else {
           toast.success("Submittal sent", {
-            description: "No candidate email on file — skipped the confirmation draft.",
+            description: "No candidate email on file — skipped the confirmation.",
           });
         }
         onDone();

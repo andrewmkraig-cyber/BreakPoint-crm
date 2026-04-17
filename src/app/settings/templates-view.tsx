@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ChevronDown, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
+import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
+import { MERGE_FIELDS } from "@/lib/merge-fields";
 import { deleteEmailTemplate, upsertEmailTemplate, type EmailTemplateInput } from "@/app/settings/templates-actions";
 
 export type TemplateRow = {
@@ -147,6 +148,41 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
   const [err, setErr] = useState<string | null>(null);
   const [isSaving, startSave] = useTransition();
 
+  const subjectRef = useRef<HTMLInputElement>(null);
+  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const [lastFocus, setLastFocus] = useState<"subject" | "body">("body");
+  const [pickerOpen, setPickerOpen] = useState(false);
+
+  function insertAtCursor(token: string) {
+    if (lastFocus === "subject" && subjectRef.current) {
+      const el = subjectRef.current;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? el.value.length;
+      const next = el.value.slice(0, start) + token + el.value.slice(end);
+      setSubject(next);
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + token.length;
+        el.setSelectionRange(pos, pos);
+      });
+    } else if (bodyRef.current) {
+      const el = bodyRef.current;
+      const start = el.selectionStart ?? el.value.length;
+      const end = el.selectionEnd ?? el.value.length;
+      const next = el.value.slice(0, start) + token + el.value.slice(end);
+      setBody(next);
+      requestAnimationFrame(() => {
+        el.focus();
+        const pos = start + token.length;
+        el.setSelectionRange(pos, pos);
+      });
+    } else {
+      // No ref yet — append to body as a safe default.
+      setBody((prev) => prev + token);
+    }
+    setPickerOpen(false);
+  }
+
   function onSave() {
     setErr(null);
     const payload: EmailTemplateInput = {
@@ -187,8 +223,40 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
         </div>
         <div className="space-y-3 p-5 text-sm">
           <LabeledField label="Name" value={name} onChange={setName} placeholder="e.g. Client Submittal" />
-          <LabeledField label="Subject" value={subject} onChange={setSubject} placeholder="Candidate Submittal - {{candidate_name}} | {{job_title}}" />
-          <LabeledTextarea label="Body" value={body} onChange={setBody} rows={14} placeholder="Write the template body. Use {{variable_name}} for placeholders." />
+
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Subject</span>
+            <input
+              ref={subjectRef}
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              onFocus={() => setLastFocus("subject")}
+              placeholder="Candidate Submittal - [Candidate First Name] | [Job Title]"
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+
+          <div className="block text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Body</span>
+              <MergeFieldPicker
+                open={pickerOpen}
+                onToggle={() => setPickerOpen((v) => !v)}
+                onPick={insertAtCursor}
+                onClose={() => setPickerOpen(false)}
+              />
+            </div>
+            <textarea
+              ref={bodyRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onFocus={() => setLastFocus("body")}
+              rows={14}
+              placeholder="Write the template body. Use the Insert Field picker to drop in merge fields like [Candidate First Name]."
+              className="mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </div>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <LabeledField label="Trigger (optional)" value={trigger} onChange={setTrigger} placeholder="e.g. client_submittal" />
             <label className="block text-sm">
@@ -240,6 +308,51 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MergeFieldPicker({
+  open,
+  onToggle,
+  onPick,
+  onClose,
+}: {
+  open: boolean;
+  onToggle: () => void;
+  onPick: (token: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+      >
+        Insert Field <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={onClose} />
+          <div className="absolute right-0 z-40 mt-1 w-64 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+            <ul className="max-h-80 overflow-y-auto py-1 text-sm">
+              {MERGE_FIELDS.map((f) => (
+                <li key={f.token}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(f.token)}
+                    className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-navy hover:bg-brand-tint"
+                  >
+                    <span className="font-medium">{f.label}</span>
+                    <span className="text-[10px] text-muted-foreground">{f.token}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </>
+      )}
     </div>
   );
 }
