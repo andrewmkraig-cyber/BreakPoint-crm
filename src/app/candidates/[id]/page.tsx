@@ -140,6 +140,27 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const placementByJob = new Map<number, (typeof placements)[number]>();
   for (const p of placements) placementByJob.set(p.jobRfId, p);
 
+  // Map the latest cancel_placement reason per placementId so the cancelled
+  // badge can surface the reason the recruiter originally picked.
+  const cancelLogs = await prisma.actionLog.findMany({
+    where: {
+      subjectType: "candidate",
+      subjectId: String(id),
+      actionType: "cancel_placement",
+    },
+    orderBy: { createdAt: "desc" },
+    select: { metadata: true },
+  });
+  const cancelReasonByPlacement = new Map<string, { reason: string | null; detail: string | null }>();
+  for (const log of cancelLogs) {
+    const meta = log.metadata as { placementId?: string; reason?: string; detail?: string | null } | null;
+    if (!meta?.placementId || cancelReasonByPlacement.has(meta.placementId)) continue;
+    cancelReasonByPlacement.set(meta.placementId, {
+      reason: meta.reason ?? null,
+      detail: typeof meta.detail === "string" ? meta.detail : null,
+    });
+  }
+
   const placementJobs: PlacementContextJob[] = linkedSubmittals.map((j: RFCandidateJob) => {
     const jobRfId = j.job_id!;
     const clientRfId = j.client_company_id ?? 0;
@@ -170,6 +191,8 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
           placementNotes: local.placementNotes,
           startConfirmedAt: local.startConfirmedAt?.toISOString() ?? null,
           cancelledAt: local.stage === "cancelled" ? local.updatedAt.toISOString() : null,
+          cancellationReason: local.stage === "cancelled" ? cancelReasonByPlacement.get(local.id)?.reason ?? null : null,
+          cancellationDetail: local.stage === "cancelled" ? cancelReasonByPlacement.get(local.id)?.detail ?? null : null,
         }
       : null;
     const clientContacts = contacts

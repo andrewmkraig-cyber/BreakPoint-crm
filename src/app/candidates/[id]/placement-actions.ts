@@ -345,6 +345,154 @@ export async function deletePlacement(placementId: string): Promise<Result> {
   }
 }
 
+// ---- Cancelled-row transitions ----
+//
+// Once a placement is cancelled the row becomes a permanent record on the
+// candidate profile. These actions let the user pick where the candidate
+// goes next for that job:
+//   - reapplyCancelledPlacement  → delete the cancelled Placement row. The
+//     row reverts to RF's stage_name (typically "Client Submission" =
+//     Submitted bucket).
+//   - moveCancelledToAceStage    → replace the cancelled row with an
+//     Ace-local stage override (sourced or applied). Stored as Placement.stage.
+//   - removeCandidateFromJob     → delete the Placement row AND attempt to
+//     strip the job from RF's candidate.jobs[] via /candidate/update.
+
+export type ReapplyInput = { placementId: string };
+
+export async function reapplyCancelledPlacement(input: ReapplyInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    const p = await prisma.placement.findUnique({
+      where: { id: input.placementId },
+      select: { id: true, candidateRfId: true, jobRfId: true, clientRfId: true, stage: true },
+    });
+    if (!p) return { ok: false, error: "Placement not found." };
+    if (p.stage !== "cancelled") return { ok: false, error: "Not a cancelled placement." };
+
+    await prisma.placement.delete({ where: { id: input.placementId } });
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "reapply_cancelled_placement",
+        subjectType: "candidate",
+        subjectId: String(p.candidateRfId),
+        metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: "submitted" },
+      },
+    });
+    revalidatePath(`/candidates/${p.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Reapply failed." };
+  }
+}
+
+export type MoveCancelledInput = {
+  placementId: string;
+  target: "sourced" | "applied";
+};
+
+export async function moveCancelledToAceStage(input: MoveCancelledInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  if (input.target !== "sourced" && input.target !== "applied") {
+    return { ok: false, error: "Invalid target stage." };
+  }
+  try {
+    const p = await prisma.placement.findUnique({
+      where: { id: input.placementId },
+      select: { id: true, candidateRfId: true, jobRfId: true, clientRfId: true, stage: true },
+    });
+    if (!p) return { ok: false, error: "Placement not found." };
+    if (p.stage !== "cancelled") return { ok: false, error: "Not a cancelled placement." };
+
+    await prisma.placement.update({
+      where: { id: input.placementId },
+      data: { stage: input.target, syncedToRf: false, invoicingFlagged: false },
+    });
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "move_cancelled_placement",
+        subjectType: "candidate",
+        subjectId: String(p.candidateRfId),
+        metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: input.target },
+      },
+    });
+    revalidatePath(`/candidates/${p.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Move failed." };
+  }
+}
+
+export type RemoveFromJobInput = { placementId: string };
+
+export async function removeCancelledFromJob(input: RemoveFromJobInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    const p = await prisma.placement.findUnique({
+      where: { id: input.placementId },
+      select: { id: true, candidateRfId: true, jobRfId: true, clientRfId: true, stage: true },
+    });
+    if (!p) return { ok: false, error: "Placement not found." };
+
+    await prisma.placement.delete({ where: { id: input.placementId } });
+
+    // Best-effort RF cleanup — remove the job from the candidate's jobs[].
+    let rfSynced = false;
+    let rfError: string | null = null;
+    try {
+      const rf = await recruiterflow.getCandidate(p.candidateRfId);
+      const existing = Array.isArray(rf.jobs) ? rf.jobs : [];
+      const filtered: Array<{ job_id: number; stage_name?: string }> = [];
+      for (const j of existing) {
+        if (typeof j?.job_id !== "number") continue;
+        if (j.job_id === p.jobRfId) continue;
+        const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
+        if (j.stage_name) entry.stage_name = j.stage_name;
+        filtered.push(entry);
+      }
+      const resp = (await recruiterflow.updateCandidate({ id: p.candidateRfId, jobs: filtered })) as { RESULT?: string };
+      if (resp && typeof resp === "object" && "RESULT" in resp && resp.RESULT && resp.RESULT !== "SUCCESS") {
+        rfError = `RecruiterFlow returned ${resp.RESULT}`;
+      } else {
+        rfSynced = true;
+      }
+    } catch (e) {
+      rfError = e instanceof Error ? e.message : "Unknown RF error";
+    }
+
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "remove_cancelled_from_job",
+        subjectType: "candidate",
+        subjectId: String(p.candidateRfId),
+        metadata: {
+          jobRfId: p.jobRfId,
+          clientRfId: p.clientRfId,
+          placementId: input.placementId,
+          rfSynced,
+          rfError,
+        },
+      },
+    });
+    revalidatePath(`/candidates/${p.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    if (!rfSynced && rfError) {
+      return { ok: false, error: `Row removed from Ace, but RF didn't accept the job removal: ${rfError}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Remove failed." };
+  }
+}
+
 // ---- Reject / Unreject / Schedule Interview ----
 //
 // These write to ActionLog only. RF /external has no stage-change endpoint,

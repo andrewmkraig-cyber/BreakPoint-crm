@@ -7,6 +7,7 @@ import {
   Briefcase,
   CalendarClock,
   CheckCircle2,
+  ChevronDown,
   DollarSign,
   Handshake,
   Loader2,
@@ -29,9 +30,12 @@ import {
   confirmStart,
   deliverCandidateConfirmation,
   generateSubmittalEmailBody,
+  moveCancelledToAceStage,
+  reapplyCancelledPlacement,
   recordOffer,
   recordPlacement,
   rejectCandidateJob,
+  removeCancelledFromJob,
   scheduleInterview,
   sendInterviewConfirmationEmail,
   sendOfferAcceptanceEmail,
@@ -74,8 +78,10 @@ export type PlacementContextJob = {
 
 export type PlacementSnapshot = {
   id: string;
-  stage: "offer" | "pending_start" | "hired" | "cancelled";
+  stage: "offer" | "pending_start" | "hired" | "cancelled" | "sourced" | "applied";
   cancelledAt: string | null;
+  cancellationReason: string | null;
+  cancellationDetail: string | null;
   syncedToRf: boolean;
   offerSalary: number | null;
   offerCurrency: string | null;
@@ -319,11 +325,17 @@ function JobActionRow({
           {job.clientName && (
             <div className="mt-0.5 pl-[1.375rem] text-xs text-muted-foreground">{job.clientName}</div>
           )}
+          {isCancelled && job.placement?.cancellationReason && (
+            <div className="mt-0.5 pl-[1.375rem] text-[11px] text-red-700">
+              Reason: {CANCEL_REASON_LABELS[job.placement.cancellationReason] ?? job.placement.cancellationReason}
+              {job.placement.cancellationDetail ? ` — ${job.placement.cancellationDetail}` : ""}
+            </div>
+          )}
         </div>
         <div className="shrink-0">
           <StageBadge
             bucket={effective}
-            label={job.rfStageName ?? null}
+            label={isCancelled ? null : job.rfStageName ?? null}
             suffix={badgeSuffix}
             onClick={isRejected ? onUnreject : undefined}
             title={isRejected ? "Click to unreject this candidate for this job" : undefined}
@@ -392,7 +404,115 @@ function JobActionRow({
             </button>
           </>
         )}
+        {isCancelled && job.placement && (
+          <CancelledRowActions placementId={job.placement.id} />
+        )}
       </div>
+    </div>
+  );
+}
+
+const CANCEL_REASON_LABELS: Record<string, string> = {
+  candidate_resigned: "Candidate Resigned",
+  client_terminated: "Client Terminated",
+  failed_background_check: "Failed Background Check",
+  other: "Other",
+};
+
+function CancelledRowActions({ placementId }: { placementId: string }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
+
+  function run(label: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
+    setOpen(false);
+    startTransition(async () => {
+      const result = await fn();
+      if (!result.ok) {
+        toast.error(`Couldn't ${label.toLowerCase()}`, { description: result.error ?? "Unknown error" });
+        return;
+      }
+      toast.success(label);
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={isPending}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+      >
+        {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
+        Actions
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-40 mt-1 w-60 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+            <ul className="py-1 text-sm">
+              <li>
+                <button
+                  type="button"
+                  onClick={() =>
+                    run("Moved to Submitted", () =>
+                      reapplyCancelledPlacement({ placementId }),
+                    )
+                  }
+                  className="block w-full px-3 py-2 text-left text-navy hover:bg-brand-tint"
+                >
+                  Reapply (move to Submitted)
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() =>
+                    run("Moved to Sourced", () =>
+                      moveCancelledToAceStage({ placementId, target: "sourced" }),
+                    )
+                  }
+                  className="block w-full px-3 py-2 text-left text-navy hover:bg-brand-tint"
+                >
+                  Move to Sourced
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() =>
+                    run("Moved to Applied", () =>
+                      moveCancelledToAceStage({ placementId, target: "applied" }),
+                    )
+                  }
+                  className="block w-full px-3 py-2 text-left text-navy hover:bg-brand-tint"
+                >
+                  Move to Applied
+                </button>
+              </li>
+              <li>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!confirm("Remove this candidate from the job entirely? This deletes the row and attempts to detach the job in RecruiterFlow.")) {
+                      setOpen(false);
+                      return;
+                    }
+                    run("Removed from job", () =>
+                      removeCancelledFromJob({ placementId }),
+                    );
+                  }}
+                  className="block w-full border-t border-border px-3 py-2 text-left text-red-700 hover:bg-red-50"
+                >
+                  Remove from Job
+                </button>
+              </li>
+            </ul>
+          </div>
+        </>
+      )}
     </div>
   );
 }
