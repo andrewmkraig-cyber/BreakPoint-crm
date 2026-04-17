@@ -12,11 +12,14 @@ import {
   recruiterflow,
   canonicalStage,
   normalizeClient,
+  normalizeJob,
   PIPELINE_LABELS,
   daysBetween,
   type RFCandidate,
   type RFFile,
   type RFCandidateJob,
+  type RFJob,
+  type RFClient,
 } from "@/lib/recruiterflow";
 import { EditableContact, type ContactState } from "@/app/candidates/[id]/editable-contact";
 import { EditableEmployment, type EmploymentState } from "@/app/candidates/[id]/editable-employment";
@@ -26,6 +29,7 @@ import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/ed
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
 import {
   PlacementActions,
+  type OpenJobOption,
   type PlacementContextJob,
   type PlacementSnapshot,
 } from "@/app/candidates/[id]/placement-flows";
@@ -55,10 +59,11 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [candidates, clients, contacts, placements, activity] = await Promise.all([
+  const [candidates, clients, contacts, allJobs, placements, activity] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
+    recruiterflow.listAllJobs({ perPage: 100 }),
     prisma.placement.findMany({ where: { candidateRfId: id } }),
     prisma.actionLog.findMany({
       where: { subjectType: "candidate", subjectId: String(id) },
@@ -221,7 +226,11 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         }
       />
 
-      <PlacementActions candidateRfId={id} jobs={placementJobs} />
+      <PlacementActions
+        candidateRfId={id}
+        jobs={placementJobs}
+        openJobs={buildOpenJobOptions({ allJobs, clients, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
+      />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-2">
@@ -335,6 +344,40 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
 }
 
 // ---- helpers ----
+
+function buildOpenJobOptions({
+  allJobs,
+  clients,
+  linkedJobIds,
+}: {
+  allJobs: RFJob[];
+  clients: RFClient[];
+  linkedJobIds: Set<number>;
+}): OpenJobOption[] {
+  const clientById = new Map<number, RFClient>();
+  for (const cl of clients) clientById.set(cl.id, cl);
+
+  return allJobs
+    .filter((j) => j.is_open !== false)
+    .map((raw) => {
+      const j = normalizeJob(raw);
+      const client = j.companyId != null ? clientById.get(j.companyId) : null;
+      return {
+        jobRfId: j.id,
+        jobTitle: j.title,
+        clientRfId: j.companyId ?? 0,
+        clientName: client ? normalizeClient(client).name : j.company,
+        alreadyLinked: linkedJobIds.has(j.id),
+      } satisfies OpenJobOption;
+    })
+    .sort((a, b) => {
+      // Unlinked jobs first, then by client name, then job title.
+      if (a.alreadyLinked !== b.alreadyLinked) return a.alreadyLinked ? 1 : -1;
+      const c = (a.clientName || "").localeCompare(b.clientName || "");
+      if (c !== 0) return c;
+      return (a.jobTitle || "").localeCompare(b.jobTitle || "");
+    });
+}
 
 function normalizeEmail(raw: RFCandidate["email"]): string {
   if (Array.isArray(raw)) return raw[0] ?? "";

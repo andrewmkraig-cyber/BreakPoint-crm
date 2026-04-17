@@ -10,6 +10,7 @@ import {
   DollarSign,
   Handshake,
   Loader2,
+  Plus,
   RotateCcw,
   Save,
   Sparkles,
@@ -29,6 +30,7 @@ import {
   recordPlacement,
   rejectCandidateJob,
   scheduleInterview,
+  submitCandidateToJob,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
 
@@ -37,6 +39,14 @@ export type ClientContactRef = {
   name: string;
   title: string;
   email: string;
+};
+
+export type OpenJobOption = {
+  jobRfId: number;
+  jobTitle: string;
+  clientRfId: number;
+  clientName: string;
+  alreadyLinked: boolean;
 };
 
 export type PlacementContextJob = {
@@ -88,9 +98,11 @@ const ACTIVE_BUCKETS: ReadonlySet<Bucket> = new Set<Bucket>([
 export function PlacementActions({
   candidateRfId,
   jobs,
+  openJobs,
 }: {
   candidateRfId: number;
   jobs: PlacementContextJob[];
+  openJobs: OpenJobOption[];
 }) {
   const [offerFor, setOfferFor] = useState<PlacementContextJob | null>(null);
   const [placementFor, setPlacementFor] = useState<PlacementContextJob | null>(null);
@@ -99,17 +111,29 @@ export function PlacementActions({
   const [rejectFor, setRejectFor] = useState<PlacementContextJob | null>(null);
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
   const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
-
-  if (jobs.length === 0) {
-    return (
-      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-5 py-4 text-xs text-muted-foreground">
-        No jobs linked to this candidate yet — add them in RecruiterFlow to unlock offer / placement actions.
-      </div>
-    );
-  }
+  const [submitOpen, setSubmitOpen] = useState(false);
 
   return (
     <>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Jobs ({jobs.length})
+        </div>
+        <button
+          type="button"
+          onClick={() => setSubmitOpen(true)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+        >
+          <Plus className="h-3.5 w-3.5" /> Submit to Job
+        </button>
+      </div>
+
+      {jobs.length === 0 && (
+        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-5 py-4 text-xs text-muted-foreground">
+          No jobs linked to this candidate yet — click <span className="font-semibold">Submit to Job</span> to add one.
+        </div>
+      )}
+
       <div className="space-y-2">
         {jobs.map((j) => (
           <JobActionRow
@@ -174,6 +198,13 @@ export function PlacementActions({
           jobTitle={cancelFor.jobTitle}
           clientName={cancelFor.clientName}
           onClose={() => setCancelFor(null)}
+        />
+      )}
+      {submitOpen && (
+        <SubmitToJobDialog
+          candidateRfId={candidateRfId}
+          openJobs={openJobs}
+          onClose={() => setSubmitOpen(false)}
         />
       )}
     </>
@@ -1082,6 +1113,97 @@ function CancelPlacementDialog({
 
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Cancel placement" />
+    </Modal>
+  );
+}
+
+// ---------------- Submit to Job dialog ----------------
+
+function SubmitToJobDialog({
+  candidateRfId,
+  openJobs,
+  onClose,
+}: {
+  candidateRfId: number;
+  openJobs: OpenJobOption[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  const picked = openJobs.find((o) => String(o.jobRfId) === selectedId) ?? null;
+
+  function onSave() {
+    setErr(null);
+    if (!picked) {
+      setErr("Pick an open job to submit to.");
+      return;
+    }
+    if (picked.alreadyLinked) {
+      setErr("Candidate is already linked to this job.");
+      return;
+    }
+    startSave(async () => {
+      const result = await submitCandidateToJob({
+        candidateRfId,
+        jobRfId: picked.jobRfId,
+        clientRfId: picked.clientRfId,
+        jobTitle: picked.jobTitle,
+        clientName: picked.clientName,
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't submit candidate", { description: result.error });
+        return;
+      }
+      toast.success("Submittal logged", {
+        description:
+          "Add the candidate to the job in RecruiterFlow to finalize — RF has no submit API exposed to Ace yet.",
+      });
+      onClose();
+      router.refresh();
+    });
+  }
+
+  const hasAvailable = openJobs.some((j) => !j.alreadyLinked);
+
+  return (
+    <Modal title="Submit to Job" subtitle="Pick an open job for this candidate" onClose={onClose}>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Open job</span>
+        <select
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="">Select a job…</option>
+          {openJobs.map((j) => (
+            <option key={j.jobRfId} value={String(j.jobRfId)} disabled={j.alreadyLinked}>
+              {j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle}
+              {j.alreadyLinked ? " (already submitted)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!hasAvailable && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          This candidate is already linked to every open job.
+        </div>
+      )}
+      {picked && (
+        <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-navy">
+          <div className="font-semibold">{picked.jobTitle}</div>
+          <div className="text-muted-foreground">{picked.clientName || "—"}</div>
+        </div>
+      )}
+      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
+        This logs the submittal in Ace. RF&apos;s /external API can&apos;t move candidates between jobs yet, so also add
+        them to this job in RecruiterFlow to keep both systems in sync.
+      </div>
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Submit" />
     </Modal>
   );
 }

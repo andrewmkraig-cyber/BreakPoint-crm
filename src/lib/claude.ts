@@ -1,5 +1,20 @@
 import Anthropic from "@anthropic-ai/sdk";
+import mammoth from "mammoth";
 import { normalizeToE164 } from "@/lib/recruiterflow";
+
+// DOCX mime types and filename suffixes we can extract text from via mammoth.
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const LEGACY_DOC_MIME = "application/msword";
+
+function looksLikeDocx(filename: string, mimeType: string): boolean {
+  if (mimeType === DOCX_MIME) return true;
+  return filename.toLowerCase().endsWith(".docx");
+}
+
+async function extractDocxText(data: Buffer): Promise<string> {
+  const result = await mammoth.extractRawText({ buffer: data });
+  return result.value ?? "";
+}
 
 // Opus 4.7 per skill default. Sampling params (temperature/top_p/top_k) and
 // budget_tokens are removed on 4.7 — do not re-add them.
@@ -214,17 +229,18 @@ export async function summarizeAgreementTerms(params: {
             type: "text",
             text:
               "Extract the key commercial terms from this placement / recruiting fee agreement. " +
-              "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown code fences. " +
-              "Each line is: `- **Label:** value`. Keep values short and factual (numbers, percentages, day counts, state names). " +
+              "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
+              "Each line is plain text in the form: `- Label: value`. No asterisks, no bold syntax. " +
+              "Keep values short and factual (numbers, percentages, day counts, state names). " +
               "If a term isn't stated in the document, write the value as 'Not specified.' — never guess.\n\n" +
               "Produce these bullets, in this order (skip any that aren't in the doc except the six core ones which always appear):\n" +
-              "- **Fee Percentage:** (percentage + base — e.g. '25% of first-year base salary')\n" +
-              "- **Payment Terms:** (e.g. 'Net 15 from start date')\n" +
-              "- **Guarantee Period:** (e.g. '90 days, prorated replacement')\n" +
-              "- **Minimum Fee:** (dollar amount, or 'None')\n" +
-              "- **Candidate Ownership Period:** (e.g. '12 months from introduction')\n" +
-              "- **Governing Law:** (state/jurisdiction)\n" +
-              "- **{Other term label}:** (add a bullet for any other notable/custom term — indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
+              "- Fee Percentage: (percentage + base — e.g. '25% of first-year base salary')\n" +
+              "- Payment Terms: (e.g. 'Net 15 from start date')\n" +
+              "- Guarantee Period: (e.g. '90 days, prorated replacement')\n" +
+              "- Minimum Fee: (dollar amount, or 'None')\n" +
+              "- Candidate Ownership Period: (e.g. '12 months from introduction')\n" +
+              "- Governing Law: (state/jurisdiction)\n" +
+              "- {Other term label}: (add a bullet for any other notable/custom term — indemnification cap, arbitration, non-solicit scope, background-check responsibility, etc. One bullet per term. Omit if nothing else is notable.)\n\n" +
               "No other content. Just the bullets.",
           },
         ],
@@ -242,11 +258,26 @@ export async function summarizeAgreementTerms(params: {
   return text;
 }
 
-// Takes an uploaded job description (PDF or raw text) plus any recruiter
-// notes and produces an anonymous BreakPoint-formatted JD with three
-// sections: "A bit about us", "Why join us", and "Job Details".
-// Anonymous = client name / contact info stripped; rewritten as a BreakPoint
-// Talent presentation of the opportunity.
+// Takes an uploaded job description (PDF / DOCX / pasted text) and produces
+// an anonymous BreakPoint-formatted JD in plain text with four sections.
+// Output uses plain text only — no markdown symbols (no ##, no **, no -):
+//
+//   A Bit About Us
+//   (paragraph)
+//
+//   Why Join Us
+//   • bullet
+//
+//   Job Details
+//
+//   Key Responsibilities and Duties
+//   • bullet
+//
+//   You Should Have Most of the Following
+//   • bullet
+//
+// Section headers are on their own line, capitalized; bullets use the • glyph.
+// The downstream renderer (ProseFromPlain) bolds headers and keeps bullets.
 export async function generateJobDescription(params: {
   sourceFile?: { filename: string; mimeType: string; data: Buffer };
   sourceText?: string;
@@ -272,8 +303,19 @@ export async function generateJobDescription(params: {
         },
         title: file.filename,
       });
+    } else if (looksLikeDocx(file.filename, file.mimeType)) {
+      // Extract real text from the .docx zip rather than sending raw binary.
+      const docText = await extractDocxText(file.data);
+      if (!docText.trim()) {
+        throw new Error("Couldn't read any text from the Word document. Try exporting it as a PDF and re-uploading.");
+      }
+      content.push({
+        type: "text",
+        text: `--- File: ${file.filename} ---\n${docText.slice(0, 80_000)}`,
+      });
+    } else if (file.mimeType === LEGACY_DOC_MIME || file.filename.toLowerCase().endsWith(".doc")) {
+      throw new Error("Legacy .doc files aren't supported. Save the file as .docx or export to PDF and retry.");
     } else {
-      // DOCX binaries won't parse directly; other text-ish formats pass through.
       const maybeText = file.data.toString("utf-8");
       content.push({
         type: "text",
@@ -299,19 +341,29 @@ export async function generateJobDescription(params: {
       "write-up that recruiters send before the client is disclosed." +
       titleHint +
       "\n\n" +
-      "Output EXACTLY three sections in this order, using plain markdown headings (##). No intro, no outro, no code fences:\n\n" +
-      "## A bit about us\n" +
-      "2–4 sentences describing the company in generic terms (industry, size, stage, mission). No client name. " +
-      "Use neutral language like 'Our client is…' / 'The team is…'. " +
-      "Don't fabricate facts; if the source doesn't say, omit the detail.\n\n" +
-      "## Why join us\n" +
-      "4–6 bullet points of genuine selling points (growth, team, mission, comp structure, remote/hybrid, culture). " +
-      "Use '-' bullets. Keep each bullet one line and punchy.\n\n" +
-      "## Job Details\n" +
-      "A grouped list of the concrete role details. Use '-' bullets with **bold labels**, e.g. '- **Role:** Senior ...'. " +
-      "Cover (skip any missing): Role, Location, Employment Type, Compensation, Key Responsibilities, Must-haves, Nice-to-haves, Interview Process. " +
-      "For multi-item fields (responsibilities, must-haves), use nested bullets.\n\n" +
-      "Tone: confident, concise, recruiter-voice. Never invent facts. Never mention 'BreakPoint' or 'the recruiter' in the body.",
+      "OUTPUT PLAIN TEXT ONLY. No markdown symbols. Do NOT use ##, **, _, or - for bullets. " +
+      "Use the bullet character • (U+2022) for every bullet point. No code fences. " +
+      "Separate each section with a single blank line.\n\n" +
+      "Produce EXACTLY this structure, in this order:\n\n" +
+      "A Bit About Us\n" +
+      "[2–4 sentence paragraph describing the company in generic terms — industry, size, stage, mission. " +
+      "No client name. Use neutral phrasing like 'Our client is…' or 'The team is…'. " +
+      "Do not fabricate facts; if the source doesn't say something, omit it.]\n\n" +
+      "Why Join Us\n" +
+      "• [4–6 bullets of genuine selling points — growth, team, mission, comp structure, remote/hybrid, culture. " +
+      "Each bullet one line, punchy.]\n\n" +
+      "Job Details\n\n" +
+      "Key Responsibilities and Duties\n" +
+      "• [5–8 bullets describing what the person will actually do day to day. Concrete, verb-led.]\n\n" +
+      "You Should Have Most of the Following\n" +
+      "• [5–10 bullets of qualifications / skills / experience — hard requirements and preferred alike.]\n\n" +
+      "Rules:\n" +
+      "- Headers ('A Bit About Us', 'Why Join Us', 'Job Details', 'Key Responsibilities and Duties', 'You Should Have Most of the Following') sit on their own lines with no symbols around them.\n" +
+      "- 'Key Responsibilities and Duties' and 'You Should Have Most of the Following' are subsections *inside* the Job Details section — there is no separate 'Job Details' body, just those two subsection headers.\n" +
+      "- Every bullet starts with '• ' (bullet glyph + space).\n" +
+      "- No markdown. No asterisks. No hyphens at the start of a line.\n" +
+      "- Never invent facts. Never mention 'BreakPoint' or 'the recruiter' in the body.\n" +
+      "- Confident, concise, recruiter voice.",
   });
 
   const response = await anthropic.messages.create({
@@ -362,8 +414,14 @@ export async function summarizeBenefits(params: {
         },
         title: file.filename,
       });
+    } else if (looksLikeDocx(file.filename, file.mimeType)) {
+      const docText = await extractDocxText(file.data);
+      content.push({
+        type: "text",
+        text: `--- File: ${file.filename} ---\n${docText.slice(0, 50_000)}`,
+      });
     } else {
-      // Non-PDF: inline as text. Works for .txt, .md etc; skips binary Word docs.
+      // Text-ish fallback: .txt/.md/etc. Skips binary legacy .doc which is unsupported.
       const maybeText = file.data.toString("utf-8");
       content.push({
         type: "text",
@@ -383,25 +441,26 @@ export async function summarizeBenefits(params: {
     type: "text",
     text:
       "Extract the key benefits facts for a candidate. " +
-      "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown code fences. " +
-      "Each line is: `- **Label:** value`. Keep values short and factual — numbers, carriers, waiting-period days, match percentages. " +
+      "Output ONLY a bulleted list — no intro, no summary paragraph, no trailing commentary, no markdown, no code fences. " +
+      "Each line is plain text in the form: `- Label: value`. No asterisks, no bold syntax. " +
+      "Keep values short and factual — numbers, carriers, waiting-period days, match percentages. " +
       "Do not invent details. If a category isn't in the source, skip the bullet.\n\n" +
       "Produce bullets for whichever of these are present:\n" +
-      "- **Health:** (carrier, employee cost, plan tiers)\n" +
-      "- **Dental:** (carrier, employee cost)\n" +
-      "- **Vision:** (carrier, employee cost)\n" +
-      "- **HSA/FSA:** (employer contribution, if any)\n" +
-      "- **401(k):** (match %, vesting, eligibility)\n" +
-      "- **PTO:** (days/year, accrual rate)\n" +
-      "- **Holidays:** (number/year)\n" +
-      "- **Parental Leave:** (weeks paid)\n" +
-      "- **Bonus / Commission / Equity:** (structure)\n" +
-      "- **Remote / Hybrid:** (policy)\n" +
-      "- **Stipends / Perks:** (commuter, home office, wellness, etc.)\n" +
-      "- **Eligibility / Waiting Period:** (days to enroll)\n" +
-      "- **{Other}:** add a bullet per notable item not covered above. Omit if nothing else is notable.\n\n" +
+      "- Medical: (carrier, employee cost, plan tiers)\n" +
+      "- Dental: (carrier, employee cost)\n" +
+      "- Vision: (carrier, employee cost)\n" +
+      "- HSA/FSA: (employer contribution, if any)\n" +
+      "- 401(k): (match %, vesting, eligibility)\n" +
+      "- PTO: (days/year, accrual rate)\n" +
+      "- Holidays: (number/year)\n" +
+      "- Parental Leave: (weeks paid)\n" +
+      "- Bonus / Commission / Equity: (structure)\n" +
+      "- Remote / Hybrid: (policy)\n" +
+      "- Stipends / Perks: (commuter, home office, wellness, etc.)\n" +
+      "- Eligibility / Waiting Period: (days to enroll)\n" +
+      "- {Other}: add a bullet per notable item not covered above. Omit if nothing else is notable.\n\n" +
       "No other content. Just the bullets. If the source is empty or unreadable, output exactly one line: " +
-      "'- **Source:** No readable benefits info.'",
+      "'- Source: No readable benefits info.'",
   });
 
   const response = await anthropic.messages.create({

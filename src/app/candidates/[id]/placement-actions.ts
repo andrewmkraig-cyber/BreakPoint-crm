@@ -402,6 +402,44 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
   }
 }
 
+// ---- Submit to Job ----
+
+export type SubmitToJobInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  jobTitle: string;
+  clientName: string;
+};
+
+export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "submit",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          jobTitle: input.jobTitle,
+          clientName: input.clientName,
+          targetStage: "submitted",
+        },
+      },
+    });
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to submit candidate." };
+  }
+}
+
 export type ScheduleInterviewInput = {
   candidateRfId: number;
   jobRfId: number;
