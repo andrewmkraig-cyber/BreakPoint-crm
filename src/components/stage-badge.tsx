@@ -13,6 +13,7 @@ const BUCKET_CLASS: Record<PipelineBucket, string> = {
   pending_start: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
   hired: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
   rejected: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
+  cancelled: "bg-red-100 text-red-800 ring-1 ring-inset ring-red-300",
   other: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
 };
 
@@ -25,6 +26,7 @@ const BUCKET_LABEL: Record<PipelineBucket, string> = {
   hired: PIPELINE_LABELS.hired,
   sourced: "Sourced",
   rejected: "Rejected",
+  cancelled: "Cancelled",
   other: "Other",
 };
 

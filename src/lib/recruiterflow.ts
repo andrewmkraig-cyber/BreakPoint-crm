@@ -1,3 +1,5 @@
+import { formatLocation } from "@/lib/utils";
+
 const RF_BASE_URL = process.env.RECRUITERFLOW_BASE_URL ?? "https://recruiterflow.com/api/external";
 
 function getApiKey(): string {
@@ -483,10 +485,7 @@ export function normalizeCandidate(c: RFCandidate) {
     c.name ??
     [c.first_name, c.last_name].filter(Boolean).join(" ") ??
     "(unnamed)";
-  const location = c.location
-    ? c.location.location ??
-      [c.location.city, c.location.state].filter(Boolean).join(", ")
-    : "";
+  const location = formatLocation(c.location);
   return {
     id: c.id,
     name: name || "(unnamed)",
@@ -541,9 +540,10 @@ export type PipelineBucket =
   | "pending_start"
   | "hired"
   | "rejected"
+  | "cancelled"
   | "other";
 
-export const PIPELINE_LABELS: Record<Exclude<PipelineBucket, "applied" | "sourced" | "rejected" | "other">, string> = {
+export const PIPELINE_LABELS: Record<Exclude<PipelineBucket, "applied" | "sourced" | "rejected" | "cancelled" | "other">, string> = {
   submitted: "Submitted",
   interviewing: "Interviewing",
   offer: "Offer",
@@ -693,10 +693,7 @@ export function flattenPipeline(candidates: RFCandidate[]): PipelineRow[] {
       c.name ??
       [c.first_name, c.last_name].filter(Boolean).join(" ") ??
       "(unnamed)";
-    const locationLabel = c.location
-      ? c.location.location ??
-        [c.location.city, c.location.state].filter(Boolean).join(", ")
-      : "";
+    const locationLabel = formatLocation(c.location);
 
     for (const j of jobs) {
       if (typeof j?.job_id !== "number") continue;
@@ -727,10 +724,7 @@ function getCustomField(fields: RFClient["custom_fields"] | RFJob["custom_fields
 
 export function normalizeClient(c: RFClient) {
   const website = c.domain ? (c.domain.startsWith("http") ? c.domain : `https://${c.domain}`) : null;
-  const locationLabel = c.location
-    ? c.location.location ??
-      [c.location.city, c.location.state].filter(Boolean).join(", ")
-    : "";
+  const locationLabel = formatLocation(c.location);
   const signedFlag = getCustomField(c.custom_fields, (n) => n.includes("signed agreement"));
   const agreementDate = getCustomField(c.custom_fields, (n) => n === "agreement date" || n.includes("agreement date"));
   const feePct = getCustomField(c.custom_fields, (n) => n.includes("avg fee") || n.includes("fee %") || n.includes("fee percent"));

@@ -7,6 +7,7 @@ import { Bookmark, Loader2, Search } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/recruiterflow";
 import { StageBadge } from "@/components/stage-badge";
+import { EmailLink } from "@/components/email-link";
 import { cn, formatDate } from "@/lib/utils";
 
 type Stage = keyof typeof PIPELINE_LABELS;
@@ -310,13 +311,11 @@ function HiredCells({ row }: { row: PipelineRow }) {
           <div>
             <div className="text-navy">{p.billingContactName}</div>
             {p.billingContactEmail && (
-              <a
-                href={`mailto:${p.billingContactEmail}`}
-                onClick={(e) => e.stopPropagation()}
-                className="text-brand-dark hover:underline"
-              >
-                {p.billingContactEmail}
-              </a>
+              <span onClick={(e) => e.stopPropagation()}>
+                <EmailLink email={p.billingContactEmail} className="text-brand-dark hover:underline">
+                  {p.billingContactEmail}
+                </EmailLink>
+              </span>
             )}
           </div>
         ) : (

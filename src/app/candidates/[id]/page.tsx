@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
+import { formatLocation } from "@/lib/utils";
 import {
   recruiterflow,
   canonicalStage,
@@ -80,10 +81,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     c.name ??
     [c.first_name, c.last_name].filter(Boolean).join(" ") ??
     "(unnamed)";
-  const locationLabel =
-    c.location?.location ??
-    [c.location?.city, c.location?.state].filter(Boolean).join(", ") ??
-    "";
+  const locationLabel = formatLocation(c.location);
   const resume = pickResumeFile(c);
   const tagSet = collectTags(c);
   const isKept = tagSet.has("kept") || tagSet.has("keep");
@@ -171,6 +169,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
           expectedStartDate: local.expectedStartDate?.toISOString() ?? null,
           placementNotes: local.placementNotes,
           startConfirmedAt: local.startConfirmedAt?.toISOString() ?? null,
+          cancelledAt: local.stage === "cancelled" ? local.updatedAt.toISOString() : null,
         }
       : null;
     const clientContacts = contacts

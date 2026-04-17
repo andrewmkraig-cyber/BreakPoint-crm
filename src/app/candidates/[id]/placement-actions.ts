@@ -11,6 +11,7 @@ import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import { getAppPreferences, getRecruiterPhone } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import type { RFCandidate } from "@/lib/recruiterflow";
+import { formatLocation } from "@/lib/utils";
 import {
   CANDIDATE_CONFIRMATION_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
@@ -571,8 +572,7 @@ export async function generateSubmittalEmailBody(args: {
       : "";
     const experienceSummary = summarizeExperience(c.experience);
     const notes = summarizeNotes(c.notes);
-    const locationLabel =
-      c.location?.location ?? [c.location?.city, c.location?.state].filter(Boolean).join(", ") ?? "";
+    const locationLabel = formatLocation(c.location);
 
     const input: SubmittalInput = {
       candidate: {

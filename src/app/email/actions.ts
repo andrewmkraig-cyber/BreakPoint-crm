@@ -5,6 +5,26 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { createGmailDraft, plainToHtml, sendGmail, type SendEmailResult } from "@/lib/gmail";
 
+export type ActiveTemplateSummary = {
+  id: string;
+  name: string;
+  subject: string;
+  body: string;
+  trigger: string | null;
+  audience: string | null;
+};
+
+// Pulls active email templates for populating the composer's "Use Template"
+// dropdown. No merge-field resolution here — the caller resolves after pick.
+export async function listActiveTemplates(): Promise<ActiveTemplateSummary[]> {
+  const rows = await prisma.emailTemplate.findMany({
+    where: { isActive: true },
+    orderBy: [{ name: "asc" }],
+    select: { id: true, name: true, subject: true, body: true, trigger: true, audience: true },
+  });
+  return rows;
+}
+
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
   | { ok: false; error: string };

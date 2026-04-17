@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Mail, Phone as PhoneIcon, Plus, UserPlus, X, ExternalLink } from "lucide-react";
 import { formatPhone, telHref } from "@/lib/recruiterflow";
 import { addContact } from "@/app/clients/[id]/actions";
+import { EmailLink } from "@/components/email-link";
 import { cn } from "@/lib/utils";
 
 export type ContactRow = {
@@ -156,9 +157,9 @@ export function ContactsTab({
                   <td className="px-5 py-3 align-top text-navy-400">{c.title || "—"}</td>
                   <td className="px-5 py-3 align-top">
                     {c.email ? (
-                      <a href={`mailto:${c.email}`} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
+                      <EmailLink email={c.email} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
                         <Mail className="h-3 w-3 text-muted-foreground" /> {c.email}
-                      </a>
+                      </EmailLink>
                     ) : (
                       <span className="text-muted-foreground">—</span>
                     )}

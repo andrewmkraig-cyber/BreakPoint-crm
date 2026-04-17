@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition, type ReactNode } from "react";
-import { Loader2, Send, Sparkles, X } from "lucide-react";
+import { useEffect, useState, useTransition, type ReactNode } from "react";
+import { ChevronDown, Loader2, Send, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 
 export type EmailDraft = {
   to: string[];
@@ -12,6 +13,8 @@ export type EmailDraft = {
   subject: string;
   body: string;
 };
+
+export type ResolveTemplateFn = (template: ActiveTemplateSummary) => Promise<{ subject: string; body: string }> | { subject: string; body: string };
 
 export type EmailComposerProps = {
   title: string;
@@ -25,6 +28,14 @@ export type EmailComposerProps = {
   generateLabel?: string;
   onGenerate?: (current: EmailDraft) => Promise<string>;
   footerExtras?: ReactNode;
+  // When enabled, the composer loads active templates and renders a
+  // "Use Template" dropdown. Selecting one replaces subject + body with the
+  // resolved output from resolveTemplate (or the raw template text if no
+  // resolver is provided). Templates stay opt-in so the submittal flow can
+  // scope to specific templates via resolveTemplate.
+  showTemplatePicker?: boolean;
+  resolveTemplate?: ResolveTemplateFn;
+  templateFilter?: (t: ActiveTemplateSummary) => boolean;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -42,6 +53,9 @@ export function EmailComposer({
   generateLabel = "Generate with Claude",
   onGenerate,
   footerExtras,
+  showTemplatePicker = false,
+  resolveTemplate,
+  templateFilter,
 }: EmailComposerProps) {
   const [to, setTo] = useState<string>(initial.to.join(", "));
   const [cc, setCc] = useState<string>(initial.cc.join(", "));
@@ -52,6 +66,41 @@ export function EmailComposer({
   const [err, setErr] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
   const [isGenerating, startGenerate] = useTransition();
+
+  const [templates, setTemplates] = useState<ActiveTemplateSummary[]>([]);
+  const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [templateOpen, setTemplateOpen] = useState(false);
+  const [isApplying, startApply] = useTransition();
+
+  useEffect(() => {
+    if (!showTemplatePicker || templatesLoaded) return;
+    let cancelled = false;
+    listActiveTemplates().then((list) => {
+      if (cancelled) return;
+      setTemplates(templateFilter ? list.filter(templateFilter) : list);
+      setTemplatesLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showTemplatePicker, templatesLoaded, templateFilter]);
+
+  function onPickTemplate(tpl: ActiveTemplateSummary) {
+    setTemplateOpen(false);
+    setErr(null);
+    startApply(async () => {
+      try {
+        const resolved = resolveTemplate ? await resolveTemplate(tpl) : { subject: tpl.subject, body: tpl.body };
+        if (!subject.trim() || confirmReplace(subject, resolved.subject)) setSubject(resolved.subject);
+        if (!body.trim() || confirmReplace(body, resolved.body)) setBody(resolved.body);
+        toast.success("Template applied", { description: tpl.name });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to apply template.";
+        setErr(msg);
+        toast.error("Couldn't apply template", { description: msg });
+      }
+    });
+  }
 
   function parseList(raw: string): string[] {
     return raw
@@ -173,7 +222,47 @@ export function EmailComposer({
         {err && <div className="mx-5 mb-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
 
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {showTemplatePicker && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setTemplateOpen((v) => !v)}
+                  disabled={isApplying || isSending || isGenerating}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                >
+                  {isApplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  Use Template
+                </button>
+                {templateOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setTemplateOpen(false)} />
+                    <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+                      <ul className="max-h-80 overflow-y-auto py-1 text-sm">
+                        {!templatesLoaded && (
+                          <li className="px-3 py-2 text-xs text-muted-foreground">Loading templates…</li>
+                        )}
+                        {templatesLoaded && templates.length === 0 && (
+                          <li className="px-3 py-2 text-xs text-muted-foreground">No active templates.</li>
+                        )}
+                        {templates.map((t) => (
+                          <li key={t.id}>
+                            <button
+                              type="button"
+                              onClick={() => onPickTemplate(t)}
+                              className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-navy hover:bg-brand-tint"
+                            >
+                              <span className="font-medium">{t.name}</span>
+                              <span className="truncate text-[11px] text-muted-foreground">{t.subject}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {onGenerate && (
               <button
                 type="button"
@@ -247,4 +336,11 @@ function Input({
       className="w-full rounded-md border border-transparent bg-transparent px-0 py-1.5 text-sm text-navy placeholder:text-muted-foreground focus:border-brand focus:outline-none"
     />
   );
+}
+
+function confirmReplace(current: string, incoming: string): boolean {
+  if (typeof window === "undefined") return true;
+  if (!current.trim()) return true;
+  if (current.trim() === incoming.trim()) return false;
+  return window.confirm("Replace the current text with the template?");
 }

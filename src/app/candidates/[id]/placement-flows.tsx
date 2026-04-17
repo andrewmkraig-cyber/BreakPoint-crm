@@ -41,6 +41,7 @@ import {
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 
 export type ClientContactRef = {
   id: number;
@@ -73,7 +74,8 @@ export type PlacementContextJob = {
 
 export type PlacementSnapshot = {
   id: string;
-  stage: "offer" | "pending_start" | "hired";
+  stage: "offer" | "pending_start" | "hired" | "cancelled";
+  cancelledAt: string | null;
   syncedToRf: boolean;
   offerSalary: number | null;
   offerCurrency: string | null;
@@ -296,12 +298,13 @@ function JobActionRow({
   onCancel: () => void;
 }) {
   const effective: Bucket = (job.placement?.stage ?? job.rfStageBucket) as Bucket;
-  const isActive = ACTIVE_BUCKETS.has(effective);
-  const isInterviewing = effective === "interviewing" || effective === "submitted";
-  const isOffer = effective === "offer";
-  const isPendingStart = effective === "pending_start";
-  const isHired = effective === "hired";
-  const isRejected = effective === "rejected";
+  const isCancelled = effective === "cancelled";
+  const isActive = !isCancelled && ACTIVE_BUCKETS.has(effective);
+  const isInterviewing = !isCancelled && (effective === "interviewing" || effective === "submitted");
+  const isOffer = !isCancelled && effective === "offer";
+  const isPendingStart = !isCancelled && effective === "pending_start";
+  const isHired = !isCancelled && effective === "hired";
+  const isRejected = !isCancelled && effective === "rejected";
 
   const badgeSuffix = badgeSuffixFor(effective, job);
 
@@ -395,6 +398,10 @@ function JobActionRow({
 }
 
 function badgeSuffixFor(effective: Bucket, job: PlacementContextJob): string | null {
+  if (effective === "cancelled") {
+    const d = job.placement?.cancelledAt ?? null;
+    return d ? formatDate(d) : null;
+  }
   if (effective === "rejected") {
     return job.rfStageMovedAt ? formatDate(job.rfStageMovedAt) : null;
   }
@@ -1092,12 +1099,14 @@ function RejectDialog({
   const [reason, setReason] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
+  const [mode, setMode] = useState<null | "send" | "only">(null);
 
   const previousStage = job.placement?.stage ?? job.rfStageBucket;
   const nameLabel = candidateFullName || "this candidate";
 
-  function onConfirm() {
+  function run(sendEmail: boolean) {
     setErr(null);
+    setMode(sendEmail ? "send" : "only");
     startSave(async () => {
       const result = await rejectCandidateJob({
         candidateRfId,
@@ -1109,8 +1118,17 @@ function RejectDialog({
       if (!result.ok) {
         setErr(result.error);
         toast.error("Couldn't reject candidate", { description: result.error });
+        setMode(null);
         return;
       }
+
+      if (!sendEmail) {
+        toast.success("Rejection recorded", { description: "No email sent." });
+        onClose();
+        router.refresh();
+        return;
+      }
+
       const emailResult = await sendRejectionEmail({
         candidateRfId,
         jobRfId: job.jobRfId,
@@ -1157,18 +1175,45 @@ function RejectDialog({
   return (
     <Modal title="Reject candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <p className="text-sm text-navy">
-        <span className="font-semibold">Reject {nameLabel} for {job.jobTitle}?</span>{" "}
-        This will send them a rejection email using the Candidate Rejection template.
+        <span className="font-semibold">Reject {nameLabel} for {job.jobTitle}?</span>
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Pick one: <span className="font-semibold text-navy">Reject &amp; Send Email</span> runs your Candidate Rejection
+        template to the candidate. <span className="font-semibold text-navy">Reject Only</span> updates the stage with no
+        email sent. Either way the stage moves to Rejected.
       </p>
       <div className="mt-3">
         <LabeledTextarea label="Internal reason (optional — not sent)" value={reason} onChange={setReason} rows={3} />
       </div>
-      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        The candidate-facing email comes from your Candidate Rejection template in Settings. Edit it there to change
-        what they receive.
-      </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reject & Send Email" />
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => run(false)}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+        >
+          {isPending && mode === "only" ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+          Reject Only
+        </button>
+        <button
+          type="button"
+          onClick={() => run(true)}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 rounded-md bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
+        >
+          {isPending && mode === "send" ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+          Reject &amp; Send Email
+        </button>
+      </div>
     </Modal>
   );
 }
@@ -1451,7 +1496,27 @@ function SubmittalEmailCompose({
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
-      helperText="Closing line 'Let me know if you'd like to set up an interview with him/her.' is included automatically when you generate."
+      helperText="Pick Use Template for a manual-fill skeleton, or Generate with Claude for an AI-written draft."
+      showTemplatePicker
+      templateFilter={(t) => t.audience !== "candidate"}
+      resolveTemplate={(t) => {
+        const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
+        const primaryContactFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
+        const values = {
+          candidateFirstName,
+          candidateLastName,
+          candidateFullName: fullName,
+          candidateEmail,
+          clientCompanyName: job.clientName,
+          clientContactFullName: primaryContact?.name ?? "",
+          clientContactFirstName: primaryContactFirst,
+          jobTitle: job.jobTitle,
+        };
+        return {
+          subject: applyMergeFieldsClient(t.subject, values),
+          body: applyMergeFieldsClient(t.body, values),
+        };
+      }}
       onGenerate={async () => {
         const result = await generateSubmittalEmailBody({
           candidateRfId,

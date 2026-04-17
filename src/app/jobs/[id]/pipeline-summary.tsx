@@ -43,6 +43,7 @@ const STAGE_LABELS: Record<PipelineBucket, string> = {
   pending_start: "Pending Start",
   hired: "Hired",
   rejected: "Rejected",
+  cancelled: "Cancelled",
   other: "Other",
 };
 
@@ -56,6 +57,7 @@ const STAGE_TONE: Record<PipelineBucket, string> = {
   pending_start: "border-brand-dark bg-brand text-white hover:bg-brand-dark",
   hired: "border-brand-dark bg-brand-dark text-white hover:brightness-110",
   rejected: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
+  cancelled: "border-red-300 bg-red-100 text-red-800 hover:border-red-400",
   other: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
 };
 
