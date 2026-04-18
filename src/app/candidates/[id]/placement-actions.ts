@@ -694,7 +694,12 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
   }
 
   try {
-    const c = await recruiterflow.getCandidate(input.candidateRfId);
+    // RF /candidate/{id} returns 404 on the external API (the whole reason the
+    // rest of the app reads /candidate/list and filters). We mirror that here
+    // so the generator works like every other candidate read-path in Ace.
+    const candidates = await recruiterflow.listAllCandidates({ perPage: 100 });
+    const c = candidates.find((x) => x.id === input.candidateRfId);
+    if (!c) return { ok: false, error: "Candidate not found in RecruiterFlow." };
     const { firstName, lastName } = extractCandidateFields(c);
 
     const expectedSalary = (c.expected_salary ?? null) as
