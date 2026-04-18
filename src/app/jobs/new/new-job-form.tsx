@@ -61,7 +61,13 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
         return;
       }
       setDescription(result.value.text);
-      toast.success("Job description generated", { description: "Edit before saving if needed." });
+      if (result.value.fallback) {
+        toast.info("Claude unavailable — template loaded", {
+          description: result.value.reason ?? "Write the JD manually using the template below.",
+        });
+      } else {
+        toast.success("Job description generated", { description: "Edit before saving if needed." });
+      }
     });
   }
 

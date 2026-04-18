@@ -1814,7 +1814,7 @@ function SubmittalEmailCompose({
             `Server returned ${contentType || "unknown content-type"} (status ${res.status}). Reload the tab and try again — your session may have expired.`,
           );
         }
-        const data = (await res.json()) as { text?: string; error?: string };
+        const data = (await res.json()) as { text?: string; error?: string; fallback?: boolean; reason?: string };
         if (!res.ok || data.error) {
           log("error body", { status: res.status, error: data.error });
           throw new Error(data.error || `Generate failed (${res.status}).`);
@@ -1829,7 +1829,13 @@ function SubmittalEmailCompose({
           log("flight markers in text");
           throw new Error("Generator returned a page instead of text. Reload the tab and try again.");
         }
-        log("done", { length: data.text.length });
+        if (data.fallback) {
+          log("fallback text returned", { reason: data.reason });
+          toast.info("Claude unavailable — template loaded", {
+            description: data.reason ?? "Write your submittal manually using the template below.",
+          });
+        }
+        log("done", { length: data.text.length, fallback: Boolean(data.fallback) });
         return data.text;
       }}
       onSend={async (draft: EmailDraft) => {

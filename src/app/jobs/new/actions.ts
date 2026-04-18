@@ -26,7 +26,20 @@ export type GenerateJDInput = {
 // 4.5MB body cap. Larger JDs get split or pasted as text.
 const MAX_JD_BYTES = 4 * 1024 * 1024;
 
-export async function generateJobDescriptionFromSource(input: GenerateJDInput): Promise<ActionResult<{ text: string }>> {
+const JD_FALLBACK_TEXT =
+  "Claude API unavailable — write the job description manually.\n\n" +
+  "Role Summary\n<2–3 sentence overview of the role and the team/company.>\n\n" +
+  "What You'll Do\n<5–7 bullet points on day-to-day responsibilities.>\n\n" +
+  "What We're Looking For\n<5–7 bullet points on must-have skills and experience.>\n\n" +
+  "Nice to Have\n<optional bullets for preferred qualifications.>\n\n" +
+  "Compensation & Benefits\n<salary range, benefits, perks.>";
+
+export async function generateJobDescriptionFromSource(
+  input: GenerateJDInput,
+): Promise<ActionResult<{ text: string; fallback?: boolean; reason?: string }>> {
+  // eslint-disable-next-line no-console
+  console.log("[generate-jd] server action hit");
+
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return { ok: false, error: "Not signed in." };
 
@@ -47,6 +60,12 @@ export async function generateJobDescriptionFromSource(input: GenerateJDInput): 
     }
   }
 
+  if (!process.env.ANTHROPIC_API_KEY) {
+    // eslint-disable-next-line no-console
+    console.log("[generate-jd] ANTHROPIC_API_KEY missing — returning fallback");
+    return { ok: true, value: { text: JD_FALLBACK_TEXT, fallback: true, reason: "ANTHROPIC_API_KEY not set" } };
+  }
+
   try {
     const text = await generateJobDescription({
       sourceFile: input.file && buffer
@@ -57,7 +76,10 @@ export async function generateJobDescriptionFromSource(input: GenerateJDInput): 
     });
     return { ok: true, value: { text } };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to generate job description." };
+    const reason = e instanceof Error ? e.message : "Unknown error";
+    // eslint-disable-next-line no-console
+    console.error("[generate-jd] threw:", e);
+    return { ok: true, value: { text: JD_FALLBACK_TEXT, fallback: true, reason: reason.slice(0, 200) } };
   }
 }
 

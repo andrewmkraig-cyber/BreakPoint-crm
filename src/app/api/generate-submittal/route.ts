@@ -26,7 +26,22 @@ type Body = {
 // This is a plain JSON endpoint (no server-action RPC protocol) so there's
 // zero chance of the caller receiving HTML back — the client's fetch always
 // gets a JSON body and can render the text directly into the composer.
+const FALLBACK_TEXT =
+  "Claude API unavailable — write your submittal manually.\n\n" +
+  "About [candidate]\n<intro paragraph>\n\n" +
+  "What They Bring\n<strengths + experience>\n\n" +
+  "Technically:\n<stack / skills>\n\n" +
+  "Comp Target:\n<target salary>\n\n" +
+  "Location:\n<city, state>\n\n" +
+  "LinkedIn:\n<url>\n\n" +
+  "Let me know if you'd like to set up an interview.";
+
 export async function POST(req: NextRequest) {
+  // Intentionally loud so the user can spot this immediately in Vercel logs:
+  // if you don't see this line on a click, the click isn't reaching the route.
+  // eslint-disable-next-line no-console
+  console.log("[generate-submittal] API route hit");
+
   const t0 = Date.now();
   const mark = (label: string, extra?: Record<string, unknown>) => {
     // eslint-disable-next-line no-console
@@ -35,7 +50,6 @@ export async function POST(req: NextRequest) {
       extra ? JSON.stringify(extra).slice(0, 300) : "",
     );
   };
-  mark("POST received");
 
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -62,11 +76,8 @@ export async function POST(req: NextRequest) {
   mark("body parsed", { candidateRfId, jobTitle, clientName });
 
   if (!process.env.ANTHROPIC_API_KEY) {
-    mark("missing ANTHROPIC_API_KEY");
-    return NextResponse.json(
-      { error: "Claude API unavailable — ANTHROPIC_API_KEY not set on this deployment." },
-      { status: 503 },
-    );
+    mark("missing ANTHROPIC_API_KEY → returning fallback text");
+    return NextResponse.json({ text: FALLBACK_TEXT, fallback: true });
   }
 
   try {
@@ -120,10 +131,17 @@ export async function POST(req: NextRequest) {
     mark("sending response");
     return NextResponse.json({ text });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Failed to generate submittal.";
     // eslint-disable-next-line no-console
     console.error(`[generate-submittal] threw after ${Date.now() - t0}ms:`, e);
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Per the product rule: never let a Claude failure break the UX. Return
+    // usable fallback text with a friendly lead-in so the user can write the
+    // submittal manually. The client surfaces an info-level toast, not error.
+    const message = e instanceof Error ? e.message : "Unknown error";
+    return NextResponse.json({
+      text: FALLBACK_TEXT,
+      fallback: true,
+      reason: message.slice(0, 200),
+    });
   }
 }
 
