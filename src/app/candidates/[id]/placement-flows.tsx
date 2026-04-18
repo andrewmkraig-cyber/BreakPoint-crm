@@ -30,6 +30,7 @@ import {
   cancelPlacement,
   confirmStart,
   deliverCandidateConfirmation,
+  generateSubmittal,
   moveCancelledToAceStage,
   reapplyCancelledPlacement,
   recordOffer,
@@ -1775,68 +1776,18 @@ function SubmittalEmailCompose({
         };
       }}
       onGenerate={async () => {
-        const t0 = performance.now();
-        const log = (label: string, extra?: Record<string, unknown>) => {
-          // eslint-disable-next-line no-console
-          console.log(
-            `[generate-submittal:client] ${label} · +${Math.round(performance.now() - t0)}ms`,
-            extra ?? "",
-          );
-        };
-        log("fetch start", {
+        // Same pattern as the working Summarize buttons on the clients page:
+        // direct server-action call, read result.value, no fetch / no route
+        // handler / no content-type shenanigans.
+        const result = await generateSubmittal({
           candidateRfId,
-          jobRfId: job.jobRfId,
           jobTitle: job.jobTitle,
           clientName: job.clientName,
         });
-        const res = await fetch("/api/generate-submittal", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            candidateRfId,
-            jobRfId: job.jobRfId,
-            jobTitle: job.jobTitle,
-            clientName: job.clientName,
-          }),
-          credentials: "same-origin",
-          cache: "no-store",
-        });
-        const contentType = res.headers.get("content-type") ?? "";
-        log("fetch returned", { status: res.status, contentType });
-
-        // Guard against the "page source dumped into the textarea" failure
-        // mode: if the response isn't JSON, read it as text and surface a
-        // readable error — never let HTML / JS chunks reach the UI.
-        if (!contentType.includes("application/json")) {
-          const preview = (await res.text()).slice(0, 160);
-          log("non-json response", { preview });
-          throw new Error(
-            `Server returned ${contentType || "unknown content-type"} (status ${res.status}). Reload the tab and try again — your session may have expired.`,
-          );
+        if (!result.ok) {
+          throw new Error(result.error);
         }
-        const data = (await res.json()) as { text?: string; error?: string; fallback?: boolean; reason?: string };
-        if (!res.ok || data.error) {
-          log("error body", { status: res.status, error: data.error });
-          throw new Error(data.error || `Generate failed (${res.status}).`);
-        }
-        if (typeof data.text !== "string" || !data.text.trim()) {
-          log("empty text");
-          throw new Error("Generator returned empty text.");
-        }
-        // Final paranoid check — scan the whole text, not just the first
-        // 1000 chars, for Next.js flight markers.
-        if (/__next_f\.push\(|^<!DOCTYPE|^<html\b/i.test(data.text)) {
-          log("flight markers in text");
-          throw new Error("Generator returned a page instead of text. Reload the tab and try again.");
-        }
-        if (data.fallback) {
-          log("fallback text returned", { reason: data.reason });
-          toast.info("Claude unavailable — template loaded", {
-            description: data.reason ?? "Write your submittal manually using the template below.",
-          });
-        }
-        log("done", { length: data.text.length, fallback: Boolean(data.fallback) });
-        return data.text;
+        return result.value.text;
       }}
       onSend={async (draft: EmailDraft) => {
         const result = await sendSubmittalEmail({

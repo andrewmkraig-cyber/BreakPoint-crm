@@ -670,6 +670,100 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
   }
 }
 
+// ---- Generate submittal writeup ----
+//
+// Same shape as summarizeAgreement / summarizeBenefitsWithAI in
+// clients/[id]/actions.ts: server action, calls the claude helper, returns
+// { ok, value: { text } } | { ok:false, error }. No fetch, no route handler,
+// no content-type handling on the client. Client calls this via RPC the same
+// way the summary buttons on the clients page do.
+
+export type GenerateSubmittalInput = {
+  candidateRfId: number;
+  jobTitle: string;
+  clientName: string;
+};
+
+export type GenerateSubmittalResult = Result<{ text: string }>;
+
+export async function generateSubmittal(input: GenerateSubmittalInput): Promise<GenerateSubmittalResult> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  if (!Number.isFinite(input.candidateRfId)) {
+    return { ok: false, error: "candidateRfId is required." };
+  }
+
+  try {
+    const c = await recruiterflow.getCandidate(input.candidateRfId);
+    const { firstName, lastName } = extractCandidateFields(c);
+
+    const expectedSalary = (c.expected_salary ?? null) as
+      | { number?: number | null; currency?: string | null }
+      | null;
+    const salaryStr = expectedSalary?.number
+      ? `${expectedSalary.currency ?? "USD"} ${expectedSalary.number.toLocaleString()}`
+      : "";
+
+    const experienceSummary = summarizeExperienceForSubmittal(c.experience);
+    const notes = summarizeNotesForSubmittal(c.notes);
+    const locationLabel = formatLocation(c.location);
+
+    const payload: SubmittalInput = {
+      candidate: {
+        firstName,
+        lastName,
+        title: c.current_designation ?? "",
+        employer: c.current_organization ?? "",
+        location: locationLabel,
+        skills: Array.isArray(c.skills)
+          ? (c.skills as unknown[]).filter((s): s is string => typeof s === "string")
+          : [],
+        experienceSummary,
+        notes,
+        expectedSalary: salaryStr,
+        linkedin: c.linkedin_profile ?? "",
+      },
+      job: {
+        title: input.jobTitle,
+        clientName: input.clientName,
+      },
+    };
+
+    const writeup = await generateSubmittalWriteup(payload);
+    const text = `${writeup.trim()}\n\nLet me know if you'd like to set up an interview with him/her.`;
+    return { ok: true, value: { text } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Claude generation failed" };
+  }
+}
+
+function summarizeExperienceForSubmittal(raw: unknown): string {
+  if (!Array.isArray(raw)) return "";
+  return raw
+    .slice(0, 4)
+    .map((e) => {
+      const r = e as {
+        designation?: string;
+        organization?: string;
+        from?: [number | null, number | null];
+        to?: [number | null, number | null];
+      };
+      const span = [r.from?.[1], r.to?.[1]].filter(Boolean).join("–");
+      return [r.designation, r.organization, span].filter(Boolean).join(" · ");
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function summarizeNotesForSubmittal(raw: unknown): string {
+  if (!Array.isArray(raw)) return "";
+  return raw
+    .slice(0, 3)
+    .map((n) => (n as { note?: string }).note ?? "")
+    .filter(Boolean)
+    .join("\n");
+}
+
 // ---- Apply to Job (candidate-applied, not recruiter-submitted) ----
 //
 // Same shape as submitCandidateToJob but pushes RF stage_name "Applied" and
