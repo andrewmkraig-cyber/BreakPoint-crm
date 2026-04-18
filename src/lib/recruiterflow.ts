@@ -452,6 +452,29 @@ export const recruiterflow = {
     return rfFetch("/candidate/update", { method: "POST", body });
   },
 
+  // Creates a new company in RF via /client/add. RF accepts a flat body similar
+  // to /candidate/add; unknown fields are ignored. Only `name` is required.
+  // `location` accepts either a string ("Cleveland, OH") or a structured object.
+  async createClient(body: {
+    name: string;
+    domain?: string;
+    industry?: string;
+    linkedin_page?: string;
+    phone_number?: string | string[];
+    overview?: string;
+    location?:
+      | string
+      | {
+          location?: string;
+          city?: string;
+          state?: string;
+          country?: string;
+          postal_code?: string;
+        };
+  }): Promise<RFClient & { id: number }> {
+    return rfFetch<RFClient & { id: number }>("/client/add", { method: "POST", body });
+  },
+
   // Partial client/company update. Same pattern as /candidate/update — unknown
   // fields ignored, omitted fields left alone. Nested fields that RF accepts
   // include website/domain, industry, linkedin, phone, and location.

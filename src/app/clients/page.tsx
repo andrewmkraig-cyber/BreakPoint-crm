@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ClientsView, type ClientCard } from "@/app/clients/clients-view";
 import {
@@ -89,6 +91,14 @@ export default async function ClientsPage({
         eyebrow="Accounts"
         title="Clients"
         description="Active = an open job or a placement in the last 6 months. Verified badge means a signed fee agreement is on file."
+        actions={
+          <Link
+            href="/clients/new"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+          >
+            <Plus className="h-3 w-3" /> New Client
+          </Link>
+        }
       />
       <ClientsView
         cards={pageCards}

@@ -6,112 +6,143 @@ import { useMemo, useState, useTransition } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
-import { setApplicantStatus, type ApplicantStatusValue } from "@/app/applicants/actions";
+import { keepCandidateForJob, removeKeptCandidate } from "@/app/applicants/actions";
+import { rejectCandidateJob, submitCandidateToJob } from "@/app/candidates/[id]/placement-actions";
 
-export type ApplicantRow = {
+export type AppliedRow = {
   candidateId: number;
   candidateName: string;
   jobId: number;
   jobTitle: string;
+  clientRfId: number;
   clientName: string;
   appliedAt: string | null;
   source: string | null;
-  status: ApplicantStatusValue;
 };
 
-type SortKey = "name" | "job" | "applied" | "source" | "status";
+export type KeptRow = {
+  candidateId: number;
+  candidateName: string;
+  jobId: number;
+  jobTitle: string;
+  clientRfId: number;
+  clientName: string;
+  keptAt: string;
+};
+
+type Tab = "applied" | "kept";
+
+type SortKey = "name" | "job" | "when" | "source";
 type SortDir = "asc" | "desc";
 
-const STATUS_LABEL: Record<ApplicantStatusValue, string> = {
-  new: "New",
-  reviewed: "Reviewed",
-  rejected: "Rejected",
-  moved_to_pipeline: "Moved to Pipeline",
-};
-
-const STATUS_CLASS: Record<ApplicantStatusValue, string> = {
-  new: "bg-brand-tint text-brand-dark",
-  reviewed: "bg-blue-50 text-blue-700",
-  rejected: "bg-red-50 text-red-700",
-  moved_to_pipeline: "bg-emerald-50 text-emerald-700",
-};
-
-export function ApplicantsView({ rows }: { rows: ApplicantRow[] }) {
-  const [sortKey, setSortKey] = useState<SortKey>("applied");
+export function ApplicantsView({
+  applied,
+  kept,
+}: {
+  applied: AppliedRow[];
+  kept: KeptRow[];
+}) {
+  const [tab, setTab] = useState<Tab>("applied");
+  const [sortKey, setSortKey] = useState<SortKey>("when");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const sorted = useMemo(() => {
-    const out = [...rows];
-    out.sort((a, b) => {
-      const mul = sortDir === "asc" ? 1 : -1;
-      let va: string | number = "";
-      let vb: string | number = "";
-      switch (sortKey) {
-        case "name":
-          va = a.candidateName.toLowerCase();
-          vb = b.candidateName.toLowerCase();
-          break;
-        case "job":
-          va = a.jobTitle.toLowerCase();
-          vb = b.jobTitle.toLowerCase();
-          break;
-        case "applied":
-          va = a.appliedAt ? new Date(a.appliedAt).getTime() : 0;
-          vb = b.appliedAt ? new Date(b.appliedAt).getTime() : 0;
-          break;
-        case "source":
-          va = (a.source ?? "").toLowerCase();
-          vb = (b.source ?? "").toLowerCase();
-          break;
-        case "status":
-          va = a.status;
-          vb = b.status;
-          break;
-      }
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * mul;
-      return String(va).localeCompare(String(vb)) * mul;
-    });
-    return out;
-  }, [rows, sortKey, sortDir]);
+  const sortedApplied = useMemo(
+    () => sortApplied(applied, sortKey, sortDir),
+    [applied, sortKey, sortDir],
+  );
+  const sortedKept = useMemo(() => sortKept(kept, sortKey, sortDir), [kept, sortKey, sortDir]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) {
       setSortDir(sortDir === "asc" ? "desc" : "asc");
     } else {
       setSortKey(k);
-      setSortDir(k === "applied" ? "desc" : "asc");
+      setSortDir(k === "when" ? "desc" : "asc");
     }
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[900px] text-left text-sm">
-          <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
-            <tr>
-              <ColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
-              <ColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
-              <ColHeader label="Date Applied" active={sortKey === "applied"} dir={sortDir} onClick={() => toggleSort("applied")} />
-              <ColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} />
-              <ColHeader label="Status" active={sortKey === "status"} dir={sortDir} onClick={() => toggleSort("status")} />
-              <th className="px-5 py-3 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
-            {sorted.length === 0 && (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 border-b border-border">
+        <TabButton active={tab === "applied"} onClick={() => setTab("applied")}>
+          Applied <span className="ml-1 text-muted-foreground">({applied.length})</span>
+        </TabButton>
+        <TabButton active={tab === "kept"} onClick={() => setTab("kept")}>
+          Kept <span className="ml-1 text-muted-foreground">({kept.length})</span>
+        </TabButton>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-left text-sm">
+            <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <td colSpan={6} className="px-5 py-12 text-center text-sm text-muted-foreground">
-                  No applicants yet.
-                </td>
+                <ColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
+                <ColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
+                <ColHeader
+                  label={tab === "applied" ? "Date Applied" : "Kept Since"}
+                  active={sortKey === "when"}
+                  dir={sortDir}
+                  onClick={() => toggleSort("when")}
+                />
+                {tab === "applied" && (
+                  <ColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} />
+                )}
+                <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
-            )}
-            {sorted.map((r) => (
-              <ApplicantRowView key={`${r.candidateId}-${r.jobId}`} row={r} />
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {tab === "applied" ? (
+                sortedApplied.length === 0 ? (
+                  <EmptyRow label="No applicants in this view." />
+                ) : (
+                  sortedApplied.map((r) => (
+                    <AppliedRowView key={`${r.candidateId}-${r.jobId}`} row={r} />
+                  ))
+                )
+              ) : sortedKept.length === 0 ? (
+                <EmptyRow label="No kept candidates yet." />
+              ) : (
+                sortedKept.map((r) => <KeptRowView key={`${r.candidateId}-${r.jobId}`} row={r} />)
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "border-b-2 px-4 py-2 text-sm font-semibold transition",
+        active ? "border-brand text-navy" : "border-transparent text-muted-foreground hover:text-navy",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EmptyRow({ label }: { label: string }) {
+  return (
+    <tr>
+      <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
+        {label}
+      </td>
+    </tr>
   );
 }
 
@@ -143,29 +174,18 @@ function ColHeader({
   );
 }
 
-function ApplicantRowView({ row }: { row: ApplicantRow }) {
+function AppliedRowView({ row }: { row: AppliedRow }) {
   const router = useRouter();
   const [isPending, startChange] = useTransition();
-  const [status, setStatus] = useState<ApplicantStatusValue>(row.status);
 
-  function update(next: ApplicantStatusValue) {
-    if (next === status) return;
+  function runAction(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, successMsg: string) {
     startChange(async () => {
-      const result = await setApplicantStatus({
-        candidateRfId: row.candidateId,
-        jobRfId: row.jobId,
-        status: next,
-      });
+      const result = await fn();
       if (!result.ok) {
-        toast.error("Couldn't update status", { description: result.error });
+        toast.error("Action failed", { description: result.error });
         return;
       }
-      setStatus(next);
-      toast.success(
-        next === "moved_to_pipeline"
-          ? "Moved to Pipeline"
-          : `Marked ${STATUS_LABEL[next].toLowerCase()}`,
-      );
+      toast.success(successMsg);
       router.refresh();
     });
   }
@@ -186,33 +206,143 @@ function ApplicantRowView({ row }: { row: ApplicantRow }) {
       <td className="px-5 py-3 align-top text-xs text-muted-foreground">{formatDate(row.appliedAt)}</td>
       <td className="px-5 py-3 align-top text-sm text-navy-400">{row.source || "—"}</td>
       <td className="px-5 py-3 align-top">
-        <span
-          className={cn(
-            "inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide",
-            STATUS_CLASS[status],
-          )}
-        >
-          {STATUS_LABEL[status]}
-        </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          <ActionButton
+            primary
+            disabled={isPending}
+            onClick={() =>
+              runAction(
+                () =>
+                  submitCandidateToJob({
+                    candidateRfId: row.candidateId,
+                    jobRfId: row.jobId,
+                    clientRfId: row.clientRfId,
+                    jobTitle: row.jobTitle,
+                    clientName: row.clientName,
+                  }),
+                "Submitted",
+              )
+            }
+          >
+            Submit
+          </ActionButton>
+          <ActionButton
+            disabled={isPending}
+            onClick={() =>
+              runAction(
+                () =>
+                  keepCandidateForJob({
+                    candidateRfId: row.candidateId,
+                    jobRfId: row.jobId,
+                    clientRfId: row.clientRfId,
+                  }),
+                "Kept",
+              )
+            }
+          >
+            Keep
+          </ActionButton>
+          <ActionButton
+            destructive
+            disabled={isPending}
+            onClick={() =>
+              runAction(
+                () =>
+                  rejectCandidateJob({
+                    candidateRfId: row.candidateId,
+                    jobRfId: row.jobId,
+                    clientRfId: row.clientRfId,
+                    previousStage: "applied",
+                    reason: "",
+                  }),
+                "Rejected",
+              )
+            }
+          >
+            Reject
+          </ActionButton>
+        </div>
       </td>
+    </tr>
+  );
+}
+
+function KeptRowView({ row }: { row: KeptRow }) {
+  const router = useRouter();
+  const [isPending, startChange] = useTransition();
+
+  function runAction(fn: () => Promise<{ ok: true } | { ok: false; error: string }>, successMsg: string) {
+    startChange(async () => {
+      const result = await fn();
+      if (!result.ok) {
+        toast.error("Action failed", { description: result.error });
+        return;
+      }
+      toast.success(successMsg);
+      router.refresh();
+    });
+  }
+
+  return (
+    <tr className="transition hover:bg-brand-tint/40">
+      <td className="px-5 py-3 align-top">
+        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-navy hover:text-brand-dark">
+          {row.candidateName}
+        </Link>
+        {row.clientName && <div className="text-xs text-muted-foreground">{row.clientName}</div>}
+      </td>
+      <td className="px-5 py-3 align-top">
+        <Link href={`/jobs/${row.jobId}`} className="font-medium text-navy hover:text-brand-dark">
+          {row.jobTitle || "—"}
+        </Link>
+      </td>
+      <td className="px-5 py-3 align-top text-xs text-muted-foreground">{formatDate(row.keptAt)}</td>
       <td className="px-5 py-3 align-top">
         <div className="flex flex-wrap items-center gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-          {status !== "reviewed" && status !== "moved_to_pipeline" && (
-            <ActionButton onClick={() => update("reviewed")} disabled={isPending}>
-              Mark Reviewed
-            </ActionButton>
-          )}
-          {status !== "moved_to_pipeline" && (
-            <ActionButton onClick={() => update("moved_to_pipeline")} disabled={isPending} primary>
-              Move to Pipeline
-            </ActionButton>
-          )}
-          {status !== "rejected" && status !== "moved_to_pipeline" && (
-            <ActionButton onClick={() => update("rejected")} disabled={isPending} destructive>
-              Reject
-            </ActionButton>
-          )}
+          <ActionButton
+            primary
+            disabled={isPending}
+            onClick={async () => {
+              startChange(async () => {
+                const submitRes = await submitCandidateToJob({
+                  candidateRfId: row.candidateId,
+                  jobRfId: row.jobId,
+                  clientRfId: row.clientRfId,
+                  jobTitle: row.jobTitle,
+                  clientName: row.clientName,
+                });
+                if (!submitRes.ok) {
+                  toast.error("Submit failed", { description: submitRes.error });
+                  return;
+                }
+                // Delete the kept row so it falls off the Kept tab once
+                // submittal pushes the candidate into the normal pipeline.
+                await removeKeptCandidate({ candidateRfId: row.candidateId, jobRfId: row.jobId });
+                toast.success("Submitted");
+                router.refresh();
+              });
+            }}
+          >
+            Submit
+          </ActionButton>
+          <ActionButton
+            destructive
+            disabled={isPending}
+            onClick={() =>
+              runAction(
+                () =>
+                  removeKeptCandidate({
+                    candidateRfId: row.candidateId,
+                    jobRfId: row.jobId,
+                  }),
+                "Removed",
+              )
+            }
+          >
+            Remove
+          </ActionButton>
         </div>
       </td>
     </tr>
@@ -249,4 +379,64 @@ function ActionButton({
       {children}
     </button>
   );
+}
+
+function sortApplied(rows: AppliedRow[], key: SortKey, dir: SortDir): AppliedRow[] {
+  const out = [...rows];
+  out.sort((a, b) => {
+    const mul = dir === "asc" ? 1 : -1;
+    let va: string | number = "";
+    let vb: string | number = "";
+    switch (key) {
+      case "name":
+        va = a.candidateName.toLowerCase();
+        vb = b.candidateName.toLowerCase();
+        break;
+      case "job":
+        va = a.jobTitle.toLowerCase();
+        vb = b.jobTitle.toLowerCase();
+        break;
+      case "when":
+        va = a.appliedAt ? new Date(a.appliedAt).getTime() : 0;
+        vb = b.appliedAt ? new Date(b.appliedAt).getTime() : 0;
+        break;
+      case "source":
+        va = (a.source ?? "").toLowerCase();
+        vb = (b.source ?? "").toLowerCase();
+        break;
+    }
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * mul;
+    return String(va).localeCompare(String(vb)) * mul;
+  });
+  return out;
+}
+
+function sortKept(rows: KeptRow[], key: SortKey, dir: SortDir): KeptRow[] {
+  const out = [...rows];
+  out.sort((a, b) => {
+    const mul = dir === "asc" ? 1 : -1;
+    let va: string | number = "";
+    let vb: string | number = "";
+    switch (key) {
+      case "name":
+        va = a.candidateName.toLowerCase();
+        vb = b.candidateName.toLowerCase();
+        break;
+      case "job":
+        va = a.jobTitle.toLowerCase();
+        vb = b.jobTitle.toLowerCase();
+        break;
+      case "when":
+        va = new Date(a.keptAt).getTime();
+        vb = new Date(b.keptAt).getTime();
+        break;
+      case "source":
+        va = 0;
+        vb = 0;
+        break;
+    }
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * mul;
+    return String(va).localeCompare(String(vb)) * mul;
+  });
+  return out;
 }
