@@ -27,12 +27,13 @@ import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-note
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
 import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
-import {
-  PlacementActions,
-  type OpenJobOption,
-  type PlacementContextJob,
-  type PlacementSnapshot,
+import type {
+  OpenJobOption,
+  PlacementContextJob,
+  PlacementSnapshot,
 } from "@/app/candidates/[id]/placement-flows";
+import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
+import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -253,6 +254,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   });
 
   return (
+    <CandidateProfileBoundary>
     <div className="space-y-6">
       <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
         <ArrowLeft className="h-3 w-3" /> Back to candidates
@@ -278,7 +280,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         }
       />
 
-      <PlacementActions
+      <PlacementActionsIsland
         candidateRfId={id}
         candidateFirstName={extractedName.firstName}
         candidateLastName={extractedName.lastName}
@@ -361,6 +363,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         </ul>
       </div>
     </div>
+    </CandidateProfileBoundary>
   );
 }
 
