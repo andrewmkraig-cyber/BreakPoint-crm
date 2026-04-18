@@ -27,27 +27,51 @@ type Body = {
 // zero chance of the caller receiving HTML back — the client's fetch always
 // gets a JSON body and can render the text directly into the composer.
 export async function POST(req: NextRequest) {
+  const t0 = Date.now();
+  const mark = (label: string, extra?: Record<string, unknown>) => {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[generate-submittal] ${label} · +${Date.now() - t0}ms`,
+      extra ? JSON.stringify(extra).slice(0, 300) : "",
+    );
+  };
+  mark("POST received");
+
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
+    mark("no session");
     return NextResponse.json({ error: "Session expired. Reload and sign in again." }, { status: 401 });
   }
+  mark("session ok", { email: session.user.email });
 
   let body: Body;
   try {
     body = (await req.json()) as Body;
   } catch {
+    mark("invalid json body");
     return NextResponse.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
   const candidateRfId = Number(body.candidateRfId);
   if (!Number.isFinite(candidateRfId)) {
+    mark("missing candidateRfId");
     return NextResponse.json({ error: "candidateRfId is required." }, { status: 400 });
   }
   const jobTitle = typeof body.jobTitle === "string" ? body.jobTitle : "";
   const clientName = typeof body.clientName === "string" ? body.clientName : "";
+  mark("body parsed", { candidateRfId, jobTitle, clientName });
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    mark("missing ANTHROPIC_API_KEY");
+    return NextResponse.json(
+      { error: "Claude API unavailable — ANTHROPIC_API_KEY not set on this deployment." },
+      { status: 503 },
+    );
+  }
 
   try {
     const c = await recruiterflow.getCandidate(candidateRfId);
+    mark("fetched candidate from RF", { name: c.name ?? `${c.first_name ?? ""} ${c.last_name ?? ""}`.trim() });
     const { firstName, lastName } = extractCandidateFields(c);
 
     const expectedSalary = (c.expected_salary ?? null) as
@@ -82,17 +106,23 @@ export async function POST(req: NextRequest) {
       },
     };
 
+    mark("calling Claude");
     const writeup = await generateSubmittalWriteup(input);
+    mark("Claude returned", { length: writeup.length });
     const text = `${writeup.trim()}\n\nLet me know if you'd like to set up an interview with him/her.`;
 
     // Defensive: make absolutely sure we never return HTML through this path.
-    if (/^<!DOCTYPE|^<html\b|<script\b/i.test(text.slice(0, 1000))) {
+    if (/^<!DOCTYPE|^<html\b|<script\b|__next_f\.push\(/i.test(text.slice(0, 2000))) {
+      mark("rejected suspicious content");
       return NextResponse.json({ error: "Generator returned invalid content." }, { status: 500 });
     }
 
+    mark("sending response");
     return NextResponse.json({ text });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to generate submittal.";
+    // eslint-disable-next-line no-console
+    console.error(`[generate-submittal] threw after ${Date.now() - t0}ms:`, e);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

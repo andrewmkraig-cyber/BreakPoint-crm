@@ -87,7 +87,16 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
         <dl className="space-y-3 text-sm">
           <Row label="Email" icon={<Mail className="h-3 w-3" />}>
             {saved.email ? (
-              <EmailLink email={saved.email} className="text-brand-dark hover:underline">
+              <EmailLink
+                email={saved.email}
+                className="text-brand-dark hover:underline"
+                mergeValues={{
+                  candidateFirstName: saved.first_name,
+                  candidateLastName: saved.last_name,
+                  candidateFullName: [saved.first_name, saved.last_name].filter(Boolean).join(" "),
+                  candidateEmail: saved.email,
+                }}
+              >
                 {saved.email}
               </EmailLink>
             ) : (

@@ -312,7 +312,18 @@ function HiredCells({ row }: { row: PipelineRow }) {
             <div className="text-navy">{p.billingContactName}</div>
             {p.billingContactEmail && (
               <span onClick={(e) => e.stopPropagation()}>
-                <EmailLink email={p.billingContactEmail} className="text-brand-dark hover:underline">
+                <EmailLink
+                  email={p.billingContactEmail}
+                  className="text-brand-dark hover:underline"
+                  mergeValues={{
+                    candidateFirstName: (row.candidateName.split(/\s+/)[0] ?? "").trim(),
+                    candidateFullName: row.candidateName,
+                    clientContactFullName: p.billingContactName ?? "",
+                    clientContactFirstName: (p.billingContactName?.split(/\s+/)[0] ?? "").trim(),
+                    clientCompanyName: row.clientName,
+                    jobTitle: row.jobTitle,
+                  }}
+                >
                   {p.billingContactEmail}
                 </EmailLink>
               </span>

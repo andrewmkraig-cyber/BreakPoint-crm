@@ -20,9 +20,11 @@ export type ContactRow = {
 
 export function ContactsTab({
   clientId,
+  clientName,
   initialContacts,
 }: {
   clientId: number;
+  clientName: string;
   initialContacts: ContactRow[];
 }) {
   const router = useRouter();
@@ -157,7 +159,15 @@ export function ContactsTab({
                   <td className="px-5 py-3 align-top text-navy-400">{c.title || "—"}</td>
                   <td className="px-5 py-3 align-top">
                     {c.email ? (
-                      <EmailLink email={c.email} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
+                      <EmailLink
+                        email={c.email}
+                        className="inline-flex items-center gap-1 text-navy hover:text-brand-dark"
+                        mergeValues={{
+                          clientContactFullName: c.name,
+                          clientContactFirstName: c.name.trim().split(/\s+/)[0] ?? "",
+                          clientCompanyName: clientName,
+                        }}
+                      >
                         <Mail className="h-3 w-3 text-muted-foreground" /> {c.email}
                       </EmailLink>
                     ) : (

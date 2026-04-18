@@ -251,6 +251,7 @@ export default async function ClientDetailPage({
       ) : tab === "contacts" ? (
         <ContactsTab
           clientId={id}
+          clientName={client.name ?? ""}
           initialContacts={clientContacts.map((c) => ({
             id: c.id,
             name: [c.first_name, c.last_name].filter(Boolean).join(" ") || c.name || "(unnamed)",

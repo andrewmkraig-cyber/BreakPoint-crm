@@ -670,6 +670,74 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
   }
 }
 
+// ---- Apply to Job (candidate-applied, not recruiter-submitted) ----
+//
+// Same shape as submitCandidateToJob but pushes RF stage_name "Applied" and
+// logs actionType=apply. Useful when a candidate self-applies or is applied
+// on their behalf without a full submittal email flow.
+export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  let rfSynced = false;
+  let rfError: string | null = null;
+
+  try {
+    const existing = await recruiterflow.getCandidate(input.candidateRfId);
+    const existingJobs = Array.isArray(existing.jobs) ? existing.jobs : [];
+    const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
+    if (!alreadyLinked) {
+      const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
+      for (const j of existingJobs) {
+        if (typeof j?.job_id !== "number") continue;
+        const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
+        if (j.stage_name) entry.stage_name = j.stage_name;
+        nextJobs.push(entry);
+      }
+      nextJobs.push({ job_id: input.jobRfId, stage_name: "Applied" });
+
+      const resp = (await recruiterflow.updateCandidate({
+        id: input.candidateRfId,
+        jobs: nextJobs,
+      })) as { RESULT?: string };
+      if (resp && typeof resp === "object" && "RESULT" in resp && resp.RESULT && resp.RESULT !== "SUCCESS") {
+        rfError = `RecruiterFlow returned ${resp.RESULT}`;
+      } else {
+        rfSynced = true;
+      }
+    } else {
+      rfSynced = true;
+    }
+  } catch (e) {
+    rfError = e instanceof Error ? e.message : "Unknown RF error";
+  }
+
+  try {
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "apply",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          jobTitle: input.jobTitle,
+          clientName: input.clientName,
+          targetStage: "applied",
+          rfSynced,
+          rfError,
+        },
+      },
+    });
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to apply candidate." };
+  }
+}
+
 export type ScheduleInterviewInput = {
   candidateRfId: number;
   jobRfId: number;

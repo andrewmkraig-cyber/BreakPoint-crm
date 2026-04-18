@@ -2,7 +2,7 @@
 
 import { useState, type MouseEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import { applyMergeFields } from "@/lib/merge-fields";
+import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { sendEmailAction } from "@/app/email/actions";
 import { cn } from "@/lib/utils";
@@ -15,19 +15,23 @@ type ComposerSeed = {
 // Wraps a rendered email address so clicking opens the Ace composer instead
 // of falling through to mailto:. Keeps the visual parity of an anchor but
 // hijacks navigation. The composer opens with To pre-filled and the user
-// can pick a saved template from the dropdown.
+// can pick a saved template from the dropdown. Callers pass `mergeValues`
+// so template tokens like [Candidate First Name] resolve against the
+// actual entity context (candidate, client contact, placement, etc.).
 export function EmailLink({
   email,
   children,
   className,
   seed,
   subjectHint,
+  mergeValues,
 }: {
   email: string;
   children?: ReactNode;
   className?: string;
   seed?: ComposerSeed;
   subjectHint?: string;
+  mergeValues?: MergeFieldValues;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -62,13 +66,23 @@ export function EmailLink({
           }}
           showTemplatePicker
           resolveTemplate={async (t) => {
-            // Templates use merge-field tokens; at compose time we don't have
-            // full context, so tokens are left intact if we can't resolve.
-            // Best-effort: recipient-only tokens aren't useful here either.
-            // We still pass through applyMergeFields with empty values so
-            // resolved fields (none) don't leak placeholder text.
-            const subject = applyMergeFields(t.subject, {});
-            const body = applyMergeFields(t.body, {});
+            // Apply whatever merge context the caller gave us. Empty keys
+            // become empty strings in the output — never left as raw tokens
+            // like "[Candidate First Name]" that'd leak into a sent email.
+            const values = mergeValues ?? {};
+            // eslint-disable-next-line no-console
+            console.log("[EmailLink.resolveTemplate]", {
+              templateName: t.name,
+              hasValues: Object.keys(values).length,
+              sampleValues: {
+                candidateFirstName: values.candidateFirstName,
+                clientCompanyName: values.clientCompanyName,
+                jobTitle: values.jobTitle,
+              },
+              bodySample: t.body.slice(0, 120),
+            });
+            const subject = applyMergeFields(t.subject, values);
+            const body = applyMergeFields(t.body, values);
             return { subject, body };
           }}
           onClose={() => setOpen(false)}

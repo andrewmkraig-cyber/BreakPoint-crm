@@ -26,6 +26,7 @@ import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
 import { StageBadge } from "@/components/stage-badge";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import {
+  applyCandidateToJob,
   cancelPlacement,
   confirmStart,
   deliverCandidateConfirmation,
@@ -135,6 +136,7 @@ export function PlacementActions({
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
   const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [applyOpen, setApplyOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
 
   function onRequestReferences() {
@@ -161,6 +163,13 @@ export function PlacementActions({
           >
             <UserCheck className="h-3.5 w-3.5" />
             Request References
+          </button>
+          <button
+            type="button"
+            onClick={() => setApplyOpen(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+          >
+            <Plus className="h-3.5 w-3.5" /> Apply to Job
           </button>
           <button
             type="button"
@@ -252,6 +261,13 @@ export function PlacementActions({
           candidateEmail={candidateEmail}
           openJobs={openJobs}
           onClose={() => setSubmitOpen(false)}
+        />
+      )}
+      {applyOpen && (
+        <ApplyToJobDialog
+          candidateRfId={candidateRfId}
+          openJobs={openJobs}
+          onClose={() => setApplyOpen(false)}
         />
       )}
       {referenceOpen && (
@@ -1515,6 +1531,89 @@ function CancelPlacementDialog({
   );
 }
 
+// ---------------- Apply to Job flow ----------------
+//
+// Simpler than Submit: no email composer, just pick an open job and we push
+// the candidate to RF at stage "Applied". Intended for self-apply or
+// lightweight tracking where no external email goes out.
+
+function ApplyToJobDialog({
+  candidateRfId,
+  openJobs,
+  onClose,
+}: {
+  candidateRfId: number;
+  openJobs: OpenJobOption[];
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [selectedId, setSelectedId] = useState<string>("");
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  const picked = openJobs.find((o) => String(o.jobRfId) === selectedId) ?? null;
+  const hasAvailable = openJobs.some((j) => !j.alreadyLinked);
+
+  function onSave() {
+    setErr(null);
+    if (!picked) {
+      setErr("Pick an open job to apply to.");
+      return;
+    }
+    if (picked.alreadyLinked) {
+      setErr("Candidate is already linked to this job.");
+      return;
+    }
+    startSave(async () => {
+      const result = await applyCandidateToJob({
+        candidateRfId,
+        jobRfId: picked.jobRfId,
+        clientRfId: picked.clientRfId,
+        jobTitle: picked.jobTitle,
+        clientName: picked.clientName,
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't apply candidate", { description: result.error });
+        return;
+      }
+      toast.success("Candidate applied", {
+        description: `${picked.jobTitle}${picked.clientName ? ` · ${picked.clientName}` : ""} → Applied stage.`,
+      });
+      onClose();
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal title="Apply to Job" subtitle="Pick an open job — no email goes out." onClose={onClose}>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Open job</span>
+        <select
+          value={selectedId}
+          onChange={(e) => setSelectedId(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="">Select a job…</option>
+          {openJobs.map((j) => (
+            <option key={j.jobRfId} value={String(j.jobRfId)} disabled={j.alreadyLinked}>
+              {j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle}
+              {j.alreadyLinked ? " (already linked)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!hasAvailable && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+          This candidate is already linked to every open job.
+        </div>
+      )}
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Apply" />
+    </Modal>
+  );
+}
+
 // ---------------- Submit to Job flow ----------------
 //
 // Two-step UX: pick the open job, then compose the submittal email. After
@@ -1676,32 +1775,61 @@ function SubmittalEmailCompose({
         };
       }}
       onGenerate={async () => {
+        const t0 = performance.now();
+        const log = (label: string, extra?: Record<string, unknown>) => {
+          // eslint-disable-next-line no-console
+          console.log(
+            `[generate-submittal:client] ${label} · +${Math.round(performance.now() - t0)}ms`,
+            extra ?? "",
+          );
+        };
+        log("fetch start", {
+          candidateRfId,
+          jobRfId: job.jobRfId,
+          jobTitle: job.jobTitle,
+          clientName: job.clientName,
+        });
         const res = await fetch("/api/generate-submittal", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({
             candidateRfId,
             jobRfId: job.jobRfId,
             jobTitle: job.jobTitle,
             clientName: job.clientName,
           }),
+          credentials: "same-origin",
+          cache: "no-store",
         });
-        // Explicit content-type check so a stray HTML response (sign-in page,
-        // dev middleware, etc.) is rejected loud and clear instead of being
-        // dumped into the textarea.
         const contentType = res.headers.get("content-type") ?? "";
+        log("fetch returned", { status: res.status, contentType });
+
+        // Guard against the "page source dumped into the textarea" failure
+        // mode: if the response isn't JSON, read it as text and surface a
+        // readable error — never let HTML / JS chunks reach the UI.
         if (!contentType.includes("application/json")) {
+          const preview = (await res.text()).slice(0, 160);
+          log("non-json response", { preview });
           throw new Error(
-            `Server returned ${contentType || "unknown content-type"} (status ${res.status}). Reload the tab and try again.`,
+            `Server returned ${contentType || "unknown content-type"} (status ${res.status}). Reload the tab and try again — your session may have expired.`,
           );
         }
         const data = (await res.json()) as { text?: string; error?: string };
         if (!res.ok || data.error) {
+          log("error body", { status: res.status, error: data.error });
           throw new Error(data.error || `Generate failed (${res.status}).`);
         }
         if (typeof data.text !== "string" || !data.text.trim()) {
+          log("empty text");
           throw new Error("Generator returned empty text.");
         }
+        // Final paranoid check — scan the whole text, not just the first
+        // 1000 chars, for Next.js flight markers.
+        if (/__next_f\.push\(|^<!DOCTYPE|^<html\b/i.test(data.text)) {
+          log("flight markers in text");
+          throw new Error("Generator returned a page instead of text. Reload the tab and try again.");
+        }
+        log("done", { length: data.text.length });
         return data.text;
       }}
       onSend={async (draft: EmailDraft) => {
