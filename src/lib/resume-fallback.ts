@@ -15,6 +15,8 @@ const EMPTY: ParsedCandidate = {
   linkedin_profile: null,
   skills: [],
   notes: null,
+  experience: [],
+  education: [],
 };
 
 export async function fallbackParseCandidate(params: {

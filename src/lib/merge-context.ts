@@ -37,9 +37,34 @@ export async function buildFullMergeValues(
   const recruiterEmail = session?.user?.email ?? "";
   const recruiterName = session?.user?.name ?? "";
 
+  // RF /candidate/{id} and /job/{id} 404 on the external API. The rest of the
+  // app uses listAll + find; we do the same here so merge fields never leak
+  // blank values just because the detail endpoints are dark.
   const [candidate, job, clientList, contactList] = await Promise.all([
-    input.candidateRfId ? safeCall(() => recruiterflow.getCandidate(input.candidateRfId!)) : null,
-    input.jobRfId ? safeCall(() => recruiterflow.getJob(input.jobRfId!)) : null,
+    input.candidateRfId
+      ? safeCall(async () => {
+          try {
+            const direct = await recruiterflow.getCandidate(input.candidateRfId!);
+            if (direct && typeof direct === "object") return direct;
+          } catch {
+            // fall through to list
+          }
+          const all = await recruiterflow.listAllCandidates({ perPage: 100 });
+          return all.find((x) => x.id === input.candidateRfId) ?? null;
+        })
+      : null,
+    input.jobRfId
+      ? safeCall(async () => {
+          try {
+            const direct = await recruiterflow.getJob(input.jobRfId!);
+            if (direct && typeof direct === "object") return direct;
+          } catch {
+            // fall through to list
+          }
+          const all = await recruiterflow.listAllJobs({ perPage: 100 });
+          return all.find((x) => x.id === input.jobRfId) ?? null;
+        })
+      : null,
     input.clientRfId ? safeCall(() => recruiterflow.listAllClients({ perPage: 100 })) : null,
     input.clientRfId ? safeCall(() => recruiterflow.listAllContacts({ perPage: 100 })) : null,
   ]);

@@ -74,6 +74,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         size: true,
         uploadComplete: true,
         uploadedAt: true,
+        redactedAt: true,
         uploadedBy: { select: { name: true, email: true } },
       },
     }),
@@ -85,18 +86,19 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     }),
   ]);
 
-  const listed = candidates.find((x) => x.id === id);
-  if (!listed) notFound();
-
-  // listAllCandidates returns sparse records; /candidate/:id has the full
-  // first_name/last_name split the merge fields rely on. Fall back to the
-  // listed record if the individual fetch fails.
-  let c: typeof listed = listed;
+  // Two-source lookup: /candidate/list caches for 60s (Next Data Cache), so a
+  // freshly-created candidate may not appear immediately. /candidate/{id}
+  // has been flaky externally but sometimes succeeds. Try both; only 404 if
+  // the candidate truly can't be resolved from either source.
+  const listed = candidates.find((x) => x.id === id) ?? null;
+  let c: RFCandidate | null = listed;
   try {
-    c = await recruiterflow.getCandidate(id);
+    const fetched = await recruiterflow.getCandidate(id);
+    if (fetched && typeof fetched === "object") c = fetched;
   } catch {
-    // keep the listed record
+    // keep the listed record if getCandidate fails
   }
+  if (!c) notFound();
   const extractedName = extractCandidateFields(c);
 
   const name =
@@ -111,6 +113,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         sizeBytes: localResume.size,
         uploadedAt: localResume.uploadedAt.toISOString(),
         uploadedByName: localResume.uploadedBy?.name ?? localResume.uploadedBy?.email ?? null,
+        redactedAt: localResume.redactedAt ? localResume.redactedAt.toISOString() : null,
       }
     : null;
   const tagSet = collectTags(c);

@@ -1,13 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, FileText, Loader2, Replace, Trash2 } from "lucide-react";
+import { Download, Edit3, FileText, Loader2, Replace, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { deleteCandidateResume } from "@/app/candidates/[id]/actions";
+
+const ACCEPT_RESUME_MIME =
+  "application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,text/plain,.txt";
+
+// Lazy-load the redaction editor (pdfjs + pdf-lib are ~1.5MB combined, so keep
+// them out of the initial bundle). Client-only.
+const ResumeRedactor = dynamic(
+  () => import("@/app/candidates/[id]/resume-redactor").then((m) => m.ResumeRedactor),
+  { ssr: false },
+);
 
 export type ResumeState = {
   filename: string;
@@ -15,6 +26,7 @@ export type ResumeState = {
   sizeBytes: number;
   uploadedAt: string;
   uploadedByName: string | null;
+  redactedAt: string | null;
 } | null;
 
 export function EditableResume({
@@ -29,6 +41,9 @@ export function EditableResume({
   const [replacing, setReplacing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [redactorOpen, setRedactorOpen] = useState(false);
+  const [showRedacted, setShowRedacted] = useState(Boolean(initial?.redactedAt));
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   async function onFiles(files: File[]) {
     const file = files[0];
@@ -52,8 +67,10 @@ export function EditableResume({
         sizeBytes: file.size,
         uploadedAt: new Date().toISOString(),
         uploadedByName: null,
+        redactedAt: null,
       });
       setReplacing(false);
+      setShowRedacted(false);
       toast.success(`Uploaded ${file.name}`, { id: toastId });
       router.refresh();
     } catch (err) {
@@ -79,9 +96,11 @@ export function EditableResume({
     });
   }
 
-  const pdfUrl = `/api/candidate-resumes/${candidateRfId}`;
-  const downloadUrl = `${pdfUrl}?download=1`;
+  const pdfUrl = `/api/candidate-resumes/${candidateRfId}${showRedacted ? "?variant=redacted" : ""}`;
+  const downloadUrl = `/api/candidate-resumes/${candidateRfId}?download=1${showRedacted ? "&variant=redacted" : ""}`;
   const showDropzone = !resume || replacing;
+  const hasRedacted = Boolean(resume?.redactedAt);
+  const canRedact = resume?.mimeType === "application/pdf";
 
   return (
     <div className="rounded-xl border border-border bg-white shadow-sm">
@@ -98,6 +117,26 @@ export function EditableResume({
         </div>
         {resume && !replacing && (
           <div className="flex items-center gap-2">
+            {canRedact && (
+              <button
+                type="button"
+                onClick={() => setRedactorOpen(true)}
+                disabled={isUploading || isPending}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy disabled:opacity-60"
+              >
+                <Edit3 className="h-3 w-3" /> Edit Resume
+              </button>
+            )}
+            {hasRedacted && (
+              <button
+                type="button"
+                onClick={() => setShowRedacted((v) => !v)}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+                title="Toggle between original and redacted version"
+              >
+                {showRedacted ? "Viewing redacted" : "Viewing original"}
+              </button>
+            )}
             <Link
               href={downloadUrl}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
@@ -139,10 +178,33 @@ export function EditableResume({
           <DocumentDropzone
             multiple={false}
             isBusy={isUploading}
-            accept="application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,text/plain,.txt"
+            accept={ACCEPT_RESUME_MIME}
             onFiles={onFiles}
             emptyHint="PDF, DOC/DOCX, or TXT up to 25MB"
           />
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPT_RESUME_MIME}
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                if (files.length > 0) void onFiles(files);
+                e.currentTarget.value = "";
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+            >
+              {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+              Upload Resume
+            </button>
+            <span className="text-[11px] text-muted-foreground">or drag and drop a file above.</span>
+          </div>
           {replacing && resume && (
             <p className="mt-3 text-[11px] text-muted-foreground">
               Current resume: <span className="font-medium text-navy">{resume.filename}</span>. Drop a new file
@@ -170,6 +232,22 @@ export function EditableResume({
             </div>
           )}
         </div>
+      )}
+
+      {redactorOpen && resume && canRedact && (
+        <ResumeRedactor
+          candidateRfId={candidateRfId}
+          originalUrl={`/api/candidate-resumes/${candidateRfId}`}
+          originalFilename={resume.filename}
+          onClose={() => setRedactorOpen(false)}
+          onSaved={() => {
+            setRedactorOpen(false);
+            setResume((prev) => (prev ? { ...prev, redactedAt: new Date().toISOString() } : prev));
+            setShowRedacted(true);
+            toast.success("Redacted version saved");
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

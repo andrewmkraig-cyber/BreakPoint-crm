@@ -251,6 +251,14 @@ model CandidateResume {
   uploadedById   String
   uploadedAt     DateTime @default(now())
 
+  // Redacted version saved by the in-app PDF redactor. Stored as a separate
+  // blob so the original is never overwritten — recruiters always have the
+  // unredacted copy if they need it.
+  redactedData     Bytes?
+  redactedMimeType String?
+  redactedSize     Int?
+  redactedAt       DateTime?
+
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 }
 

@@ -69,6 +69,22 @@ export type BenefitsAttachment = {
   data: Buffer;
 };
 
+export type ParsedExperience = {
+  designation: string | null;
+  organization: string | null;
+  from_year: number | null;
+  to_year: number | null;
+  description: string | null;
+};
+
+export type ParsedEducation = {
+  school: string | null;
+  degree: string | null;
+  from_year: number | null;
+  to_year: number | null;
+  description: string | null;
+};
+
 export type ParsedCandidate = {
   first_name: string | null;
   last_name: string | null;
@@ -80,6 +96,8 @@ export type ParsedCandidate = {
   linkedin_profile: string | null;
   skills: string[];
   notes: string | null;
+  experience: ParsedExperience[];
+  education: ParsedEducation[];
 };
 
 const EMPTY_CANDIDATE: ParsedCandidate = {
@@ -93,6 +111,8 @@ const EMPTY_CANDIDATE: ParsedCandidate = {
   linkedin_profile: null,
   skills: [],
   notes: null,
+  experience: [],
+  education: [],
 };
 
 // Parses a resume PDF and/or a pasted chunk of text (LinkedIn profile text,
@@ -162,16 +182,20 @@ export async function parseCandidateFields(params: {
       '  "location": string|null,\n' +
       '  "linkedin_profile": string|null,\n' +
       '  "skills": string[],\n' +
-      '  "notes": string|null\n' +
+      '  "notes": string|null,\n' +
+      '  "experience": [ { "designation": string|null, "organization": string|null, "from_year": number|null, "to_year": number|null, "description": string|null } ],\n' +
+      '  "education":  [ { "school": string|null, "degree": string|null, "from_year": number|null, "to_year": number|null, "description": string|null } ]\n' +
       "}\n\n" +
       "Rules:\n" +
       "- Use null (not empty string) for any field not present in the source.\n" +
-      "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. Use the most recent role listed.\n" +
+      "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. Use the most recent role listed. Always fill these if the resume lists any work experience at all — they should mirror the first entry in 'experience' when that entry is current.\n" +
       "- 'location' should be 'City, ST' if US, otherwise 'City, Country'.\n" +
       "- 'phone' keep the digits and country code as given; don't reformat.\n" +
       "- 'skills' is a short deduplicated array of 5–12 hard skills. Omit soft skills.\n" +
       "- 'linkedin_profile' is the full URL if one is present in the source. If only a LinkedIn URL was provided as input, echo it here.\n" +
       "- 'notes' is a short (2–4 sentence) summary of the candidate's experience highlights. Null if nothing notable.\n" +
+      "- 'experience' is every work/job role found on the resume, most-recent-first. 'from_year' and 'to_year' are 4-digit years; if the role is still current leave 'to_year' as null. 'description' is a 1–3 sentence summary of that role (bullet-flattened). Return [] if no experience found.\n" +
+      "- 'education' is every education entry found on the resume, most-recent-first. Same year rules. 'degree' examples: 'BS Computer Science', 'MBA', 'BA Economics'. Return [] if no education found.\n" +
       "- Never invent data. If a field is uncertain or missing, return null.",
   });
 
@@ -202,7 +226,68 @@ export async function parseCandidateFields(params: {
     phone: normalizeToE164(parsed.phone),
     skills: Array.isArray(parsed.skills) ? parsed.skills.filter((s: unknown): s is string => typeof s === "string") : [],
     linkedin_profile: parsed.linkedin_profile ?? linkedinUrl ?? null,
+    experience: normalizeExperience(parsed.experience),
+    education: normalizeEducation(parsed.education),
   };
+}
+
+function toYearOrNull(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) {
+    const y = Math.trunc(v);
+    return y > 1900 && y < 2100 ? y : null;
+  }
+  if (typeof v === "string") {
+    const n = parseInt(v.trim(), 10);
+    if (Number.isFinite(n) && n > 1900 && n < 2100) return n;
+  }
+  return null;
+}
+
+function toStringOrNull(v: unknown): string | null {
+  if (typeof v === "string" && v.trim()) return v.trim();
+  return null;
+}
+
+function normalizeExperience(raw: unknown): ParsedExperience[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((e): ParsedExperience | null => {
+      if (!e || typeof e !== "object") return null;
+      const r = e as Record<string, unknown>;
+      const designation = toStringOrNull(r.designation ?? r.title);
+      const organization = toStringOrNull(r.organization ?? r.company ?? r.employer);
+      if (!designation && !organization) return null;
+      return {
+        designation,
+        organization,
+        from_year: toYearOrNull(r.from_year ?? r.start_year ?? r.start),
+        to_year: toYearOrNull(r.to_year ?? r.end_year ?? r.end),
+        description: toStringOrNull(r.description ?? r.summary),
+      };
+    })
+    .filter((x): x is ParsedExperience => x !== null)
+    .slice(0, 15);
+}
+
+function normalizeEducation(raw: unknown): ParsedEducation[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((e): ParsedEducation | null => {
+      if (!e || typeof e !== "object") return null;
+      const r = e as Record<string, unknown>;
+      const school = toStringOrNull(r.school ?? r.institution ?? r.university);
+      const degree = toStringOrNull(r.degree ?? r.qualification);
+      if (!school && !degree) return null;
+      return {
+        school,
+        degree,
+        from_year: toYearOrNull(r.from_year ?? r.start_year ?? r.start),
+        to_year: toYearOrNull(r.to_year ?? r.end_year ?? r.end ?? r.graduation_year),
+        description: toStringOrNull(r.description ?? r.notes),
+      };
+    })
+    .filter((x): x is ParsedEducation => x !== null)
+    .slice(0, 10);
 }
 
 function safeParseJSON(raw: string): Partial<ParsedCandidate> | null {

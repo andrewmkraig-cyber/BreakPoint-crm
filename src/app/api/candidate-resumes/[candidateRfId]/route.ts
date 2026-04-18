@@ -24,13 +24,24 @@ export async function GET(
   });
   if (!resume || !resume.uploadComplete) return new NextResponse("Not found", { status: 404 });
 
+  const wantsRedacted = req.nextUrl.searchParams.get("variant") === "redacted";
+  const hasRedacted = Boolean(resume.redactedData && resume.redactedAt);
+
+  const useRedacted = wantsRedacted && hasRedacted;
+  const bytes = useRedacted ? resume.redactedData! : resume.data;
+  const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
+  const baseFilename = useRedacted
+    ? resume.filename.replace(/\.pdf$/i, "") + "-redacted.pdf"
+    : resume.filename;
+  const size = useRedacted ? (resume.redactedSize ?? bytes.byteLength) : resume.size;
+
   const disposition = req.nextUrl.searchParams.get("download") === "1" ? "attachment" : "inline";
-  return new NextResponse(new Uint8Array(resume.data), {
+  return new NextResponse(new Uint8Array(bytes), {
     status: 200,
     headers: {
-      "Content-Type": resume.mimeType,
-      "Content-Length": String(resume.size),
-      "Content-Disposition": `${disposition}; filename="${encodeURIComponent(resume.filename)}"`,
+      "Content-Type": mime,
+      "Content-Length": String(size),
+      "Content-Disposition": `${disposition}; filename="${encodeURIComponent(baseFilename)}"`,
       "Cache-Control": "private, no-store",
     },
   });

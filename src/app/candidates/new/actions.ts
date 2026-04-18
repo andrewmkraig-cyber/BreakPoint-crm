@@ -96,6 +96,22 @@ export async function discardResumeUpload(uploadId: string | null | undefined): 
   await prisma.resumeUpload.deleteMany({ where: { id: uploadId } });
 }
 
+export type ParsedExperienceRow = {
+  designation: string;
+  organization: string;
+  from_year: number | null;
+  to_year: number | null;
+  description: string;
+};
+
+export type ParsedEducationRow = {
+  school: string;
+  degree: string;
+  from_year: number | null;
+  to_year: number | null;
+  description: string;
+};
+
 export type CreateCandidatePayload = {
   first_name: string;
   last_name: string;
@@ -107,6 +123,8 @@ export type CreateCandidatePayload = {
   linkedin_profile: string;
   skills: string[];
   notes: string;
+  experience?: ParsedExperienceRow[];
+  education?: ParsedEducationRow[];
 };
 
 export type CreateCandidateResult = Result<{ id: number }>;
@@ -131,7 +149,45 @@ export async function createCandidate(payload: CreateCandidatePayload): Promise<
       notes: payload.notes.trim() || undefined,
       source_name: "Ace",
     });
+
+    // /candidate/add doesn't accept nested experience/education arrays, so
+    // push those through /candidate/update after the create. Best-effort —
+    // if RF rejects the shape we still have the candidate saved.
+    const expRows = (payload.experience ?? []).filter((r) => r.designation.trim() || r.organization.trim());
+    const eduRows = (payload.education ?? []).filter((r) => r.school.trim() || r.degree.trim());
+    if (expRows.length > 0 || eduRows.length > 0) {
+      try {
+        await recruiterflow.updateCandidate({
+          id: created.id,
+          experience: expRows.length
+            ? expRows.map((r, i) => ({
+                designation: r.designation.trim() || undefined,
+                organization: r.organization.trim() || undefined,
+                from: [null, r.from_year ?? null] as [number | null, number | null],
+                to: [null, r.to_year ?? null] as [number | null, number | null],
+                description: r.description.trim() || null,
+                rank: i,
+              }))
+            : undefined,
+          education: eduRows.length
+            ? eduRows.map((r, i) => ({
+                school: r.school.trim() || undefined,
+                degree: r.degree.trim() || undefined,
+                from: [null, r.from_year ?? null] as [number | null, number | null],
+                to: [null, r.to_year ?? null] as [number | null, number | null],
+                description: r.description.trim() || null,
+                rank: i,
+              }))
+            : undefined,
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[createCandidate] follow-up experience/education update failed:", e instanceof Error ? e.message : e);
+      }
+    }
+
     revalidatePath("/candidates");
+    revalidatePath(`/candidates/${created.id}`);
     return { ok: true, value: { id: created.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create candidate." };

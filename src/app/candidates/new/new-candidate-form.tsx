@@ -12,10 +12,16 @@ import {
   discardResumeUpload,
   parseCandidate,
   type CreateCandidatePayload,
+  type ParsedEducationRow,
+  type ParsedExperienceRow,
   type ParseSource,
 } from "@/app/candidates/new/actions";
 
-type FormState = CreateCandidatePayload & { skillsText: string };
+type FormState = CreateCandidatePayload & {
+  skillsText: string;
+  experience: ParsedExperienceRow[];
+  education: ParsedEducationRow[];
+};
 
 const EMPTY: FormState = {
   first_name: "",
@@ -29,6 +35,8 @@ const EMPTY: FormState = {
   skills: [],
   skillsText: "",
   notes: "",
+  experience: [],
+  education: [],
 };
 
 export function NewCandidateForm() {
@@ -93,19 +101,41 @@ export function NewCandidateForm() {
           return;
         }
         const p = result.value.parsed;
+        // Claude sometimes omits current_designation/current_organization even
+        // when the resume clearly has them — backfill from the first experience
+        // row so the form always shows a value the user can confirm or edit.
+        const firstExp = p.experience && p.experience.length > 0 ? p.experience[0] : null;
+        const backfillDesignation = p.current_designation ?? firstExp?.designation ?? null;
+        const backfillOrganization = p.current_organization ?? firstExp?.organization ?? null;
+        const expRows: ParsedExperienceRow[] = (p.experience ?? []).map((r) => ({
+          designation: r.designation ?? "",
+          organization: r.organization ?? "",
+          from_year: r.from_year ?? null,
+          to_year: r.to_year ?? null,
+          description: r.description ?? "",
+        }));
+        const eduRows: ParsedEducationRow[] = (p.education ?? []).map((r) => ({
+          school: r.school ?? "",
+          degree: r.degree ?? "",
+          from_year: r.from_year ?? null,
+          to_year: r.to_year ?? null,
+          description: r.description ?? "",
+        }));
         setForm((prev) => ({
           ...prev,
           first_name: p.first_name ?? prev.first_name,
           last_name: p.last_name ?? prev.last_name,
           email: p.email ?? prev.email,
           phone: p.phone ?? prev.phone,
-          current_designation: p.current_designation ?? prev.current_designation,
-          current_organization: p.current_organization ?? prev.current_organization,
+          current_designation: backfillDesignation ?? prev.current_designation,
+          current_organization: backfillOrganization ?? prev.current_organization,
           location: p.location ?? prev.location,
           linkedin_profile: p.linkedin_profile ?? nextUrl.trim() ?? prev.linkedin_profile,
           skills: p.skills.length ? p.skills : prev.skills,
           skillsText: p.skills.length ? p.skills.join(", ") : prev.skillsText,
           notes: p.notes ?? prev.notes,
+          experience: expRows.length ? expRows : prev.experience,
+          education: eduRows.length ? eduRows : prev.education,
         }));
         setParseSource(result.value.source);
         setClaudeError(result.value.claudeError);
@@ -150,6 +180,8 @@ export function NewCandidateForm() {
         .split(",")
         .map((s) => s.trim())
         .filter(Boolean),
+      experience: form.experience,
+      education: form.education,
     };
     if (!payload.first_name.trim()) {
       setSaveError("First name is required.");
@@ -335,6 +367,44 @@ export function NewCandidateForm() {
               />
             </div>
           </div>
+          {(form.experience.length > 0 || form.education.length > 0) && (
+            <div className="grid grid-cols-1 gap-4 border-t border-border px-5 py-5 sm:grid-cols-2">
+              {form.experience.length > 0 && (
+                <div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Experience (will save to Ace)
+                  </h3>
+                  <ul className="mt-2 space-y-2 text-sm">
+                    {form.experience.map((r, i) => (
+                      <li key={`exp-${i}`} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+                        <div className="font-medium text-navy">{r.designation || "(role)"} <span className="font-normal text-muted-foreground">· {r.organization || "(employer)"}</span></div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {[r.from_year, r.to_year ?? "present"].filter(Boolean).join(" – ") || "—"}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {form.education.length > 0 && (
+                <div>
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Education (will save to Ace)
+                  </h3>
+                  <ul className="mt-2 space-y-2 text-sm">
+                    {form.education.map((r, i) => (
+                      <li key={`edu-${i}`} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
+                        <div className="font-medium text-navy">{r.degree || "(degree)"} <span className="font-normal text-muted-foreground">· {r.school || "(school)"}</span></div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {[r.from_year, r.to_year].filter(Boolean).join(" – ") || "—"}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
           {saveError && (
             <div className="border-t border-border px-5 py-3 text-xs text-red-800">
               <div className="rounded-lg border border-red-200 bg-red-50 p-3">{saveError}</div>
