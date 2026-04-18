@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 
 type ActionResult<T = void> =
@@ -33,5 +34,18 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to update candidate." };
+  }
+}
+
+export async function deleteCandidateResume(candidateRfId: number): Promise<ActionResult> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  if (!Number.isFinite(candidateRfId)) return { ok: false, error: "Missing candidate id." };
+
+  try {
+    await prisma.candidateResume.deleteMany({ where: { candidateRfId } });
+    revalidatePath(`/candidates/${candidateRfId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete resume." };
   }
 }

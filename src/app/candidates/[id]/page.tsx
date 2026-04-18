@@ -3,8 +3,6 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Bookmark,
-  ExternalLink,
-  FileText,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +16,6 @@ import {
   PIPELINE_LABELS,
   daysBetween,
   type RFCandidate,
-  type RFFile,
   type RFCandidateJob,
   type RFJob,
   type RFClient,
@@ -29,6 +26,7 @@ import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
 import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-notes";
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
+import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
 import {
   PlacementActions,
   type OpenJobOption,
@@ -61,12 +59,23 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [candidates, clients, contacts, allJobs, placements, activity] = await Promise.all([
+  const [candidates, clients, contacts, allJobs, placements, localResume, activity] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
     recruiterflow.listAllJobs({ perPage: 100 }),
     prisma.placement.findMany({ where: { candidateRfId: id } }),
+    prisma.candidateResume.findUnique({
+      where: { candidateRfId: id },
+      select: {
+        filename: true,
+        mimeType: true,
+        size: true,
+        uploadComplete: true,
+        uploadedAt: true,
+        uploadedBy: { select: { name: true, email: true } },
+      },
+    }),
     prisma.actionLog.findMany({
       where: { subjectType: "candidate", subjectId: String(id) },
       orderBy: { createdAt: "desc" },
@@ -94,7 +103,15 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     [c.first_name, c.last_name].filter(Boolean).join(" ") ??
     "(unnamed)";
   const locationLabel = formatLocation(c.location);
-  const resume = pickResumeFile(c);
+  const localResumeInitial: ResumeState = localResume && localResume.uploadComplete
+    ? {
+        filename: localResume.filename,
+        mimeType: localResume.mimeType,
+        sizeBytes: localResume.size,
+        uploadedAt: localResume.uploadedAt.toISOString(),
+        uploadedByName: localResume.uploadedBy?.name ?? localResume.uploadedBy?.email ?? null,
+      }
+    : null;
   const tagSet = collectTags(c);
   const isKept = tagSet.has("kept") || tagSet.has("keep");
   const displayTags = Array.from(tagSet).filter((t) => t !== "kept" && t !== "keep");
@@ -279,41 +296,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         </div>
 
         <div className="space-y-6 lg:col-span-3">
-          <div className="rounded-xl border border-border bg-white shadow-sm">
-            <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <div>
-                <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
-                {resume && (
-                  <p className="text-xs text-muted-foreground">
-                    {resume.filename ?? "Resume"}
-                    {resume.upload_time ? ` · uploaded ${new Date(resume.upload_time).toLocaleDateString()}` : ""}
-                  </p>
-                )}
-              </div>
-              {resume?.link && (
-                <Link
-                  href={resume.link}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-1.5 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
-                >
-                  Open <ExternalLink className="h-3 w-3" />
-                </Link>
-              )}
-            </div>
-            {resume?.link ? (
-              <iframe
-                title="Resume preview"
-                src={resume.link}
-                className="h-[700px] w-full rounded-b-xl border-0"
-              />
-            ) : (
-              <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
-                <FileText className="h-6 w-6 text-muted-foreground" />
-                No resume on file.
-              </div>
-            )}
-          </div>
+          <EditableResume candidateRfId={id} initial={localResumeInitial} />
 
           <EditableExperience candidateId={id} initial={experienceInitial} />
           <EditableEducation candidateId={id} initial={educationInitial} />
@@ -444,16 +427,6 @@ function normalizePhone(raw: RFCandidate["phone_number"]): string {
     return first?.number ?? "";
   }
   return typeof raw === "string" ? raw : "";
-}
-
-function pickResumeFile(c: RFCandidate): RFFile | null {
-  const files = Array.isArray(c.files) ? c.files : [];
-  if (files.length === 0) return null;
-  const primary = files.find((f) => f.is_primary);
-  if (primary) return primary;
-  const pdf = files.find((f) => (f.filename ?? "").toLowerCase().endsWith(".pdf"));
-  if (pdf) return pdf;
-  return files[0];
 }
 
 function collectTags(c: RFCandidate): Set<string> {

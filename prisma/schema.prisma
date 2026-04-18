@@ -57,6 +57,7 @@ model User {
   benefitsUpdates ClientBenefits[]
   benefitsFiles   ClientBenefitsFile[]
   resumeUploads   ResumeUpload[]
+  candidateResumes CandidateResume[]
   placements      Placement[]
 }
 
@@ -233,6 +234,24 @@ model Placement {
   @@unique([candidateRfId, jobRfId])
   @@index([clientRfId, stage])
   @@index([stage, expectedStartDate])
+}
+
+// Persistent resume file attached to an existing RF candidate record. Unique
+// on candidateRfId — replacing the resume upserts the single row. The chunked
+// upload handler clears `data` on chunk 0 so re-upload doesn't concat to old
+// bytes.
+model CandidateResume {
+  id             String   @id @default(cuid())
+  candidateRfId  Int      @unique
+  filename       String
+  mimeType       String
+  size           Int
+  data           Bytes
+  uploadComplete Boolean  @default(true)
+  uploadedById   String
+  uploadedAt     DateTime @default(now())
+
+  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 }
 
 // Staging table for chunk-uploaded resume PDFs. Transient: parseCandidate
