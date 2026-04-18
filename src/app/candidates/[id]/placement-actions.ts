@@ -13,6 +13,7 @@ import { getAppPreferences } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
+import { formatCompensation, type RFJob } from "@/lib/recruiterflow";
 import {
   CANDIDATE_CONFIRMATION_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
@@ -680,6 +681,7 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
 
 export type GenerateSubmittalInput = {
   candidateRfId: number;
+  jobRfId?: number;
   jobTitle: string;
   clientName: string;
 };
@@ -713,6 +715,23 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
     const notes = summarizeNotesForSubmittal(c.notes);
     const locationLabel = formatLocation(c.location);
 
+    // Pull the full RFJob so Claude sees role context (location, comp range,
+    // employment type, department, description, custom fields). /job/{id} 404s
+    // on the external API the same way /candidate/{id} does, so we list + find.
+    let jobCtx: SubmittalInput["job"] = {
+      title: input.jobTitle,
+      clientName: input.clientName,
+    };
+    if (Number.isFinite(input.jobRfId)) {
+      try {
+        const jobs = await recruiterflow.listAllJobs({ perPage: 100 });
+        const j = jobs.find((x) => x.id === input.jobRfId);
+        if (j) jobCtx = buildSubmittalJobContext(j, input.jobTitle, input.clientName);
+      } catch {
+        // Non-fatal — fall through with the minimal title/client context.
+      }
+    }
+
     const payload: SubmittalInput = {
       candidate: {
         firstName,
@@ -728,10 +747,7 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
         expectedSalary: salaryStr,
         linkedin: c.linkedin_profile ?? "",
       },
-      job: {
-        title: input.jobTitle,
-        clientName: input.clientName,
-      },
+      job: jobCtx,
     };
 
     const writeup = await generateSubmittalWriteup(payload);
@@ -740,6 +756,37 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Claude generation failed" };
   }
+}
+
+function buildSubmittalJobContext(j: RFJob, fallbackTitle: string, fallbackClient: string): SubmittalInput["job"] {
+  const raw = j as unknown as { description?: unknown; job_description?: unknown };
+  const descriptionStr =
+    typeof raw.description === "string"
+      ? raw.description
+      : typeof raw.job_description === "string"
+        ? raw.job_description
+        : "";
+
+  const customFields = Array.isArray(j.custom_fields)
+    ? j.custom_fields
+        .map((cf) => ({
+          name: (cf?.name ?? "").toString(),
+          value: typeof cf?.value === "string" ? cf.value : cf?.value == null ? "" : JSON.stringify(cf.value),
+        }))
+        .filter((cf) => cf.name && cf.value)
+    : [];
+
+  return {
+    title: j.title ?? j.name ?? fallbackTitle,
+    clientName: j.company?.name ?? fallbackClient,
+    locations: Array.isArray(j.locations) ? j.locations.filter((x): x is string => typeof x === "string") : [],
+    salaryRange: formatCompensation(j),
+    employmentType: j.employment_type ?? undefined,
+    jobType: j.job_type?.name ?? undefined,
+    department: j.department ?? undefined,
+    description: descriptionStr.trim() || undefined,
+    customFields,
+  };
 }
 
 function summarizeExperienceForSubmittal(raw: unknown): string {

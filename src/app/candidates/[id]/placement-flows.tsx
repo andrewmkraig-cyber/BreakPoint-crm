@@ -1781,6 +1781,7 @@ function SubmittalEmailCompose({
         // handler / no content-type shenanigans.
         const result = await generateSubmittal({
           candidateRfId,
+          jobRfId: job.jobRfId,
           jobTitle: job.jobTitle,
           clientName: job.clientName,
         });
