@@ -59,6 +59,7 @@ model User {
   resumeUploads   ResumeUpload[]
   candidateResumes CandidateResume[]
   placements      Placement[]
+  candidates      Candidate[]
 }
 
 enum UserRole {
@@ -234,6 +235,45 @@ model Placement {
   @@unique([candidateRfId, jobRfId])
   @@index([clientRfId, stage])
   @@index([stage, expectedStartDate])
+}
+
+// Ace-native candidate record. Created by /candidates/new — no RF
+// involvement in the save path. `rfId` is intentionally nullable and is
+// NOT populated at create time; it's reserved for a future manual-pull or
+// admin-tool scenario, not for automatic sync.
+model Candidate {
+  id                  String    @id @default(cuid())
+  rfId                Int?      @unique
+
+  firstName           String
+  lastName            String?
+  email               String?   @unique
+  phone               String?
+  currentDesignation  String?
+  currentOrganization String?
+  location            String?
+  linkedinProfile     String?
+  skills              String[]  @default([])
+  notes               String?   @db.Text
+  experience          Json?
+  education           Json?
+
+  // Resume copied from the ResumeUpload staging row on save. Kept in the
+  // same row so the profile page can stream it back with a single query.
+  resumeFilename      String?
+  resumeMimeType      String?
+  resumeSize          Int?
+  resumeData          Bytes?
+  resumeUploadedAt    DateTime?
+
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  createdBy           User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([createdById, createdAt])
 }
 
 // Persistent resume file attached to an existing RF candidate record. Unique

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, Save, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
@@ -53,14 +53,6 @@ export function NewCandidateForm() {
   const [isSaving, startSave] = useTransition();
 
   const [resumeUploadId, setResumeUploadId] = useState<string | null>(null);
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    // If this doesn't fire, the client component never hydrated —
-    // which would explain why onClick does nothing.
-    // eslint-disable-next-line no-console
-    console.log("[NewCandidateForm] mounted + hydrated");
-  }, []);
 
   function runParse(args: { file?: File } = {}) {
     setParseError(null);
@@ -181,10 +173,6 @@ export function NewCandidateForm() {
   }
 
   function onSave() {
-    // eslint-disable-next-line no-console
-    console.log("SAVE CLICKED");
-    // eslint-disable-next-line no-console
-    console.log("FORM DATA:", form);
     setSaveError(null);
     const payload: CreateCandidatePayload = {
       ...form,
@@ -204,18 +192,30 @@ export function NewCandidateForm() {
     const toastId = toast.loading("Saving candidate…");
     startSave(async () => {
       try {
-        const result = await createCandidate(payload);
+        const result = await createCandidate({ ...payload, resumeUploadId });
         if (!result.ok) {
+          if (result.duplicate) {
+            const dupId = result.duplicate.id;
+            const dupName = result.duplicate.name;
+            toast.error("Duplicate email", {
+              id: toastId,
+              description: `A candidate with this email already exists: ${dupName}`,
+              action: {
+                label: "Open profile",
+                onClick: () => router.push(`/candidates/local/${dupId}`),
+              },
+            });
+            setSaveError(`A candidate with this email already exists: ${dupName}`);
+            return;
+          }
           setSaveError(result.error);
           toast.error("Couldn't save candidate", { id: toastId, description: result.error });
           return;
         }
-        if (resumeUploadId) void discardResumeUpload(resumeUploadId);
+        // Staging row was consumed server-side — no need to discard on the client.
         toast.success(`Saved ${payload.first_name} ${payload.last_name}`.trim(), { id: toastId });
-        router.push(`/candidates/${result.value.id}`);
+        router.push(`/candidates/local/${result.value.id}`);
       } catch (err) {
-        // Server action threw — without this catch the transition ends
-        // silently and the user sees no toast, no redirect, no response.
         const msg = err instanceof Error ? err.message : "Unexpected save error.";
         // eslint-disable-next-line no-console
         console.error("[createCandidate] client caught:", err);
@@ -342,15 +342,7 @@ export function NewCandidateForm() {
             </div>
             <button
               type="button"
-              onClick={(e) => {
-                // eslint-disable-next-line no-console
-                console.log("SAVE BUTTON onClick fired", e);
-                onSave();
-              }}
-              onMouseDown={() => {
-                // eslint-disable-next-line no-console
-                console.log("SAVE BUTTON onMouseDown fired");
-              }}
+              onClick={onSave}
               disabled={isSaving}
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >

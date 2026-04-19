@@ -6,7 +6,6 @@ import { authOptions } from "@/lib/auth";
 import { parseCandidateFields, type ParsedCandidate } from "@/lib/claude";
 import { prisma } from "@/lib/prisma";
 import { fallbackParseCandidate } from "@/lib/resume-fallback";
-import { recruiterflow } from "@/lib/recruiterflow";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -15,6 +14,16 @@ type Result<T = void> =
 async function requireSession(): Promise<boolean> {
   const session = await getServerSession(authOptions);
   return Boolean(session?.user?.email);
+}
+
+async function getUserId(): Promise<string | null> {
+  const s = await getServerSession(authOptions);
+  if (!s?.user?.email) return null;
+  const u = await prisma.user.findUnique({
+    where: { email: s.user.email },
+    select: { id: true },
+  });
+  return u?.id ?? null;
 }
 
 export type ParseSource = "claude" | "fallback";
@@ -127,71 +136,114 @@ export type CreateCandidatePayload = {
   education?: ParsedEducationRow[];
 };
 
-export type CreateCandidateResult = Result<{ id: number }>;
+export type CreateCandidateInput = CreateCandidatePayload & {
+  resumeUploadId?: string | null;
+};
 
-export async function createCandidate(payload: CreateCandidatePayload): Promise<CreateCandidateResult> {
-  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+export type CreateCandidateResult =
+  | { ok: true; value: { id: string } }
+  | { ok: false; error: string; duplicate?: { id: string; name: string } };
 
-  const first = payload.first_name.trim();
+// Hard rule (see MEMORY): creating a candidate in Ace writes to the local
+// Neon Postgres database ONLY. No RecruiterFlow call, no background sync.
+// If a resume was staged via /api/uploads/resume, its bytes are copied onto
+// the Candidate row and the staging row is deleted.
+export async function createCandidate(
+  input: CreateCandidateInput,
+): Promise<CreateCandidateResult> {
+  const userId = await getUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  const first = input.first_name.trim();
   if (!first) return { ok: false, error: "First name is required." };
 
+  const email = input.email.trim().toLowerCase() || null;
+
+  if (email) {
+    const existing = await prisma.candidate.findUnique({
+      where: { email },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    if (existing) {
+      const name =
+        [existing.firstName, existing.lastName].filter(Boolean).join(" ") ||
+        "existing candidate";
+      return {
+        ok: false,
+        error: "A candidate with this email already exists.",
+        duplicate: { id: existing.id, name },
+      };
+    }
+  }
+
+  let resumeBytes: Uint8Array<ArrayBuffer> | null = null;
+  let resumeMeta: { filename: string; mimeType: string; size: number } | null =
+    null;
+  if (input.resumeUploadId) {
+    const row = await prisma.resumeUpload.findUnique({
+      where: { id: input.resumeUploadId },
+      select: { filename: true, mimeType: true, size: true, data: true, uploadComplete: true },
+    });
+    if (row && row.uploadComplete) {
+      // Copy bytes into a fresh ArrayBuffer-backed Uint8Array so the Prisma
+      // Bytes field doesn't trip on Buffer's widened ArrayBufferLike typing.
+      const ab = new ArrayBuffer(row.data.byteLength);
+      const copy = new Uint8Array(ab);
+      copy.set(row.data);
+      resumeBytes = copy;
+      resumeMeta = {
+        filename: row.filename,
+        mimeType: row.mimeType,
+        size: row.size,
+      };
+    }
+  }
+
   try {
-    const created = await recruiterflow.createCandidate({
-      first_name: first,
-      last_name: payload.last_name.trim() || undefined,
-      email: payload.email.trim() || undefined,
-      phone_number: payload.phone.trim() || undefined,
-      current_designation: payload.current_designation.trim() || undefined,
-      current_organization: payload.current_organization.trim() || undefined,
-      location: payload.location.trim() || undefined,
-      linkedin_profile: payload.linkedin_profile.trim() || undefined,
-      skills: payload.skills.filter(Boolean),
-      notes: payload.notes.trim() || undefined,
-      source_name: "Ace",
+    const expRows = (input.experience ?? []).filter(
+      (r) => r.designation.trim() || r.organization.trim(),
+    );
+    const eduRows = (input.education ?? []).filter(
+      (r) => r.school.trim() || r.degree.trim(),
+    );
+
+    const created = await prisma.candidate.create({
+      data: {
+        firstName: first,
+        lastName: input.last_name.trim() || null,
+        email,
+        phone: input.phone.trim() || null,
+        currentDesignation: input.current_designation.trim() || null,
+        currentOrganization: input.current_organization.trim() || null,
+        location: input.location.trim() || null,
+        linkedinProfile: input.linkedin_profile.trim() || null,
+        skills: input.skills.filter(Boolean),
+        notes: input.notes.trim() || null,
+        experience: expRows.length ? expRows : undefined,
+        education: eduRows.length ? eduRows : undefined,
+        resumeFilename: resumeMeta?.filename ?? null,
+        resumeMimeType: resumeMeta?.mimeType ?? null,
+        resumeSize: resumeMeta?.size ?? null,
+        resumeData: resumeBytes ?? null,
+        resumeUploadedAt: resumeMeta ? new Date() : null,
+        createdById: userId,
+      },
+      select: { id: true },
     });
 
-    // /candidate/add doesn't accept nested experience/education arrays, so
-    // push those through /candidate/update after the create. Best-effort —
-    // if RF rejects the shape we still have the candidate saved.
-    const expRows = (payload.experience ?? []).filter((r) => r.designation.trim() || r.organization.trim());
-    const eduRows = (payload.education ?? []).filter((r) => r.school.trim() || r.degree.trim());
-    if (expRows.length > 0 || eduRows.length > 0) {
-      try {
-        await recruiterflow.updateCandidate({
-          id: created.id,
-          experience: expRows.length
-            ? expRows.map((r, i) => ({
-                designation: r.designation.trim() || undefined,
-                organization: r.organization.trim() || undefined,
-                from: [null, r.from_year ?? null] as [number | null, number | null],
-                to: [null, r.to_year ?? null] as [number | null, number | null],
-                description: r.description.trim() || null,
-                rank: i,
-              }))
-            : undefined,
-          education: eduRows.length
-            ? eduRows.map((r, i) => ({
-                school: r.school.trim() || undefined,
-                degree: r.degree.trim() || undefined,
-                from: [null, r.from_year ?? null] as [number | null, number | null],
-                to: [null, r.to_year ?? null] as [number | null, number | null],
-                description: r.description.trim() || null,
-                rank: i,
-              }))
-            : undefined,
-        });
-      } catch (e) {
-        // eslint-disable-next-line no-console
-        console.warn("[createCandidate] follow-up experience/education update failed:", e instanceof Error ? e.message : e);
-      }
+    if (input.resumeUploadId) {
+      await prisma.resumeUpload.deleteMany({ where: { id: input.resumeUploadId } });
     }
 
     revalidatePath("/candidates");
-    revalidatePath(`/candidates/${created.id}`);
+    revalidatePath(`/candidates/local/${created.id}`);
     return { ok: true, value: { id: created.id } };
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.error("[createCandidate] failed:", e);
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to create candidate." };
+    console.error("[createCandidate] local save failed:", e);
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to save candidate.",
+    };
   }
 }
