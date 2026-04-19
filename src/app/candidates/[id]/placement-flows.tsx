@@ -53,8 +53,13 @@ import {
   cancelInterview,
   rescheduleInterview,
   scheduleInterview,
+  sendInterviewInvite,
   type InterviewType,
 } from "@/app/candidates/[id]/interview-actions";
+import {
+  CANDIDATE_INTERVIEW_PREP_TRIGGER,
+  CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
+} from "@/app/settings/template-constants";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import { sendEmailAction } from "@/app/email/actions";
@@ -100,6 +105,22 @@ export type InterviewSummary = {
   attendees: { name: string; email: string }[];
   candidatePhone: string | null;
   notes: string | null;
+};
+
+// State for the two-step invite composer pipeline that runs after a
+// successful Schedule Interview save. `step` advances on each composer close
+// (send or skip); "done" tears the whole flow down and refreshes the page.
+type InviteFlowState = {
+  step: "client" | "candidate" | "done";
+  interviewId: string;
+  scheduledAtISO: string;
+  durationMin: number;
+  type: InterviewType;
+  meetLink: string | null;
+  jobTitle: string;
+  clientName: string;
+  clientContactName: string;
+  clientContactEmail: string;
 };
 
 export type PlacementSnapshot = {
@@ -160,6 +181,9 @@ export function PlacementActions({
   const [scheduleFor, setScheduleFor] = useState<PlacementContextJob | null>(null);
   const [clientInviteFor, setClientInviteFor] = useState<PlacementContextJob | null>(null);
   const [rescheduleFor, setRescheduleFor] = useState<InterviewSummary | null>(null);
+  // Post-Schedule multi-step invite flow: after the interview is saved + on
+  // the calendar, we open the client composer, then the candidate composer.
+  const [inviteFlow, setInviteFlow] = useState<InviteFlowState | null>(null);
   const [rejectFor, setRejectFor] = useState<PlacementContextJob | null>(null);
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
   const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
@@ -261,6 +285,33 @@ export function PlacementActions({
           candidateEmail={candidateEmail}
           job={scheduleFor}
           onClose={() => setScheduleFor(null)}
+          onScheduled={(ctx) => {
+            setScheduleFor(null);
+            setInviteFlow({ ...ctx, step: "client" });
+          }}
+        />
+      )}
+      {inviteFlow && inviteFlow.step === "client" && (
+        <ClientInviteComposer
+          invite={inviteFlow}
+          candidateFirstName={candidateFirstName}
+          candidateLastName={candidateLastName}
+          candidateEmail={candidateEmail}
+          onDone={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
+        />
+      )}
+      {inviteFlow && inviteFlow.step === "candidate" && (
+        <CandidateInviteComposer
+          invite={inviteFlow}
+          candidateFirstName={candidateFirstName}
+          candidateLastName={candidateLastName}
+          candidateEmail={candidateEmail}
+          onDone={() => {
+            setInviteFlow(null);
+            toast.success("Interview scheduled", {
+              description: "Client and candidate invites processed. The interview is on everyone's calendar.",
+            });
+          }}
         />
       )}
       {clientInviteFor && (
@@ -1197,14 +1248,16 @@ function ScheduleInterviewDialog({
   candidateEmail,
   job,
   onClose,
+  onScheduled,
 }: {
   candidateRef: { candidateRfId?: number; candidateId?: string };
   candidateName: string;
   candidateEmail?: string;
   job: PlacementContextJob;
   onClose: () => void;
+  onScheduled: (ctx: Omit<InviteFlowState, "step">) => void;
 }) {
-  const router = useRouter();
+  void candidateEmail;
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [durationMin, setDurationMin] = useState<number>(30);
   const [type, setType] = useState<InterviewType>("video");
@@ -1215,9 +1268,16 @@ function ScheduleInterviewDialog({
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
+  // Interviewer fields stay blank until the user picks a specific contact.
+  // Switching to "Other (enter manually)" clears whatever the previous
+  // selection filled in, so the user types fresh values.
   function onInterviewerChange(id: string) {
     setInterviewerId(id);
-    if (id === "custom" || id === "") return;
+    if (id === "" || id === "custom") {
+      setInterviewerName("");
+      setInterviewerEmail("");
+      return;
+    }
     const match = job.clientContacts.find((c) => String(c.id) === id);
     if (match) {
       setInterviewerName(match.name);
@@ -1236,6 +1296,7 @@ function ScheduleInterviewDialog({
       return;
     }
     startSave(async () => {
+      const snapped = snapTo15Minutes(scheduledAt);
       const attendees = interviewerName.trim()
         ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
         : [];
@@ -1244,7 +1305,7 @@ function ScheduleInterviewDialog({
         candidateId: candidateRef.candidateId ?? null,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
-        scheduledAt: new Date(scheduledAt).toISOString(),
+        scheduledAt: snapped.toISOString(),
         durationMin,
         type,
         attendees,
@@ -1259,50 +1320,18 @@ function ScheduleInterviewDialog({
         toast.error("Couldn't schedule interview", { description: result.error });
         return;
       }
-      // Candidate confirmation email only applies to RF candidates today — the
-      // templated flow is keyed on candidateRfId. Local candidates skip this
-      // step; a unified templated flow lands with the next batch.
-      if (candidateRef.candidateRfId != null) {
-        const emailResult = await sendInterviewConfirmationEmail({
-          candidateRfId: candidateRef.candidateRfId,
-          jobRfId: job.jobRfId,
-          clientRfId: job.clientRfId,
-          jobTitle: job.jobTitle,
-          clientCompanyName: job.clientName,
-          scheduledAt: new Date(scheduledAt).toISOString(),
-        });
-        if (emailResult.ok) {
-          const v = emailResult.value;
-          if (v.status === "sent") {
-            toast.success("Interview scheduled", { description: `Confirmation email sent to ${v.to}.` });
-          } else if (v.status === "drafted") {
-            toast.success("Interview scheduled", { description: "Confirmation email saved to your Gmail Drafts." });
-          } else if (v.status === "skipped") {
-            toast.success("Interview scheduled", {
-              description:
-                v.reason === "no_recipient"
-                  ? "No candidate email on file — email skipped."
-                  : v.reason === "missing"
-                    ? "No Interview Confirmation template found. Set one in Settings."
-                    : "Interview Confirmation template is inactive.",
-            });
-          } else {
-            toast.success("Interview scheduled", { description: `Confirmation email failed: ${v.error}` });
-          }
-        } else {
-          toast.success("Interview scheduled", { description: `Confirmation email failed: ${emailResult.error}` });
-        }
-      } else {
-        toast.success("Interview scheduled", {
-          description:
-            result.value.meetLink
-              ? "Added to your calendar. Meet link created."
-              : "Added to your calendar.",
-        });
-      }
-      void candidateEmail; // not currently used here; confirmation uses templated flow
-      onClose();
-      router.refresh();
+      void sendInterviewConfirmationEmail;
+      onScheduled({
+        interviewId: result.value.interviewId,
+        scheduledAtISO: snapped.toISOString(),
+        durationMin,
+        type,
+        meetLink: result.value.meetLink,
+        jobTitle: job.jobTitle,
+        clientName: job.clientName,
+        clientContactName: interviewerName.trim(),
+        clientContactEmail: interviewerEmail.trim(),
+      });
     });
   }
 
@@ -1316,6 +1345,7 @@ function ScheduleInterviewDialog({
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
             <input
               type="datetime-local"
+              step={900}
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
               className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
@@ -1370,13 +1400,21 @@ function ScheduleInterviewDialog({
         </div>
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
-      <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        Event is added to your Google Calendar for tracking. Candidate and client invite delivery with attendees lands in the next batch.
-      </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Schedule" />
     </Modal>
   );
+}
+
+// Snaps a datetime-local value (YYYY-MM-DDTHH:mm in local time) to the
+// nearest 15-minute boundary. Defense in depth: the `step={900}` attribute
+// forces browsers to expose only 15-min slots, but users can still type
+// arbitrary values in some browsers, and the payload reaches the server
+// regardless. This guarantees the stored time is always aligned.
+function snapTo15Minutes(datetimeLocal: string): Date {
+  const d = new Date(datetimeLocal);
+  const ms = 15 * 60 * 1000;
+  return new Date(Math.round(d.getTime() / ms) * ms);
 }
 
 function ClientInviteDialog({
@@ -1412,7 +1450,7 @@ function ClientInviteDialog({
         candidateId: candidateRef.candidateId ?? null,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
-        scheduledAt: new Date(scheduledAt).toISOString(),
+        scheduledAt: snapTo15Minutes(scheduledAt).toISOString(),
         durationMin,
         type,
         attendees,
@@ -1451,6 +1489,7 @@ function ClientInviteDialog({
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
             <input
               type="datetime-local"
+              step={900}
               value={scheduledAt}
               onChange={(e) => setScheduledAt(e.target.value)}
               className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
@@ -1511,7 +1550,7 @@ function RescheduleDialog({
     startSave(async () => {
       const result = await rescheduleInterview({
         interviewId: interview.id,
-        scheduledAt: new Date(scheduledAt).toISOString(),
+        scheduledAt: snapTo15Minutes(scheduledAt).toISOString(),
         durationMin,
       });
       if (!result.ok) {
@@ -1532,6 +1571,7 @@ function RescheduleDialog({
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
           <input
             type="datetime-local"
+            step={900}
             value={scheduledAt}
             onChange={(e) => setScheduledAt(e.target.value)}
             className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
@@ -2438,4 +2478,189 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
     binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
   }
   return btoa(binary);
+}
+
+// ---------------- Interview invite composers ----------------
+
+function buildInterviewMergeValues(args: {
+  invite: InviteFlowState;
+  candidateFirstName: string;
+  candidateLastName: string;
+  candidateEmail: string;
+}) {
+  const candidateFullName = [args.candidateFirstName, args.candidateLastName].filter(Boolean).join(" ");
+  return {
+    candidateFirstName: args.candidateFirstName,
+    candidateLastName: args.candidateLastName,
+    candidateFullName,
+    candidateEmail: args.candidateEmail,
+    clientContactFullName: args.invite.clientContactName,
+    clientContactFirstName: args.invite.clientContactName.split(/\s+/)[0] ?? "",
+    clientCompanyName: args.invite.clientName,
+    jobTitle: args.invite.jobTitle,
+    interviewType: formatInterviewType(args.invite.type),
+    interviewDateTime: formatInterviewWhen(new Date(args.invite.scheduledAtISO)),
+    interviewDuration: `${args.invite.durationMin} min`,
+    interviewMeetLink: args.invite.meetLink ?? "",
+  };
+}
+
+function fallbackClientSubject(invite: InviteFlowState, candidateFull: string): string {
+  return `Interview Confirmed - ${candidateFull || "Candidate"} for ${invite.jobTitle}`;
+}
+
+function fallbackCandidateSubject(invite: InviteFlowState): string {
+  return `You're confirmed - ${invite.jobTitle} with ${invite.clientName}`;
+}
+
+function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", candidateFull: string): string {
+  const when = formatInterviewWhen(new Date(invite.scheduledAtISO));
+  const type = formatInterviewType(invite.type);
+  if (who === "client") {
+    const first = invite.clientContactName.split(/\s+/)[0] || "there";
+    return (
+      `Hi ${first},\n\nConfirming the interview with ${candidateFull || "the candidate"} for the ${invite.jobTitle} role. ` +
+      `The calendar invite is on its way.\n\n` +
+      `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}\n\n` +
+      `Reply to this email if anything needs to change.`
+    );
+  }
+  return (
+    `Hi ${candidateFull.split(/\s+/)[0] || "there"},\n\n` +
+    `You are confirmed for your ${type} interview with ${invite.clientName} for the ${invite.jobTitle} role. ` +
+    `The calendar invite is on its way.\n\n` +
+    `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}\n\n` +
+    `Good luck!`
+  );
+}
+
+function ClientInviteComposer({
+  invite,
+  candidateFirstName,
+  candidateLastName,
+  candidateEmail,
+  onDone,
+}: {
+  invite: InviteFlowState;
+  candidateFirstName: string;
+  candidateLastName: string;
+  candidateEmail: string;
+  onDone: () => void;
+}) {
+  const candidateFullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ");
+  const values = buildInterviewMergeValues({ invite, candidateFirstName, candidateLastName, candidateEmail });
+  const hasClient = Boolean(invite.clientContactEmail);
+  return (
+    <EmailComposer
+      title="Send client interview confirmation"
+      subtitle={`${invite.jobTitle} · ${invite.clientName}`}
+      initial={{
+        to: hasClient ? [invite.clientContactEmail] : [],
+        cc: [],
+        bcc: [],
+        subject: applyMergeFieldsClient(fallbackClientSubject(invite, candidateFullName), values),
+        body: applyMergeFieldsClient(fallbackBody(invite, "client", candidateFullName), values),
+      }}
+      showTemplatePicker
+      templateFilter={(t) =>
+        t.trigger === CLIENT_INTERVIEW_CONFIRMATION_TRIGGER || t.audience === "client"
+      }
+      resolveTemplate={(t) => ({
+        subject: applyMergeFieldsClient(t.subject, values),
+        body: applyMergeFieldsClient(t.body, values),
+      })}
+      helperText="Use Template to load a saved client template. Insert Field adds merge tokens. Adds the client as an attendee on the calendar event when you send."
+      sendLabel="Send + add to calendar"
+      sendingLabel="Sending…"
+      onClose={onDone}
+      onSend={async (draft: EmailDraft) => {
+        if (draft.to.length === 0) {
+          toast.error("Add a client contact email", { description: "The recipient list is empty." });
+          throw new Error("No recipient");
+        }
+        const result = await sendInterviewInvite({
+          interviewId: invite.interviewId,
+          party: "client",
+          attendeeEmail: draft.to[0],
+          attendeeName: invite.clientContactName || undefined,
+          to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
+          subject: draft.subject,
+          bodyText: draft.body,
+        });
+        if (!result.ok) {
+          toast.error("Client invite failed", { description: result.error });
+          throw new Error(result.error);
+        }
+        toast.success("Client invite sent + added to calendar");
+        onDone();
+      }}
+    />
+  );
+}
+
+function CandidateInviteComposer({
+  invite,
+  candidateFirstName,
+  candidateLastName,
+  candidateEmail,
+  onDone,
+}: {
+  invite: InviteFlowState;
+  candidateFirstName: string;
+  candidateLastName: string;
+  candidateEmail: string;
+  onDone: () => void;
+}) {
+  const candidateFullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ");
+  const values = buildInterviewMergeValues({ invite, candidateFirstName, candidateLastName, candidateEmail });
+  return (
+    <EmailComposer
+      title="Send candidate interview prep"
+      subtitle={`${invite.jobTitle} · ${invite.clientName}`}
+      initial={{
+        to: candidateEmail ? [candidateEmail] : [],
+        cc: [],
+        bcc: [],
+        subject: applyMergeFieldsClient(fallbackCandidateSubject(invite), values),
+        body: applyMergeFieldsClient(fallbackBody(invite, "candidate", candidateFullName), values),
+      }}
+      showTemplatePicker
+      templateFilter={(t) =>
+        t.trigger === CANDIDATE_INTERVIEW_PREP_TRIGGER || t.audience === "candidate"
+      }
+      resolveTemplate={(t) => ({
+        subject: applyMergeFieldsClient(t.subject, values),
+        body: applyMergeFieldsClient(t.body, values),
+      })}
+      helperText="Use Template to load a saved candidate template. Adds the candidate as an attendee on the calendar event when you send."
+      sendLabel="Send + add to calendar"
+      sendingLabel="Sending…"
+      onClose={onDone}
+      onSend={async (draft: EmailDraft) => {
+        if (draft.to.length === 0) {
+          toast.error("Add a candidate email", { description: "No email on file for this candidate." });
+          throw new Error("No recipient");
+        }
+        const result = await sendInterviewInvite({
+          interviewId: invite.interviewId,
+          party: "candidate",
+          attendeeEmail: draft.to[0],
+          attendeeName: candidateFullName || undefined,
+          to: draft.to,
+          cc: draft.cc,
+          bcc: draft.bcc,
+          subject: draft.subject,
+          bodyText: draft.body,
+        });
+        if (!result.ok) {
+          toast.error("Candidate invite failed", { description: result.error });
+          throw new Error(result.error);
+        }
+        toast.success("Candidate invite sent + added to calendar");
+        onDone();
+      }}
+    />
+  );
 }

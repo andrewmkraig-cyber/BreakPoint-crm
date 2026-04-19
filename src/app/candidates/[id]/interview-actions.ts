@@ -5,10 +5,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
+  addAttendeeToEvent,
   createCalendarEvent,
   deleteCalendarEvent,
   updateCalendarEvent,
 } from "@/lib/google-calendar";
+import { sendGmail, plainToHtml } from "@/lib/gmail";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
 // Ace-local candidates (candidateId cuid). The Interview model is polymorphic
@@ -61,7 +63,14 @@ export type ScheduleInterviewInput = {
 };
 
 export type ScheduleInterviewResult =
-  | { ok: true; value: { interviewId: string; meetLink: string | null; calendarEventId: string | null } }
+  | {
+      ok: true;
+      value: {
+        interviewId: string;
+        meetLink: string | null;
+        googleEventIdMine: string | null;
+      };
+    }
   | { ok: false; error: string };
 
 const EARLIER_STAGES = new Set(["sourced", "applied", "submitted"]);
@@ -161,13 +170,15 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   }
 
   // Calendar behavior:
-  // - ace_scheduled: add to creator's calendar for tracking. We do NOT invite
-  //   candidate/client from this call; that's the templated-email path, and
-  //   the richer invite-with-attendees flow lands in the next batch.
+  // - ace_scheduled: create the event on the creator's primary calendar
+  //   with ONLY the creator. The candidate and client are added later via
+  //   their respective email composers (which send the custom-templated
+  //   emails); that's where the googleEventIdClient / googleEventIdCandidate
+  //   columns get populated.
   // - client_scheduled: the client is sending their own invite. We put the
-  //   event on the creator's calendar ONLY, no attendee emails.
+  //   event on the creator's calendar ONLY, and no emails go out.
   // Meet link auto-creation is enabled for video regardless of source.
-  let calendarEventId: string | null = null;
+  let googleEventIdMine: string | null = null;
   let meetLink: string | null = null;
   try {
     const ev = await createCalendarEvent({
@@ -180,12 +191,9 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       createMeet: input.type === "video",
       sendUpdates: false,
     });
-    calendarEventId = ev.eventId;
+    googleEventIdMine = ev.eventId;
     meetLink = ev.meetLink;
   } catch (e) {
-    // Non-fatal: we still record the interview to the DB. The UI surfaces
-    // the calendar failure as a toast so the user can retry or wire up
-    // calendar scope.
     return {
       ok: false,
       error: e instanceof Error ? `Calendar create failed: ${e.message}` : "Calendar create failed.",
@@ -208,7 +216,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
         notes: input.notes || null,
         status: "scheduled",
         source: input.source,
-        calendarEventId,
+        googleEventIdMine,
         createdById: user.id,
       },
       select: { id: true },
@@ -238,20 +246,18 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
           type: input.type,
           source: input.source,
           meetLink,
-          calendarEventId,
+          googleEventIdMine,
           local: ref.candidateId != null,
         },
       },
     });
 
     revalidateForCandidate(ref);
-    return { ok: true, value: { interviewId: interview.id, meetLink, calendarEventId } };
+    return { ok: true, value: { interviewId: interview.id, meetLink, googleEventIdMine } };
   } catch (e) {
-    // Roll back the calendar event if the DB write fails — we don't want an
-    // orphan calendar entry.
-    if (calendarEventId) {
+    if (googleEventIdMine) {
       try {
-        await deleteCalendarEvent({ userId: user.id, eventId: calendarEventId, sendUpdates: false });
+        await deleteCalendarEvent({ userId: user.id, eventId: googleEventIdMine, sendUpdates: false });
       } catch {
         // best-effort; ignore cleanup failure
       }
@@ -268,14 +274,14 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
   try {
     const existing = await prisma.interview.findUnique({
       where: { id: interviewId },
-      select: { id: true, status: true, calendarEventId: true, candidateRfId: true, candidateId: true },
+      select: { id: true, status: true, googleEventIdMine: true, candidateRfId: true, candidateId: true },
     });
     if (!existing) return { ok: false, error: "Interview not found." };
     if (existing.status === "cancelled") return { ok: true };
 
-    if (existing.calendarEventId) {
+    if (existing.googleEventIdMine) {
       try {
-        await deleteCalendarEvent({ userId: user.id, eventId: existing.calendarEventId, sendUpdates: false });
+        await deleteCalendarEvent({ userId: user.id, eventId: existing.googleEventIdMine, sendUpdates: false });
       } catch {
         // best-effort
       }
@@ -327,7 +333,7 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
         status: true,
         scheduledAt: true,
         durationMin: true,
-        calendarEventId: true,
+        googleEventIdMine: true,
         candidateRfId: true,
         candidateId: true,
       },
@@ -337,11 +343,11 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
 
     const durationMin = input.durationMin && input.durationMin > 0 ? input.durationMin : existing.durationMin;
 
-    if (existing.calendarEventId) {
+    if (existing.googleEventIdMine) {
       try {
         await updateCalendarEvent({
           userId: user.id,
-          eventId: existing.calendarEventId,
+          eventId: existing.googleEventIdMine,
           startISO: when.toISOString(),
           durationMin,
           sendUpdates: false,
@@ -380,4 +386,119 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Reschedule failed." };
   }
+}
+
+// ---- Add-attendee + send email (client / candidate) ----
+
+export type SendInvitePartyInput = {
+  interviewId: string;
+  party: "client" | "candidate";
+  attendeeEmail: string;
+  attendeeName?: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyText: string;
+};
+
+export type SendInvitePartyResult =
+  | { ok: true; value: { gmailMessageId: string; googleEventId: string | null } }
+  | { ok: false; error: string };
+
+// Patches the interview's calendar event to add the party as an attendee,
+// then fires the custom templated email via Gmail. The googleEventIdClient
+// or googleEventIdCandidate column is updated once both steps succeed,
+// acting as a "delivered" audit flag.
+export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<SendInvitePartyResult> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!input.attendeeEmail.trim()) return { ok: false, error: "Attendee email required." };
+  if (input.to.length === 0) return { ok: false, error: "At least one recipient required." };
+  if (!input.subject.trim()) return { ok: false, error: "Subject required." };
+  if (!input.bodyText.trim()) return { ok: false, error: "Body required." };
+
+  const interview = await prisma.interview.findUnique({
+    where: { id: input.interviewId },
+    select: {
+      id: true,
+      googleEventIdMine: true,
+      googleEventIdClient: true,
+      googleEventIdCandidate: true,
+      candidateRfId: true,
+      candidateId: true,
+    },
+  });
+  if (!interview) return { ok: false, error: "Interview not found." };
+  if (!interview.googleEventIdMine) {
+    return { ok: false, error: "No calendar event linked to this interview — can't add attendee." };
+  }
+
+  // 1. Patch the event to add the attendee. sendUpdates=none because our
+  //    own Gmail message is the invite we want the recipient to see.
+  try {
+    await addAttendeeToEvent({
+      userId: user.id,
+      eventId: interview.googleEventIdMine,
+      attendee: { email: input.attendeeEmail, displayName: input.attendeeName },
+      sendUpdates: false,
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? `Calendar attendee add failed: ${e.message}` : "Calendar attendee add failed.",
+    };
+  }
+
+  // 2. Send the custom templated email.
+  let sent: { id: string; threadId: string };
+  try {
+    sent = await sendGmail({
+      userId: user.id,
+      from: user.email,
+      fromName: user.name ?? undefined,
+      to: input.to,
+      cc: input.cc,
+      bcc: input.bcc,
+      subject: input.subject.trim(),
+      bodyText: input.bodyText,
+      bodyHtml: plainToHtml(input.bodyText),
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? `Attendee added, but email failed: ${e.message}` : "Email send failed.",
+    };
+  }
+
+  // 3. Flag the invite delivered on the interview row.
+  const data =
+    input.party === "client"
+      ? { googleEventIdClient: interview.googleEventIdMine }
+      : { googleEventIdCandidate: interview.googleEventIdMine };
+  await prisma.interview.update({ where: { id: input.interviewId }, data });
+
+  const subjectId =
+    interview.candidateRfId != null ? String(interview.candidateRfId) : interview.candidateId!;
+  await prisma.actionLog.create({
+    data: {
+      userId: user.id,
+      actionType: input.party === "client" ? "interview_invite_client" : "interview_invite_candidate",
+      subjectType: "candidate",
+      subjectId,
+      metadata: {
+        interviewId: interview.id,
+        gmailMessageId: sent.id,
+        to: input.to,
+        cc: input.cc,
+        subject: input.subject,
+      },
+    },
+  });
+
+  revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
+  return {
+    ok: true,
+    value: { gmailMessageId: sent.id, googleEventId: interview.googleEventIdMine },
+  };
 }

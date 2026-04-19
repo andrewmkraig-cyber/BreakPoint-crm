@@ -18,6 +18,11 @@ export const MERGE_FIELDS = [
   { token: "[Recruiter Name]", label: "Recruiter Name" },
   { token: "[Recruiter Email]", label: "Recruiter Email" },
   { token: "[Recruiter Phone]", label: "Recruiter Phone" },
+  { token: "[Candidate Current Title]", label: "Candidate Current Title" },
+  { token: "[Interview Type]", label: "Interview Type" },
+  { token: "[Interview Date Time]", label: "Interview Date Time" },
+  { token: "[Interview Duration]", label: "Interview Duration" },
+  { token: "[Interview Meet Link]", label: "Interview Meet Link" },
 ] as const;
 
 export type MergeFieldToken = (typeof MERGE_FIELDS)[number]["token"];
@@ -27,6 +32,7 @@ export type MergeFieldValues = {
   candidateLastName?: string;
   candidateFullName?: string;
   candidateEmail?: string;
+  candidateCurrentTitle?: string;
   clientContactFullName?: string;
   clientContactFirstName?: string;
   clientCompanyName?: string;
@@ -38,6 +44,10 @@ export type MergeFieldValues = {
   recruiterName?: string;
   recruiterEmail?: string;
   recruiterPhone?: string;
+  interviewType?: string;
+  interviewDateTime?: string;
+  interviewDuration?: string;
+  interviewMeetLink?: string;
 };
 
 function escapeForRegex(s: string): string {
@@ -79,6 +89,11 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     "[Recruiter Name]": values.recruiterName ?? "",
     "[Recruiter Email]": values.recruiterEmail ?? "",
     "[Recruiter Phone]": values.recruiterPhone ?? "",
+    "[Candidate Current Title]": values.candidateCurrentTitle ?? "",
+    "[Interview Type]": values.interviewType ?? "",
+    "[Interview Date Time]": values.interviewDateTime ?? "",
+    "[Interview Duration]": values.interviewDuration ?? "",
+    "[Interview Meet Link]": values.interviewMeetLink ?? "",
   };
   let out = text;
   for (const field of MERGE_FIELDS) {

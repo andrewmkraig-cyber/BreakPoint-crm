@@ -152,6 +152,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         <LocalPlacementRows
           candidateId={candidate.id}
           candidateName={fullName}
+          candidateEmail={candidate.email}
           jobs={jobRows}
         />
       )}

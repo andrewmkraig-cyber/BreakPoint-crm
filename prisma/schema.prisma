@@ -333,7 +333,15 @@ model Interview {
   notes           String?   @db.Text
   status          String    @default("scheduled") // scheduled | completed | cancelled | rescheduled
   source          String    @default("ace_scheduled") // ace_scheduled | client_scheduled
-  calendarEventId String?   // Google Calendar event id (creator's primary calendar)
+  // Google Calendar event id on the creator's primary calendar. The event
+  // is created with just the creator at schedule time; the client and
+  // candidate are added as attendees later via their respective email
+  // composers. The googleEventIdClient / googleEventIdCandidate columns
+  // are set (to the same event id) once that step completes, acting as
+  // explicit "invite delivered" flags we can audit.
+  googleEventIdMine      String?
+  googleEventIdClient    String?
+  googleEventIdCandidate String?
 
   createdById     String
   createdAt       DateTime  @default(now())

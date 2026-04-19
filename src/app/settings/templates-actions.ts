@@ -6,7 +6,9 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
   CANDIDATE_CONFIRMATION_TRIGGER,
+  CANDIDATE_INTERVIEW_PREP_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
+  CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
   CLIENT_SUBMITTAL_TRIGGER,
   INTERVIEW_CONFIRMATION_TRIGGER,
   OFFER_ACCEPTANCE_TRIGGER,
@@ -164,7 +166,7 @@ const REFERENCE_CHECK_DEFAULT = {
 } as const;
 
 const INTERVIEW_CONFIRMATION_DEFAULT = {
-  name: "Interview Confirmation",
+  name: "Interview Confirmation (legacy)",
   subject: "Interview Confirmed - [Job Title] with [Client Company Name]",
   trigger: INTERVIEW_CONFIRMATION_TRIGGER,
   audience: "candidate",
@@ -175,6 +177,43 @@ const INTERVIEW_CONFIRMATION_DEFAULT = {
     "[Job Description]",
 } as const;
 
+const CLIENT_INTERVIEW_CONFIRMATION_DEFAULT = {
+  name: "Client Interview Confirmation",
+  subject: "Interview Confirmed - [Candidate Full Name] for [Job Title]",
+  trigger: CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
+  audience: "client",
+  body:
+    "Hi [Client Contact First Name],\n\n" +
+    "Confirming the interview with [Candidate Full Name] for the [Job Title] role. You should see the calendar invite hit your inbox shortly.\n\n" +
+    "A quick recap of what we have on the books:\n" +
+    "• Candidate: [Candidate Full Name] — [Candidate Current Title]\n" +
+    "• Role: [Job Title]\n" +
+    "• Format: [Interview Type]\n" +
+    "• When: [Interview Date Time]\n" +
+    "• Duration: [Interview Duration]\n\n" +
+    "If anything changes on your end, just reply to this email and I'll get it updated. Otherwise, have a great conversation!",
+} as const;
+
+const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
+  name: "Candidate Interview Prep",
+  subject: "You're confirmed - [Job Title] with [Client Company Name]",
+  trigger: CANDIDATE_INTERVIEW_PREP_TRIGGER,
+  audience: "candidate",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "You are confirmed for your [Interview Type] interview with [Client Company Name] for the [Job Title] role. " +
+    "The calendar invite is on its way.\n\n" +
+    "Details:\n" +
+    "• When: [Interview Date Time]\n" +
+    "• Duration: [Interview Duration]\n" +
+    "• Format: [Interview Type]\n\n" +
+    "A few prep tips so you can show up sharp:\n" +
+    "• Review the job description and jot down 2–3 questions that show you've done your homework on the company.\n" +
+    "• Have a short tour of 2–3 recent projects ready — what the problem was, what you did, what the outcome was.\n" +
+    "• Log in a few minutes early — test camera, mic, and link if it's a video interview.\n\n" +
+    "Reply to this email if anything comes up. Good luck!",
+} as const;
+
 export async function ensureDefaultTemplates(): Promise<void> {
   const defaults = [
     CLIENT_SUBMITTAL_DEFAULT,
@@ -183,6 +222,8 @@ export async function ensureDefaultTemplates(): Promise<void> {
     CANDIDATE_REJECTION_DEFAULT,
     INTERVIEW_CONFIRMATION_DEFAULT,
     REFERENCE_CHECK_DEFAULT,
+    CLIENT_INTERVIEW_CONFIRMATION_DEFAULT,
+    CANDIDATE_INTERVIEW_PREP_DEFAULT,
   ] as const;
 
   for (const tpl of defaults) {

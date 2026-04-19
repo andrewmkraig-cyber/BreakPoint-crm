@@ -7,6 +7,8 @@ export const OFFER_ACCEPTANCE_TRIGGER = "offer_acceptance";
 export const CANDIDATE_REJECTION_TRIGGER = "candidate_rejection";
 export const INTERVIEW_CONFIRMATION_TRIGGER = "interview_confirmation";
 export const REFERENCE_CHECK_REQUEST_TRIGGER = "reference_check_request";
+export const CLIENT_INTERVIEW_CONFIRMATION_TRIGGER = "client_interview_confirmation";
+export const CANDIDATE_INTERVIEW_PREP_TRIGGER = "candidate_interview_prep";
 
 // Ordered list shown in Settings → Email Templates → trigger picker. Value ""
 // maps to "Manual only" (no auto-fire). Each non-empty value is a trigger key
@@ -30,8 +32,18 @@ export const TRIGGER_OPTIONS: ReadonlyArray<{ value: string; label: string; desc
   },
   {
     value: INTERVIEW_CONFIRMATION_TRIGGER,
-    label: "Interview Confirmation",
-    description: "Auto-sends to the candidate when you schedule an interview.",
+    label: "Interview Confirmation (legacy)",
+    description: "Legacy candidate-facing confirmation. Replaced by Client Interview Confirmation + Candidate Interview Prep.",
+  },
+  {
+    value: CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
+    label: "Client Interview Confirmation",
+    description: "Used in the Schedule Interview flow — email to the client confirming the interview and adding them to the calendar event.",
+  },
+  {
+    value: CANDIDATE_INTERVIEW_PREP_TRIGGER,
+    label: "Candidate Interview Prep",
+    description: "Used in the Schedule Interview flow — email to the candidate with prep + calendar invite.",
   },
   {
     value: REFERENCE_CHECK_REQUEST_TRIGGER,

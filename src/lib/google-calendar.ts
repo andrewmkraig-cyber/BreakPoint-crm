@@ -88,6 +88,10 @@ export async function createCalendarEvent(
     description: input.description ?? "",
     start: { dateTime: start.toISOString(), timeZone: tz },
     end: { dateTime: end.toISOString(), timeZone: tz },
+    // Always set these — no harm for non-video events and they're required
+    // for the candidate + client sides of a Meet call.
+    guestsCanSeeOtherGuests: true,
+    guestsCanInviteOthers: false,
   };
   if (input.attendees && input.attendees.length > 0) {
     body.attendees = input.attendees.map((a) => ({ email: a.email, displayName: a.displayName }));
@@ -171,6 +175,56 @@ export async function updateCalendarEvent(params: {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Calendar update failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
+export type AddAttendeeInput = {
+  userId: string;
+  eventId: string;
+  attendee: { email: string; displayName?: string };
+  sendUpdates?: boolean;
+};
+
+// Appends an attendee to an existing event. Google's PATCH replaces the
+// attendees array wholesale, so we GET first, merge, then PATCH. If the
+// attendee is already on the event (by email), the PATCH is a no-op.
+export async function addAttendeeToEvent(input: AddAttendeeInput): Promise<void> {
+  const accessToken = await getFreshAccessToken(input.userId);
+  const getUrl = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
+  );
+  const getRes = await fetch(getUrl.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!getRes.ok) {
+    const text = await getRes.text().catch(() => "");
+    throw new Error(`Calendar get failed (${getRes.status}): ${text || "no body"}`);
+  }
+  const ev = (await getRes.json()) as { attendees?: { email: string; displayName?: string }[] };
+  const existing = ev.attendees ?? [];
+  if (existing.some((a) => (a.email ?? "").toLowerCase() === input.attendee.email.toLowerCase())) {
+    return;
+  }
+  const next = [...existing, { email: input.attendee.email, displayName: input.attendee.displayName }];
+
+  const sendUpdates = input.sendUpdates ? "all" : "none";
+  const patchUrl = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
+  );
+  patchUrl.searchParams.set("sendUpdates", sendUpdates);
+  const patchRes = await fetch(patchUrl.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ attendees: next }),
+    cache: "no-store",
+  });
+  if (!patchRes.ok) {
+    const text = await patchRes.text().catch(() => "");
+    throw new Error(`Calendar patch failed (${patchRes.status}): ${text || "no body"}`);
   }
 }
 
