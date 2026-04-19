@@ -14,7 +14,7 @@ type Exp = { designation?: string; organization?: string; from_year?: number | n
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
 export async function LocalCandidateProfile({ id }: { id: string }) {
-  const [candidate, placements, interviews, allJobs, allClients, session, prefs] = await Promise.all([
+  const [candidate, placements, interviews, allJobs, allClients, allContacts, session, prefs] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
       select: {
@@ -56,6 +56,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     // populating the Submit/Apply dropdowns with existing open jobs.
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
+    recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
     getServerSession(authOptions),
     getAppPreferences(),
   ]);
@@ -119,6 +120,13 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     const job = rfJob ? normalizeJob(rfJob) : null;
     const clientRaw = clientById.get(p.clientRfId) ?? null;
     const client = clientRaw ? normalizeClient(clientRaw) : null;
+    const clientContacts = allContacts
+      .filter((ct) => ct.client_company_id === p.clientRfId)
+      .map((ct) => {
+        const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
+        const fullName = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
+        return { id: ct.id, name: fullName, title: ct.current_designation ?? "", email: firstEmail };
+      });
     return {
       placementId: p.id,
       jobRfId: p.jobRfId,
@@ -130,6 +138,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
       clientName: client?.name ?? job?.company ?? "",
       clientWebsite: client?.website ?? "",
       clientLinkedIn: client?.linkedIn ?? "",
+      clientContacts,
       stage: p.stage,
       interviews: interviewsByJob.get(p.jobRfId) ?? [],
     };

@@ -56,6 +56,7 @@ import {
   sendInterviewInvite,
   type InterviewType,
 } from "@/app/candidates/[id]/interview-actions";
+import { createClientContact } from "@/app/candidates/[id]/contact-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
@@ -1302,29 +1303,11 @@ function ScheduleInterviewDialog({
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [durationMin, setDurationMin] = useState<number>(30);
   const [type, setType] = useState<InterviewType>("video");
-  const [interviewerId, setInterviewerId] = useState<string>("");
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
-
-  // Interviewer fields stay blank until the user picks a specific contact.
-  // Switching to "Other (enter manually)" clears whatever the previous
-  // selection filled in, so the user types fresh values.
-  function onInterviewerChange(id: string) {
-    setInterviewerId(id);
-    if (id === "" || id === "custom") {
-      setInterviewerName("");
-      setInterviewerEmail("");
-      return;
-    }
-    const match = job.clientContacts.find((c) => String(c.id) === id);
-    if (match) {
-      setInterviewerName(match.name);
-      setInterviewerEmail(match.email ?? "");
-    }
-  }
 
   function onSave() {
     setErr(null);
@@ -1381,8 +1364,6 @@ function ScheduleInterviewDialog({
     });
   }
 
-  const hasContacts = job.clientContacts.length > 0;
-
   return (
     <Modal title="Schedule interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <div className="grid grid-cols-1 gap-3">
@@ -1419,29 +1400,17 @@ function ScheduleInterviewDialog({
             <option value="in_person">In-Person</option>
           </select>
         </label>
-        {hasContacts && (
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Interviewer (client contact)</span>
-            <select
-              value={interviewerId}
-              onChange={(e) => onInterviewerChange(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="">Select an interviewer…</option>
-              {job.clientContacts.map((c) => (
-                <option key={c.id} value={String(c.id)}>
-                  {c.name}
-                  {c.title ? ` · ${c.title}` : ""}
-                </option>
-              ))}
-              <option value="custom">Other (enter manually)</option>
-            </select>
-          </label>
-        )}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <LabeledField label="Interviewer name" value={interviewerName} onChange={setInterviewerName} />
-          <LabeledField label="Interviewer email" type="email" value={interviewerEmail} onChange={setInterviewerEmail} />
-        </div>
+        <InterviewerPicker
+          clientRfId={job.clientRfId}
+          clientName={job.clientName}
+          initialContacts={job.clientContacts}
+          name={interviewerName}
+          email={interviewerEmail}
+          onChange={(n, e) => {
+            setInterviewerName(n);
+            setInterviewerEmail(e);
+          }}
+        />
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
@@ -1561,7 +1530,19 @@ function ClientInviteDialog({
             <option value="in_person">In-Person</option>
           </select>
         </label>
-        <LabeledField label="Interviewer name (optional)" value={interviewerName} onChange={setInterviewerName} />
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Interviewer name (optional)</span>
+          <input
+            type="text"
+            value={interviewerName}
+            name={`ace-interviewer-name-${job.jobRfId}`}
+            autoComplete="off"
+            data-lpignore="true"
+            data-form-type="other"
+            onChange={(e) => setInterviewerName(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+        </label>
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
@@ -2745,6 +2726,227 @@ function CandidateInviteComposer({
         if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
         onDone();
       }}
+    />
+  );
+}
+
+// Always-on interviewer picker. Fixes two real bugs:
+//   1. Previously hidden entirely when the client had no contacts. Now
+//      always shows with "Other (enter manually)" + "+ Add new contact"
+//      so recruiters can proceed regardless of how stocked the client's
+//      contact list is.
+//   2. Free-text name/email fields were getting Chrome-autofilled with
+//      the recruiter's own Google profile. Raw inputs with autoComplete
+//      off, non-semantic name attrs, and data-lpignore stop that.
+export type InterviewerContact = { id: number; name: string; title: string; email: string };
+
+export function InterviewerPicker({
+  clientRfId,
+  clientName,
+  initialContacts,
+  name,
+  email,
+  onChange,
+}: {
+  clientRfId: number;
+  clientName: string;
+  initialContacts: InterviewerContact[];
+  name: string;
+  email: string;
+  onChange: (name: string, email: string) => void;
+}) {
+  const [mode, setMode] = useState<string>("");
+  const [contacts, setContacts] = useState<InterviewerContact[]>(initialContacts);
+  const [addFirstName, setAddFirstName] = useState("");
+  const [addLastName, setAddLastName] = useState("");
+  const [addEmail, setAddEmail] = useState("");
+  const [addTitle, setAddTitle] = useState("");
+  const [addErr, setAddErr] = useState<string | null>(null);
+  const [isAdding, startAdd] = useTransition();
+
+  function setSelection(next: string) {
+    setMode(next);
+    setAddErr(null);
+    if (next === "" || next === "custom" || next === "add") {
+      onChange("", "");
+      return;
+    }
+    const match = contacts.find((c) => String(c.id) === next);
+    if (match) onChange(match.name, match.email ?? "");
+  }
+
+  function onSaveContact() {
+    setAddErr(null);
+    const fn = addFirstName.trim();
+    if (!fn) {
+      setAddErr("First name is required.");
+      return;
+    }
+    startAdd(async () => {
+      const result = await createClientContact({
+        clientRfId,
+        firstName: fn,
+        lastName: addLastName.trim() || undefined,
+        email: addEmail.trim() || undefined,
+        title: addTitle.trim() || undefined,
+      });
+      if (!result.ok) {
+        setAddErr(result.error);
+        toast.error("Couldn't add contact", { description: result.error });
+        return;
+      }
+      const created = result.value;
+      setContacts((prev) => [...prev, created]);
+      setAddFirstName("");
+      setAddLastName("");
+      setAddEmail("");
+      setAddTitle("");
+      setMode(String(created.id));
+      onChange(created.name, created.email ?? "");
+      toast.success("Contact added", {
+        description: `${created.name} is now saved to ${clientName} in RecruiterFlow.`,
+      });
+    });
+  }
+
+  const nonceRef = useRef<string>(Math.random().toString(36).slice(2, 10));
+  const nonce = nonceRef.current;
+
+  const showManualFields = mode === "custom" || (mode !== "" && mode !== "add");
+
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          Interviewer (client contact)
+        </span>
+        <select
+          value={mode}
+          onChange={(e) => setSelection(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="">
+            {contacts.length === 0 ? "No contacts on file — pick an option…" : "Select an interviewer…"}
+          </option>
+          {contacts.map((c) => (
+            <option key={c.id} value={String(c.id)}>
+              {c.name}
+              {c.title ? ` · ${c.title}` : ""}
+              {c.email ? ` · ${c.email}` : ""}
+            </option>
+          ))}
+          <option value="custom">Other (enter manually)</option>
+          <option value="add">+ Add new contact to {clientName || "this client"}…</option>
+        </select>
+      </label>
+
+      {mode === "add" && (
+        <div className="rounded-lg border border-brand/30 bg-brand-tint/30 p-3">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-brand-dark">
+            New contact for {clientName}
+          </div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <BareInput
+              placeholder="First name *"
+              value={addFirstName}
+              onChange={setAddFirstName}
+              name={`ace-new-contact-first-${nonce}`}
+            />
+            <BareInput
+              placeholder="Last name"
+              value={addLastName}
+              onChange={setAddLastName}
+              name={`ace-new-contact-last-${nonce}`}
+            />
+            <BareInput
+              placeholder="Email"
+              type="email"
+              value={addEmail}
+              onChange={setAddEmail}
+              name={`ace-new-contact-email-${nonce}`}
+            />
+            <BareInput
+              placeholder="Title"
+              value={addTitle}
+              onChange={setAddTitle}
+              name={`ace-new-contact-title-${nonce}`}
+            />
+          </div>
+          {addErr && (
+            <div className="mt-2 rounded border border-red-200 bg-red-50 p-2 text-[11px] text-red-800">{addErr}</div>
+          )}
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setSelection("")}
+              disabled={isAdding}
+              className="rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy-400 hover:text-navy disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSaveContact}
+              disabled={isAdding}
+              className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-brand-dark disabled:opacity-60"
+            >
+              {isAdding ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              Save contact
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showManualFields && (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <BareInput
+            placeholder="Interviewer name"
+            value={name}
+            onChange={(v) => onChange(v, email)}
+            name={`ace-interviewer-name-${nonce}`}
+          />
+          <BareInput
+            placeholder="Interviewer email"
+            type="email"
+            value={email}
+            onChange={(v) => onChange(name, v)}
+            name={`ace-interviewer-email-${nonce}`}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Raw text input with defensive anti-autofill attributes. Chrome,
+// Safari, and 1Password/LastPass key on input name/type/surrounding
+// context to decide whether to offer autofill. autoComplete=off +
+// non-semantic name + data-lpignore + data-form-type together suppress
+// all three without limiting user editability.
+function BareInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  name,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  name: string;
+}) {
+  return (
+    <input
+      type={type}
+      value={value}
+      name={name}
+      placeholder={placeholder}
+      autoComplete="off"
+      data-lpignore="true"
+      data-form-type="other"
+      onChange={(e) => onChange(e.target.value)}
+      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
     />
   );
 }

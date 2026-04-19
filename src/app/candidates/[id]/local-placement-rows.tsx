@@ -25,6 +25,7 @@ import {
 } from "@/app/candidates/[id]/interview-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
+import { InterviewerPicker } from "@/app/candidates/[id]/placement-flows";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 
 export type LocalInterview = {
@@ -49,6 +50,7 @@ export type LocalJobRow = {
   clientName: string;
   clientWebsite: string;
   clientLinkedIn: string;
+  clientContacts: { id: number; name: string; title: string; email: string }[];
   stage: string;
   interviews: LocalInterview[];
 };
@@ -408,13 +410,21 @@ function ScheduleDialog({
         setDurationMin={setDurationMin}
         type={type}
         setType={setType}
-        interviewerName={interviewerName}
-        setInterviewerName={setInterviewerName}
-        interviewerEmail={interviewerEmail}
-        setInterviewerEmail={setInterviewerEmail}
         notes={notes}
         setNotes={setNotes}
-        includeEmail
+        interviewerSlot={
+          <InterviewerPicker
+            clientRfId={job.clientRfId}
+            clientName={job.clientName}
+            initialContacts={job.clientContacts}
+            name={interviewerName}
+            email={interviewerEmail}
+            onChange={(n, e) => {
+              setInterviewerName(n);
+              setInterviewerEmail(e);
+            }}
+          />
+        }
       />
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Schedule" />
@@ -487,10 +497,18 @@ function ClientInviteDialog({
         setDurationMin={setDurationMin}
         type={type}
         setType={setType}
-        interviewerName={interviewerName}
-        setInterviewerName={setInterviewerName}
         notes={notes}
         setNotes={setNotes}
+        interviewerSlot={
+          <InterviewerPicker
+            clientRfId={job.clientRfId}
+            clientName={job.clientName}
+            initialContacts={job.clientContacts}
+            name={interviewerName}
+            email=""
+            onChange={(n) => setInterviewerName(n)}
+          />
+        }
       />
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Log interview" />
@@ -556,6 +574,8 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
 
 // ---- Shared dialog primitives ----
 
+// Date/time/type/notes — interviewer is its own picker now (rendered by
+// the caller so it can pass client context for the contact dropdown).
 function ScheduleFields(props: {
   scheduledAt: string;
   setScheduledAt: (v: string) => void;
@@ -563,13 +583,9 @@ function ScheduleFields(props: {
   setDurationMin: (n: number) => void;
   type: InterviewType;
   setType: (t: InterviewType) => void;
-  interviewerName: string;
-  setInterviewerName: (v: string) => void;
-  interviewerEmail?: string;
-  setInterviewerEmail?: (v: string) => void;
   notes: string;
   setNotes: (v: string) => void;
-  includeEmail?: boolean;
+  interviewerSlot?: React.ReactNode;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3">
@@ -606,28 +622,7 @@ function ScheduleFields(props: {
           <option value="in_person">In-Person</option>
         </select>
       </label>
-      <div className={cn("grid grid-cols-1 gap-3", props.includeEmail ? "sm:grid-cols-2" : "")}>
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Interviewer name</span>
-          <input
-            type="text"
-            value={props.interviewerName}
-            onChange={(e) => props.setInterviewerName(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
-        {props.includeEmail && props.setInterviewerEmail && (
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Interviewer email</span>
-            <input
-              type="email"
-              value={props.interviewerEmail ?? ""}
-              onChange={(e) => props.setInterviewerEmail!(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
-        )}
-      </div>
+      {props.interviewerSlot}
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Notes</span>
         <textarea
