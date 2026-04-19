@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, Save, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
@@ -53,6 +53,14 @@ export function NewCandidateForm() {
   const [isSaving, startSave] = useTransition();
 
   const [resumeUploadId, setResumeUploadId] = useState<string | null>(null);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    // If this doesn't fire, the client component never hydrated —
+    // which would explain why onClick does nothing.
+    // eslint-disable-next-line no-console
+    console.log("[NewCandidateForm] mounted + hydrated");
+  }, []);
 
   function runParse(args: { file?: File } = {}) {
     setParseError(null);
@@ -173,6 +181,10 @@ export function NewCandidateForm() {
   }
 
   function onSave() {
+    // eslint-disable-next-line no-console
+    console.log("SAVE CLICKED");
+    // eslint-disable-next-line no-console
+    console.log("FORM DATA:", form);
     setSaveError(null);
     const payload: CreateCandidatePayload = {
       ...form,
@@ -330,7 +342,15 @@ export function NewCandidateForm() {
             </div>
             <button
               type="button"
-              onClick={onSave}
+              onClick={(e) => {
+                // eslint-disable-next-line no-console
+                console.log("SAVE BUTTON onClick fired", e);
+                onSave();
+              }}
+              onMouseDown={() => {
+                // eslint-disable-next-line no-console
+                console.log("SAVE BUTTON onMouseDown fired");
+              }}
               disabled={isSaving}
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
