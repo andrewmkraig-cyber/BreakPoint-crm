@@ -171,20 +171,58 @@ function extractMeetCodeFromLink(link: string | null): string | null {
   return m?.[1] ?? null;
 }
 
+export const MEET_SPACE_SETTINGS_SCOPE = "https://www.googleapis.com/auth/meetings.space.settings";
+
+// Pings Google's tokeninfo endpoint to list the scopes associated with the
+// user's current access token. Used as a preflight check before calling the
+// Meet API — if the scope isn't there, the Meet call will 401/403 silently
+// and the UI will never know why. Cheaper to ask tokeninfo first.
+export async function getGrantedScopes(userId: string): Promise<string[]> {
+  const token = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(token)}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) return [];
+  const data = (await res.json()) as { scope?: string };
+  return (data.scope ?? "").split(/\s+/).filter(Boolean);
+}
+
+export type SetMeetOpenResult =
+  | { ok: true; status: number }
+  | {
+      ok: false;
+      reason: "scope_missing" | "http" | "unknown";
+      error: string;
+      status?: number;
+      responseBody?: string;
+    };
+
 // Sets the Meet space's access type to OPEN so anyone with the link can
 // join without a host letting them in. Needs the
-// `https://www.googleapis.com/auth/meetings.space.settings` OAuth scope
-// (see src/lib/auth.ts). Fails soft: if the call errors (missing scope,
-// API not enabled, etc.) we return the error so the caller can log it,
-// but the calendar event is already created either way.
+// `https://www.googleapis.com/auth/meetings.space.settings` OAuth scope.
+//
+// Two-step approach for robustness:
+//   1. tokeninfo preflight — if the scope isn't on the token, return a
+//      structured `scope_missing` error with reauth instructions instead of
+//      making a doomed API call.
+//   2. Meet API v2 spaces.patch — logs the full response (status + body)
+//      and returns structured results the caller can surface in the UI.
 export async function setMeetOpenAccess(params: {
   userId: string;
   meetingCode: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<SetMeetOpenResult> {
   try {
+    const scopes = await getGrantedScopes(params.userId);
+    if (!scopes.includes(MEET_SPACE_SETTINGS_SCOPE)) {
+      const msg = `Meet scope "${MEET_SPACE_SETTINGS_SCOPE}" not granted on your Google token. Revoke Ace at https://myaccount.google.com/permissions, then sign in again.`;
+      console.warn(`[setMeetOpenAccess] scope_missing: granted=[${scopes.join(", ")}]`);
+      return { ok: false, reason: "scope_missing", error: msg };
+    }
+
     const accessToken = await getFreshAccessToken(params.userId);
     const url = new URL(
-      `https://meet.googleapis.com/v2beta/spaces/${encodeURIComponent(params.meetingCode)}`,
+      `https://meet.googleapis.com/v2/spaces/${encodeURIComponent(params.meetingCode)}`,
     );
     url.searchParams.set("updateMask", "config.accessType");
     const res = await fetch(url.toString(), {
@@ -196,13 +234,24 @@ export async function setMeetOpenAccess(params: {
       body: JSON.stringify({ config: { accessType: "OPEN" } }),
       cache: "no-store",
     });
+    const bodyText = await res.text().catch(() => "");
+    console.log(
+      `[setMeetOpenAccess] PATCH ${url.toString()} -> ${res.status} ${res.statusText} | body=${bodyText.slice(0, 1000)}`,
+    );
     if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      return { ok: false, error: `Meet spaces.patch ${res.status}: ${text.slice(0, 300) || "no body"}` };
+      return {
+        ok: false,
+        reason: "http",
+        status: res.status,
+        responseBody: bodyText,
+        error: `Meet spaces.patch ${res.status}: ${bodyText.slice(0, 400) || "no body"}`,
+      };
     }
-    return { ok: true };
+    return { ok: true, status: res.status };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+    const msg = e instanceof Error ? e.message : "unknown";
+    console.error(`[setMeetOpenAccess] unexpected: ${msg}`);
+    return { ok: false, reason: "unknown", error: msg };
   }
 }
 

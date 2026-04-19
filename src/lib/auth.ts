@@ -13,9 +13,20 @@ export const authOptions: NextAuthOptions = {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
       authorization: {
         params: {
+          // `consent` forces Google to show the consent screen every sign-in.
+          // `include_granted_scopes=true` tells Google to add any NEW scopes
+          // requested on top of whatever was previously granted, rather than
+          // issuing a token scoped to only the current request. Together
+          // these ensure that newly-added scopes (e.g. meetings.space.settings)
+          // actually reach the stored refresh token when a user signs in
+          // again. If a user is stuck with an old scope set, they also need
+          // to revoke Ace at myaccount.google.com/permissions first — Google
+          // caches consent per app and may skip the screen if the existing
+          // grant still covers the request.
           prompt: "consent",
           access_type: "offline",
           response_type: "code",
+          include_granted_scopes: "true",
           hd: ALLOWED_DOMAIN,
           scope: [
             "openid",
@@ -23,11 +34,6 @@ export const authOptions: NextAuthOptions = {
             "profile",
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/calendar.events",
-            // Meet space settings — used to set accessType=OPEN on the
-            // Meet that Calendar auto-creates for video interviews. Users
-            // who signed in before this scope was added need to sign out
-            // and back in; the Meet setup call degrades gracefully if the
-            // scope is missing so the event still works.
             "https://www.googleapis.com/auth/meetings.space.settings",
           ].join(" "),
         },

@@ -447,7 +447,18 @@ export type SendInvitePartyInput = {
 };
 
 export type SendInvitePartyResult =
-  | { ok: true; value: { googleEventId: string } }
+  | {
+      ok: true;
+      value: {
+        googleEventId: string;
+        // Surfaces when we asked Google Meet to set accessType=OPEN and the
+        // API rejected it (most often because the meetings.space.settings
+        // OAuth scope isn't on the user's token). The interview itself is
+        // still valid; the Meet just falls back to its default TRUSTED
+        // access until the user re-grants the scope and we retry.
+        meetAccessWarning?: { reason: string; message: string };
+      };
+    }
   | { ok: false; error: string };
 
 export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<SendInvitePartyResult> {
@@ -506,13 +517,18 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
 
   // Flip the newly-created Meet to OPEN access so anyone with the link can
   // join without host approval. Fail soft — if the Meet scope isn't granted
-  // the invite still works, Meet just stays at default access.
+  // the invite still works; we surface the reason to the UI so the user
+  // knows to re-grant.
+  let meetAccessWarning: { reason: string; message: string } | undefined;
   if (createMeet && created.meetingCode) {
     const meetResult = await setMeetOpenAccess({ userId: user.id, meetingCode: created.meetingCode });
     if (!meetResult.ok) {
       console.warn(
-        `[sendInterviewInvite] Meet open-access flip failed — users may need to manually set "Anyone with the link". Reason: ${meetResult.error}`,
+        `[sendInterviewInvite] Meet open-access flip failed: reason=${meetResult.reason} error=${meetResult.error}`,
       );
+      meetAccessWarning = { reason: meetResult.reason, message: meetResult.error };
+    } else {
+      console.log(`[sendInterviewInvite] Meet access set to OPEN for ${created.meetingCode} (HTTP ${meetResult.status})`);
     }
   }
 
@@ -554,6 +570,6 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
   return {
     ok: true,
-    value: { googleEventId: created.eventId },
+    value: { googleEventId: created.eventId, meetAccessWarning },
   };
 }

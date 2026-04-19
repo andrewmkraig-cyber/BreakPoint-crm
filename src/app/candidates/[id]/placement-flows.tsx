@@ -2518,6 +2518,25 @@ function formatMoney(n: number | null, currency: string): string {
   return `${sym}${n.toLocaleString()}`;
 }
 
+// Shown alongside the success toast when Google Meet refused to set
+// accessType=OPEN — usually a missing OAuth scope. The interview itself is
+// valid; users just need to re-grant Meet permissions for future invites
+// to auto-open the room.
+function surfaceMeetWarning(warning: { reason: string; message: string }): void {
+  if (warning.reason === "scope_missing") {
+    toast.warning("Meet locked to TRUSTED access", {
+      description:
+        "Google hasn't granted the Meet settings permission yet. Revoke Ace at myaccount.google.com/permissions, sign in again, and new interviews will default to Anyone-can-join.",
+      duration: 12_000,
+    });
+  } else {
+    toast.warning("Meet access stayed TRUSTED", {
+      description: warning.message,
+      duration: 12_000,
+    });
+  }
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const CHUNK = 8192;
@@ -2661,6 +2680,7 @@ function ClientInviteComposer({
         toast.success("Client calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
+        if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
         onDone();
       }}
     />
@@ -2722,6 +2742,7 @@ function CandidateInviteComposer({
         toast.success("Candidate calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
+        if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
         onDone();
       }}
     />

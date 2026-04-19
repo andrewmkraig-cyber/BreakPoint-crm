@@ -732,6 +732,21 @@ function toDatetimeLocalValue(iso: string): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function surfaceMeetWarning(warning: { reason: string; message: string }): void {
+  if (warning.reason === "scope_missing") {
+    toast.warning("Meet locked to TRUSTED access", {
+      description:
+        "Google hasn't granted the Meet settings permission yet. Revoke Ace at myaccount.google.com/permissions, sign in again, and new interviews will default to Anyone-can-join.",
+      duration: 12_000,
+    });
+  } else {
+    toast.warning("Meet access stayed TRUSTED", {
+      description: warning.message,
+      duration: 12_000,
+    });
+  }
+}
+
 function snapTo15Minutes(datetimeLocal: string): Date {
   const d = new Date(datetimeLocal);
   const ms = 15 * 60 * 1000;
@@ -870,6 +885,7 @@ function LocalClientInviteComposer({
         toast.success("Client calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
+        if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
         onDone();
       }}
     />
@@ -951,6 +967,7 @@ function LocalCandidateInviteComposer({
         toast.success("Candidate calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
+        if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
         onDone();
       }}
     />
