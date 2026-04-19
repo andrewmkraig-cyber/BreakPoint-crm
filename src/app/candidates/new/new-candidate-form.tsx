@@ -189,16 +189,27 @@ export function NewCandidateForm() {
       toast.error("Can't save yet", { description: msg });
       return;
     }
+    const toastId = toast.loading("Saving candidate…");
     startSave(async () => {
-      const result = await createCandidate(payload);
-      if (!result.ok) {
-        setSaveError(result.error);
-        toast.error("Couldn't save candidate", { description: result.error });
-        return;
+      try {
+        const result = await createCandidate(payload);
+        if (!result.ok) {
+          setSaveError(result.error);
+          toast.error("Couldn't save candidate", { id: toastId, description: result.error });
+          return;
+        }
+        if (resumeUploadId) void discardResumeUpload(resumeUploadId);
+        toast.success(`Saved ${payload.first_name} ${payload.last_name}`.trim(), { id: toastId });
+        router.push(`/candidates/${result.value.id}`);
+      } catch (err) {
+        // Server action threw — without this catch the transition ends
+        // silently and the user sees no toast, no redirect, no response.
+        const msg = err instanceof Error ? err.message : "Unexpected save error.";
+        // eslint-disable-next-line no-console
+        console.error("[createCandidate] client caught:", err);
+        setSaveError(msg);
+        toast.error("Couldn't save candidate", { id: toastId, description: msg });
       }
-      if (resumeUploadId) void discardResumeUpload(resumeUploadId);
-      toast.success(`Saved ${payload.first_name} ${payload.last_name}`.trim());
-      router.push(`/candidates/${result.value.id}`);
     });
   }
 

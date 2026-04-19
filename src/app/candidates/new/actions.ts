@@ -190,6 +190,8 @@ export async function createCandidate(payload: CreateCandidatePayload): Promise<
     revalidatePath(`/candidates/${created.id}`);
     return { ok: true, value: { id: created.id } };
   } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[createCandidate] failed:", e);
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create candidate." };
   }
 }
