@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, Loader2, Search } from "lucide-react";
+import { Bookmark, CalendarClock, Loader2, Search } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/recruiterflow";
 import { StageBadge } from "@/components/stage-badge";
@@ -27,6 +27,11 @@ export type PlacementDetails = {
   invoicingFlagged: boolean;
 };
 
+export type NextInterview = {
+  scheduledAt: string;
+  type: "phone_screen" | "video" | "in_person";
+};
+
 export type PipelineRow = {
   candidateId: number;
   candidateName: string;
@@ -40,6 +45,7 @@ export type PipelineRow = {
   daysInStage: number | null;
   isKept: boolean;
   placement: PlacementDetails | null;
+  nextInterview: NextInterview | null;
 };
 
 type PipelineViewProps = {
@@ -197,6 +203,12 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                     >
                       {r.jobTitle || "—"}
                     </Link>
+                    {r.bucket === "interviewing" && r.nextInterview && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                        <CalendarClock className="h-3 w-3" />
+                        Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
+                      </div>
+                    )}
                   </td>
                   <td className="px-5 py-3 align-top text-navy-400">{r.clientName || "—"}</td>
 
@@ -407,6 +419,24 @@ function StageChip({
   placement?: PlacementDetails | null;
 }) {
   return <StageBadge bucket={bucket} label={stageName || PIPELINE_LABELS[bucket]} />;
+}
+
+function formatInterviewWhen(iso: string): string {
+  const d = new Date(iso);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatInterviewTypeShort(t: NextInterview["type"]): string {
+  if (t === "phone_screen") return "Phone";
+  if (t === "video") return "Video";
+  return "Onsite";
 }
 
 function initials(name: string): string {

@@ -888,46 +888,9 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   }
 }
 
-export type ScheduleInterviewInput = {
-  candidateRfId: number;
-  jobRfId: number;
-  clientRfId: number;
-  scheduledAt: string; // ISO datetime
-  interviewerName: string;
-  interviewerEmail: string;
-  notes: string;
-};
-
-export async function scheduleInterview(input: ScheduleInterviewInput): Promise<Result> {
-  const userId = await requireUserId();
-  if (!userId) return { ok: false, error: "Not signed in." };
-  if (!input.scheduledAt) return { ok: false, error: "Interview date/time is required." };
-  const when = new Date(input.scheduledAt);
-  if (Number.isNaN(when.getTime())) return { ok: false, error: "Invalid date/time." };
-  try {
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "schedule_interview",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          scheduledAt: when.toISOString(),
-          interviewerName: input.interviewerName || null,
-          interviewerEmail: input.interviewerEmail || null,
-          notes: input.notes || null,
-        },
-      },
-    });
-    revalidatePath(`/candidates/${input.candidateRfId}`);
-    revalidatePath(`/pipeline`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to schedule interview." };
-  }
-}
+// scheduleInterview moved to src/app/candidates/[id]/interview-actions.ts
+// It now writes a dedicated Interview row (+ calendar event) instead of just
+// appending to ActionLog.
 
 // ---- Submittal email flow ----
 //

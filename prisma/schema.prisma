@@ -60,6 +60,7 @@ model User {
   candidateResumes CandidateResume[]
   placements      Placement[]
   candidates      Candidate[]
+  interviews      Interview[]
 }
 
 enum UserRole {
@@ -280,6 +281,7 @@ model Candidate {
 
   createdBy           User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
   placements          Placement[]
+  interviews          Interview[]
 
   @@index([email])
   @@index([createdById, createdAt])
@@ -309,6 +311,41 @@ model CandidateResume {
   redactedAt       DateTime?
 
   uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+}
+
+// Interview schedule. Polymorphic on candidate like Placement: exactly one of
+// candidateRfId / candidateId is set. Not linked to Placement by FK — the
+// (candidate, jobRfId) tuple is the join key, mirroring how Placement itself
+// is scoped. We upsert Placement.stage = "interviewing" at create time so the
+// pipeline reflects the move.
+model Interview {
+  id              String    @id @default(cuid())
+  candidateRfId   Int?
+  candidateId     String?
+  jobRfId         Int
+  clientRfId      Int
+  scheduledAt     DateTime
+  durationMin     Int       @default(30)
+  type            String    // "phone_screen" | "video" | "in_person"
+  meetLink        String?
+  clientAttendees Json?     // [{ id?: number, name: string, email: string }]
+  candidatePhone  String?
+  notes           String?   @db.Text
+  status          String    @default("scheduled") // scheduled | completed | cancelled | rescheduled
+  source          String    @default("ace_scheduled") // ace_scheduled | client_scheduled
+  calendarEventId String?   // Google Calendar event id (creator's primary calendar)
+
+  createdById     String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  createdBy       User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  candidate       Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateRfId, scheduledAt])
+  @@index([candidateId, scheduledAt])
+  @@index([jobRfId, scheduledAt])
+  @@index([status, scheduledAt])
 }
 
 // Staging table for chunk-uploaded resume PDFs. Transient: parseCandidate

@@ -5,12 +5,13 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
+import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
 export async function LocalCandidateProfile({ id }: { id: string }) {
-  const [candidate, placements, allJobs, allClients] = await Promise.all([
+  const [candidate, placements, interviews, allJobs, allClients] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
       select: {
@@ -36,7 +37,17 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     }),
     prisma.placement.findMany({
       where: { candidateId: id },
-      select: { jobRfId: true, stage: true },
+      select: {
+        id: true,
+        jobRfId: true,
+        clientRfId: true,
+        stage: true,
+        updatedAt: true,
+      },
+    }),
+    prisma.interview.findMany({
+      where: { candidateId: id },
+      orderBy: { scheduledAt: "asc" },
     }),
     // Read-side RF lookups are fine under the no-RF-on-create rule — we're
     // populating the Submit/Apply dropdowns with existing open jobs.
@@ -77,6 +88,42 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
       return (a.jobTitle || "").localeCompare(b.jobTitle || "");
     });
 
+  const interviewsByJob = new Map<number, LocalInterview[]>();
+  for (const iv of interviews) {
+    const list = interviewsByJob.get(iv.jobRfId) ?? [];
+    const attendees = Array.isArray(iv.clientAttendees)
+      ? (iv.clientAttendees as { name?: string; email?: string }[])
+          .map((a) => ({ name: a.name ?? "", email: a.email ?? "" }))
+          .filter((a) => a.name || a.email)
+      : [];
+    list.push({
+      id: iv.id,
+      scheduledAt: iv.scheduledAt.toISOString(),
+      durationMin: iv.durationMin,
+      type: iv.type as LocalInterview["type"],
+      status: iv.status as LocalInterview["status"],
+      source: iv.source as LocalInterview["source"],
+      meetLink: iv.meetLink,
+      attendees,
+    });
+    interviewsByJob.set(iv.jobRfId, list);
+  }
+
+  const jobRows: LocalJobRow[] = placements.map((p) => {
+    const rfJob = allJobs.find((j) => j.id === p.jobRfId) ?? null;
+    const job = rfJob ? normalizeJob(rfJob) : null;
+    const client = clientById.get(p.clientRfId) ?? null;
+    return {
+      placementId: p.id,
+      jobRfId: p.jobRfId,
+      jobTitle: job?.title ?? "(job)",
+      clientRfId: p.clientRfId,
+      clientName: client ? normalizeClient(client).name : job?.company ?? "",
+      stage: p.stage,
+      interviews: interviewsByJob.get(p.jobRfId) ?? [],
+    };
+  });
+
   return (
     <div className="space-y-6">
       <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
@@ -100,6 +147,14 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         candidateEmail={candidate.email}
         openJobs={openJobs}
       />
+
+      {jobRows.length > 0 && (
+        <LocalPlacementRows
+          candidateId={candidate.id}
+          candidateName={fullName}
+          jobs={jobRows}
+        />
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">

@@ -15,6 +15,7 @@ import {
   normalizeJob,
   PIPELINE_LABELS,
   daysBetween,
+  type PipelineBucket,
   type RFCandidate,
   type RFCandidateJob,
   type RFJob,
@@ -29,6 +30,7 @@ import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/edit
 import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import type {
+  InterviewSummary,
   OpenJobOption,
   PlacementContextJob,
   PlacementSnapshot,
@@ -66,12 +68,16 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [candidates, clients, contacts, allJobs, placements, localResume, activity] = await Promise.all([
+  const [candidates, clients, contacts, allJobs, placements, interviews, localResume, activity] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
     recruiterflow.listAllJobs({ perPage: 100 }),
     prisma.placement.findMany({ where: { candidateRfId: id } }),
+    prisma.interview.findMany({
+      where: { candidateRfId: id },
+      orderBy: { scheduledAt: "asc" },
+    }),
     prisma.candidateResume.findUnique({
       where: { candidateRfId: id },
       select: {
@@ -200,6 +206,13 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     });
   }
 
+  const interviewsByJob = new Map<number, InterviewSummary[]>();
+  for (const iv of interviews) {
+    const list = interviewsByJob.get(iv.jobRfId) ?? [];
+    list.push(toInterviewSummary(iv));
+    interviewsByJob.set(iv.jobRfId, list);
+  }
+
   const placementJobs: PlacementContextJob[] = linkedSubmittals.map((j: RFCandidateJob) => {
     const jobRfId = j.job_id!;
     const clientRfId = j.client_company_id ?? 0;
@@ -259,8 +272,70 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       rfStageMovedAt: j.stage_moved ?? null,
       clientContacts,
       placement: snapshot,
+      interviews: interviewsByJob.get(jobRfId) ?? [],
     };
   });
+
+  // Placements may exist for jobs not in the RF candidate's `jobs` array —
+  // the RF list endpoint caches, so fresh submits/apps haven't propagated
+  // yet. Mirror those into the placement-actions context so scheduling still
+  // works for jobs attached only locally.
+  const rfJobIdSet = new Set(placementJobs.map((j) => j.jobRfId));
+  const localOnlyJobs: PlacementContextJob[] = placements
+    .filter((p) => !rfJobIdSet.has(p.jobRfId))
+    .map((p) => {
+      const rfJob = allJobs.find((j) => j.id === p.jobRfId) ?? null;
+      const job = rfJob ? normalizeJob(rfJob) : null;
+      const clientRaw = clients.find((cl) => cl.id === p.clientRfId) ?? null;
+      const client = clientRaw ? normalizeClient(clientRaw) : null;
+      const clientContacts = contacts
+        .filter((ct) => ct.client_company_id === p.clientRfId)
+        .map((ct) => {
+          const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
+          const fullName = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
+          return { id: ct.id, name: fullName, title: ct.current_designation ?? "", email: firstEmail };
+        });
+      return {
+        jobRfId: p.jobRfId,
+        jobTitle: job?.title ?? "(job)",
+        clientRfId: p.clientRfId,
+        clientName: client?.name ?? "",
+        clientFeePct: client?.feePct ?? null,
+        rfStageBucket: "sourced" as PipelineBucket,
+        rfStageName: null,
+        rfStageMovedAt: null,
+        clientContacts,
+        placement: {
+          id: p.id,
+          stage: p.stage as PlacementSnapshot["stage"],
+          syncedToRf: p.syncedToRf,
+          offerSalary: p.offerSalary,
+          offerCurrency: p.offerCurrency,
+          offerTitle: p.offerTitle,
+          offerStartDate: p.offerStartDate?.toISOString() ?? null,
+          offerNotes: p.offerNotes,
+          acceptedSalary: p.acceptedSalary,
+          acceptedCurrency: p.acceptedCurrency,
+          feePercentage: p.feePercentage,
+          feeTotal: p.feeTotal,
+          minFee: p.minFee,
+          guaranteePeriodDays: p.guaranteePeriodDays,
+          billingContactName: p.billingContactName,
+          billingContactEmail: p.billingContactEmail,
+          hiringManagerName: p.hiringManagerName,
+          hiringManagerEmail: p.hiringManagerEmail,
+          expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
+          placementNotes: p.placementNotes,
+          startConfirmedAt: p.startConfirmedAt?.toISOString() ?? null,
+          cancelledAt: p.stage === "cancelled" ? p.updatedAt.toISOString() : null,
+          cancellationReason: null,
+          cancellationDetail: null,
+          rejectedAt: p.stage === "rejected" ? p.updatedAt.toISOString() : null,
+        },
+        interviews: interviewsByJob.get(p.jobRfId) ?? [],
+      };
+    });
+  placementJobs.push(...localOnlyJobs);
 
   return (
     <CandidateProfileBoundary>
@@ -451,6 +526,28 @@ function collectTags(c: RFCandidate): Set<string> {
   (c.tags ?? []).forEach(push);
   (c.attributes ?? []).forEach(push);
   return out;
+}
+
+type InterviewRow = Awaited<ReturnType<typeof prisma.interview.findMany>>[number];
+
+function toInterviewSummary(iv: InterviewRow): InterviewSummary {
+  const attendees = Array.isArray(iv.clientAttendees)
+    ? (iv.clientAttendees as { name?: string; email?: string }[])
+        .map((a) => ({ name: a.name ?? "", email: a.email ?? "" }))
+        .filter((a) => a.name || a.email)
+    : [];
+  return {
+    id: iv.id,
+    scheduledAt: iv.scheduledAt.toISOString(),
+    durationMin: iv.durationMin,
+    type: iv.type as InterviewSummary["type"],
+    status: iv.status as InterviewSummary["status"],
+    source: iv.source as InterviewSummary["source"],
+    meetLink: iv.meetLink,
+    attendees,
+    candidatePhone: iv.candidatePhone,
+    notes: iv.notes,
+  };
 }
 
 function stageLabel(stageName: string | null | undefined): string {

@@ -6,18 +6,24 @@ import {
   Ban,
   Briefcase,
   CalendarClock,
+  CalendarPlus,
   CheckCircle2,
   ChevronDown,
+  Clock,
   DollarSign,
   Handshake,
   Loader2,
+  MapPin,
+  PhoneCall,
   Plus,
   RotateCcw,
   Save,
   Sparkles,
+  Trash2,
   UploadCloud,
   UserCheck,
   UserX,
+  Video,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -37,13 +43,18 @@ import {
   recordPlacement,
   rejectCandidateJob,
   removeCancelledFromJob,
-  scheduleInterview,
   sendInterviewConfirmationEmail,
   sendOfferAcceptanceEmail,
   sendRejectionEmail,
   sendSubmittalEmail,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
+import {
+  cancelInterview,
+  rescheduleInterview,
+  scheduleInterview,
+  type InterviewType,
+} from "@/app/candidates/[id]/interview-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import { sendEmailAction } from "@/app/email/actions";
@@ -75,6 +86,20 @@ export type PlacementContextJob = {
   rfStageMovedAt: string | null;
   clientContacts: ClientContactRef[];
   placement: PlacementSnapshot | null;
+  interviews: InterviewSummary[];
+};
+
+export type InterviewSummary = {
+  id: string;
+  scheduledAt: string;
+  durationMin: number;
+  type: "phone_screen" | "video" | "in_person";
+  status: "scheduled" | "completed" | "cancelled" | "rescheduled";
+  source: "ace_scheduled" | "client_scheduled";
+  meetLink: string | null;
+  attendees: { name: string; email: string }[];
+  candidatePhone: string | null;
+  notes: string | null;
 };
 
 export type PlacementSnapshot = {
@@ -133,6 +158,8 @@ export function PlacementActions({
   const [placementFor, setPlacementFor] = useState<PlacementContextJob | null>(null);
   const [confirmFor, setConfirmFor] = useState<PlacementContextJob | null>(null);
   const [scheduleFor, setScheduleFor] = useState<PlacementContextJob | null>(null);
+  const [clientInviteFor, setClientInviteFor] = useState<PlacementContextJob | null>(null);
+  const [rescheduleFor, setRescheduleFor] = useState<InterviewSummary | null>(null);
   const [rejectFor, setRejectFor] = useState<PlacementContextJob | null>(null);
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
   const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
@@ -193,12 +220,15 @@ export function PlacementActions({
           <JobActionRow
             key={j.jobRfId}
             job={j}
+            candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
             onOffer={() => setOfferFor(j)}
             onPlacement={() => setPlacementFor(j)}
             onConfirm={() => setConfirmFor(j)}
             onSchedule={() => setScheduleFor(j)}
+            onClientInvite={() => setClientInviteFor(j)}
             onReject={() => setRejectFor(j)}
             onCancel={() => setCancelFor(j)}
+            onReschedule={(iv) => setRescheduleFor(iv)}
           />
         ))}
       </div>
@@ -226,9 +256,25 @@ export function PlacementActions({
       )}
       {scheduleFor && (
         <ScheduleInterviewDialog
-          candidateRfId={candidateRfId}
+          candidateRef={{ candidateRfId }}
+          candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
+          candidateEmail={candidateEmail}
           job={scheduleFor}
           onClose={() => setScheduleFor(null)}
+        />
+      )}
+      {clientInviteFor && (
+        <ClientInviteDialog
+          candidateRef={{ candidateRfId }}
+          candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
+          job={clientInviteFor}
+          onClose={() => setClientInviteFor(null)}
+        />
+      )}
+      {rescheduleFor && (
+        <RescheduleDialog
+          interview={rescheduleFor}
+          onClose={() => setRescheduleFor(null)}
         />
       )}
       {rejectFor && (
@@ -342,20 +388,26 @@ function ReferenceCheckCompose({
 
 function JobActionRow({
   job,
+  candidateName,
   onOffer,
   onPlacement,
   onConfirm,
   onSchedule,
+  onClientInvite,
   onReject,
   onCancel,
+  onReschedule,
 }: {
   job: PlacementContextJob;
+  candidateName: string;
   onOffer: () => void;
   onPlacement: () => void;
   onConfirm: () => void;
   onSchedule: () => void;
+  onClientInvite: () => void;
   onReject: () => void;
   onCancel: () => void;
+  onReschedule: (iv: InterviewSummary) => void;
 }) {
   const effective: Bucket = (job.placement?.stage ?? job.rfStageBucket) as Bucket;
   const isCancelled = effective === "cancelled";
@@ -369,41 +421,52 @@ function JobActionRow({
   const badgeSuffix = badgeSuffixFor(effective, job);
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-border bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-      <div className="flex min-w-0 flex-1 items-center gap-4">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 text-sm font-semibold text-navy">
-            <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="truncate">{job.jobTitle}</span>
-          </div>
-          {job.clientName && (
-            <div className="mt-0.5 pl-[1.375rem] text-xs text-muted-foreground">{job.clientName}</div>
-          )}
-          {isCancelled && job.placement?.cancellationReason && (
-            <div className="mt-0.5 pl-[1.375rem] text-[11px] text-red-700">
-              Reason: {CANCEL_REASON_LABELS[job.placement.cancellationReason] ?? job.placement.cancellationReason}
-              {job.placement.cancellationDetail ? ` — ${job.placement.cancellationDetail}` : ""}
+    <div className="space-y-2 rounded-xl border border-border bg-white p-4 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 text-sm font-semibold text-navy">
+              <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="truncate">{job.jobTitle}</span>
             </div>
-          )}
+            {job.clientName && (
+              <div className="mt-0.5 pl-[1.375rem] text-xs text-muted-foreground">{job.clientName}</div>
+            )}
+            {isCancelled && job.placement?.cancellationReason && (
+              <div className="mt-0.5 pl-[1.375rem] text-[11px] text-red-700">
+                Reason: {CANCEL_REASON_LABELS[job.placement.cancellationReason] ?? job.placement.cancellationReason}
+                {job.placement.cancellationDetail ? ` — ${job.placement.cancellationDetail}` : ""}
+              </div>
+            )}
+          </div>
+          <div className="shrink-0">
+            <StageBadge
+              bucket={effective}
+              label={isCancelled || isRejected ? null : job.rfStageName ?? null}
+              suffix={badgeSuffix}
+            />
+          </div>
         </div>
-        <div className="shrink-0">
-          <StageBadge
-            bucket={effective}
-            label={isCancelled || isRejected ? null : job.rfStageName ?? null}
-            suffix={badgeSuffix}
-          />
-        </div>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
         {isActive && !isPendingStart && (
-          <button
-            type="button"
-            onClick={onSchedule}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
-          >
-            <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={onSchedule}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+            >
+              <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
+            </button>
+            <button
+              type="button"
+              onClick={onClientInvite}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+              title="Log an interview the client is scheduling themselves — adds to your calendar only"
+            >
+              <CalendarPlus className="h-3.5 w-3.5" /> Client Sending Invite
+            </button>
+          </>
         )}
         {(isInterviewing || isOffer) && (
           <button
@@ -463,7 +526,17 @@ function JobActionRow({
         {isCancelled && job.placement && (
           <CancelledRowActions placementId={job.placement.id} />
         )}
+        </div>
       </div>
+
+      {job.interviews.length > 0 && (
+        <InterviewList
+          interviews={job.interviews}
+          candidateName={candidateName}
+          jobTitle={job.jobTitle}
+          onReschedule={onReschedule}
+        />
+      )}
     </div>
   );
 }
@@ -1119,16 +1192,22 @@ function ConfirmStartDialog({
 // ---------------- Schedule Interview dialog ----------------
 
 function ScheduleInterviewDialog({
-  candidateRfId,
+  candidateRef,
+  candidateName,
+  candidateEmail,
   job,
   onClose,
 }: {
-  candidateRfId: number;
+  candidateRef: { candidateRfId?: number; candidateId?: string };
+  candidateName: string;
+  candidateEmail?: string;
   job: PlacementContextJob;
   onClose: () => void;
 }) {
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [durationMin, setDurationMin] = useState<number>(30);
+  const [type, setType] = useState<InterviewType>("video");
   const [interviewerId, setInterviewerId] = useState<string>("");
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
@@ -1157,49 +1236,71 @@ function ScheduleInterviewDialog({
       return;
     }
     startSave(async () => {
+      const attendees = interviewerName.trim()
+        ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
+        : [];
       const result = await scheduleInterview({
-        candidateRfId,
+        candidateRfId: candidateRef.candidateRfId ?? null,
+        candidateId: candidateRef.candidateId ?? null,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
         scheduledAt: new Date(scheduledAt).toISOString(),
-        interviewerName: interviewerName.trim(),
-        interviewerEmail: interviewerEmail.trim(),
+        durationMin,
+        type,
+        attendees,
         notes: notes.trim(),
+        source: "ace_scheduled",
+        jobTitle: job.jobTitle,
+        clientName: job.clientName,
+        candidateName,
       });
       if (!result.ok) {
         setErr(result.error);
         toast.error("Couldn't schedule interview", { description: result.error });
         return;
       }
-      const emailResult = await sendInterviewConfirmationEmail({
-        candidateRfId,
-        jobRfId: job.jobRfId,
-        clientRfId: job.clientRfId,
-        jobTitle: job.jobTitle,
-        clientCompanyName: job.clientName,
-        scheduledAt: new Date(scheduledAt).toISOString(),
-      });
-      if (emailResult.ok) {
-        const v = emailResult.value;
-        if (v.status === "sent") {
-          toast.success("Interview scheduled", { description: `Confirmation email sent to ${v.to}.` });
-        } else if (v.status === "drafted") {
-          toast.success("Interview scheduled", { description: "Confirmation email saved to your Gmail Drafts." });
-        } else if (v.status === "skipped") {
-          toast.success("Interview scheduled", {
-            description:
-              v.reason === "no_recipient"
-                ? "No candidate email on file — email skipped."
-                : v.reason === "missing"
-                  ? "No Interview Confirmation template found. Set one in Settings."
-                  : "Interview Confirmation template is inactive.",
-          });
+      // Candidate confirmation email only applies to RF candidates today — the
+      // templated flow is keyed on candidateRfId. Local candidates skip this
+      // step; a unified templated flow lands with the next batch.
+      if (candidateRef.candidateRfId != null) {
+        const emailResult = await sendInterviewConfirmationEmail({
+          candidateRfId: candidateRef.candidateRfId,
+          jobRfId: job.jobRfId,
+          clientRfId: job.clientRfId,
+          jobTitle: job.jobTitle,
+          clientCompanyName: job.clientName,
+          scheduledAt: new Date(scheduledAt).toISOString(),
+        });
+        if (emailResult.ok) {
+          const v = emailResult.value;
+          if (v.status === "sent") {
+            toast.success("Interview scheduled", { description: `Confirmation email sent to ${v.to}.` });
+          } else if (v.status === "drafted") {
+            toast.success("Interview scheduled", { description: "Confirmation email saved to your Gmail Drafts." });
+          } else if (v.status === "skipped") {
+            toast.success("Interview scheduled", {
+              description:
+                v.reason === "no_recipient"
+                  ? "No candidate email on file — email skipped."
+                  : v.reason === "missing"
+                    ? "No Interview Confirmation template found. Set one in Settings."
+                    : "Interview Confirmation template is inactive.",
+            });
+          } else {
+            toast.success("Interview scheduled", { description: `Confirmation email failed: ${v.error}` });
+          }
         } else {
-          toast.success("Interview scheduled", { description: `Confirmation email failed: ${v.error}` });
+          toast.success("Interview scheduled", { description: `Confirmation email failed: ${emailResult.error}` });
         }
       } else {
-        toast.success("Interview scheduled", { description: `Confirmation email failed: ${emailResult.error}` });
+        toast.success("Interview scheduled", {
+          description:
+            result.value.meetLink
+              ? "Added to your calendar. Meet link created."
+              : "Added to your calendar.",
+        });
       }
+      void candidateEmail; // not currently used here; confirmation uses templated flow
       onClose();
       router.refresh();
     });
@@ -1210,20 +1311,39 @@ function ScheduleInterviewDialog({
   return (
     <Modal title="Schedule interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <div className="grid grid-cols-1 gap-3">
-        <div>
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Job</div>
-          <div className="mt-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-navy">
-            {job.jobTitle}
-          </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm sm:col-span-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
+            <input
+              type="number"
+              min={5}
+              step={5}
+              value={durationMin}
+              onChange={(e) => setDurationMin(Math.max(5, Number(e.target.value) || 30))}
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
         </div>
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
-          <input
-            type="datetime-local"
-            value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as InterviewType)}
             className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
+          >
+            <option value="phone_screen">Phone Screen</option>
+            <option value="video">Video (Google Meet)</option>
+            <option value="in_person">In-Person</option>
+          </select>
         </label>
         {hasContacts && (
           <label className="block text-sm">
@@ -1251,12 +1371,328 @@ function ScheduleInterviewDialog({
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
       <div className="mt-3 rounded-lg border border-dashed border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-        Calendar invite delivery lands with the calendar integration on Day 4. For now we log the interview to activity.
+        Event is added to your Google Calendar for tracking. Candidate and client invite delivery with attendees lands in the next batch.
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Schedule" />
     </Modal>
   );
+}
+
+function ClientInviteDialog({
+  candidateRef,
+  candidateName,
+  job,
+  onClose,
+}: {
+  candidateRef: { candidateRfId?: number; candidateId?: string };
+  candidateName: string;
+  job: PlacementContextJob;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [scheduledAt, setScheduledAt] = useState<string>("");
+  const [durationMin, setDurationMin] = useState<number>(30);
+  const [type, setType] = useState<InterviewType>("video");
+  const [interviewerName, setInterviewerName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  function onSave() {
+    setErr(null);
+    if (!scheduledAt) {
+      setErr("Pick a date and time.");
+      return;
+    }
+    startSave(async () => {
+      const attendees = interviewerName.trim() ? [{ name: interviewerName.trim(), email: "" }] : [];
+      const result = await scheduleInterview({
+        candidateRfId: candidateRef.candidateRfId ?? null,
+        candidateId: candidateRef.candidateId ?? null,
+        jobRfId: job.jobRfId,
+        clientRfId: job.clientRfId,
+        scheduledAt: new Date(scheduledAt).toISOString(),
+        durationMin,
+        type,
+        attendees,
+        notes: notes.trim(),
+        source: "client_scheduled",
+        jobTitle: job.jobTitle,
+        clientName: job.clientName,
+        candidateName,
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't record interview", { description: result.error });
+        return;
+      }
+      toast.success("Logged client-scheduled interview", {
+        description: "Added to your calendar for tracking. No invites were sent to candidate or client.",
+      });
+      onClose();
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal
+      title="Client sending invite"
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+    >
+      <p className="mb-3 text-xs text-muted-foreground">
+        Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
+        log it for tracking and drop it on your calendar — no invite is sent to the candidate or client.
+      </p>
+      <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm sm:col-span-2">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
+            <input
+              type="number"
+              min={5}
+              step={5}
+              value={durationMin}
+              onChange={(e) => setDurationMin(Math.max(5, Number(e.target.value) || 30))}
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+        </div>
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as InterviewType)}
+            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            <option value="phone_screen">Phone Screen</option>
+            <option value="video">Video</option>
+            <option value="in_person">In-Person</option>
+          </select>
+        </label>
+        <LabeledField label="Interviewer name (optional)" value={interviewerName} onChange={setInterviewerName} />
+        <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
+      </div>
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Log interview" />
+    </Modal>
+  );
+}
+
+function RescheduleDialog({
+  interview,
+  onClose,
+}: {
+  interview: InterviewSummary;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [scheduledAt, setScheduledAt] = useState<string>(() => toDatetimeLocalValue(interview.scheduledAt));
+  const [durationMin, setDurationMin] = useState<number>(interview.durationMin);
+  const [err, setErr] = useState<string | null>(null);
+  const [isPending, startSave] = useTransition();
+
+  function onSave() {
+    setErr(null);
+    if (!scheduledAt) {
+      setErr("Pick a date and time.");
+      return;
+    }
+    startSave(async () => {
+      const result = await rescheduleInterview({
+        interviewId: interview.id,
+        scheduledAt: new Date(scheduledAt).toISOString(),
+        durationMin,
+      });
+      if (!result.ok) {
+        setErr(result.error);
+        toast.error("Couldn't reschedule", { description: result.error });
+        return;
+      }
+      toast.success("Interview rescheduled");
+      onClose();
+      router.refresh();
+    });
+  }
+
+  return (
+    <Modal title="Reschedule interview" onClose={onClose}>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <label className="block text-sm sm:col-span-2">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+          <input
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+        </label>
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
+          <input
+            type="number"
+            min={5}
+            step={5}
+            value={durationMin}
+            onChange={(e) => setDurationMin(Math.max(5, Number(e.target.value) || 30))}
+            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+        </label>
+      </div>
+      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Reschedule" />
+    </Modal>
+  );
+}
+
+function InterviewList({
+  interviews,
+  candidateName,
+  jobTitle,
+  onReschedule,
+}: {
+  interviews: InterviewSummary[];
+  candidateName: string;
+  jobTitle: string;
+  onReschedule: (iv: InterviewSummary) => void;
+}) {
+  const sorted = [...interviews].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  return (
+    <div className="mt-2 space-y-1.5 border-t border-border pt-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Interviews ({sorted.length})
+      </div>
+      <ul className="space-y-1.5">
+        {sorted.map((iv) => (
+          <InterviewRow key={iv.id} iv={iv} candidateName={candidateName} jobTitle={jobTitle} onReschedule={onReschedule} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function InterviewRow({
+  iv,
+  onReschedule,
+}: {
+  iv: InterviewSummary;
+  candidateName: string;
+  jobTitle: string;
+  onReschedule: (iv: InterviewSummary) => void;
+}) {
+  const router = useRouter();
+  const [isCancelling, startCancel] = useTransition();
+  const when = new Date(iv.scheduledAt);
+  const isPast = when.getTime() < Date.now();
+  const isCancelled = iv.status === "cancelled";
+  const kindIcon =
+    iv.type === "phone_screen" ? PhoneCall : iv.type === "video" ? Video : MapPin;
+  const Icon = kindIcon;
+
+  function onCancel() {
+    if (!confirm("Cancel this interview? The calendar event will be removed.")) return;
+    startCancel(async () => {
+      const result = await cancelInterview(iv.id);
+      if (!result.ok) {
+        toast.error("Couldn't cancel", { description: result.error });
+        return;
+      }
+      toast.success("Interview cancelled");
+      router.refresh();
+    });
+  }
+
+  return (
+    <li
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
+        isCancelled
+          ? "border-border bg-muted/30 text-muted-foreground line-through"
+          : isPast
+            ? "border-border bg-muted/30 text-muted-foreground"
+            : "border-border bg-muted/10 text-navy",
+      )}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <div className="truncate font-medium">
+            {formatInterviewWhen(when)} · {iv.durationMin}m · {formatInterviewType(iv.type)}
+          </div>
+          <div className="truncate text-[11px] text-muted-foreground">
+            {iv.source === "client_scheduled" ? "Client-scheduled" : "Ace-scheduled"}
+            {iv.attendees.length > 0 ? ` · with ${iv.attendees.map((a) => a.name).join(", ")}` : ""}
+            {iv.meetLink ? ` · Meet` : ""}
+          </div>
+        </div>
+      </div>
+      {!isCancelled && !isPast && (
+        <div className="flex items-center gap-1">
+          {iv.meetLink && (
+            <a
+              href={iv.meetLink}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-border bg-white px-2 py-1 font-semibold text-navy hover:border-brand/40 hover:text-brand-dark"
+            >
+              Open Meet
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => onReschedule(iv)}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 font-semibold text-navy hover:border-brand/40 hover:text-brand-dark"
+          >
+            <Clock className="h-3 w-3" /> Reschedule
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isCancelling}
+            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 font-semibold text-red-700 hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+          >
+            {isCancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+            Cancel
+          </button>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function formatInterviewType(t: InterviewType): string {
+  if (t === "phone_screen") return "Phone Screen";
+  if (t === "video") return "Video";
+  return "In-Person";
+}
+
+function formatInterviewWhen(d: Date): string {
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: sameYear ? undefined : "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function toDatetimeLocalValue(iso: string): string {
+  // Convert ISO into the local-time string shape `datetime-local` expects
+  // (YYYY-MM-DDTHH:mm). The browser displays this in the user's local zone.
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 // ---------------- Reject dialog ----------------

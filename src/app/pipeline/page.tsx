@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/page-header";
-import { PipelineView, type PipelineRow, type PlacementDetails } from "@/app/pipeline/pipeline-view";
+import { PipelineView, type NextInterview, type PipelineRow, type PlacementDetails } from "@/app/pipeline/pipeline-view";
 import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
@@ -39,10 +39,27 @@ export default async function PipelinePage({
   let error: string | null = null;
 
   try {
-    const [candidates, placements] = await Promise.all([
+    const [candidates, placements, interviews] = await Promise.all([
       recruiterflow.listAllCandidates({ perPage: 100 }),
       prisma.placement.findMany(),
+      prisma.interview.findMany({
+        where: { status: "scheduled", scheduledAt: { gte: new Date() } },
+        orderBy: { scheduledAt: "asc" },
+        select: { candidateRfId: true, jobRfId: true, scheduledAt: true, type: true },
+      }),
     ]);
+
+    // (candidateRfId, jobRfId) -> earliest upcoming interview
+    const nextByKey = new Map<string, NextInterview>();
+    for (const iv of interviews) {
+      if (iv.candidateRfId == null) continue;
+      const key = `${iv.candidateRfId}:${iv.jobRfId}`;
+      if (nextByKey.has(key)) continue; // first match wins (orderBy asc)
+      nextByKey.set(key, {
+        scheduledAt: iv.scheduledAt.toISOString(),
+        type: iv.type as NextInterview["type"],
+      });
+    }
 
     const placementByKey = new Map<string, (typeof placements)[number]>();
     for (const p of placements) {
@@ -91,6 +108,7 @@ export default async function PipelinePage({
         daysInStage: daysBetween(p.updatedAt.toISOString()),
         isKept: rfEntry?.isKept ?? false,
         placement: toPlacementDetails(p),
+        nextInterview: nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null,
       });
     }
 
@@ -112,6 +130,7 @@ export default async function PipelinePage({
         daysInStage: daysBetween(r.stageMovedAt),
         isKept: r.isKept,
         placement: null,
+        nextInterview: nextByKey.get(`${r.candidateId}:${r.jobId}`) ?? null,
       });
     }
 
