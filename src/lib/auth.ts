@@ -23,6 +23,12 @@ export const authOptions: NextAuthOptions = {
             "profile",
             "https://www.googleapis.com/auth/gmail.send",
             "https://www.googleapis.com/auth/calendar.events",
+            // Meet space settings — used to set accessType=OPEN on the
+            // Meet that Calendar auto-creates for video interviews. Users
+            // who signed in before this scope was added need to sign out
+            // and back in; the Meet setup call degrades gracefully if the
+            // scope is missing so the event still works.
+            "https://www.googleapis.com/auth/meetings.space.settings",
           ].join(" "),
         },
       },

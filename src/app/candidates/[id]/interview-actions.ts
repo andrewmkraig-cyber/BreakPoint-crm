@@ -5,12 +5,12 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
-  addAttendeeToEvent,
   createCalendarEvent,
   deleteCalendarEvent,
+  setMeetOpenAccess,
   updateCalendarEvent,
+  updateEventAsInvite,
 } from "@/lib/google-calendar";
-import { sendGmail, plainToHtml } from "@/lib/gmail";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
 // Ace-local candidates (candidateId cuid). The Interview model is polymorphic
@@ -180,6 +180,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   // Meet link auto-creation is enabled for video regardless of source.
   let googleEventIdMine: string | null = null;
   let meetLink: string | null = null;
+  let meetingCode: string | null = null;
   try {
     const ev = await createCalendarEvent({
       userId: user.id,
@@ -193,11 +194,25 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
     });
     googleEventIdMine = ev.eventId;
     meetLink = ev.meetLink;
+    meetingCode = ev.meetingCode;
   } catch (e) {
     return {
       ok: false,
       error: e instanceof Error ? `Calendar create failed: ${e.message}` : "Calendar create failed.",
     };
+  }
+
+  // Meet spaces start with RESTRICTED access by default, which forces the
+  // host to approve every join. Flip to OPEN so anyone with the link can
+  // walk in. Fail soft — if the user hasn't granted the Meet scope yet,
+  // we still ship the interview, we just log the reason.
+  if (meetingCode && input.type === "video") {
+    const result = await setMeetOpenAccess({ userId: user.id, meetingCode });
+    if (!result.ok) {
+      console.warn(
+        `[scheduleInterview] Meet access flip failed — users may need to manually set "Anyone with the link". Reason: ${result.error}`,
+      );
+    }
   }
 
   try {
@@ -388,90 +403,68 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
   }
 }
 
-// ---- Add-attendee + send email (client / candidate) ----
+// ---- Send native Google Calendar invite (replaces Gmail send) ----
+//
+// The "email composer" UI is really a calendar event editor in disguise:
+// the subject field writes to event.summary, the body field writes to
+// event.description, and sending PATCHes the event while adding the
+// attendee with sendUpdates="all" so Google ships the native ICS invite
+// (Accept / Maybe / Decline) instead of a free-form email.
+//
+// One event, two invites: when the client invite sends, both the
+// existing creator and the newly-added client get updated; when the
+// candidate invite sends, the client + candidate + creator all get the
+// final version. Google handles the diff.
 
 export type SendInvitePartyInput = {
   interviewId: string;
   party: "client" | "candidate";
   attendeeEmail: string;
   attendeeName?: string;
-  to: string[];
-  cc?: string[];
-  bcc?: string[];
-  subject: string;
-  bodyText: string;
+  subject: string; // becomes event.summary
+  bodyText: string; // becomes event.description
 };
 
 export type SendInvitePartyResult =
-  | { ok: true; value: { gmailMessageId: string; googleEventId: string | null } }
+  | { ok: true; value: { googleEventId: string } }
   | { ok: false; error: string };
 
-// Patches the interview's calendar event to add the party as an attendee,
-// then fires the custom templated email via Gmail. The googleEventIdClient
-// or googleEventIdCandidate column is updated once both steps succeed,
-// acting as a "delivered" audit flag.
 export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<SendInvitePartyResult> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
   if (!input.attendeeEmail.trim()) return { ok: false, error: "Attendee email required." };
-  if (input.to.length === 0) return { ok: false, error: "At least one recipient required." };
-  if (!input.subject.trim()) return { ok: false, error: "Subject required." };
-  if (!input.bodyText.trim()) return { ok: false, error: "Body required." };
+  if (!input.subject.trim()) return { ok: false, error: "Event title required." };
+  if (!input.bodyText.trim()) return { ok: false, error: "Event description required." };
 
   const interview = await prisma.interview.findUnique({
     where: { id: input.interviewId },
     select: {
       id: true,
       googleEventIdMine: true,
-      googleEventIdClient: true,
-      googleEventIdCandidate: true,
       candidateRfId: true,
       candidateId: true,
     },
   });
   if (!interview) return { ok: false, error: "Interview not found." };
   if (!interview.googleEventIdMine) {
-    return { ok: false, error: "No calendar event linked to this interview — can't add attendee." };
+    return { ok: false, error: "No calendar event linked to this interview." };
   }
 
-  // 1. Patch the event to add the attendee. sendUpdates=none because our
-  //    own Gmail message is the invite we want the recipient to see.
   try {
-    await addAttendeeToEvent({
+    await updateEventAsInvite({
       userId: user.id,
       eventId: interview.googleEventIdMine,
-      attendee: { email: input.attendeeEmail, displayName: input.attendeeName },
-      sendUpdates: false,
+      summary: input.subject.trim(),
+      description: input.bodyText,
+      newAttendee: { email: input.attendeeEmail, displayName: input.attendeeName },
     });
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? `Calendar attendee add failed: ${e.message}` : "Calendar attendee add failed.",
+      error: e instanceof Error ? `Calendar invite failed: ${e.message}` : "Calendar invite failed.",
     };
   }
 
-  // 2. Send the custom templated email.
-  let sent: { id: string; threadId: string };
-  try {
-    sent = await sendGmail({
-      userId: user.id,
-      from: user.email,
-      fromName: user.name ?? undefined,
-      to: input.to,
-      cc: input.cc,
-      bcc: input.bcc,
-      subject: input.subject.trim(),
-      bodyText: input.bodyText,
-      bodyHtml: plainToHtml(input.bodyText),
-    });
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? `Attendee added, but email failed: ${e.message}` : "Email send failed.",
-    };
-  }
-
-  // 3. Flag the invite delivered on the interview row.
   const data =
     input.party === "client"
       ? { googleEventIdClient: interview.googleEventIdMine }
@@ -488,10 +481,9 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       subjectId,
       metadata: {
         interviewId: interview.id,
-        gmailMessageId: sent.id,
-        to: input.to,
-        cc: input.cc,
-        subject: input.subject,
+        attendeeEmail: input.attendeeEmail,
+        eventSummary: input.subject,
+        deliveredVia: "calendar",
       },
     },
   });
@@ -499,6 +491,6 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
   return {
     ok: true,
-    value: { gmailMessageId: sent.id, googleEventId: interview.googleEventIdMine },
+    value: { googleEventId: interview.googleEventIdMine },
   };
 }

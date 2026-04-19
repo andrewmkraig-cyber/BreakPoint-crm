@@ -748,7 +748,7 @@ function LocalClientInviteComposer({
   );
   return (
     <EmailComposer
-      title="Send client interview confirmation"
+      title="Send client calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: invite.clientContactEmail ? [invite.clientContactEmail] : [],
@@ -763,7 +763,7 @@ function LocalClientInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      sendLabel="Send + add to calendar"
+      sendLabel="Send Invite"
       onClose={onDone}
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
@@ -775,9 +775,6 @@ function LocalClientInviteComposer({
           party: "client",
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
-          to: draft.to,
-          cc: draft.cc,
-          bcc: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });
@@ -785,7 +782,9 @@ function LocalClientInviteComposer({
           toast.error("Client invite failed", { description: result.error });
           throw new Error(result.error);
         }
-        toast.success("Client invite sent + added to calendar");
+        toast.success("Client calendar invite sent", {
+          description: "They'll see Accept / Maybe / Decline in their inbox.",
+        });
         onDone();
       }}
     />
@@ -817,7 +816,7 @@ function LocalCandidateInviteComposer({
   );
   return (
     <EmailComposer
-      title="Send candidate interview prep"
+      title="Send candidate calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: candidateEmail ? [candidateEmail] : [],
@@ -832,7 +831,7 @@ function LocalCandidateInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      sendLabel="Send + add to calendar"
+      sendLabel="Send Invite"
       onClose={onDone}
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
@@ -844,9 +843,6 @@ function LocalCandidateInviteComposer({
           party: "candidate",
           attendeeEmail: draft.to[0],
           attendeeName: candidateName || undefined,
-          to: draft.to,
-          cc: draft.cc,
-          bcc: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });
@@ -854,7 +850,9 @@ function LocalCandidateInviteComposer({
           toast.error("Candidate invite failed", { description: result.error });
           throw new Error(result.error);
         }
-        toast.success("Candidate invite sent + added to calendar");
+        toast.success("Candidate calendar invite sent", {
+          description: "They'll see Accept / Maybe / Decline in their inbox.",
+        });
         onDone();
       }}
     />

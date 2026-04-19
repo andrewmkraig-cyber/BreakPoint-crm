@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 
 // Drop-in replacement for <input type="datetime-local"> that enforces
@@ -28,6 +28,23 @@ export function DateTime15Picker({
   const { datePart, timePart } = splitValue(value);
 
   const timeOptions = useMemo(() => buildTimeOptions(), []);
+
+  // Defensive snap: if the caller hands us a value whose time part isn't
+  // on a 15-min boundary (e.g. a reschedule dialog initializing from a
+  // legacy row that predates this picker), normalize it upward. Without
+  // this the <select> would show the placeholder but the parent state
+  // would still hold the off-grid time.
+  useEffect(() => {
+    if (!datePart || !timePart) return;
+    const snapped = snapTimePart(timePart);
+    if (snapped !== timePart) {
+      onChange(`${datePart}T${snapped}`);
+    }
+    // We intentionally omit onChange from deps; callers typically pass an
+    // inline arrow fn that would cause an infinite loop. The effect is
+    // keyed on value parts which capture the real input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datePart, timePart]);
 
   function setDate(d: string) {
     if (!d) {
@@ -95,6 +112,23 @@ function splitValue(v: string): { datePart: string; timePart: string } {
   const date = v.slice(0, idx);
   const time = v.slice(idx + 1, idx + 6); // "HH:mm"
   return { datePart: date, timePart: time };
+}
+
+// Snaps an "HH:mm" string to the nearest 15-min slot. Clamps overflow
+// to 23:45 to stay within a single day — rollover to the next day would
+// silently change the date part, which is a worse surprise than a 15-min
+// ceiling.
+function snapTimePart(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(":");
+  const h = Number(hStr);
+  const m = Number(mStr);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return "00:00";
+  const totalMin = h * 60 + m;
+  const snapped = Math.round(totalMin / 15) * 15;
+  const clamped = Math.min(Math.max(snapped, 0), 23 * 60 + 45);
+  const sh = Math.floor(clamped / 60);
+  const sm = clamped % 60;
+  return `${pad2(sh)}:${pad2(sm)}`;
 }
 
 function buildTimeOptions(): { value: string; label: string }[] {

@@ -2547,7 +2547,7 @@ function ClientInviteComposer({
   const hasClient = Boolean(invite.clientContactEmail);
   return (
     <EmailComposer
-      title="Send client interview confirmation"
+      title="Send client calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: hasClient ? [invite.clientContactEmail] : [],
@@ -2564,9 +2564,9 @@ function ClientInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      helperText="Use Template to load a saved client template. Insert Field adds merge tokens. Adds the client as an attendee on the calendar event when you send."
-      sendLabel="Send + add to calendar"
-      sendingLabel="Sending…"
+      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event — Google emails them the native invite with Accept / Maybe / Decline."
+      sendLabel="Send Invite"
+      sendingLabel="Sending invite…"
       onClose={onDone}
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
@@ -2578,9 +2578,6 @@ function ClientInviteComposer({
           party: "client",
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
-          to: draft.to,
-          cc: draft.cc,
-          bcc: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });
@@ -2588,7 +2585,9 @@ function ClientInviteComposer({
           toast.error("Client invite failed", { description: result.error });
           throw new Error(result.error);
         }
-        toast.success("Client invite sent + added to calendar");
+        toast.success("Client calendar invite sent", {
+          description: "They'll see Accept / Maybe / Decline in their inbox.",
+        });
         onDone();
       }}
     />
@@ -2612,7 +2611,7 @@ function CandidateInviteComposer({
   const values = buildInterviewMergeValues({ invite, candidateFirstName, candidateLastName, candidateEmail });
   return (
     <EmailComposer
-      title="Send candidate interview prep"
+      title="Send candidate calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: candidateEmail ? [candidateEmail] : [],
@@ -2629,8 +2628,8 @@ function CandidateInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      helperText="Use Template to load a saved candidate template. Adds the candidate as an attendee on the calendar event when you send."
-      sendLabel="Send + add to calendar"
+      helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the candidate to the event — Google emails them the native invite with Accept / Maybe / Decline."
+      sendLabel="Send Invite"
       sendingLabel="Sending…"
       onClose={onDone}
       onSend={async (draft: EmailDraft) => {
@@ -2643,9 +2642,6 @@ function CandidateInviteComposer({
           party: "candidate",
           attendeeEmail: draft.to[0],
           attendeeName: candidateFullName || undefined,
-          to: draft.to,
-          cc: draft.cc,
-          bcc: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });
@@ -2653,7 +2649,9 @@ function CandidateInviteComposer({
           toast.error("Candidate invite failed", { description: result.error });
           throw new Error(result.error);
         }
-        toast.success("Candidate invite sent + added to calendar");
+        toast.success("Candidate calendar invite sent", {
+          description: "They'll see Accept / Maybe / Decline in their inbox.",
+        });
         onDone();
       }}
     />

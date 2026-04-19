@@ -73,6 +73,7 @@ export type CreateCalendarEventResult = {
   eventId: string;
   htmlLink: string | null;
   meetLink: string | null;
+  meetingCode: string | null;
 };
 
 export async function createCalendarEvent(
@@ -88,10 +89,12 @@ export async function createCalendarEvent(
     description: input.description ?? "",
     start: { dateTime: start.toISOString(), timeZone: tz },
     end: { dateTime: end.toISOString(), timeZone: tz },
-    // Always set these — no harm for non-video events and they're required
-    // for the candidate + client sides of a Meet call.
+    // Guest controls: invitees can invite others + see the guest list, but
+    // can't move/edit the event. Matches the "everyone knows who's on the
+    // call" default the recruiter expects.
+    guestsCanInviteOthers: true,
     guestsCanSeeOtherGuests: true,
-    guestsCanInviteOthers: false,
+    guestsCanModify: false,
   };
   if (input.attendees && input.attendees.length > 0) {
     body.attendees = input.attendees.map((a) => ({ email: a.email, displayName: a.displayName }));
@@ -129,6 +132,7 @@ export async function createCalendarEvent(
     htmlLink?: string;
     hangoutLink?: string;
     conferenceData?: {
+      conferenceId?: string;
       entryPoints?: { entryPointType?: string; uri?: string }[];
     };
   };
@@ -137,11 +141,55 @@ export async function createCalendarEvent(
     const ep = json.conferenceData?.entryPoints?.find((e) => e.entryPointType === "video");
     return ep?.uri ?? null;
   })();
+  const meetingCode = json.conferenceData?.conferenceId ?? extractMeetCodeFromLink(meetLink);
   return {
     eventId: json.id,
     htmlLink: json.htmlLink ?? null,
     meetLink,
+    meetingCode,
   };
+}
+
+function extractMeetCodeFromLink(link: string | null): string | null {
+  if (!link) return null;
+  // Format is https://meet.google.com/abc-defg-hij
+  const m = link.match(/meet\.google\.com\/([a-z0-9-]+)/i);
+  return m?.[1] ?? null;
+}
+
+// Sets the Meet space's access type to OPEN so anyone with the link can
+// join without a host letting them in. Needs the
+// `https://www.googleapis.com/auth/meetings.space.settings` OAuth scope
+// (see src/lib/auth.ts). Fails soft: if the call errors (missing scope,
+// API not enabled, etc.) we return the error so the caller can log it,
+// but the calendar event is already created either way.
+export async function setMeetOpenAccess(params: {
+  userId: string;
+  meetingCode: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const accessToken = await getFreshAccessToken(params.userId);
+    const url = new URL(
+      `https://meet.googleapis.com/v2beta/spaces/${encodeURIComponent(params.meetingCode)}`,
+    );
+    url.searchParams.set("updateMask", "config.accessType");
+    const res = await fetch(url.toString(), {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ config: { accessType: "OPEN" } }),
+      cache: "no-store",
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      return { ok: false, error: `Meet spaces.patch ${res.status}: ${text.slice(0, 300) || "no body"}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "unknown" };
+  }
 }
 
 export async function updateCalendarEvent(params: {
@@ -175,6 +223,65 @@ export async function updateCalendarEvent(params: {
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Calendar update failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
+// Used by the two-step interview invite flow: PATCH the event to update
+// summary (= composer subject) + description (= composer body) and APPEND
+// a new attendee. sendUpdates="all" so Google emails the native invite
+// with ICS attachment to the attendee — they get Accept / Maybe / Decline
+// buttons native to Gmail / iCal / whatever client they use, not a
+// second free-form email.
+export type UpdateEventAsInviteInput = {
+  userId: string;
+  eventId: string;
+  summary: string;
+  description: string;
+  newAttendee: { email: string; displayName?: string };
+};
+
+export async function updateEventAsInvite(input: UpdateEventAsInviteInput): Promise<void> {
+  const accessToken = await getFreshAccessToken(input.userId);
+  const getUrl = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
+  );
+  const getRes = await fetch(getUrl.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!getRes.ok) {
+    const text = await getRes.text().catch(() => "");
+    throw new Error(`Calendar get failed (${getRes.status}): ${text || "no body"}`);
+  }
+  const ev = (await getRes.json()) as { attendees?: { email: string; displayName?: string }[] };
+  const existing = ev.attendees ?? [];
+  const already = existing.some(
+    (a) => (a.email ?? "").toLowerCase() === input.newAttendee.email.toLowerCase(),
+  );
+  const next = already
+    ? existing
+    : [...existing, { email: input.newAttendee.email, displayName: input.newAttendee.displayName }];
+
+  const patchUrl = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
+  );
+  patchUrl.searchParams.set("sendUpdates", "all");
+  const patchRes = await fetch(patchUrl.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      summary: input.summary,
+      description: input.description,
+      attendees: next,
+    }),
+    cache: "no-store",
+  });
+  if (!patchRes.ok) {
+    const text = await patchRes.text().catch(() => "");
+    throw new Error(`Calendar patch failed (${patchRes.status}): ${text || "no body"}`);
   }
 }
 
