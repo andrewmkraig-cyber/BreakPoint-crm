@@ -4,14 +4,12 @@ import { ArrowLeft, FileDown, Link2, Mail, MapPin, Phone } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 
-export const dynamic = "force-dynamic";
-
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
-export default async function LocalCandidatePage({ params }: { params: { id: string } }) {
+export async function LocalCandidateProfile({ id }: { id: string }) {
   const candidate = await prisma.candidate.findUnique({
-    where: { id: params.id },
+    where: { id },
     select: {
       id: true,
       firstName: true,
@@ -139,7 +137,7 @@ export default async function LocalCandidatePage({ params }: { params: { id: str
                   {candidate.resumeUploadedAt ? ` · uploaded ${candidate.resumeUploadedAt.toLocaleDateString()}` : ""}
                 </div>
                 <a
-                  href={`/candidates/local/${candidate.id}/resume`}
+                  href={`/api/local-candidate-resumes/${candidate.id}`}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:bg-muted"
                 >
                   <FileDown className="h-3 w-3" /> Download

@@ -236,7 +236,7 @@ export async function createCandidate(
     }
 
     revalidatePath("/candidates");
-    revalidatePath(`/candidates/local/${created.id}`);
+    revalidatePath(`/candidates/${created.id}`);
     return { ok: true, value: { id: created.id } };
   } catch (e) {
     // eslint-disable-next-line no-console

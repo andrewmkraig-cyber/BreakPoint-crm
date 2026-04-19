@@ -202,7 +202,7 @@ export function NewCandidateForm() {
               description: `A candidate with this email already exists: ${dupName}`,
               action: {
                 label: "Open profile",
-                onClick: () => router.push(`/candidates/local/${dupId}`),
+                onClick: () => router.push(`/candidates/${dupId}`),
               },
             });
             setSaveError(`A candidate with this email already exists: ${dupName}`);
@@ -214,7 +214,7 @@ export function NewCandidateForm() {
         }
         // Staging row was consumed server-side — no need to discard on the client.
         toast.success(`Saved ${payload.first_name} ${payload.last_name}`.trim(), { id: toastId });
-        router.push(`/candidates/local/${result.value.id}`);
+        router.push(`/candidates/${result.value.id}`);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Unexpected save error.";
         // eslint-disable-next-line no-console

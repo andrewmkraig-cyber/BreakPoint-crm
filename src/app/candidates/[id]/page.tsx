@@ -27,6 +27,7 @@ import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-note
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
 import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
+import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import type {
   OpenJobOption,
   PlacementContextJob,
@@ -57,6 +58,11 @@ type EducationRaw = {
 type NoteRaw = { id?: number; note?: string; added_time?: string; added_by?: { name?: string } | null };
 
 export default async function CandidateProfilePage({ params }: { params: { id: string } }) {
+  // Ace-native candidates have cuid string ids; RF candidates have numeric ids.
+  // Route accordingly so /candidates/[id] works for both without a separate URL.
+  if (!/^\d+$/.test(params.id)) {
+    return <LocalCandidateProfile id={params.id} />;
+  }
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
