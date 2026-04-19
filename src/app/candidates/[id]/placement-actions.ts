@@ -235,7 +235,7 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
       where: { id: input.placementId },
       select: { jobRfId: true, candidateRfId: true },
     });
-    const sync = existing
+    const sync = existing && existing.candidateRfId != null
       ? await trySyncRfStage({
           candidateRfId: existing.candidateRfId,
           jobRfId: existing.jobRfId,
@@ -446,27 +446,31 @@ export async function removeCancelledFromJob(input: RemoveFromJobInput): Promise
     await prisma.placement.delete({ where: { id: input.placementId } });
 
     // Best-effort RF cleanup — remove the job from the candidate's jobs[].
+    // Skip entirely for Ace-local candidates (no RF id to reach).
     let rfSynced = false;
     let rfError: string | null = null;
-    try {
-      const rf = await recruiterflow.getCandidate(p.candidateRfId);
-      const existing = Array.isArray(rf.jobs) ? rf.jobs : [];
-      const filtered: Array<{ job_id: number; stage_name?: string }> = [];
-      for (const j of existing) {
-        if (typeof j?.job_id !== "number") continue;
-        if (j.job_id === p.jobRfId) continue;
-        const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
-        if (j.stage_name) entry.stage_name = j.stage_name;
-        filtered.push(entry);
+    if (p.candidateRfId != null) {
+      const candidateRfId = p.candidateRfId;
+      try {
+        const rf = await recruiterflow.getCandidate(candidateRfId);
+        const existing = Array.isArray(rf.jobs) ? rf.jobs : [];
+        const filtered: Array<{ job_id: number; stage_name?: string }> = [];
+        for (const j of existing) {
+          if (typeof j?.job_id !== "number") continue;
+          if (j.job_id === p.jobRfId) continue;
+          const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
+          if (j.stage_name) entry.stage_name = j.stage_name;
+          filtered.push(entry);
+        }
+        const resp = (await recruiterflow.updateCandidate({ id: candidateRfId, jobs: filtered })) as { RESULT?: string };
+        if (resp && typeof resp === "object" && "RESULT" in resp && resp.RESULT && resp.RESULT !== "SUCCESS") {
+          rfError = `RecruiterFlow returned ${resp.RESULT}`;
+        } else {
+          rfSynced = true;
+        }
+      } catch (e) {
+        rfError = e instanceof Error ? e.message : "Unknown RF error";
       }
-      const resp = (await recruiterflow.updateCandidate({ id: p.candidateRfId, jobs: filtered })) as { RESULT?: string };
-      if (resp && typeof resp === "object" && "RESULT" in resp && resp.RESULT && resp.RESULT !== "SUCCESS") {
-        rfError = `RecruiterFlow returned ${resp.RESULT}`;
-      } else {
-        rfSynced = true;
-      }
-    } catch (e) {
-      rfError = e instanceof Error ? e.message : "Unknown RF error";
     }
 
     await prisma.actionLog.create({

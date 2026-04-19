@@ -3,40 +3,79 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, FileDown, Link2, Mail, MapPin, Phone } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
+import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
 export async function LocalCandidateProfile({ id }: { id: string }) {
-  const candidate = await prisma.candidate.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      email: true,
-      phone: true,
-      currentDesignation: true,
-      currentOrganization: true,
-      location: true,
-      linkedinProfile: true,
-      skills: true,
-      notes: true,
-      experience: true,
-      education: true,
-      resumeFilename: true,
-      resumeMimeType: true,
-      resumeSize: true,
-      resumeUploadedAt: true,
-      createdAt: true,
-    },
-  });
+  const [candidate, placements, allJobs, allClients] = await Promise.all([
+    prisma.candidate.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        currentDesignation: true,
+        currentOrganization: true,
+        location: true,
+        linkedinProfile: true,
+        skills: true,
+        notes: true,
+        experience: true,
+        education: true,
+        resumeFilename: true,
+        resumeMimeType: true,
+        resumeSize: true,
+        resumeUploadedAt: true,
+        createdAt: true,
+      },
+    }),
+    prisma.placement.findMany({
+      where: { candidateId: id },
+      select: { jobRfId: true, stage: true },
+    }),
+    // Read-side RF lookups are fine under the no-RF-on-create rule — we're
+    // populating the Submit/Apply dropdowns with existing open jobs.
+    recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
+    recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
+  ]);
 
   if (!candidate) notFound();
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
   const experience = (candidate.experience as unknown as Exp[] | null) ?? [];
   const education = (candidate.education as unknown as Edu[] | null) ?? [];
+
+  const linkedByJob = new Map<number, string>();
+  for (const p of placements) linkedByJob.set(p.jobRfId, p.stage);
+
+  const clientById = new Map<number, (typeof allClients)[number]>();
+  for (const cl of allClients) clientById.set(cl.id, cl);
+
+  const openJobs: LocalOpenJob[] = allJobs
+    .filter((j) => j.is_open !== false)
+    .map((raw) => {
+      const j = normalizeJob(raw);
+      const client = j.companyId != null ? clientById.get(j.companyId) : null;
+      return {
+        jobRfId: j.id,
+        jobTitle: j.title,
+        clientRfId: j.companyId ?? 0,
+        clientName: client ? normalizeClient(client).name : j.company,
+        alreadyLinked: linkedByJob.has(j.id),
+        linkedStage: linkedByJob.get(j.id) ?? null,
+      };
+    })
+    .sort((a, b) => {
+      if (a.alreadyLinked !== b.alreadyLinked) return a.alreadyLinked ? 1 : -1;
+      const c = (a.clientName || "").localeCompare(b.clientName || "");
+      if (c !== 0) return c;
+      return (a.jobTitle || "").localeCompare(b.jobTitle || "");
+    });
 
   return (
     <div className="space-y-6">
@@ -52,6 +91,14 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
             ? `${candidate.currentDesignation ?? ""}${candidate.currentDesignation && candidate.currentOrganization ? " · " : ""}${candidate.currentOrganization ?? ""}`
             : "Saved to Ace — not yet synced to RecruiterFlow."
         }
+      />
+
+      <LocalCandidateActions
+        candidateId={candidate.id}
+        candidateName={fullName}
+        candidateFirstName={candidate.firstName}
+        candidateEmail={candidate.email}
+        openJobs={openJobs}
       />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

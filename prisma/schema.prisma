@@ -187,7 +187,12 @@ model ClientBenefitsFile {
 // the full placement history is on one row.
 model Placement {
   id                    String    @id @default(cuid())
-  candidateRfId         Int
+  // Exactly one of candidateRfId / candidateId is set. App-layer invariant,
+  // not enforced at the DB level — Postgres can't express XOR constraints
+  // across nullable columns. RF candidates keep using candidateRfId; Ace-
+  // local candidates use candidateId (cuid) and leave candidateRfId null.
+  candidateRfId         Int?
+  candidateId           String?
   jobRfId               Int
   clientRfId            Int
   stage                 String    // "offer" | "pending_start" | "hired"
@@ -231,10 +236,13 @@ model Placement {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
   createdBy             User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  candidate             Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@unique([candidateRfId, jobRfId])
+  @@unique([candidateId, jobRfId])
   @@index([clientRfId, stage])
   @@index([stage, expectedStartDate])
+  @@index([candidateId, stage])
 }
 
 // Ace-native candidate record. Created by /candidates/new — no RF
@@ -270,7 +278,8 @@ model Candidate {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  createdBy           User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy           User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  placements          Placement[]
 
   @@index([email])
   @@index([createdById, createdAt])

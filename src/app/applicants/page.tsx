@@ -75,9 +75,12 @@ export default async function ApplicantsPage() {
     });
 
     // Kept tab: local Placement rows with stage="kept". Enrich from RF
-    // candidate+job data for display.
+    // candidate+job data for display. Ace-local candidates (candidateRfId
+    // null) aren't rendered here yet — the Kept tab is RF-scoped until the
+    // local pipeline work lands.
     for (const p of placements) {
       if (p.stage !== "kept") continue;
+      if (p.candidateRfId == null) continue;
       const cand = candidateById.get(p.candidateRfId);
       const candName =
         cand?.name ??

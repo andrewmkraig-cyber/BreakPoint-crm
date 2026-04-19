@@ -74,6 +74,9 @@ export default async function PipelinePage({
       );
       const stageName = p.stage as Stage;
       if (!(stageName in counts)) continue;
+      // Pipeline rows are RF-scoped for now; Ace-local candidates use the
+      // local profile's own action list. Skip until a unified view lands.
+      if (p.candidateRfId == null) continue;
       counts[stageName] += 1;
       allRows.push({
         candidateId: p.candidateRfId,
