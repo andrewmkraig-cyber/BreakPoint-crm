@@ -184,7 +184,9 @@ export function NewCandidateForm() {
       education: form.education,
     };
     if (!payload.first_name.trim()) {
-      setSaveError("First name is required.");
+      const msg = "First name is required — resume parsing didn't fill it in, please type it manually.";
+      setSaveError(msg);
+      toast.error("Can't save yet", { description: msg });
       return;
     }
     startSave(async () => {

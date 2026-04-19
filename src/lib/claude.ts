@@ -146,6 +146,19 @@ export async function parseCandidateFields(params: {
         },
         title: resume.filename,
       });
+    } else if (looksLikeDocx(resume.filename, resume.mimeType)) {
+      // .docx is a zip — toString("utf-8") yields binary garbage Claude can't
+      // parse. Extract real text via mammoth first.
+      const docText = await extractDocxText(resume.data);
+      if (!docText.trim()) {
+        throw new Error("Couldn't read any text from the Word document. Try exporting it as a PDF and re-uploading.");
+      }
+      content.push({
+        type: "text",
+        text: `--- Resume (${resume.filename}) ---\n${docText.slice(0, 80_000)}`,
+      });
+    } else if (resume.mimeType === LEGACY_DOC_MIME || resume.filename.toLowerCase().endsWith(".doc")) {
+      throw new Error("Legacy .doc files aren't supported. Save the file as .docx or export to PDF and retry.");
     } else {
       content.push({
         type: "text",
