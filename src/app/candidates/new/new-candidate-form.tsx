@@ -97,10 +97,47 @@ export function NewCandidateForm() {
 
         if (!result.ok) {
           setParseError(result.error);
-          toast.error("Parse failed", { id: toastId, description: result.error });
+          const isUnparseableDocx = result.error.includes("DOCX_UNPARSEABLE");
+          toast.error(
+            isUnparseableDocx ? "Could not parse this resume format" : "Parse failed",
+            {
+              id: toastId,
+              description: isUnparseableDocx
+                ? "Please paste the resume text manually or try uploading as PDF instead."
+                : result.error,
+            },
+          );
           return;
         }
         const p = result.value.parsed;
+        // A "success" from the server can still contain all-null fields if
+        // the resume was a complex .docx and neither mammoth nor the raw-XML
+        // fallback could pull readable text. Counting populated fields up-
+        // front means the "parsed with Claude" badge only appears when
+        // something actually filled in.
+        const populatedFieldCount =
+          [
+            p.first_name,
+            p.last_name,
+            p.email,
+            p.phone,
+            p.current_designation,
+            p.current_organization,
+            p.location,
+            p.linkedin_profile,
+          ].filter((v) => typeof v === "string" && v.trim().length > 0).length +
+          (p.skills?.length ?? 0) +
+          (p.experience?.length ?? 0) +
+          (p.education?.length ?? 0);
+        if (populatedFieldCount === 0) {
+          setParseError("No fields could be extracted from this resume.");
+          toast.error("Could not parse this resume format", {
+            id: toastId,
+            description:
+              "Please paste the resume text manually or try uploading as PDF instead.",
+          });
+          return;
+        }
         // Claude sometimes omits current_designation/current_organization even
         // when the resume clearly has them — backfill from the first experience
         // row so the form always shows a value the user can confirm or edit.
