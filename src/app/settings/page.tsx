@@ -27,6 +27,7 @@ export default async function SettingsPage() {
     body: t.body,
     trigger: t.trigger,
     audience: t.audience,
+    category: t.category,
     isActive: t.isActive,
     updatedAt: t.updatedAt.toISOString(),
   }));

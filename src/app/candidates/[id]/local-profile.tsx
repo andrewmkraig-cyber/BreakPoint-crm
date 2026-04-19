@@ -6,12 +6,15 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getAppPreferences } from "@/lib/preferences";
 
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
 export async function LocalCandidateProfile({ id }: { id: string }) {
-  const [candidate, placements, interviews, allJobs, allClients] = await Promise.all([
+  const [candidate, placements, interviews, allJobs, allClients, session, prefs] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
       select: {
@@ -53,6 +56,8 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     // populating the Submit/Apply dropdowns with existing open jobs.
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
+    getServerSession(authOptions),
+    getAppPreferences(),
   ]);
 
   if (!candidate) notFound();
@@ -112,17 +117,33 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
   const jobRows: LocalJobRow[] = placements.map((p) => {
     const rfJob = allJobs.find((j) => j.id === p.jobRfId) ?? null;
     const job = rfJob ? normalizeJob(rfJob) : null;
-    const client = clientById.get(p.clientRfId) ?? null;
+    const clientRaw = clientById.get(p.clientRfId) ?? null;
+    const client = clientRaw ? normalizeClient(clientRaw) : null;
     return {
       placementId: p.id,
       jobRfId: p.jobRfId,
       jobTitle: job?.title ?? "(job)",
+      jobLocation: job?.location ?? "",
+      jobDescription: typeof rfJob?.description === "string" ? rfJob.description : "",
+      jobSalaryRange: job?.compensation ?? "",
       clientRfId: p.clientRfId,
-      clientName: client ? normalizeClient(client).name : job?.company ?? "",
+      clientName: client?.name ?? job?.company ?? "",
+      clientWebsite: client?.website ?? "",
+      clientLinkedIn: client?.linkedIn ?? "",
       stage: p.stage,
       interviews: interviewsByJob.get(p.jobRfId) ?? [],
     };
   });
+
+  const recruiter = (() => {
+    const email = session?.user?.email ?? "";
+    const fullName = session?.user?.name ?? "";
+    const firstName = fullName.split(/\s+/)[0] ?? "";
+    const phone = email
+      ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+      : "";
+    return { firstName, fullName, email, phone };
+  })();
 
   return (
     <div className="space-y-6">
@@ -153,6 +174,11 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           candidateId={candidate.id}
           candidateName={fullName}
           candidateEmail={candidate.email}
+          candidatePhone={candidate.phone}
+          candidateLocation={candidate.location}
+          candidateCurrentTitle={candidate.currentDesignation}
+          candidateCurrentEmployer={candidate.currentOrganization}
+          recruiter={recruiter}
           jobs={jobRows}
         />
       )}

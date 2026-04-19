@@ -9,7 +9,6 @@ import {
   deleteCalendarEvent,
   setMeetOpenAccess,
   updateCalendarEvent,
-  updateEventAsInvite,
 } from "@/lib/google-calendar";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
@@ -178,40 +177,34 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   // - client_scheduled: the client is sending their own invite. We put the
   //   event on the creator's calendar ONLY, and no emails go out.
   // Meet link auto-creation is enabled for video regardless of source.
+  // Calendar behavior:
+  // - ace_scheduled: save DB only. The Google events for the interview are
+  //   created later, one per attendee, when each invite composer sends.
+  //   That way client and candidate each get their own event/invite and
+  //   don't see each other on the attendee list.
+  // - client_scheduled: tracking event on creator's calendar (no attendees,
+  //   no emails, no Meet). Recruiter just wants it on their schedule while
+  //   the client sends their own invite.
   let googleEventIdMine: string | null = null;
-  let meetLink: string | null = null;
-  let meetingCode: string | null = null;
-  try {
-    const ev = await createCalendarEvent({
-      userId: user.id,
-      summary: calendarSummary(input),
-      description: calendarDescription(input),
-      startISO: when.toISOString(),
-      durationMin: input.durationMin,
-      attendees: [],
-      createMeet: input.type === "video",
-      sendUpdates: false,
-    });
-    googleEventIdMine = ev.eventId;
-    meetLink = ev.meetLink;
-    meetingCode = ev.meetingCode;
-  } catch (e) {
-    return {
-      ok: false,
-      error: e instanceof Error ? `Calendar create failed: ${e.message}` : "Calendar create failed.",
-    };
-  }
-
-  // Meet spaces start with RESTRICTED access by default, which forces the
-  // host to approve every join. Flip to OPEN so anyone with the link can
-  // walk in. Fail soft — if the user hasn't granted the Meet scope yet,
-  // we still ship the interview, we just log the reason.
-  if (meetingCode && input.type === "video") {
-    const result = await setMeetOpenAccess({ userId: user.id, meetingCode });
-    if (!result.ok) {
-      console.warn(
-        `[scheduleInterview] Meet access flip failed — users may need to manually set "Anyone with the link". Reason: ${result.error}`,
-      );
+  const meetLink: string | null = null;
+  if (input.source === "client_scheduled") {
+    try {
+      const ev = await createCalendarEvent({
+        userId: user.id,
+        summary: calendarSummary(input),
+        description: calendarDescription(input),
+        startISO: when.toISOString(),
+        durationMin: input.durationMin,
+        attendees: [],
+        createMeet: false,
+        sendUpdates: false,
+      });
+      googleEventIdMine = ev.eventId;
+    } catch (e) {
+      return {
+        ok: false,
+        error: e instanceof Error ? `Calendar create failed: ${e.message}` : "Calendar create failed.",
+      };
     }
   }
 
@@ -289,14 +282,32 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
   try {
     const existing = await prisma.interview.findUnique({
       where: { id: interviewId },
-      select: { id: true, status: true, googleEventIdMine: true, candidateRfId: true, candidateId: true },
+      select: {
+        id: true,
+        status: true,
+        googleEventIdMine: true,
+        googleEventIdClient: true,
+        googleEventIdCandidate: true,
+        candidateRfId: true,
+        candidateId: true,
+      },
     });
     if (!existing) return { ok: false, error: "Interview not found." };
     if (existing.status === "cancelled") return { ok: true };
 
-    if (existing.googleEventIdMine) {
+    // Delete every Google event tied to this interview. Invite events go out
+    // with sendUpdates="all" so Google sends cancellation emails to the
+    // attendees. The tracking event (client_scheduled only) has no
+    // attendees, so sendUpdates has no effect there.
+    const eventIds = [
+      { id: existing.googleEventIdMine, notify: false },
+      { id: existing.googleEventIdClient, notify: true },
+      { id: existing.googleEventIdCandidate, notify: true },
+    ];
+    for (const ev of eventIds) {
+      if (!ev.id) continue;
       try {
-        await deleteCalendarEvent({ userId: user.id, eventId: existing.googleEventIdMine, sendUpdates: false });
+        await deleteCalendarEvent({ userId: user.id, eventId: ev.id, sendUpdates: ev.notify });
       } catch {
         // best-effort
       }
@@ -349,6 +360,8 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
         scheduledAt: true,
         durationMin: true,
         googleEventIdMine: true,
+        googleEventIdClient: true,
+        googleEventIdCandidate: true,
         candidateRfId: true,
         candidateId: true,
       },
@@ -358,14 +371,22 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
 
     const durationMin = input.durationMin && input.durationMin > 0 ? input.durationMin : existing.durationMin;
 
-    if (existing.googleEventIdMine) {
+    // Push the new time to every related Google event. Invite events notify
+    // attendees (RSVP mail); tracking event is silent.
+    const eventIds = [
+      { id: existing.googleEventIdMine, notify: false },
+      { id: existing.googleEventIdClient, notify: true },
+      { id: existing.googleEventIdCandidate, notify: true },
+    ];
+    for (const ev of eventIds) {
+      if (!ev.id) continue;
       try {
         await updateCalendarEvent({
           userId: user.id,
-          eventId: existing.googleEventIdMine,
+          eventId: ev.id,
           startISO: when.toISOString(),
           durationMin,
-          sendUpdates: false,
+          sendUpdates: ev.notify,
         });
       } catch (e) {
         return {
@@ -440,24 +461,42 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     where: { id: input.interviewId },
     select: {
       id: true,
-      googleEventIdMine: true,
+      scheduledAt: true,
+      durationMin: true,
+      type: true,
+      meetLink: true,
+      meetConferenceId: true,
+      googleEventIdClient: true,
+      googleEventIdCandidate: true,
       candidateRfId: true,
       candidateId: true,
     },
   });
   if (!interview) return { ok: false, error: "Interview not found." };
-  if (!interview.googleEventIdMine) {
-    return { ok: false, error: "No calendar event linked to this interview." };
-  }
 
+  const needsMeet = interview.type === "video";
+  const hasExistingMeet = Boolean(interview.meetLink && interview.meetConferenceId);
+  // If the other party's event has already been created, we reuse its Meet.
+  // First party through creates a fresh Meet.
+  const createMeet = needsMeet && !hasExistingMeet;
+  const attachMeetConferenceId = needsMeet && hasExistingMeet ? interview.meetConferenceId ?? undefined : undefined;
+  const attachMeetLink = needsMeet && hasExistingMeet ? interview.meetLink ?? undefined : undefined;
+
+  let created: { eventId: string; meetLink: string | null; meetingCode: string | null };
   try {
-    await updateEventAsInvite({
+    const ev = await createCalendarEvent({
       userId: user.id,
-      eventId: interview.googleEventIdMine,
       summary: input.subject.trim(),
       description: input.bodyText,
-      newAttendee: { email: input.attendeeEmail, displayName: input.attendeeName },
+      startISO: interview.scheduledAt.toISOString(),
+      durationMin: interview.durationMin,
+      attendees: [{ email: input.attendeeEmail, displayName: input.attendeeName }],
+      createMeet,
+      attachMeetConferenceId,
+      attachMeetLink,
+      sendUpdates: true,
     });
+    created = { eventId: ev.eventId, meetLink: ev.meetLink, meetingCode: ev.meetingCode };
   } catch (e) {
     return {
       ok: false,
@@ -465,11 +504,33 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     };
   }
 
-  const data =
-    input.party === "client"
-      ? { googleEventIdClient: interview.googleEventIdMine }
-      : { googleEventIdCandidate: interview.googleEventIdMine };
-  await prisma.interview.update({ where: { id: input.interviewId }, data });
+  // Flip the newly-created Meet to OPEN access so anyone with the link can
+  // join without host approval. Fail soft — if the Meet scope isn't granted
+  // the invite still works, Meet just stays at default access.
+  if (createMeet && created.meetingCode) {
+    const meetResult = await setMeetOpenAccess({ userId: user.id, meetingCode: created.meetingCode });
+    if (!meetResult.ok) {
+      console.warn(
+        `[sendInterviewInvite] Meet open-access flip failed — users may need to manually set "Anyone with the link". Reason: ${meetResult.error}`,
+      );
+    }
+  }
+
+  // Persist: the per-party event id, and (on first invite only) the Meet
+  // identity so the second invite can attach the same Meet.
+  const updateData: {
+    googleEventIdClient?: string;
+    googleEventIdCandidate?: string;
+    meetLink?: string | null;
+    meetConferenceId?: string | null;
+  } = {};
+  if (input.party === "client") updateData.googleEventIdClient = created.eventId;
+  else updateData.googleEventIdCandidate = created.eventId;
+  if (createMeet && created.meetLink) {
+    updateData.meetLink = created.meetLink;
+    updateData.meetConferenceId = created.meetingCode ?? null;
+  }
+  await prisma.interview.update({ where: { id: input.interviewId }, data: updateData });
 
   const subjectId =
     interview.candidateRfId != null ? String(interview.candidateRfId) : interview.candidateId!;
@@ -483,6 +544,8 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
         interviewId: interview.id,
         attendeeEmail: input.attendeeEmail,
         eventSummary: input.subject,
+        googleEventId: created.eventId,
+        meetLink: created.meetLink,
         deliveredVia: "calendar",
       },
     },
@@ -491,6 +554,6 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
   return {
     ok: true,
-    value: { googleEventId: interview.googleEventIdMine },
+    value: { googleEventId: created.eventId },
   };
 }

@@ -37,6 +37,9 @@ import type {
 } from "@/app/candidates/[id]/placement-flows";
 import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getAppPreferences } from "@/lib/preferences";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -68,7 +71,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [candidates, clients, contacts, allJobs, placements, interviews, localResume, activity] = await Promise.all([
+  const [candidates, clients, contacts, allJobs, placements, interviews, localResume, activity, session, prefs] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
@@ -96,6 +99,8 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       take: 50,
       include: { user: { select: { name: true, email: true } } },
     }),
+    getServerSession(authOptions),
+    getAppPreferences(),
   ]);
 
   // Two-source lookup: /candidate/list caches for 60s (Next Data Cache), so a
@@ -218,6 +223,8 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     const clientRfId = j.client_company_id ?? 0;
     const clientRaw = clients.find((cl) => cl.id === clientRfId);
     const client = clientRaw ? normalizeClient(clientRaw) : null;
+    const jobRaw = allJobs.find((jj) => jj.id === jobRfId) ?? null;
+    const jobNorm = jobRaw ? normalizeJob(jobRaw) : null;
     const local = placementByJob.get(jobRfId);
     const snapshot: PlacementSnapshot | null = local
       ? {
@@ -264,8 +271,13 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     return {
       jobRfId,
       jobTitle: j.title ?? j.name ?? "(untitled job)",
+      jobLocation: jobNorm?.location ?? "",
+      jobDescription: typeof jobRaw?.description === "string" ? jobRaw.description : "",
+      jobSalaryRange: jobNorm?.compensation ?? "",
       clientRfId,
       clientName: client?.name ?? j.client_company_name ?? "",
+      clientWebsite: client?.website ?? "",
+      clientLinkedIn: client?.linkedIn ?? "",
       clientFeePct: client?.feePct ?? null,
       rfStageBucket: canonicalStage(j.stage_name),
       rfStageName: j.stage_name ?? null,
@@ -298,8 +310,13 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       return {
         jobRfId: p.jobRfId,
         jobTitle: job?.title ?? "(job)",
+        jobLocation: job?.location ?? "",
+        jobDescription: typeof rfJob?.description === "string" ? rfJob.description : "",
+        jobSalaryRange: job?.compensation ?? "",
         clientRfId: p.clientRfId,
         clientName: client?.name ?? "",
+        clientWebsite: client?.website ?? "",
+        clientLinkedIn: client?.linkedIn ?? "",
         clientFeePct: client?.feePct ?? null,
         rfStageBucket: "sourced" as PipelineBucket,
         rfStageName: null,
@@ -369,6 +386,19 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         candidateFirstName={extractedName.firstName}
         candidateLastName={extractedName.lastName}
         candidateEmail={extractedName.email}
+        candidatePhone={normalizePhone(c.phone_number)}
+        candidateLocation={locationLabel ?? ""}
+        candidateCurrentTitle={c.current_designation ?? ""}
+        candidateCurrentEmployer={c.current_organization ?? ""}
+        recruiter={(() => {
+          const email = session?.user?.email ?? "";
+          const fullName = session?.user?.name ?? "";
+          const firstName = fullName.split(/\s+/)[0] ?? "";
+          const phone = email
+            ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+            : "";
+          return { firstName, fullName, email, phone };
+        })()}
         jobs={placementJobs}
         openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
       />

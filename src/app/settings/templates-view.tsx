@@ -17,11 +17,13 @@ export type TemplateRow = {
   body: string;
   trigger: string | null;
   audience: string | null;
+  category: string | null;
   isActive: boolean;
   updatedAt: string;
 };
 
 const AUDIENCE_OPTIONS = ["client", "candidate", "internal"] as const;
+const CATEGORY_OPTIONS = ["interview", "submittal", "offer", "rejection", "reference"] as const;
 
 export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
   const [editing, setEditing] = useState<TemplateRow | "new" | null>(null);
@@ -67,6 +69,7 @@ function newTemplate(): TemplateRow {
     body: "",
     trigger: null,
     audience: null,
+    category: null,
     isActive: true,
     updatedAt: new Date().toISOString(),
   };
@@ -101,6 +104,7 @@ function TemplateCard({ tpl, onEdit }: { tpl: TemplateRow; onEdit: () => void })
         body: tpl.body,
         trigger: tpl.trigger,
         audience: tpl.audience,
+        category: tpl.category,
         isActive: next,
       });
       if (!result.ok) {
@@ -193,6 +197,7 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
   const [body, setBody] = useState(initial.body);
   const [trigger, setTrigger] = useState(initial.trigger ?? "");
   const [audience, setAudience] = useState(initial.audience ?? "");
+  const [category, setCategory] = useState(initial.category ?? "");
   const [isActive, setIsActive] = useState(initial.isActive);
   const [err, setErr] = useState<string | null>(null);
   const [isSaving, startSave] = useTransition();
@@ -241,6 +246,7 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
       body,
       trigger: trigger || null,
       audience: audience || null,
+      category: category || null,
       isActive,
     };
     startSave(async () => {
@@ -338,6 +344,24 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
                   </option>
                 ))}
               </select>
+            </label>
+            <label className="block text-sm">
+              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Category</span>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              >
+                <option value="">—</option>
+                {CATEGORY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-[11px] text-muted-foreground">
+                Groups templates in scoped dropdowns — e.g. the interview invite composers pull every template tagged &quot;interview&quot;.
+              </span>
             </label>
           </div>
           <label className="inline-flex items-center gap-2 text-xs text-navy">

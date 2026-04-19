@@ -62,9 +62,14 @@ export type CreateCalendarEventInput = {
   // If true, Google creates a Meet conference and returns the link in the
   // response's conferenceData.entryPoints. Only meaningful for video interviews.
   createMeet?: boolean;
+  // Attach a PRE-EXISTING Meet to this event instead of creating a new one.
+  // Used for the second invite so both the client-only and candidate-only
+  // events share the same Meet URL. Pass both the conferenceId and the
+  // existing meet link; we rebuild the conferenceData payload.
+  attachMeetConferenceId?: string;
+  attachMeetLink?: string;
   // If false (default), Google will NOT email attendees when the event is
-  // created. Used by the "Client Sending Invite" flow where the client is
-  // sending their own invite and we just want the event on MY calendar.
+  // created. sendUpdates=true ships the native ICS invite with RSVP buttons.
   sendUpdates?: boolean;
   location?: string;
 };
@@ -100,6 +105,7 @@ export async function createCalendarEvent(
     body.attendees = input.attendees.map((a) => ({ email: a.email, displayName: a.displayName }));
   }
   if (input.location) body.location = input.location;
+  const willAttachExistingMeet = Boolean(input.attachMeetConferenceId && input.attachMeetLink);
   if (input.createMeet) {
     body.conferenceData = {
       createRequest: {
@@ -107,12 +113,20 @@ export async function createCalendarEvent(
         conferenceSolutionKey: { type: "hangoutsMeet" },
       },
     };
+  } else if (willAttachExistingMeet) {
+    body.conferenceData = {
+      conferenceId: input.attachMeetConferenceId,
+      conferenceSolutionKey: { type: "hangoutsMeet" },
+      entryPoints: [
+        { entryPointType: "video", uri: input.attachMeetLink },
+      ],
+    };
   }
 
   const sendUpdates = input.sendUpdates ? "all" : "none";
   const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
   url.searchParams.set("sendUpdates", sendUpdates);
-  if (input.createMeet) url.searchParams.set("conferenceDataVersion", "1");
+  if (input.createMeet || willAttachExistingMeet) url.searchParams.set("conferenceDataVersion", "1");
 
   const res = await fetch(url.toString(), {
     method: "POST",

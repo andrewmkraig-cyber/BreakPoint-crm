@@ -34,6 +34,11 @@ export function PlacementActionsIsland(props: {
   candidateFirstName: string;
   candidateLastName: string;
   candidateEmail: string;
+  candidatePhone: string;
+  candidateLocation: string;
+  candidateCurrentTitle: string;
+  candidateCurrentEmployer: string;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
 }) {

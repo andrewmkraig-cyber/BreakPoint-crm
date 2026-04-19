@@ -12,7 +12,15 @@ async function main() {
 
   const rows = await prisma.interview.findMany({
     where: { candidateRfId, jobRfId },
-    select: { id: true, googleEventIdMine: true, createdById: true, scheduledAt: true, status: true },
+    select: {
+      id: true,
+      googleEventIdMine: true,
+      googleEventIdClient: true,
+      googleEventIdCandidate: true,
+      createdById: true,
+      scheduledAt: true,
+      status: true,
+    },
   });
   console.log(`Found ${rows.length} interview(s) for candidate ${candidateRfId} / job ${jobRfId}:`, rows);
 
@@ -23,13 +31,19 @@ async function main() {
   }
 
   for (const row of rows) {
-    if (row.googleEventIdMine) {
+    const ids = [
+      { key: "googleEventIdMine", id: row.googleEventIdMine, notify: false },
+      { key: "googleEventIdClient", id: row.googleEventIdClient, notify: true },
+      { key: "googleEventIdCandidate", id: row.googleEventIdCandidate, notify: true },
+    ];
+    for (const ev of ids) {
+      if (!ev.id) continue;
       try {
-        console.log(`Deleting Google event ${row.googleEventIdMine} (as user ${row.createdById})…`);
+        console.log(`Deleting Google event ${ev.id} (${ev.key}, notify=${ev.notify})…`);
         await deleteCalendarEvent({
           userId: row.createdById,
-          eventId: row.googleEventIdMine,
-          sendUpdates: false,
+          eventId: ev.id,
+          sendUpdates: ev.notify,
         });
         console.log("  Google event deleted.");
       } catch (e) {

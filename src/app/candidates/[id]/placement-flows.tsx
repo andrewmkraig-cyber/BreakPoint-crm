@@ -56,10 +56,6 @@ import {
   sendInterviewInvite,
   type InterviewType,
 } from "@/app/candidates/[id]/interview-actions";
-import {
-  CANDIDATE_INTERVIEW_PREP_TRIGGER,
-  CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
-} from "@/app/settings/template-constants";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
@@ -84,8 +80,13 @@ export type OpenJobOption = {
 export type PlacementContextJob = {
   jobRfId: number;
   jobTitle: string;
+  jobLocation: string;
+  jobDescription: string;
+  jobSalaryRange: string;
   clientRfId: number;
   clientName: string;
+  clientWebsite: string;
+  clientLinkedIn: string;
   clientFeePct: number | null;
   rfStageBucket: PipelineBucket;
   rfStageName: string | null;
@@ -119,9 +120,24 @@ type InviteFlowState = {
   type: InterviewType;
   meetLink: string | null;
   jobTitle: string;
+  jobLocation: string;
+  jobDescription: string;
+  jobSalaryRange: string;
   clientName: string;
+  clientWebsite: string;
+  clientLinkedIn: string;
   clientContactName: string;
   clientContactEmail: string;
+};
+
+type CandidateInviteContext = {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  location: string;
+  currentTitle: string;
+  currentEmployer: string;
 };
 
 export type PlacementSnapshot = {
@@ -166,6 +182,11 @@ export function PlacementActions({
   candidateFirstName,
   candidateLastName,
   candidateEmail,
+  candidatePhone,
+  candidateLocation,
+  candidateCurrentTitle,
+  candidateCurrentEmployer,
+  recruiter,
   jobs,
   openJobs,
 }: {
@@ -173,6 +194,11 @@ export function PlacementActions({
   candidateFirstName: string;
   candidateLastName: string;
   candidateEmail: string;
+  candidatePhone: string;
+  candidateLocation: string;
+  candidateCurrentTitle: string;
+  candidateCurrentEmployer: string;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
 }) {
@@ -295,18 +321,32 @@ export function PlacementActions({
       {inviteFlow && inviteFlow.step === "client" && (
         <ClientInviteComposer
           invite={inviteFlow}
-          candidateFirstName={candidateFirstName}
-          candidateLastName={candidateLastName}
-          candidateEmail={candidateEmail}
+          candidate={{
+            firstName: candidateFirstName,
+            lastName: candidateLastName,
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
+          recruiter={recruiter}
           onDone={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
         />
       )}
       {inviteFlow && inviteFlow.step === "candidate" && (
         <CandidateInviteComposer
           invite={inviteFlow}
-          candidateFirstName={candidateFirstName}
-          candidateLastName={candidateLastName}
-          candidateEmail={candidateEmail}
+          candidate={{
+            firstName: candidateFirstName,
+            lastName: candidateLastName,
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
+          recruiter={recruiter}
           onDone={() => {
             setInviteFlow(null);
             toast.success("Interview scheduled", {
@@ -1329,7 +1369,12 @@ function ScheduleInterviewDialog({
         type,
         meetLink: result.value.meetLink,
         jobTitle: job.jobTitle,
+        jobLocation: job.jobLocation,
+        jobDescription: job.jobDescription,
+        jobSalaryRange: job.jobSalaryRange,
         clientName: job.clientName,
+        clientWebsite: job.clientWebsite,
+        clientLinkedIn: job.clientLinkedIn,
         clientContactName: interviewerName.trim(),
         clientContactEmail: interviewerEmail.trim(),
       });
@@ -1720,6 +1765,14 @@ function formatInterviewWhen(d: Date): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function formatInterviewDate(d: Date): string {
+  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatInterviewTime(d: Date): string {
+  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
 function toDatetimeLocalValue(iso: string): string {
@@ -2479,24 +2532,48 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
 
 function buildInterviewMergeValues(args: {
   invite: InviteFlowState;
-  candidateFirstName: string;
-  candidateLastName: string;
-  candidateEmail: string;
+  candidate: CandidateInviteContext;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
 }) {
-  const candidateFullName = [args.candidateFirstName, args.candidateLastName].filter(Boolean).join(" ");
+  const candidateFullName = [args.candidate.firstName, args.candidate.lastName].filter(Boolean).join(" ");
+  const when = new Date(args.invite.scheduledAtISO);
   return {
-    candidateFirstName: args.candidateFirstName,
-    candidateLastName: args.candidateLastName,
+    // Candidate
+    candidateFirstName: args.candidate.firstName,
+    candidateLastName: args.candidate.lastName,
     candidateFullName,
-    candidateEmail: args.candidateEmail,
-    clientContactFullName: args.invite.clientContactName,
-    clientContactFirstName: args.invite.clientContactName.split(/\s+/)[0] ?? "",
+    candidateEmail: args.candidate.email,
+    candidatePhone: args.candidate.phone,
+    candidateLocation: args.candidate.location,
+    candidateCurrentTitle: args.candidate.currentTitle,
+    candidateCurrentEmployer: args.candidate.currentEmployer,
+    // Client
     clientCompanyName: args.invite.clientName,
+    clientCompanyWebsite: args.invite.clientWebsite,
+    clientCompanyLinkedIn: args.invite.clientLinkedIn,
+    clientContactFirstName: args.invite.clientContactName.split(/\s+/)[0] ?? "",
+    clientContactFullName: args.invite.clientContactName,
+    clientContactEmail: args.invite.clientContactEmail,
+    // Job
     jobTitle: args.invite.jobTitle,
-    interviewType: formatInterviewType(args.invite.type),
-    interviewDateTime: formatInterviewWhen(new Date(args.invite.scheduledAtISO)),
+    jobLocation: args.invite.jobLocation,
+    jobDescription: args.invite.jobDescription,
+    jobSalaryRange: args.invite.jobSalaryRange,
+    // Interview
+    interviewDate: formatInterviewDate(when),
+    interviewTime: formatInterviewTime(when),
+    interviewDateTime: formatInterviewWhen(when),
     interviewDuration: `${args.invite.durationMin} min`,
+    interviewType: formatInterviewType(args.invite.type),
     interviewMeetLink: args.invite.meetLink ?? "",
+    interviewerName: args.invite.clientContactName,
+    interviewerEmail: args.invite.clientContactEmail,
+    // Recruiter
+    recruiterFirstName: args.recruiter.firstName,
+    recruiterFullName: args.recruiter.fullName,
+    recruiterName: args.recruiter.fullName,
+    recruiterEmail: args.recruiter.email,
+    recruiterPhone: args.recruiter.phone,
   };
 }
 
@@ -2531,19 +2608,17 @@ function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", cand
 
 function ClientInviteComposer({
   invite,
-  candidateFirstName,
-  candidateLastName,
-  candidateEmail,
+  candidate,
+  recruiter,
   onDone,
 }: {
   invite: InviteFlowState;
-  candidateFirstName: string;
-  candidateLastName: string;
-  candidateEmail: string;
+  candidate: CandidateInviteContext;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
   onDone: () => void;
 }) {
-  const candidateFullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ");
-  const values = buildInterviewMergeValues({ invite, candidateFirstName, candidateLastName, candidateEmail });
+  const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
+  const values = buildInterviewMergeValues({ invite, candidate, recruiter });
   const hasClient = Boolean(invite.clientContactEmail);
   return (
     <EmailComposer
@@ -2557,9 +2632,7 @@ function ClientInviteComposer({
         body: applyMergeFieldsClient(fallbackBody(invite, "client", candidateFullName), values),
       }}
       showTemplatePicker
-      templateFilter={(t) =>
-        t.trigger === CLIENT_INTERVIEW_CONFIRMATION_TRIGGER || t.audience === "client"
-      }
+      templateFilter={(t) => t.category === "interview"}
       resolveTemplate={(t) => ({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
@@ -2596,19 +2669,18 @@ function ClientInviteComposer({
 
 function CandidateInviteComposer({
   invite,
-  candidateFirstName,
-  candidateLastName,
-  candidateEmail,
+  candidate,
+  recruiter,
   onDone,
 }: {
   invite: InviteFlowState;
-  candidateFirstName: string;
-  candidateLastName: string;
-  candidateEmail: string;
+  candidate: CandidateInviteContext;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
   onDone: () => void;
 }) {
-  const candidateFullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ");
-  const values = buildInterviewMergeValues({ invite, candidateFirstName, candidateLastName, candidateEmail });
+  const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
+  const candidateEmail = candidate.email;
+  const values = buildInterviewMergeValues({ invite, candidate, recruiter });
   return (
     <EmailComposer
       title="Send candidate calendar invite"
@@ -2621,9 +2693,7 @@ function CandidateInviteComposer({
         body: applyMergeFieldsClient(fallbackBody(invite, "candidate", candidateFullName), values),
       }}
       showTemplatePicker
-      templateFilter={(t) =>
-        t.trigger === CANDIDATE_INTERVIEW_PREP_TRIGGER || t.audience === "candidate"
-      }
+      templateFilter={(t) => t.category === "interview"}
       resolveTemplate={(t) => ({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),

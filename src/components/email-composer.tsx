@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, useTransition, type ReactNode } from "react";
-import { ChevronDown, Loader2, Send, Sparkles, X } from "lucide-react";
+import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { ChevronDown, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
+import { MERGE_FIELDS } from "@/lib/merge-fields";
 
 export type EmailDraft = {
   to: string[];
@@ -79,6 +80,50 @@ export function EmailComposer({
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [isApplying, startApply] = useTransition();
+
+  // Insert Field: tracks which control the cursor was last in so "Insert
+  // Field" knows whether to splice into the subject or the body. We also
+  // remember the caret/selection position since opening the dropdown
+  // (which triggers blur) would otherwise lose it.
+  const subjectRef = useRef<HTMLInputElement | null>(null);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  const [lastFocus, setLastFocus] = useState<"subject" | "body">("body");
+  const lastCaretRef = useRef<{ start: number; end: number } | null>(null);
+  const [fieldOpen, setFieldOpen] = useState(false);
+
+  function rememberCaret(el: HTMLInputElement | HTMLTextAreaElement) {
+    lastCaretRef.current = {
+      start: el.selectionStart ?? el.value.length,
+      end: el.selectionEnd ?? el.value.length,
+    };
+  }
+
+  function insertMergeToken(token: string) {
+    setFieldOpen(false);
+    const targetRef = lastFocus === "subject" ? subjectRef : bodyRef;
+    const el = targetRef.current;
+    if (!el) {
+      // Ref not mounted yet — fall back to append.
+      if (lastFocus === "subject") setSubject((prev) => prev + token);
+      else setBody((prev) => prev + token);
+      return;
+    }
+    const start = lastCaretRef.current?.start ?? el.value.length;
+    const end = lastCaretRef.current?.end ?? el.value.length;
+    const next = el.value.slice(0, start) + token + el.value.slice(end);
+    if (lastFocus === "subject") setSubject(next);
+    else setBody(next);
+    const pos = start + token.length;
+    requestAnimationFrame(() => {
+      el.focus();
+      try {
+        el.setSelectionRange(pos, pos);
+      } catch {
+        // Some input types reject selection ranges; ignore.
+      }
+      lastCaretRef.current = { start: pos, end: pos };
+    });
+  }
 
   useEffect(() => {
     if (!showTemplatePicker || templatesLoaded) return;
@@ -231,14 +276,39 @@ export function EmailComposer({
             </>
           )}
           <Row label="Subject">
-            <Input value={subject} onChange={setSubject} placeholder="Subject" />
+            <input
+              ref={subjectRef}
+              type="text"
+              value={subject}
+              placeholder="Subject"
+              onChange={(e) => setSubject(e.target.value)}
+              onFocus={(e) => {
+                setLastFocus("subject");
+                rememberCaret(e.currentTarget);
+              }}
+              onSelect={(e) => rememberCaret(e.currentTarget)}
+              onKeyUp={(e) => rememberCaret(e.currentTarget)}
+              onClick={(e) => rememberCaret(e.currentTarget)}
+              className={cn(
+                "w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60",
+                "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+              )}
+            />
           </Row>
         </div>
 
         <div className="min-h-0 flex-1 px-5 pb-3">
           <textarea
+            ref={bodyRef}
             value={body}
             onChange={(e) => setBody(e.target.value)}
+            onFocus={(e) => {
+              setLastFocus("body");
+              rememberCaret(e.currentTarget);
+            }}
+            onSelect={(e) => rememberCaret(e.currentTarget)}
+            onKeyUp={(e) => rememberCaret(e.currentTarget)}
+            onClick={(e) => rememberCaret(e.currentTarget)}
             rows={16}
             placeholder="Write your message, or click Generate with Claude below."
             className={cn(
@@ -293,6 +363,56 @@ export function EmailComposer({
                 )}
               </div>
             )}
+            <div className="relative">
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  // Prevent the button from stealing focus; we need the last
+                  // focused input/textarea to retain its caret so the token
+                  // splices in at the right spot.
+                  e.preventDefault();
+                }}
+                onClick={() => setFieldOpen((v) => !v)}
+                disabled={isSending || isGenerating}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                title={`Insert a merge field into the ${lastFocus}`}
+              >
+                <Variable className="h-3.5 w-3.5" /> Insert Field
+              </button>
+              {fieldOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setFieldOpen(false)} />
+                  <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+                    <div className="border-b border-border bg-muted/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Inserts into {lastFocus}
+                    </div>
+                    <ul className="max-h-80 overflow-y-auto py-1 text-sm">
+                      {groupedMergeFields().map(({ group, items }) => (
+                        <li key={group}>
+                          <div className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                            {group}
+                          </div>
+                          {items.map((f) => (
+                            <button
+                              key={f.token}
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => insertMergeToken(f.token)}
+                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-navy hover:bg-brand-tint"
+                            >
+                              <span>{f.label}</span>
+                              <code className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                                {f.token}
+                              </code>
+                            </button>
+                          ))}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
+            </div>
             {onGenerate && (
               <button
                 type="button"
@@ -474,4 +594,23 @@ function ContactMultiPicker({
       )}
     </div>
   );
+}
+
+// Groups MERGE_FIELDS by their `group` tag, preserving the array order so
+// the dropdown shows Candidate → Client → Job → Interview → Offer →
+// Recruiter regardless of how the author defines them.
+function groupedMergeFields(): { group: string; items: typeof MERGE_FIELDS[number][] }[] {
+  const ordered: { group: string; items: typeof MERGE_FIELDS[number][] }[] = [];
+  const seen = new Map<string, { group: string; items: typeof MERGE_FIELDS[number][] }>();
+  for (const f of MERGE_FIELDS) {
+    const key = f.group ?? "Other";
+    let bucket = seen.get(key);
+    if (!bucket) {
+      bucket = { group: key, items: [] };
+      seen.set(key, bucket);
+      ordered.push(bucket);
+    }
+    bucket.items.push(f);
+  }
+  return ordered;
 }

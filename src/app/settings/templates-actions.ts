@@ -31,6 +31,7 @@ export type EmailTemplateInput = {
   body: string;
   trigger: string | null;
   audience: string | null;
+  category: string | null;
   isActive: boolean;
 };
 
@@ -49,6 +50,7 @@ export async function upsertEmailTemplate(input: EmailTemplateInput): Promise<Re
         body: input.body,
         trigger: input.trigger?.trim() || null,
         audience: input.audience?.trim() || null,
+        category: input.category?.trim() || null,
         isActive: input.isActive,
       },
       update: {
@@ -57,6 +59,7 @@ export async function upsertEmailTemplate(input: EmailTemplateInput): Promise<Re
         body: input.body,
         trigger: input.trigger?.trim() || null,
         audience: input.audience?.trim() || null,
+        category: input.category?.trim() || null,
         isActive: input.isActive,
       },
       select: { id: true },
@@ -88,6 +91,7 @@ const CLIENT_SUBMITTAL_DEFAULT = {
   subject: "Candidate Submittal - [Candidate First Name] [Candidate Last Name] | [Job Title]",
   trigger: CLIENT_SUBMITTAL_TRIGGER,
   audience: "client",
+  category: "submittal",
   body:
     "About [Candidate First Name] [Candidate Last Name]\n" +
     "<2–4 sentence intro to the candidate>\n\n" +
@@ -112,6 +116,7 @@ const CANDIDATE_CONFIRMATION_DEFAULT = {
   subject: "BreakPoint Talent has reviewed and submitted your profile for [Job Title]",
   trigger: CANDIDATE_CONFIRMATION_TRIGGER,
   audience: "candidate",
+  category: "submittal",
   body:
     "Hi [Candidate First Name],\n\n" +
     "Good news - your profile has been submitted to [Client Company Name].\n\n" +
@@ -126,6 +131,7 @@ const OFFER_ACCEPTANCE_DEFAULT = {
   subject: "Acceptance of Offer - [Candidate Full Name] - [Client Company Name]",
   trigger: OFFER_ACCEPTANCE_TRIGGER,
   audience: "client",
+  category: "offer",
   body:
     "Hi [Client Contact First Name],\n\n" +
     "I have the candidate CC'd on this email.\n\n" +
@@ -139,6 +145,7 @@ const CANDIDATE_REJECTION_DEFAULT = {
   subject: "[Job Title] - [Client Company Name]",
   trigger: CANDIDATE_REJECTION_TRIGGER,
   audience: "candidate",
+  category: "rejection",
   body:
     "Hi [Candidate First Name],\n\n" +
     "I wanted to reach out and let you know that unfortunately the client has moved forward with another candidate for this role.\n\n" +
@@ -151,6 +158,7 @@ const REFERENCE_CHECK_DEFAULT = {
   subject: "Quick favor - reference check",
   trigger: REFERENCE_CHECK_REQUEST_TRIGGER,
   audience: "candidate",
+  category: "reference",
   body:
     "Hi [Candidate First Name],\n\n" +
     "Things are moving in the right direction with [Client Company Name] on the [Job Title] role. " +
@@ -170,6 +178,7 @@ const INTERVIEW_CONFIRMATION_DEFAULT = {
   subject: "Interview Confirmed - [Job Title] with [Client Company Name]",
   trigger: INTERVIEW_CONFIRMATION_TRIGGER,
   audience: "candidate",
+  category: "interview",
   body:
     "Hi [Candidate First Name],\n\n" +
     "Congratulations - you are confirmed for an interview with [Client Company Name] for the [Job Title] role.\n\n" +
@@ -182,6 +191,7 @@ const CLIENT_INTERVIEW_CONFIRMATION_DEFAULT = {
   subject: "Interview Confirmed - [Candidate Full Name] for [Job Title]",
   trigger: CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
   audience: "client",
+  category: "interview",
   body:
     "Hi [Client Contact First Name],\n\n" +
     "Confirming the interview with [Candidate Full Name] for the [Job Title] role. You should see the calendar invite hit your inbox shortly.\n\n" +
@@ -199,6 +209,7 @@ const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
   subject: "You're confirmed - [Job Title] with [Client Company Name]",
   trigger: CANDIDATE_INTERVIEW_PREP_TRIGGER,
   audience: "candidate",
+  category: "interview",
   body:
     "Hi [Candidate First Name],\n\n" +
     "You are confirmed for your [Interview Type] interview with [Client Company Name] for the [Job Title] role. " +
@@ -227,8 +238,21 @@ export async function ensureDefaultTemplates(): Promise<void> {
   ] as const;
 
   for (const tpl of defaults) {
-    const existing = await prisma.emailTemplate.findFirst({ where: { trigger: tpl.trigger } });
-    if (existing) continue;
+    const existing = await prisma.emailTemplate.findFirst({
+      where: { trigger: tpl.trigger },
+      select: { id: true, category: true },
+    });
+    if (existing) {
+      // Backfill category on existing rows that predate the column so the
+      // composer's category filter picks them up.
+      if (!existing.category) {
+        await prisma.emailTemplate.update({
+          where: { id: existing.id },
+          data: { category: tpl.category },
+        });
+      }
+      continue;
+    }
     await prisma.emailTemplate.create({
       data: {
         name: tpl.name,
@@ -236,6 +260,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
         body: tpl.body,
         trigger: tpl.trigger,
         audience: tpl.audience,
+        category: tpl.category,
         isActive: true,
       },
     });

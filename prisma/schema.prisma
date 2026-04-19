@@ -85,11 +85,18 @@ model EmailTemplate {
   body        String   @db.Text
   trigger     String?  // e.g. "candidate_submitted", "interview_scheduled"
   audience    String?  // "client" | "candidate"
+  // Coarse-grained category used by composer filters. Interview composers
+  // surface every template with category="interview", regardless of trigger,
+  // so recruiters can pick any interview-flavored template (client
+  // confirmation, candidate prep, legacy confirmation, or any future
+  // variants) from one dropdown.
+  category    String?  // "interview" | "submittal" | "offer" | "rejection" | "reference"
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([trigger])
+  @@index([category])
 }
 
 model Setting {
@@ -339,9 +346,16 @@ model Interview {
   // composers. The googleEventIdClient / googleEventIdCandidate columns
   // are set (to the same event id) once that step completes, acting as
   // explicit "invite delivered" flags we can audit.
+  // googleEventIdMine: only set for source=client_scheduled. For ace_scheduled
+  // interviews we don't create a "master" event — the client + candidate
+  // invite events ARE the calendar presence.
   googleEventIdMine      String?
   googleEventIdClient    String?
   googleEventIdCandidate String?
+  // Meet conference identity — captured when the first invite creates the
+  // Meet, so the second invite can attach the same Meet link. Both attendee
+  // events share one Meet URL; users from either event land in the same room.
+  meetConferenceId       String?
 
   createdById     String
   createdAt       DateTime  @default(now())

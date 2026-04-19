@@ -26,10 +26,6 @@ import {
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
-import {
-  CANDIDATE_INTERVIEW_PREP_TRIGGER,
-  CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
-} from "@/app/settings/template-constants";
 
 export type LocalInterview = {
   id: string;
@@ -46,8 +42,13 @@ export type LocalJobRow = {
   placementId: string;
   jobRfId: number;
   jobTitle: string;
+  jobLocation: string;
+  jobDescription: string;
+  jobSalaryRange: string;
   clientRfId: number;
   clientName: string;
+  clientWebsite: string;
+  clientLinkedIn: string;
   stage: string;
   interviews: LocalInterview[];
 };
@@ -60,7 +61,12 @@ type LocalInviteFlow = {
   type: InterviewType;
   meetLink: string | null;
   jobTitle: string;
+  jobLocation: string;
+  jobDescription: string;
+  jobSalaryRange: string;
   clientName: string;
+  clientWebsite: string;
+  clientLinkedIn: string;
   clientContactName: string;
   clientContactEmail: string;
 };
@@ -69,11 +75,21 @@ export function LocalPlacementRows({
   candidateId,
   candidateName,
   candidateEmail,
+  candidatePhone,
+  candidateLocation,
+  candidateCurrentTitle,
+  candidateCurrentEmployer,
+  recruiter,
   jobs,
 }: {
   candidateId: string;
   candidateName: string;
   candidateEmail: string | null;
+  candidatePhone: string | null;
+  candidateLocation: string | null;
+  candidateCurrentTitle: string | null;
+  candidateCurrentEmployer: string | null;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: LocalJobRow[];
 }) {
   const [scheduleFor, setScheduleFor] = useState<LocalJobRow | null>(null);
@@ -125,16 +141,36 @@ export function LocalPlacementRows({
       {inviteFlow && inviteFlow.step === "client" && (
         <LocalClientInviteComposer
           invite={inviteFlow}
+          candidate={{
+            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
+            lastName: candidateName.split(/\s+/).slice(1).join(" "),
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
           candidateName={candidateName}
           candidateEmail={candidateEmail}
+          recruiter={recruiter}
           onDone={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
         />
       )}
       {inviteFlow && inviteFlow.step === "candidate" && (
         <LocalCandidateInviteComposer
           invite={inviteFlow}
+          candidate={{
+            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
+            lastName: candidateName.split(/\s+/).slice(1).join(" "),
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
           candidateName={candidateName}
           candidateEmail={candidateEmail}
+          recruiter={recruiter}
           onDone={() => {
             setInviteFlow(null);
             toast.success("Interview scheduled", {
@@ -351,7 +387,12 @@ function ScheduleDialog({
         type,
         meetLink: result.value.meetLink,
         jobTitle: job.jobTitle,
+        jobLocation: job.jobLocation,
+        jobDescription: job.jobDescription,
+        jobSalaryRange: job.jobSalaryRange,
         clientName: job.clientName,
+        clientWebsite: job.clientWebsite,
+        clientLinkedIn: job.clientLinkedIn,
         clientContactName: interviewerName.trim(),
         clientContactEmail: interviewerEmail.trim(),
       });
@@ -701,40 +742,84 @@ function snapTo15Minutes(datetimeLocal: string): Date {
 
 function buildValues(args: {
   invite: LocalInviteFlow;
-  candidateName: string;
-  candidateEmail: string | null;
+  candidate: {
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    currentTitle: string | null;
+    currentEmployer: string | null;
+  };
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
 }) {
-  const parts = args.candidateName.split(/\s+/);
-  const first = parts[0] ?? "";
-  const last = parts.slice(1).join(" ");
+  const candidateFullName = [args.candidate.firstName, args.candidate.lastName].filter(Boolean).join(" ");
+  const when = new Date(args.invite.scheduledAtISO);
   return {
-    candidateFirstName: first,
-    candidateLastName: last,
-    candidateFullName: args.candidateName,
-    candidateEmail: args.candidateEmail ?? "",
-    clientContactFullName: args.invite.clientContactName,
-    clientContactFirstName: args.invite.clientContactName.split(/\s+/)[0] ?? "",
+    // Candidate
+    candidateFirstName: args.candidate.firstName,
+    candidateLastName: args.candidate.lastName,
+    candidateFullName,
+    candidateEmail: args.candidate.email ?? "",
+    candidatePhone: args.candidate.phone ?? "",
+    candidateLocation: args.candidate.location ?? "",
+    candidateCurrentTitle: args.candidate.currentTitle ?? "",
+    candidateCurrentEmployer: args.candidate.currentEmployer ?? "",
+    // Client
     clientCompanyName: args.invite.clientName,
+    clientCompanyWebsite: args.invite.clientWebsite,
+    clientCompanyLinkedIn: args.invite.clientLinkedIn,
+    clientContactFirstName: args.invite.clientContactName.split(/\s+/)[0] ?? "",
+    clientContactFullName: args.invite.clientContactName,
+    clientContactEmail: args.invite.clientContactEmail,
+    // Job
     jobTitle: args.invite.jobTitle,
-    interviewType: formatType(args.invite.type),
-    interviewDateTime: formatWhen(new Date(args.invite.scheduledAtISO)),
+    jobLocation: args.invite.jobLocation,
+    jobDescription: args.invite.jobDescription,
+    jobSalaryRange: args.invite.jobSalaryRange,
+    // Interview
+    interviewDate: when.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" }),
+    interviewTime: when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }),
+    interviewDateTime: formatWhen(when),
     interviewDuration: `${args.invite.durationMin} min`,
+    interviewType: formatType(args.invite.type),
     interviewMeetLink: args.invite.meetLink ?? "",
+    interviewerName: args.invite.clientContactName,
+    interviewerEmail: args.invite.clientContactEmail,
+    // Recruiter
+    recruiterFirstName: args.recruiter.firstName,
+    recruiterFullName: args.recruiter.fullName,
+    recruiterName: args.recruiter.fullName,
+    recruiterEmail: args.recruiter.email,
+    recruiterPhone: args.recruiter.phone,
   };
 }
 
 function LocalClientInviteComposer({
   invite,
+  candidate,
   candidateName,
   candidateEmail,
+  recruiter,
   onDone,
 }: {
   invite: LocalInviteFlow;
+  candidate: {
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    currentTitle: string | null;
+    currentEmployer: string | null;
+  };
   candidateName: string;
   candidateEmail: string | null;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
   onDone: () => void;
 }) {
-  const values = buildValues({ invite, candidateName, candidateEmail });
+  void candidateEmail;
+  const values = buildValues({ invite, candidate, recruiter });
   const subject = applyMergeFieldsClient(
     `Interview Confirmed - ${candidateName || "Candidate"} for ${invite.jobTitle}`,
     values,
@@ -758,7 +843,7 @@ function LocalClientInviteComposer({
         body,
       }}
       showTemplatePicker
-      templateFilter={(t) => t.trigger === CLIENT_INTERVIEW_CONFIRMATION_TRIGGER || t.audience === "client"}
+      templateFilter={(t) => t.category === "interview"}
       resolveTemplate={(t) => ({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
@@ -793,16 +878,29 @@ function LocalClientInviteComposer({
 
 function LocalCandidateInviteComposer({
   invite,
+  candidate,
   candidateName,
   candidateEmail,
+  recruiter,
   onDone,
 }: {
   invite: LocalInviteFlow;
+  candidate: {
+    firstName: string;
+    lastName: string;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    currentTitle: string | null;
+    currentEmployer: string | null;
+  };
   candidateName: string;
   candidateEmail: string | null;
+  recruiter: { firstName: string; fullName: string; email: string; phone: string };
   onDone: () => void;
 }) {
-  const values = buildValues({ invite, candidateName, candidateEmail });
+  void candidateName;
+  const values = buildValues({ invite, candidate, recruiter });
   const subject = applyMergeFieldsClient(
     `You're confirmed - ${invite.jobTitle} with ${invite.clientName}`,
     values,
@@ -826,7 +924,7 @@ function LocalCandidateInviteComposer({
         body,
       }}
       showTemplatePicker
-      templateFilter={(t) => t.trigger === CANDIDATE_INTERVIEW_PREP_TRIGGER || t.audience === "candidate"}
+      templateFilter={(t) => t.category === "interview"}
       resolveTemplate={(t) => ({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),

@@ -12,6 +12,7 @@ export type ActiveTemplateSummary = {
   body: string;
   trigger: string | null;
   audience: string | null;
+  category: string | null;
 };
 
 // Pulls active email templates for populating the composer's "Use Template"
@@ -20,7 +21,15 @@ export async function listActiveTemplates(): Promise<ActiveTemplateSummary[]> {
   const rows = await prisma.emailTemplate.findMany({
     where: { isActive: true },
     orderBy: [{ name: "asc" }],
-    select: { id: true, name: true, subject: true, body: true, trigger: true, audience: true },
+    select: {
+      id: true,
+      name: true,
+      subject: true,
+      body: true,
+      trigger: true,
+      audience: true,
+      category: true,
+    },
   });
   return rows;
 }

@@ -27,7 +27,11 @@ const CSP = [
 
 const SECURITY_HEADERS = [
   { key: "Content-Security-Policy", value: CSP },
-  { key: "X-Frame-Options", value: "DENY" },
+  // SAMEORIGIN (not DENY) — we iframe our own API routes for inline PDF
+  // previews (resume viewer, etc.). DENY refuses every iframe, including
+  // same-origin ones, which surfaces as "refused to connect" in the browser.
+  // CSP frame-src already scopes cross-origin framing to the allowlist.
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
 ];
