@@ -61,6 +61,7 @@ import {
   CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
 } from "@/app/settings/template-constants";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import { sendEmailAction } from "@/app/email/actions";
 
@@ -1343,12 +1344,10 @@ function ScheduleInterviewDialog({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-2">
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
-            <input
-              type="datetime-local"
-              step={900}
+            <DateTime15Picker
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              onChange={setScheduledAt}
+              className="mt-1"
             />
           </label>
           <label className="block text-sm">
@@ -1487,12 +1486,10 @@ function ClientInviteDialog({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-2">
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
-            <input
-              type="datetime-local"
-              step={900}
+            <DateTime15Picker
               value={scheduledAt}
-              onChange={(e) => setScheduledAt(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              onChange={setScheduledAt}
+              className="mt-1"
             />
           </label>
           <label className="block text-sm">
@@ -1569,12 +1566,10 @@ function RescheduleDialog({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
-          <input
-            type="datetime-local"
-            step={900}
+          <DateTime15Picker
             value={scheduledAt}
-            onChange={(e) => setScheduledAt(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            onChange={setScheduledAt}
+            className="mt-1"
           />
         </label>
         <label className="block text-sm">
