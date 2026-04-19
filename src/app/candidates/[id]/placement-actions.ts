@@ -825,13 +825,58 @@ function summarizeNotesForSubmittal(raw: unknown): string {
 // Same shape as submitCandidateToJob but pushes RF stage_name "Applied" and
 // logs actionType=apply. Useful when a candidate self-applies or is applied
 // on their behalf without a full submittal email flow.
-export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Result> {
+export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Result<{ placementId: string }>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
 
+  // Step 1: Local Placement row. This is the source of truth for the
+  // profile's Jobs panel and the Pipeline — RF's c.jobs[] is advisory.
+  // Reject if an earlier stage row already exists at submitted-or-later,
+  // so we don't silently downgrade a candidate already in the pipeline.
+  let placementId: string;
+  try {
+    const existing = await prisma.placement.findUnique({
+      where: { candidateRfId_jobRfId: { candidateRfId: input.candidateRfId, jobRfId: input.jobRfId } },
+      select: { id: true, stage: true },
+    });
+    if (existing) {
+      if (existing.stage !== "applied" && existing.stage !== "sourced") {
+        return {
+          ok: false,
+          error: `Candidate is already linked to this job at stage "${existing.stage}". Use the existing record instead.`,
+        };
+      }
+      await prisma.placement.update({
+        where: { id: existing.id },
+        data: { stage: "applied", syncedToRf: false },
+      });
+      placementId = existing.id;
+    } else {
+      const created = await prisma.placement.create({
+        data: {
+          candidateRfId: input.candidateRfId,
+          candidateId: null,
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          stage: "applied",
+          createdById: userId,
+          syncedToRf: false,
+        },
+        select: { id: true },
+      });
+      placementId = created.id;
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Couldn't save application to Ace: ${e instanceof Error ? e.message : "unknown DB error"}`,
+    };
+  }
+
+  // Step 2: Best-effort RF sync. Failures don't undo the local write — the
+  // profile reads from the Placement table and will show the job regardless.
   let rfSynced = false;
   let rfError: string | null = null;
-
   try {
     const existing = await recruiterflow.getCandidate(input.candidateRfId);
     const existingJobs = Array.isArray(existing.jobs) ? existing.jobs : [];
@@ -845,7 +890,6 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
         nextJobs.push(entry);
       }
       nextJobs.push({ job_id: input.jobRfId, stage_name: "Applied" });
-
       const resp = (await recruiterflow.updateCandidate({
         id: input.candidateRfId,
         jobs: nextJobs,
@@ -870,6 +914,7 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
         subjectType: "candidate",
         subjectId: String(input.candidateRfId),
         metadata: {
+          placementId,
           jobRfId: input.jobRfId,
           clientRfId: input.clientRfId,
           jobTitle: input.jobTitle,
@@ -880,12 +925,12 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
         },
       },
     });
-    revalidatePath(`/candidates/${input.candidateRfId}`);
-    revalidatePath(`/pipeline`);
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to apply candidate." };
+  } catch {
+    // ActionLog is observability, not load-bearing. Swallow.
   }
+  revalidatePath(`/candidates/${input.candidateRfId}`);
+  revalidatePath(`/pipeline`);
+  return { ok: true, value: { placementId } };
 }
 
 // scheduleInterview moved to src/app/candidates/[id]/interview-actions.ts
@@ -990,9 +1035,22 @@ export type SendSubmittalInput = {
 };
 
 export type SubmittalSendResult = {
+  placementId: string;
   messageId: string;
   threadId: string;
 };
+
+// Stages that should NOT be downgraded back to "submitted" on a re-submit.
+// Submitting again from a later pipeline stage just resends the email; we
+// keep the row where it is.
+const STAGES_AFTER_SUBMITTED = new Set([
+  "interviewing",
+  "offer",
+  "pending_start",
+  "hired",
+  "cancelled",
+  "rejected",
+]);
 
 export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Result<SubmittalSendResult>> {
   const userId = await requireUserId();
@@ -1002,12 +1060,58 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
   if (!input.subject.trim()) return { ok: false, error: "Subject required." };
   if (!input.body.trim()) return { ok: false, error: "Body required." };
 
+  // Step 1: Write the Placement row BEFORE sending the email. The Jobs panel
+  // on the candidate profile and the Pipeline both read from this table; if
+  // this write fails we must refuse to proceed, otherwise the recruiter
+  // silently loses the record.
+  let placementId: string;
+  try {
+    const existing = await prisma.placement.findUnique({
+      where: { candidateRfId_jobRfId: { candidateRfId: input.candidateRfId, jobRfId: input.jobRfId } },
+      select: { id: true, stage: true },
+    });
+    if (existing) {
+      if (STAGES_AFTER_SUBMITTED.has(existing.stage)) {
+        placementId = existing.id;
+      } else {
+        await prisma.placement.update({
+          where: { id: existing.id },
+          data: { stage: "submitted", syncedToRf: false },
+        });
+        placementId = existing.id;
+      }
+    } else {
+      const created = await prisma.placement.create({
+        data: {
+          candidateRfId: input.candidateRfId,
+          candidateId: null,
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          stage: "submitted",
+          createdById: userId,
+          syncedToRf: false,
+        },
+        select: { id: true },
+      });
+      placementId = created.id;
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Couldn't save submittal to Ace (no email sent): ${e instanceof Error ? e.message : "unknown DB error"}`,
+    };
+  }
+
   const session = await getServerSession(authOptions);
   const fromEmail = session?.user?.email ?? "";
   const fromName = session?.user?.name ?? undefined;
 
+  // Step 2: Send the email. If this fails, the Placement row is already
+  // in place — the recruiter sees an error but the candidate appears on the
+  // profile/pipeline so they can retry the send without re-picking the job.
+  let sent: { id: string; threadId: string };
   try {
-    const sent = await sendGmail({
+    sent = await sendGmail({
       userId,
       from: fromEmail,
       fromName,
@@ -1017,7 +1121,43 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
       bodyText: input.body,
       bodyHtml: plainToHtml(input.body),
     });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "Failed to send submittal email.";
+    // Log the failed attempt so it shows in the activity log.
+    try {
+      await prisma.actionLog.create({
+        data: {
+          userId,
+          actionType: "submit",
+          subjectType: "candidate",
+          subjectId: String(input.candidateRfId),
+          metadata: {
+            placementId,
+            jobRfId: input.jobRfId,
+            clientRfId: input.clientRfId,
+            jobTitle: input.jobTitle,
+            clientName: input.clientName,
+            targetStage: "submitted",
+            emailSent: false,
+            emailError: msg,
+            to: input.to,
+            cc: input.cc,
+            subject: input.subject,
+          },
+        },
+      });
+    } catch {
+      // swallow: ActionLog is observability, not load-bearing
+    }
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/pipeline`);
+    return {
+      ok: false,
+      error: `Candidate linked in Ace, but email failed: ${msg}. Retry the email from the activity log.`,
+    };
+  }
 
+  try {
     await prisma.actionLog.create({
       data: {
         userId,
@@ -1025,6 +1165,7 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
         subjectType: "candidate",
         subjectId: String(input.candidateRfId),
         metadata: {
+          placementId,
           jobRfId: input.jobRfId,
           clientRfId: input.clientRfId,
           jobTitle: input.jobTitle,
@@ -1039,35 +1180,35 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
         },
       },
     });
-
-    // Best-effort RF push: append the job_id to the candidate's jobs[] with
-    // a Client Submission stage. Swallow errors — the email has already gone
-    // out and the ActionLog captures the intent.
-    try {
-      const rf = await recruiterflow.getCandidate(input.candidateRfId);
-      const existingJobs = Array.isArray(rf.jobs) ? rf.jobs : [];
-      const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
-      if (!alreadyLinked) {
-        const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
-        for (const j of existingJobs) {
-          if (typeof j?.job_id !== "number") continue;
-          const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
-          if (j.stage_name) entry.stage_name = j.stage_name;
-          nextJobs.push(entry);
-        }
-        nextJobs.push({ job_id: input.jobRfId, stage_name: "Client Submission" });
-        await recruiterflow.updateCandidate({ id: input.candidateRfId, jobs: nextJobs });
-      }
-    } catch {
-      // ignored — RF sync failure doesn't undo a sent email
-    }
-
-    revalidatePath(`/candidates/${input.candidateRfId}`);
-    revalidatePath(`/pipeline`);
-    return { ok: true, value: { messageId: sent.id, threadId: sent.threadId } };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Failed to send submittal email." };
+  } catch {
+    // swallow: ActionLog is observability, not load-bearing
   }
+
+  // Best-effort RF push: append the job_id to the candidate's jobs[] with
+  // a Client Submission stage. Swallow errors — the email has gone out and
+  // the Placement row carries the source of truth either way.
+  try {
+    const rf = await recruiterflow.getCandidate(input.candidateRfId);
+    const existingJobs = Array.isArray(rf.jobs) ? rf.jobs : [];
+    const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
+    if (!alreadyLinked) {
+      const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
+      for (const j of existingJobs) {
+        if (typeof j?.job_id !== "number") continue;
+        const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
+        if (j.stage_name) entry.stage_name = j.stage_name;
+        nextJobs.push(entry);
+      }
+      nextJobs.push({ job_id: input.jobRfId, stage_name: "Client Submission" });
+      await recruiterflow.updateCandidate({ id: input.candidateRfId, jobs: nextJobs });
+    }
+  } catch {
+    // ignored
+  }
+
+  revalidatePath(`/candidates/${input.candidateRfId}`);
+  revalidatePath(`/pipeline`);
+  return { ok: true, value: { placementId, messageId: sent.id, threadId: sent.threadId } };
 }
 
 export type DeliverCandidateConfirmationInput = {

@@ -2014,6 +2014,12 @@ function ApplyToJobDialog({
         toast.error("Couldn't apply candidate", { description: result.error });
         return;
       }
+      if (!result.value.placementId) {
+        const msg = "No Placement record was created — candidate won't appear on the Pipeline.";
+        setErr(msg);
+        toast.error("Apply failed silently", { description: msg });
+        return;
+      }
       toast.success("Candidate applied", {
         description: `${picked.jobTitle}${picked.clientName ? ` · ${picked.clientName}` : ""} → Applied stage.`,
       });
@@ -2239,6 +2245,14 @@ function SubmittalEmailCompose({
           body: draft.body,
         });
         if (!result.ok) throw new Error(result.error);
+        // Hard check: the server must return a placementId. If it didn't, the
+        // local Placement write silently failed — surface it loudly instead
+        // of pretending the submit worked.
+        if (!result.value.placementId) {
+          throw new Error(
+            "Submittal email sent, but no Placement record was created in Ace. The candidate will not appear on the Pipeline. Please report this.",
+          );
+        }
 
         if (candidateEmail) {
           const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
