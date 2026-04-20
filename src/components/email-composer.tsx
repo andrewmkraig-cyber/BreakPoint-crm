@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import { ChevronDown, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -57,6 +57,14 @@ export type EmailComposerProps = {
   // going through resolveTemplate (which is template-path-only). Leaving
   // unset keeps the send behavior literal.
   mergeValues?: MergeFieldValues;
+  // Optional stable id for autosave. When set, the composer mirrors
+  // subject + body into localStorage on every keystroke so a stray
+  // browser select-all+Backspace, accidental modal close, or refresh
+  // doesn't nuke a half-written email. On send success the entry is
+  // cleared. Pass a key that's stable per intent (e.g.
+  // `interview-invite-${interviewId}-${party}`) so distinct composers
+  // don't collide.
+  draftKey?: string;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -81,18 +89,33 @@ export function EmailComposer({
   ccBccOptions,
   ccBccPinned,
   mergeValues,
+  draftKey,
 }: EmailComposerProps) {
+  // Read any saved draft for this draftKey BEFORE seeding state so the
+  // restored values render on first paint — no flash of the seed body
+  // and no race between the state setter and the localStorage read.
+  // Defensive: localStorage isn't available during SSR; useState's lazy
+  // initializer runs client-side only.
+  const stored = useMemo(() => readDraft(draftKey), [draftKey]);
   const [to, setTo] = useState<string>(initial.to.join(", "));
   const [cc, setCc] = useState<string>(initial.cc.join(", "));
   const [bcc, setBcc] = useState<string>(initial.bcc.join(", "));
   const [showCcBcc, setShowCcBcc] = useState<boolean>(
     initial.cc.length > 0 || initial.bcc.length > 0 || Boolean(ccBccOptions && ccBccOptions.length > 0),
   );
-  const [subject, setSubject] = useState<string>(initial.subject);
-  const [body, setBody] = useState<string>(initial.body);
+  const [subject, setSubject] = useState<string>(stored?.subject ?? initial.subject);
+  const [body, setBody] = useState<string>(stored?.body ?? initial.body);
+  const [showRestored, setShowRestored] = useState<boolean>(Boolean(stored));
   const [err, setErr] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
   const [isGenerating, startGenerate] = useTransition();
+
+  // Mirror every keystroke into localStorage when a draftKey is set.
+  // Cheap (string write) and synchronous so we never race a wipe.
+  useEffect(() => {
+    if (!draftKey) return;
+    writeDraft(draftKey, { subject, body });
+  }, [draftKey, subject, body]);
 
   const [templates, setTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
@@ -261,11 +284,22 @@ export function EmailComposer({
     startSend(async () => {
       try {
         await onSend(finalDraft);
+        // Sent successfully — drop the local-storage backup so the
+        // composer doesn't silently restore an obsolete draft the
+        // next time the same intent is opened.
+        clearDraft(draftKey);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Send failed.";
         setErr(msg);
       }
     });
+  }
+
+  function discardRestoredDraft() {
+    setSubject(initial.subject);
+    setBody(initial.body);
+    setShowRestored(false);
+    clearDraft(draftKey);
   }
 
   return (
@@ -283,6 +317,21 @@ export function EmailComposer({
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {showRestored && (
+          <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-900">
+            <span>
+              Restored an unsent draft from your last session. Edit and send, or discard to start fresh.
+            </span>
+            <button
+              type="button"
+              onClick={discardRestoredDraft}
+              className="rounded-md border border-amber-300 bg-white px-2 py-0.5 text-[11px] font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              Discard draft
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-col gap-2 px-5 py-3 text-sm">
           {recipientOptions ? (
@@ -851,4 +900,74 @@ function groupedMergeFields(): { group: string; items: typeof MERGE_FIELDS[numbe
     bucket.items.push(f);
   }
   return ordered;
+}
+
+// ---- Draft autosave (localStorage) ----
+//
+// Why: recruiters have lost long email drafts to a stray select-all+
+// Backspace, an accidental modal-overlay click that closes the
+// composer, or a refresh. Native textarea undo (Cmd+Z) only survives
+// while the element is mounted; closing the modal nukes the stack.
+// Mirroring subject + body to localStorage on every keystroke gives
+// us a recovery surface that survives all three failure modes —
+// reopening the composer with the same draftKey re-seeds from the
+// stored copy and shows a one-click Discard banner.
+//
+// We deliberately persist ONLY subject + body. Recipients (To/Cc/Bcc)
+// are sourced from the calling page (candidate / job / interview
+// state) and re-derived correctly on remount; storing them risks
+// resurrecting stale recipients after a candidate switch.
+
+const DRAFT_NS = "ace-draft:v1:";
+
+type StoredDraft = { subject: string; body: string; savedAt: number };
+
+function readDraft(key: string | undefined): StoredDraft | null {
+  if (!key || typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_NS + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredDraft>;
+    if (typeof parsed.subject !== "string" || typeof parsed.body !== "string") return null;
+    // Drop drafts older than 14 days so we don't resurrect ancient
+    // half-typed messages months later when the same draftKey
+    // happens to recur.
+    const savedAt = typeof parsed.savedAt === "number" ? parsed.savedAt : 0;
+    if (savedAt && Date.now() - savedAt > 14 * 24 * 60 * 60 * 1000) {
+      window.localStorage.removeItem(DRAFT_NS + key);
+      return null;
+    }
+    // Empty drafts aren't worth restoring.
+    if (!parsed.subject.trim() && !parsed.body.trim()) return null;
+    return { subject: parsed.subject, body: parsed.body, savedAt };
+  } catch {
+    return null;
+  }
+}
+
+function writeDraft(key: string, value: { subject: string; body: string }): void {
+  if (typeof window === "undefined") return;
+  try {
+    // Skip the very first write where both fields are empty (initial
+    // state) so we don't pollute storage with no-op entries.
+    if (!value.subject.trim() && !value.body.trim()) {
+      window.localStorage.removeItem(DRAFT_NS + key);
+      return;
+    }
+    window.localStorage.setItem(
+      DRAFT_NS + key,
+      JSON.stringify({ subject: value.subject, body: value.body, savedAt: Date.now() }),
+    );
+  } catch {
+    // Quota errors / private mode — autosave is best-effort.
+  }
+}
+
+function clearDraft(key: string | undefined): void {
+  if (!key || typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(DRAFT_NS + key);
+  } catch {
+    // ignore
+  }
 }

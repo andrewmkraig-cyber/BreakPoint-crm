@@ -2663,6 +2663,7 @@ function ClientInviteComposer({
     <EmailComposer
       title="Send client calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
+      draftKey={`interview-invite-${invite.interviewId}-client`}
       initial={{
         to: hasClient ? [invite.clientContactEmail] : [],
         cc: invite.ccEmails,
@@ -2733,6 +2734,7 @@ function CandidateInviteComposer({
     <EmailComposer
       title="Send candidate calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
+      draftKey={`interview-invite-${invite.interviewId}-candidate`}
       initial={{
         to: candidateEmail ? [candidateEmail] : [],
         cc: invite.ccEmails,
