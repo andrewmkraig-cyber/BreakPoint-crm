@@ -557,6 +557,7 @@ export async function rejectCandidateJob(input: RejectCandidateInput): Promise<R
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
+    revalidatePath(`/jobs/${input.jobRfId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to reject candidate." };
@@ -574,6 +575,34 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   try {
+    // Actually flip the Placement back — until now this only logged
+    // intent, which meant the local-stage overlay on /jobs/[id]
+    // (and the candidate profile) kept showing "rejected" forever
+    // because the row was never updated. Default to the caller's
+    // targetStage when it's a known bucket; otherwise fall back to
+    // "submitted" per the existing UnrejectDialog default.
+    const allowed = new Set(["sourced", "applied", "submitted", "interviewing", "offer", "pending_start"]);
+    const nextStage = allowed.has(input.targetStage) ? input.targetStage : "submitted";
+    await prisma.placement.upsert({
+      where: {
+        candidateRfId_jobRfId: {
+          candidateRfId: input.candidateRfId,
+          jobRfId: input.jobRfId,
+        },
+      },
+      create: {
+        candidateRfId: input.candidateRfId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        stage: nextStage,
+        createdById: userId,
+        syncedToRf: false,
+      },
+      update: {
+        stage: nextStage,
+        syncedToRf: false,
+      },
+    });
     await prisma.actionLog.create({
       data: {
         userId,
@@ -583,12 +612,13 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
         metadata: {
           jobRfId: input.jobRfId,
           clientRfId: input.clientRfId,
-          targetStage: input.targetStage,
+          targetStage: nextStage,
         },
       },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
+    revalidatePath(`/jobs/${input.jobRfId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to unreject candidate." };
@@ -648,6 +678,33 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
   }
 
   try {
+    // Upsert a local Placement at stage="submitted". Mirrors the
+    // applyCandidateToJob pattern: Ace is source of truth, RF sync
+    // above is best-effort. Without this, the Job-detail Pipeline
+    // section's local-stage overlay (jobs/[id]/page.tsx) wouldn't
+    // see the move and the row would stay under Sourced for the
+    // 60s the RF data-cache TTL still serves the old stage_name.
+    await prisma.placement.upsert({
+      where: {
+        candidateRfId_jobRfId: {
+          candidateRfId: input.candidateRfId,
+          jobRfId: input.jobRfId,
+        },
+      },
+      create: {
+        candidateRfId: input.candidateRfId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        stage: "submitted",
+        createdById: userId,
+        syncedToRf: rfSynced,
+      },
+      update: {
+        stage: "submitted",
+        syncedToRf: rfSynced,
+      },
+    });
+
     await prisma.actionLog.create({
       data: {
         userId,
@@ -667,6 +724,7 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
+    revalidatePath(`/jobs/${input.jobRfId}`);
     // Ace is source of truth — RF sync is best-effort. Never block the caller
     // on RF errors; they're captured in the ActionLog metadata for audit.
     return { ok: true };
@@ -930,6 +988,7 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   }
   revalidatePath(`/candidates/${input.candidateRfId}`);
   revalidatePath(`/pipeline`);
+  revalidatePath(`/jobs/${input.jobRfId}`);
   return { ok: true, value: { placementId } };
 }
 

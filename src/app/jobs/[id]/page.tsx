@@ -5,8 +5,6 @@ import { PageHeader } from "@/components/page-header";
 import {
   recruiterflow,
   normalizeJob,
-  buildJobCounts,
-  emptyJobCounts,
   flattenPipeline,
   canonicalStage,
 } from "@/lib/recruiterflow";
@@ -21,25 +19,84 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [jobs, candidates, override] = await Promise.all([
+  const [jobs, candidates, override, localPlacements] = await Promise.all([
     recruiterflow.listAllJobs({ perPage: 100 }),
     recruiterflow.listAllCandidates({ perPage: 100 }),
     prisma.jobOverride.findUnique({ where: { jobRfId: id } }),
+    // Local Placement state for this job's RF candidates. RF doesn't
+    // accept stage moves to "rejected" / "offer" / "pending_start" /
+    // "hired" / "cancelled" via /external (see trySyncRfStage), so
+    // those buckets only ever live in Postgres. Without overlaying
+    // them here, clicking Reject in the pipeline row would write
+    // stage="rejected" locally but the row would stay under Sourced
+    // because flattenPipeline only reads RF stage_name.
+    prisma.placement.findMany({
+      where: { jobRfId: id, candidateRfId: { not: null } },
+      select: {
+        candidateRfId: true,
+        stage: true,
+        updatedAt: true,
+      },
+    }),
   ]);
   const raw = jobs.find((j) => j.id === id);
   if (!raw) notFound();
 
   const job = normalizeJob(raw);
-  const counts = buildJobCounts(candidates).get(id) ?? emptyJobCounts();
+
+  // Local stage overlay: candidateRfId → { stage, movedAt }. Local
+  // Placement is the source of truth for every stage Ace knows
+  // about. RF's c.jobs[].stage_name is only used for candidates
+  // that DON'T have a local Placement row yet (the long tail of
+  // sourced rows). The 60s RF data-cache TTL means RF stage_name
+  // can lag a recently-clicked action; trusting local first means
+  // Reject / Submit / Apply / etc. move the row immediately.
+  const localByCandidate = new Map<number, { stage: string; movedAt: string }>();
+  for (const p of localPlacements) {
+    if (p.candidateRfId == null) continue;
+    localByCandidate.set(p.candidateRfId, {
+      stage: p.stage,
+      movedAt: p.updatedAt.toISOString(),
+    });
+  }
+
   const flatForJob = flattenPipeline(candidates).filter((r) => r.jobId === id);
-  const pipelineRows: JobPipelineRow[] = flatForJob.map((r) => ({
-    candidateId: r.candidateId,
-    candidateName: r.candidateName,
-    candidateTitle: r.candidateTitle,
-    stageName: r.stageName,
-    bucket: canonicalStage(r.stageName),
-    stageMovedAt: r.stageMovedAt,
-  }));
+  const pipelineRows: JobPipelineRow[] = flatForJob.map((r) => {
+    const local = localByCandidate.get(r.candidateId);
+    if (local) {
+      return {
+        candidateId: r.candidateId,
+        candidateName: r.candidateName,
+        candidateTitle: r.candidateTitle,
+        stageName: local.stage,
+        bucket: canonicalStage(local.stage),
+        stageMovedAt: local.movedAt,
+      };
+    }
+    return {
+      candidateId: r.candidateId,
+      candidateName: r.candidateName,
+      candidateTitle: r.candidateTitle,
+      stageName: r.stageName,
+      bucket: canonicalStage(r.stageName),
+      stageMovedAt: r.stageMovedAt,
+    };
+  });
+
+  // Recompute the top-row Submitted/Interviewing/Hired counts off
+  // the overlaid pipelineRows so they match what the recruiter
+  // actually sees in the columns below — buildJobCounts only knew
+  // about RF stage_name and would over-count Hired-to-cancelled
+  // candidates as still Hired.
+  const counts = pipelineRows.reduce(
+    (acc, r) => {
+      if (r.bucket === "submitted") acc.submitted += 1;
+      if (r.bucket === "interviewing") acc.interviewing += 1;
+      if (r.bucket === "hired") acc.hired += 1;
+      return acc;
+    },
+    { submitted: 0, interviewing: 0, hired: 0 },
+  );
 
   const billingContact = raw.custom_fields?.find((f) => f.name?.toLowerCase() === "billing contact")?.value as string | undefined;
   const feePct = raw.custom_fields?.find((f) => f.name?.toLowerCase().includes("client fee"))?.value as number | undefined;
