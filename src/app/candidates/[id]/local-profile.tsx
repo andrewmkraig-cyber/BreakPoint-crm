@@ -6,6 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
+import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
+import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -155,6 +157,29 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     return { firstName, fullName, email, phone };
   })();
 
+  // Flatten interviews into ActivityPanel rows. Job titles come from the
+  // jobRows we already built so the history shows "Tax Manager" not a
+  // bare timestamp.
+  const titleByJob = new Map<number, string>();
+  for (const j of jobRows) titleByJob.set(j.jobRfId, j.jobTitle);
+  const activityInterviews: ActivityInterview[] = interviews.map((iv) => {
+    const attendees = Array.isArray(iv.clientAttendees)
+      ? (iv.clientAttendees as { name?: string; email?: string }[])
+          .map((a) => ({ name: a.name ?? "", email: a.email ?? "" }))
+          .filter((a) => a.name || a.email)
+      : [];
+    return {
+      id: iv.id,
+      scheduledAt: iv.scheduledAt.toISOString(),
+      durationMin: iv.durationMin,
+      type: iv.type as ActivityInterview["type"],
+      status: iv.status as ActivityInterview["status"],
+      source: iv.source as ActivityInterview["source"],
+      jobTitle: titleByJob.get(iv.jobRfId) ?? "Interview",
+      attendees,
+    };
+  });
+
   return (
     <div className="space-y-6">
       <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
@@ -246,6 +271,12 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
             </dl>
           </section>
 
+          <LocalEmployment
+            candidateId={candidate.id}
+            initialDesignation={candidate.currentDesignation}
+            initialOrganization={candidate.currentOrganization}
+          />
+
           {candidate.skills.length > 0 && (
             <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
               <h2 className="font-serif text-base font-semibold text-navy">Skills</h2>
@@ -323,6 +354,8 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           </section>
         </aside>
       </div>
+
+      <ActivityPanel interviews={activityInterviews} />
     </div>
   );
 }

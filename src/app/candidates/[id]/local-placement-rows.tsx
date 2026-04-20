@@ -247,20 +247,28 @@ function LocalJobActionRow({
         )}
       </div>
 
-      {job.interviews.length > 0 && (
-        <div className="mt-1 space-y-1.5 border-t border-border pt-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Interviews ({job.interviews.length})
+      {(() => {
+        // Only ACTIVE interviews render on the linked-job row. Cancelled /
+        // completed / rescheduled go in the Activity section below the
+        // resume so the row stays a thin actionable strip. If nothing's
+        // active, the whole section disappears (no empty header).
+        const active = job.interviews.filter((iv) => iv.status === "scheduled");
+        if (active.length === 0) return null;
+        return (
+          <div className="mt-1 space-y-1.5 border-t border-border pt-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Interviews ({active.length})
+            </div>
+            <ul className="space-y-1.5">
+              {[...active]
+                .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+                .map((iv) => (
+                  <InterviewRow key={iv.id} iv={iv} onReschedule={onReschedule} />
+                ))}
+            </ul>
           </div>
-          <ul className="space-y-1.5">
-            {[...job.interviews]
-              .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-              .map((iv) => (
-                <InterviewRow key={iv.id} iv={iv} onReschedule={onReschedule} />
-              ))}
-          </ul>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

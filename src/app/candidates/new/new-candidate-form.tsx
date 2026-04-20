@@ -394,11 +394,16 @@ export function NewCandidateForm() {
             <button
               type="button"
               onClick={onSave}
-              disabled={isSaving}
+              // Block save while parsing — clicking before Claude's response
+              // lands meant we'd write empty current_designation /
+              // current_organization to the DB even though the parsed
+              // values were seconds away from arriving.
+              disabled={isSaving || isParsing}
+              title={isParsing ? "Wait for parsing to finish first" : undefined}
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Save to Ace
+              {isParsing ? "Waiting for parse…" : "Save to Ace"}
             </button>
           </div>
 

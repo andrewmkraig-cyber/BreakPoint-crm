@@ -207,14 +207,43 @@ export async function createCandidate(
       (r) => r.school.trim() || r.degree.trim(),
     );
 
+    // Final safety-net backfill: if the form sent empty current title /
+    // employer but the experience array has a "current" role (to_year null)
+    // or any entry at all, derive from there. This is the third layer of
+    // defense, on top of the prompt and the parser-output backfill — covers
+    // races where the user clicks Save before the parsed values land in the
+    // form state.
+    const currentExp =
+      expRows.find(
+        (r) => r.to_year == null && (r.designation.trim() || r.organization.trim()),
+      ) ??
+      expRows[0] ??
+      null;
+    const dbDesignation =
+      input.current_designation.trim() || currentExp?.designation.trim() || null;
+    const dbOrganization =
+      input.current_organization.trim() || currentExp?.organization.trim() || null;
+    // eslint-disable-next-line no-console
+    console.log("[createCandidate] payload arriving from form:", {
+      first,
+      last: input.last_name.trim() || null,
+      email,
+      current_designation_raw: input.current_designation,
+      current_organization_raw: input.current_organization,
+      dbDesignation,
+      dbOrganization,
+      experienceCount: expRows.length,
+      educationCount: eduRows.length,
+    });
+
     const created = await prisma.candidate.create({
       data: {
         firstName: first,
         lastName: input.last_name.trim() || null,
         email,
         phone: input.phone.trim() || null,
-        currentDesignation: input.current_designation.trim() || null,
-        currentOrganization: input.current_organization.trim() || null,
+        currentDesignation: dbDesignation,
+        currentOrganization: dbOrganization,
         location: input.location.trim() || null,
         linkedinProfile: input.linkedin_profile.trim() || null,
         skills: input.skills.filter(Boolean),
@@ -228,7 +257,13 @@ export async function createCandidate(
         resumeUploadedAt: resumeMeta ? new Date() : null,
         createdById: userId,
       },
-      select: { id: true },
+      select: { id: true, currentDesignation: true, currentOrganization: true },
+    });
+    // eslint-disable-next-line no-console
+    console.log("[createCandidate] DB write OK:", {
+      id: created.id,
+      currentDesignation: created.currentDesignation,
+      currentOrganization: created.currentOrganization,
     });
 
     if (input.resumeUploadId) {

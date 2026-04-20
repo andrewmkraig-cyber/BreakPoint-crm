@@ -1653,7 +1653,13 @@ function InterviewList({
   jobTitle: string;
   onReschedule: (iv: InterviewSummary) => void;
 }) {
-  const sorted = [...interviews].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
+  // Show only ACTIVE interviews on the linked-job row. Anything cancelled,
+  // completed, or marked rescheduled is visual noise here — it's surfaced
+  // in the Activity panel below the resume instead. If nothing's active,
+  // suppress the header + container entirely (no "Interviews (0)" text).
+  const active = interviews.filter((iv) => iv.status === "scheduled");
+  if (active.length === 0) return null;
+  const sorted = [...active].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   return (
     <div className="mt-2 space-y-1.5 border-t border-border pt-3">
       <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">

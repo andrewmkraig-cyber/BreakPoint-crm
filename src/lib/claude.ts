@@ -307,8 +307,31 @@ export async function parseCandidateFields(params: {
 
   const parsed = safeParseJSON(text);
   if (!parsed) {
+    // eslint-disable-next-line no-console
+    console.error("[parseCandidateFields] Claude returned non-JSON response. Raw text:", text.slice(0, 2000));
     throw new Error("Claude didn't return valid JSON. Try again, or paste the profile text into the notes field manually.");
   }
+
+  // Verbose audit log — this is what shows up in Vercel runtime logs so we
+  // can diagnose "why didn't current_designation populate" when a recruiter
+  // reports a miss-parse. Trim the raw blocks so the log line stays under
+  // Vercel's per-line cap.
+  // eslint-disable-next-line no-console
+  console.log(
+    "[parseCandidateFields] Claude raw response (first 1500 chars):",
+    text.slice(0, 1500),
+  );
+  // eslint-disable-next-line no-console
+  console.log("[parseCandidateFields] parsed JSON:", {
+    first_name: parsed.first_name ?? null,
+    last_name: parsed.last_name ?? null,
+    email: parsed.email ?? null,
+    current_designation: parsed.current_designation ?? null,
+    current_organization: parsed.current_organization ?? null,
+    experienceCount: Array.isArray(parsed.experience) ? parsed.experience.length : 0,
+    educationCount: Array.isArray(parsed.education) ? parsed.education.length : 0,
+    skillsCount: Array.isArray(parsed.skills) ? parsed.skills.length : 0,
+  });
 
   const experience = normalizeExperience(parsed.experience);
   // Claude is asked to always fill current_designation/current_organization
@@ -327,12 +350,23 @@ export async function parseCandidateFields(params: {
     null;
   const rawDesignation = toStringOrNull(parsed.current_designation);
   const rawOrganization = toStringOrNull(parsed.current_organization);
+  const finalDesignation = rawDesignation ?? currentRole?.designation ?? null;
+  const finalOrganization = rawOrganization ?? currentRole?.organization ?? null;
+  // eslint-disable-next-line no-console
+  console.log("[parseCandidateFields] backfill result:", {
+    rawDesignation,
+    rawOrganization,
+    currentRoleDesignation: currentRole?.designation ?? null,
+    currentRoleOrganization: currentRole?.organization ?? null,
+    finalDesignation,
+    finalOrganization,
+  });
   return {
     ...EMPTY_CANDIDATE,
     ...parsed,
     phone: normalizeToE164(parsed.phone),
-    current_designation: rawDesignation ?? currentRole?.designation ?? null,
-    current_organization: rawOrganization ?? currentRole?.organization ?? null,
+    current_designation: finalDesignation,
+    current_organization: finalOrganization,
     skills: Array.isArray(parsed.skills) ? parsed.skills.filter((s: unknown): s is string => typeof s === "string") : [],
     linkedin_profile: parsed.linkedin_profile ?? linkedinUrl ?? null,
     experience,
