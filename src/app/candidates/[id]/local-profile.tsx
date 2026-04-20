@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
+import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
@@ -64,6 +65,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     getServerSession(authOptions),
     getAppPreferences(),
   ]);
+  const aceTeam = await listAceTeam();
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
   // Per-placement trace: shows the candidate's placement jobRfIds and
@@ -248,6 +250,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           candidateCurrentEmployer={candidate.currentOrganization}
           recruiter={recruiter}
           jobs={jobRows}
+          aceTeam={aceTeam}
         />
       )}
 

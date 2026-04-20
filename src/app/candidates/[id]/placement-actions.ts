@@ -558,6 +558,7 @@ export async function rejectCandidateJob(input: RejectCandidateInput): Promise<R
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
     revalidatePath(`/jobs/${input.jobRfId}`);
+    revalidatePath(`/applicants`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to reject candidate." };
@@ -619,6 +620,7 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
     revalidatePath(`/jobs/${input.jobRfId}`);
+    revalidatePath(`/applicants`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to unreject candidate." };
@@ -725,6 +727,7 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
     revalidatePath(`/jobs/${input.jobRfId}`);
+    revalidatePath(`/applicants`);
     // Ace is source of truth — RF sync is best-effort. Never block the caller
     // on RF errors; they're captured in the ActionLog metadata for audit.
     return { ok: true };
@@ -989,6 +992,7 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   revalidatePath(`/candidates/${input.candidateRfId}`);
   revalidatePath(`/pipeline`);
   revalidatePath(`/jobs/${input.jobRfId}`);
+  revalidatePath(`/applicants`);
   return { ok: true, value: { placementId } };
 }
 
@@ -1770,6 +1774,30 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   try {
+    // Persist Placement.stage="kept" so the Applicants > Kept tab can
+    // surface the row. Earlier the action only wrote ActionLog, so the
+    // Kept tab's Placement-stage query came back empty and Keep felt
+    // like a no-op to the recruiter.
+    await prisma.placement.upsert({
+      where: {
+        candidateRfId_jobRfId: {
+          candidateRfId: input.candidateRfId,
+          jobRfId: input.jobRfId,
+        },
+      },
+      create: {
+        candidateRfId: input.candidateRfId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        stage: "kept",
+        createdById: userId,
+        syncedToRf: false,
+      },
+      update: {
+        stage: "kept",
+        syncedToRf: false,
+      },
+    });
     await prisma.actionLog.create({
       data: {
         userId,
@@ -1784,6 +1812,7 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/jobs/${input.jobRfId}`);
+    revalidatePath(`/applicants`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to keep candidate." };

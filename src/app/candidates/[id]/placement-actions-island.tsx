@@ -41,6 +41,7 @@ export function PlacementActionsIsland(props: {
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
+  aceTeam: { id: string; name: string; email: string }[];
 }) {
   return <PlacementActionsLazy {...props} />;
 }

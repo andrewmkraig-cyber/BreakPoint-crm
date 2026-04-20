@@ -36,6 +36,7 @@ import type {
 import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
+import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAppPreferences } from "@/lib/preferences";
@@ -96,6 +97,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
     getServerSession(authOptions),
     getAppPreferences(),
   ]);
+  const aceTeam = await listAceTeam();
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
   // eslint-disable-next-line no-console
@@ -409,6 +411,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         })()}
         jobs={placementJobs}
         openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
+        aceTeam={aceTeam}
       />
 
       {/* Resume-first layout: the resume PDF is the primary content —

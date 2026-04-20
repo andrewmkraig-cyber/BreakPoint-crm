@@ -185,6 +185,8 @@ const ACTIVE_BUCKETS: ReadonlySet<Bucket> = new Set<Bucket>([
   "pending_start",
 ]);
 
+export type AceTeamContact = { id: string; name: string; email: string };
+
 export function PlacementActions({
   candidateRfId,
   candidateFirstName,
@@ -197,6 +199,7 @@ export function PlacementActions({
   recruiter,
   jobs,
   openJobs,
+  aceTeam,
 }: {
   candidateRfId: number;
   candidateFirstName: string;
@@ -209,6 +212,7 @@ export function PlacementActions({
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
+  aceTeam: AceTeamContact[];
 }) {
   const [offerFor, setOfferFor] = useState<PlacementContextJob | null>(null);
   const [placementFor, setPlacementFor] = useState<PlacementContextJob | null>(null);
@@ -319,6 +323,7 @@ export function PlacementActions({
           candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
           candidateEmail={candidateEmail}
           job={scheduleFor}
+          aceTeam={aceTeam}
           onClose={() => setScheduleFor(null)}
           onScheduled={(ctx) => {
             setScheduleFor(null);
@@ -340,6 +345,7 @@ export function PlacementActions({
           }}
           recruiter={recruiter}
           clientContacts={findClientContactsForJob(jobs, inviteFlow.jobTitle, inviteFlow.clientName)}
+          aceTeam={aceTeam}
           onDone={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
         />
       )}
@@ -357,6 +363,7 @@ export function PlacementActions({
           }}
           recruiter={recruiter}
           clientContacts={findClientContactsForJob(jobs, inviteFlow.jobTitle, inviteFlow.clientName)}
+          aceTeam={aceTeam}
           onDone={() => {
             setInviteFlow(null);
             toast.success("Interview scheduled", {
@@ -1298,6 +1305,7 @@ function ScheduleInterviewDialog({
   candidateName,
   candidateEmail,
   job,
+  aceTeam,
   onClose,
   onScheduled,
 }: {
@@ -1305,6 +1313,7 @@ function ScheduleInterviewDialog({
   candidateName: string;
   candidateEmail?: string;
   job: PlacementContextJob;
+  aceTeam: AceTeamContact[];
   onClose: () => void;
   onScheduled: (ctx: Omit<InviteFlowState, "step">) => void;
 }) {
@@ -1438,6 +1447,7 @@ function ScheduleInterviewDialog({
         />
         <CcBccPicker
           clientContacts={job.clientContacts}
+          aceTeam={aceTeam}
           cc={ccCsv}
           bcc={bccCsv}
           onCcChange={setCcCsv}
@@ -2647,18 +2657,21 @@ function ClientInviteComposer({
   candidate,
   recruiter,
   clientContacts,
+  aceTeam,
   onDone,
 }: {
   invite: InviteFlowState;
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   clientContacts: ClientContactRef[];
+  aceTeam: AceTeamContact[];
   onDone: () => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
   const hasClient = Boolean(invite.clientContactEmail);
-  const ccBccOptions = buildCcBccOptions(clientContacts);
+  const ccPickerOptions = buildCcBccOptions(clientContacts);
+  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <EmailComposer
       title="Send client calendar invite"
@@ -2677,8 +2690,8 @@ function ClientInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      ccBccOptions={ccBccOptions}
-      ccBccPinned={[AUSTIN_PINNED_CONTACT]}
+      ccOptions={ccPickerOptions}
+      bccOptions={bccPickerOptions}
       mergeValues={values}
       helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event — Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
@@ -2718,18 +2731,21 @@ function CandidateInviteComposer({
   candidate,
   recruiter,
   clientContacts,
+  aceTeam,
   onDone,
 }: {
   invite: InviteFlowState;
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   clientContacts: ClientContactRef[];
+  aceTeam: AceTeamContact[];
   onDone: () => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const candidateEmail = candidate.email;
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
-  const ccBccOptions = buildCcBccOptions(clientContacts);
+  const ccPickerOptions = buildCcBccOptions(clientContacts);
+  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <EmailComposer
       title="Send candidate calendar invite"
@@ -2748,8 +2764,8 @@ function CandidateInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
-      ccBccOptions={ccBccOptions}
-      ccBccPinned={[AUSTIN_PINNED_CONTACT]}
+      ccOptions={ccPickerOptions}
+      bccOptions={bccPickerOptions}
       mergeValues={values}
       helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the candidate to the event — Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
@@ -2845,42 +2861,49 @@ export function buildCcBccOptions(
 // existing state model doesn't need to change.
 export function CcBccPicker({
   clientContacts,
+  aceTeam,
   cc,
   bcc,
   onCcChange,
   onBccChange,
 }: {
   clientContacts: ClientContactRef[];
+  aceTeam: AceTeamContact[];
   cc: string;
   bcc: string;
   onCcChange: (v: string) => void;
   onBccChange: (v: string) => void;
 }) {
-  const options = buildCcBccOptions(clientContacts);
+  // Cc draws from the current job's CLIENT contacts only — a Cc'd
+  // recipient is openly looped on the thread, so it should be someone
+  // the candidate would expect to see on the email. Bcc draws from
+  // ACE TEAM members only (Andrew, Austin, etc.) so the recruiter
+  // can keep ops/colleagues informed without exposing them on the
+  // visible header. The two pools are intentionally disjoint.
+  const ccPickerOptions = buildCcBccOptions(clientContacts);
+  const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
     <div className="space-y-2">
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          Cc (optional)
+          Cc (optional) · client contacts
         </span>
         <InlineContactMultiInput
           value={cc}
           onChange={onCcChange}
-          options={options}
-          pinned={[AUSTIN_PINNED_CONTACT]}
-          placeholder="Pick contacts or type email…"
+          options={ccPickerOptions}
+          placeholder="Pick a client contact or type email…"
         />
       </label>
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
-          Bcc (optional)
+          Bcc (optional) · Ace team
         </span>
         <InlineContactMultiInput
           value={bcc}
           onChange={onBccChange}
-          options={options}
-          pinned={[AUSTIN_PINNED_CONTACT]}
-          placeholder="Pick contacts or type email…"
+          options={bccPickerOptions}
+          placeholder="Pick a teammate or type email…"
         />
       </label>
     </div>

@@ -45,10 +45,17 @@ export type EmailComposerProps = {
   // client contact list.
   recipientOptions?: ContactOption[];
   // When provided, Cc and Bcc become multi-select dropdowns (contacts +
-  // free-text entry). Pinned options (e.g. Austin) appear at the top of
-  // each dropdown regardless of the rest of the list. Separate from
-  // recipientOptions so Submittal can still use the To/Cc curated picker
-  // without affecting Bcc behavior here.
+  // free-text entry). Cc and Bcc are sourced separately because their
+  // intent is different:
+  //   Cc  = client contacts on the current job/interview's Client. The
+  //         recruiter is openly looping the client team in.
+  //   Bcc = Ace team members (currently Andrew + Austin, scales as the
+  //         team grows). The recruiter is keeping ops/colleagues
+  //         informed without exposing them to the recipient.
+  // ccBccOptions is the legacy single-pool prop kept for back-compat;
+  // when ccOptions / bccOptions are provided they take precedence.
+  ccOptions?: ContactOption[];
+  bccOptions?: ContactOption[];
   ccBccOptions?: ContactOption[];
   ccBccPinned?: ContactOption[];
   // When provided, the composer will run applyMergeFields on the final
@@ -86,11 +93,17 @@ export function EmailComposer({
   resolveTemplate,
   templateFilter,
   recipientOptions,
+  ccOptions,
+  bccOptions,
   ccBccOptions,
   ccBccPinned,
   mergeValues,
   draftKey,
 }: EmailComposerProps) {
+  // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
+  // win over the legacy combined ccBccOptions.
+  const effectiveCcOptions = ccOptions ?? ccBccOptions;
+  const effectiveBccOptions = bccOptions ?? ccBccOptions;
   // Read any saved draft for this draftKey BEFORE seeding state so the
   // restored values render on first paint — no flash of the seed body
   // and no race between the state setter and the localStorage read.
@@ -101,7 +114,10 @@ export function EmailComposer({
   const [cc, setCc] = useState<string>(initial.cc.join(", "));
   const [bcc, setBcc] = useState<string>(initial.bcc.join(", "));
   const [showCcBcc, setShowCcBcc] = useState<boolean>(
-    initial.cc.length > 0 || initial.bcc.length > 0 || Boolean(ccBccOptions && ccBccOptions.length > 0),
+    initial.cc.length > 0 ||
+      initial.bcc.length > 0 ||
+      Boolean(effectiveCcOptions && effectiveCcOptions.length > 0) ||
+      Boolean(effectiveBccOptions && effectiveBccOptions.length > 0),
   );
   const [subject, setSubject] = useState<string>(stored?.subject ?? initial.subject);
   const [body, setBody] = useState<string>(stored?.body ?? initial.body);
@@ -351,26 +367,26 @@ export function EmailComposer({
               {showCcBcc ? (
                 <>
                   <Row label="Cc">
-                    {ccBccOptions && ccBccOptions.length > 0 ? (
+                    {effectiveCcOptions && effectiveCcOptions.length > 0 ? (
                       <ContactComboMulti
                         value={cc}
                         onChange={setCc}
-                        options={ccBccOptions}
+                        options={effectiveCcOptions}
                         pinned={ccBccPinned}
-                        placeholder="Pick contacts or type email…"
+                        placeholder="Pick a client contact or type email…"
                       />
                     ) : (
                       <Input value={cc} onChange={setCc} placeholder="cc@example.com" />
                     )}
                   </Row>
                   <Row label="Bcc">
-                    {ccBccOptions && ccBccOptions.length > 0 ? (
+                    {effectiveBccOptions && effectiveBccOptions.length > 0 ? (
                       <ContactComboMulti
                         value={bcc}
                         onChange={setBcc}
-                        options={ccBccOptions}
+                        options={effectiveBccOptions}
                         pinned={ccBccPinned}
-                        placeholder="Pick contacts or type email…"
+                        placeholder="Pick a teammate or type email…"
                       />
                     ) : (
                       <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />

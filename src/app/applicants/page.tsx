@@ -39,12 +39,36 @@ export default async function ApplicantsPage() {
     const candidateById = new Map<number, RFCandidate>();
     for (const c of candidates) candidateById.set(c.id, c);
 
-    // Any Placement row for a (candidate, job) pair disqualifies the pair from
-    // the Applied tab — the recruiter has already taken action (submitted,
-    // rejected, kept, etc.).
-    const placedPairs = new Set<string>();
-    for (const p of placements) placedPairs.add(`${p.candidateRfId}:${p.jobRfId}`);
+    // Disqualify a (candidate, job) pair from Applied if the recruiter has
+    // already moved them PAST applied — submitted / interviewing / offer /
+    // pending_start / hired / rejected / cancelled. A Placement at
+    // stage="applied" is the canonical "lives here" signal and must NOT
+    // hide the row (this was the Apply-button bug — Apply created the
+    // Placement, the Placement disqualified the row, the row disappeared).
+    // Same for "kept" — those go in the Kept tab below, not Applied.
+    const HIDE_FROM_APPLIED: ReadonlySet<string> = new Set([
+      "submitted",
+      "interviewing",
+      "offer",
+      "pending_start",
+      "hired",
+      "rejected",
+      "cancelled",
+      "kept",
+    ]);
+    const placedPairsHidden = new Set<string>();
+    const localApplied = new Map<string, (typeof placements)[number]>();
+    for (const p of placements) {
+      const key = `${p.candidateRfId}:${p.jobRfId}`;
+      if (HIDE_FROM_APPLIED.has(p.stage)) {
+        placedPairsHidden.add(key);
+      } else if (p.stage === "applied") {
+        localApplied.set(key, p);
+      }
+    }
 
+    // RF-sourced applied rows: candidates whose RF stage_name canonicalizes
+    // to "applied" and that haven't been moved past Applied locally.
     for (const c of candidates) {
       const jobs: RFCandidateJob[] = Array.isArray(c.jobs) ? c.jobs : [];
       const name =
@@ -54,7 +78,7 @@ export default async function ApplicantsPage() {
       for (const j of jobs) {
         if (typeof j?.job_id !== "number") continue;
         if (canonicalStage(j.stage_name) !== "applied") continue;
-        if (placedPairs.has(`${c.id}:${j.job_id}`)) continue;
+        if (placedPairsHidden.has(`${c.id}:${j.job_id}`)) continue;
         appliedRows.push({
           candidateId: c.id,
           candidateName: name || "(unnamed)",
@@ -66,6 +90,36 @@ export default async function ApplicantsPage() {
           source: c.source_name ?? null,
         });
       }
+    }
+
+    // Local-Placement applied rows: clicking Apply in Ace writes
+    // Placement.stage="applied"; surface those even when RF still says
+    // sourced (RF /external doesn't reliably accept stage moves, so we
+    // can't rely on RF stage_name catching up). Dedupe against the RF
+    // pass above by (candidateId, jobId).
+    const seenAppliedKey = new Set<string>();
+    for (const r of appliedRows) seenAppliedKey.add(`${r.candidateId}:${r.jobId}`);
+    for (const [key, p] of Array.from(localApplied.entries())) {
+      if (p.candidateRfId == null) continue;
+      if (seenAppliedKey.has(key)) continue;
+      const cand = candidateById.get(p.candidateRfId);
+      const candJob = cand && Array.isArray(cand.jobs)
+        ? (cand.jobs as RFCandidateJob[]).find((j) => j.job_id === p.jobRfId)
+        : null;
+      const candName =
+        cand?.name ??
+        [cand?.first_name, cand?.last_name].filter(Boolean).join(" ") ??
+        "(unnamed)";
+      appliedRows.push({
+        candidateId: p.candidateRfId,
+        candidateName: candName || "(unnamed)",
+        jobId: p.jobRfId,
+        jobTitle: candJob?.title ?? candJob?.name ?? "(untitled job)",
+        clientRfId: p.clientRfId,
+        clientName: candJob?.client_company_name ?? "",
+        appliedAt: p.updatedAt.toISOString(),
+        source: cand?.source_name ?? null,
+      });
     }
 
     appliedRows.sort((a, b) => {
