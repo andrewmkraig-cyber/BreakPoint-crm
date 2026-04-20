@@ -61,7 +61,10 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
           GlobalWorkerOptions: { workerSrc: string };
           version: string;
         };
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/legacy/build/pdf.worker.min.mjs`;
+        // Worker is served from /public/pdfjs/ (self-hosted) because our CSP
+        // script-src doesn't allow unpkg.com. Keep the file in lockstep with
+        // the installed pdfjs-dist version (see scripts/sync-pdfjs-worker).
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
         const res = await fetch(src, { credentials: "include", cache: "no-store" });
         if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
         const buf = await res.arrayBuffer();

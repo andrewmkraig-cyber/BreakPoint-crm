@@ -74,8 +74,11 @@ export function ResumeRedactor({
           version: string;
         };
 
-        // Worker served via unpkg CDN pinned to the installed version.
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/legacy/build/pdf.worker.min.mjs`;
+        // Worker served from /public/pdfjs/ (self-hosted). The earlier
+        // unpkg.com CDN URL was blocked by our CSP script-src, which is
+        // why Edit Resume appeared to do nothing — the redactor was
+        // failing silently when the worker failed to load.
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
 
         const res = await fetch(originalUrl, { credentials: "include" });
         if (!res.ok) throw new Error(`Couldn't load resume (${res.status}).`);
