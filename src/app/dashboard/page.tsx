@@ -7,14 +7,30 @@ import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/u
 import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
 import {
-  Users,
-  FileCheck2,
-  Send,
+  CalendarCheck2,
   CalendarDays,
-  PhoneCall,
+  DollarSign,
+  Handshake,
+  Send,
+  Users,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
+
+// Every count in the "This week" strip is ACTIVITY-based: it counts
+// the stage transition that happened in the last 7 days, NOT the
+// current state of the placement. A candidate submitted Monday who
+// got rejected Wednesday still counts as 1 in "Candidates submitted"
+// for that week — the rejection doesn't remove them from the count.
+// Exception: "Upcoming interviews" (below the strip) is state-based
+// and shows only non-cancelled interviews in the next 7 days.
+//
+// Sources: ActionLog for transitions we log (apply / submit /
+// schedule_interview) and Placement timestamp columns for
+// transitions we stamp on the row (offerReceivedAt / placedAt).
+// Interview completions read Interview directly since we want every
+// non-cancelled past interview regardless of when it was booked.
+const ACTIVITY_SUBTEXT = "this week's activity";
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -22,8 +38,20 @@ export default async function DashboardPage() {
 
   const now = new Date();
   const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-  const [interviews, rfCandidates, rfJobs, rfClients] = await Promise.all([
+  const [
+    upcomingInterviews,
+    rfCandidates,
+    rfJobs,
+    rfClients,
+    applyLogCount,
+    submitLogCount,
+    interviewsScheduledCount,
+    interviewsCompletedCount,
+    offersExtendedCount,
+    placementsMadeCount,
+  ] = await Promise.all([
     prisma.interview.findMany({
       where: { status: "scheduled", scheduledAt: { gte: now, lte: weekEnd } },
       orderBy: { scheduledAt: "asc" },
@@ -34,7 +62,47 @@ export default async function DashboardPage() {
     recruiterflow.listAllCandidates({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
+    // Apply transitions logged by applyCandidateToJob. Inbound job-
+    // board applicants don't write ActionLog yet; when that pipeline
+    // lands, add another source here or bundle them into this query.
+    prisma.actionLog.count({
+      where: { actionType: "apply", createdAt: { gte: weekStart } },
+    }),
+    // Submit transitions — includes the `submit` log written by both
+    // applyCandidateToJob follow-ups and the full submittal flow.
+    prisma.actionLog.count({
+      where: { actionType: "submit", createdAt: { gte: weekStart } },
+    }),
+    // Every interview booked in the last 7 days, regardless of its
+    // current status. A scheduled-then-cancelled interview still
+    // counts as "scheduled this week" because the scheduling event
+    // is the activity we're measuring.
+    prisma.interview.count({
+      where: { createdAt: { gte: weekStart } },
+    }),
+    // Completed = past scheduledAt within the window AND not
+    // cancelled. Rescheduled interviews carry their original id and
+    // status=scheduled after the move, so they're treated as the
+    // same interview landing on its new time.
+    prisma.interview.count({
+      where: {
+        scheduledAt: { gte: weekStart, lt: now },
+        status: { not: "cancelled" },
+      },
+    }),
+    // Offers — Placement.offerReceivedAt is stamped by recordOffer.
+    // Counted regardless of whether the offer was later accepted,
+    // declined, or the candidate was rejected — we want the activity.
+    prisma.placement.count({
+      where: { offerReceivedAt: { gte: weekStart } },
+    }),
+    // Placements — Placement.placedAt is stamped by recordPlacement.
+    // Cancelled placements still count as activity that happened.
+    prisma.placement.count({
+      where: { placedAt: { gte: weekStart } },
+    }),
   ]);
+  const interviews = upcomingInterviews;
 
   const rfCandidateName = new Map<number, string>();
   for (const c of rfCandidates) {
@@ -79,12 +147,13 @@ export default async function DashboardPage() {
         description="A quick look at the desk this week. Everything here is live activity — no targets, just actuals."
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-        <KpiTile label="New Clients" value={0} icon={Users} />
-        <KpiTile label="Agreements Signed" value={0} icon={FileCheck2} />
-        <KpiTile label="Submittals" value={0} icon={Send} />
-        <KpiTile label="Interviews Scheduled" value={upcoming.length} icon={CalendarDays} />
-        <KpiTile label="Calls Made" value={0} icon={PhoneCall} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <KpiTile label="New Applicants" value={applyLogCount} icon={Users} hint={ACTIVITY_SUBTEXT} />
+        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} hint={ACTIVITY_SUBTEXT} />
+        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} hint={ACTIVITY_SUBTEXT} />
+        <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} hint={ACTIVITY_SUBTEXT} />
+        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} hint={ACTIVITY_SUBTEXT} />
+        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} hint={ACTIVITY_SUBTEXT} />
       </div>
 
       <div className="mt-8">
