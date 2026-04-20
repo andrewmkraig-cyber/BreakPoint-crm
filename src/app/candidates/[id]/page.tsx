@@ -98,6 +98,14 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   ]);
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
+  // eslint-disable-next-line no-console
+  console.log("[candidate page]", id, "loaded jobOverrides", {
+    count: jobOverrides.length,
+    descriptions: jobOverrides.map((o) => ({
+      jobRfId: o.jobRfId,
+      descLength: o.description?.length ?? 0,
+    })),
+  });
 
   // Two-source lookup: /candidate/list caches for 60s (Next Data Cache), so a
   // freshly-created candidate may not appear immediately. /candidate/{id}

@@ -66,6 +66,14 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
   ]);
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
+  // eslint-disable-next-line no-console
+  console.log("[local candidate page]", id, "loaded jobOverrides", {
+    count: jobOverrides.length,
+    descriptions: jobOverrides.map((o) => ({
+      jobRfId: o.jobRfId,
+      descLength: o.description?.length ?? 0,
+    })),
+  });
 
   if (!candidate) notFound();
 
