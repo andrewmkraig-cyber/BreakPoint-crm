@@ -337,6 +337,10 @@ model Interview {
   meetLink        String?
   clientAttendees Json?     // [{ id?: number, name: string, email: string }]
   candidatePhone  String?
+  // Street address for in_person interviews. Passed straight to Google
+  // Calendar's event.location field so the native invite renders the
+  // address (+ a Map link) inline.
+  location        String?
   notes           String?   @db.Text
   status          String    @default("scheduled") // scheduled | completed | cancelled | rescheduled
   source          String    @default("ace_scheduled") // ace_scheduled | client_scheduled

@@ -142,6 +142,21 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         )}
       </div>
 
+      {typeof raw.description === "string" && raw.description.trim().length > 0 && (
+        <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-lg font-semibold text-navy">Description</h2>
+            <span className="text-[11px] text-muted-foreground">
+              Synced from RecruiterFlow · edit in RF
+            </span>
+          </div>
+          <div
+            className="mt-3 prose prose-sm max-w-none text-navy"
+            dangerouslySetInnerHTML={{ __html: raw.description }}
+          />
+        </div>
+      )}
+
       <div className="rounded-xl border border-dashed border-border bg-muted/40 p-5 text-xs text-muted-foreground">
         <div className="flex items-center gap-2 font-medium text-navy-400">
           <Briefcase className="h-3 w-3" /> Full job detail (activity, JD, submittal flow) arrives with the candidate profile work.

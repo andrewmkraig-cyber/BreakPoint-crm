@@ -192,11 +192,51 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         />
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      {/* Resume-first layout: the resume (PDF inline if available) is
+          the primary content. Everything else lives in a scannable right
+          sidebar so the recruiter isn't scrolling past sections to get
+          to what they mostly came here to read. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <section className="rounded-xl border border-border bg-white shadow-sm lg:col-span-3">
+          <div className="flex items-center justify-between border-b border-border px-5 py-3">
+            <div>
+              <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
+              {candidate.resumeFilename && (
+                <p className="text-xs text-muted-foreground">
+                  {candidate.resumeFilename}
+                  {candidate.resumeSize ? ` · ${(candidate.resumeSize / 1024).toFixed(0)} KB` : ""}
+                  {candidate.resumeUploadedAt ? ` · uploaded ${candidate.resumeUploadedAt.toLocaleDateString()}` : ""}
+                </p>
+              )}
+            </div>
+            {candidate.resumeFilename && (
+              <a
+                href={`/api/local-candidate-resumes/${candidate.id}`}
+                className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+              >
+                <FileDown className="h-3 w-3" /> Download
+              </a>
+            )}
+          </div>
+          {candidate.resumeFilename && candidate.resumeMimeType === "application/pdf" ? (
+            <iframe
+              title={`Resume — ${candidate.resumeFilename}`}
+              src={`/api/local-candidate-resumes/${candidate.id}`}
+              className="h-[700px] w-full rounded-b-xl border-0"
+            />
+          ) : candidate.resumeFilename ? (
+            <p className="px-5 py-8 text-center text-xs text-muted-foreground">
+              Preview unavailable for this file type — use Download to open.
+            </p>
+          ) : (
+            <p className="px-5 py-8 text-center text-xs text-muted-foreground">No resume on file.</p>
+          )}
+        </section>
+
+        <aside className="space-y-6 lg:col-span-2">
           <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-navy">Contact</h2>
-            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
               <Row icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={candidate.email} href={candidate.email ? `mailto:${candidate.email}` : null} />
               <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
               <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={candidate.location} />
@@ -262,29 +302,6 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
               <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-navy">{candidate.notes}</p>
             </section>
           )}
-        </div>
-
-        <aside className="space-y-6">
-          <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-            <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
-            {candidate.resumeFilename ? (
-              <div className="mt-3 space-y-2 text-sm">
-                <div className="truncate text-navy">{candidate.resumeFilename}</div>
-                <div className="text-[11px] text-muted-foreground">
-                  {candidate.resumeSize ? `${(candidate.resumeSize / 1024).toFixed(0)} KB` : ""}
-                  {candidate.resumeUploadedAt ? ` · uploaded ${candidate.resumeUploadedAt.toLocaleDateString()}` : ""}
-                </div>
-                <a
-                  href={`/api/local-candidate-resumes/${candidate.id}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:bg-muted"
-                >
-                  <FileDown className="h-3 w-3" /> Download
-                </a>
-              </div>
-            ) : (
-              <p className="mt-3 text-xs text-muted-foreground">No resume on file.</p>
-            )}
-          </section>
 
           <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-navy">About this record</h2>

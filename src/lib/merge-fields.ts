@@ -30,6 +30,7 @@ export const MERGE_FIELDS = [
   { token: "[Interview Date Time]", label: "Interview Date Time", group: "Interview" },
   { token: "[Interview Duration]", label: "Interview Duration", group: "Interview" },
   { token: "[Interview Type]", label: "Interview Type", group: "Interview" },
+  { token: "[Interview Location]", label: "Interview Location (in-person address)", group: "Interview" },
   { token: "[Meet Link]", label: "Meet Link", group: "Interview" },
   { token: "[Interview Meet Link]", label: "Meet Link (legacy)", group: "Interview" },
   { token: "[Interviewer Name]", label: "Interviewer Name", group: "Interview" },
@@ -75,6 +76,7 @@ export type MergeFieldValues = {
   interviewDateTime?: string;
   interviewDuration?: string;
   interviewType?: string;
+  interviewLocation?: string;
   interviewMeetLink?: string;
   interviewerName?: string;
   interviewerEmail?: string;
@@ -143,6 +145,7 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     "[Interview Date Time]": values.interviewDateTime ?? "",
     "[Interview Duration]": values.interviewDuration ?? "",
     "[Interview Type]": values.interviewType ?? "",
+    "[Interview Location]": values.interviewLocation ?? "",
     "[Meet Link]": meetLink,
     "[Interview Meet Link]": meetLink,
     "[Interviewer Name]": values.interviewerName ?? "",

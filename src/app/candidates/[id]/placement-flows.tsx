@@ -120,6 +120,8 @@ type InviteFlowState = {
   durationMin: number;
   type: InterviewType;
   meetLink: string | null;
+  // Street address for in-person interviews. Empty for video / phone_screen.
+  interviewLocation: string;
   jobTitle: string;
   jobLocation: string;
   jobDescription: string;
@@ -129,6 +131,11 @@ type InviteFlowState = {
   clientLinkedIn: string;
   clientContactName: string;
   clientContactEmail: string;
+  // Additional recipients chosen on the schedule dialog. Forwarded into
+  // both per-party invite events so Austin (or anyone else) stays in the
+  // loop without being added separately on both composers.
+  ccEmails: string[];
+  bccEmails: string[];
 };
 
 type CandidateInviteContext = {
@@ -332,6 +339,7 @@ export function PlacementActions({
             currentEmployer: candidateCurrentEmployer,
           }}
           recruiter={recruiter}
+          clientContacts={findClientContactsForJob(jobs, inviteFlow.jobTitle, inviteFlow.clientName)}
           onDone={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
         />
       )}
@@ -348,6 +356,7 @@ export function PlacementActions({
             currentEmployer: candidateCurrentEmployer,
           }}
           recruiter={recruiter}
+          clientContacts={findClientContactsForJob(jobs, inviteFlow.jobTitle, inviteFlow.clientName)}
           onDone={() => {
             setInviteFlow(null);
             toast.success("Interview scheduled", {
@@ -1305,6 +1314,9 @@ function ScheduleInterviewDialog({
   const [type, setType] = useState<InterviewType>("video");
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
+  const [location, setLocation] = useState("");
+  const [ccCsv, setCcCsv] = useState("");
+  const [bccCsv, setBccCsv] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -1317,6 +1329,10 @@ function ScheduleInterviewDialog({
     }
     if (!interviewerName.trim()) {
       setErr("Interviewer name required.");
+      return;
+    }
+    if (type === "in_person" && !location.trim()) {
+      setErr("Address required for in-person interviews.");
       return;
     }
     startSave(async () => {
@@ -1338,6 +1354,7 @@ function ScheduleInterviewDialog({
         jobTitle: job.jobTitle,
         clientName: job.clientName,
         candidateName,
+        location: type === "in_person" ? location.trim() : undefined,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1351,6 +1368,7 @@ function ScheduleInterviewDialog({
         durationMin,
         type,
         meetLink: result.value.meetLink,
+        interviewLocation: type === "in_person" ? location.trim() : "",
         jobTitle: job.jobTitle,
         jobLocation: job.jobLocation,
         jobDescription: job.jobDescription,
@@ -1360,6 +1378,8 @@ function ScheduleInterviewDialog({
         clientLinkedIn: job.clientLinkedIn,
         clientContactName: interviewerName.trim(),
         clientContactEmail: interviewerEmail.trim(),
+        ccEmails: parseEmailCsv(ccCsv),
+        bccEmails: parseEmailCsv(bccCsv),
       });
     });
   }
@@ -1376,17 +1396,7 @@ function ScheduleInterviewDialog({
               className="mt-1"
             />
           </label>
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
-            <input
-              type="number"
-              min={5}
-              step={5}
-              value={durationMin}
-              onChange={(e) => setDurationMin(Math.max(5, Number(e.target.value) || 30))}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+          <DurationSelect value={durationMin} onChange={setDurationMin} />
         </div>
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
@@ -1400,6 +1410,21 @@ function ScheduleInterviewDialog({
             <option value="in_person">In-Person</option>
           </select>
         </label>
+        {type === "in_person" && (
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Address</span>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+            <span className="mt-1 block text-[11px] text-muted-foreground">
+              Appears in the calendar invite with a Map link.
+            </span>
+          </label>
+        )}
         <InterviewerPicker
           clientRfId={job.clientRfId}
           clientName={job.clientName}
@@ -1410,6 +1435,13 @@ function ScheduleInterviewDialog({
             setInterviewerName(n);
             setInterviewerEmail(e);
           }}
+        />
+        <CcBccPicker
+          clientContacts={job.clientContacts}
+          cc={ccCsv}
+          bcc={bccCsv}
+          onCcChange={setCcCsv}
+          onBccChange={setBccCsv}
         />
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
@@ -1446,6 +1478,7 @@ function ClientInviteDialog({
   const [durationMin, setDurationMin] = useState<number>(30);
   const [type, setType] = useState<InterviewType>("video");
   const [interviewerName, setInterviewerName] = useState("");
+  const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -1454,6 +1487,10 @@ function ClientInviteDialog({
     setErr(null);
     if (!scheduledAt) {
       setErr("Pick a date and time.");
+      return;
+    }
+    if (type === "in_person" && !location.trim()) {
+      setErr("Address required for in-person interviews.");
       return;
     }
     startSave(async () => {
@@ -1472,6 +1509,7 @@ function ClientInviteDialog({
         jobTitle: job.jobTitle,
         clientName: job.clientName,
         candidateName,
+        location: type === "in_person" ? location.trim() : undefined,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1500,23 +1538,9 @@ function ClientInviteDialog({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-2">
             <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
-            <DateTime15Picker
-              value={scheduledAt}
-              onChange={setScheduledAt}
-              className="mt-1"
-            />
+            <DateTime15Picker value={scheduledAt} onChange={setScheduledAt} className="mt-1" />
           </label>
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
-            <input
-              type="number"
-              min={5}
-              step={5}
-              value={durationMin}
-              onChange={(e) => setDurationMin(Math.max(5, Number(e.target.value) || 30))}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-            />
-          </label>
+          <DurationSelect value={durationMin} onChange={setDurationMin} />
         </div>
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
@@ -1530,6 +1554,18 @@ function ClientInviteDialog({
             <option value="in_person">In-Person</option>
           </select>
         </label>
+        {type === "in_person" && (
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Address</span>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
+              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+        )}
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Interviewer name (optional)</span>
           <input
@@ -1598,17 +1634,7 @@ function RescheduleDialog({
             className="mt-1"
           />
         </label>
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
-          <input
-            type="number"
-            min={5}
-            step={5}
-            value={durationMin}
-            onChange={(e) => setDurationMin(Math.max(5, Number(e.target.value) || 30))}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
+        <DurationSelect value={durationMin} onChange={setDurationMin} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Reschedule" />
@@ -2565,6 +2591,7 @@ function buildInterviewMergeValues(args: {
     interviewDateTime: formatInterviewWhen(when),
     interviewDuration: `${args.invite.durationMin} min`,
     interviewType: formatInterviewType(args.invite.type),
+    interviewLocation: args.invite.interviewLocation,
     interviewMeetLink: args.invite.meetLink ?? "",
     interviewerName: args.invite.clientContactName,
     interviewerEmail: args.invite.clientContactEmail,
@@ -2588,12 +2615,15 @@ function fallbackCandidateSubject(invite: InviteFlowState): string {
 function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", candidateFull: string): string {
   const when = formatInterviewWhen(new Date(invite.scheduledAtISO));
   const type = formatInterviewType(invite.type);
+  const addr = invite.type === "in_person" && invite.interviewLocation
+    ? `\n• Location: ${invite.interviewLocation}`
+    : "";
   if (who === "client") {
     const first = invite.clientContactName.split(/\s+/)[0] || "there";
     return (
       `Hi ${first},\n\nConfirming the interview with ${candidateFull || "the candidate"} for the ${invite.jobTitle} role. ` +
       `The calendar invite is on its way.\n\n` +
-      `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}\n\n` +
+      `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}${addr}\n\n` +
       `Reply to this email if anything needs to change.`
     );
   }
@@ -2601,7 +2631,7 @@ function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", cand
     `Hi ${candidateFull.split(/\s+/)[0] || "there"},\n\n` +
     `You are confirmed for your ${type} interview with ${invite.clientName} for the ${invite.jobTitle} role. ` +
     `The calendar invite is on its way.\n\n` +
-    `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}\n\n` +
+    `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}${addr}\n\n` +
     `Good luck!`
   );
 }
@@ -2610,24 +2640,27 @@ function ClientInviteComposer({
   invite,
   candidate,
   recruiter,
+  clientContacts,
   onDone,
 }: {
   invite: InviteFlowState;
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
+  clientContacts: ClientContactRef[];
   onDone: () => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
   const hasClient = Boolean(invite.clientContactEmail);
+  const ccBccOptions = buildCcBccOptions(clientContacts);
   return (
     <EmailComposer
       title="Send client calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: hasClient ? [invite.clientContactEmail] : [],
-        cc: [],
-        bcc: [],
+        cc: invite.ccEmails,
+        bcc: invite.bccEmails,
         subject: applyMergeFieldsClient(fallbackClientSubject(invite, candidateFullName), values),
         body: applyMergeFieldsClient(fallbackBody(invite, "client", candidateFullName), values),
       }}
@@ -2637,6 +2670,9 @@ function ClientInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
+      ccBccOptions={ccBccOptions}
+      ccBccPinned={[AUSTIN_PINNED_CONTACT]}
+      mergeValues={values}
       helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event — Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
       sendingLabel="Sending invite…"
@@ -2651,6 +2687,8 @@ function ClientInviteComposer({
           party: "client",
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
+          ccEmails: draft.cc,
+          bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });
@@ -2672,24 +2710,27 @@ function CandidateInviteComposer({
   invite,
   candidate,
   recruiter,
+  clientContacts,
   onDone,
 }: {
   invite: InviteFlowState;
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
+  clientContacts: ClientContactRef[];
   onDone: () => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const candidateEmail = candidate.email;
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
+  const ccBccOptions = buildCcBccOptions(clientContacts);
   return (
     <EmailComposer
       title="Send candidate calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: candidateEmail ? [candidateEmail] : [],
-        cc: [],
-        bcc: [],
+        cc: invite.ccEmails,
+        bcc: invite.bccEmails,
         subject: applyMergeFieldsClient(fallbackCandidateSubject(invite), values),
         body: applyMergeFieldsClient(fallbackBody(invite, "candidate", candidateFullName), values),
       }}
@@ -2699,6 +2740,9 @@ function CandidateInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
+      ccBccOptions={ccBccOptions}
+      ccBccPinned={[AUSTIN_PINNED_CONTACT]}
+      mergeValues={values}
       helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the candidate to the event — Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
       sendingLabel="Sending…"
@@ -2713,6 +2757,8 @@ function CandidateInviteComposer({
           party: "candidate",
           attendeeEmail: draft.to[0],
           attendeeName: candidateFullName || undefined,
+          ccEmails: draft.cc,
+          bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });
@@ -2728,6 +2774,269 @@ function CandidateInviteComposer({
       }}
     />
   );
+}
+
+// Austin Barnard is always in the Cc/Bcc quick-pick slot regardless of
+// whether the client has him on file — it's a shortcut for the Ops loop.
+export const AUSTIN_PINNED_CONTACT = {
+  id: "U0AJB4AM631",
+  name: "Austin Barnard",
+  email: "austin@breakpointtalent.com",
+};
+
+// 15-min-stepped duration picker. Matches the DateTime15Picker so scheduled
+// interviews never end at :07 or :53 — Google Calendar handles odd intervals
+// fine but recruiters expect 15/30/45 increments.
+const DURATION_OPTIONS = [15, 30, 45, 60, 75, 90, 105, 120] as const;
+
+export function DurationSelect({
+  value,
+  onChange,
+  label = "Duration",
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  label?: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <select
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+      >
+        {DURATION_OPTIONS.map((n) => (
+          <option key={n} value={n}>
+            {n} min
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+export function parseEmailCsv(raw: string): string[] {
+  return raw
+    .split(/[,;\n]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function buildCcBccOptions(
+  clientContacts: ClientContactRef[],
+): { id: string; name: string; email: string }[] {
+  return clientContacts
+    .filter((c) => c.email)
+    .map((c) => ({ id: String(c.id), name: c.name, email: c.email }));
+}
+
+// Pre-composer Cc / Bcc picker shown on the Schedule Interview dialog.
+// Same semantics as the composer's Cc/Bcc (multi-select contacts with a
+// pinned quick-pick row + free-text entry) but emits CSV strings so the
+// existing state model doesn't need to change.
+export function CcBccPicker({
+  clientContacts,
+  cc,
+  bcc,
+  onCcChange,
+  onBccChange,
+}: {
+  clientContacts: ClientContactRef[];
+  cc: string;
+  bcc: string;
+  onCcChange: (v: string) => void;
+  onBccChange: (v: string) => void;
+}) {
+  const options = buildCcBccOptions(clientContacts);
+  return (
+    <div className="space-y-2">
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          Cc (optional)
+        </span>
+        <InlineContactMultiInput
+          value={cc}
+          onChange={onCcChange}
+          options={options}
+          pinned={[AUSTIN_PINNED_CONTACT]}
+          placeholder="Pick contacts or type email…"
+        />
+      </label>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          Bcc (optional)
+        </span>
+        <InlineContactMultiInput
+          value={bcc}
+          onChange={onBccChange}
+          options={options}
+          pinned={[AUSTIN_PINNED_CONTACT]}
+          placeholder="Pick contacts or type email…"
+        />
+      </label>
+    </div>
+  );
+}
+
+// Smaller sibling of the composer's ContactComboMulti that lives outside
+// a modal. Intentionally duplicated (not imported from email-composer.tsx)
+// to keep the composer module's client dependency tree focused on email
+// concerns.
+function InlineContactMultiInput({
+  value,
+  onChange,
+  options,
+  pinned,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { id: string; name: string; email: string }[];
+  pinned?: { id: string; name: string; email: string }[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const selected = new Set(parseEmailCsv(value));
+  const pinnedList = pinned ?? [];
+  const pinnedEmails = new Set(pinnedList.map((p) => p.email.toLowerCase()));
+  const rest = options.filter((o) => !pinnedEmails.has(o.email.toLowerCase()));
+
+  function setAll(next: Set<string>) {
+    onChange(Array.from(next).join(", "));
+  }
+  function toggle(email: string) {
+    if (!email) return;
+    const next = new Set(selected);
+    if (next.has(email)) next.delete(email);
+    else next.add(email);
+    setAll(next);
+  }
+  function addTyped() {
+    const next = new Set(selected);
+    for (const p of parseEmailCsv(typed)) next.add(p);
+    setAll(next);
+    setTyped("");
+  }
+  function remove(email: string) {
+    const next = new Set(selected);
+    next.delete(email);
+    setAll(next);
+  }
+
+  return (
+    <div className="relative mt-1">
+      <div
+        className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-white px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
+        onClick={() => setOpen(true)}
+      >
+        {Array.from(selected).map((email) => (
+          <span
+            key={email}
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-navy"
+          >
+            {email}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                remove(email);
+              }}
+              aria-label={`Remove ${email}`}
+              className="text-muted-foreground hover:text-navy"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="email"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === "," || e.key === ";") {
+              e.preventDefault();
+              addTyped();
+            }
+          }}
+          onBlur={addTyped}
+          onFocus={() => setOpen(true)}
+          placeholder={selected.size === 0 ? placeholder : ""}
+          className="min-w-[160px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none"
+        />
+      </div>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+            <ul className="max-h-56 overflow-y-auto py-1">
+              {pinnedList.length > 0 && (
+                <>
+                  <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Quick pick
+                  </li>
+                  {pinnedList.map((c) => (
+                    <li key={`pinned-${c.id}`}>
+                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(c.email)}
+                          onChange={() => toggle(c.email)}
+                          className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+                        />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate">{c.name}</span>
+                          <span className="truncate text-[11px] text-muted-foreground">{c.email}</span>
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                  <li className="mx-2 my-1 border-t border-border" />
+                </>
+              )}
+              {rest.length === 0 && pinnedList.length === 0 && (
+                <li className="px-3 py-2 text-xs text-muted-foreground">
+                  No contacts on file. Type an email + Enter to add.
+                </li>
+              )}
+              {rest.map((c) => (
+                <li key={c.id}>
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
+                    <input
+                      type="checkbox"
+                      checked={selected.has(c.email)}
+                      onChange={() => toggle(c.email)}
+                      disabled={!c.email}
+                      className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+                    />
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate">{c.name}</span>
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {c.email || "No email on file"}
+                      </span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] text-muted-foreground">
+              Or type an email and press Enter.
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function findClientContactsForJob(
+  jobs: PlacementContextJob[],
+  jobTitle: string,
+  clientName: string,
+): ClientContactRef[] {
+  const match = jobs.find((j) => j.jobTitle === jobTitle && j.clientName === clientName);
+  return match?.clientContacts ?? [];
 }
 
 // Always-on interviewer picker. Fixes two real bugs:

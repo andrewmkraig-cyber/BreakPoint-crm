@@ -5,7 +5,7 @@ import { ChevronDown, Loader2, Send, Sparkles, Variable, X } from "lucide-react"
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import { MERGE_FIELDS } from "@/lib/merge-fields";
+import { MERGE_FIELDS, applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 
 export type EmailDraft = {
   to: string[];
@@ -44,6 +44,19 @@ export type EmailComposerProps = {
   // for scoped flows (submittal) where recipients must come from a curated
   // client contact list.
   recipientOptions?: ContactOption[];
+  // When provided, Cc and Bcc become multi-select dropdowns (contacts +
+  // free-text entry). Pinned options (e.g. Austin) appear at the top of
+  // each dropdown regardless of the rest of the list. Separate from
+  // recipientOptions so Submittal can still use the To/Cc curated picker
+  // without affecting Bcc behavior here.
+  ccBccOptions?: ContactOption[];
+  ccBccPinned?: ContactOption[];
+  // When provided, the composer will run applyMergeFields on the final
+  // subject + body right before calling onSend. Fixes the case where a
+  // user inserts a merge token via "Insert Field" and then sends without
+  // going through resolveTemplate (which is template-path-only). Leaving
+  // unset keeps the send behavior literal.
+  mergeValues?: MergeFieldValues;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -65,11 +78,16 @@ export function EmailComposer({
   resolveTemplate,
   templateFilter,
   recipientOptions,
+  ccBccOptions,
+  ccBccPinned,
+  mergeValues,
 }: EmailComposerProps) {
   const [to, setTo] = useState<string>(initial.to.join(", "));
   const [cc, setCc] = useState<string>(initial.cc.join(", "));
   const [bcc, setBcc] = useState<string>(initial.bcc.join(", "));
-  const [showCcBcc, setShowCcBcc] = useState<boolean>(initial.cc.length > 0 || initial.bcc.length > 0);
+  const [showCcBcc, setShowCcBcc] = useState<boolean>(
+    initial.cc.length > 0 || initial.bcc.length > 0 || Boolean(ccBccOptions && ccBccOptions.length > 0),
+  );
   const [subject, setSubject] = useState<string>(initial.subject);
   const [body, setBody] = useState<string>(initial.body);
   const [err, setErr] = useState<string | null>(null);
@@ -96,6 +114,24 @@ export function EmailComposer({
       start: el.selectionStart ?? el.value.length,
       end: el.selectionEnd ?? el.value.length,
     };
+  }
+
+  // Guard against accidental full-content wipes. Scrolling a long textarea
+  // in some browsers can flick into a "select all" state (triple-click at a
+  // scroll boundary, click-and-drag past the end); a subsequent Backspace /
+  // Delete then wipes everything. Require a confirm when the user is about
+  // to delete a selection that covers ~all of a non-trivially-long body.
+  function guardBulkDelete(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
+    if (e.key !== "Backspace" && e.key !== "Delete") return;
+    const el = e.currentTarget;
+    const selectedLen = (el.selectionEnd ?? 0) - (el.selectionStart ?? 0);
+    if (selectedLen < 100) return;
+    if (selectedLen < el.value.length * 0.9) return;
+    // eslint-disable-next-line no-alert
+    const ok = window.confirm(
+      `You're about to delete ${selectedLen} characters from this message. Continue?`,
+    );
+    if (!ok) e.preventDefault();
   }
 
   function insertMergeToken(token: string) {
@@ -212,9 +248,20 @@ export function EmailComposer({
       setErr("Body is required.");
       return;
     }
+    // If the caller provided merge values, resolve any leftover tokens
+    // (e.g. ones the user inserted via "Insert Field" without going through
+    // resolveTemplate). Fields with no value resolve to empty strings so
+    // nothing literal like "[Client Company Website]" ships in the send.
+    const finalDraft: EmailDraft = mergeValues
+      ? {
+          ...draft,
+          subject: applyMergeFields(draft.subject, mergeValues),
+          body: applyMergeFields(draft.body, mergeValues),
+        }
+      : draft;
     startSend(async () => {
       try {
-        await onSend(draft);
+        await onSend(finalDraft);
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Send failed.";
         setErr(msg);
@@ -256,10 +303,30 @@ export function EmailComposer({
               {showCcBcc ? (
                 <>
                   <Row label="Cc">
-                    <Input value={cc} onChange={setCc} placeholder="cc@example.com" />
+                    {ccBccOptions && ccBccOptions.length > 0 ? (
+                      <ContactComboMulti
+                        value={cc}
+                        onChange={setCc}
+                        options={ccBccOptions}
+                        pinned={ccBccPinned}
+                        placeholder="Pick contacts or type email…"
+                      />
+                    ) : (
+                      <Input value={cc} onChange={setCc} placeholder="cc@example.com" />
+                    )}
                   </Row>
                   <Row label="Bcc">
-                    <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+                    {ccBccOptions && ccBccOptions.length > 0 ? (
+                      <ContactComboMulti
+                        value={bcc}
+                        onChange={setBcc}
+                        options={ccBccOptions}
+                        pinned={ccBccPinned}
+                        placeholder="Pick contacts or type email…"
+                      />
+                    ) : (
+                      <Input value={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+                    )}
                   </Row>
                 </>
               ) : (
@@ -307,6 +374,7 @@ export function EmailComposer({
               rememberCaret(e.currentTarget);
             }}
             onSelect={(e) => rememberCaret(e.currentTarget)}
+            onKeyDown={guardBulkDelete}
             onKeyUp={(e) => rememberCaret(e.currentTarget)}
             onClick={(e) => rememberCaret(e.currentTarget)}
             rows={16}
@@ -593,6 +661,178 @@ function ContactMultiPicker({
         </>
       )}
     </div>
+  );
+}
+
+// Cc/Bcc picker that shows a known-contact dropdown, a pinned always-on-top
+// row (e.g. Austin), and a free-text fallback. Multi-select via chips.
+// Value is a comma-joined string of emails for parity with the text-input
+// codepath, so callers can keep the same parseList + EmailDraft shape.
+function ContactComboMulti({
+  value,
+  onChange,
+  options,
+  pinned,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: ContactOption[];
+  pinned?: ContactOption[];
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const selected = new Set(
+    value
+      .split(/[,;\n]+/)
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
+  const pinnedList = pinned ?? [];
+  const pinnedEmails = new Set(pinnedList.map((p) => p.email.toLowerCase()));
+  const rest = options.filter((o) => !pinnedEmails.has(o.email.toLowerCase()));
+
+  function toggle(email: string) {
+    if (!email) return;
+    const next = new Set(selected);
+    const key = email.trim();
+    if (!key) return;
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    onChange(Array.from(next).join(", "));
+  }
+
+  function addTyped() {
+    const raw = typed.trim();
+    if (!raw) return;
+    // Allow comma/semicolon-separated bulk paste.
+    const pieces = raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+    const next = new Set(selected);
+    for (const p of pieces) next.add(p);
+    onChange(Array.from(next).join(", "));
+    setTyped("");
+  }
+
+  function removeChip(email: string) {
+    const next = new Set(selected);
+    next.delete(email);
+    onChange(Array.from(next).join(", "));
+  }
+
+  return (
+    <div className="relative">
+      <div
+        className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-sm focus-within:border-brand"
+        onClick={() => setOpen(true)}
+      >
+        {Array.from(selected).map((email) => (
+          <span
+            key={email}
+            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-navy"
+          >
+            {email}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                removeChip(email);
+              }}
+              className="text-muted-foreground hover:text-navy"
+              aria-label={`Remove ${email}`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="email"
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === "," || e.key === ";") {
+              e.preventDefault();
+              addTyped();
+            }
+          }}
+          onBlur={addTyped}
+          onFocus={() => setOpen(true)}
+          placeholder={selected.size === 0 ? placeholder : ""}
+          className="min-w-[140px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none"
+        />
+      </div>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+            <ul className="max-h-64 overflow-y-auto py-1">
+              {pinnedList.length > 0 && (
+                <>
+                  <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Quick pick
+                  </li>
+                  {pinnedList.map((c) => (
+                    <ContactRow
+                      key={`pinned-${c.id}`}
+                      c={c}
+                      checked={Boolean(c.email && selected.has(c.email))}
+                      onToggle={() => toggle(c.email)}
+                    />
+                  ))}
+                  <li className="mx-2 my-1 border-t border-border" />
+                </>
+              )}
+              {rest.length === 0 && pinnedList.length === 0 && (
+                <li className="px-3 py-2 text-xs text-muted-foreground">
+                  No contacts on file. Type an email and press Enter.
+                </li>
+              )}
+              {rest.map((c) => (
+                <ContactRow
+                  key={c.id}
+                  c={c}
+                  checked={Boolean(c.email && selected.has(c.email))}
+                  onToggle={() => toggle(c.email)}
+                />
+              ))}
+            </ul>
+            <div className="border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] text-muted-foreground">
+              Or type an email and press Enter to add.
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ContactRow({
+  c,
+  checked,
+  onToggle,
+}: {
+  c: ContactOption;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li>
+      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          disabled={!c.email}
+          className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+        />
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">{c.name}</span>
+          <span className="truncate text-[11px] text-muted-foreground">
+            {c.email || "No email on file"}
+          </span>
+        </span>
+      </label>
+    </li>
   );
 }
 

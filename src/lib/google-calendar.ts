@@ -260,6 +260,7 @@ export async function updateCalendarEvent(params: {
   eventId: string;
   startISO: string;
   durationMin: number;
+  location?: string;
   sendUpdates?: boolean;
 }): Promise<void> {
   const accessToken = await getFreshAccessToken(params.userId);
@@ -271,16 +272,18 @@ export async function updateCalendarEvent(params: {
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(params.eventId)}`,
   );
   url.searchParams.set("sendUpdates", sendUpdates);
+  const patchBody: Record<string, unknown> = {
+    start: { dateTime: start.toISOString(), timeZone: tz },
+    end: { dateTime: end.toISOString(), timeZone: tz },
+  };
+  if (params.location !== undefined) patchBody.location = params.location;
   const res = await fetch(url.toString(), {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      start: { dateTime: start.toISOString(), timeZone: tz },
-      end: { dateTime: end.toISOString(), timeZone: tz },
-    }),
+    body: JSON.stringify(patchBody),
     cache: "no-store",
   });
   if (!res.ok) {

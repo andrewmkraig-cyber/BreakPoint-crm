@@ -25,7 +25,14 @@ import {
 } from "@/app/candidates/[id]/interview-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
-import { InterviewerPicker } from "@/app/candidates/[id]/placement-flows";
+import {
+  AUSTIN_PINNED_CONTACT,
+  CcBccPicker,
+  DurationSelect,
+  InterviewerPicker,
+  buildCcBccOptions,
+  parseEmailCsv,
+} from "@/app/candidates/[id]/placement-flows";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 
 export type LocalInterview = {
@@ -62,6 +69,7 @@ type LocalInviteFlow = {
   durationMin: number;
   type: InterviewType;
   meetLink: string | null;
+  interviewLocation: string;
   jobTitle: string;
   jobLocation: string;
   jobDescription: string;
@@ -69,8 +77,11 @@ type LocalInviteFlow = {
   clientName: string;
   clientWebsite: string;
   clientLinkedIn: string;
+  clientContacts: { id: number; name: string; title: string; email: string }[];
   clientContactName: string;
   clientContactEmail: string;
+  ccEmails: string[];
+  bccEmails: string[];
 };
 
 export function LocalPlacementRows({
@@ -351,6 +362,9 @@ function ScheduleDialog({
   const [type, setType] = useState<InterviewType>("video");
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
+  const [location, setLocation] = useState("");
+  const [ccCsv, setCcCsv] = useState("");
+  const [bccCsv, setBccCsv] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -358,6 +372,9 @@ function ScheduleDialog({
   function onSave() {
     setErr(null);
     if (!scheduledAt) return setErr("Pick a date and time.");
+    if (type === "in_person" && !location.trim()) {
+      return setErr("Address required for in-person interviews.");
+    }
     startSave(async () => {
       const snapped = snapTo15Minutes(scheduledAt);
       const attendees = interviewerName.trim()
@@ -376,6 +393,7 @@ function ScheduleDialog({
         jobTitle: job.jobTitle,
         clientName: job.clientName,
         candidateName,
+        location: type === "in_person" ? location.trim() : undefined,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -388,6 +406,7 @@ function ScheduleDialog({
         durationMin,
         type,
         meetLink: result.value.meetLink,
+        interviewLocation: type === "in_person" ? location.trim() : "",
         jobTitle: job.jobTitle,
         jobLocation: job.jobLocation,
         jobDescription: job.jobDescription,
@@ -395,8 +414,11 @@ function ScheduleDialog({
         clientName: job.clientName,
         clientWebsite: job.clientWebsite,
         clientLinkedIn: job.clientLinkedIn,
+        clientContacts: job.clientContacts,
         clientContactName: interviewerName.trim(),
         clientContactEmail: interviewerEmail.trim(),
+        ccEmails: parseEmailCsv(ccCsv),
+        bccEmails: parseEmailCsv(bccCsv),
       });
     });
   }
@@ -410,6 +432,8 @@ function ScheduleDialog({
         setDurationMin={setDurationMin}
         type={type}
         setType={setType}
+        location={location}
+        setLocation={setLocation}
         notes={notes}
         setNotes={setNotes}
         interviewerSlot={
@@ -423,6 +447,15 @@ function ScheduleDialog({
               setInterviewerName(n);
               setInterviewerEmail(e);
             }}
+          />
+        }
+        ccBccSlot={
+          <CcBccPicker
+            clientContacts={job.clientContacts}
+            cc={ccCsv}
+            bcc={bccCsv}
+            onCcChange={setCcCsv}
+            onBccChange={setBccCsv}
           />
         }
       />
@@ -448,6 +481,7 @@ function ClientInviteDialog({
   const [durationMin, setDurationMin] = useState(30);
   const [type, setType] = useState<InterviewType>("video");
   const [interviewerName, setInterviewerName] = useState("");
+  const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -455,6 +489,9 @@ function ClientInviteDialog({
   function onSave() {
     setErr(null);
     if (!scheduledAt) return setErr("Pick a date and time.");
+    if (type === "in_person" && !location.trim()) {
+      return setErr("Address required for in-person interviews.");
+    }
     startSave(async () => {
       const attendees = interviewerName.trim() ? [{ name: interviewerName.trim(), email: "" }] : [];
       const result = await scheduleInterview({
@@ -470,6 +507,7 @@ function ClientInviteDialog({
         jobTitle: job.jobTitle,
         clientName: job.clientName,
         candidateName,
+        location: type === "in_person" ? location.trim() : undefined,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -497,6 +535,8 @@ function ClientInviteDialog({
         setDurationMin={setDurationMin}
         type={type}
         setType={setType}
+        location={location}
+        setLocation={setLocation}
         notes={notes}
         setNotes={setNotes}
         interviewerSlot={
@@ -554,17 +594,7 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
             className="mt-1"
           />
         </label>
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
-          <input
-            type="number"
-            min={5}
-            step={5}
-            value={durationMin}
-            onChange={(e) => setDurationMin(Math.max(5, Number(e.target.value) || 30))}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
+        <DurationSelect value={durationMin} onChange={setDurationMin} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <Footer onCancel={onClose} onSave={onSave} saving={isPending} label="Reschedule" />
@@ -583,9 +613,12 @@ function ScheduleFields(props: {
   setDurationMin: (n: number) => void;
   type: InterviewType;
   setType: (t: InterviewType) => void;
+  location: string;
+  setLocation: (v: string) => void;
   notes: string;
   setNotes: (v: string) => void;
   interviewerSlot?: React.ReactNode;
+  ccBccSlot?: React.ReactNode;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3">
@@ -598,17 +631,7 @@ function ScheduleFields(props: {
             className="mt-1"
           />
         </label>
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Duration (min)</span>
-          <input
-            type="number"
-            min={5}
-            step={5}
-            value={props.durationMin}
-            onChange={(e) => props.setDurationMin(Math.max(5, Number(e.target.value) || 30))}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
+        <DurationSelect value={props.durationMin} onChange={props.setDurationMin} />
       </div>
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
@@ -622,7 +645,23 @@ function ScheduleFields(props: {
           <option value="in_person">In-Person</option>
         </select>
       </label>
+      {props.type === "in_person" && (
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Address</span>
+          <input
+            type="text"
+            value={props.location}
+            onChange={(e) => props.setLocation(e.target.value)}
+            placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
+            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+          <span className="mt-1 block text-[11px] text-muted-foreground">
+            Appears in the calendar invite with a Map link.
+          </span>
+        </label>
+      )}
       {props.interviewerSlot}
+      {props.ccBccSlot}
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Notes</span>
         <textarea
@@ -793,6 +832,7 @@ function buildValues(args: {
     interviewDateTime: formatWhen(when),
     interviewDuration: `${args.invite.durationMin} min`,
     interviewType: formatType(args.invite.type),
+    interviewLocation: args.invite.interviewLocation,
     interviewMeetLink: args.invite.meetLink ?? "",
     interviewerName: args.invite.clientContactName,
     interviewerEmail: args.invite.clientContactEmail,
@@ -830,6 +870,9 @@ function LocalClientInviteComposer({
 }) {
   void candidateEmail;
   const values = buildValues({ invite, candidate, recruiter });
+  const addrLine = invite.type === "in_person" && invite.interviewLocation
+    ? `\n• Location: ${invite.interviewLocation}`
+    : "";
   const subject = applyMergeFieldsClient(
     `Interview Confirmed - ${candidateName || "Candidate"} for ${invite.jobTitle}`,
     values,
@@ -837,18 +880,19 @@ function LocalClientInviteComposer({
   const body = applyMergeFieldsClient(
     `Hi [Client Contact First Name],\n\nConfirming the interview with [Candidate Full Name] for the [Job Title] role. ` +
       `The calendar invite is on its way.\n\n` +
-      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
+      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}\n\n` +
       `Reply to this email if anything needs to change.`,
     values,
   );
+  const ccBccOptions = buildCcBccOptions(invite.clientContacts);
   return (
     <EmailComposer
       title="Send client calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: invite.clientContactEmail ? [invite.clientContactEmail] : [],
-        cc: [],
-        bcc: [],
+        cc: invite.ccEmails,
+        bcc: invite.bccEmails,
         subject,
         body,
       }}
@@ -858,6 +902,9 @@ function LocalClientInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
+      ccBccOptions={ccBccOptions}
+      ccBccPinned={[AUSTIN_PINNED_CONTACT]}
+      mergeValues={values}
       sendLabel="Send Invite"
       onClose={onDone}
       onSend={async (draft: EmailDraft) => {
@@ -870,6 +917,8 @@ function LocalClientInviteComposer({
           party: "client",
           attendeeEmail: draft.to[0],
           attendeeName: invite.clientContactName || undefined,
+          ccEmails: draft.cc,
+          bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });
@@ -912,6 +961,9 @@ function LocalCandidateInviteComposer({
 }) {
   void candidateName;
   const values = buildValues({ invite, candidate, recruiter });
+  const addrLine = invite.type === "in_person" && invite.interviewLocation
+    ? `\n• Location: ${invite.interviewLocation}`
+    : "";
   const subject = applyMergeFieldsClient(
     `You're confirmed - ${invite.jobTitle} with ${invite.clientName}`,
     values,
@@ -919,18 +971,19 @@ function LocalCandidateInviteComposer({
   const body = applyMergeFieldsClient(
     `Hi [Candidate First Name],\n\nYou are confirmed for your [Interview Type] interview with [Client Company Name] ` +
       `for the [Job Title] role. The calendar invite is on its way.\n\n` +
-      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]\n\n` +
+      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}\n\n` +
       `Good luck!`,
     values,
   );
+  const ccBccOptions = buildCcBccOptions(invite.clientContacts);
   return (
     <EmailComposer
       title="Send candidate calendar invite"
       subtitle={`${invite.jobTitle} · ${invite.clientName}`}
       initial={{
         to: candidateEmail ? [candidateEmail] : [],
-        cc: [],
-        bcc: [],
+        cc: invite.ccEmails,
+        bcc: invite.bccEmails,
         subject,
         body,
       }}
@@ -940,6 +993,9 @@ function LocalCandidateInviteComposer({
         subject: applyMergeFieldsClient(t.subject, values),
         body: applyMergeFieldsClient(t.body, values),
       })}
+      ccBccOptions={ccBccOptions}
+      ccBccPinned={[AUSTIN_PINNED_CONTACT]}
+      mergeValues={values}
       sendLabel="Send Invite"
       onClose={onDone}
       onSend={async (draft: EmailDraft) => {
@@ -952,6 +1008,8 @@ function LocalCandidateInviteComposer({
           party: "candidate",
           attendeeEmail: draft.to[0],
           attendeeName: candidateName || undefined,
+          ccEmails: draft.cc,
+          bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
         });

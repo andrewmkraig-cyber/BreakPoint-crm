@@ -55,6 +55,9 @@ export type ScheduleInterviewInput = {
   candidatePhone?: string;
   notes?: string;
   source: InterviewSource;
+  // Street address for in_person interviews. Stored on the Interview row
+  // and passed to Google Calendar event.location on the per-party invites.
+  location?: string;
   // Summary/description for the calendar event and candidate-facing activity log.
   jobTitle?: string;
   clientName?: string;
@@ -145,6 +148,7 @@ function calendarDescription(input: ScheduleInterviewInput): string {
   if (input.jobTitle) lines.push(`Role: ${input.jobTitle}`);
   if (input.clientName) lines.push(`Client: ${input.clientName}`);
   if (input.candidatePhone) lines.push(`Candidate phone: ${input.candidatePhone}`);
+  if (input.location) lines.push(`Location: ${input.location}`);
   if (input.attendees && input.attendees.length > 0) {
     lines.push(`Interviewers: ${input.attendees.map((a) => `${a.name}${a.email ? ` <${a.email}>` : ""}`).join(", ")}`);
   }
@@ -198,6 +202,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
         attendees: [],
         createMeet: false,
         sendUpdates: false,
+        location: input.location || undefined,
       });
       googleEventIdMine = ev.eventId;
     } catch (e) {
@@ -221,6 +226,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
         meetLink,
         clientAttendees: input.attendees && input.attendees.length > 0 ? (input.attendees as object) : undefined,
         candidatePhone: input.candidatePhone || null,
+        location: input.location || null,
         notes: input.notes || null,
         status: "scheduled",
         source: input.source,
@@ -442,6 +448,11 @@ export type SendInvitePartyInput = {
   party: "client" | "candidate";
   attendeeEmail: string;
   attendeeName?: string;
+  // Optional additional recipients. Both events (client + candidate) get
+  // the same cc/bcc — recruiter's choice up-front. Google Calendar treats
+  // these as attendees with responseStatus=needsAction.
+  ccEmails?: string[];
+  bccEmails?: string[];
   subject: string; // becomes event.summary
   bodyText: string; // becomes event.description
 };
@@ -481,6 +492,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       googleEventIdCandidate: true,
       candidateRfId: true,
       candidateId: true,
+      location: true,
     },
   });
   if (!interview) return { ok: false, error: "Interview not found." };
@@ -493,6 +505,23 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   const attachMeetConferenceId = needsMeet && hasExistingMeet ? interview.meetConferenceId ?? undefined : undefined;
   const attachMeetLink = needsMeet && hasExistingMeet ? interview.meetLink ?? undefined : undefined;
 
+  // Merge the primary attendee with any cc emails (calendar treats them
+  // identically). Bcc emails are distinct in email semantics but Google
+  // Calendar doesn't have a bcc concept — we honor the recruiter's intent
+  // by adding them with responseStatus=needsAction and NOT surfacing them
+  // in the visible guest list. That's as close to bcc as the API supports.
+  const cc = (input.ccEmails ?? []).filter((e) => e && e.trim()).map((e) => ({ email: e.trim() }));
+  const bcc = (input.bccEmails ?? []).filter((e) => e && e.trim()).map((e) => ({ email: e.trim() }));
+  const primary = { email: input.attendeeEmail, displayName: input.attendeeName };
+  // Dedupe by lowercase email so we don't add the primary attendee twice.
+  const seen = new Set<string>([input.attendeeEmail.toLowerCase()]);
+  const extras: { email: string; displayName?: string }[] = [];
+  for (const a of [...cc, ...bcc]) {
+    const key = a.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    extras.push(a);
+  }
   let created: { eventId: string; meetLink: string | null; meetingCode: string | null };
   try {
     const ev = await createCalendarEvent({
@@ -501,11 +530,12 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       description: input.bodyText,
       startISO: interview.scheduledAt.toISOString(),
       durationMin: interview.durationMin,
-      attendees: [{ email: input.attendeeEmail, displayName: input.attendeeName }],
+      attendees: [primary, ...extras],
       createMeet,
       attachMeetConferenceId,
       attachMeetLink,
       sendUpdates: true,
+      location: interview.location || undefined,
     });
     created = { eventId: ev.eventId, meetLink: ev.meetLink, meetingCode: ev.meetingCode };
   } catch (e) {
