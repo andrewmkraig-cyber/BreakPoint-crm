@@ -8,6 +8,7 @@ import {
   Bookmark,
   CalendarClock,
   CheckCircle2,
+  CornerUpLeft,
   DollarSign,
   Handshake,
   Loader2,
@@ -22,6 +23,8 @@ import type { PipelineBucket } from "@/lib/recruiterflow";
 import {
   applyCandidateToJob,
   keepCandidate,
+  moveToApplied,
+  moveToKept,
   rejectCandidateJob,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
@@ -143,6 +146,32 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     );
   }
 
+  // Stage reversions: pull a Submitted candidate back to Kept, or
+  // promote a Kept candidate to Applied. Both are local-only; the
+  // server action stamps an ActionLog entry with the from/to so the
+  // activity feed can present "Reverted from Submitted to Kept by
+  // {user} at {when}" without inventing the metadata client-side.
+  function onMoveToKept() {
+    runLight("Moved back to Kept", () =>
+      moveToKept({
+        candidateRfId: props.candidateRfId,
+        jobRfId: props.jobRfId,
+        clientRfId: props.clientRfId,
+        previousStage: props.bucket,
+      }),
+    );
+  }
+  function onMoveToApplied() {
+    runLight("Moved back to Applied", () =>
+      moveToApplied({
+        candidateRfId: props.candidateRfId,
+        jobRfId: props.jobRfId,
+        clientRfId: props.clientRfId,
+        previousStage: props.bucket,
+      }),
+    );
+  }
+
   switch (props.bucket) {
     case "sourced":
       // Apply / Keep / Reject — Submit isn't a sourced-stage move; the
@@ -174,10 +203,34 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
+    case "kept":
+      // Submit (deep-link composer) / Move to Applied (revert) / Reject.
+      // Move to Applied is the canonical promotion path out of Kept —
+      // recruiter wants to re-engage the candidate without surfacing
+      // the submittal composer yet.
+      return (
+        <ActionRow disabled={isPending}>
+          <NavButton
+            icon={Send}
+            label="Submit"
+            tone="primary"
+            href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
+            title="Open submittal composer"
+          />
+          <ActionButton
+            icon={CornerUpLeft}
+            label="Move to Applied"
+            title="Revert this Kept candidate back to Applied"
+            onClick={onMoveToApplied}
+          />
+          <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
+        </ActionRow>
+      );
     case "submitted":
-      // Schedule / Reject only. Client-invite is logged through the
-      // Schedule Interview composer's "Client sending invite" toggle
-      // and doesn't need its own button on this row anymore.
+      // Schedule / Move to Kept / Reject. Move to Kept lets the
+      // recruiter pull a candidate back out of Submitted (e.g. before
+      // the client sees the submittal, or after silence to re-nurture
+      // for a different role) without rejecting them.
       return (
         <ActionRow disabled={isPending}>
           <DialogOrNav
@@ -186,6 +239,12 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             title="Schedule Interview"
             onClick={props.onSchedule}
             href={profileHref}
+          />
+          <ActionButton
+            icon={CornerUpLeft}
+            label="Move to Kept"
+            title="Pull this candidate back to Kept"
+            onClick={onMoveToKept}
           />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>

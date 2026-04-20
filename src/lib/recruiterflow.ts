@@ -557,6 +557,7 @@ export function normalizeJob(j: RFJob) {
 export type PipelineBucket =
   | "applied"
   | "sourced"
+  | "kept"
   | "submitted"
   | "interviewing"
   | "offer"
@@ -566,7 +567,7 @@ export type PipelineBucket =
   | "cancelled"
   | "other";
 
-export const PIPELINE_LABELS: Record<Exclude<PipelineBucket, "applied" | "sourced" | "rejected" | "cancelled" | "other">, string> = {
+export const PIPELINE_LABELS: Record<Exclude<PipelineBucket, "applied" | "sourced" | "kept" | "rejected" | "cancelled" | "other">, string> = {
   submitted: "Submitted",
   interviewing: "Interviewing",
   offer: "Offer",

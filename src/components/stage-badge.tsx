@@ -7,6 +7,9 @@ import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/recr
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
   applied: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
   sourced: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
+  // Kept renders amber so it pops out of the muted-pile-of-applicants
+  // background — recruiter wants to spot pulled-back candidates fast.
+  kept: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
   submitted: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
   interviewing: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
   offer: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
@@ -19,6 +22,7 @@ const BUCKET_CLASS: Record<PipelineBucket, string> = {
 
 const BUCKET_LABEL: Record<PipelineBucket, string> = {
   applied: "Applied",
+  kept: "Kept",
   submitted: PIPELINE_LABELS.submitted,
   interviewing: PIPELINE_LABELS.interviewing,
   offer: PIPELINE_LABELS.offer,

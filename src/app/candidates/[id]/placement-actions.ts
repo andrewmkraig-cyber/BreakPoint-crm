@@ -1831,3 +1831,88 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
     return { ok: false, error: e instanceof Error ? e.message : "Failed to keep candidate." };
   }
 }
+
+// ---- Stage reversions ----
+//
+// "Move to Kept" / "Move to Applied" are explicit stage reversions
+// initiated from the candidate-profile / job-pipeline rows. They DO
+// NOT call any external system (no email, no client notification,
+// no RF write) — pure local-Postgres stage flips with an audit log
+// entry that captures who reverted, when, and from what.
+//
+// Distinguished from keepCandidate / applyCandidateToJob in two
+// ways: (1) the ActionLog actionType is "revert_to_kept" /
+// "revert_to_applied" so activity feeds can present the move as a
+// pull-back rather than a fresh keep/apply, and (2) the stage
+// guard intentionally allows transitions from any non-terminal
+// stage (kept ⇄ applied ⇄ submitted is the supported space).
+
+export type StageReversionInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  previousStage: string;
+};
+
+async function flipPlacementStage(args: {
+  userId: string;
+  input: StageReversionInput;
+  toStage: "kept" | "applied";
+  actionType: "revert_to_kept" | "revert_to_applied";
+}): Promise<Result> {
+  try {
+    await prisma.placement.upsert({
+      where: {
+        candidateRfId_jobRfId: {
+          candidateRfId: args.input.candidateRfId,
+          jobRfId: args.input.jobRfId,
+        },
+      },
+      create: {
+        candidateRfId: args.input.candidateRfId,
+        jobRfId: args.input.jobRfId,
+        clientRfId: args.input.clientRfId,
+        stage: args.toStage,
+        createdById: args.userId,
+        syncedToRf: false,
+      },
+      update: {
+        stage: args.toStage,
+        syncedToRf: false,
+      },
+    });
+    await prisma.actionLog.create({
+      data: {
+        userId: args.userId,
+        actionType: args.actionType,
+        subjectType: "candidate",
+        subjectId: String(args.input.candidateRfId),
+        metadata: {
+          jobRfId: args.input.jobRfId,
+          clientRfId: args.input.clientRfId,
+          fromStage: args.input.previousStage,
+          toStage: args.toStage,
+        },
+      },
+    });
+    revalidatePath(`/candidates/${args.input.candidateRfId}`);
+    revalidatePath(`/jobs/${args.input.jobRfId}`);
+    revalidatePath(`/applicants`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Stage reversion failed." };
+  }
+}
+
+export async function moveToKept(input: StageReversionInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  return flipPlacementStage({ userId, input, toStage: "kept", actionType: "revert_to_kept" });
+}
+
+export async function moveToApplied(input: StageReversionInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  return flipPlacementStage({ userId, input, toStage: "applied", actionType: "revert_to_applied" });
+}

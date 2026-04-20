@@ -27,6 +27,7 @@ type BarItem = {
 const STAGE_ORDER: PipelineBucket[] = [
   "applied",
   "sourced",
+  "kept",
   "submitted",
   "interviewing",
   "offer",
@@ -38,6 +39,7 @@ const STAGE_ORDER: PipelineBucket[] = [
 const STAGE_LABELS: Record<PipelineBucket, string> = {
   applied: "Applied",
   sourced: "Sourced",
+  kept: "Kept",
   submitted: "Submitted",
   interviewing: "Interviewing",
   offer: "Offer",
@@ -52,6 +54,7 @@ const STAGE_LABELS: Record<PipelineBucket, string> = {
 const STAGE_TONE: Record<PipelineBucket, string> = {
   applied: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
   sourced: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
+  kept: "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300",
   submitted: "border-brand/30 bg-brand-tint text-brand-dark hover:border-brand/60",
   interviewing: "border-brand/40 bg-brand/25 text-brand-dark hover:border-brand/70",
   offer: "border-brand bg-brand/50 text-white hover:bg-brand/60",
