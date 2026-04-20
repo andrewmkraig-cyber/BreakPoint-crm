@@ -14,6 +14,7 @@ export type AppliedRow = {
   candidateName: string;
   jobId: number;
   jobTitle: string;
+  jobLocation: string;
   clientRfId: number;
   clientName: string;
   appliedAt: string | null;
@@ -25,10 +26,46 @@ export type KeptRow = {
   candidateName: string;
   jobId: number;
   jobTitle: string;
+  jobLocation: string;
   clientRfId: number;
   clientName: string;
   keptAt: string;
 };
+
+// Render the source token coming back from Placement.source / RF
+// source_name into a human label for the table cell. Add new mappings
+// here as we stamp new sources from elsewhere in the app.
+function formatSourceLabel(raw: string | null): string {
+  if (!raw) return "—";
+  if (raw === "recruiter_applied") return "Recruiter Applied";
+  return raw;
+}
+
+// Stack the job title + location on one line and the client beneath,
+// matching how the Candidate Profile job cards render. Avoid the prior
+// "(untitled job)" sentinel — the resolver upstream now falls through
+// to a real "Untitled role" label or the override.
+function JobCell({
+  jobId,
+  jobTitle,
+  jobLocation,
+  clientName,
+}: {
+  jobId: number;
+  jobTitle: string;
+  jobLocation: string;
+  clientName: string;
+}) {
+  const headLine = jobLocation ? `${jobTitle} - ${jobLocation}` : jobTitle;
+  return (
+    <div>
+      <Link href={`/jobs/${jobId}`} className="font-medium text-navy hover:text-brand-dark">
+        {headLine}
+      </Link>
+      {clientName && <div className="text-xs text-muted-foreground">{clientName}</div>}
+    </div>
+  );
+}
 
 type Tab = "applied" | "kept";
 
@@ -196,15 +233,17 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-navy hover:text-brand-dark">
           {row.candidateName}
         </Link>
-        {row.clientName && <div className="text-xs text-muted-foreground">{row.clientName}</div>}
       </td>
       <td className="px-5 py-3 align-top">
-        <Link href={`/jobs/${row.jobId}`} className="font-medium text-navy hover:text-brand-dark">
-          {row.jobTitle || "—"}
-        </Link>
+        <JobCell
+          jobId={row.jobId}
+          jobTitle={row.jobTitle}
+          jobLocation={row.jobLocation}
+          clientName={row.clientName}
+        />
       </td>
       <td className="px-5 py-3 align-top text-xs text-muted-foreground">{formatDate(row.appliedAt)}</td>
-      <td className="px-5 py-3 align-top text-sm text-navy-400">{row.source || "—"}</td>
+      <td className="px-5 py-3 align-top text-sm text-navy-400">{formatSourceLabel(row.source)}</td>
       <td className="px-5 py-3 align-top">
         <div className="flex flex-wrap items-center gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
@@ -290,12 +329,14 @@ function KeptRowView({ row }: { row: KeptRow }) {
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-navy hover:text-brand-dark">
           {row.candidateName}
         </Link>
-        {row.clientName && <div className="text-xs text-muted-foreground">{row.clientName}</div>}
       </td>
       <td className="px-5 py-3 align-top">
-        <Link href={`/jobs/${row.jobId}`} className="font-medium text-navy hover:text-brand-dark">
-          {row.jobTitle || "—"}
-        </Link>
+        <JobCell
+          jobId={row.jobId}
+          jobTitle={row.jobTitle}
+          jobLocation={row.jobLocation}
+          clientName={row.clientName}
+        />
       </td>
       <td className="px-5 py-3 align-top text-xs text-muted-foreground">{formatDate(row.keptAt)}</td>
       <td className="px-5 py-3 align-top">

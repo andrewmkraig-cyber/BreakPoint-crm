@@ -894,11 +894,16 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   // profile's Jobs panel and the Pipeline — RF's c.jobs[] is advisory.
   // Reject if an earlier stage row already exists at submitted-or-later,
   // so we don't silently downgrade a candidate already in the pipeline.
+  // Stamp source="recruiter_applied" on first write so the Applicants
+  // table can render "Recruiter Applied" in the Source column. Don't
+  // overwrite source on the update branch — that preserves whatever
+  // earlier inbound source (job_board / careers_form / rf_import)
+  // first landed the candidate.
   let placementId: string;
   try {
     const existing = await prisma.placement.findUnique({
       where: { candidateRfId_jobRfId: { candidateRfId: input.candidateRfId, jobRfId: input.jobRfId } },
-      select: { id: true, stage: true },
+      select: { id: true, stage: true, source: true },
     });
     if (existing) {
       if (existing.stage !== "applied" && existing.stage !== "sourced") {
@@ -909,7 +914,14 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
       }
       await prisma.placement.update({
         where: { id: existing.id },
-        data: { stage: "applied", syncedToRf: false },
+        data: {
+          stage: "applied",
+          syncedToRf: false,
+          // Backfill source on existing rows that pre-date the column
+          // OR were created by a sourced-stage import without one. Once
+          // a row has a real source we leave it alone.
+          source: existing.source ?? "recruiter_applied",
+        },
       });
       placementId = existing.id;
     } else {
@@ -920,6 +932,7 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
           jobRfId: input.jobRfId,
           clientRfId: input.clientRfId,
           stage: "applied",
+          source: "recruiter_applied",
           createdById: userId,
           syncedToRf: false,
         },

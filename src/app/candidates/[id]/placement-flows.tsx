@@ -3,15 +3,10 @@
 import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Ban,
   Briefcase,
-  CalendarClock,
-  CalendarPlus,
   CheckCircle2,
   ChevronDown,
   Clock,
-  DollarSign,
-  Handshake,
   Loader2,
   MapPin,
   PhoneCall,
@@ -61,6 +56,7 @@ import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import { sendEmailAction } from "@/app/email/actions";
+import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 
 export type ClientContactRef = {
   id: number;
@@ -178,13 +174,6 @@ export type PlacementSnapshot = {
 
 type Bucket = PipelineBucket;
 
-const ACTIVE_BUCKETS: ReadonlySet<Bucket> = new Set<Bucket>([
-  "submitted",
-  "interviewing",
-  "offer",
-  "pending_start",
-]);
-
 export type AceTeamContact = { id: string; name: string; email: string };
 
 export function PlacementActions({
@@ -283,6 +272,7 @@ export function PlacementActions({
           <JobActionRow
             key={j.jobRfId}
             job={j}
+            candidateRfId={candidateRfId}
             candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
             onOffer={() => setOfferFor(j)}
             onPlacement={() => setPlacementFor(j)}
@@ -497,17 +487,18 @@ function ReferenceCheckCompose({
 
 function JobActionRow({
   job,
+  candidateRfId,
   candidateName,
   onOffer,
   onPlacement,
   onConfirm,
   onSchedule,
-  onClientInvite,
   onReject,
   onCancel,
   onReschedule,
 }: {
   job: PlacementContextJob;
+  candidateRfId: number;
   candidateName: string;
   onOffer: () => void;
   onPlacement: () => void;
@@ -520,10 +511,6 @@ function JobActionRow({
 }) {
   const effective: Bucket = (job.placement?.stage ?? job.rfStageBucket) as Bucket;
   const isCancelled = effective === "cancelled";
-  const isActive = !isCancelled && ACTIVE_BUCKETS.has(effective);
-  const isInterviewing = !isCancelled && (effective === "interviewing" || effective === "submitted");
-  const isOffer = !isCancelled && effective === "offer";
-  const isPendingStart = !isCancelled && effective === "pending_start";
   const isHired = !isCancelled && effective === "hired";
   const isRejected = !isCancelled && effective === "rejected";
 
@@ -558,83 +545,39 @@ function JobActionRow({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-        {isActive && !isPendingStart && (
-          <>
-            <button
-              type="button"
-              onClick={onSchedule}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
-            >
-              <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
-            </button>
-            <button
-              type="button"
-              onClick={onClientInvite}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
-              title="Log an interview the client is scheduling themselves — adds to your calendar only"
-            >
-              <CalendarPlus className="h-3.5 w-3.5" /> Client Sending Invite
-            </button>
-          </>
-        )}
-        {(isInterviewing || isOffer) && (
-          <button
-            type="button"
-            onClick={onOffer}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
-          >
-            <DollarSign className="h-3.5 w-3.5" /> {job.placement?.offerSalary ? "Edit Offer" : "Offer Received"}
-          </button>
-        )}
-        {(isOffer || isInterviewing) && (
-          <button
-            type="button"
-            onClick={onPlacement}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
-          >
-            <Handshake className="h-3.5 w-3.5" /> Placement
-          </button>
-        )}
-        {isPendingStart && (
-          <button
-            type="button"
-            onClick={onConfirm}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Start
-          </button>
-        )}
-        {!isRejected && !isCancelled && !isHired && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onReject();
-            }}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50"
-          >
-            <UserX className="h-3.5 w-3.5" /> Reject
-          </button>
-        )}
-        {isHired && (
-          <>
+          {/* Action set parity with the Job-page Pipeline rows. The
+              dialog-heavy actions (Schedule / Offer / Placement /
+              Confirm / Cancel) hand back to the existing profile-side
+              dialog state via the inline callbacks; the lighter ones
+              (Apply / Submit / Keep / Reject / Un-reject) call the
+              same server actions PipelineRowActions uses on the Job
+              page. Hired and Cancelled keep their bespoke chrome
+              underneath since the Pipeline component doesn't model
+              the post-Hired flow yet. */}
+          <PipelineRowActions
+            candidateRfId={candidateRfId}
+            candidateName={candidateName}
+            jobRfId={job.jobRfId}
+            clientRfId={job.clientRfId}
+            jobTitle={job.jobTitle}
+            clientName={job.clientName}
+            bucket={effective}
+            onSchedule={onSchedule}
+            onOffer={onOffer}
+            onPlacement={onPlacement}
+            onConfirmStart={onConfirm}
+            onCancelPlacement={onCancel}
+            onRejectDialog={onReject}
+          />
+          {isHired && (
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
               <CheckCircle2 className="h-3 w-3" /> Hired
               {job.placement?.startConfirmedAt ? ` · ${formatDate(job.placement.startConfirmedAt)}` : ""}
             </span>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50"
-            >
-              <Ban className="h-3.5 w-3.5" /> Cancel Placement
-            </button>
-          </>
-        )}
-        {isCancelled && job.placement && (
-          <CancelledRowActions placementId={job.placement.id} />
-        )}
+          )}
+          {isCancelled && job.placement && (
+            <CancelledRowActions placementId={job.placement.id} />
+          )}
         </div>
       </div>
 

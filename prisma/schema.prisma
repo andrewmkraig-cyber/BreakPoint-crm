@@ -241,6 +241,15 @@ model Placement {
   // shows an "(Ace only)" badge when this is false.
   syncedToRf            Boolean   @default(false)
 
+  // How the candidate first landed on this job. Set on the row's first
+  // write and not touched by later stage moves. Examples:
+  //   "recruiter_applied"  — recruiter clicked Apply in Ace
+  //   "job_board"          — inbound from a job-board feed
+  //   "careers_form"       — inbound from the public apply link
+  //   "rf_import"          — pre-existing RF stage_name carried in
+  // null means the source wasn't recorded (older rows).
+  source                String?
+
   createdById           String
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
@@ -421,6 +430,11 @@ model KrispcallLog {
 // and merge-field resolution.
 model JobOverride {
   jobRfId     Int      @id
+  // Optional Ace-authored title that wins over whatever RF's title /
+  // name / position_title fields give us. Lets recruiters fix
+  // "(untitled job)" rows on the Applicants list when RF imports
+  // come in with empty title columns.
+  title       String?
   description String?  @db.Text
   updatedAt   DateTime @updatedAt
   createdAt   DateTime @default(now())

@@ -7,7 +7,6 @@ import {
   Ban,
   Bookmark,
   CalendarClock,
-  CalendarPlus,
   CheckCircle2,
   DollarSign,
   Handshake,
@@ -54,6 +53,21 @@ export type PipelineRowActionsProps = {
   jobTitle: string;
   clientName: string;
   bucket: PipelineBucket;
+  // Optional inline-dialog handlers. When the row is rendered on the
+  // candidate profile (where dialogs already exist), passing these
+  // skips the navigate-to-candidate-profile fallback and opens the
+  // matching dialog in place. Job-page rows don't pass them and the
+  // buttons fall through to NavButton href={profileHref}.
+  onSchedule?: () => void;
+  onOffer?: () => void;
+  onPlacement?: () => void;
+  onConfirmStart?: () => void;
+  onCancelPlacement?: () => void;
+  // When provided, Reject opens the caller's dedicated dialog
+  // (e.g. the candidate-profile RejectDialog with reason +
+  // optional rejection-email send) instead of the bare
+  // window.confirm + server action that the Job page uses.
+  onRejectDialog?: () => void;
 };
 
 export function PipelineRowActions(props: PipelineRowActionsProps) {
@@ -109,6 +123,14 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
   }
 
   function onReject() {
+    // Hand off to the caller's dialog when they provided one
+    // (candidate profile uses a dedicated RejectDialog with reason
+    // + optional rejection email). Otherwise fall back to the
+    // inline confirm + server action used on the Job page.
+    if (props.onRejectDialog) {
+      props.onRejectDialog();
+      return;
+    }
     if (!confirm(`Reject ${props.candidateName} for ${props.jobTitle}?`)) return;
     runLight(`Rejected ${props.candidateName}`, () =>
       rejectCandidateJob({
@@ -135,10 +157,11 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
 
   switch (props.bucket) {
     case "sourced":
+      // Apply / Keep / Reject — Submit isn't a sourced-stage move; the
+      // canonical path is Sourced → Applied → Submitted.
       return (
         <ActionRow disabled={isPending}>
-          <ActionButton icon={Plus} label="Apply" onClick={onApply} />
-          <ActionButton icon={Send} label="Submit" tone="primary" onClick={onSubmit} />
+          <ActionButton icon={Plus} label="Apply" tone="primary" onClick={onApply} />
           <ActionButton icon={Bookmark} label="Keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
@@ -152,33 +175,75 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         </ActionRow>
       );
     case "submitted":
+      // Schedule / Reject only. Client-invite is logged through the
+      // Schedule Interview composer's "Client sending invite" toggle
+      // and doesn't need its own button on this row anymore.
       return (
         <ActionRow disabled={isPending}>
-          <NavButton icon={CalendarClock} label="Schedule" href={profileHref} title="Schedule Interview" />
-          <NavButton icon={CalendarPlus} label="Client Invite" href={profileHref} title="Client Sending Invite" />
+          <DialogOrNav
+            icon={CalendarClock}
+            label="Schedule"
+            title="Schedule Interview"
+            onClick={props.onSchedule}
+            href={profileHref}
+          />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "interviewing":
+      // Schedule (next round) / Offer / Reject.
       return (
         <ActionRow disabled={isPending}>
-          <NavButton icon={CalendarClock} label="Next round" href={profileHref} title="Schedule another interview" />
-          <NavButton icon={DollarSign} label="Offer" href={profileHref} title="Offer Received" />
+          <DialogOrNav
+            icon={CalendarClock}
+            label="Schedule"
+            title="Schedule another interview"
+            onClick={props.onSchedule}
+            href={profileHref}
+          />
+          <DialogOrNav
+            icon={DollarSign}
+            label="Offer"
+            title="Offer Received"
+            onClick={props.onOffer}
+            href={profileHref}
+          />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "offer":
       return (
         <ActionRow disabled={isPending}>
-          <NavButton icon={Handshake} label="Placement" href={profileHref} title="Record placement" tone="primary" />
+          <DialogOrNav
+            icon={Handshake}
+            label="Placement"
+            title="Record placement"
+            tone="primary"
+            onClick={props.onPlacement}
+            href={profileHref}
+          />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "pending_start":
       return (
         <ActionRow disabled={isPending}>
-          <NavButton icon={CheckCircle2} label="Confirm" href={profileHref} title="Confirm start" tone="primary" />
-          <NavButton icon={Ban} label="Cancel" href={profileHref} title="Cancel placement" tone="danger" />
+          <DialogOrNav
+            icon={CheckCircle2}
+            label="Confirm"
+            title="Confirm start"
+            tone="primary"
+            onClick={props.onConfirmStart}
+            href={profileHref}
+          />
+          <DialogOrNav
+            icon={Ban}
+            label="Cancel"
+            title="Cancel placement"
+            tone="danger"
+            onClick={props.onCancelPlacement}
+            href={profileHref}
+          />
         </ActionRow>
       );
     case "hired":
@@ -253,6 +318,33 @@ function ActionButton({
       <span className="hidden sm:inline">{label}</span>
     </button>
   );
+}
+
+// When `onClick` is provided we render an inline-action button (used
+// on the candidate profile where the dialog already lives in the
+// same React tree). Otherwise we fall back to a NavButton that takes
+// the recruiter to the candidate profile so the dialog can open
+// there. Same pixels either way; the only difference is which side
+// of the navigation the dialog mounts on.
+function DialogOrNav({
+  icon,
+  label,
+  title,
+  tone,
+  onClick,
+  href,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  title?: string;
+  tone?: Tone;
+  onClick?: () => void;
+  href: string;
+}) {
+  if (onClick) {
+    return <ActionButton icon={icon} label={label} title={title} tone={tone} onClick={onClick} />;
+  }
+  return <NavButton icon={icon} label={label} title={title} tone={tone} href={href} />;
 }
 
 function NavButton({

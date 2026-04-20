@@ -8,9 +8,12 @@ import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
   canonicalStage,
+  normalizeJob,
   type RFCandidate,
   type RFCandidateJob,
+  type RFJob,
 } from "@/lib/recruiterflow";
+import { resolveJobTitle } from "@/lib/job-title";
 
 export const dynamic = "force-dynamic";
 
@@ -20,7 +23,7 @@ export default async function ApplicantsPage() {
   let error: string | null = null;
 
   try {
-    const [candidates, placements] = await Promise.all([
+    const [candidates, placements, allJobs, jobOverrides] = await Promise.all([
       recruiterflow.listAllCandidates({ perPage: 100 }),
       prisma.placement.findMany({
         where: { stage: { in: ["kept", "rejected", "offer", "pending_start", "hired", "cancelled", "submitted", "applied", "sourced"] } },
@@ -30,14 +33,42 @@ export default async function ApplicantsPage() {
           jobRfId: true,
           clientRfId: true,
           stage: true,
+          source: true,
           createdAt: true,
           updatedAt: true,
         },
       }),
+      // Pull the full RF job list so we can resolve each row's title /
+      // location. The RFCandidateJob rows hanging off c.jobs are sparse
+      // (often title-only with no location) — the canonical Job record
+      // has the full data we want for the Applicants table.
+      recruiterflow.listAllJobs({ perPage: 100 }),
+      prisma.jobOverride.findMany({ select: { jobRfId: true, title: true } }),
     ]);
 
     const candidateById = new Map<number, RFCandidate>();
     for (const c of candidates) candidateById.set(c.id, c);
+    const jobById = new Map<number, RFJob>();
+    for (const j of allJobs) jobById.set(j.id, j);
+    const overrideByJob = new Map<number, { title: string | null }>();
+    for (const o of jobOverrides) overrideByJob.set(o.jobRfId, { title: o.title });
+
+    const describeJob = (jobId: number, fallbackJob?: RFCandidateJob): { title: string; location: string; clientName: string } => {
+      const rfJob = jobById.get(jobId) ?? null;
+      const normalized = rfJob ? normalizeJob(rfJob) : null;
+      const title = resolveJobTitle({
+        override: overrideByJob.get(jobId) ?? null,
+        // Pass both the canonical RFJob AND the sparse RFCandidateJob so
+        // the resolver can grab a title from whichever source has one.
+        // Most RF imports populate `name` on the canonical record but
+        // leave `title` empty; some do the opposite on the candidate-job
+        // join.
+        job: { ...(rfJob ?? {}), ...(fallbackJob ?? {}) },
+      });
+      const location = normalized?.location ?? "";
+      const clientName = normalized?.company ?? fallbackJob?.client_company_name ?? "";
+      return { title, location, clientName };
+    };
 
     // Disqualify a (candidate, job) pair from Applied if the recruiter has
     // already moved them PAST applied — submitted / interviewing / offer /
@@ -79,13 +110,15 @@ export default async function ApplicantsPage() {
         if (typeof j?.job_id !== "number") continue;
         if (canonicalStage(j.stage_name) !== "applied") continue;
         if (placedPairsHidden.has(`${c.id}:${j.job_id}`)) continue;
+        const desc = describeJob(j.job_id, j);
         appliedRows.push({
           candidateId: c.id,
           candidateName: name || "(unnamed)",
           jobId: j.job_id,
-          jobTitle: j.title ?? j.name ?? "(untitled job)",
+          jobTitle: desc.title,
+          jobLocation: desc.location,
           clientRfId: j.client_company_id ?? 0,
-          clientName: j.client_company_name ?? "",
+          clientName: desc.clientName,
           appliedAt: j.stage_moved ?? j.added_time ?? c.added_time ?? null,
           source: c.source_name ?? null,
         });
@@ -110,15 +143,21 @@ export default async function ApplicantsPage() {
         cand?.name ??
         [cand?.first_name, cand?.last_name].filter(Boolean).join(" ") ??
         "(unnamed)";
+      const desc = describeJob(p.jobRfId, candJob ?? undefined);
       appliedRows.push({
         candidateId: p.candidateRfId,
         candidateName: candName || "(unnamed)",
         jobId: p.jobRfId,
-        jobTitle: candJob?.title ?? candJob?.name ?? "(untitled job)",
+        jobTitle: desc.title,
+        jobLocation: desc.location,
         clientRfId: p.clientRfId,
-        clientName: candJob?.client_company_name ?? "",
+        clientName: desc.clientName,
         appliedAt: p.updatedAt.toISOString(),
-        source: cand?.source_name ?? null,
+        // Local Placement carries its own source (e.g.
+        // "recruiter_applied" stamped by applyCandidateToJob from the
+        // PlacementActions UI). Falls back to RF's candidate-level
+        // source_name if the local row was older than the source field.
+        source: p.source ?? cand?.source_name ?? null,
       });
     }
 
@@ -143,13 +182,15 @@ export default async function ApplicantsPage() {
       const candJob = cand && Array.isArray(cand.jobs)
         ? (cand.jobs as RFCandidateJob[]).find((j) => j.job_id === p.jobRfId)
         : null;
+      const desc = describeJob(p.jobRfId, candJob ?? undefined);
       keptRows.push({
         candidateId: p.candidateRfId,
         candidateName: candName || "(unnamed)",
         jobId: p.jobRfId,
-        jobTitle: candJob?.title ?? candJob?.name ?? "(untitled job)",
+        jobTitle: desc.title,
+        jobLocation: desc.location,
         clientRfId: p.clientRfId,
-        clientName: candJob?.client_company_name ?? "",
+        clientName: desc.clientName,
         keptAt: p.updatedAt.toISOString(),
       });
     }
