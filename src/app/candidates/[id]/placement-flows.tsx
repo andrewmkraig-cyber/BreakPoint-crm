@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Briefcase,
   CheckCircle2,
@@ -216,8 +216,47 @@ export function PlacementActions({
   const [unrejectFor, setUnrejectFor] = useState<PlacementContextJob | null>(null);
   const [cancelFor, setCancelFor] = useState<PlacementContextJob | null>(null);
   const [submitOpen, setSubmitOpen] = useState(false);
+  const [submitInitialJobRfId, setSubmitInitialJobRfId] = useState<number | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
   const [referenceOpen, setReferenceOpen] = useState(false);
+
+  // Deep-link from /applicants and /jobs/[id] pipeline rows. The
+  // expected query is ?compose=submittal&jobId=NN — when both are
+  // present we open the SubmitToJobDialog with the matching job
+  // pre-selected so the user lands directly in the composer step.
+  // Then strip the params via router.replace so a refresh doesn't
+  // re-trigger and the back button works.
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  useEffect(() => {
+    const compose = searchParams?.get("compose");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (compose !== "submittal" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    // Only honor the deep-link if the candidate is actually eligible
+    // for that job (it appears in openJobs and isn't already linked
+    // past sourced/applied) — otherwise show the dialog at the picker
+    // step so the user sees the conflict and can cancel.
+    const target = openJobs.find((j) => j.jobRfId === jobId);
+    if (target) {
+      setSubmitInitialJobRfId(jobId);
+    }
+    setSubmitOpen(true);
+    // Strip the query so it doesn't re-fire on every render or on a
+    // back-nav.
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("compose");
+    next.delete("jobId");
+    const queryString = next.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+    // We deliberately depend only on the search params + pathname —
+    // openJobs reference changes on every parent re-render but the
+    // initial query is what matters here. Also stripping the params
+    // changes searchParams, which would re-run; the early-return on
+    // missing compose/jobId handles that cleanly.
+  }, [searchParams, pathname, router, openJobs]);
 
   function onRequestReferences() {
     if (!candidateEmail) {
@@ -406,7 +445,11 @@ export function PlacementActions({
           candidateLastName={candidateLastName}
           candidateEmail={candidateEmail}
           openJobs={openJobs}
-          onClose={() => setSubmitOpen(false)}
+          initialJobRfId={submitInitialJobRfId ?? undefined}
+          onClose={() => {
+            setSubmitOpen(false);
+            setSubmitInitialJobRfId(null);
+          }}
         />
       )}
       {applyOpen && (
@@ -2123,6 +2166,7 @@ function SubmitToJobDialog({
   candidateLastName,
   candidateEmail,
   openJobs,
+  initialJobRfId,
   onClose,
 }: {
   candidateRfId: number;
@@ -2130,12 +2174,23 @@ function SubmitToJobDialog({
   candidateLastName: string;
   candidateEmail: string;
   openJobs: OpenJobOption[];
+  // When set (e.g. via the ?compose=submittal&jobId=X deep link from
+  // the Applicants page or the Job-page pipeline row), skip the
+  // job-picker step entirely and open the composer for that job.
+  initialJobRfId?: number;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [selectedId, setSelectedId] = useState<string>("");
+  // Pre-seed the picker selection AND the composer flag from the
+  // deep-link prop so the user lands directly in compose.
+  const initialPick = initialJobRfId
+    ? openJobs.find((o) => o.jobRfId === initialJobRfId) ?? null
+    : null;
+  const [selectedId, setSelectedId] = useState<string>(
+    initialPick ? String(initialPick.jobRfId) : "",
+  );
   const [err, setErr] = useState<string | null>(null);
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState<boolean>(Boolean(initialPick));
 
   const picked = openJobs.find((o) => String(o.jobRfId) === selectedId) ?? null;
   const hasAvailable = openJobs.some((j) => !j.alreadyLinked);
@@ -2853,6 +2908,58 @@ export function CcBccPicker({
   );
 }
 
+// One row in the dropdown. Uses onMouseDown + preventDefault so the
+// toggle commits BEFORE the typed input's blur handler fires; without
+// this the blur ran addTyped with the pre-toggle `selected` closure
+// and the parent's onChange got called with the stale value, racing
+// the click-driven toggle and dropping the chip.
+function PickerOption({
+  name,
+  email,
+  checked,
+  onToggle,
+}: {
+  name: string;
+  email: string;
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        onMouseDown={(e) => {
+          if (!email) return;
+          e.preventDefault();
+          onToggle();
+        }}
+        disabled={!email}
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-navy hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+            checked ? "border-brand bg-brand text-white" : "border-border bg-white",
+          )}
+        >
+          {checked && (
+            <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M2 6.5l2.5 2.5L10 3" />
+            </svg>
+          )}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate">{name}</span>
+          <span className="truncate text-[11px] text-muted-foreground">
+            {email || "No email on file"}
+          </span>
+        </span>
+      </button>
+    </li>
+  );
+}
+
 // Smaller sibling of the composer's ContactComboMulti that lives outside
 // a modal. Intentionally duplicated (not imported from email-composer.tsx)
 // to keep the composer module's client dependency tree focused on email
@@ -2888,8 +2995,18 @@ function InlineContactMultiInput({
     setAll(next);
   }
   function addTyped() {
+    // Early-return when typed is empty so blur events don't replay
+    // the current `selected` (the parameter closure of which can lag
+    // a just-clicked toggle by one render). Without this guard,
+    // pointing at a dropdown row blurred the typed input first,
+    // addTyped wrote setAll(stale selected) → onChange(""), and the
+    // toggle's setAll(...with chip) ran after — the React batch
+    // saw both updates but the second one was already a no-op
+    // because it built `next` from the same stale closure.
+    const raw = typed.trim();
+    if (!raw) return;
     const next = new Set(selected);
-    for (const p of parseEmailCsv(typed)) next.add(p);
+    for (const p of parseEmailCsv(raw)) next.add(p);
     setAll(next);
     setTyped("");
   }
@@ -2951,20 +3068,13 @@ function InlineContactMultiInput({
                     Quick pick
                   </li>
                   {pinnedList.map((c) => (
-                    <li key={`pinned-${c.id}`}>
-                      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
-                        <input
-                          type="checkbox"
-                          checked={selected.has(c.email)}
-                          onChange={() => toggle(c.email)}
-                          className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
-                        />
-                        <span className="flex min-w-0 flex-1 flex-col">
-                          <span className="truncate">{c.name}</span>
-                          <span className="truncate text-[11px] text-muted-foreground">{c.email}</span>
-                        </span>
-                      </label>
-                    </li>
+                    <PickerOption
+                      key={`pinned-${c.id}`}
+                      name={c.name}
+                      email={c.email}
+                      checked={selected.has(c.email)}
+                      onToggle={() => toggle(c.email)}
+                    />
                   ))}
                   <li className="mx-2 my-1 border-t border-border" />
                 </>
@@ -2975,23 +3085,13 @@ function InlineContactMultiInput({
                 </li>
               )}
               {rest.map((c) => (
-                <li key={c.id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
-                    <input
-                      type="checkbox"
-                      checked={selected.has(c.email)}
-                      onChange={() => toggle(c.email)}
-                      disabled={!c.email}
-                      className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
-                    />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate">{c.name}</span>
-                      <span className="truncate text-[11px] text-muted-foreground">
-                        {c.email || "No email on file"}
-                      </span>
-                    </span>
-                  </label>
-                </li>
+                <PickerOption
+                  key={c.id}
+                  name={c.name}
+                  email={c.email}
+                  checked={selected.has(c.email)}
+                  onToggle={() => toggle(c.email)}
+                />
               ))}
             </ul>
             <div className="border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] text-muted-foreground">

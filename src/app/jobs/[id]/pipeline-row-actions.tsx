@@ -23,7 +23,6 @@ import {
   applyCandidateToJob,
   keepCandidate,
   rejectCandidateJob,
-  submitCandidateToJob,
   unrejectCandidateJob,
 } from "@/app/candidates/[id]/placement-actions";
 
@@ -100,17 +99,6 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     );
   }
 
-  function onSubmit() {
-    runLight(`Submitted ${props.candidateName}`, () =>
-      submitCandidateToJob({
-        candidateRfId: props.candidateRfId,
-        jobRfId: props.jobRfId,
-        clientRfId: props.clientRfId,
-        jobTitle: props.jobTitle,
-        clientName: props.clientName,
-      }),
-    );
-  }
 
   function onKeep() {
     runLight(`Kept ${props.candidateName}`, () =>
@@ -167,9 +155,21 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         </ActionRow>
       );
     case "applied":
+      // Submit hands off to the candidate profile's submittal composer
+      // via the same ?compose=submittal&jobId=N deep link the Applicants
+      // page uses. The actual stage move to "submitted" only happens
+      // when the recruiter hits Send in the composer; the inline-action
+      // path here used to write the move directly without showing the
+      // email, which was the bug the deep-link fix is correcting.
       return (
         <ActionRow disabled={isPending}>
-          <ActionButton icon={Send} label="Submit" tone="primary" onClick={onSubmit} />
+          <NavButton
+            icon={Send}
+            label="Submit"
+            tone="primary"
+            href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
+            title="Open submittal composer"
+          />
           <ActionButton icon={Bookmark} label="Keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>

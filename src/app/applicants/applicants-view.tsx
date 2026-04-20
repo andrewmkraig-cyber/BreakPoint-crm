@@ -7,7 +7,7 @@ import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { keepCandidateForJob, removeKeptCandidate } from "@/app/applicants/actions";
-import { rejectCandidateJob, submitCandidateToJob } from "@/app/candidates/[id]/placement-actions";
+import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
 
 export type AppliedRow = {
   candidateId: number;
@@ -247,25 +247,18 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
       <td className="px-5 py-3 align-top">
         <div className="flex flex-wrap items-center gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-          <ActionButton
-            primary
-            disabled={isPending}
-            onClick={() =>
-              runAction(
-                () =>
-                  submitCandidateToJob({
-                    candidateRfId: row.candidateId,
-                    jobRfId: row.jobId,
-                    clientRfId: row.clientRfId,
-                    jobTitle: row.jobTitle,
-                    clientName: row.clientName,
-                  }),
-                "Submitted",
-              )
-            }
+          {/* Submit hands off to the candidate profile's submittal
+              composer via the ?compose=submittal&jobId=N deep link.
+              The actual stage move to "submitted" happens when the
+              recruiter hits Send in the composer — clicking Submit
+              here used to move the candidate without ever showing
+              the email. */}
+          <Link
+            href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
+            className="inline-flex items-center gap-1 rounded-md border border-brand bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
             Submit
-          </ActionButton>
+          </Link>
           <ActionButton
             disabled={isPending}
             onClick={() =>
@@ -342,32 +335,17 @@ function KeptRowView({ row }: { row: KeptRow }) {
       <td className="px-5 py-3 align-top">
         <div className="flex flex-wrap items-center gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
-          <ActionButton
-            primary
-            disabled={isPending}
-            onClick={async () => {
-              startChange(async () => {
-                const submitRes = await submitCandidateToJob({
-                  candidateRfId: row.candidateId,
-                  jobRfId: row.jobId,
-                  clientRfId: row.clientRfId,
-                  jobTitle: row.jobTitle,
-                  clientName: row.clientName,
-                });
-                if (!submitRes.ok) {
-                  toast.error("Submit failed", { description: submitRes.error });
-                  return;
-                }
-                // Delete the kept row so it falls off the Kept tab once
-                // submittal pushes the candidate into the normal pipeline.
-                await removeKeptCandidate({ candidateRfId: row.candidateId, jobRfId: row.jobId });
-                toast.success("Submitted");
-                router.refresh();
-              });
-            }}
+          {/* Submit hands off to the candidate profile's submittal
+              composer via the deep link. The Kept row gets cleaned up
+              after the recruiter sends — the composer's onSend path
+              moves the placement to "submitted" which itself excludes
+              the row from the Kept query on next refresh. */}
+          <Link
+            href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
+            className="inline-flex items-center gap-1 rounded-md border border-brand bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
             Submit
-          </ActionButton>
+          </Link>
           <ActionButton
             destructive
             disabled={isPending}

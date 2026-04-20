@@ -878,23 +878,50 @@ function ContactRow({
   checked: boolean;
   onToggle: () => void;
 }) {
+  // Why a <button> with onMouseDown instead of a <label><input
+  // type=checkbox onChange>>: a click on the original checkbox
+  // raced the typed input's onBlur. The blur fired first, addTyped
+  // ran with the pre-toggle closure of `selected` and called
+  // setAll(...staleSelected), which onChange()'d the parent with
+  // the value AS IT WAS BEFORE the click — wiping any chip the
+  // click was about to add.
+  //
+  // Fix: commit the toggle on mouseDown (which fires BEFORE blur),
+  // and preventDefault so focus never leaves the typed input. The
+  // typed input never blurs, addTyped never fires its blur path,
+  // and the toggle's setAll() is the only state mutation in flight.
   return (
     <li>
-      <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
-        <input
-          type="checkbox"
-          checked={checked}
-          onChange={onToggle}
-          disabled={!c.email}
-          className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
-        />
+      <button
+        type="button"
+        onMouseDown={(e) => {
+          if (!c.email) return;
+          e.preventDefault();
+          onToggle();
+        }}
+        disabled={!c.email}
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-navy hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <span
+          aria-hidden="true"
+          className={cn(
+            "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+            checked ? "border-brand bg-brand text-white" : "border-border bg-white",
+          )}
+        >
+          {checked && (
+            <svg viewBox="0 0 12 12" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M2 6.5l2.5 2.5L10 3" />
+            </svg>
+          )}
+        </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate">{c.name}</span>
           <span className="truncate text-[11px] text-muted-foreground">
             {c.email || "No email on file"}
           </span>
         </span>
-      </label>
+      </button>
     </li>
   );
 }
