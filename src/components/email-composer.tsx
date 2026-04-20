@@ -116,24 +116,6 @@ export function EmailComposer({
     };
   }
 
-  // Guard against accidental full-content wipes. Scrolling a long textarea
-  // in some browsers can flick into a "select all" state (triple-click at a
-  // scroll boundary, click-and-drag past the end); a subsequent Backspace /
-  // Delete then wipes everything. Require a confirm when the user is about
-  // to delete a selection that covers ~all of a non-trivially-long body.
-  function guardBulkDelete(e: React.KeyboardEvent<HTMLTextAreaElement>): void {
-    if (e.key !== "Backspace" && e.key !== "Delete") return;
-    const el = e.currentTarget;
-    const selectedLen = (el.selectionEnd ?? 0) - (el.selectionStart ?? 0);
-    if (selectedLen < 100) return;
-    if (selectedLen < el.value.length * 0.9) return;
-    // eslint-disable-next-line no-alert
-    const ok = window.confirm(
-      `You're about to delete ${selectedLen} characters from this message. Continue?`,
-    );
-    if (!ok) e.preventDefault();
-  }
-
   function insertMergeToken(token: string) {
     setFieldOpen(false);
     const targetRef = lastFocus === "subject" ? subjectRef : bodyRef;
@@ -391,7 +373,6 @@ export function EmailComposer({
               rememberCaret(e.currentTarget);
             }}
             onSelect={(e) => rememberCaret(e.currentTarget)}
-            onKeyDown={guardBulkDelete}
             onKeyUp={(e) => rememberCaret(e.currentTarget)}
             onClick={(e) => rememberCaret(e.currentTarget)}
             rows={16}
