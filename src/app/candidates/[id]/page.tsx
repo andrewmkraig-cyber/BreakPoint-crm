@@ -403,16 +403,17 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
       />
 
-      {/* Resume-first layout: the resume PDF is the primary content
-          (most of what we do on this page is re-read it), so it gets
-          the wide left column. Contact/Employment/Skills/Experience/
-          Education/Notes become a scannable right sidebar. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className="space-y-6 lg:col-span-3">
+      {/* Resume-first layout: the resume PDF is the primary content —
+          ~70% viewport on lg+, the remaining ~30% is a scannable right
+          sidebar with everything else. The 10-col grid is picked so the
+          split lands at ~70/30, which is visibly resume-dominant
+          instead of the old ~60/40 that still felt symmetric. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <div className="space-y-6 lg:col-span-7">
           <EditableResume candidateRfId={id} initial={localResumeInitial} />
         </div>
 
-        <aside className="space-y-6 lg:col-span-2">
+        <aside className="space-y-6 lg:col-span-3">
           <EditableContact candidateId={id} initial={contactInitial} />
           <EditableEmployment candidateId={id} initial={employmentInitial} />
           <EditableSkills candidateId={id} initial={skillsInitial} />

@@ -192,17 +192,16 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         />
       )}
 
-      {/* Resume-first layout: the resume (PDF inline if available) is
-          the primary content. Everything else lives in a scannable right
-          sidebar so the recruiter isn't scrolling past sections to get
-          to what they mostly came here to read. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <section className="rounded-xl border border-border bg-white shadow-sm lg:col-span-3">
-          <div className="flex items-center justify-between border-b border-border px-5 py-3">
-            <div>
+      {/* Resume-first layout: same split as the RF candidate page —
+          ~70% resume / ~30% sidebar on lg+, so the recruiter opens the
+          profile and lands directly on the document they came to read. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <section className="rounded-xl border border-border bg-white shadow-sm lg:col-span-7">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3">
+            <div className="min-w-0">
               <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
               {candidate.resumeFilename && (
-                <p className="text-xs text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {candidate.resumeFilename}
                   {candidate.resumeSize ? ` · ${(candidate.resumeSize / 1024).toFixed(0)} KB` : ""}
                   {candidate.resumeUploadedAt ? ` · uploaded ${candidate.resumeUploadedAt.toLocaleDateString()}` : ""}
@@ -221,8 +220,11 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           {candidate.resumeFilename && candidate.resumeMimeType === "application/pdf" ? (
             <iframe
               title={`Resume — ${candidate.resumeFilename}`}
-              src={`/api/local-candidate-resumes/${candidate.id}`}
-              className="h-[700px] w-full rounded-b-xl border-0"
+              // #zoom=100 pins Chrome's PDF viewer to 100% actual size;
+              // #view=FitH is Firefox's equivalent. Without this, Chrome
+              // defaults to fit-width and renders at ~30% on this layout.
+              src={`/api/local-candidate-resumes/${candidate.id}#zoom=100&view=FitH`}
+              className="min-h-[900px] w-full rounded-b-xl border-0 [height:calc(100vh-200px)]"
             />
           ) : candidate.resumeFilename ? (
             <p className="px-5 py-8 text-center text-xs text-muted-foreground">
@@ -233,7 +235,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           )}
         </section>
 
-        <aside className="space-y-6 lg:col-span-2">
+        <aside className="space-y-6 lg:col-span-3">
           <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-navy">Contact</h2>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">

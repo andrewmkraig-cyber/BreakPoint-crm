@@ -96,7 +96,12 @@ export function EditableResume({
     });
   }
 
-  const pdfUrl = `/api/candidate-resumes/${candidateRfId}${showRedacted ? "?variant=redacted" : ""}`;
+  // `#zoom=100` pins Chrome's PDF viewer to 100% actual-size instead of its
+  // default fit-width, which was rendering at ~30% in the older narrow
+  // layout and still looks tiny on high-density displays. `#view=FitH` is
+  // respected by Firefox's viewer; Chrome ignores unknown params so listing
+  // both is safe.
+  const pdfUrl = `/api/candidate-resumes/${candidateRfId}${showRedacted ? "?variant=redacted" : ""}#zoom=100&view=FitH`;
   const downloadUrl = `/api/candidate-resumes/${candidateRfId}?download=1${showRedacted ? "&variant=redacted" : ""}`;
   const showDropzone = !resume || replacing;
   const hasRedacted = Boolean(resume?.redactedAt);
@@ -104,11 +109,11 @@ export function EditableResume({
 
   return (
     <div className="rounded-xl border border-border bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-border px-5 py-3">
-        <div>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3">
+        <div className="min-w-0">
           <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
           {resume && (
-            <p className="text-xs text-muted-foreground">
+            <p className="truncate text-xs text-muted-foreground">
               {resume.filename}
               {resume.sizeBytes > 0 && ` · ${formatBytes(resume.sizeBytes)}`}
               {resume.uploadedAt && ` · uploaded ${new Date(resume.uploadedAt).toLocaleDateString()}`}
@@ -116,7 +121,7 @@ export function EditableResume({
           )}
         </div>
         {resume && !replacing && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {canRedact && (
               <button
                 type="button"
@@ -218,7 +223,7 @@ export function EditableResume({
             <iframe
               title={`Resume — ${resume.filename}`}
               src={pdfUrl}
-              className="h-[700px] w-full rounded-b-xl border-0"
+              className="min-h-[900px] w-full rounded-b-xl border-0 [height:calc(100vh-200px)]"
             />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
