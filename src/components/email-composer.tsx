@@ -467,7 +467,7 @@ export function EmailComposer({
                 </button>
                 {templateOpen && (
                   <>
-                    <div className="fixed inset-0 z-30" onClick={() => setTemplateOpen(false)} />
+                    <div className="fixed inset-0 z-[60]" onClick={() => setTemplateOpen(false)} />
                     <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
                       <ul className="max-h-80 overflow-y-auto py-1 text-sm">
                         {!templatesLoaded && (
@@ -512,7 +512,7 @@ export function EmailComposer({
               </button>
               {fieldOpen && (
                 <>
-                  <div className="fixed inset-0 z-30" onClick={() => setFieldOpen(false)} />
+                  <div className="fixed inset-0 z-[60]" onClick={() => setFieldOpen(false)} />
                   <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
                     <div className="border-b border-border bg-muted/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                       Inserts into {lastFocus}
@@ -694,8 +694,14 @@ function ContactMultiPicker({
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          {/* z-[60]/z-[70] sits ABOVE the modal backdrop's z-50 so a
+              click outside the dropdown closes only the dropdown — its
+              click never reaches the modal backdrop's onClose handler.
+              Bubbling still goes up the React tree, where the modal
+              panel's onClick={stopPropagation} prevents the modal
+              from closing on the same click. */}
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
             <ul className="max-h-64 overflow-y-auto py-1">
               {options.length === 0 && (
                 <li className="px-3 py-2 text-xs text-muted-foreground">No contacts on file.</li>
@@ -826,8 +832,8 @@ function ContactComboMulti({
       </div>
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
             <ul className="max-h-64 overflow-y-auto py-1">
               {pinnedList.length > 0 && (
                 <>

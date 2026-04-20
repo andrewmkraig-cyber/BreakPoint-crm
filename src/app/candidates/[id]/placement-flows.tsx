@@ -674,8 +674,12 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-40 mt-1 w-60 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          {/* z-[60]/z-[70] keeps the dropdown above the modal backdrop's
+              z-50 so click-outside dismisses ONLY the dropdown — without
+              this, the click bubbled up to the backdrop's onClose and
+              the whole dialog unmounted (taking any state with it). */}
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 z-[70] mt-1 w-60 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
             <ul className="py-1 text-sm">
               <li>
                 <button
@@ -3059,8 +3063,21 @@ function InlineContactMultiInput({
       </div>
       {open && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-40 mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          {/* THE bug fix: this dropdown lives inside the Schedule
+              Interview modal (z-50 backdrop with onClick={onClose}).
+              Old z-30 overlay sat BEHIND the modal backdrop, so a
+              click "outside the dropdown" hit the backdrop first,
+              fired onClose, unmounted the whole ScheduleInterview
+              Dialog, and bccCsv (the chip state living in that
+              component's useState) was destroyed along with it.
+              Reopening showed no chip — not because state was wiped,
+              because the component was rebuilt fresh. z-[60] puts
+              the overlay ABOVE the backdrop so the dismiss click
+              hits this overlay → setOpen(false) → bubbling stops at
+              the modal panel's stopPropagation. Modal stays open,
+              chip persists. */}
+          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
             <ul className="max-h-56 overflow-y-auto py-1">
               {pinnedList.length > 0 && (
                 <>
