@@ -66,13 +66,33 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
   ]);
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
+  // Per-placement trace: shows the candidate's placement jobRfIds and
+  // whether each one matched a JobOverride row + how long its description
+  // was. This pinpoints the failure mode for [Job Description]:
+  //   - override missing entirely → save never persisted (Option A) or
+  //     the user saved against a different RF id (Option B variant).
+  //   - override present but descLength=0 → save persisted with an empty
+  //     description (the row exists but the field is null).
+  //   - override present with descLength>0 → resolver should be picking
+  //     it up; if the merge field still looks blank look at how the value
+  //     flows downstream into InviteFlowState.
+  const placementTrace = placements.map((p) => {
+    const ov = overrideByJob.get(p.jobRfId);
+    return {
+      placementId: p.id,
+      jobRfId: p.jobRfId,
+      hasOverrideRow: overrideByJob.has(p.jobRfId),
+      overrideDescLength: ov?.length ?? 0,
+    };
+  });
   // eslint-disable-next-line no-console
   console.log("[local candidate page]", id, "loaded jobOverrides", {
-    count: jobOverrides.length,
-    descriptions: jobOverrides.map((o) => ({
+    overrideRowCount: jobOverrides.length,
+    overrideRows: jobOverrides.map((o) => ({
       jobRfId: o.jobRfId,
       descLength: o.description?.length ?? 0,
     })),
+    placementTrace,
   });
 
   if (!candidate) notFound();

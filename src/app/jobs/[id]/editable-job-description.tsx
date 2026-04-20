@@ -43,13 +43,23 @@ export function EditableJobDescription({
 
   function onSave() {
     setErr(null);
+    // eslint-disable-next-line no-console
+    console.log("[EditableJobDescription] save click", {
+      jobRfId,
+      draftLength: draft.length,
+      draftPreview: draft.slice(0, 200),
+    });
     startSave(async () => {
       const result = await updateJobOverrideDescription({ jobRfId, description: draft });
       if (!result.ok) {
+        // eslint-disable-next-line no-console
+        console.error("[EditableJobDescription] save failed", { jobRfId, error: result.error });
         setErr(result.error);
         toast.error("Couldn't save description", { description: result.error });
         return;
       }
+      // eslint-disable-next-line no-console
+      console.log("[EditableJobDescription] save OK", { jobRfId, savedLength: draft.trim().length });
       setSavedOverride(draft.trim() || null);
       setEditing(false);
       toast.success("Description saved");

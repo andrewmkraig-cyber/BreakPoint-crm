@@ -492,10 +492,37 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       googleEventIdCandidate: true,
       candidateRfId: true,
       candidateId: true,
+      jobRfId: true,
       location: true,
     },
   });
   if (!interview) return { ok: false, error: "Interview not found." };
+
+  // Server-side safety net for [Job Description] — fetch the latest
+  // JobOverride and re-resolve any leftover `[Job Description]` tokens
+  // in the body the client sent. The client already runs applyMergeFields
+  // on send (EmailComposer.mergeValues), but the candidate page that
+  // built those values may have been loaded before the recruiter saved
+  // the override. Reading right here at send time guarantees the freshest
+  // value lands in the calendar event description.
+  let resolvedBodyText = input.bodyText;
+  let resolvedSubject = input.subject;
+  if (resolvedBodyText.includes("[Job Description]") || resolvedSubject.includes("[Job Description]")) {
+    const override = await prisma.jobOverride.findUnique({
+      where: { jobRfId: interview.jobRfId },
+      select: { description: true },
+    });
+    const description = override?.description ?? "";
+    // eslint-disable-next-line no-console
+    console.log("[sendInterviewInvite] resolving [Job Description] server-side", {
+      interviewId: input.interviewId,
+      jobRfId: interview.jobRfId,
+      hasOverride: Boolean(override),
+      descLength: description.length,
+    });
+    resolvedBodyText = resolvedBodyText.split("[Job Description]").join(description);
+    resolvedSubject = resolvedSubject.split("[Job Description]").join(description);
+  }
 
   const needsMeet = interview.type === "video";
   const hasExistingMeet = Boolean(interview.meetLink && interview.meetConferenceId);
@@ -526,8 +553,8 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   try {
     const ev = await createCalendarEvent({
       userId: user.id,
-      summary: input.subject.trim(),
-      description: input.bodyText,
+      summary: resolvedSubject.trim(),
+      description: resolvedBodyText,
       startISO: interview.scheduledAt.toISOString(),
       durationMin: interview.durationMin,
       attendees: [primary, ...extras],
