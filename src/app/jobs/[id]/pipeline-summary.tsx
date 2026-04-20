@@ -6,6 +6,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { StageBadgeFromName } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/recruiterflow";
+import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 
 export type JobPipelineRow = {
   candidateId: number;
@@ -64,9 +65,19 @@ const STAGE_TONE: Record<PipelineBucket, string> = {
 export function JobPipelineSummary({
   rows,
   visibleBuckets = STAGE_ORDER,
+  jobActions,
 }: {
   rows: JobPipelineRow[];
   visibleBuckets?: PipelineBucket[];
+  // Optional context for inline action buttons. When omitted (e.g. on the
+  // global /pipeline page where the same component is reused) the Actions
+  // column is suppressed and the table renders read-only.
+  jobActions?: {
+    jobRfId: number;
+    clientRfId: number;
+    jobTitle: string;
+    clientName: string;
+  };
 }) {
   const [openBucket, setOpenBucket] = useState<PipelineBucket | null>(null);
 
@@ -135,6 +146,7 @@ export function JobPipelineSummary({
                 <th className="px-4 py-2 font-medium">Candidate</th>
                 <th className="px-4 py-2 font-medium">Stage</th>
                 <th className="px-4 py-2 font-medium">Last Action</th>
+                {jobActions && <th className="px-4 py-2 text-right font-medium">Actions</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -150,6 +162,19 @@ export function JobPipelineSummary({
                     <StageBadgeFromName stageName={r.stageName} />
                   </td>
                   <td className="px-4 py-2 text-xs text-muted-foreground">{formatDate(r.stageMovedAt)}</td>
+                  {jobActions && (
+                    <td className="px-4 py-2">
+                      <PipelineRowActions
+                        candidateRfId={r.candidateId}
+                        candidateName={r.candidateName}
+                        jobRfId={jobActions.jobRfId}
+                        clientRfId={jobActions.clientRfId}
+                        jobTitle={jobActions.jobTitle}
+                        clientName={jobActions.clientName}
+                        bucket={r.bucket}
+                      />
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

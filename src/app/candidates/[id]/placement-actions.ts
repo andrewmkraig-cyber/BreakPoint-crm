@@ -1691,3 +1691,42 @@ export async function sendReferenceCheckRequest(
     return { ok: false, error: e instanceof Error ? e.message : "Reference check email failed." };
   }
 }
+
+// ---- Keep ----
+//
+// "Keep" flags a candidate as worth holding onto for future roles — a
+// recruiter signal, not a stage move. Source of truth lives in Postgres
+// (an ActionLog row of type "keep"); we deliberately don't push to RF
+// because RF doesn't have a first-class "kept" concept (it's a tag) and
+// the no-RF-on-create rule extends to anything we're newly authoring in
+// Ace. The Job-detail pipeline reads the most recent "keep" log per
+// (candidate, job) pair to render an indicator badge if needed later.
+export type KeepCandidateInput = {
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+};
+
+export async function keepCandidate(input: KeepCandidateInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    await prisma.actionLog.create({
+      data: {
+        userId,
+        actionType: "keep",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+        },
+      },
+    });
+    revalidatePath(`/candidates/${input.candidateRfId}`);
+    revalidatePath(`/jobs/${input.jobRfId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to keep candidate." };
+  }
+}

@@ -117,7 +117,20 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           </div>
         ) : (
           <div className="mt-4">
-            <JobPipelineSummary rows={pipelineRows} />
+            <JobPipelineSummary
+              rows={pipelineRows}
+              jobActions={{
+                jobRfId: id,
+                // RF jobs may have no company link; fall back to 0 so the
+                // Placement schema still has a numeric clientRfId. The
+                // server actions tolerate this — it just means the local
+                // Placement row points to "no client", which shows up as
+                // unknown on downstream UI but doesn't block the action.
+                clientRfId: job.companyId ?? 0,
+                jobTitle: job.title,
+                clientName: job.company || "",
+              }}
+            />
           </div>
         )}
       </div>
