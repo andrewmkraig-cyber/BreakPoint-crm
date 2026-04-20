@@ -30,6 +30,9 @@ export const config = {
   matcher: [
     // Skip all /api routes so they can self-auth and return JSON (otherwise
     // the sign-in HTML would leak into JSON callers like /api/generate-submittal).
-    "/((?!api|sign-in|_next/static|_next/image|favicon.ico).*)",
+    // Also skip /pdfjs/* so the self-hosted pdf.worker is publicly fetchable
+    // — Web Workers instantiated from a redirected script get blocked by
+    // browsers, so we can't afford middleware interception here.
+    "/((?!api|sign-in|pdfjs|_next/static|_next/image|favicon.ico).*)",
   ],
 };
