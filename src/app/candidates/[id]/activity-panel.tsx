@@ -50,14 +50,14 @@ export function ActivityPanel({ interviews }: { interviews: ActivityInterview[] 
           <h2 className="font-serif text-base font-semibold text-navy">Activity</h2>
           {total > 0 && (
             <span className="text-xs text-muted-foreground">
-              ({total}{" "}
+              (
               {[
                 counts.cancelled ? `${counts.cancelled} cancelled` : null,
                 counts.completed ? `${counts.completed} completed` : null,
                 counts.rescheduled ? `${counts.rescheduled} rescheduled` : null,
               ]
                 .filter(Boolean)
-                .join(", ") || "items"}
+                .join(", ") || `${total} items`}
               )
             </span>
           )}

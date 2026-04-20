@@ -259,6 +259,23 @@ export function EmailComposer({
           body: applyMergeFields(draft.body, mergeValues),
         }
       : draft;
+    if (mergeValues) {
+      // Browser-console audit so we can diagnose "field X didn't render"
+      // reports without redeploying. Lists tokens still in the body after
+      // resolution (always tokens NOT in MERGE_FIELDS) plus the values
+      // that were null/undefined so the resolver had to use "".
+      const remaining = finalDraft.body.match(/\[[A-Z][A-Za-z ]+\]/g) ?? [];
+      const blanks = Object.entries(mergeValues)
+        .filter(([, v]) => v == null || (typeof v === "string" && v.trim() === ""))
+        .map(([k]) => k);
+      // eslint-disable-next-line no-console
+      console.log("[EmailComposer] resolved merge fields", {
+        bodyBefore: draft.body.slice(0, 400),
+        bodyAfter: finalDraft.body.slice(0, 400),
+        unresolvedTokensInBody: remaining,
+        blankMergeKeys: blanks,
+      });
+    }
     startSend(async () => {
       try {
         await onSend(finalDraft);

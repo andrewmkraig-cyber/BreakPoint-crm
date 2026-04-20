@@ -13,8 +13,6 @@ import {
   canonicalStage,
   normalizeClient,
   normalizeJob,
-  PIPELINE_LABELS,
-  daysBetween,
   type PipelineBucket,
   type RFCandidate,
   type RFCandidateJob,
@@ -72,7 +70,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [candidates, clients, contacts, allJobs, placements, interviews, localResume, activity, session, prefs] = await Promise.all([
+  const [candidates, clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
@@ -94,15 +92,12 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         uploadedBy: { select: { name: true, email: true } },
       },
     }),
-    prisma.actionLog.findMany({
-      where: { subjectType: "candidate", subjectId: String(id) },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      include: { user: { select: { name: true, email: true } } },
-    }),
+    prisma.jobOverride.findMany({ select: { jobRfId: true, description: true } }),
     getServerSession(authOptions),
     getAppPreferences(),
   ]);
+  const overrideByJob = new Map<number, string | null>();
+  for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
 
   // Two-source lookup: /candidate/list caches for 60s (Next Data Cache), so a
   // freshly-created candidate may not appear immediately. /candidate/{id}
@@ -273,7 +268,9 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       jobRfId,
       jobTitle: j.title ?? j.name ?? "(untitled job)",
       jobLocation: jobNorm?.location ?? "",
-      jobDescription: typeof jobRaw?.description === "string" ? jobRaw.description : "",
+      jobDescription:
+        overrideByJob.get(jobRfId) ??
+        (typeof jobRaw?.description === "string" ? jobRaw.description : ""),
       jobSalaryRange: jobNorm?.compensation ?? "",
       clientRfId,
       clientName: client?.name ?? j.client_company_name ?? "",
@@ -312,7 +309,9 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         jobRfId: p.jobRfId,
         jobTitle: job?.title ?? "(job)",
         jobLocation: job?.location ?? "",
-        jobDescription: typeof rfJob?.description === "string" ? rfJob.description : "",
+        jobDescription:
+          overrideByJob.get(p.jobRfId) ??
+          (typeof rfJob?.description === "string" ? rfJob.description : ""),
         jobSalaryRange: job?.compensation ?? "",
         clientRfId: p.clientRfId,
         clientName: client?.name ?? "",
@@ -425,64 +424,6 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       </div>
 
       <ActivityPanel interviews={buildActivityInterviews(interviews, placementJobs)} />
-
-      <div className="rounded-xl border border-border bg-white shadow-sm">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="font-serif text-base font-semibold text-navy">Activity</h2>
-          <p className="text-xs text-muted-foreground">
-            Append-only log. Actions taken in Ace write here; RF stage moves and imports appear alongside.
-          </p>
-        </div>
-        <ul className="divide-y divide-border">
-          {activity.length === 0 && linkedSubmittals.length === 0 && !c.added_time && (
-            <li className="px-5 py-8 text-center text-sm text-muted-foreground">No activity yet.</li>
-          )}
-          {activity.map((a) => (
-            <li key={a.id} className="flex items-start gap-3 px-5 py-3">
-              <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-brand" />
-              <div>
-                <div className="text-sm text-navy">
-                  <span className="font-medium">{a.user?.name ?? a.user?.email ?? "Someone"}</span>{" "}
-                  <span className="text-muted-foreground">· {formatActionType(a.actionType)}</span>
-                </div>
-                <div className="text-[11px] text-muted-foreground">{new Date(a.createdAt).toLocaleString()}</div>
-              </div>
-            </li>
-          ))}
-          {linkedSubmittals.map((j, i) => (
-            <li key={`rf-${j.job_id}-${i}`} className="flex items-start gap-3 px-5 py-3">
-              <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-muted-foreground/50" />
-              <div className="min-w-0">
-                <div className="text-sm text-navy">
-                  <span className="font-medium">Stage: {stageLabel(j.stage_name)}</span>
-                  <span className="text-muted-foreground"> on </span>
-                  <Link href={`/jobs/${j.job_id}`} className="font-medium text-brand-dark hover:underline">
-                    {j.title ?? j.name ?? "(untitled job)"}
-                  </Link>
-                  {j.client_company_name && <span className="text-muted-foreground"> at {j.client_company_name}</span>}
-                </div>
-                <div className="text-[11px] text-muted-foreground">
-                  {j.stage_moved
-                    ? `${new Date(j.stage_moved).toLocaleString()} · ${daysBetween(j.stage_moved) ?? 0}d in stage`
-                    : "—"}
-                </div>
-              </div>
-            </li>
-          ))}
-          {c.added_time && (
-            <li className="flex items-start gap-3 px-5 py-3">
-              <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-muted-foreground/50" />
-              <div>
-                <div className="text-sm text-navy">
-                  <span className="font-medium">Added to Ace</span>
-                  {c.added_by?.name && <span className="text-muted-foreground"> by {c.added_by.name}</span>}
-                </div>
-                <div className="text-[11px] text-muted-foreground">{new Date(c.added_time).toLocaleString()}</div>
-              </div>
-            </li>
-          )}
-        </ul>
-      </div>
     </div>
     </CandidateProfileBoundary>
   );
@@ -585,16 +526,6 @@ function toInterviewSummary(iv: InterviewRow): InterviewSummary {
     candidatePhone: iv.candidatePhone,
     notes: iv.notes,
   };
-}
-
-function stageLabel(stageName: string | null | undefined): string {
-  const bucket = canonicalStage(stageName ?? "");
-  if (bucket in PIPELINE_LABELS) return PIPELINE_LABELS[bucket as keyof typeof PIPELINE_LABELS];
-  return stageName ?? "—";
-}
-
-function formatActionType(t: string): string {
-  return t.replace(/_/g, " ");
 }
 
 // Flatten all interviews on a candidate into the shape ActivityPanel

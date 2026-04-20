@@ -59,6 +59,7 @@ model User {
   resumeUploads   ResumeUpload[]
   candidateResumes CandidateResume[]
   placements      Placement[]
+  jobOverrides     JobOverride[]
   candidates      Candidate[]
   interviews      Interview[]
 }
@@ -410,4 +411,20 @@ model KrispcallLog {
 
   @@index([userId, occurredAt])
   @@index([candidateRfId])
+}
+
+// Local override for fields that RF either doesn't expose or that the
+// recruiter wants to author in Ace without bouncing back to RF (e.g. an
+// internal-friendly description for merge fields). Keyed by RF job id —
+// the master Job record still lives in RF; this just layers on top.
+// When present, Ace prefers the override over the RF value for display
+// and merge-field resolution.
+model JobOverride {
+  jobRfId     Int      @id
+  description String?  @db.Text
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
+  updatedById String?
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 }

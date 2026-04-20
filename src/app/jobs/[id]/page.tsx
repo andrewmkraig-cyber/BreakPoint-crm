@@ -11,6 +11,8 @@ import {
   canonicalStage,
 } from "@/lib/recruiterflow";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
+import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
+import { prisma } from "@/lib/prisma";
 import { cn, formatDate } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +21,10 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
 
-  const [jobs, candidates] = await Promise.all([
+  const [jobs, candidates, override] = await Promise.all([
     recruiterflow.listAllJobs({ perPage: 100 }),
     recruiterflow.listAllCandidates({ perPage: 100 }),
+    prisma.jobOverride.findUnique({ where: { jobRfId: id } }),
   ]);
   const raw = jobs.find((j) => j.id === id);
   if (!raw) notFound();
@@ -142,20 +145,11 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         )}
       </div>
 
-      {typeof raw.description === "string" && raw.description.trim().length > 0 && (
-        <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif text-lg font-semibold text-navy">Description</h2>
-            <span className="text-[11px] text-muted-foreground">
-              Synced from RecruiterFlow · edit in RF
-            </span>
-          </div>
-          <div
-            className="mt-3 prose prose-sm max-w-none text-navy"
-            dangerouslySetInnerHTML={{ __html: raw.description }}
-          />
-        </div>
-      )}
+      <EditableJobDescription
+        jobRfId={id}
+        rfDescription={typeof raw.description === "string" ? raw.description : null}
+        initialOverride={override?.description ?? null}
+      />
 
       <div className="rounded-xl border border-dashed border-border bg-muted/40 p-5 text-xs text-muted-foreground">
         <div className="flex items-center gap-2 font-medium text-navy-400">

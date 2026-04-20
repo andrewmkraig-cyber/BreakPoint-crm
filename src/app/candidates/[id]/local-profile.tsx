@@ -17,7 +17,7 @@ type Exp = { designation?: string; organization?: string; from_year?: number | n
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
 export async function LocalCandidateProfile({ id }: { id: string }) {
-  const [candidate, placements, interviews, allJobs, allClients, allContacts, session, prefs] = await Promise.all([
+  const [candidate, placements, interviews, allJobs, allClients, allContacts, jobOverrides, session, prefs] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
       select: {
@@ -60,9 +60,12 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
+    prisma.jobOverride.findMany({ select: { jobRfId: true, description: true } }),
     getServerSession(authOptions),
     getAppPreferences(),
   ]);
+  const overrideByJob = new Map<number, string | null>();
+  for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
 
   if (!candidate) notFound();
 
@@ -135,7 +138,9 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
       jobRfId: p.jobRfId,
       jobTitle: job?.title ?? "(job)",
       jobLocation: job?.location ?? "",
-      jobDescription: typeof rfJob?.description === "string" ? rfJob.description : "",
+      jobDescription:
+        overrideByJob.get(p.jobRfId) ??
+        (typeof rfJob?.description === "string" ? rfJob.description : ""),
       jobSalaryRange: job?.compensation ?? "",
       clientRfId: p.clientRfId,
       clientName: client?.name ?? job?.company ?? "",
