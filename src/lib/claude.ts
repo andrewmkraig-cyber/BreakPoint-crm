@@ -278,13 +278,13 @@ export async function parseCandidateFields(params: {
       "}\n\n" +
       "Rules:\n" +
       "- Use null (not empty string) for any field not present in the source.\n" +
-      "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. Use the most recent role listed. Always fill these if the resume lists any work experience at all — they should mirror the first entry in 'experience' when that entry is current.\n" +
+      "- 'current_designation' is the candidate's present job title; 'current_organization' is their present employer. A role is 'current' if its end date is 'Current', 'Present', 'Now', or blank — those all mean the candidate is still there. Prefer the most recent role explicitly marked 'Current'/'Present'/blank end date. If no role is explicitly current, use the most recent dated role. These MUST be non-empty whenever the resume lists any work history at all — never return '' here, use null only if the resume has zero work experience.\n" +
       "- 'location' should be 'City, ST' if US, otherwise 'City, Country'.\n" +
       "- 'phone' keep the digits and country code as given; don't reformat.\n" +
       "- 'skills' is a short deduplicated array of 5–12 hard skills. Omit soft skills.\n" +
       "- 'linkedin_profile' is the full URL if one is present in the source. If only a LinkedIn URL was provided as input, echo it here.\n" +
       "- 'notes' is a short (2–4 sentence) summary of the candidate's experience highlights. Null if nothing notable.\n" +
-      "- 'experience' is every work/job role found on the resume, most-recent-first. 'from_year' and 'to_year' are 4-digit years; if the role is still current leave 'to_year' as null. 'description' is a 1–3 sentence summary of that role (bullet-flattened). Return [] if no experience found.\n" +
+      "- 'experience' is every work/job role found on the resume, most-recent-first. 'from_year' and 'to_year' are 4-digit years; if the role is still current set 'to_year' to null (do NOT write 'Current'/'Present'/'Now'). 'description' is a 1–3 sentence summary of that role (bullet-flattened). Return [] if no experience found.\n" +
       "- 'education' is every education entry found on the resume, most-recent-first. Same year rules. 'degree' examples: 'BS Computer Science', 'MBA', 'BA Economics'. Return [] if no education found.\n" +
       "- Never invent data. If a field is uncertain or missing, return null.",
   });
@@ -310,13 +310,32 @@ export async function parseCandidateFields(params: {
     throw new Error("Claude didn't return valid JSON. Try again, or paste the profile text into the notes field manually.");
   }
 
+  const experience = normalizeExperience(parsed.experience);
+  // Claude is asked to always fill current_designation/current_organization
+  // when any experience row is present, but in practice it sometimes
+  // returns "" or omits them. Coerce "" → null up-front so consumers can
+  // reliably fall through to the first experience row via `??`. Then if
+  // nulls remain and experience has a "current" role (to_year === null,
+  // i.e. still there), backfill from that row so the caller never has to
+  // re-derive it. A "current" role is preferred over the most-recent
+  // dated role — Sidney's "North Canton City Schools · August 2022-Current"
+  // is an active role even though a past dated role might sort first in
+  // some layouts.
+  const currentRole =
+    experience.find((r) => r.to_year == null && (r.designation || r.organization)) ??
+    experience[0] ??
+    null;
+  const rawDesignation = toStringOrNull(parsed.current_designation);
+  const rawOrganization = toStringOrNull(parsed.current_organization);
   return {
     ...EMPTY_CANDIDATE,
     ...parsed,
     phone: normalizeToE164(parsed.phone),
+    current_designation: rawDesignation ?? currentRole?.designation ?? null,
+    current_organization: rawOrganization ?? currentRole?.organization ?? null,
     skills: Array.isArray(parsed.skills) ? parsed.skills.filter((s: unknown): s is string => typeof s === "string") : [],
     linkedin_profile: parsed.linkedin_profile ?? linkedinUrl ?? null,
-    experience: normalizeExperience(parsed.experience),
+    experience,
     education: normalizeEducation(parsed.education),
   };
 }

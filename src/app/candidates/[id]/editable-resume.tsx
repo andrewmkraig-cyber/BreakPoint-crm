@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Download, Edit3, FileText, Loader2, Replace, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
+import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { deleteCandidateResume } from "@/app/candidates/[id]/actions";
 
@@ -96,12 +97,11 @@ export function EditableResume({
     });
   }
 
-  // `#zoom=100` pins Chrome's PDF viewer to 100% actual-size instead of its
-  // default fit-width, which was rendering at ~30% in the older narrow
-  // layout and still looks tiny on high-density displays. `#view=FitH` is
-  // respected by Firefox's viewer; Chrome ignores unknown params so listing
-  // both is safe.
-  const pdfUrl = `/api/candidate-resumes/${candidateRfId}${showRedacted ? "?variant=redacted" : ""}#zoom=100&view=FitH`;
+  // Rendered through our own pdfjs-canvas viewer rather than an <iframe>
+  // pointed at the PDF: Chrome's built-in viewer ignores #zoom= fragments
+  // in practice and defaults to ~44% fit-width, which made the resume
+  // unreadable without manual zooming on every open.
+  const pdfUrl = `/api/candidate-resumes/${candidateRfId}${showRedacted ? "?variant=redacted" : ""}`;
   const downloadUrl = `/api/candidate-resumes/${candidateRfId}?download=1${showRedacted ? "&variant=redacted" : ""}`;
   const showDropzone = !resume || replacing;
   const hasRedacted = Boolean(resume?.redactedAt);
@@ -220,10 +220,10 @@ export function EditableResume({
       ) : (
         <div className="relative">
           {resume && resume.mimeType === "application/pdf" ? (
-            <iframe
-              title={`Resume — ${resume.filename}`}
+            <PdfCanvasViewer
+              key={pdfUrl}
               src={pdfUrl}
-              className="min-h-[900px] w-full rounded-b-xl border-0 [height:calc(100vh-200px)]"
+              className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
             />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-border bg-muted/20 text-sm text-muted-foreground">

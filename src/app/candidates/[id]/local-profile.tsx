@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
+import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAppPreferences } from "@/lib/preferences";
@@ -218,13 +219,12 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
             )}
           </div>
           {candidate.resumeFilename && candidate.resumeMimeType === "application/pdf" ? (
-            <iframe
-              title={`Resume — ${candidate.resumeFilename}`}
-              // #zoom=100 pins Chrome's PDF viewer to 100% actual size;
-              // #view=FitH is Firefox's equivalent. Without this, Chrome
-              // defaults to fit-width and renders at ~30% on this layout.
-              src={`/api/local-candidate-resumes/${candidate.id}#zoom=100&view=FitH`}
-              className="min-h-[900px] w-full rounded-b-xl border-0 [height:calc(100vh-200px)]"
+            // Rendered via our own pdfjs-canvas viewer so we control the
+            // zoom instead of relying on Chrome's iframe PDF viewer, which
+            // ignores #zoom= fragments and lands on ~44% fit-width.
+            <PdfCanvasViewer
+              src={`/api/local-candidate-resumes/${candidate.id}`}
+              className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
             />
           ) : candidate.resumeFilename ? (
             <p className="px-5 py-8 text-center text-xs text-muted-foreground">

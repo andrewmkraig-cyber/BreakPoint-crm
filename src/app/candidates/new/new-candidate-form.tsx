@@ -140,10 +140,24 @@ export function NewCandidateForm() {
         }
         // Claude sometimes omits current_designation/current_organization even
         // when the resume clearly has them — backfill from the first experience
-        // row so the form always shows a value the user can confirm or edit.
-        const firstExp = p.experience && p.experience.length > 0 ? p.experience[0] : null;
-        const backfillDesignation = p.current_designation ?? firstExp?.designation ?? null;
-        const backfillOrganization = p.current_organization ?? firstExp?.organization ?? null;
+        // row that looks "current" (to_year === null) so the form always
+        // shows a value the user can confirm or edit. `??` alone would pass
+        // an empty string through; use a truthy-trim check instead.
+        const firstNonEmpty = (...v: Array<string | null | undefined>): string =>
+          v.find((x) => typeof x === "string" && x.trim().length > 0) ?? "";
+        const currentExp =
+          (p.experience ?? []).find(
+            (r) => r.to_year == null && ((r.designation ?? "").trim() || (r.organization ?? "").trim()),
+          ) ??
+          (p.experience && p.experience.length > 0 ? p.experience[0] : null);
+        const backfillDesignation = firstNonEmpty(
+          p.current_designation,
+          currentExp?.designation,
+        );
+        const backfillOrganization = firstNonEmpty(
+          p.current_organization,
+          currentExp?.organization,
+        );
         const expRows: ParsedExperienceRow[] = (p.experience ?? []).map((r) => ({
           designation: r.designation ?? "",
           organization: r.organization ?? "",
@@ -164,8 +178,8 @@ export function NewCandidateForm() {
           last_name: p.last_name ?? prev.last_name,
           email: p.email ?? prev.email,
           phone: p.phone ?? prev.phone,
-          current_designation: backfillDesignation ?? prev.current_designation,
-          current_organization: backfillOrganization ?? prev.current_organization,
+          current_designation: backfillDesignation || prev.current_designation,
+          current_organization: backfillOrganization || prev.current_organization,
           location: p.location ?? prev.location,
           linkedin_profile: p.linkedin_profile ?? nextUrl.trim() ?? prev.linkedin_profile,
           skills: p.skills.length ? p.skills : prev.skills,
