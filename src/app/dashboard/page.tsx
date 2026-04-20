@@ -6,6 +6,7 @@ import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { getEasternWeekBounds } from "@/lib/week";
 import {
   CalendarCheck2,
   CalendarDays,
@@ -37,8 +38,16 @@ export default async function DashboardPage() {
   const firstName = session?.user?.name?.split(" ")[0] ?? "there";
 
   const now = new Date();
-  const weekEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // Week bounds snap to Monday 00:00 ET through next Monday 00:00 ET
+  // (exclusive). Using the ET-aware helper prevents the "Sunday 8pm
+  // ET flips the week early" bug — `new Date()` is a UTC instant and
+  // plain ms arithmetic would treat that moment (which is Monday
+  // 00:00 UTC) as already in the next week on a UTC-running Vercel
+  // box.
+  const { start: weekStart, end: weekEnd } = getEasternWeekBounds(now);
+  // Upcoming interviews is the state-based block (unlike the activity
+  // counters) and always looks 7 real days ahead from right now.
+  const upcomingWindowEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   const [
     upcomingInterviews,
@@ -53,7 +62,7 @@ export default async function DashboardPage() {
     placementsMadeCount,
   ] = await Promise.all([
     prisma.interview.findMany({
-      where: { status: "scheduled", scheduledAt: { gte: now, lte: weekEnd } },
+      where: { status: "scheduled", scheduledAt: { gte: now, lte: upcomingWindowEnd } },
       orderBy: { scheduledAt: "asc" },
       include: {
         candidate: { select: { id: true, firstName: true, lastName: true } },
@@ -66,27 +75,28 @@ export default async function DashboardPage() {
     // board applicants don't write ActionLog yet; when that pipeline
     // lands, add another source here or bundle them into this query.
     prisma.actionLog.count({
-      where: { actionType: "apply", createdAt: { gte: weekStart } },
+      where: { actionType: "apply", createdAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Submit transitions — includes the `submit` log written by both
     // applyCandidateToJob follow-ups and the full submittal flow.
     prisma.actionLog.count({
-      where: { actionType: "submit", createdAt: { gte: weekStart } },
+      where: { actionType: "submit", createdAt: { gte: weekStart, lt: weekEnd } },
     }),
-    // Every interview booked in the last 7 days, regardless of its
+    // Every interview booked in the ET week, regardless of its
     // current status. A scheduled-then-cancelled interview still
     // counts as "scheduled this week" because the scheduling event
     // is the activity we're measuring.
     prisma.interview.count({
-      where: { createdAt: { gte: weekStart } },
+      where: { createdAt: { gte: weekStart, lt: weekEnd } },
     }),
-    // Completed = past scheduledAt within the window AND not
-    // cancelled. Rescheduled interviews carry their original id and
-    // status=scheduled after the move, so they're treated as the
-    // same interview landing on its new time.
+    // Completed = past scheduledAt within the ET week AND not
+    // cancelled. `lt: now` keeps us from counting interviews booked
+    // for later today. Rescheduled interviews carry their original
+    // id and status=scheduled after the move, so they're treated as
+    // the same interview landing on its new time.
     prisma.interview.count({
       where: {
-        scheduledAt: { gte: weekStart, lt: now },
+        scheduledAt: { gte: weekStart, lt: now < weekEnd ? now : weekEnd },
         status: { not: "cancelled" },
       },
     }),
@@ -94,12 +104,12 @@ export default async function DashboardPage() {
     // Counted regardless of whether the offer was later accepted,
     // declined, or the candidate was rejected — we want the activity.
     prisma.placement.count({
-      where: { offerReceivedAt: { gte: weekStart } },
+      where: { offerReceivedAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Placements — Placement.placedAt is stamped by recordPlacement.
     // Cancelled placements still count as activity that happened.
     prisma.placement.count({
-      where: { placedAt: { gte: weekStart } },
+      where: { placedAt: { gte: weekStart, lt: weekEnd } },
     }),
   ]);
   const interviews = upcomingInterviews;
