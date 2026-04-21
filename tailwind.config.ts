@@ -1,6 +1,11 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
+  // darkMode = "class" lets `.dark` on <html> flip every `dark:` utility —
+  // we map Clay Court to that class. A parallel custom variant (see plugins
+  // below) adds a `grass:` utility that targets `.grass` on <html> for the
+  // Grass Court palette. Hard Court is the bare default (no class).
   darkMode: ["class"],
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
@@ -42,6 +47,16 @@ const config: Config = {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // Register `grass:` as a first-class Tailwind variant so component code
+    // can write `grass:bg-[#1a2e1a]` alongside `dark:bg-[#0f172a]`. The
+    // selector matches any descendant of <html class="grass"> plus the
+    // element itself (via `&.grass`), mirroring how Tailwind's built-in
+    // `dark:` variant resolves against `.dark`.
+    plugin(({ addVariant }) => {
+      addVariant("grass", [".grass &", "&.grass"]);
+    }),
+  ],
 };
 export default config;

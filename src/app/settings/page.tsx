@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { ensureDefaultTemplates } from "@/app/settings/templates-actions";
 import { TemplatesView, type TemplateRow } from "@/app/settings/templates-view";
 import { PreferencesView } from "@/app/settings/preferences-view";
+import { CourtModeView } from "@/app/settings/court-mode-view";
 import { ensureDefaultPreferences, getAppPreferences } from "@/lib/preferences";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +48,18 @@ export default async function SettingsPage() {
         title="Settings"
         description="Preferences and reusable email templates for submittals and candidate notifications."
       />
+
+      <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
+        <div className="mb-4">
+          <h2 className="font-serif text-lg font-semibold text-navy">Court Mode</h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Pick the palette Ace renders with. Persists per browser via localStorage and flips
+            instantly — no reload needed. Per-component theming lands surface by surface;
+            today only the selector mechanism is wired.
+          </p>
+        </div>
+        <CourtModeView />
+      </section>
 
       <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
         <div className="mb-4">
