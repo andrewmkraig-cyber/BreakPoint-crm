@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Loader2, Save, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Save, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
@@ -56,7 +56,16 @@ export function NewCandidateForm() {
 
   const [resumeUploadId, setResumeUploadId] = useState<string | null>(null);
   const [emailDuplicate, setEmailDuplicate] = useState<{ id: string; name: string } | null>(null);
-  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  // Email dup-check is a tri-state past "has a value":
+  //   idle      — no check has run yet for the current email string
+  //   checking  — server roundtrip in flight
+  //   clean     — no row found for this (lowercased) email
+  //   duplicate — a row exists; emailDuplicate holds the existing candidate
+  // Save is gated on status === "clean" so recruiters can't submit before
+  // the check resolves.
+  const [emailCheckStatus, setEmailCheckStatus] = useState<
+    "idle" | "checking" | "clean" | "duplicate"
+  >("idle");
 
   function runParse(args: { file?: File } = {}) {
     setParseError(null);
@@ -194,6 +203,11 @@ export function NewCandidateForm() {
         }));
         setParseSource(result.value.source);
         setClaudeError(result.value.claudeError);
+        // Auto-run the dup-check against the parser-extracted email so the
+        // banner / green checkmark appears without the recruiter having to
+        // manually focus + blur the field.
+        const parsedEmail = (p.email ?? "").trim();
+        if (parsedEmail) void runEmailDupCheck(parsedEmail);
         toast.success(result.value.source === "claude" ? "Parsed with Claude" : "Basic extraction only", {
           id: toastId,
           description:
@@ -227,19 +241,36 @@ export function NewCandidateForm() {
     setForm((prev) => (prev.linkedin_profile ? prev : { ...prev, linkedin_profile: v }));
   }
 
-  async function onEmailBlur() {
-    const email = form.email.trim();
+  async function runEmailDupCheck(emailRaw: string) {
+    const email = emailRaw.trim();
     if (!email) {
       setEmailDuplicate(null);
+      setEmailCheckStatus("idle");
       return;
     }
-    setIsCheckingEmail(true);
+    setEmailCheckStatus("checking");
     try {
       const res = await checkCandidateEmail(email);
-      if (res.ok) setEmailDuplicate(res.duplicate);
-    } finally {
-      setIsCheckingEmail(false);
+      if (!res.ok) {
+        setEmailDuplicate(null);
+        setEmailCheckStatus("idle");
+        return;
+      }
+      if (res.duplicate) {
+        setEmailDuplicate(res.duplicate);
+        setEmailCheckStatus("duplicate");
+      } else {
+        setEmailDuplicate(null);
+        setEmailCheckStatus("clean");
+      }
+    } catch {
+      setEmailDuplicate(null);
+      setEmailCheckStatus("idle");
     }
+  }
+
+  function onEmailBlur() {
+    void runEmailDupCheck(form.email);
   }
 
   function onSave() {
@@ -253,6 +284,12 @@ export function NewCandidateForm() {
       experience: form.experience,
       education: form.education,
     };
+    if (!payload.email.trim()) {
+      const msg = "Email is required — every candidate must have an email on file.";
+      setSaveError(msg);
+      toast.error("Can't save yet", { description: msg });
+      return;
+    }
     if (!payload.first_name.trim()) {
       const msg = "First name is required — resume parsing didn't fill it in, please type it manually.";
       setSaveError(msg);
@@ -262,22 +299,28 @@ export function NewCandidateForm() {
     const toastId = toast.loading("Saving candidate…");
     startSave(async () => {
       try {
-        // Pre-flight dup check on submit — catches the case where the user
-        // typed an email but never blurred the field. Banner state wins over
-        // the server round-trip so we stop here instead of showing a toast.
+        // Hard gate: always run the dup check server-side at submit time,
+        // regardless of whether blur already ran. Prevents a race where the
+        // client state is stale (e.g. user typed an email, never blurred,
+        // and the backing row was just inserted by a parallel tab).
         const email = payload.email.trim();
-        if (email) {
-          const dupCheck = await checkCandidateEmail(email);
-          if (dupCheck.ok && dupCheck.duplicate) {
-            setEmailDuplicate(dupCheck.duplicate);
-            toast.error("Duplicate email", { id: toastId });
-            return;
-          }
+        const dupCheck = await checkCandidateEmail(email);
+        if (dupCheck.ok && dupCheck.duplicate) {
+          setEmailDuplicate(dupCheck.duplicate);
+          setEmailCheckStatus("duplicate");
+          toast.error("Duplicate email", { id: toastId });
+          return;
+        }
+        if (!dupCheck.ok) {
+          setSaveError(dupCheck.error);
+          toast.error("Couldn't verify email", { id: toastId, description: dupCheck.error });
+          return;
         }
         const result = await createCandidate({ ...payload, resumeUploadId });
         if (!result.ok) {
           if (result.duplicate) {
             setEmailDuplicate(result.duplicate);
+            setEmailCheckStatus("duplicate");
             toast.error("Duplicate email", { id: toastId });
             return;
           }
@@ -309,6 +352,7 @@ export function NewCandidateForm() {
     setClaudeError(null);
     setParseError(null);
     setEmailDuplicate(null);
+    setEmailCheckStatus("idle");
     setSaveError(null);
   }
 
@@ -417,17 +461,30 @@ export function NewCandidateForm() {
             <button
               type="button"
               onClick={onSave}
-              // Block save while parsing — clicking before Claude's response
-              // lands meant we'd write empty current_designation /
-              // current_organization to the DB even though the parsed
-              // values were seconds away from arriving.
-              disabled={isSaving || isParsing || Boolean(emailDuplicate)}
+              // Save is gated on four things:
+              //   - no pending save or parse
+              //   - email is non-empty (required field)
+              //   - dup-check has resolved cleanly (not "duplicate" / "checking" / "idle")
+              // The hard-gate recheck inside onSave is still the source of
+              // truth; this just prevents obvious UX dead-ends.
+              disabled={
+                isSaving ||
+                isParsing ||
+                !form.email.trim() ||
+                emailCheckStatus !== "clean"
+              }
               title={
-                emailDuplicate
-                  ? "A candidate with this email already exists"
+                emailCheckStatus === "duplicate"
+                  ? "This candidate already exists in Ace"
                   : isParsing
                     ? "Wait for parsing to finish first"
-                    : undefined
+                    : emailCheckStatus === "checking"
+                      ? "Checking email…"
+                      : emailCheckStatus === "idle" && form.email.trim()
+                        ? "Tab out of the email field to run the duplicate check"
+                        : !form.email.trim()
+                          ? "Email is required"
+                          : undefined
               }
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
@@ -435,24 +492,6 @@ export function NewCandidateForm() {
               {isParsing ? "Waiting for parse…" : "Save to Ace"}
             </button>
           </div>
-
-          {emailDuplicate && (
-            <div className="flex items-start justify-between gap-3 border-b border-red-200 bg-red-50 px-5 py-3 text-xs text-red-900">
-              <div className="flex items-start gap-2">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <div>
-                  A candidate with this email already exists.
-                  <span className="ml-1 text-red-800/80">({emailDuplicate.name})</span>
-                </div>
-              </div>
-              <Link
-                href={`/candidates/${emailDuplicate.id}`}
-                className="shrink-0 rounded-md border border-red-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-800 shadow-sm transition hover:bg-red-100"
-              >
-                View Profile
-              </Link>
-            </div>
-          )}
 
           {showFallbackBanner && (
             <div className="flex items-start gap-2 border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
@@ -465,28 +504,57 @@ export function NewCandidateForm() {
           )}
 
           <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <Field
+                label="Email"
+                type="email"
+                required
+                value={form.email}
+                onChange={(v) => {
+                  setForm({ ...form, email: v });
+                  // Any edit invalidates the last dup-check result — reset to
+                  // "idle" so the green checkmark clears and the next blur
+                  // (or onSave hard-gate) re-runs against the new value.
+                  setEmailDuplicate(null);
+                  setEmailCheckStatus("idle");
+                }}
+                onBlur={onEmailBlur}
+                hint={
+                  emailCheckStatus === "checking" ? (
+                    "Checking…"
+                  ) : emailCheckStatus === "clean" ? (
+                    <span className="inline-flex items-center gap-1 text-green-700">
+                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      Available
+                    </span>
+                  ) : emailCheckStatus === "duplicate" ? (
+                    "Duplicate detected"
+                  ) : undefined
+                }
+                hintTone={emailCheckStatus === "duplicate" ? "error" : "muted"}
+              />
+              {emailDuplicate && (
+                <div className="mt-2 flex items-start justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <div>
+                      This candidate already exists in Ace.
+                      <span className="ml-1 text-red-800/80">({emailDuplicate.name})</span>
+                    </div>
+                  </div>
+                  <Link
+                    href={`/candidates/${emailDuplicate.id}`}
+                    className="shrink-0 rounded-md border border-red-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-800 shadow-sm transition hover:bg-red-100"
+                  >
+                    View Profile
+                  </Link>
+                </div>
+              )}
+            </div>
             <Field label="First name" required value={form.first_name} onChange={(v) => setForm({ ...form, first_name: v })} />
             <Field label="Last name" value={form.last_name} onChange={(v) => setForm({ ...form, last_name: v })} />
             <Field label="Current title" value={form.current_designation} onChange={(v) => setForm({ ...form, current_designation: v })} />
             <Field label="Current employer" value={form.current_organization} onChange={(v) => setForm({ ...form, current_organization: v })} />
-            <Field
-              label="Email"
-              type="email"
-              value={form.email}
-              onChange={(v) => {
-                setForm({ ...form, email: v });
-                if (emailDuplicate) setEmailDuplicate(null);
-              }}
-              onBlur={onEmailBlur}
-              hint={
-                isCheckingEmail
-                  ? "Checking…"
-                  : emailDuplicate
-                    ? "Duplicate detected"
-                    : undefined
-              }
-              hintTone={emailDuplicate ? "error" : "muted"}
-            />
             <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} placeholder="+1 216-555-5555" />
             <Field label="Location" value={form.location} onChange={(v) => setForm({ ...form, location: v })} placeholder="Cleveland, OH" />
             <Field label="LinkedIn" type="url" value={form.linkedin_profile} onChange={(v) => setForm({ ...form, linkedin_profile: v })} />
@@ -579,7 +647,7 @@ function Field({
   type?: string;
   required?: boolean;
   placeholder?: string;
-  hint?: string;
+  hint?: ReactNode;
   hintTone?: "muted" | "error";
 }) {
   return (
