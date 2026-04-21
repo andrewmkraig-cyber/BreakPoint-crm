@@ -1,8 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ExternalLink, Phone, PhoneIncoming, PhoneOutgoing } from "lucide-react";
+import {
+  ChevronDown,
+  ExternalLink,
+  FileText,
+  Loader2,
+  Phone,
+  PhoneIncoming,
+  PhoneOutgoing,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
+
+type TranscriptShape = {
+  id?: string;
+  summary: string | null;
+  transcript?: string;
+};
 
 type CallRow = {
   id: string;
@@ -15,7 +31,7 @@ type CallRow = {
   recordingUrl: string | null;
   krispcallId: string | null;
   createdAt: string;
-  transcript: { id: string; summary: string | null } | null;
+  transcript: TranscriptShape | null;
 };
 
 // Collapsible call-log thread for a single candidate. Fetches lazily when the
@@ -96,7 +112,7 @@ export function CallLogs({ candidateId }: { candidateId: string }) {
           ) : (
             <ul className="divide-y divide-border">
               {logs.map((row) => (
-                <CallRowView key={row.id} row={row} />
+                <CallRowView key={row.id} row={row} onChanged={fetchLogs} />
               ))}
             </ul>
           )}
@@ -111,50 +127,241 @@ export function CallLogs({ candidateId }: { candidateId: string }) {
   );
 }
 
-function CallRowView({ row }: { row: CallRow }) {
+function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }) {
   const outbound = row.direction === "outbound";
   const Icon = outbound ? PhoneOutgoing : PhoneIncoming;
   const directionLabel = outbound ? "Outbound" : "Inbound";
   const counterpartNumber = outbound ? row.toNumber : row.fromNumber;
 
+  const [transcriptModalOpen, setTranscriptModalOpen] = useState(false);
+  const [summarizing, setSummarizing] = useState(false);
+  // Optimistic in-session override for the summary text. The server persists
+  // to CallTranscript.summary and the parent's fetchLogs refresh would pick
+  // it up, but we also mirror it here so the result appears instantly without
+  // a round-trip.
+  const [liveSummary, setLiveSummary] = useState<string | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  const hasTranscript = Boolean(row.transcript);
+  const currentSummary = liveSummary ?? row.transcript?.summary ?? null;
+
+  async function onGenerateSummary() {
+    setSummaryError(null);
+    setSummarizing(true);
+    try {
+      const res = await fetch("/api/calls/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callLogId: row.id }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        setSummaryError(text || `Summary failed (${res.status})`);
+        return;
+      }
+      const json = (await res.json()) as { summary?: string };
+      if (json.summary) {
+        setLiveSummary(json.summary);
+        onChanged();
+      }
+    } catch (e) {
+      setSummaryError(e instanceof Error ? e.message : "Summary failed.");
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
   return (
-    <li className="flex items-start justify-between gap-3 py-3 text-sm">
-      <div className="flex min-w-0 flex-1 items-start gap-3">
-        <div
-          className={cn(
-            "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-            outbound ? "bg-emerald-50 text-emerald-700" : "bg-muted text-navy-400",
-          )}
-          title={directionLabel}
-          aria-label={directionLabel}
-        >
-          <Icon className="h-3.5 w-3.5" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-semibold text-navy">{directionLabel}</span>
-            {counterpartNumber && (
-              <span className="text-xs text-muted-foreground">· {counterpartNumber}</span>
-            )}
-          </div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {formatTs(row.createdAt)}
-            {row.duration != null && <span className="ml-2">· {formatDuration(row.duration)}</span>}
-          </div>
-          {row.recordingUrl && (
-            <a
-              href={row.recordingUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-1 inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
+    <>
+      <li className="flex flex-col gap-2 py-3 text-sm">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div
+              className={cn(
+                "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+                outbound ? "bg-emerald-50 text-emerald-700" : "bg-muted text-navy-400",
+              )}
+              title={directionLabel}
+              aria-label={directionLabel}
             >
-              Recording <ExternalLink className="h-3 w-3" />
-            </a>
+              <Icon className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="font-semibold text-navy">{directionLabel}</span>
+                {counterpartNumber && (
+                  <span className="text-xs text-muted-foreground">· {counterpartNumber}</span>
+                )}
+              </div>
+              <div className="mt-0.5 text-[11px] text-muted-foreground">
+                {formatTs(row.createdAt)}
+                {row.duration != null && <span className="ml-2">· {formatDuration(row.duration)}</span>}
+              </div>
+              {row.recordingUrl && (
+                <a
+                  href={row.recordingUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
+                >
+                  Recording <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </div>
+          </div>
+          <StatusPill status={row.status} />
+        </div>
+
+        {/* Action bar — sits below the meta row so it never crowds the
+            direction/number line. Paste Transcript is always available (an
+            upsert on the server so re-paste just overwrites). Generate
+            Summary only appears once a transcript row exists. */}
+        <div className="flex flex-wrap items-center gap-2 pl-10">
+          <button
+            type="button"
+            onClick={() => setTranscriptModalOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+          >
+            <FileText className="h-3 w-3" />
+            {hasTranscript ? "Edit Transcript" : "Paste Transcript"}
+          </button>
+          {hasTranscript && (
+            <button
+              type="button"
+              onClick={() => void onGenerateSummary()}
+              disabled={summarizing}
+              className="inline-flex items-center gap-1 rounded-md border border-brand/40 bg-brand-tint px-2 py-1 text-[11px] font-semibold text-brand-dark shadow-sm transition hover:bg-brand-tint/70 disabled:opacity-60"
+            >
+              {summarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              {currentSummary ? "Regenerate Summary" : "Generate Summary"}
+            </button>
           )}
+        </div>
+
+        {currentSummary && (
+          <div className="ml-10 rounded-lg border border-brand/20 bg-brand-tint/20 px-3 py-2 text-xs text-navy whitespace-pre-wrap">
+            <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
+              <Sparkles className="h-2.5 w-2.5" /> Summary
+            </div>
+            <div>{currentSummary}</div>
+          </div>
+        )}
+        {summaryError && (
+          <div className="ml-10 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800">
+            {summaryError}
+          </div>
+        )}
+      </li>
+
+      {transcriptModalOpen && (
+        <TranscriptModal
+          callLogId={row.id}
+          initial={row.transcript?.transcript ?? ""}
+          onClose={() => setTranscriptModalOpen(false)}
+          onSaved={() => {
+            setTranscriptModalOpen(false);
+            onChanged();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function TranscriptModal({
+  callLogId,
+  initial,
+  onClose,
+  onSaved,
+}: {
+  callLogId: string;
+  initial: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [text, setText] = useState(initial);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSave() {
+    setError(null);
+    if (!text.trim()) {
+      setError("Paste a transcript before saving.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/calls/transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callLogId, transcript: text }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        setError(msg || `Save failed (${res.status})`);
+        return;
+      }
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" role="dialog" aria-modal="true">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+        <div className="flex items-start justify-between border-b border-border px-5 py-3">
+          <div>
+            <h3 className="font-serif text-base font-semibold text-navy">Paste call transcript</h3>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              Save verbatim text; Claude will summarize on demand via Generate Summary.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-2 p-5">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={14}
+            placeholder="Paste the transcript here…"
+            className="w-full flex-1 resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          />
+          {error && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{error}</div>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+          >
+            {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+            Save Transcript
+          </button>
         </div>
       </div>
-      <StatusPill status={row.status} />
-    </li>
+    </div>
   );
 }
 
