@@ -292,13 +292,27 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
         )}
       </td>
       <td className="px-5 py-3 align-top">
-        <Link
-          href={`/candidates/${row.candidateId}`}
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full bg-brand px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-white shadow-sm transition hover:bg-brand-dark"
-        >
-          Confirm Start
-        </Link>
+        {/* Stack Confirm Start primary + Edit Placement secondary so both
+            actions sit in the same cell without widening the column. The
+            Edit Placement link deep-links via ?edit=placement&jobId=N —
+            the candidate-profile handler reads that and auto-opens the
+            PlacementDialog pre-filled for this (candidate, job). */}
+        <div className="flex flex-col items-stretch gap-1.5">
+          <Link
+            href={`/candidates/${row.candidateId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full bg-brand px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-white shadow-sm transition hover:bg-brand-dark"
+          >
+            Confirm Start
+          </Link>
+          <Link
+            href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full border border-border bg-white px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+          >
+            Edit Placement
+          </Link>
+        </div>
       </td>
     </>
   );

@@ -267,6 +267,27 @@ export function PlacementActions({
     // missing compose/jobId handles that cleanly.
   }, [searchParams, pathname, router, openJobs]);
 
+  // Deep-link for the Pipeline page's Edit Placement button. Format is
+  // ?edit=placement&jobId=NN — we find the matching job in `jobs` (which
+  // unlike openJobs includes pending_start / hired rows) and open the
+  // PlacementDialog pre-filled, then strip the params so refreshes / back
+  // navigation don't re-open the modal.
+  useEffect(() => {
+    const edit = searchParams?.get("edit");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (edit !== "placement" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    const target = jobs.find((j) => j.jobRfId === jobId);
+    if (!target) return;
+    setPlacementFor(target);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("edit");
+    next.delete("jobId");
+    const queryString = next.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobs]);
+
   function onRequestReferences() {
     if (!candidateEmail) {
       toast.error("No candidate email on file", {
