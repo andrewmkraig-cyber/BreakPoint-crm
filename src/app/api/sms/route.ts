@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { sendSms, FROM } from '@/lib/krispcall'
+import { sendSms, FROM } from '@/lib/quo'
 
 export async function POST(req: NextRequest) {
   const { candidateId, toNumber, body } = await req.json()
