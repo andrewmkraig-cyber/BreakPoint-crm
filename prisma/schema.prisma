@@ -224,6 +224,12 @@ model Placement {
   guaranteePeriodDays   Int?
   billingContactName    String?
   billingContactEmail   String?
+  // Multiple billing contacts per placement, stored as a JSON array of
+  // { name, email } objects. We mirror the first entry into the legacy
+  // billingContactName / billingContactEmail columns above so the Pipeline
+  // table and any other single-contact reader keeps working without a
+  // wave of call-site updates.
+  billingContacts       Json?
   hiringManagerName     String?
   hiringManagerEmail    String?
   expectedStartDate     DateTime?

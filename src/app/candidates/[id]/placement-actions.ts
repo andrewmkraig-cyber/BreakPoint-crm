@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
@@ -144,8 +145,16 @@ export type RecordPlacementInput = {
   feeTotal: number;
   minFee: number | null;
   guaranteePeriodDays: number | null;
+  // Primary (single) billing contact — kept as an explicit input for back-
+  // compat with any caller that only knows about one. Newer callers send
+  // billingContacts (below); when that's populated we derive these from
+  // the first entry so legacy readers (Pipeline table, exports) stay happy.
   billingContactName: string;
   billingContactEmail: string;
+  // Multi-contact billing list. Optional; when provided this wins — the
+  // first entry is mirrored into billingContactName/Email and the full list
+  // is stored in the Placement.billingContacts JSON column.
+  billingContacts?: Array<{ name: string; email: string }>;
   hiringManagerName: string;
   hiringManagerEmail: string;
   expectedStartDate: string; // ISO
@@ -173,6 +182,19 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       where: { candidateRfId_jobRfId: { candidateRfId: input.candidateRfId, jobRfId: input.jobRfId } },
       select: { id: true, placedAt: true },
     });
+    // Normalize the multi-contact list: drop entirely empty rows, trim, and
+    // store undefined when the array is empty so the JSON column stays null
+    // for placements that never filled it in (keeps legacy single-contact
+    // reads working unchanged).
+    const cleanedContacts = (input.billingContacts ?? [])
+      .map((c) => ({ name: (c.name ?? "").trim(), email: (c.email ?? "").trim() }))
+      .filter((c) => c.name || c.email);
+    const primaryContact = cleanedContacts[0] ?? null;
+    // When the caller sent a multi-contact list, the first entry wins over
+    // the legacy single-contact fields — otherwise the UI-level "Add
+    // Contact" flow would fight the single fields for the mirrored slot.
+    const mirroredName = primaryContact?.name || input.billingContactName || null;
+    const mirroredEmail = primaryContact?.email || input.billingContactEmail || null;
     const commonData = {
       acceptedSalary: input.acceptedSalary,
       acceptedCurrency: input.acceptedCurrency || "USD",
@@ -180,8 +202,9 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       feeTotal: input.feeTotal,
       minFee: input.minFee,
       guaranteePeriodDays: input.guaranteePeriodDays,
-      billingContactName: input.billingContactName || null,
-      billingContactEmail: input.billingContactEmail || null,
+      billingContactName: mirroredName,
+      billingContactEmail: mirroredEmail,
+      billingContacts: cleanedContacts.length > 0 ? cleanedContacts : Prisma.JsonNull,
       hiringManagerName: input.hiringManagerName || null,
       hiringManagerEmail: input.hiringManagerEmail || null,
       expectedStartDate: new Date(input.expectedStartDate),

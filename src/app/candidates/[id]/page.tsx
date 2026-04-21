@@ -44,6 +44,26 @@ import { getAppPreferences } from "@/lib/preferences";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+// Placement.billingContacts is a Json column — Prisma types it loosely as
+// JsonValue. Coerce to our snapshot shape defensively: keep only objects with
+// string name + email, drop everything else. Returns null (not []) when the
+// column is null so the UI can fall back to the legacy single-contact fields
+// without mistaking "we migrated, zero contacts" for "row never touched."
+function normalizeBillingContacts(
+  raw: unknown,
+): Array<{ name: string; email: string }> | null {
+  if (!Array.isArray(raw)) return null;
+  const out: Array<{ name: string; email: string }> = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const name = typeof rec.name === "string" ? rec.name : "";
+    const email = typeof rec.email === "string" ? rec.email : "";
+    if (name || email) out.push({ name, email });
+  }
+  return out;
+}
+
 type ExperienceRaw = {
   designation?: string | null;
   organization?: string | null;
@@ -250,6 +270,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
           guaranteePeriodDays: local.guaranteePeriodDays,
           billingContactName: local.billingContactName,
           billingContactEmail: local.billingContactEmail,
+          billingContacts: normalizeBillingContacts(local.billingContacts),
           hiringManagerName: local.hiringManagerName,
           hiringManagerEmail: local.hiringManagerEmail,
           expectedStartDate: local.expectedStartDate?.toISOString() ?? null,
@@ -349,6 +370,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
           guaranteePeriodDays: p.guaranteePeriodDays,
           billingContactName: p.billingContactName,
           billingContactEmail: p.billingContactEmail,
+          billingContacts: normalizeBillingContacts(p.billingContacts),
           hiringManagerName: p.hiringManagerName,
           hiringManagerEmail: p.hiringManagerEmail,
           expectedStartDate: p.expectedStartDate?.toISOString() ?? null,

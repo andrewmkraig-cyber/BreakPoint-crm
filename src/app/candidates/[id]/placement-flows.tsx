@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Briefcase,
   CheckCircle2,
   ChevronDown,
   Clock,
+  Edit3,
   Loader2,
   MapPin,
   PhoneCall,
@@ -169,6 +170,10 @@ export type PlacementSnapshot = {
   guaranteePeriodDays: number | null;
   billingContactName: string | null;
   billingContactEmail: string | null;
+  // Array of { name, email } contacts. Populated from the new billingContacts
+  // JSON column; null on rows saved before the multi-contact migration (reads
+  // fall back to the single billingContactName/Email fields above).
+  billingContacts: Array<{ name: string; email: string }> | null;
   hiringManagerName: string | null;
   hiringManagerEmail: string | null;
   expectedStartDate: string | null;
@@ -348,6 +353,15 @@ export function PlacementActions({
           placementId={confirmFor.placement.id}
           jobTitle={confirmFor.jobTitle}
           onClose={() => setConfirmFor(null)}
+          onEditPlacement={() => {
+            // Chain Confirm → Edit: close this modal, open the placement
+            // editor for the same job. The editor upserts the existing
+            // Placement row (unique on candidateRfId+jobRfId) so the row
+            // stays pending_start and the stamped placedAt is preserved.
+            const job = confirmFor;
+            setConfirmFor(null);
+            setPlacementFor(job);
+          }}
         />
       )}
       {scheduleFor && (
@@ -949,11 +963,21 @@ function PlacementDialog({
   const [guarantee, setGuarantee] = useState(
     job.placement?.guaranteePeriodDays ? String(job.placement.guaranteePeriodDays) : "",
   );
-  const [billingContactId, setBillingContactId] = useState<string>(
-    seedBillingContactId(job.clientContacts, job.placement),
-  );
-  const [billingName, setBillingName] = useState(job.placement?.billingContactName ?? "");
-  const [billingEmail, setBillingEmail] = useState(job.placement?.billingContactEmail ?? "");
+  // Multi-contact billing list. Seed priority:
+  //   1. Existing billingContacts JSON array (post-migration rows)
+  //   2. Legacy single billingContactName/Email (pre-migration rows — shown
+  //      as one row so editing doesn't wipe their previously-saved contact)
+  //   3. One empty row so the UI always has at least one slot to fill in.
+  // Each row carries a stable local id so the Add/Remove UX doesn't lose
+  // focus on re-render.
+  const [billingContacts, setBillingContacts] = useState<
+    Array<{ key: string; name: string; email: string }>
+  >(() => {
+    const seeded = seedBillingContactList(job.placement);
+    return seeded.length > 0
+      ? seeded
+      : [{ key: makeLocalKey(), name: "", email: "" }];
+  });
   const [hiringName, setHiringName] = useState(job.placement?.hiringManagerName ?? "");
   const [hiringEmail, setHiringEmail] = useState(job.placement?.hiringManagerEmail ?? "");
   const [startDate, setStartDate] = useState(
@@ -979,16 +1003,33 @@ function PlacementDialog({
   const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
   const usedOverride = overrideNum != null;
 
-  function onBillingContactChange(id: string) {
-    setBillingContactId(id);
-    if (id === "custom" || id === "") {
-      return;
-    }
-    const match = job.clientContacts.find((c) => String(c.id) === id);
-    if (match) {
-      setBillingName(match.name);
-      setBillingEmail(match.email ?? "");
-    }
+  function setContactField(key: string, field: "name" | "email", value: string) {
+    setBillingContacts((prev) =>
+      prev.map((c) => (c.key === key ? { ...c, [field]: value } : c)),
+    );
+  }
+
+  function addContactRow() {
+    setBillingContacts((prev) => [...prev, { key: makeLocalKey(), name: "", email: "" }]);
+  }
+
+  function removeContactRow(key: string) {
+    setBillingContacts((prev) => {
+      const next = prev.filter((c) => c.key !== key);
+      // Keep at least one row present so the section never collapses to
+      // "nothing to edit" — adding back would be one extra click.
+      return next.length > 0 ? next : [{ key: makeLocalKey(), name: "", email: "" }];
+    });
+  }
+
+  function pickKnownContact(key: string, contactId: string) {
+    const match = job.clientContacts.find((c) => String(c.id) === contactId);
+    if (!match) return;
+    setBillingContacts((prev) =>
+      prev.map((c) =>
+        c.key === key ? { ...c, name: match.name, email: match.email ?? "" } : c,
+      ),
+    );
   }
 
   function validate(): string | null {
@@ -1018,6 +1059,11 @@ function PlacementDialog({
       return;
     }
 
+    // Strip empty rows before send; the server also filters defensively.
+    const cleanedContacts = billingContacts
+      .map((c) => ({ name: c.name.trim(), email: c.email.trim() }))
+      .filter((c) => c.name || c.email);
+    const primary = cleanedContacts[0] ?? { name: "", email: "" };
     startSave(async () => {
       const result = await recordPlacement({
         candidateRfId,
@@ -1033,8 +1079,12 @@ function PlacementDialog({
         feeTotal,
         minFee: minFeeNum,
         guaranteePeriodDays: guaranteeNum,
-        billingContactName: billingName.trim(),
-        billingContactEmail: billingEmail.trim(),
+        // Legacy single-contact fields get the first contact mirrored in —
+        // the server repeats this derivation but passing it up keeps the
+        // payload self-describing.
+        billingContactName: primary.name,
+        billingContactEmail: primary.email,
+        billingContacts: cleanedContacts,
         hiringManagerName: hiringName.trim(),
         hiringManagerEmail: hiringEmail.trim(),
         expectedStartDate: startDate,
@@ -1052,11 +1102,6 @@ function PlacementDialog({
       router.refresh();
     });
   }
-
-  const selectedContact = useMemo(
-    () => job.clientContacts.find((c) => String(c.id) === billingContactId) ?? null,
-    [billingContactId, job.clientContacts],
-  );
 
   return (
     <Modal
@@ -1127,38 +1172,81 @@ function PlacementDialog({
         )}
       </div>
 
-      <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Billing contact</h3>
-      <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Contact</span>
-          <select
-            value={billingContactId}
-            onChange={(e) => onBillingContactChange(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+      <div className="mt-5 flex items-end justify-between gap-3">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Billing contacts
+        </h3>
+        <button
+          type="button"
+          onClick={addContactRow}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+        >
+          <Plus className="h-3 w-3" /> Add Contact
+        </button>
+      </div>
+      <div className="mt-2 space-y-2">
+        {billingContacts.map((row) => (
+          <div
+            key={row.key}
+            className="grid grid-cols-1 items-end gap-2 rounded-lg border border-border bg-muted/20 p-3 sm:grid-cols-[1fr_1fr_auto]"
           >
-            <option value="">Select a contact…</option>
-            {job.clientContacts.map((c) => (
-              <option key={c.id} value={String(c.id)}>
-                {c.name}
-                {c.title ? ` · ${c.title}` : ""}
-              </option>
-            ))}
-            <option value="custom">Other (enter manually)</option>
-          </select>
-        </label>
-        {billingContactId === "custom" || billingContactId === "" ? (
-          <LabeledField label="Name" value={billingName} onChange={setBillingName} />
-        ) : (
-          <div>
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Email</div>
-            <div className="mt-1 rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-navy">
-              {selectedContact?.email || <span className="text-muted-foreground">No email on file</span>}
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Name</label>
+              <input
+                type="text"
+                value={row.name}
+                onChange={(e) => setContactField(row.key, "name", e.target.value)}
+                placeholder="Contact name"
+                list={`billing-contact-suggestions-${row.key}`}
+                className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              />
+              {/* Native datalist mirrors the candidate's known client contacts
+                  so typing offers quick-fill. Picking via onChange of a
+                  nearby button would be heavier; keeping the input free-text
+                  with suggestions is the simplest surface that still lets
+                  Andrew add someone not in the client contacts list. */}
+              <datalist id={`billing-contact-suggestions-${row.key}`}>
+                {job.clientContacts.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
+              {job.clientContacts.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {job.clientContacts.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => pickKnownContact(row.key, String(c.id))}
+                      className="rounded-full border border-border bg-white px-2 py-0.5 text-[10px] text-navy-400 transition hover:border-brand/40 hover:text-navy"
+                      title={`Fill from ${c.name}`}
+                    >
+                      {c.name.split(/\s+/)[0]}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
+            <div>
+              <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Email</label>
+              <input
+                type="email"
+                value={row.email}
+                onChange={(e) => setContactField(row.key, "email", e.target.value)}
+                placeholder="name@client.com"
+                className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => removeContactRow(row.key)}
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+              title="Remove this contact"
+              aria-label="Remove contact"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
           </div>
-        )}
-        {(billingContactId === "custom" || billingContactId === "") && (
-          <LabeledField label="Email" type="email" value={billingEmail} onChange={setBillingEmail} />
-        )}
+        ))}
       </div>
       <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Hiring manager</h3>
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1181,20 +1269,32 @@ function PlacementDialog({
   );
 }
 
-function seedBillingContactId(
-  contacts: ClientContactRef[],
+// Stable client-side row ids — just needs to be unique within the list while
+// the modal is open, so a monotonic counter via Math.random().toString() is
+// plenty. We can't use the contact's own email as the key because two blank
+// rows would collide before the recruiter types anything in.
+function makeLocalKey(): string {
+  return `c_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Prefer the saved multi-contact JSON if present; otherwise reconstitute a
+// single-row list from the legacy billingContactName/Email columns so a row
+// saved before the migration still shows its contact when reopened. Returns
+// an empty array when neither source has data so the caller can seed one
+// blank row via the initializer.
+function seedBillingContactList(
   placement: PlacementSnapshot | null,
-): string {
-  if (!placement?.billingContactEmail && !placement?.billingContactName) return "";
-  const byEmail = contacts.find(
-    (c) => c.email && placement.billingContactEmail && c.email.toLowerCase() === placement.billingContactEmail.toLowerCase(),
-  );
-  if (byEmail) return String(byEmail.id);
-  const byName = contacts.find(
-    (c) => placement.billingContactName && c.name.toLowerCase() === placement.billingContactName.toLowerCase(),
-  );
-  if (byName) return String(byName.id);
-  return "custom";
+): Array<{ key: string; name: string; email: string }> {
+  const fromJson = placement?.billingContacts ?? null;
+  if (fromJson && fromJson.length > 0) {
+    return fromJson.map((c) => ({ key: makeLocalKey(), name: c.name, email: c.email }));
+  }
+  const legacyName = placement?.billingContactName ?? "";
+  const legacyEmail = placement?.billingContactEmail ?? "";
+  if (legacyName || legacyEmail) {
+    return [{ key: makeLocalKey(), name: legacyName, email: legacyEmail }];
+  }
+  return [];
 }
 
 // ---------------- Confirm Start dialog ----------------
@@ -1203,10 +1303,15 @@ function ConfirmStartDialog({
   placementId,
   jobTitle,
   onClose,
+  onEditPlacement,
 }: {
   placementId: string;
   jobTitle: string;
   onClose: () => void;
+  // Called when Andrew wants to amend placement fields (fee, start date,
+  // billing contacts) before actually confirming the start. Parent handles
+  // the transition — we just close Confirm and let the parent open Edit.
+  onEditPlacement: () => void;
 }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1344,6 +1449,28 @@ function ConfirmStartDialog({
       )}
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Confirm start" />
+      {/* Third location for the Edit Placement affordance (candidate profile
+          + pipeline row are the other two). Sits below the primary Confirm
+          Start footer so it never competes with the main action; distinctly
+          outlined so it reads as secondary navigation, not a destructive
+          button. Closes Confirm and hands off to the parent, which opens
+          the pre-filled PlacementDialog for the same (candidate, job). */}
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
+        <span className="text-muted-foreground">
+          Need to fix the fee, start date, or billing contacts first?
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            onEditPlacement();
+          }}
+          disabled={isPending}
+          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy disabled:opacity-60"
+        >
+          <Edit3 className="h-3 w-3" /> Edit Placement
+        </button>
+      </div>
     </Modal>
   );
 }
