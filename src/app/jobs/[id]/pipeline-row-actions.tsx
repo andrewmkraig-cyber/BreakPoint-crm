@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   CornerUpLeft,
   DollarSign,
+  Edit3,
   Handshake,
   Loader2,
   Plus,
@@ -287,6 +288,14 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     case "pending_start":
       return (
         <ActionRow disabled={isPending}>
+          <DialogOrNav
+            icon={Edit3}
+            label="Edit Placement"
+            title="Edit placement details"
+            tone="default"
+            onClick={props.onPlacement}
+            href={profileHref}
+          />
           <DialogOrNav
             icon={CheckCircle2}
             label="Confirm"

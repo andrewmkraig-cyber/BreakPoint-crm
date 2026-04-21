@@ -924,6 +924,12 @@ function PlacementDialog({
   onClose: () => void;
 }) {
   const router = useRouter();
+  // Edit mode fires when the row is already at Pending Start — the recruiter
+  // is amending saved placement details (e.g. typing in a fee that hadn't been
+  // recorded on the initial save). The existing recordPlacement upsert is
+  // reused, so no separate server action needed; only the UI labels and the
+  // placedAt-preservation rule differ.
+  const isEdit = job.placement?.stage === "pending_start";
   const seedSalary = job.placement?.acceptedSalary ?? job.placement?.offerSalary ?? null;
   const seedFeePct = job.placement?.feePercentage ?? job.clientFeePct ?? null;
   const [acceptedSalary, setAcceptedSalary] = useState(seedSalary ? String(seedSalary) : "");
@@ -932,6 +938,14 @@ function PlacementDialog({
   );
   const [feePct, setFeePct] = useState(seedFeePct != null ? String(seedFeePct) : "");
   const [minFee, setMinFee] = useState(job.placement?.minFee ? String(job.placement.minFee) : "");
+  // Direct fee-amount override. Populated from the existing row's feeTotal when
+  // editing so the recruiter sees what's on file and can revise it. For the
+  // initial record-placement path it stays empty and the salary × % calc
+  // drives feeTotal. When set, the override wins — useful for flat-fee deals
+  // that don't map cleanly to a percentage of salary.
+  const [feeAmountOverride, setFeeAmountOverride] = useState(
+    isEdit && job.placement?.feeTotal ? String(job.placement.feeTotal) : "",
+  );
   const [guarantee, setGuarantee] = useState(
     job.placement?.guaranteePeriodDays ? String(job.placement.guaranteePeriodDays) : "",
   );
@@ -956,10 +970,14 @@ function PlacementDialog({
   const salaryNum = parseCompensation(acceptedSalary);
   const pctNum = parseFloat(feePct) || 0;
   const minFeeNum = parseCompensation(minFee);
+  const overrideNum = parseCompensation(feeAmountOverride);
   const guaranteeNum = guarantee ? Number(guarantee) : null;
   const rawFee = salaryNum && pctNum ? Math.round(salaryNum * (pctNum / 100)) : 0;
-  const feeTotal = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
-  const usedMinFee = minFeeNum != null && rawFee < minFeeNum;
+  // Fee resolution priority: explicit override > min-fee-vs-calc > calc.
+  const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
+  const feeTotal = overrideNum != null ? overrideNum : calcFee;
+  const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
+  const usedOverride = overrideNum != null;
 
   function onBillingContactChange(id: string) {
     setBillingContactId(id);
@@ -974,10 +992,16 @@ function PlacementDialog({
   }
 
   function validate(): string | null {
-    if (salaryNum == null) return "Accepted salary required.";
-    if (salaryNum < 0) return "Salary can't be negative.";
-    if (!pctNum) return "Fee percentage required.";
-    if (pctNum < 0) return "Fee percentage can't be negative.";
+    // Direct fee-amount override short-circuits the salary × pct math —
+    // salary/pct stay optional when the recruiter is typing a flat fee in.
+    if (overrideNum != null) {
+      if (overrideNum < 0) return "Fee amount can't be negative.";
+    } else {
+      if (salaryNum == null) return "Accepted salary required (or enter a flat fee amount).";
+      if (salaryNum < 0) return "Salary can't be negative.";
+      if (!pctNum) return "Fee percentage required (or enter a flat fee amount).";
+      if (pctNum < 0) return "Fee percentage can't be negative.";
+    }
     if (minFeeNum != null && minFeeNum < 0) return "Minimum fee can't be negative.";
     if (guaranteeNum != null && (Number.isNaN(guaranteeNum) || guaranteeNum < 0)) {
       return "Guarantee period can't be negative.";
@@ -999,7 +1023,11 @@ function PlacementDialog({
         candidateRfId,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
-        acceptedSalary: salaryNum!,
+        // When the recruiter is using a flat fee override without a salary,
+        // we still need a non-null integer for acceptedSalary (schema column
+        // is Int?). Zero is acceptable; the prior value would have been
+        // overwritten on every save anyway.
+        acceptedSalary: salaryNum ?? 0,
         acceptedCurrency: acceptedCurrency.toUpperCase().slice(0, 3),
         feePercentage: pctNum,
         feeTotal,
@@ -1014,10 +1042,12 @@ function PlacementDialog({
       });
       if (!result.ok) {
         setErr(result.error);
-        toast.error("Couldn't save placement", { description: result.error });
+        toast.error(isEdit ? "Couldn't save changes" : "Couldn't save placement", { description: result.error });
         return;
       }
-      toast.success("Placement recorded", { description: "Candidate moved to Pending Start." });
+      toast.success(isEdit ? "Placement updated" : "Placement recorded", {
+        description: isEdit ? "Changes saved." : "Candidate moved to Pending Start.",
+      });
       onClose();
       router.refresh();
     });
@@ -1029,7 +1059,12 @@ function PlacementDialog({
   );
 
   return (
-    <Modal title="Placement" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose} wide>
+    <Modal
+      title={isEdit ? "Edit placement" : "Placement"}
+      subtitle={`${job.jobTitle} · ${job.clientName}`}
+      onClose={onClose}
+      wide
+    >
       <div className="rounded-lg border border-brand/30 bg-brand-tint/20 p-3 text-xs text-brand-dark">
         <div className="flex items-start gap-2">
           <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -1051,6 +1086,13 @@ function PlacementDialog({
         <NumericField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" min={0} step="0.1" />
         <NumericField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" min={0} />
         <NumericField
+          label="Fee amount (flat, overrides calc)"
+          value={feeAmountOverride}
+          onChange={setFeeAmountOverride}
+          placeholder="7500 — wins over salary × fee %"
+          min={0}
+        />
+        <NumericField
           label="Guarantee period (days)"
           value={guarantee}
           onChange={setGuarantee}
@@ -1062,17 +1104,26 @@ function PlacementDialog({
       </div>
 
       <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Calculated fee</div>
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          {usedOverride ? "Fee (flat override)" : "Calculated fee"}
+        </div>
         <div className="mt-1 font-serif text-2xl font-semibold text-navy">
           {formatMoney(feeTotal, acceptedCurrency)}
           {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
+          {usedOverride && <span className="ml-2 text-xs text-brand-dark">(flat override)</span>}
         </div>
-        {salaryNum && pctNum ? (
+        {usedOverride ? (
+          <div className="mt-1 text-xs text-muted-foreground">
+            Flat-fee amount; salary × fee % calc is ignored while this is set.
+          </div>
+        ) : salaryNum && pctNum ? (
           <div className="mt-1 text-xs text-muted-foreground">
             {formatMoney(salaryNum, acceptedCurrency)} × {pctNum}% = {formatMoney(rawFee, acceptedCurrency)}
           </div>
         ) : (
-          <div className="mt-1 text-xs text-muted-foreground">Enter salary + fee % to calculate.</div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Enter salary + fee % to calculate, or type a flat fee amount above.
+          </div>
         )}
       </div>
 
@@ -1120,7 +1171,12 @@ function PlacementDialog({
       </div>
 
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Record placement" />
+      <ModalFooter
+        onCancel={onClose}
+        onSave={onSave}
+        saving={isPending}
+        saveLabel={isEdit ? "Save changes" : "Record placement"}
+      />
     </Modal>
   );
 }

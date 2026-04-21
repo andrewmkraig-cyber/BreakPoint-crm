@@ -11,9 +11,23 @@ const PERIODS = [
   { value: "custom", label: "Custom range…" },
 ] as const;
 
-export function BillingTower() {
+// `q2BilledRevenueUsd` is the sum of Placement.feeTotal across rows whose
+// expectedStartDate lands in Apr 1 – Jul 1 2026 (pending_start + hired only),
+// computed server-side. We wire it only for the default "Current Quarter"
+// option today; the other period choices will need their own server-side
+// aggregates when those views are real. Cash Collected stays at $0 until we
+// have an invoice-paid signal.
+export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: number }) {
   const [period, setPeriod] = useState<(typeof PERIODS)[number]["value"]>("quarter-current");
   const activeLabel = PERIODS.find((p) => p.value === period)?.label ?? "";
+
+  const billedLabel =
+    period === "quarter-current" ? "Q2 Billed Revenue" : "Placement Revenue";
+  const billedValue = period === "quarter-current" ? formatUsd(q2BilledRevenueUsd) : "$0";
+  const billedHint =
+    period === "quarter-current"
+      ? "Sum of fees on placements with a start date in Apr 1 – Jun 30 2026 (Pending Start + Hired)."
+      : "Fees earned on placements that hit start date.";
 
   return (
     <section className="rounded-2xl border border-border bg-white p-6 shadow-sm">
@@ -39,11 +53,23 @@ export function BillingTower() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Metric label="Placement Revenue" value="$0" hint="Fees earned on placements that hit start date." />
-        <Metric label="Cash Collected" value="$0" hint="Client payments received, regardless of placement date." />
+        <Metric label={billedLabel} value={billedValue} hint={billedHint} />
+        <Metric
+          label="Cash Collected"
+          value="$0"
+          hint="Client payments received, regardless of placement date. Stays at $0 until invoices are paid."
+        />
       </div>
     </section>
   );
+}
+
+function formatUsd(amount: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(amount);
 }
 
 function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {

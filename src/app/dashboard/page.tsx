@@ -49,6 +49,16 @@ export default async function DashboardPage() {
   // counters) and always looks 7 real days ahead from right now.
   const upcomingWindowEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
+  // Q2 2026 billed revenue: sum of feeTotal across placements whose expected
+  // start date lands in the quarter. Only non-cancelled / non-rejected rows
+  // count — the recruiter booked this revenue; cancellations come out of the
+  // "placements made" counter elsewhere. Upper bound is exclusive so
+  // 2026-07-01T00:00:00Z itself falls into Q3, not Q2. Hardcoded to Q2 2026
+  // for now; when the BillingTower dropdown wires other periods this should
+  // derive from the selected period instead.
+  const q2Start = new Date("2026-04-01T00:00:00.000Z");
+  const q2EndExclusive = new Date("2026-07-01T00:00:00.000Z");
+
   const [
     upcomingInterviews,
     rfCandidates,
@@ -60,6 +70,7 @@ export default async function DashboardPage() {
     interviewsCompletedCount,
     offersExtendedCount,
     placementsMadeCount,
+    q2BilledRevenueAgg,
   ] = await Promise.all([
     prisma.interview.findMany({
       where: { status: "scheduled", scheduledAt: { gte: now, lte: upcomingWindowEnd } },
@@ -110,6 +121,17 @@ export default async function DashboardPage() {
     // Cancelled placements still count as activity that happened.
     prisma.placement.count({
       where: { placedAt: { gte: weekStart, lt: weekEnd } },
+    }),
+    // Sum of feeTotal across Q2 2026 placements (expectedStartDate in-range),
+    // limited to pending_start + hired so we don't count cancelled/rejected
+    // rows that still carry a stale start date. feeTotal is an Int column
+    // storing whole currency units; null rows contribute 0 automatically.
+    prisma.placement.aggregate({
+      _sum: { feeTotal: true },
+      where: {
+        stage: { in: ["pending_start", "hired"] },
+        expectedStartDate: { gte: q2Start, lt: q2EndExclusive },
+      },
     }),
   ]);
   const interviews = upcomingInterviews;
@@ -171,7 +193,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="mt-8">
-        <BillingTower />
+        <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
       </div>
     </div>
   );

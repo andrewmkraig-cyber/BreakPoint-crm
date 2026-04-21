@@ -154,50 +154,61 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
   });
 
   try {
-    const row = await prisma.placement.upsert({
+    // We branch by-hand instead of using upsert because `placedAt` has
+    // conditional semantics: stamp it when we're entering Pending Start for
+    // the first time (no prior placedAt), but leave it alone when the caller
+    // is editing an already-placed row. Prisma's upsert.update can't express
+    // "set X only if currently null" in a single statement.
+    const existing = await prisma.placement.findUnique({
       where: { candidateRfId_jobRfId: { candidateRfId: input.candidateRfId, jobRfId: input.jobRfId } },
-      create: {
-        candidateRfId: input.candidateRfId,
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
-        stage: "pending_start",
-        placedAt: new Date(),
-        acceptedSalary: input.acceptedSalary,
-        acceptedCurrency: input.acceptedCurrency || "USD",
-        feePercentage: input.feePercentage,
-        feeTotal: input.feeTotal,
-        minFee: input.minFee,
-        guaranteePeriodDays: input.guaranteePeriodDays,
-        billingContactName: input.billingContactName || null,
-        billingContactEmail: input.billingContactEmail || null,
-        hiringManagerName: input.hiringManagerName || null,
-        hiringManagerEmail: input.hiringManagerEmail || null,
-        expectedStartDate: new Date(input.expectedStartDate),
-        placementNotes: input.notes || null,
-        syncedToRf: sync.synced,
-        createdById: userId,
-      },
-      update: {
-        stage: "pending_start",
-        placedAt: new Date(),
-        acceptedSalary: input.acceptedSalary,
-        acceptedCurrency: input.acceptedCurrency || "USD",
-        feePercentage: input.feePercentage,
-        feeTotal: input.feeTotal,
-        minFee: input.minFee,
-        guaranteePeriodDays: input.guaranteePeriodDays,
-        billingContactName: input.billingContactName || null,
-        billingContactEmail: input.billingContactEmail || null,
-        hiringManagerName: input.hiringManagerName || null,
-        hiringManagerEmail: input.hiringManagerEmail || null,
-        expectedStartDate: new Date(input.expectedStartDate),
-        placementNotes: input.notes || null,
-        syncedToRf: sync.synced,
-      },
-      select: { id: true, syncedToRf: true },
+      select: { id: true, placedAt: true },
     });
+    const commonData = {
+      acceptedSalary: input.acceptedSalary,
+      acceptedCurrency: input.acceptedCurrency || "USD",
+      feePercentage: input.feePercentage,
+      feeTotal: input.feeTotal,
+      minFee: input.minFee,
+      guaranteePeriodDays: input.guaranteePeriodDays,
+      billingContactName: input.billingContactName || null,
+      billingContactEmail: input.billingContactEmail || null,
+      hiringManagerName: input.hiringManagerName || null,
+      hiringManagerEmail: input.hiringManagerEmail || null,
+      expectedStartDate: new Date(input.expectedStartDate),
+      placementNotes: input.notes || null,
+      syncedToRf: sync.synced,
+    };
+    let row: { id: string; syncedToRf: boolean };
+    if (!existing) {
+      row = await prisma.placement.create({
+        data: {
+          candidateRfId: input.candidateRfId,
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          stage: "pending_start",
+          placedAt: new Date(),
+          createdById: userId,
+          ...commonData,
+        },
+        select: { id: true, syncedToRf: true },
+      });
+    } else {
+      row = await prisma.placement.update({
+        where: { id: existing.id },
+        data: {
+          stage: "pending_start",
+          // First transition to Pending Start → stamp placedAt. Edits to an
+          // already-placed row keep the original timestamp so the dashboard
+          // "Placements Made" counter never double-counts the same deal.
+          ...(existing.placedAt ? {} : { placedAt: new Date() }),
+          ...commonData,
+        },
+        select: { id: true, syncedToRf: true },
+      });
+    }
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
+    revalidatePath(`/dashboard`);
     return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record placement." };
