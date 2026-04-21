@@ -33,9 +33,19 @@ type Result<T = void> =
   | { ok: false; error: string };
 
 async function requireUserId(): Promise<string | null> {
+  // The NextAuth JWT callback stamps user.id onto the session (see
+  // src/lib/auth.ts jwt + session callbacks, and src/types/next-auth.d.ts),
+  // so we read it directly instead of round-tripping through the DB on every
+  // server-action call. That lookup was adding ~20–100 ms to every stage
+  // move (keepCandidate, moveToKept, applyCandidateToJob, etc.) purely to
+  // resolve a value the session already carries. Fallback to the email
+  // lookup only if id is missing — shouldn't happen after a fresh sign-in,
+  // but guarantees we don't break anyone holding an older JWT.
   const s = await getServerSession(authOptions);
-  if (!s?.user?.email) return null;
-  const u = await prisma.user.findUnique({ where: { email: s.user.email }, select: { id: true } });
+  const email = s?.user?.email;
+  if (!email) return null;
+  if (s.user.id) return s.user.id;
+  const u = await prisma.user.findUnique({ where: { email }, select: { id: true } });
   return u?.id ?? null;
 }
 
@@ -1941,42 +1951,48 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   try {
+    // Placement.upsert and ActionLog.create are independent — the upsert
+    // doesn't need the log row (it only references candidateRfId/jobRfId/
+    // clientRfId, all of which come from input) and vice versa. Running
+    // them in parallel cuts one round-trip to Neon off the critical path.
     // Persist Placement.stage="kept" so the Applicants > Kept tab can
     // surface the row. Earlier the action only wrote ActionLog, so the
     // Kept tab's Placement-stage query came back empty and Keep felt
     // like a no-op to the recruiter.
-    await prisma.placement.upsert({
-      where: {
-        candidateRfId_jobRfId: {
+    await Promise.all([
+      prisma.placement.upsert({
+        where: {
+          candidateRfId_jobRfId: {
+            candidateRfId: input.candidateRfId,
+            jobRfId: input.jobRfId,
+          },
+        },
+        create: {
           candidateRfId: input.candidateRfId,
           jobRfId: input.jobRfId,
-        },
-      },
-      create: {
-        candidateRfId: input.candidateRfId,
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
-        stage: "kept",
-        createdById: userId,
-        syncedToRf: false,
-      },
-      update: {
-        stage: "kept",
-        syncedToRf: false,
-      },
-    });
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "keep",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          jobRfId: input.jobRfId,
           clientRfId: input.clientRfId,
+          stage: "kept",
+          createdById: userId,
+          syncedToRf: false,
         },
-      },
-    });
+        update: {
+          stage: "kept",
+          syncedToRf: false,
+        },
+      }),
+      prisma.actionLog.create({
+        data: {
+          userId,
+          actionType: "keep",
+          subjectType: "candidate",
+          subjectId: String(input.candidateRfId),
+          metadata: {
+            jobRfId: input.jobRfId,
+            clientRfId: input.clientRfId,
+          },
+        },
+      }),
+    ]);
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/jobs/${input.jobRfId}`);
     revalidatePath(`/applicants`);
@@ -2015,40 +2031,44 @@ async function flipPlacementStage(args: {
   actionType: "revert_to_kept" | "revert_to_applied";
 }): Promise<Result> {
   try {
-    await prisma.placement.upsert({
-      where: {
-        candidateRfId_jobRfId: {
+    // Parallel insert — the two writes are independent (see keepCandidate
+    // for the same pattern and reasoning).
+    await Promise.all([
+      prisma.placement.upsert({
+        where: {
+          candidateRfId_jobRfId: {
+            candidateRfId: args.input.candidateRfId,
+            jobRfId: args.input.jobRfId,
+          },
+        },
+        create: {
           candidateRfId: args.input.candidateRfId,
           jobRfId: args.input.jobRfId,
-        },
-      },
-      create: {
-        candidateRfId: args.input.candidateRfId,
-        jobRfId: args.input.jobRfId,
-        clientRfId: args.input.clientRfId,
-        stage: args.toStage,
-        createdById: args.userId,
-        syncedToRf: false,
-      },
-      update: {
-        stage: args.toStage,
-        syncedToRf: false,
-      },
-    });
-    await prisma.actionLog.create({
-      data: {
-        userId: args.userId,
-        actionType: args.actionType,
-        subjectType: "candidate",
-        subjectId: String(args.input.candidateRfId),
-        metadata: {
-          jobRfId: args.input.jobRfId,
           clientRfId: args.input.clientRfId,
-          fromStage: args.input.previousStage,
-          toStage: args.toStage,
+          stage: args.toStage,
+          createdById: args.userId,
+          syncedToRf: false,
         },
-      },
-    });
+        update: {
+          stage: args.toStage,
+          syncedToRf: false,
+        },
+      }),
+      prisma.actionLog.create({
+        data: {
+          userId: args.userId,
+          actionType: args.actionType,
+          subjectType: "candidate",
+          subjectId: String(args.input.candidateRfId),
+          metadata: {
+            jobRfId: args.input.jobRfId,
+            clientRfId: args.input.clientRfId,
+            fromStage: args.input.previousStage,
+            toStage: args.toStage,
+          },
+        },
+      }),
+    ]);
     revalidatePath(`/candidates/${args.input.candidateRfId}`);
     revalidatePath(`/jobs/${args.input.jobRfId}`);
     revalidatePath(`/applicants`);
