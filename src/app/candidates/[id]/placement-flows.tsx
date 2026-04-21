@@ -2505,6 +2505,14 @@ function SubmittalEmailCompose({
   const [resumeOptions, setResumeOptions] = useState<SubmittalResumeOption[]>([]);
   const [resumeLoaded, setResumeLoaded] = useState(false);
   const [resumeVariant, setResumeVariant] = useState<SubmittalResumeVariant | null>(null);
+  // Per-send override on the candidate confirmation email. Defaults ON so
+  // the current behavior (send submittal → auto-follow-up to the candidate)
+  // stays the path of least friction; unchecking lets the recruiter ship
+  // just the client-facing submittal for the one send where the candidate
+  // doesn't need a follow-up (e.g. they already know, or Andrew is texting).
+  // Overrides the Settings-level auto-send/draft preference — when this is
+  // OFF we skip the deliverCandidateConfirmation call entirely.
+  const [sendCandidateConfirmation, setSendCandidateConfirmation] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -2553,13 +2561,36 @@ function SubmittalEmailCompose({
       sendDisabled={sendBlocked}
       sendDisabledReason={sendBlocked ? "No resume uploaded for this candidate — upload one before sending." : undefined}
       attachmentsSlot={
-        <SubmittalResumeAttachmentPicker
-          loaded={resumeLoaded}
-          options={resumeOptions}
-          selected={resumeVariant}
-          onSelect={setResumeVariant}
-          selectedOption={selectedOption}
-        />
+        <div className="space-y-3">
+          <SubmittalResumeAttachmentPicker
+            loaded={resumeLoaded}
+            options={resumeOptions}
+            selected={resumeVariant}
+            onSelect={setResumeVariant}
+            selectedOption={selectedOption}
+          />
+          {/* Per-send toggle for the candidate follow-up. Sits directly
+              above the Send Submittal button (attachmentsSlot is the
+              composer's row above the footer) so the recruiter sees the
+              current state at send time. Defaults ON; flipping OFF skips
+              deliverCandidateConfirmation for this one send only. */}
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs">
+            <input
+              type="checkbox"
+              checked={sendCandidateConfirmation}
+              onChange={(e) => setSendCandidateConfirmation(e.target.checked)}
+              className="mt-0.5 h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+            />
+            <span className="flex-1">
+              <span className="font-semibold text-navy">Send candidate confirmation email</span>
+              <span className="block text-muted-foreground">
+                {sendCandidateConfirmation
+                  ? "After the submittal sends, auto-fires the candidate confirmation using the Settings-level send/draft preference."
+                  : "Turned off for this send only — only the client submittal will go out; no candidate follow-up."}
+              </span>
+            </span>
+          </label>
+        </div>
       }
       resolveTemplate={(t) => {
         const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
@@ -2621,7 +2652,14 @@ function SubmittalEmailCompose({
           );
         }
 
-        if (candidateEmail) {
+        if (!sendCandidateConfirmation) {
+          // Recruiter explicitly opted out for this send. Skip the follow-up
+          // server action entirely — this overrides the Settings-level auto-
+          // send/draft preference for this one submittal.
+          toast.success("Submittal sent", {
+            description: "Candidate confirmation turned off — only the client email went out.",
+          });
+        } else if (candidateEmail) {
           const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
           const primaryFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
           const confirmResult = await deliverCandidateConfirmation({
