@@ -448,3 +448,38 @@ model JobOverride {
 
   updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
 }
+
+model SmsMessage {
+  id          String   @id @default(cuid())
+  candidateId String
+  direction   String
+  body        String
+  fromNumber  String
+  toNumber    String
+  status      String   @default("sent")
+  krispcallId String?
+  createdAt   DateTime @default(now())
+}
+
+model CallLog {
+  id           String         @id @default(cuid())
+  candidateId  String
+  direction    String
+  fromNumber   String
+  toNumber     String
+  duration     Int?
+  status       String
+  recordingUrl String?
+  krispcallId  String?
+  createdAt    DateTime       @default(now())
+  transcript   CallTranscript?
+}
+
+model CallTranscript {
+  id         String   @id @default(cuid())
+  callLogId  String   @unique
+  callLog    CallLog  @relation(fields: [callLogId], references: [id])
+  transcript String   @db.Text
+  summary    String?  @db.Text
+  createdAt  DateTime @default(now())
+}
