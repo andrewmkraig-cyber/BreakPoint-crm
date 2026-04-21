@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Eraser, Loader2, Save, Undo2, X } from "lucide-react";
 import { toast } from "sonner";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
+import { loadPdfjs } from "@/lib/pdfjs-loader";
 
 // Redaction rectangle in page-space. x,y,w,h are in PDF points (bottom-left
 // origin for PDF spec, but we use top-left in the editor and convert when
@@ -22,17 +23,6 @@ type PageMeta = {
   pageNumber: number;
   widthPx: number;
   heightPx: number;
-};
-
-// Minimal type surface for pdfjs objects we touch. We import lazily inside the
-// component so the pdfjs bundle is only pulled when the editor opens.
-type PdfJsDocument = {
-  numPages: number;
-  getPage(n: number): Promise<PdfJsPage>;
-};
-type PdfJsPage = {
-  getViewport(args: { scale: number }): { width: number; height: number };
-  render(args: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }): { promise: Promise<void> };
 };
 
 // Fixed CSS scale at which we render the canvas. Device pixel ratio is applied
@@ -68,17 +58,7 @@ export function ResumeRedactor({
 
     (async () => {
       try {
-        const pdfjsLib = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as {
-          getDocument: (src: { url?: string; data?: ArrayBuffer }) => { promise: Promise<PdfJsDocument> };
-          GlobalWorkerOptions: { workerSrc: string };
-          version: string;
-        };
-
-        // Worker served from /public/pdfjs/ (self-hosted). The earlier
-        // unpkg.com CDN URL was blocked by our CSP script-src, which is
-        // why Edit Resume appeared to do nothing — the redactor was
-        // failing silently when the worker failed to load.
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+        const pdfjsLib = await loadPdfjs();
 
         const res = await fetch(originalUrl, { credentials: "include" });
         if (!res.ok) throw new Error(`Couldn't load resume (${res.status}).`);

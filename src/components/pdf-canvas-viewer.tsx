@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Minus, Plus, RotateCcw } from "lucide-react";
+import { loadPdfjs, type PdfJsDocument } from "@/lib/pdfjs-loader";
 
 // In-browser PDF viewer that renders each page to its own <canvas> via
 // pdfjs-dist. Beats an <iframe> pointed at the raw PDF because Chrome's
@@ -15,16 +16,8 @@ import { Loader2, Minus, Plus, RotateCcw } from "lucide-react";
 //   - Device pixel ratio is baked into the canvas bitmap so it stays
 //     sharp on retina / hi-dpi screens at any zoom.
 //
-// Lazy-loads pdfjs to keep the 1MB+ bundle out of the initial page load.
-
-type PdfJsDocument = {
-  numPages: number;
-  getPage(n: number): Promise<PdfJsPage>;
-};
-type PdfJsPage = {
-  getViewport(args: { scale: number }): { width: number; height: number };
-  render(args: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }): { promise: Promise<void> };
-};
+// pdfjs is lazy-loaded once per page via the shared loader (see
+// src/lib/pdfjs-loader.ts for why we don't touch it inline here).
 
 export type PdfCanvasViewerProps = {
   src: string;
@@ -56,15 +49,7 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
     docRef.current = null;
     (async () => {
       try {
-        const pdfjsLib = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as unknown as {
-          getDocument: (src: { url?: string; data?: ArrayBuffer; withCredentials?: boolean }) => { promise: Promise<PdfJsDocument> };
-          GlobalWorkerOptions: { workerSrc: string };
-          version: string;
-        };
-        // Worker is served from /public/pdfjs/ (self-hosted) because our CSP
-        // script-src doesn't allow unpkg.com. Keep the file in lockstep with
-        // the installed pdfjs-dist version (see scripts/sync-pdfjs-worker).
-        pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
+        const pdfjsLib = await loadPdfjs();
         const res = await fetch(src, { credentials: "include", cache: "no-store" });
         if (!res.ok) throw new Error(`Fetch failed ${res.status}`);
         const buf = await res.arrayBuffer();
