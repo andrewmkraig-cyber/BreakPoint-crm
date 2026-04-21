@@ -8,6 +8,7 @@ import { SectionCard, LabeledField } from "@/app/candidates/[id]/editable-helper
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { formatPhone, telHref, normalizeToE164 } from "@/lib/recruiterflow";
 import { EmailLink } from "@/components/email-link";
+import { cn } from "@/lib/utils";
 
 export type ContactState = {
   first_name: string;
@@ -25,6 +26,13 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
   const [draft, setDraft] = useState<ContactState>(initial);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
+  // Click-to-call confirmation state. Clicking the displayed phone number
+  // opens a small dialog ("Call [name] at [number]?") instead of firing the
+  // tel: handler directly — lets Andrew cancel an accidental click before
+  // the browser dispatches to the system dialer (or Krispcall, if set as
+  // the default).
+  const [callDialogOpen, setCallDialogOpen] = useState(false);
+  const [callingBusy, setCallingBusy] = useState(false);
 
   function onSave() {
     setError(null);
@@ -57,6 +65,46 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
     setEditing(false);
     setError(null);
   }
+
+  // Fires the tel: link AND persists a CallLog row. We log FIRST (via fetch,
+  // don't await its Promise before the tel: nav) so an accidental page
+  // navigation or dialer handoff doesn't orphan the log call. The log POST
+  // runs in the background with keepalive so the request survives the
+  // navigation. tel: handoff is synchronous on the current window: the
+  // browser either opens the system dialer or hands off to Krispcall's
+  // registered protocol handler.
+  async function onConfirmCall() {
+    const number = saved.phone;
+    if (!number) return;
+    setCallingBusy(true);
+    try {
+      // Fire-and-forget log write. keepalive: true lets the request survive
+      // the window navigation that tel: triggers on some browsers.
+      void fetch("/api/calls", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        body: JSON.stringify({
+          candidateId: String(candidateId),
+          direction: "outbound",
+          fromNumber: "",
+          toNumber: number,
+          status: "initiated",
+        }),
+      }).catch(() => {
+        // swallow — the Call button UX should not block on a log write.
+      });
+      // Hand off to the default tel: handler (Krispcall when set as default,
+      // else the OS dialer / FaceTime / etc.).
+      window.location.href = telHref(number);
+    } finally {
+      setCallingBusy(false);
+      setCallDialogOpen(false);
+    }
+  }
+
+  const candidateFullName =
+    [saved.first_name, saved.last_name].filter(Boolean).join(" ").trim() || "this candidate";
 
   return (
     <SectionCard
@@ -105,9 +153,14 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
           </Row>
           <Row label="Phone" icon={<PhoneIcon className="h-3 w-3" />}>
             {saved.phone ? (
-              <a href={telHref(saved.phone)} className="text-navy hover:text-brand-dark">
+              <button
+                type="button"
+                onClick={() => setCallDialogOpen(true)}
+                className="text-navy underline-offset-2 hover:text-brand-dark hover:underline"
+                title="Click to call"
+              >
                 {formatPhone(saved.phone)}
-              </a>
+              </button>
             ) : (
               <span className="text-muted-foreground">—</span>
             )}
@@ -126,7 +179,82 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
           </Row>
         </dl>
       )}
+      {callDialogOpen && saved.phone && (
+        <CallConfirmDialog
+          candidateName={candidateFullName}
+          phone={saved.phone}
+          busy={callingBusy}
+          onCancel={() => setCallDialogOpen(false)}
+          onConfirm={() => void onConfirmCall()}
+        />
+      )}
     </SectionCard>
+  );
+}
+
+// Small centered confirmation modal. Keeps scope local to EditableContact
+// rather than routing through the generic Modal used elsewhere (simpler, no
+// extra imports, and its only job is two buttons + a one-sentence prompt).
+function CallConfirmDialog({
+  candidateName,
+  phone,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  candidateName: string;
+  phone: string;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="w-full max-w-sm overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+        <div className="flex items-start justify-between border-b border-border px-5 py-3">
+          <h3 className="font-serif text-base font-semibold text-navy">Place a call</h3>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="px-5 py-4 text-sm text-navy">
+          Call <span className="font-semibold">{candidateName}</span> at{" "}
+          <span className="font-mono">{formatPhone(phone)}</span>?
+        </div>
+        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className={cn(
+              "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition",
+              "bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60",
+            )}
+          >
+            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <PhoneIcon className="h-3 w-3" />}
+            Call
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -28,6 +28,7 @@ import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/edit
 import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
 import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
+import { CallLogs } from "@/components/call-logs";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import type {
   InterviewSummary,
@@ -449,6 +450,10 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
           {/* Collapsible SMS thread. Sits right below the resume so recruiters
               can glance at prior texts without scrolling to Activity. */}
           <TextingExchanges candidateId={String(id)} />
+          {/* Call-log accordion. Click-to-call on the sidebar phone number
+              seeds this with an "initiated" row; the Krispcall webhook
+              back-fills duration + recording + final status later. */}
+          <CallLogs candidateId={String(id)} />
         </div>
 
         <aside className="space-y-6 lg:col-span-3">
