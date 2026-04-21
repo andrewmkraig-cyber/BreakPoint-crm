@@ -32,6 +32,7 @@ import {
   confirmStart,
   deliverCandidateConfirmation,
   generateSubmittal,
+  listSubmittalResumeOptions,
   moveCancelledToAceStage,
   reapplyCancelledPlacement,
   recordOffer,
@@ -43,6 +44,8 @@ import {
   sendRejectionEmail,
   sendSubmittalEmail,
   unrejectCandidateJob,
+  type SubmittalResumeOption,
+  type SubmittalResumeVariant,
 } from "@/app/candidates/[id]/placement-actions";
 import {
   cancelInterview,
@@ -2294,6 +2297,34 @@ function SubmittalEmailCompose({
     email: c.email,
   }));
 
+  const [resumeOptions, setResumeOptions] = useState<SubmittalResumeOption[]>([]);
+  const [resumeLoaded, setResumeLoaded] = useState(false);
+  const [resumeVariant, setResumeVariant] = useState<SubmittalResumeVariant | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    listSubmittalResumeOptions(candidateRfId).then((res) => {
+      if (cancelled) return;
+      if (res.ok) {
+        setResumeOptions(res.value);
+        // Default selection: branded if available, else original, else none.
+        const branded = res.value.find((o) => o.variant === "branded");
+        const original = res.value.find((o) => o.variant === "original");
+        setResumeVariant(branded?.variant ?? original?.variant ?? null);
+      }
+      setResumeLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateRfId]);
+
+  const hasResume = resumeOptions.length > 0;
+  const selectedOption = resumeVariant
+    ? resumeOptions.find((o) => o.variant === resumeVariant) ?? null
+    : null;
+  const sendBlocked = resumeLoaded && !hasResume;
+
   return (
     <EmailComposer
       title="Submittal email"
@@ -2312,6 +2343,17 @@ function SubmittalEmailCompose({
       helperText="Pick a client contact for To and any Cc recipients. Then Use Template or Generate with Claude."
       showTemplatePicker
       templateFilter={(t) => t.audience !== "candidate"}
+      sendDisabled={sendBlocked}
+      sendDisabledReason={sendBlocked ? "No resume uploaded for this candidate — upload one before sending." : undefined}
+      attachmentsSlot={
+        <SubmittalResumeAttachmentPicker
+          loaded={resumeLoaded}
+          options={resumeOptions}
+          selected={resumeVariant}
+          onSelect={setResumeVariant}
+          selectedOption={selectedOption}
+        />
+      }
       resolveTemplate={(t) => {
         const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
         const primaryContactFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
@@ -2356,6 +2398,7 @@ function SubmittalEmailCompose({
           cc: draft.cc,
           subject: draft.subject,
           body: draft.body,
+          attachment: resumeVariant ? { variant: resumeVariant } : null,
         });
         if (!result.ok) throw new Error(result.error);
         // Hard check: the server must return a placementId. If it didn't, the
@@ -2403,6 +2446,86 @@ function SubmittalEmailCompose({
       }}
     />
   );
+}
+
+function SubmittalResumeAttachmentPicker({
+  loaded,
+  options,
+  selected,
+  onSelect,
+  selectedOption,
+}: {
+  loaded: boolean;
+  options: SubmittalResumeOption[];
+  selected: SubmittalResumeVariant | null;
+  onSelect: (v: SubmittalResumeVariant | null) => void;
+  selectedOption: SubmittalResumeOption | null;
+}) {
+  if (!loaded) {
+    return (
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" /> Loading resumes…
+      </div>
+    );
+  }
+  if (options.length === 0) {
+    return (
+      <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+        <UploadCloud className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <div>
+          <div className="font-semibold">No resume uploaded</div>
+          <div>Upload one on the candidate profile before sending this submittal.</div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          Resume attachment
+        </div>
+        {selectedOption && (
+          <div className="text-[11px] text-muted-foreground">
+            {formatBytes(selectedOption.size)} · uploaded {formatDate(selectedOption.uploadedAt)}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 space-y-1.5">
+        {options.map((o) => (
+          <label
+            key={o.variant}
+            className={cn(
+              "flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-xs transition",
+              selected === o.variant
+                ? "border-brand bg-brand-tint"
+                : "border-border bg-white hover:border-brand/40",
+            )}
+          >
+            <input
+              type="radio"
+              name="submittal-resume-variant"
+              checked={selected === o.variant}
+              onChange={() => onSelect(o.variant)}
+              className="mt-0.5 h-3.5 w-3.5 text-brand focus:ring-brand/30"
+            />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="font-medium text-navy">{o.label}</span>
+              <span className="truncate text-[11px] text-muted-foreground">
+                {o.filename} · {formatBytes(o.size)} · {formatDate(o.uploadedAt)}
+              </span>
+            </div>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 // ---------------- Shared ----------------

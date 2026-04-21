@@ -71,6 +71,12 @@ async function getFreshAccessToken(userId: string): Promise<string> {
   return accessToken;
 }
 
+export type GmailAttachment = {
+  filename: string;
+  mimeType: string;
+  data: Uint8Array;
+};
+
 export type SendEmailInput = {
   userId: string;
   from: string; // the sender's address (must match the authenticated user)
@@ -82,9 +88,54 @@ export type SendEmailInput = {
   bodyText: string;
   bodyHtml?: string;
   threadId?: string;
+  attachments?: GmailAttachment[];
 };
 
 export type SendEmailResult = { id: string; threadId: string };
+
+function randomBoundary(tag: string): string {
+  return `----=_BreakPoint_${tag}_${Math.random().toString(36).slice(2)}`;
+}
+
+function buildAlternativePart(bodyText: string, bodyHtml: string, boundary: string): string {
+  return [
+    `--${boundary}`,
+    "Content-Type: text/plain; charset=UTF-8",
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    bodyText,
+    "",
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: 7bit",
+    "",
+    bodyHtml,
+    "",
+    `--${boundary}--`,
+  ].join("\r\n");
+}
+
+// RFC 2045: base64 lines SHOULD be <= 76 chars. Gmail tolerates long lines but
+// some downstream forwarders don't, so chunk to 76.
+function base64Chunk(bytes: Uint8Array): string {
+  const buf = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const b64 = buf.toString("base64");
+  return b64.match(/.{1,76}/g)?.join("\r\n") ?? b64;
+}
+
+function buildAttachmentPart(att: GmailAttachment): string {
+  // Only MIME-encode the display filename; the raw filename still goes in as
+  // ASCII since we assume PDFs / DOCX etc. whose filenames rarely contain
+  // non-ASCII. Keep things boring and interop-safe.
+  const fn = encodeMimeWord(att.filename);
+  return [
+    `Content-Type: ${att.mimeType}; name="${fn}"`,
+    `Content-Disposition: attachment; filename="${fn}"`,
+    "Content-Transfer-Encoding: base64",
+    "",
+    base64Chunk(att.data),
+  ].join("\r\n");
+}
 
 // Builds a Gmail-compatible RFC 2822 message + base64url encodes it, which is
 // the raw shape /users/me/messages/send expects.
@@ -98,26 +149,39 @@ function buildRfc2822(params: SendEmailInput): string {
   headers.push(`Subject: ${encodeMimeWord(params.subject)}`);
   headers.push("MIME-Version: 1.0");
 
+  const hasAttachments = Boolean(params.attachments && params.attachments.length > 0);
+
+  // multipart/mixed { multipart/alternative { text, html }, attachment+ }
+  if (hasAttachments) {
+    const mixed = randomBoundary("mix");
+    const alt = randomBoundary("alt");
+    headers.push(`Content-Type: multipart/mixed; boundary="${mixed}"`);
+    const htmlBody = params.bodyHtml ?? plainToHtml(params.bodyText);
+    const parts: string[] = [
+      "",
+      `--${mixed}`,
+      `Content-Type: multipart/alternative; boundary="${alt}"`,
+      "",
+      buildAlternativePart(params.bodyText, htmlBody, alt),
+      "",
+    ];
+    for (const att of params.attachments!) {
+      parts.push(`--${mixed}`);
+      parts.push(buildAttachmentPart(att));
+      parts.push("");
+    }
+    parts.push(`--${mixed}--`);
+    return headers.join("\r\n") + "\r\n" + parts.join("\r\n");
+  }
+
   if (params.bodyHtml) {
-    const boundary = `----=_BreakPoint_${Math.random().toString(36).slice(2)}`;
+    const boundary = randomBoundary("alt");
     headers.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
-    const body = [
-      "",
-      `--${boundary}`,
-      "Content-Type: text/plain; charset=UTF-8",
-      "Content-Transfer-Encoding: 7bit",
-      "",
-      params.bodyText,
-      "",
-      `--${boundary}`,
-      "Content-Type: text/html; charset=UTF-8",
-      "Content-Transfer-Encoding: 7bit",
-      "",
-      params.bodyHtml,
-      "",
-      `--${boundary}--`,
-    ].join("\r\n");
-    return headers.join("\r\n") + "\r\n" + body;
+    return (
+      headers.join("\r\n") +
+      "\r\n\r\n" +
+      buildAlternativePart(params.bodyText, params.bodyHtml, boundary)
+    );
   }
 
   headers.push("Content-Type: text/plain; charset=UTF-8");

@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
-import { createGmailDraft, plainToHtml, sendGmail } from "@/lib/gmail";
+import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { applyMergeFields } from "@/lib/merge-fields";
 import { buildFullMergeValues } from "@/lib/merge-context";
 import { getAppPreferences } from "@/lib/preferences";
@@ -1098,6 +1098,103 @@ function summarizeNotes(raw: unknown): string {
     .join("\n");
 }
 
+export type SubmittalResumeVariant = "original" | "branded";
+
+export type SubmittalResumeOption = {
+  variant: SubmittalResumeVariant;
+  label: string;
+  filename: string;
+  size: number;
+  uploadedAt: string; // ISO
+  mimeType: string;
+};
+
+export type ListSubmittalResumeOptionsResult =
+  | { ok: true; value: SubmittalResumeOption[] }
+  | { ok: false; error: string };
+
+// Returns the resume variants the recruiter can pick from for a submittal.
+// One row per candidateRfId in CandidateResume; the redacted ("branded")
+// variant is included only when redactedData is populated. The recruiter
+// always sees the original first, branded second.
+export async function listSubmittalResumeOptions(
+  candidateRfId: number,
+): Promise<ListSubmittalResumeOptionsResult> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  const row = await prisma.candidateResume.findUnique({
+    where: { candidateRfId },
+    select: {
+      filename: true,
+      mimeType: true,
+      size: true,
+      uploadedAt: true,
+      uploadComplete: true,
+      redactedSize: true,
+      redactedMimeType: true,
+      redactedAt: true,
+    },
+  });
+  if (!row || !row.uploadComplete) return { ok: true, value: [] };
+  const options: SubmittalResumeOption[] = [
+    {
+      variant: "original",
+      label: "Original",
+      filename: row.filename,
+      size: row.size,
+      uploadedAt: row.uploadedAt.toISOString(),
+      mimeType: row.mimeType,
+    },
+  ];
+  if (row.redactedAt) {
+    const brandedFilename = row.filename.replace(/\.pdf$/i, "") + "-BreakPoint.pdf";
+    options.push({
+      variant: "branded",
+      label: "BreakPoint Branded",
+      filename: brandedFilename,
+      size: row.redactedSize ?? row.size,
+      uploadedAt: row.redactedAt.toISOString(),
+      mimeType: row.redactedMimeType ?? "application/pdf",
+    });
+  }
+  return { ok: true, value: options };
+}
+
+async function loadSubmittalAttachment(
+  candidateRfId: number,
+  variant: SubmittalResumeVariant,
+): Promise<{ ok: true; value: GmailAttachment } | { ok: false; error: string }> {
+  const row = await prisma.candidateResume.findUnique({
+    where: { candidateRfId },
+  });
+  if (!row || !row.uploadComplete) {
+    return { ok: false, error: "No resume uploaded for this candidate." };
+  }
+  if (variant === "branded") {
+    if (!row.redactedData || !row.redactedAt) {
+      return { ok: false, error: "No branded resume available for this candidate." };
+    }
+    const bytes = row.redactedData;
+    return {
+      ok: true,
+      value: {
+        filename: row.filename.replace(/\.pdf$/i, "") + "-BreakPoint.pdf",
+        mimeType: row.redactedMimeType ?? "application/pdf",
+        data: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+      },
+    };
+  }
+  const bytes = row.data;
+  return {
+    ok: true,
+    value: {
+      filename: row.filename,
+      mimeType: row.mimeType,
+      data: new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength),
+    },
+  };
+}
+
 export type SendSubmittalInput = {
   candidateRfId: number;
   jobRfId: number;
@@ -1108,6 +1205,7 @@ export type SendSubmittalInput = {
   cc: string[];
   subject: string;
   body: string;
+  attachment?: { variant: SubmittalResumeVariant } | null;
 };
 
 export type SubmittalSendResult = {
@@ -1185,6 +1283,18 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
   // Step 2: Send the email. If this fails, the Placement row is already
   // in place — the recruiter sees an error but the candidate appears on the
   // profile/pipeline so they can retry the send without re-picking the job.
+  let attachments: GmailAttachment[] | undefined;
+  if (input.attachment) {
+    const att = await loadSubmittalAttachment(input.candidateRfId, input.attachment.variant);
+    if (!att.ok) {
+      return {
+        ok: false,
+        error: `Candidate linked in Ace, but resume attachment failed: ${att.error}. No email was sent.`,
+      };
+    }
+    attachments = [att.value];
+  }
+
   let sent: { id: string; threadId: string };
   try {
     sent = await sendGmail({
@@ -1196,6 +1306,7 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
       subject: input.subject.trim(),
       bodyText: input.body,
       bodyHtml: plainToHtml(input.body),
+      attachments,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to send submittal email.";
@@ -1253,6 +1364,8 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
           to: input.to,
           cc: input.cc,
           subject: input.subject,
+          attachmentVariant: input.attachment?.variant ?? null,
+          attachmentFilename: attachments?.[0]?.filename ?? null,
         },
       },
     });

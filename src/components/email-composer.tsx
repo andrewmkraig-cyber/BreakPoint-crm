@@ -72,6 +72,15 @@ export type EmailComposerProps = {
   // `interview-invite-${interviewId}-${party}`) so distinct composers
   // don't collide.
   draftKey?: string;
+  // Rendered in its own row above the Send / Cancel buttons. Used by the
+  // submittal composer to surface the resume attachment picker, but
+  // intentionally generic so other flows can reuse it.
+  attachmentsSlot?: ReactNode;
+  // When true, the Send button is disabled regardless of internal state.
+  // Parent supplies the reason so the composer can surface it as the
+  // button tooltip.
+  sendDisabled?: boolean;
+  sendDisabledReason?: string;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -99,6 +108,9 @@ export function EmailComposer({
   ccBccPinned,
   mergeValues,
   draftKey,
+  attachmentsSlot,
+  sendDisabled = false,
+  sendDisabledReason,
 }: EmailComposerProps) {
   // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
   // win over the legacy combined ccBccOptions.
@@ -452,6 +464,10 @@ export function EmailComposer({
         {helperText && <div className="px-5 pb-2 text-[11px] text-muted-foreground">{helperText}</div>}
         {err && <div className="mx-5 mb-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
 
+        {attachmentsSlot && (
+          <div className="border-t border-border px-5 py-3">{attachmentsSlot}</div>
+        )}
+
         <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3">
           <div className="flex flex-wrap items-center gap-2">
             {showTemplatePicker && (
@@ -569,7 +585,8 @@ export function EmailComposer({
             <button
               type="button"
               onClick={onSendClick}
-              disabled={isSending}
+              disabled={isSending || sendDisabled}
+              title={sendDisabled ? sendDisabledReason : undefined}
               className="inline-flex items-center gap-1.5 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isSending ? (
