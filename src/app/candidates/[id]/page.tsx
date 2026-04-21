@@ -26,6 +26,8 @@ import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-note
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
 import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
+import { SmsComposer } from "@/components/sms-composer";
+import { TextingExchanges } from "@/components/texting-exchanges";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import type {
   InterviewSummary,
@@ -444,10 +446,17 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-6 lg:col-span-7">
           <EditableResume candidateRfId={id} initial={localResumeInitial} />
+          {/* Collapsible SMS thread. Sits right below the resume so recruiters
+              can glance at prior texts without scrolling to Activity. */}
+          <TextingExchanges candidateId={String(id)} />
         </div>
 
         <aside className="space-y-6 lg:col-span-3">
           <EditableContact candidateId={id} initial={contactInitial} />
+          {/* SMS composer slots in directly below the phone-number card so
+              the input sits next to the number it'll be texting. Pass the
+              normalized candidate phone from EditableContact's source. */}
+          <SmsComposer candidateId={String(id)} toNumber={normalizePhone(c.phone_number) || null} />
           <EditableEmployment candidateId={id} initial={employmentInitial} />
           <EditableSkills candidateId={id} initial={skillsInitial} />
           <EditableExperience candidateId={id} initial={experienceInitial} />
