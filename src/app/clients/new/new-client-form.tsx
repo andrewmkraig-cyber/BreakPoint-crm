@@ -2,10 +2,11 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Globe, Loader2, Save, Sparkles } from "lucide-react";
+import { AlertTriangle, Globe, Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
+  checkClientDomain,
   createClient,
   parseClientWebsite,
   type CreateClientPayload,
@@ -60,12 +61,58 @@ export function NewClientForm() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const parseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastParsedUrl = useRef<string | null>(null);
+  // Duplicate-domain check state. Clients live in RecruiterFlow (there is no
+  // local Postgres Client table), so the pre-flight hits the RF listAllClients
+  // endpoint via the checkClientDomain server action. status resolves to:
+  //   idle      — nothing to show
+  //   checking  — roundtrip in flight
+  //   clean     — typed domain isn't in the existing client list
+  //   duplicate — exact match; save disabled + red inline message shown
+  const [domainCheckStatus, setDomainCheckStatus] = useState<
+    "idle" | "checking" | "clean" | "duplicate"
+  >("idle");
+  const [domainDuplicate, setDomainDuplicate] = useState<{ id: number; name: string } | null>(null);
 
   function onWebsiteChange(v: string) {
     setWebsiteUrl(v);
     // Mirror the raw URL into the form's `website` field so manual users don't
     // have to re-type it.
     setForm((prev) => ({ ...prev, website: v }));
+    // Any edit invalidates a prior dup-check verdict. Reset so the next blur
+    // or submit re-runs against the new value.
+    setDomainDuplicate(null);
+    setDomainCheckStatus("idle");
+  }
+
+  async function runDomainCheck(urlRaw: string) {
+    const domain = urlRaw.trim();
+    if (!domain) {
+      setDomainDuplicate(null);
+      setDomainCheckStatus("idle");
+      return { duplicate: false, error: null as string | null };
+    }
+    setDomainCheckStatus("checking");
+    const res = await checkClientDomain(domain);
+    if (!res.ok) {
+      // Couldn't check (RF down, network blip). Clear the red-flag state but
+      // don't mark "clean" either — let the save go through and let RF's own
+      // 403 surface as a save error, same as before this pre-flight existed.
+      setDomainDuplicate(null);
+      setDomainCheckStatus("idle");
+      return { duplicate: false, error: res.error };
+    }
+    if (res.duplicate) {
+      setDomainDuplicate(res.duplicate);
+      setDomainCheckStatus("duplicate");
+      return { duplicate: true, error: null };
+    }
+    setDomainDuplicate(null);
+    setDomainCheckStatus("clean");
+    return { duplicate: false, error: null };
+  }
+
+  function onWebsiteBlur() {
+    void runDomainCheck(websiteUrl);
   }
 
   // Debounced AUTO parse: fires 600ms after the user stops typing, and only
@@ -122,6 +169,20 @@ export function NewClientForm() {
       return;
     }
     startSave(async () => {
+      // Hard gate on submit regardless of whether onBlur already ran — catches
+      // the case where the user typed a domain but never blurred, or another
+      // tab just created the same client. checkClientDomain returning
+      // duplicate aborts the create call entirely (no more 403 from RF).
+      const websiteRaw = form.website.trim();
+      if (websiteRaw) {
+        const verdict = await runDomainCheck(websiteRaw);
+        if (verdict.duplicate) {
+          toast.error("Client not available", {
+            description: "A client with this domain already exists in RecruiterFlow.",
+          });
+          return;
+        }
+      }
       const result = await createClient(form);
       if (!result.ok) {
         setSaveError(result.error);
@@ -156,15 +217,37 @@ export function NewClientForm() {
                     onWebsiteChange(e.target.value);
                     scheduleAutoParse(e.target.value);
                   }}
+                  onBlur={onWebsiteBlur}
                   placeholder="acme.com or https://acme.com"
-                  className="w-full rounded-lg border border-border bg-white py-2 pl-8 pr-3 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                  className={cn(
+                    "w-full rounded-lg border bg-white py-2 pl-8 pr-3 text-sm text-navy placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2",
+                    domainCheckStatus === "duplicate"
+                      ? "border-red-300 focus:border-red-400 focus:ring-red-200"
+                      : "border-border focus:border-brand focus:ring-brand/20",
+                  )}
                 />
               </div>
             </label>
+            {domainCheckStatus === "duplicate" && (
+              <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <div>
+                  <div className="font-semibold">Client not available</div>
+                  <div className="text-red-700/80">
+                    A client with this domain already exists in RecruiterFlow
+                    {domainDuplicate?.name ? ` (${domainDuplicate.name})` : ""}.
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-2 text-[11px]">
               {isParsing ? (
                 <span className="inline-flex items-center gap-1 text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" /> Reading website…
+                </span>
+              ) : domainCheckStatus === "checking" ? (
+                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Checking for existing client…
                 </span>
               ) : parseSource === "claude" ? (
                 <span className="inline-flex items-center gap-1 text-brand-dark">
@@ -193,7 +276,12 @@ export function NewClientForm() {
             <button
               type="button"
               onClick={onSave}
-              disabled={isSaving}
+              disabled={isSaving || domainCheckStatus === "duplicate"}
+              title={
+                domainCheckStatus === "duplicate"
+                  ? "This domain already exists in RecruiterFlow — pick a different URL."
+                  : undefined
+              }
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}

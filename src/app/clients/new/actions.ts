@@ -19,6 +19,55 @@ async function requireSession(): Promise<boolean> {
   return Boolean(u);
 }
 
+// Normalize a user-typed or RF-stored domain down to a comparable key. Drops
+// protocol, any path/querystring, a leading `www.`, and lowercases. Both sides
+// of the duplicate check run through this so https://www.Acme.COM/about and
+// acme.com collapse to the same string.
+function normalizeDomain(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .split(/[\/?#]/)[0] ?? "";
+}
+
+export type CheckClientDomainResult =
+  | { ok: true; duplicate: { id: number; name: string; domain: string } | null }
+  | { ok: false; error: string };
+
+// Pre-flight duplicate check. Clients live in RecruiterFlow (no local Postgres
+// Client table), so the source of truth is `listAllClients` — we normalize
+// every stored domain and compare against the user's input. On RF failures we
+// return ok:false and the caller treats it as "don't know" (lets save through
+// and lets RF's own 403 surface as a save error, which is the pre-existing
+// behavior).
+export async function checkClientDomain(domainRaw: string): Promise<CheckClientDomainResult> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  const needle = normalizeDomain(domainRaw);
+  if (!needle) return { ok: true, duplicate: null };
+  try {
+    const clients = await recruiterflow.listAllClients({ perPage: 100 });
+    for (const c of clients) {
+      const hit = normalizeDomain(c.domain ?? null);
+      if (hit && hit === needle) {
+        return {
+          ok: true,
+          duplicate: {
+            id: c.id,
+            name: c.name ?? "(unnamed client)",
+            domain: hit,
+          },
+        };
+      }
+    }
+    return { ok: true, duplicate: null };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Couldn't check RecruiterFlow for duplicates." };
+  }
+}
+
 export type CreateClientPayload = {
   name: string;
   website: string;
