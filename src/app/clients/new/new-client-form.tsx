@@ -131,8 +131,33 @@ export function NewClientForm() {
   }
 
   function runParse(url: string) {
-    const toastId = toast.loading("Reading website…");
+    const toastId = toast.loading("Checking domain…");
     startParse(async () => {
+      // STEP 1: domain check first, always. Auto-fill must NEVER touch any
+      // form field when the domain is already in RecruiterFlow — otherwise
+      // the red "Client not available" banner is paired with a form full of
+      // partially-populated data that the recruiter can't save and has to
+      // clear by hand. runDomainCheck sets domainCheckStatus → "duplicate"
+      // so the inline banner + Save-disable UX fires via the same path the
+      // blur handler uses.
+      const verdict = await runDomainCheck(url);
+      if (verdict.duplicate) {
+        toast.error("Client not available", {
+          id: toastId,
+          description: "A client with this domain already exists in RecruiterFlow.",
+        });
+        return;
+      }
+      if (verdict.error) {
+        // Check itself failed (RF down / transient). Skip the auto-fill so
+        // we don't poison the form with data for a domain whose status we
+        // can't determine; the recruiter can still type manually and save.
+        toast.error("Couldn't check domain", { id: toastId, description: verdict.error });
+        return;
+      }
+      // STEP 2: domain is clean — now, and only now, fetch the homepage and
+      // ask Claude for structured fields.
+      toast.loading("Reading website…", { id: toastId });
       try {
         const result = await parseClientWebsite(url);
         if (!result.ok) {
