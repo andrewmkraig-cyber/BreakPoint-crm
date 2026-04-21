@@ -38,3 +38,50 @@ export function submittalToHtml(body: string): string {
 export function submittalToPlainText(body: string): string {
   return body.replace(BOLD_RE, "$1").replace(UNDERLINE_RE, "$1");
 }
+
+// Converts Claude's marker-style submittal writeup into Tiptap-digestible
+// HTML. Paragraph breaks in the source (blank lines) become <p> blocks; single
+// newlines inside a paragraph become <br/> — that matches how the recruiter
+// sees it in Gmail. Bold / underline markers are escaped first, then replaced,
+// so a raw `<script>` in the AI's output can never become real markup.
+export function submittalMarkdownToEditorHtml(body: string): string {
+  const escaped = escapeHtml(body);
+  const paragraphs = escaped
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block) => block.replace(/\n/g, "<br/>"))
+    .map((block) => `<p>${block}</p>`)
+    .join("");
+  const bolded = paragraphs.replace(BOLD_RE, "<strong>$1</strong>");
+  const underlined = bolded.replace(UNDERLINE_RE, "<u>$1</u>");
+  return underlined || "<p></p>";
+}
+
+// Reverse conversion for the Gmail text/plain alternative when the client
+// sends rich HTML from Tiptap. We don't ship a full HTML-to-text serializer
+// because the editor's schema is deliberately narrow (paragraphs, <br>, bold,
+// underline). Strip tags, decode entities, and collapse runs of blank lines.
+export function submittalEditorHtmlToPlainText(html: string): string {
+  const withBreaks = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
+    .replace(/<\/?p[^>]*>/gi, "")
+    .replace(/<\/?(?:strong|b|u|em|i|span)[^>]*>/gi, "");
+  const stripped = withBreaks.replace(/<[^>]+>/g, "");
+  const decoded = stripped
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)));
+  return decoded.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// Wraps raw editor HTML in the same outer font-family / line-height div that
+// submittalToHtml uses, so recipients see identical type styling whether the
+// body came from the markdown or the Tiptap path.
+export function wrapEditorHtmlForGmail(html: string): string {
+  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #0f1b2d;">${html}</div>`;
+}

@@ -1,11 +1,21 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
+import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
+
+// Lazy-load the Tiptap editor — pulls in ProseMirror and pdfjs-sized helpers,
+// so we keep it out of the initial bundle for every composer. Only composers
+// that opt in via `richTextBody` pay the cost, and only when the modal opens.
+const RichTextBodyEditor = dynamic(
+  () => import("@/components/rich-text-body-editor").then((m) => m.RichTextBodyEditor),
+  { ssr: false },
+);
 
 export type EmailDraft = {
   to: string[];
@@ -13,6 +23,11 @@ export type EmailDraft = {
   bcc: string[];
   subject: string;
   body: string;
+  // When the composer is in rich-text mode, `body` holds HTML. Consumers that
+  // need to preserve the rich structure end-to-end (submittal → Gmail html
+  // alternative) should read this explicit field; text-mode consumers can
+  // continue ignoring it and using `body` as the single string source.
+  bodyHtml?: string;
 };
 
 export type ResolveTemplateFn = (template: ActiveTemplateSummary) => Promise<{ subject: string; body: string }> | { subject: string; body: string };
@@ -87,6 +102,20 @@ export type EmailComposerProps = {
   // <strong> / <u> tags on the Gmail draft. Opt-in per composer so
   // non-submittal flows keep the plain textarea behavior.
   bodyFormattingShortcuts?: boolean;
+  // When true, the body is a Tiptap rich-text editor instead of a plain
+  // textarea. Cmd/Ctrl+B and Cmd/Ctrl+U format the selection as real bold /
+  // underline in the editor; onSend receives the rendered HTML in
+  // EmailDraft.bodyHtml and a plain-text version in EmailDraft.body.
+  // Mutually exclusive with bodyFormattingShortcuts (rich text has its own
+  // keyboard handling) and with generator/template output that relies on
+  // marker syntax — parents that enable this must hand the editor HTML via
+  // the optional toEditorHtml prop below.
+  richTextBody?: boolean;
+  // Converts generator / template output (which arrives as marker-flavored
+  // plain text like `**About Alice:**\n…`) into HTML the editor can set.
+  // Only used when richTextBody is true. If unset the raw string is handed
+  // to the editor as-is, which is fine for callers that already produce HTML.
+  toEditorHtml?: (source: string) => string;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -118,6 +147,8 @@ export function EmailComposer({
   sendDisabled = false,
   sendDisabledReason,
   bodyFormattingShortcuts = false,
+  richTextBody = false,
+  toEditorHtml,
 }: EmailComposerProps) {
   // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
   // win over the legacy combined ccBccOptions.
@@ -163,6 +194,10 @@ export function EmailComposer({
   // (which triggers blur) would otherwise lose it.
   const subjectRef = useRef<HTMLInputElement | null>(null);
   const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+  // Imperative handle on the Tiptap editor when richTextBody is true. Lets
+  // Insert Field splice a merge token at the caret via the editor's command
+  // chain instead of the textarea's substring manipulation.
+  const richTextRef = useRef<RichTextBodyEditorHandle | null>(null);
   const [lastFocus, setLastFocus] = useState<"subject" | "body">("body");
   const lastCaretRef = useRef<{ start: number; end: number } | null>(null);
   const [fieldOpen, setFieldOpen] = useState(false);
@@ -234,6 +269,13 @@ export function EmailComposer({
 
   function insertMergeToken(token: string) {
     setFieldOpen(false);
+    // Rich-text body + the body is the focused target → use the editor's
+    // command chain so the token splices in at the ProseMirror selection and
+    // the surrounding formatting stays intact.
+    if (richTextBody && lastFocus === "body" && richTextRef.current) {
+      richTextRef.current.insertPlainText(token);
+      return;
+    }
     const targetRef = lastFocus === "subject" ? subjectRef : bodyRef;
     const el = targetRef.current;
     if (!el) {
@@ -279,7 +321,12 @@ export function EmailComposer({
       try {
         const resolved = resolveTemplate ? await resolveTemplate(tpl) : { subject: tpl.subject, body: tpl.body };
         if (!subject.trim() || confirmReplace(subject, resolved.subject)) setSubject(resolved.subject);
-        if (!body.trim() || confirmReplace(body, resolved.body)) setBody(resolved.body);
+        // Templates come in as marker-flavored text; for rich text mode we run
+        // them through the caller-supplied HTML converter so the editor can
+        // render bold/underline immediately. Text-mode callers keep the raw
+        // string so the existing markdown-marker pipeline still works.
+        const incomingBody = richTextBody && toEditorHtml ? toEditorHtml(resolved.body) : resolved.body;
+        if (!body.trim() || confirmReplace(body, incomingBody)) setBody(incomingBody);
         toast.success("Template applied", { description: tpl.name });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to apply template.";
@@ -302,7 +349,12 @@ export function EmailComposer({
       cc: parseList(cc),
       bcc: parseList(bcc),
       subject: subject.trim(),
+      // In rich-text mode the `body` state IS the HTML Tiptap emits. We
+      // expose it through both fields so callers that want HTML explicitly
+      // (`bodyHtml`) and callers that want a single body string stay
+      // consistent. Text-mode callers keep `bodyHtml` undefined.
       body,
+      ...(richTextBody ? { bodyHtml: body } : {}),
     };
   }
 
@@ -321,7 +373,12 @@ export function EmailComposer({
         if (/^<!DOCTYPE|^<html|<script\b|__next_f\.push\(/i.test(text.slice(0, 1000))) {
           throw new Error("Generator returned a page instead of text. Reload the tab and try again — your session may have expired.");
         }
-        setBody(text);
+        // Generator output is marker-flavored plain text. In rich text mode
+        // the editor needs HTML, so run it through the caller-supplied
+        // converter before setBody — Tiptap will render bold headers and
+        // dash bullets as real formatting.
+        const nextBody = richTextBody && toEditorHtml ? toEditorHtml(text) : text;
+        setBody(nextBody);
         toast.success("Draft generated", { description: "Edit before sending if needed." });
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to generate draft.";
@@ -506,25 +563,40 @@ export function EmailComposer({
         </div>
 
         <div className="min-h-0 flex-1 px-5 pb-3">
-          <textarea
-            ref={bodyRef}
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onFocus={(e) => {
-              setLastFocus("body");
-              rememberCaret(e.currentTarget);
-            }}
-            onSelect={(e) => rememberCaret(e.currentTarget)}
-            onKeyDown={onBodyKeyDown}
-            onKeyUp={(e) => rememberCaret(e.currentTarget)}
-            onClick={(e) => rememberCaret(e.currentTarget)}
-            rows={16}
-            placeholder="Write your message, or click Generate with Claude below."
-            className={cn(
-              "w-full resize-vertical whitespace-pre-wrap rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy",
-              "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-            )}
-          />
+          {richTextBody ? (
+            <div
+              onFocus={() => setLastFocus("body")}
+              onClick={() => setLastFocus("body")}
+            >
+              <RichTextBodyEditor
+                ref={richTextRef}
+                initialHtml={body}
+                value={body}
+                onChange={(html) => setBody(html)}
+                placeholder="Write your message, or click Generate with Claude below."
+              />
+            </div>
+          ) : (
+            <textarea
+              ref={bodyRef}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onFocus={(e) => {
+                setLastFocus("body");
+                rememberCaret(e.currentTarget);
+              }}
+              onSelect={(e) => rememberCaret(e.currentTarget)}
+              onKeyDown={onBodyKeyDown}
+              onKeyUp={(e) => rememberCaret(e.currentTarget)}
+              onClick={(e) => rememberCaret(e.currentTarget)}
+              rows={16}
+              placeholder="Write your message, or click Generate with Claude below."
+              className={cn(
+                "w-full resize-vertical whitespace-pre-wrap rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy",
+                "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+              )}
+            />
+          )}
         </div>
 
         {helperText && <div className="px-5 pb-2 text-[11px] text-muted-foreground">{helperText}</div>}

@@ -7,7 +7,12 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
-import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
+import {
+  submittalEditorHtmlToPlainText,
+  submittalToHtml,
+  submittalToPlainText,
+  wrapEditorHtmlForGmail,
+} from "@/lib/submittal-format";
 import { applyMergeFields } from "@/lib/merge-fields";
 import { buildFullMergeValues } from "@/lib/merge-context";
 import { getAppPreferences } from "@/lib/preferences";
@@ -1213,6 +1218,12 @@ export type SendSubmittalInput = {
   cc: string[];
   subject: string;
   body: string;
+  // When the composer is in rich-text (Tiptap) mode, the client sends HTML
+  // directly. If present, we use it verbatim for the Gmail text/html
+  // alternative and derive a stripped plain-text version for the text/plain
+  // alternative. Falls back to the marker-flavored `body` when absent, which
+  // is the legacy path for any caller still using the textarea composer.
+  bodyHtml?: string;
   attachment?: { variant: SubmittalResumeVariant } | null;
 };
 
@@ -1305,6 +1316,7 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
 
   let sent: { id: string; threadId: string };
   try {
+    const useRichHtml = typeof input.bodyHtml === "string" && input.bodyHtml.trim().length > 0;
     sent = await sendGmail({
       userId,
       from: fromEmail,
@@ -1312,8 +1324,18 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
       to: input.to,
       cc: input.cc,
       subject: input.subject.trim(),
-      bodyText: submittalToPlainText(input.body),
-      bodyHtml: submittalToHtml(input.body),
+      // Rich path: the Tiptap editor already produced the <p>/<strong>/<u>
+      // structure we want in Gmail, so skip the marker conversion. The plain
+      // alternative is derived from the same HTML so line breaks / bullet
+      // dashes survive in text-only mail clients.
+      // Legacy path: marker-flavored body from the textarea composer runs
+      // through the existing submittalTo*/submittalToHtml pair.
+      bodyText: useRichHtml
+        ? submittalEditorHtmlToPlainText(input.bodyHtml!)
+        : submittalToPlainText(input.body),
+      bodyHtml: useRichHtml
+        ? wrapEditorHtmlForGmail(input.bodyHtml!)
+        : submittalToHtml(input.body),
       attachments,
     });
   } catch (e) {

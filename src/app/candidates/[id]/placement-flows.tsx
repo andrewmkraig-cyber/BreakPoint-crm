@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
+import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
 import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
 import { StageBadge } from "@/components/stage-badge";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
@@ -2340,9 +2341,10 @@ function SubmittalEmailCompose({
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
-      helperText="Pick a client contact, then Generate with Claude. Use **…** for bold (Cmd+B) and __…__ for underline (Cmd+U) — Gmail renders them as real bold / underline."
+      helperText="Pick a client contact, then Generate with Claude. Cmd+B / Cmd+U toggle bold and underline in the editor — Gmail renders them as real bold / underline."
       showTemplatePicker
-      bodyFormattingShortcuts
+      richTextBody
+      toEditorHtml={submittalMarkdownToEditorHtml}
       templateFilter={(t) => t.audience !== "candidate"}
       sendDisabled={sendBlocked}
       sendDisabledReason={sendBlocked ? "No resume uploaded for this candidate — upload one before sending." : undefined}
@@ -2402,6 +2404,7 @@ function SubmittalEmailCompose({
           cc: draft.cc,
           subject: draft.subject,
           body: draft.body,
+          bodyHtml: draft.bodyHtml,
           attachment: resumeVariant ? { variant: resumeVariant } : null,
         });
         if (!result.ok) throw new Error(result.error);
