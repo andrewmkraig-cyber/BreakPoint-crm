@@ -453,11 +453,15 @@ export function EmailComposer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" onClick={onClose}>
-      <div
-        className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    // Backdrop has NO close handlers. A recruiter selecting text in the body
+    // who drags past the panel boundary used to trigger the backdrop's
+    // onClick={onClose} via the mouseup landing on the backdrop (whose click
+    // target is the common ancestor of mousedown + mouseup). Closing on that
+    // path destroyed half-written submittal drafts with no undo. Dismissal is
+    // explicit only: the header X button or the footer Cancel button.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
+      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+
         <div className="flex items-start justify-between border-b border-border px-5 py-3">
           <div>
             <h2 className="font-serif text-lg font-semibold text-navy">{title}</h2>
