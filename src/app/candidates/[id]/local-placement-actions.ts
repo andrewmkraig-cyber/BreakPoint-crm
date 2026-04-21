@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { generateSubmittalWriteup } from "@/lib/claude";
 import { sendGmail } from "@/lib/gmail";
+import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
 
 // Local-candidate placement actions. Mirror the three RF actions (Apply /
 // Submit / Reference Request) but never call RecruiterFlow. Placement rows
@@ -222,7 +223,8 @@ export async function sendLocalSubmittalEmail(
       cc: input.cc,
       bcc: input.bcc,
       subject: input.subject,
-      bodyText: input.bodyText,
+      bodyText: submittalToPlainText(input.bodyText),
+      bodyHtml: submittalToHtml(input.bodyText),
     });
 
     const placement = await prisma.placement.upsert({

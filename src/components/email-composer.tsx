@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type KeyboardEvent, type ReactNode } from "react";
 import { ChevronDown, Loader2, Send, Sparkles, Variable, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -81,6 +81,12 @@ export type EmailComposerProps = {
   // button tooltip.
   sendDisabled?: boolean;
   sendDisabledReason?: string;
+  // When true, Cmd/Ctrl+B and Cmd/Ctrl+U in the body textarea wrap the
+  // current selection in `**…**` / `__…__` markers (unwraps if already
+  // wrapped). The submittal send path converts these markers into real
+  // <strong> / <u> tags on the Gmail draft. Opt-in per composer so
+  // non-submittal flows keep the plain textarea behavior.
+  bodyFormattingShortcuts?: boolean;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -111,6 +117,7 @@ export function EmailComposer({
   attachmentsSlot,
   sendDisabled = false,
   sendDisabledReason,
+  bodyFormattingShortcuts = false,
 }: EmailComposerProps) {
   // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
   // win over the legacy combined ccBccOptions.
@@ -165,6 +172,64 @@ export function EmailComposer({
       start: el.selectionStart ?? el.value.length,
       end: el.selectionEnd ?? el.value.length,
     };
+  }
+
+  // Toggle the given marker around the body's current selection (or around
+  // the word at the caret if no selection exists). Used by Cmd/Ctrl+B and
+  // Cmd/Ctrl+U when bodyFormattingShortcuts is on. If the selection is
+  // already wrapped in the marker we unwrap instead of double-wrapping.
+  function toggleBodyMarker(marker: string) {
+    const el = bodyRef.current;
+    if (!el) return;
+    const value = el.value;
+    let start = el.selectionStart ?? value.length;
+    let end = el.selectionEnd ?? value.length;
+    if (start === end) {
+      // No selection — expand to the nearest word so Cmd+B on a caret
+      // still does something useful instead of dropping empty markers.
+      let ws = start;
+      let we = end;
+      while (ws > 0 && !/\s/.test(value[ws - 1]!)) ws--;
+      while (we < value.length && !/\s/.test(value[we]!)) we++;
+      if (ws === we) return;
+      start = ws;
+      end = we;
+    }
+    const before = value.slice(0, start);
+    const selected = value.slice(start, end);
+    const after = value.slice(end);
+    const m = marker;
+    const alreadyWrapped =
+      selected.startsWith(m) &&
+      selected.endsWith(m) &&
+      selected.length >= 2 * m.length;
+    const inner = alreadyWrapped ? selected.slice(m.length, -m.length) : `${m}${selected}${m}`;
+    const next = before + inner + after;
+    setBody(next);
+    const nextEnd = before.length + inner.length;
+    const nextStart = before.length;
+    requestAnimationFrame(() => {
+      el.focus();
+      try {
+        el.setSelectionRange(nextStart, nextEnd);
+      } catch {
+        // Some browsers reject selection ranges on hidden elements; ignore.
+      }
+      lastCaretRef.current = { start: nextStart, end: nextEnd };
+    });
+  }
+
+  function onBodyKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    if (!bodyFormattingShortcuts) return;
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    if (e.key === "b" || e.key === "B") {
+      e.preventDefault();
+      toggleBodyMarker("**");
+    } else if (e.key === "u" || e.key === "U") {
+      e.preventDefault();
+      toggleBodyMarker("__");
+    }
   }
 
   function insertMergeToken(token: string) {
@@ -450,6 +515,7 @@ export function EmailComposer({
               rememberCaret(e.currentTarget);
             }}
             onSelect={(e) => rememberCaret(e.currentTarget)}
+            onKeyDown={onBodyKeyDown}
             onKeyUp={(e) => rememberCaret(e.currentTarget)}
             onClick={(e) => rememberCaret(e.currentTarget)}
             rows={16}

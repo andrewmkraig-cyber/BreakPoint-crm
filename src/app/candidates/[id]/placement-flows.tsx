@@ -2340,8 +2340,9 @@ function SubmittalEmailCompose({
       onClose={onBack}
       sendLabel="Send Submittal"
       sendingLabel="Sending…"
-      helperText="Pick a client contact for To and any Cc recipients. Then Use Template or Generate with Claude."
+      helperText="Pick a client contact, then Generate with Claude. Use **…** for bold (Cmd+B) and __…__ for underline (Cmd+U) — Gmail renders them as real bold / underline."
       showTemplatePicker
+      bodyFormattingShortcuts
       templateFilter={(t) => t.audience !== "candidate"}
       sendDisabled={sendBlocked}
       sendDisabledReason={sendBlocked ? "No resume uploaded for this candidate — upload one before sending." : undefined}
@@ -2376,11 +2377,14 @@ function SubmittalEmailCompose({
         // Same pattern as the working Summarize buttons on the clients page:
         // direct server-action call, read result.value, no fetch / no route
         // handler / no content-type shenanigans.
+        const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
+        const primaryContactFirst = primaryContact?.name?.trim().split(/\s+/)[0] ?? "";
         const result = await generateSubmittal({
           candidateRfId,
           jobRfId: job.jobRfId,
           jobTitle: job.jobTitle,
           clientName: job.clientName,
+          clientContactFirstName: primaryContactFirst,
         });
         if (!result.ok) {
           throw new Error(result.error);

@@ -724,11 +724,14 @@ export type SubmittalInput = {
     description?: string;
     customFields?: Array<{ name: string; value: string }>;
   };
+  clientContactFirstName?: string;
 };
 
 export async function generateSubmittalWriteup(input: SubmittalInput): Promise<string> {
   const anthropic = getClaude();
   const fullName = [input.candidate.firstName, input.candidate.lastName].filter(Boolean).join(" ") || "Candidate";
+  const firstName = input.candidate.firstName || "this candidate";
+  const clientFirst = (input.clientContactFirstName ?? "").trim() || "there";
 
   const customFieldLines = (input.job.customFields ?? [])
     .filter((cf) => cf.name && cf.value)
@@ -764,8 +767,10 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     max_tokens: 1400,
     system:
       "You write candidate submittal emails for BreakPoint Talent recruiters. " +
-      "Plain text only — no markdown symbols, no asterisks, no hashes, no dashes for bullets. " +
-      "Use the EXACT section headers the user specifies, on their own lines. " +
+      "The output goes straight into the recruiter's submittal email body — they do not reformat it. " +
+      "Section headers MUST be wrapped in **double-asterisks** (Markdown bold). The email renderer turns those into real bold tags in Gmail. " +
+      "Bullets MUST use a leading dash followed by a space ('- '). " +
+      "Do NOT use any other markdown (no #, no *, no _ italics, no numbered lists). " +
       "Confident, concise, recruiter voice. Never fabricate facts not in the source data. " +
       "Always tie the candidate's background to the specific role — this is a targeted pitch, not a generic summary.",
     messages: [
@@ -775,27 +780,30 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
           `You are writing a candidate submittal for ${fullName} for the ${input.job.title} role at ${input.job.clientName || "the client"}. ` +
           "Write a targeted submittal email that makes the case for why THIS candidate fits THIS role — not a generic candidate summary. " +
           "Use the role context (title, location, employment type, salary range, experience range, description if present, custom fields) to frame the candidate. " +
-          "In What He Brings and Technically, explicitly reference experience and skills from the candidate that align with what the role needs. " +
+          "In 'What [She/He] Brings' and 'Technically', explicitly reference experience and skills from the candidate that align with what the role needs. " +
           "If there's a real mismatch (e.g. candidate's stack doesn't match), stay honest — don't manufacture fit.\n\n" +
-          "Output must use this EXACT plain-text structure (no markdown, no asterisks, no hashes, no bullet dashes):\n\n" +
-          `About ${fullName}\n` +
-          "<2–4 sentence paragraph introducing the candidate — who they are, where they are now, and why they're on the market or interested in this specific role>\n\n" +
-          "What He Brings\n" +
-          "<3–5 sentences on the candidate's strengths and relevant experience FOR THIS ROLE — concrete, tying experience to what the role asks for>\n\n" +
-          "Technically:\n" +
-          "<2–4 sentences on hard skills / stack / tools / certifications, specifically the ones that match what the role needs>\n\n" +
-          "Comp Target:\n" +
-          "<one line — expected salary or range; if unknown, say 'Open / to be discussed'. If the role posts a range and the candidate's target falls inside it, say so.>\n\n" +
-          "Location:\n" +
-          "<one line — candidate's city/state + any remote/hybrid/on-site posture; note if it aligns with the role's location>\n\n" +
-          "LinkedIn:\n" +
-          "<one line — the LinkedIn URL, or 'Not provided'>\n\n" +
+          "Output MUST match this EXACT structure, with the `**…**` bold wrappers and the dash bullets preserved verbatim:\n\n" +
+          `Hi ${clientFirst},\n\n` +
+          `Here is a candidate I wanted to show you for the ${input.job.title} role.\n\n` +
+          `**About ${firstName}:**\n` +
+          "<2–3 sentence paragraph — who they are, where they're based, most relevant experience, closest parallel to what the job requires>\n\n" +
+          "**What [She/He] Brings:**\n" +
+          "- <Bullet 1 — strongest relevant point, naturally labeled>\n" +
+          "- <Bullet 2>\n" +
+          "- <Bullet 3>\n" +
+          "- <Bullet 4>\n\n" +
+          "**Technically:**\n" +
+          "- <Honest assessment of their technical toolkit — concrete tools / stacks / certifications that match the role>\n\n" +
+          "**Comp Target:** <range — if unknown, say 'Open / to be discussed'. If the role posts a range and the candidate's target falls inside it, say so.>\n\n" +
+          "**Location:** <city, state — note remote/hybrid/on-site posture if relevant>\n\n" +
+          "Let me know if you'd like to set up an interview with [her/him] this week.\n\n" +
           "Rules:\n" +
-          "- Use 'She' instead of 'He' in headers/pronouns when appropriate — infer from the name if possible, otherwise use 'they'.\n" +
-          "- Do NOT include a 'Dear …' greeting or a sign-off — the recruiter's email signature handles those.\n" +
-          "- Do NOT write 'Let me know if you'd like to set up an interview' — the caller appends that line.\n" +
-          "- Never invent facts not in the source data. If a field is missing, omit or say so honestly.\n" +
-          "- Do NOT paraphrase the whole job description — pull the parts that matter and tie them to the candidate.\n\n" +
+          "- Replace [She/He] and [her/him] with the correct pronouns — infer from the candidate's name if possible, otherwise use 'them/they'.\n" +
+          "- Keep the `**…**` bold wrappers on the section headers, the `**Comp Target:**` and `**Location:**` labels, and the `**About [Name]:**` header. Do not bold body copy.\n" +
+          "- Dash bullets ('- ') only — never '•', '*', or numbered lists.\n" +
+          "- Do NOT include a signature or 'Dear' — the recruiter's email signature handles closings.\n" +
+          "- Do NOT paraphrase the whole job description — pull the parts that matter and tie them to the candidate.\n" +
+          "- Never invent facts not in the source data. If a field is missing, omit that line honestly.\n\n" +
           "=== Role context ===\n" +
           roleBlock +
           "\n=== Candidate profile ===\n" +
@@ -811,7 +819,9 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     .trim();
 
   if (!text) throw new Error("Claude returned no submittal writeup. Try again.");
-  return stripMarkdownToPlain(text);
+  // Preserve `**…**` / `__…__` markers — they're load-bearing for the HTML
+  // conversion on send. stripMarkdownToPlain would flatten them.
+  return text;
 }
 
 // Summarizes benefits material — PDFs and/or pasted text — into a clean,

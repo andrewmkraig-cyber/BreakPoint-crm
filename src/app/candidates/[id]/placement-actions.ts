@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
+import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
 import { applyMergeFields } from "@/lib/merge-fields";
 import { buildFullMergeValues } from "@/lib/merge-context";
 import { getAppPreferences } from "@/lib/preferences";
@@ -749,6 +750,10 @@ export type GenerateSubmittalInput = {
   jobRfId?: number;
   jobTitle: string;
   clientName: string;
+  // First name of the primary client contact being written to. Lets Claude
+  // seed "Hi [ClientFirstName]," at the top of the generated submittal so the
+  // recruiter doesn't hand-edit the greeting for every send.
+  clientContactFirstName?: string;
 };
 
 export type GenerateSubmittalResult = Result<{ text: string }>;
@@ -813,10 +818,13 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
         linkedin: c.linkedin_profile ?? "",
       },
       job: jobCtx,
+      clientContactFirstName: input.clientContactFirstName,
     };
 
-    const writeup = await generateSubmittalWriteup(payload);
-    const text = `${writeup.trim()}\n\nLet me know if you'd like to set up an interview with him/her.`;
+    // Claude now produces the full email body including the greeting and
+    // the closing "Let me know if you'd like to set up an interview…" line,
+    // so we return it verbatim — no more tail append.
+    const text = (await generateSubmittalWriteup(payload)).trim();
     return { ok: true, value: { text } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Claude generation failed" };
@@ -1068,8 +1076,8 @@ export async function generateSubmittalEmailBody(args: {
       },
     };
 
-    const writeup = await generateSubmittalWriteup(input);
-    const body = `${writeup.trim()}\n\nLet me know if you'd like to set up an interview with him/her.`;
+    // Claude now emits the full body including greeting + closing line.
+    const body = (await generateSubmittalWriteup(input)).trim();
     return { ok: true, value: { body } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to generate submittal body." };
@@ -1304,8 +1312,8 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
       to: input.to,
       cc: input.cc,
       subject: input.subject.trim(),
-      bodyText: input.body,
-      bodyHtml: plainToHtml(input.body),
+      bodyText: submittalToPlainText(input.body),
+      bodyHtml: submittalToHtml(input.body),
       attachments,
     });
   } catch (e) {
