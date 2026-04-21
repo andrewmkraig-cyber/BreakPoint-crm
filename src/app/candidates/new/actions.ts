@@ -105,6 +105,30 @@ export async function discardResumeUpload(uploadId: string | null | undefined): 
   await prisma.resumeUpload.deleteMany({ where: { id: uploadId } });
 }
 
+export type CheckCandidateEmailResult =
+  | { ok: true; duplicate: { id: string; name: string } | null }
+  | { ok: false; error: string };
+
+// Used by the Create Candidate form onBlur to block submission early when the
+// email already exists. Case-insensitive — we normalize to lowercase both on
+// lookup and on create. Same unique constraint enforces this at the DB level.
+export async function checkCandidateEmail(
+  emailRaw: string,
+): Promise<CheckCandidateEmailResult> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  const email = emailRaw.trim().toLowerCase();
+  if (!email) return { ok: true, duplicate: null };
+  const existing = await prisma.candidate.findUnique({
+    where: { email },
+    select: { id: true, firstName: true, lastName: true },
+  });
+  if (!existing) return { ok: true, duplicate: null };
+  const name =
+    [existing.firstName, existing.lastName].filter(Boolean).join(" ") ||
+    "existing candidate";
+  return { ok: true, duplicate: { id: existing.id, name } };
+}
+
 export type ParsedExperienceRow = {
   designation: string;
   organization: string;
