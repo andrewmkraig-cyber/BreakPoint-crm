@@ -46,6 +46,14 @@ const nextConfig = {
     // external so `require("mammoth")` resolves at runtime on the server.
     serverComponentsExternalPackages: ["mammoth", "pdf-parse"],
   },
+  images: {
+    // Google profile avatars served via next/image need explicit allow-listing
+    // since Next's image optimizer refuses unknown remotes by default. Without
+    // this, the signed-in user's avatar in the top nav throws at runtime.
+    remotePatterns: [
+      { protocol: "https", hostname: "lh3.googleusercontent.com" },
+    ],
+  },
   async headers() {
     return [
       {
