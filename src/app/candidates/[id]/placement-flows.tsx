@@ -3441,6 +3441,11 @@ function InlineContactMultiInput({
             if (e.key === "Enter" || e.key === "," || e.key === ";") {
               e.preventDefault();
               addTyped();
+            } else if (e.key === "Tab") {
+              // Don't preventDefault — let native Tab move focus — but
+              // still commit the chip so Tab-out-of-field chips what's
+              // typed, same as onBlur would.
+              addTyped();
             }
           }}
           onBlur={addTyped}
@@ -3464,7 +3469,19 @@ function InlineContactMultiInput({
               hits this overlay → setOpen(false) → bubbling stops at
               the modal panel's stopPropagation. Modal stays open,
               chip persists. */}
-          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed inset-0 z-[60]"
+            onClick={() => {
+              // Commit whatever's typed before dismissing, so clicking
+              // anywhere outside the input (including on the modal
+              // backdrop / other form fields) chips the partial entry.
+              // Mouse clicks on non-focusable elements don't always
+              // trigger the input's blur, so relying on onBlur alone
+              // missed this case.
+              addTyped();
+              setOpen(false);
+            }}
+          />
           <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="max-h-56 overflow-y-auto py-1">
               {pinnedList.length > 0 && (

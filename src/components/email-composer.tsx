@@ -626,7 +626,10 @@ export function EmailComposer({
                 {templateOpen && (
                   <>
                     <div className="fixed inset-0 z-[60]" onClick={() => setTemplateOpen(false)} />
-                    <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
+                    {/* z-[70] above the z-[60] dismiss overlay so the
+                        template list is scrollable + clickable (same
+                        fix as the Insert Field dropdown). */}
+                    <div className="absolute bottom-full left-0 z-[70] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
                       <ul className="max-h-80 overflow-y-auto py-1 text-sm">
                         {!templatesLoaded && (
                           <li className="px-3 py-2 text-xs text-court-fg-muted">Loading templates…</li>
@@ -671,7 +674,12 @@ export function EmailComposer({
               {fieldOpen && (
                 <>
                   <div className="fixed inset-0 z-[60]" onClick={() => setFieldOpen(false)} />
-                  <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
+                  {/* z-[70] puts the panel ABOVE the z-[60] dismiss
+                      overlay so the list is both scrollable and clickable.
+                      Previously at z-40 the overlay intercepted every
+                      click that landed on a field button, and wheel
+                      scroll events were captured by the overlay too. */}
+                  <div className="absolute bottom-full left-0 z-[70] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
                     <div className="border-b border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
                       Inserts into {lastFocus}
                     </div>
@@ -981,6 +989,9 @@ function ContactComboMulti({
             if (e.key === "Enter" || e.key === "," || e.key === ";") {
               e.preventDefault();
               addTyped();
+            } else if (e.key === "Tab") {
+              // Commit on Tab without preventing native focus move.
+              addTyped();
             }
           }}
           onBlur={addTyped}
@@ -991,7 +1002,15 @@ function ContactComboMulti({
       </div>
       {open && (
         <>
-          <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
+          <div
+            className="fixed inset-0 z-[60]"
+            onClick={() => {
+              // Commit typed before dismiss — onBlur alone doesn't fire
+              // when the outside click lands on a non-focusable element.
+              addTyped();
+              setOpen(false);
+            }}
+          />
           <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="max-h-64 overflow-y-auto py-1">
               {pinnedList.length > 0 && (
