@@ -460,14 +460,14 @@ export function EmailComposer({
     // path destroyed half-written submittal drafts with no undo. Dismissal is
     // explicit only: the header X button or the footer Cancel button.
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
-      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl">
+      <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
 
-        <div className="flex items-start justify-between border-b border-border px-5 py-3">
+        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-navy">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+            <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -559,7 +559,7 @@ export function EmailComposer({
               onKeyUp={(e) => rememberCaret(e.currentTarget)}
               onClick={(e) => rememberCaret(e.currentTarget)}
               className={cn(
-                "w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60",
+                "w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
                 "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
               )}
             />
@@ -596,21 +596,21 @@ export function EmailComposer({
               rows={16}
               placeholder="Write your message, or click Generate with Claude below."
               className={cn(
-                "w-full resize-vertical whitespace-pre-wrap rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy",
+                "w-full resize-vertical whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg",
                 "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
               )}
             />
           )}
         </div>
 
-        {helperText && <div className="px-5 pb-2 text-[11px] text-muted-foreground">{helperText}</div>}
+        {helperText && <div className="px-5 pb-2 text-[11px] text-court-fg-muted">{helperText}</div>}
         {err && <div className="mx-5 mb-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
 
         {attachmentsSlot && (
-          <div className="border-t border-border px-5 py-3">{attachmentsSlot}</div>
+          <div className="border-t border-court-border px-5 py-3">{attachmentsSlot}</div>
         )}
 
-        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-5 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-court-border px-5 py-3">
           <div className="flex flex-wrap items-center gap-2">
             {showTemplatePicker && (
               <div className="relative">
@@ -618,7 +618,7 @@ export function EmailComposer({
                   type="button"
                   onClick={() => setTemplateOpen((v) => !v)}
                   disabled={isApplying || isSending || isGenerating}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
                 >
                   {isApplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
                   Use Template
@@ -626,23 +626,23 @@ export function EmailComposer({
                 {templateOpen && (
                   <>
                     <div className="fixed inset-0 z-[60]" onClick={() => setTemplateOpen(false)} />
-                    <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+                    <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
                       <ul className="max-h-80 overflow-y-auto py-1 text-sm">
                         {!templatesLoaded && (
-                          <li className="px-3 py-2 text-xs text-muted-foreground">Loading templates…</li>
+                          <li className="px-3 py-2 text-xs text-court-fg-muted">Loading templates…</li>
                         )}
                         {templatesLoaded && templates.length === 0 && (
-                          <li className="px-3 py-2 text-xs text-muted-foreground">No active templates.</li>
+                          <li className="px-3 py-2 text-xs text-court-fg-muted">No active templates.</li>
                         )}
                         {templates.map((t) => (
                           <li key={t.id}>
                             <button
                               type="button"
                               onClick={() => onPickTemplate(t)}
-                              className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-navy hover:bg-brand-tint"
+                              className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg hover:bg-brand-tint"
                             >
                               <span className="font-medium">{t.name}</span>
-                              <span className="truncate text-[11px] text-muted-foreground">{t.subject}</span>
+                              <span className="truncate text-[11px] text-court-fg-muted">{t.subject}</span>
                             </button>
                           </li>
                         ))}
@@ -663,7 +663,7 @@ export function EmailComposer({
                 }}
                 onClick={() => setFieldOpen((v) => !v)}
                 disabled={isSending || isGenerating}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
                 title={`Insert a merge field into the ${lastFocus}`}
               >
                 <Variable className="h-3.5 w-3.5" /> Insert Field
@@ -671,14 +671,14 @@ export function EmailComposer({
               {fieldOpen && (
                 <>
                   <div className="fixed inset-0 z-[60]" onClick={() => setFieldOpen(false)} />
-                  <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
-                    <div className="border-b border-border bg-muted/30 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <div className="absolute bottom-full left-0 z-40 mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
+                    <div className="border-b border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
                       Inserts into {lastFocus}
                     </div>
                     <ul className="max-h-80 overflow-y-auto py-1 text-sm">
                       {groupedMergeFields().map(({ group, items }) => (
                         <li key={group}>
-                          <div className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          <div className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
                             {group}
                           </div>
                           {items.map((f) => (
@@ -687,10 +687,10 @@ export function EmailComposer({
                               type="button"
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => insertMergeToken(f.token)}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-navy hover:bg-brand-tint"
+                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-court-fg hover:bg-brand-tint"
                             >
                               <span>{f.label}</span>
-                              <code className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
+                              <code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg-muted">
                                 {f.token}
                               </code>
                             </button>
@@ -707,7 +707,7 @@ export function EmailComposer({
                 type="button"
                 onClick={onGenerateClick}
                 disabled={isGenerating || isSending}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
               >
                 {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                 {generateLabel}
@@ -720,7 +720,7 @@ export function EmailComposer({
               type="button"
               onClick={onClose}
               disabled={isSending}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
             >
               Cancel
             </button>
@@ -751,7 +751,7 @@ export function EmailComposer({
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3">
-      <div className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="w-14 shrink-0 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
         {label}
       </div>
       <div className="min-w-0 flex-1">{children}</div>
@@ -773,7 +773,7 @@ function Input({
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
-      className="w-full rounded-md border border-transparent bg-transparent px-0 py-1.5 text-sm text-navy placeholder:text-muted-foreground focus:border-brand focus:outline-none"
+      className="w-full rounded-md border border-transparent bg-transparent px-0 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:outline-none"
     />
   );
 }
@@ -798,7 +798,7 @@ function ContactSinglePicker({
     <select
       value={value.trim()}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-md border border-border bg-white px-2 py-1.5 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+      className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
     >
       <option value="">Select a contact…</option>
       {options.map((c) => (
@@ -840,16 +840,16 @@ function ContactMultiPicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between gap-2 rounded-md border border-border bg-white px-2 py-1.5 text-left text-sm text-navy hover:border-brand/40"
+        className="flex w-full items-center justify-between gap-2 rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-left text-sm text-court-fg hover:border-brand/40"
       >
         <span className="truncate">
           {selected.size === 0 ? (
-            <span className="text-muted-foreground">Pick contacts…</span>
+            <span className="text-court-fg-muted">Pick contacts…</span>
           ) : (
             Array.from(selected).join(", ")
           )}
         </span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+        <ChevronDown className="h-3.5 w-3.5 text-court-fg-muted" />
       </button>
       {open && (
         <>
@@ -860,24 +860,24 @@ function ContactMultiPicker({
               panel's onClick={stopPropagation} prevents the modal
               from closing on the same click. */}
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="max-h-64 overflow-y-auto py-1">
               {options.length === 0 && (
-                <li className="px-3 py-2 text-xs text-muted-foreground">No contacts on file.</li>
+                <li className="px-3 py-2 text-xs text-court-fg-muted">No contacts on file.</li>
               )}
               {options.map((c) => (
                 <li key={c.id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-navy hover:bg-brand-tint">
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-court-fg hover:bg-brand-tint">
                     <input
                       type="checkbox"
                       checked={c.email ? selected.has(c.email) : false}
                       onChange={() => toggle(c.email)}
                       disabled={!c.email}
-                      className="h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+                      className="h-3.5 w-3.5 rounded border-court-border text-brand focus:ring-brand/30"
                     />
                     <span className="flex min-w-0 flex-1 flex-col">
                       <span className="truncate">{c.name}</span>
-                      <span className="truncate text-[11px] text-muted-foreground">
+                      <span className="truncate text-[11px] text-court-fg-muted">
                         {c.email || "No email on file"}
                       </span>
                     </span>
@@ -951,13 +951,13 @@ function ContactComboMulti({
   return (
     <div className="relative">
       <div
-        className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-sm focus-within:border-brand"
+        className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand"
         onClick={() => setOpen(true)}
       >
         {Array.from(selected).map((email) => (
           <span
             key={email}
-            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-navy"
+            className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] text-court-fg"
           >
             {email}
             <button
@@ -966,7 +966,7 @@ function ContactComboMulti({
                 e.stopPropagation();
                 removeChip(email);
               }}
-              className="text-muted-foreground hover:text-navy"
+              className="text-court-fg-muted hover:text-court-fg"
               aria-label={`Remove ${email}`}
             >
               <X className="h-3 w-3" />
@@ -992,11 +992,11 @@ function ContactComboMulti({
       {open && (
         <>
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="max-h-64 overflow-y-auto py-1">
               {pinnedList.length > 0 && (
                 <>
-                  <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
                     Quick pick
                   </li>
                   {pinnedList.map((c) => (
@@ -1007,11 +1007,11 @@ function ContactComboMulti({
                       onToggle={() => toggle(c.email)}
                     />
                   ))}
-                  <li className="mx-2 my-1 border-t border-border" />
+                  <li className="mx-2 my-1 border-t border-court-border" />
                 </>
               )}
               {rest.length === 0 && pinnedList.length === 0 && (
-                <li className="px-3 py-2 text-xs text-muted-foreground">
+                <li className="px-3 py-2 text-xs text-court-fg-muted">
                   No contacts on file. Type an email and press Enter.
                 </li>
               )}
@@ -1024,7 +1024,7 @@ function ContactComboMulti({
                 />
               ))}
             </ul>
-            <div className="border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] text-muted-foreground">
+            <div className="border-t border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-[10px] text-court-fg-muted">
               Or type an email and press Enter to add.
             </div>
           </div>
@@ -1065,13 +1065,13 @@ function ContactRow({
           onToggle();
         }}
         disabled={!c.email}
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-navy hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span
           aria-hidden="true"
           className={cn(
             "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
-            checked ? "border-brand bg-brand text-white" : "border-border bg-white",
+            checked ? "border-brand bg-brand text-white" : "border-court-border bg-court-surface",
           )}
         >
           {checked && (
@@ -1082,7 +1082,7 @@ function ContactRow({
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate">{c.name}</span>
-          <span className="truncate text-[11px] text-muted-foreground">
+          <span className="truncate text-[11px] text-court-fg-muted">
             {c.email || "No email on file"}
           </span>
         </span>

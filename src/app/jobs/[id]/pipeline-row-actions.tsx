@@ -345,7 +345,7 @@ function ActionRow({ children, disabled }: { children: React.ReactNode; disabled
         disabled && "pointer-events-none opacity-60",
       )}
     >
-      {disabled && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+      {disabled && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
       {children}
     </div>
   );
@@ -354,9 +354,9 @@ function ActionRow({ children, disabled }: { children: React.ReactNode; disabled
 type Tone = "default" | "primary" | "danger";
 
 const TONE_CLASS: Record<Tone, string> = {
-  default: "border-border bg-white text-navy-400 hover:border-brand/40 hover:text-navy",
+  default: "border-court-border bg-court-surface text-court-fg-muted hover:border-brand/40 hover:text-court-fg",
   primary: "border-brand bg-brand text-white hover:bg-brand-dark",
-  danger: "border-red-200 bg-white text-red-700 hover:border-red-300 hover:bg-red-50",
+  danger: "border-red-200 bg-court-surface text-red-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30",
 };
 
 function ActionButton({

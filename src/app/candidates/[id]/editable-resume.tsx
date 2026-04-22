@@ -152,7 +152,7 @@ export function EditableResume({
               type="button"
               onClick={() => setReplacing(true)}
               disabled={isUploading || isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
             >
               <Replace className="h-3 w-3" /> Replace
             </button>

@@ -69,7 +69,7 @@ export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
       editorProps: {
         attributes: {
           class: cn(
-            "min-h-[280px] w-full resize-vertical whitespace-pre-wrap rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy outline-none",
+            "min-h-[280px] w-full resize-vertical whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg outline-none",
             "focus:border-brand focus:ring-2 focus:ring-brand/20",
             "prose prose-sm max-w-none prose-p:my-2 prose-strong:font-semibold",
             className,

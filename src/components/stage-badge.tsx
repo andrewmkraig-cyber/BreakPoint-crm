@@ -5,8 +5,8 @@ import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/recr
 // consistently. Inactive buckets (applied/sourced/other) stay muted; rejected
 // stays red.
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
-  applied: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
-  sourced: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
+  applied: "bg-court-surface-subtle text-court-fg-muted ring-1 ring-inset ring-court-border",
+  sourced: "bg-court-surface-subtle text-court-fg-muted ring-1 ring-inset ring-court-border",
   // Kept renders amber so it pops out of the muted-pile-of-applicants
   // background — recruiter wants to spot pulled-back candidates fast.
   kept: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
@@ -17,7 +17,7 @@ const BUCKET_CLASS: Record<PipelineBucket, string> = {
   hired: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
   rejected: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
   cancelled: "bg-red-100 text-red-800 ring-1 ring-inset ring-red-300",
-  other: "bg-muted text-navy-400 ring-1 ring-inset ring-border",
+  other: "bg-court-surface-subtle text-court-fg-muted ring-1 ring-inset ring-court-border",
 };
 
 const BUCKET_LABEL: Record<PipelineBucket, string> = {
@@ -129,7 +129,7 @@ export function StageBadgeStack({
   return (
     <div className={cn("flex flex-col items-center gap-1", className)}>
       {clientName ? (
-        <div className="text-center text-xs font-semibold text-navy-400">{clientName}</div>
+        <div className="text-center text-xs font-semibold text-court-fg-muted">{clientName}</div>
       ) : null}
       <StageBadge bucket={bucket} label={label} suffix={suffix} onClick={onClick} title={title} />
     </div>

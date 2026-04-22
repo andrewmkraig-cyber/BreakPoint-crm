@@ -74,7 +74,7 @@ export function DateTime15Picker({
   }
 
   const inputBase =
-    "rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+    "rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
 
   return (
     <div className={cn("flex flex-wrap items-stretch gap-2", className)}>
