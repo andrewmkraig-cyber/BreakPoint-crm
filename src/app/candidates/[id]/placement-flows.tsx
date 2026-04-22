@@ -3376,36 +3376,42 @@ function InlineContactMultiInput({
   const pinnedEmails = new Set(pinnedList.map((p) => p.email.toLowerCase()));
   const rest = options.filter((o) => !pinnedEmails.has(o.email.toLowerCase()));
 
-  function setAll(next: Set<string>) {
-    onChange(Array.from(next).join(", "));
+  // Ref holds the authoritative chip string in sync with mutations.
+  // Rapid-fire clicks on dropdown options (pick contact A, then B
+  // before React re-renders) used to lose the first chip because the
+  // second click's handler still saw the stale `selected` closure
+  // derived from the unchanged prop `value`. We now read and write
+  // through the ref so each mutation sees the freshest state.
+  const latestValueRef = useRef(value);
+  latestValueRef.current = value;
+
+  function commit(next: Set<string>) {
+    const joined = Array.from(next).join(", ");
+    latestValueRef.current = joined;
+    onChange(joined);
   }
   function toggle(email: string) {
     if (!email) return;
-    const next = new Set(selected);
+    const next = new Set(parseEmailCsv(latestValueRef.current));
     if (next.has(email)) next.delete(email);
     else next.add(email);
-    setAll(next);
+    commit(next);
   }
   function addTyped() {
     // Early-return when typed is empty so blur events don't replay
-    // the current `selected` (the parameter closure of which can lag
-    // a just-clicked toggle by one render). Without this guard,
-    // pointing at a dropdown row blurred the typed input first,
-    // addTyped wrote setAll(stale selected) → onChange(""), and the
-    // toggle's setAll(...with chip) ran after — the React batch
-    // saw both updates but the second one was already a no-op
-    // because it built `next` from the same stale closure.
+    // an empty commit and wipe chips committed by a concurrent
+    // dropdown toggle.
     const raw = typed.trim();
     if (!raw) return;
-    const next = new Set(selected);
+    const next = new Set(parseEmailCsv(latestValueRef.current));
     for (const p of parseEmailCsv(raw)) next.add(p);
-    setAll(next);
+    commit(next);
     setTyped("");
   }
   function remove(email: string) {
-    const next = new Set(selected);
+    const next = new Set(parseEmailCsv(latestValueRef.current));
     next.delete(email);
-    setAll(next);
+    commit(next);
   }
 
   return (

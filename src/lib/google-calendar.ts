@@ -68,6 +68,15 @@ export type CreateCalendarEventInput = {
   // existing meet link; we rebuild the conferenceData payload.
   attachMeetConferenceId?: string;
   attachMeetLink?: string;
+  // Preferred attach path when available: pass the FULL conferenceData
+  // payload from the source event (including the server-minted
+  // `signature` that Google requires to properly bind the new event
+  // to the existing Meet conference). Without signature the Calendar
+  // API accepts the payload but Gmail falls back to rendering the
+  // Meet as a plain URL in the event body instead of the native
+  // "Join with Google Meet" widget. When attachConferenceData is
+  // set, attachMeetConferenceId + attachMeetLink are ignored.
+  attachConferenceData?: Record<string, unknown>;
   // If false (default), Google will NOT email attendees when the event is
   // created. sendUpdates=true ships the native ICS invite with RSVP buttons.
   sendUpdates?: boolean;
@@ -105,7 +114,9 @@ export async function createCalendarEvent(
     body.attendees = input.attendees.map((a) => ({ email: a.email, displayName: a.displayName }));
   }
   if (input.location) body.location = input.location;
-  const willAttachExistingMeet = Boolean(input.attachMeetConferenceId && input.attachMeetLink);
+  const willAttachExistingMeet =
+    Boolean(input.attachConferenceData) ||
+    Boolean(input.attachMeetConferenceId && input.attachMeetLink);
   if (input.createMeet) {
     body.conferenceData = {
       createRequest: {
@@ -113,7 +124,15 @@ export async function createCalendarEvent(
         conferenceSolutionKey: { type: "hangoutsMeet" },
       },
     };
-  } else if (willAttachExistingMeet) {
+  } else if (input.attachConferenceData) {
+    // Preferred: lift the source event's conferenceData verbatim —
+    // carries signature + conferenceId + entryPoints + conferenceSolution
+    // and binds the new event to the existing Meet conference.
+    body.conferenceData = input.attachConferenceData;
+  } else if (input.attachMeetConferenceId && input.attachMeetLink) {
+    // Legacy / fallback path when we only know the conferenceId + URL.
+    // Works as a text link but Gmail may not render the native Meet
+    // widget because signature is missing.
     body.conferenceData = {
       conferenceId: input.attachMeetConferenceId,
       conferenceSolutionKey: { type: "hangoutsMeet" },
@@ -253,6 +272,32 @@ export async function setMeetOpenAccess(params: {
     console.error(`[setMeetOpenAccess] unexpected: ${msg}`);
     return { ok: false, reason: "unknown", error: msg };
   }
+}
+
+// GETs the source event and returns its conferenceData (or null) so the
+// caller can attach the same Meet to a second event. We read the FULL
+// payload (signature, conferenceId, entryPoints, conferenceSolution) and
+// let the caller pass it through unmodified — anything less and the
+// Calendar API treats the new event's Meet as a loose URL reference,
+// which is why Gmail renders it as a plain text link.
+export async function getEventConferenceData(params: {
+  userId: string;
+  eventId: string;
+}): Promise<Record<string, unknown> | null> {
+  const accessToken = await getFreshAccessToken(params.userId);
+  const url = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(params.eventId)}`,
+  );
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Calendar get failed (${res.status}): ${text || "no body"}`);
+  }
+  const json = (await res.json()) as { conferenceData?: Record<string, unknown> };
+  return json.conferenceData ?? null;
 }
 
 export async function updateCalendarEvent(params: {

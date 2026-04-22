@@ -919,41 +919,52 @@ function ContactComboMulti({
 }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
-  const selected = new Set(
-    value
-      .split(/[,;\n]+/)
-      .map((s) => s.trim())
-      .filter(Boolean),
-  );
+  const parseCsv = (raw: string): string[] =>
+    raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+  const selected = new Set(parseCsv(value));
   const pinnedList = pinned ?? [];
   const pinnedEmails = new Set(pinnedList.map((p) => p.email.toLowerCase()));
   const rest = options.filter((o) => !pinnedEmails.has(o.email.toLowerCase()));
 
+  // Ref holds the authoritative chip string in sync with mutations.
+  // Rapid-fire clicks on dropdown options hit React's batching: two
+  // clicks before the first re-render would both compute `next` off
+  // the same stale `selected` prop, and the second overwrote the
+  // first. Reading through the ref lets each mutation see the latest
+  // committed state regardless of render cadence.
+  const latestValueRef = useRef(value);
+  latestValueRef.current = value;
+
+  function commit(next: Set<string>) {
+    const joined = Array.from(next).join(", ");
+    latestValueRef.current = joined;
+    onChange(joined);
+  }
+
   function toggle(email: string) {
     if (!email) return;
-    const next = new Set(selected);
     const key = email.trim();
     if (!key) return;
+    const next = new Set(parseCsv(latestValueRef.current));
     if (next.has(key)) next.delete(key);
     else next.add(key);
-    onChange(Array.from(next).join(", "));
+    commit(next);
   }
 
   function addTyped() {
     const raw = typed.trim();
     if (!raw) return;
     // Allow comma/semicolon-separated bulk paste.
-    const pieces = raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
-    const next = new Set(selected);
-    for (const p of pieces) next.add(p);
-    onChange(Array.from(next).join(", "));
+    const next = new Set(parseCsv(latestValueRef.current));
+    for (const p of parseCsv(raw)) next.add(p);
+    commit(next);
     setTyped("");
   }
 
   function removeChip(email: string) {
-    const next = new Set(selected);
+    const next = new Set(parseCsv(latestValueRef.current));
     next.delete(email);
-    onChange(Array.from(next).join(", "));
+    commit(next);
   }
 
   return (

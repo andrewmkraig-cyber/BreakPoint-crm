@@ -5,12 +5,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
-  addAttendeeToEvent,
   createCalendarEvent,
   deleteCalendarEvent,
+  getEventConferenceData,
   setMeetOpenAccess,
   updateCalendarEvent,
-  updateEventAsInvite,
 } from "@/lib/google-calendar";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
@@ -560,82 +559,31 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     seen.add(key);
     extras.push(a);
   }
-  let created: { eventId: string; meetLink: string | null; meetingCode: string | null };
-  // Candidate invite path — join the client's existing event instead of
-  // creating a parallel event. The old "second createCalendarEvent with
-  // attached conferenceData" path rendered the Meet as a plain-text URL
-  // inside Gmail for some recipients instead of the native "Join with
-  // Google Meet" widget. Adding the candidate as an attendee on the
-  // client's event + PATCHing summary/description uses the same
-  // first-class event that gave the client the native widget, so the
-  // candidate sees exactly that too.
-  if (input.party === "candidate" && interview.googleEventIdClient) {
+  // Candidate invites attach to the existing Meet by lifting the client
+  // event's FULL conferenceData payload (including the server-minted
+  // `signature`) onto the new event. Without signature the Calendar API
+  // treats the conferenceData as a loose URL and Gmail renders the Meet
+  // as a text link instead of the native "Join with Google Meet" widget
+  // — which was the original bug. Two separate events, one shared Meet.
+  let attachConferenceData: Record<string, unknown> | undefined;
+  if (input.party === "candidate" && hasExistingMeet && interview.googleEventIdClient) {
     try {
-      // updateEventAsInvite does GET → merge attendees → PATCH with
-      // sendUpdates=all in one round-trip. It also patches summary +
-      // description so the recruiter's candidate-side framing wins on
-      // the shared event. Google sends a native invite email to the
-      // newly-added attendee (candidate) and an "event updated"
-      // notification to the existing attendees (client + earlier cc/bcc).
-      await updateEventAsInvite({
+      const src = await getEventConferenceData({
         userId: user.id,
         eventId: interview.googleEventIdClient,
-        summary: resolvedSubject.trim(),
-        description: resolvedBodyText,
-        newAttendee: { email: primary.email, displayName: primary.displayName },
       });
-      // cc/bcc still need to land on the event. addAttendeeToEvent is a
-      // separate GET→PATCH per attendee — fine for the small sizes we
-      // expect here (typically <5 cc/bcc combined).
-      for (const a of extras) {
-        await addAttendeeToEvent({
-          userId: user.id,
-          eventId: interview.googleEventIdClient,
-          attendee: { email: a.email, displayName: a.displayName },
-          sendUpdates: true,
-        });
-      }
+      if (src) attachConferenceData = src;
     } catch (e) {
-      return {
-        ok: false,
-        error: e instanceof Error ? `Calendar invite failed: ${e.message}` : "Calendar invite failed.",
-      };
+      console.warn(
+        `[sendInterviewInvite] failed to fetch source event conferenceData for candidate attach: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      // Fall through — createCalendarEvent will use the legacy
+      // attachMeetConferenceId+attachMeetLink path below, which at
+      // least carries the URL as text even if the widget doesn't bind.
     }
-
-    await prisma.interview.update({
-      where: { id: input.interviewId },
-      data: { googleEventIdCandidate: interview.googleEventIdClient },
-    });
-
-    const subjectId =
-      interview.candidateRfId != null ? String(interview.candidateRfId) : interview.candidateId!;
-    await prisma.actionLog.create({
-      data: {
-        userId: user.id,
-        actionType: "interview_invite_candidate",
-        subjectType: "candidate",
-        subjectId,
-        metadata: {
-          interviewId: interview.id,
-          attendeeEmail: input.attendeeEmail,
-          eventSummary: input.subject,
-          googleEventId: interview.googleEventIdClient,
-          meetLink: interview.meetLink,
-          deliveredVia: "calendar_attendee_add",
-        },
-      },
-    });
-
-    revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
-    return {
-      ok: true,
-      value: {
-        googleEventId: interview.googleEventIdClient,
-        meetLink: interview.meetLink ?? null,
-      },
-    };
   }
 
+  let created: { eventId: string; meetLink: string | null; meetingCode: string | null };
   try {
     const ev = await createCalendarEvent({
       userId: user.id,
@@ -647,6 +595,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       createMeet,
       attachMeetConferenceId,
       attachMeetLink,
+      attachConferenceData,
       sendUpdates: true,
       location: interview.location || undefined,
     });
