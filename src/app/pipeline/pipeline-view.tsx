@@ -96,15 +96,18 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
 
       <form
         onSubmit={onSubmitSearch}
-        className="flex flex-col gap-2 rounded-xl border border-border bg-white p-3 shadow-sm md:flex-row md:items-center"
+        className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
       >
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by candidate, job, or client…"
-            className="w-full rounded-lg border border-transparent bg-muted py-2 pl-10 pr-3 text-sm text-navy placeholder:text-muted-foreground focus:border-brand focus:bg-white focus:outline-none"
+            // Same focus behaviour as the candidates list: input lifts from
+            // surface-subtle (deeper) to surface on focus — mode-aware depth
+            // change that still reads as "focused" in every palette.
+            className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-court-surface focus:outline-none"
           />
         </div>
         <button
@@ -115,6 +118,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
         </button>
       </form>
 
+      {/* Error panel keeps red semantics in every mode. */}
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <div className="font-semibold">Couldn&apos;t load the pipeline.</div>
@@ -122,10 +126,10 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-left text-sm">
-            <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
               <tr>
                 <th className="px-5 py-3 font-medium">Candidate</th>
                 <th className="px-5 py-3 font-medium">Job</th>
@@ -153,10 +157,10 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-court-border">
               {rows.length === 0 && !error && (
                 <tr>
-                  <td colSpan={stage === "hired" ? 8 : 6} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={stage === "hired" ? 8 : 6} className="px-5 py-12 text-center text-sm text-court-fg-muted">
                     No candidates in {PIPELINE_LABELS[stage]}
                     {q ? ` matching "${q}"` : ""}.
                   </td>
@@ -165,21 +169,24 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
               {rows.map((r) => (
                 <tr
                   key={`${r.candidateId}-${r.jobId}`}
-                  className="cursor-pointer transition hover:bg-brand-tint/40"
+                  className="cursor-pointer transition hover:bg-court-accent-tint/40"
                   onClick={() => router.push(`/candidates/${r.candidateId}`)}
                 >
                   <td className="px-5 py-3 align-top">
                     <div className="flex items-start gap-2">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-navy-400">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
                         {initials(r.candidateName)}
                       </div>
                       <div className="min-w-0">
                         <Link
                           href={`/candidates/${r.candidateId}`}
-                          className="inline-flex items-center gap-1 font-medium text-navy hover:text-brand-dark"
+                          className="inline-flex items-center gap-1 font-medium text-court-fg hover:text-court-accent-dark"
                           onClick={(e) => e.stopPropagation()}
                         >
                           {r.candidateName}
+                          {/* Kept badge keeps amber semantics across modes —
+                              a status cue should read the same regardless of
+                              palette. */}
                           {r.isKept && (
                             <span
                               className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800"
@@ -190,7 +197,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                           )}
                         </Link>
                         {r.candidateTitle && (
-                          <div className="truncate text-xs text-muted-foreground">{r.candidateTitle}</div>
+                          <div className="truncate text-xs text-court-fg-muted">{r.candidateTitle}</div>
                         )}
                       </div>
                     </div>
@@ -198,19 +205,19 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                   <td className="px-5 py-3 align-top">
                     <Link
                       href={`/jobs/${r.jobId}`}
-                      className="font-medium text-navy hover:text-brand-dark"
+                      className="font-medium text-court-fg hover:text-court-accent-dark"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {r.jobTitle || "—"}
                     </Link>
                     {r.bucket === "interviewing" && r.nextInterview && (
-                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-court-fg-muted">
                         <CalendarClock className="h-3 w-3" />
                         Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
                       </div>
                     )}
                   </td>
-                  <td className="px-5 py-3 align-top text-navy-400">{r.clientName || "—"}</td>
+                  <td className="px-5 py-3 align-top text-court-fg-muted">{r.clientName || "—"}</td>
 
                   {stage === "pending_start" ? (
                     <PendingStartCells row={r} />
@@ -221,21 +228,25 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                       <td className="px-5 py-3 align-top text-center">
                         <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
                       </td>
-                      <td className="px-5 py-3 align-top text-xs text-muted-foreground">
+                      <td className="px-5 py-3 align-top text-xs text-court-fg-muted">
                         {formatDate(r.lastActionAt)}
                       </td>
                       <td className="px-5 py-3 align-top text-right">
                         {r.daysInStage == null ? (
-                          <span className="text-muted-foreground">—</span>
+                          <span className="text-court-fg-muted">—</span>
                         ) : (
                           <span
                             className={cn(
                               "inline-flex min-w-8 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
+                              // Red (≥14 days) and amber (≥7 days) pills are
+                              // status semantics — kept fixed across all
+                              // three modes. The "under 7 days" neutral pill
+                              // tracks the theme.
                               r.daysInStage >= 14
                                 ? "bg-red-50 text-red-700"
                                 : r.daysInStage >= 7
                                   ? "bg-amber-50 text-amber-700"
-                                  : "bg-muted text-navy-400",
+                                  : "bg-court-surface-subtle text-court-fg-muted",
                             )}
                           >
                             {r.daysInStage}d
@@ -270,16 +281,19 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
   const soon = daysUntil != null && daysUntil >= 0 && daysUntil <= 7;
   return (
     <>
-      <td className="px-5 py-3 align-top text-sm text-navy">
-        {startDate ? startDate.toLocaleDateString() : <span className="text-muted-foreground">—</span>}
+      <td className="px-5 py-3 align-top text-sm text-court-fg">
+        {startDate ? startDate.toLocaleDateString() : <span className="text-court-fg-muted">—</span>}
       </td>
       <td className="px-5 py-3 align-top text-right">
         {daysUntil == null ? (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-court-fg-muted">—</span>
         ) : (
           <span
             className={cn(
               "inline-flex min-w-8 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
+              // Red/amber/emerald "days until start" pills stay on their
+              // semantic palette in every mode — overdue always reads red,
+              // soon always reads amber, on-track always reads green.
               overdue
                 ? "bg-red-50 text-red-700"
                 : soon
@@ -308,7 +322,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full border border-border bg-white px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full border border-court-border bg-court-surface px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
           >
             Edit Placement
           </Link>
@@ -322,25 +336,25 @@ function HiredCells({ row }: { row: PipelineRow }) {
   const p = row.placement;
   return (
     <>
-      <td className="px-5 py-3 align-top text-sm text-navy">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
-      <td className="px-5 py-3 align-top text-sm text-navy">
+      <td className="px-5 py-3 align-top text-sm text-court-fg">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
+      <td className="px-5 py-3 align-top text-sm text-court-fg">
         {formatMoney(p?.feeTotal ?? null, p?.acceptedCurrency)}
         {p?.feePercentage != null && (
-          <span className="ml-1 text-[11px] text-muted-foreground">({p.feePercentage}%)</span>
+          <span className="ml-1 text-[11px] text-court-fg-muted">({p.feePercentage}%)</span>
         )}
       </td>
-      <td className="px-5 py-3 align-top text-sm text-muted-foreground">
+      <td className="px-5 py-3 align-top text-sm text-court-fg-muted">
         {formatDate(p?.expectedStartDate)}
       </td>
       <td className="px-5 py-3 align-top text-xs">
         {p?.billingContactName ? (
           <div>
-            <div className="text-navy">{p.billingContactName}</div>
+            <div className="text-court-fg">{p.billingContactName}</div>
             {p.billingContactEmail && (
               <span onClick={(e) => e.stopPropagation()}>
                 <EmailLink
                   email={p.billingContactEmail}
-                  className="text-brand-dark hover:underline"
+                  className="text-court-accent-dark hover:underline"
                   mergeValues={{
                     candidateFirstName: (row.candidateName.split(/\s+/)[0] ?? "").trim(),
                     candidateFullName: row.candidateName,
@@ -356,16 +370,18 @@ function HiredCells({ row }: { row: PipelineRow }) {
             )}
           </div>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-court-fg-muted">—</span>
         )}
       </td>
       <td className="px-5 py-3 align-top">
+        {/* Invoicing-flagged stays amber — status cue that should mean the
+            same thing regardless of mode. */}
         {p?.invoicingFlagged ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
             Flagged
           </span>
         ) : (
-          <span className="text-muted-foreground text-xs">—</span>
+          <span className="text-court-fg-muted text-xs">—</span>
         )}
       </td>
     </>
@@ -388,7 +404,7 @@ function StageTabs({
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
 }) {
   return (
-    <div className="inline-flex flex-wrap rounded-lg border border-border bg-white p-1 shadow-sm">
+    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       {STAGE_ORDER.map((s) => (
         <StageTab
           key={s}
@@ -408,14 +424,18 @@ function StageTab({ label, count, active, href }: { label: string; count: number
       href={href}
       className={cn(
         "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-navy-400 hover:bg-muted",
+        active
+          ? "bg-court-accent-tint text-court-accent-dark"
+          : "text-court-fg-muted hover:bg-court-surface-subtle",
       )}
     >
       <span>{label}</span>
       <span
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          active ? "bg-brand text-white" : "bg-muted text-muted-foreground",
+          // Active pill stays solid brand green (high-contrast counter); the
+          // inactive pill tracks the court palette.
+          active ? "bg-brand text-white" : "bg-court-surface-subtle text-court-fg-muted",
         )}
       >
         {count.toLocaleString()}
