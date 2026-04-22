@@ -596,7 +596,11 @@ function JobActionRow({
   // candidate as "sourced" (unengaged RF record). Dropped the previous
   // `?? job.rfStageBucket` fallback so RF's stage_name / canonicalStage
   // plumbing is fully out of the button-render path.
-  const effective: Bucket = (job.placement?.stage ?? "sourced") as Bucket;
+  //
+  // Normalized (trim + lowercase) before use so any non-canonical
+  // casing or whitespace in the column can't silently fall through
+  // to the default "View-only" case and hide the Submit button.
+  const effective: Bucket = ((job.placement?.stage ?? "sourced").trim().toLowerCase()) as Bucket;
   const isCancelled = effective === "cancelled";
   const isHired = !isCancelled && effective === "hired";
   const isRejected = !isCancelled && effective === "rejected";

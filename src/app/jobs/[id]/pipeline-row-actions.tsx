@@ -83,6 +83,15 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
 
   const profileHref = `/candidates/${props.candidateRfId}`;
 
+  // Defensive normalization. The switch below relies on exact string
+  // equality against canonical lowercase stage values — any stray
+  // whitespace or casing in the Placement.stage column (hand-authored
+  // SQL, future import paths, etc.) would silently fall through to
+  // the default case and lose the stage-appropriate action buttons.
+  // Normalizing here means that risk can't cost us the Submit button
+  // again.
+  const stage = props.stage.trim().toLowerCase();
+
   function runLight(label: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
     startTransition(async () => {
       const result = await fn();
@@ -181,7 +190,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     );
   }
 
-  switch (props.stage) {
+  switch (stage) {
     case "sourced":
       // Submit is now also the primary action on Sourced so recruiters
       // can skip straight to the submittal composer without going
