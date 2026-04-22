@@ -12,7 +12,7 @@ export function BulletedSummary({ text, className }: { text: string; className?:
   if (lines.length === 0) return null;
 
   return (
-    <ul className={cn("space-y-1.5 text-sm leading-relaxed text-navy", className)}>
+    <ul className={cn("space-y-1.5 text-sm leading-relaxed text-court-fg", className)}>
       {lines.map((raw, i) => {
         const stripped = raw.replace(/^[-*•]\s*/, "");
         const bold = stripped.match(/^\*\*(.+?):\*\*\s*(.*)$/);
@@ -25,9 +25,9 @@ export function BulletedSummary({ text, className }: { text: string; className?:
             <span aria-hidden className="select-none pt-[2px] text-brand-dark">•</span>
             <span className="min-w-0">
               {label && (
-                <span className="font-semibold text-navy">{label}:{" "}</span>
+                <span className="font-semibold text-court-fg">{label}:{" "}</span>
               )}
-              <span className="text-navy-400">{value}</span>
+              <span className="text-court-fg-muted">{value}</span>
             </span>
           </li>
         );

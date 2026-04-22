@@ -44,7 +44,7 @@ export function PlainProse({ text, className }: { text: string; className?: stri
       blocks.push(
         <ul key={key++} className="mb-3 list-none space-y-1.5 pl-0">
           {items.map((item, idx) => (
-            <li key={idx} className="flex gap-2 text-sm leading-relaxed text-navy">
+            <li key={idx} className="flex gap-2 text-sm leading-relaxed text-court-fg">
               <span aria-hidden className="mt-[2px] select-none text-brand-dark">•</span>
               <span className="min-w-0">{renderInline(item)}</span>
             </li>
@@ -65,7 +65,7 @@ export function PlainProse({ text, className }: { text: string; className?: stri
 
     if (looksLikeHeader) {
       blocks.push(
-        <div key={key++} className="mb-2 mt-4 font-serif text-base font-bold text-navy first:mt-0">
+        <div key={key++} className="mb-2 mt-4 font-serif text-base font-bold text-court-fg first:mt-0">
           {trimmed}
         </div>,
       );
@@ -81,13 +81,13 @@ export function PlainProse({ text, className }: { text: string; className?: stri
       i += 1;
     }
     blocks.push(
-      <p key={key++} className="mb-3 text-sm leading-relaxed text-navy">
+      <p key={key++} className="mb-3 text-sm leading-relaxed text-court-fg">
         {para.join(" ")}
       </p>,
     );
   }
 
-  return <div className={cn("text-navy", className)}>{blocks}</div>;
+  return <div className={cn("text-court-fg", className)}>{blocks}</div>;
 }
 
 // Turn "Label: value" into <strong>Label:</strong> value inside bullet items,
@@ -98,8 +98,8 @@ function renderInline(text: string): React.ReactNode {
   const [, label, rest] = match;
   return (
     <>
-      <strong className="font-bold text-navy">{label}:</strong>{" "}
-      <span className="text-navy">{rest}</span>
+      <strong className="font-bold text-court-fg">{label}:</strong>{" "}
+      <span className="text-court-fg">{rest}</span>
     </>
   );
 }

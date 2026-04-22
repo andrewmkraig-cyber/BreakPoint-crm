@@ -30,7 +30,7 @@ export function SortableHeader({
         "group inline-flex items-center gap-1 transition-colors",
         align === "right" && "justify-end",
         align === "center" && "justify-center",
-        isActive ? "text-navy" : "text-muted-foreground hover:text-navy",
+        isActive ? "text-court-fg" : "text-court-fg-muted hover:text-court-fg",
       )}
     >
       <span>{label}</span>

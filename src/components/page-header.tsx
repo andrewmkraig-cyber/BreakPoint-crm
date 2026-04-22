@@ -25,7 +25,7 @@ export function PageHeader({
             and because it keeps the Hard color guaranteed-literal even if
             the court-fg token's Hard value ever drifts. */}
         <h1 className="mt-1 font-serif text-3xl font-semibold text-navy dark:text-court-fg grass:text-court-fg">{title}</h1>
-        {description && <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{description}</p>}
+        {description && <p className="mt-2 max-w-2xl text-sm text-court-fg-muted">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>
