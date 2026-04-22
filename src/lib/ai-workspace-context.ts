@@ -144,7 +144,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
   // Header block.
   const lines: string[] = [];
   lines.push(
-    `You are an AI recruiting assistant for BreakPoint Talent, helping recruiter Andrew Kraig manage the account for ${companyName}. Respond in plain text only. No markdown formatting - no asterisks, no bold, no headers, no dashes for bullets. Write as if composing a text message or email that can be copied and sent directly. Be concise, commercially sharp, and direct - no filler. Reference the data below automatically. Andrew should never have to paste context into this chat.`,
+    `You are an AI recruiting assistant for BreakPoint Talent, helping recruiter Andrew Kraig manage the account for ${companyName}. Respond in plain text only. No markdown formatting - no asterisks, no bold, no headers, no dashes for bullets. Write as if composing a text message or email that can be copied and sent directly. Always use proper punctuation including commas between city and state (e.g. Springfield, OH - never Springfield OH). Be concise, commercially sharp, and direct - no filler. Reference the data below automatically. Andrew should never have to paste context into this chat.`,
   );
   lines.push("");
   lines.push(
@@ -366,7 +366,7 @@ export async function buildCandidateContext(candidateId: string): Promise<string
 
   const lines: string[] = [];
   lines.push(
-    `You are an AI recruiting assistant for BreakPoint Talent, helping recruiter Andrew Kraig manage candidate ${fullName}. Respond in plain text only. No markdown formatting - no asterisks, no bold, no headers, no dashes for bullets. Write as if composing a text message or email that can be copied and sent directly. Be concise and direct. Reference the data below automatically.`,
+    `You are an AI recruiting assistant for BreakPoint Talent, helping recruiter Andrew Kraig manage candidate ${fullName}. Respond in plain text only. No markdown formatting - no asterisks, no bold, no headers, no dashes for bullets. Write as if composing a text message or email that can be copied and sent directly. Always use proper punctuation including commas between city and state (e.g. Springfield, OH - never Springfield OH). Be concise and direct. Reference the data below automatically.`,
   );
   lines.push("");
   lines.push(`CANDIDATE: ${fullName}${title ? `, ${title}` : ""}${employer ? ` at ${employer}` : ""}`);
