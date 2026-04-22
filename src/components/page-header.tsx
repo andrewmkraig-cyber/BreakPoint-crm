@@ -17,7 +17,14 @@ export function PageHeader({
         {eyebrow && (
           <div className="text-[11px] uppercase tracking-[0.2em] text-brand-dark">{eyebrow}</div>
         )}
-        <h1 className="mt-1 font-serif text-3xl font-semibold text-navy">{title}</h1>
+        {/* Hard keeps text-navy (#0F1B2D — the existing color, no regression).
+            Clay + Grass lift to the mode-aware court-fg token so the title
+            reads at high contrast against the dark body. Using explicit
+            dark:/grass: modifiers rather than swapping to text-court-fg
+            alone because the spec called out the belt-and-suspenders form
+            and because it keeps the Hard color guaranteed-literal even if
+            the court-fg token's Hard value ever drifts. */}
+        <h1 className="mt-1 font-serif text-3xl font-semibold text-navy dark:text-court-fg grass:text-court-fg">{title}</h1>
         {description && <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

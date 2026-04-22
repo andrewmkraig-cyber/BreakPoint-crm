@@ -30,7 +30,7 @@ export function Pagination({ page, totalPages, total, pageSize, buildHref, label
   const to = Math.min(safePage * pageSize, total);
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border bg-white px-5 py-3 text-xs text-muted-foreground md:flex-row md:items-center md:justify-between">
+    <div className="flex flex-col gap-3 border-t border-court-border bg-court-surface px-5 py-3 text-xs text-court-fg-muted md:flex-row md:items-center md:justify-between">
       <div>
         {total === 0
           ? `No ${label}`
@@ -47,7 +47,7 @@ export function Pagination({ page, totalPages, total, pageSize, buildHref, label
         </PageLink>
         {pageWindow(safePage, safeTotalPages).map((p, idx) =>
           p === "…" ? (
-            <span key={`e-${idx}`} className="px-2 text-muted-foreground/60">
+            <span key={`e-${idx}`} className="px-2 text-court-fg-muted/60">
               …
             </span>
           ) : (
@@ -92,12 +92,15 @@ function PageLink({
     return (
       <span
         aria-disabled
-        className={cn(base, "border-border bg-muted/40 text-muted-foreground/50")}
+        className={cn(base, "border-court-border bg-court-surface-subtle/40 text-court-fg-muted/50")}
       >
         {children}
       </span>
     );
   }
+  // Active page link stays on solid brand green — consistent primary
+  // affordance in every mode (same reasoning as the tab-active count pill
+  // elsewhere in the app).
   if (active) {
     return (
       <span
@@ -113,7 +116,7 @@ function PageLink({
     <Link
       aria-label={ariaLabel}
       href={href}
-      className={cn(base, "border-border bg-white text-navy-400 hover:border-brand/40 hover:text-navy")}
+      className={cn(base, "border-court-border bg-court-surface text-court-fg-muted hover:border-court-accent/40 hover:text-court-fg")}
     >
       {children}
     </Link>
