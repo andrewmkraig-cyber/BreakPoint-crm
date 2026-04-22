@@ -61,7 +61,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   }
 
   const flatForJob = flattenPipeline(candidates).filter((r) => r.jobId === id);
-  const pipelineRows: JobPipelineRow[] = flatForJob.map((r) => {
+  const pipelineRowsFromRf: JobPipelineRow[] = flatForJob.map((r) => {
     const local = localByCandidate.get(r.candidateId);
     if (local) {
       // Local Placement.stage is the source of truth — pass it through
@@ -89,6 +89,46 @@ export default async function JobDetailPage({ params }: { params: { id: string }
       stageMovedAt: r.stageMovedAt,
     };
   });
+
+  // Union in local Placements whose candidateRfId isn't in RF's c.jobs
+  // for this job yet. This is the "just applied via Ace" case:
+  // applyCandidateToJob writes a Placement with stage="applied" to Neon
+  // without calling RF (per the no-RF-on-create rule), so RF's
+  // listAllCandidates snapshot has no c.jobs[] entry linking the
+  // candidate to the job — flattenPipeline produces nothing for them
+  // and the pipeline row was invisible until this overlay.
+  //
+  // Same root cause as commit 8a40cdd (Ace-native candidate profile
+  // couldn't see its own Submit button) — the pattern is "local
+  // Placement exists but the renderer only knew about RF-derived
+  // state." Fix is additive: keep the existing RF-path rows above,
+  // then append local-only rows for candidates RF hasn't caught up on.
+  const rfCandidateIdsInFlat = new Set(flatForJob.map((r) => r.candidateId));
+  const extraRows: JobPipelineRow[] = [];
+  for (const p of localPlacements) {
+    if (p.candidateRfId == null) continue;
+    if (rfCandidateIdsInFlat.has(p.candidateRfId)) continue;
+    // Name/title come from the RF candidates list we already fetched —
+    // same source flattenPipeline uses so the row reads identically to
+    // an RF-synced row. Fallback covers the rare case where the RF
+    // list is stale beyond its 60s cache or the candidate is on a
+    // page we didn't fetch.
+    const rfCand = candidates.find((c) => c.id === p.candidateRfId) ?? null;
+    const candidateName = rfCand
+      ? [rfCand.first_name, rfCand.last_name].filter(Boolean).join(" ") || rfCand.name || "(unnamed)"
+      : `Candidate #${p.candidateRfId}`;
+    const candidateTitle = rfCand?.current_designation ?? "";
+    extraRows.push({
+      candidateId: p.candidateRfId,
+      candidateName,
+      candidateTitle,
+      stageName: p.stage,
+      bucket: p.stage as PipelineBucket,
+      stageMovedAt: p.updatedAt.toISOString(),
+    });
+  }
+
+  const pipelineRows: JobPipelineRow[] = [...pipelineRowsFromRf, ...extraRows];
 
   // Recompute the top-row Submitted/Interviewing/Hired counts off
   // the overlaid pipelineRows so they match what the recruiter
