@@ -36,7 +36,7 @@ export class CandidateProfileBoundary extends Component<
           <button
             type="button"
             onClick={() => this.setState({ error: null })}
-            className="mt-3 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+            className="mt-3 rounded-md border border-red-300 bg-red-100 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
           >
             Try again
           </button>
