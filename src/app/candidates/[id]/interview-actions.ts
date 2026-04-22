@@ -462,6 +462,15 @@ export type SendInvitePartyResult =
       ok: true;
       value: {
         googleEventId: string;
+        // Effective Meet link for this interview after the send completes.
+        // For the first party through (typically client), this is the
+        // freshly-minted Meet link from Google's response. For the second
+        // party, it's the same link re-attached to their event. Returned
+        // so the caller can thread it into the next-party composer so the
+        // candidate's email body shows the join URL explicitly rather
+        // than relying solely on Gmail rendering the native calendar
+        // invite's Join-with-Meet button.
+        meetLink: string | null;
         // Surfaces when we asked Google Meet to set accessType=OPEN and the
         // API rejected it (most often because the meetings.space.settings
         // OAuth scope isn't on the user's token). The interview itself is
@@ -625,8 +634,14 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   });
 
   revalidateForCandidate({ candidateRfId: interview.candidateRfId, candidateId: interview.candidateId });
+  // Prefer the persisted meetLink when this call re-attached an existing
+  // Meet (second party) — that's the canonical Interview.meetLink value.
+  // Fall back to what Google returned on the create path (first party) and
+  // finally to whatever we had attached into the request.
+  const effectiveMeetLink =
+    updateData.meetLink ?? interview.meetLink ?? created.meetLink ?? attachMeetLink ?? null;
   return {
     ok: true,
-    value: { googleEventId: created.eventId, meetAccessWarning },
+    value: { googleEventId: created.eventId, meetLink: effectiveMeetLink, meetAccessWarning },
   };
 }

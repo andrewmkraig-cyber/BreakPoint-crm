@@ -414,7 +414,7 @@ export function PlacementActions({
           recruiter={recruiter}
           clientContacts={findClientContactsForJob(jobs, inviteFlow.jobTitle, inviteFlow.clientName)}
           aceTeam={aceTeam}
-          onDone={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
+          onDone={(meetLink) => setInviteFlow({ ...inviteFlow, step: "candidate", meetLink: meetLink ?? inviteFlow.meetLink })}
         />
       )}
       {inviteFlow && inviteFlow.step === "candidate" && (
@@ -3011,12 +3011,22 @@ function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", cand
   const addr = invite.type === "in_person" && invite.interviewLocation
     ? `\n• Location: ${invite.interviewLocation}`
     : "";
+  // For video interviews, spell out the Meet join URL in the body so
+  // the candidate (and client) can click straight through from the
+  // email body — Gmail's calendar-invite rendering shows a Join button
+  // too, but the body copy is what ends up pasted into reminder
+  // emails, SMS confirmations, and forwarded threads. Only shows up
+  // once invite.meetLink is populated (i.e., after the client invite
+  // has been sent and returned its Meet link).
+  const meet = invite.type === "video" && invite.meetLink
+    ? `\n• Join on Google Meet: ${invite.meetLink}`
+    : "";
   if (who === "client") {
     const first = invite.clientContactName.split(/\s+/)[0] || "there";
     return (
       `Hi ${first},\n\nConfirming the interview with ${candidateFull || "the candidate"} for the ${invite.jobTitle} role. ` +
       `The calendar invite is on its way.\n\n` +
-      `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}${addr}\n\n` +
+      `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}${addr}${meet}\n\n` +
       `Reply to this email if anything needs to change.`
     );
   }
@@ -3024,7 +3034,7 @@ function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", cand
     `Hi ${candidateFull.split(/\s+/)[0] || "there"},\n\n` +
     `You are confirmed for your ${type} interview with ${invite.clientName} for the ${invite.jobTitle} role. ` +
     `The calendar invite is on its way.\n\n` +
-    `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}${addr}\n\n` +
+    `• When: ${when}\n• Duration: ${invite.durationMin} min\n• Format: ${type}${addr}${meet}\n\n` +
     `Good luck!`
   );
 }
@@ -3042,7 +3052,10 @@ function ClientInviteComposer({
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   clientContacts: ClientContactRef[];
   aceTeam: AceTeamContact[];
-  onDone: () => void;
+  // Returns the Meet link the server ended up using (either freshly
+  // minted on this send, or the existing one re-attached) so the
+  // parent can thread it into the candidate composer.
+  onDone: (meetLink: string | null) => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
@@ -3073,7 +3086,7 @@ function ClientInviteComposer({
       helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event — Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
       sendingLabel="Sending invite…"
-      onClose={onDone}
+      onClose={() => onDone(null)}
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
           toast.error("Add a client contact email", { description: "The recipient list is empty." });
@@ -3097,7 +3110,7 @@ function ClientInviteComposer({
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
         if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
-        onDone();
+        onDone(result.value.meetLink);
       }}
     />
   );

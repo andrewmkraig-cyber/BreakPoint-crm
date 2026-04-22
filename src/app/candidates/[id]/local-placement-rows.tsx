@@ -173,7 +173,7 @@ export function LocalPlacementRows({
           candidateEmail={candidateEmail}
           recruiter={recruiter}
           aceTeam={aceTeam}
-          onDone={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
+          onDone={(meetLink) => setInviteFlow({ ...inviteFlow, step: "candidate", meetLink: meetLink ?? inviteFlow.meetLink })}
         />
       )}
       {inviteFlow && inviteFlow.step === "candidate" && (
@@ -912,12 +912,25 @@ function LocalClientInviteComposer({
   candidateEmail: string | null;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   aceTeam: AceTeamContact[];
-  onDone: () => void;
+  // Returns the Meet link the server ended up using so the parent can
+  // thread it into the candidate composer — without it, the candidate's
+  // email body won't show the join URL.
+  onDone: (meetLink: string | null) => void;
 }) {
   void candidateEmail;
   const values = buildValues({ invite, candidate, recruiter });
   const addrLine = invite.type === "in_person" && invite.interviewLocation
     ? `\n• Location: ${invite.interviewLocation}`
+    : "";
+  // Only spells out the Meet join URL on the body when this is a video
+  // interview AND the Meet link is known. For the client invite (first
+  // party), invite.meetLink is still null when the body renders — the
+  // Meet is created by the server during send. Not a regression: the
+  // client gets the native calendar-invite Join button anyway, and the
+  // reason we care about this line is specifically to make sure the
+  // candidate (second party) sees the link explicitly.
+  const meetLine = invite.type === "video" && invite.meetLink
+    ? `\n• Join on Google Meet: [Interview Meet Link]`
     : "";
   const subject = applyMergeFieldsClient(
     `Interview Confirmed - ${candidateName || "Candidate"} for ${invite.jobTitle}`,
@@ -926,7 +939,7 @@ function LocalClientInviteComposer({
   const body = applyMergeFieldsClient(
     `Hi [Client Contact First Name],\n\nConfirming the interview with [Candidate Full Name] for the [Job Title] role. ` +
       `The calendar invite is on its way.\n\n` +
-      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}\n\n` +
+      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
       `Reply to this email if anything needs to change.`,
     values,
   );
@@ -954,7 +967,7 @@ function LocalClientInviteComposer({
       bccOptions={bccPickerOptions}
       mergeValues={values}
       sendLabel="Send Invite"
-      onClose={onDone}
+      onClose={() => onDone(null)}
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
           toast.error("Add a client contact email");
@@ -978,7 +991,7 @@ function LocalClientInviteComposer({
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
         if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
-        onDone();
+        onDone(result.value.meetLink);
       }}
     />
   );
@@ -1014,6 +1027,14 @@ function LocalCandidateInviteComposer({
   const addrLine = invite.type === "in_person" && invite.interviewLocation
     ? `\n• Location: ${invite.interviewLocation}`
     : "";
+  // By this composer the client invite has already been sent and
+  // invite.meetLink is populated (threaded back via LocalClientInvite's
+  // onDone). Spell out the Meet URL so the candidate sees it inline in
+  // the email body, not just on the native Calendar invite's Join
+  // button that Gmail renders above the description.
+  const meetLine = invite.type === "video" && invite.meetLink
+    ? `\n• Join on Google Meet: [Interview Meet Link]`
+    : "";
   const subject = applyMergeFieldsClient(
     `You're confirmed - ${invite.jobTitle} with ${invite.clientName}`,
     values,
@@ -1021,7 +1042,7 @@ function LocalCandidateInviteComposer({
   const body = applyMergeFieldsClient(
     `Hi [Candidate First Name],\n\nYou are confirmed for your [Interview Type] interview with [Client Company Name] ` +
       `for the [Job Title] role. The calendar invite is on its way.\n\n` +
-      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}\n\n` +
+      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
       `Good luck!`,
     values,
   );
