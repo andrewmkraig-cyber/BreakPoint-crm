@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
@@ -138,13 +138,18 @@ function AgreementItem({
   const [summary, setSummary] = useState<string | null>(agreement.summary);
   const [summaryUpdatedAt, setSummaryUpdatedAt] = useState<string | null>(agreement.summaryUpdatedAt);
   const [error, setError] = useState<string | null>(null);
-  const [isPending, startTransition] = useTransition();
+  // Plain useState (not useTransition) so the disabled + "Summarizing…"
+  // state flips synchronously on click. Claude summarization can take
+  // 20s+ on a multi-page PDF; without an immediate visible flip the
+  // button looked frozen.
+  const [isPending, setIsPending] = useState(false);
 
   const isPdf = agreement.mimeType === "application/pdf";
 
-  function onSummarize() {
+  async function onSummarize() {
     setError(null);
-    startTransition(async () => {
+    setIsPending(true);
+    try {
       const result = await summarizeAgreement(agreement.id);
       if (!result.ok) {
         setError(result.error);
@@ -154,7 +159,9 @@ function AgreementItem({
       setSummaryUpdatedAt(result.value.summaryUpdatedAt);
       setExpanded(true);
       router.refresh();
-    });
+    } finally {
+      setIsPending(false);
+    }
   }
 
   return (
@@ -185,13 +192,13 @@ function AgreementItem({
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={onSummarize}
+            onClick={() => void onSummarize()}
             disabled={isPending || !isPdf}
             title={!isPdf ? "Only PDF agreements can be summarized right now." : undefined}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {summary ? "Re-summarize" : "Summarize Terms"}
+            {isPending ? "Summarizing…" : summary ? "Re-summarize" : "Summarize Terms"}
           </button>
           {summary && (
             <button

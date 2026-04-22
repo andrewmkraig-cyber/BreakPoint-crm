@@ -123,15 +123,17 @@ export default async function ClientDetailPage({
         title={client.name || "(unnamed)"}
         description={[client.industry, client.location].filter(Boolean).join(" · ") || undefined}
         actions={
-          client.isVerified ? (
+          // Only show the Verified pill when there's at least one uploaded
+          // agreement file in Neon for this client. RF's custom-field
+          // `isVerified` flag was noisy (some RF clients had the flag set
+          // but no actual document on file in Ace). If no agreement has
+          // been uploaded here, render nothing at all — the earlier amber
+          // "No signed agreement on file" pill was unnecessary noise.
+          agreements.length > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-3 py-1 text-xs font-semibold text-brand-dark">
               <ShieldCheck className="h-3 w-3" /> Verified · signed agreement
             </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800">
-              No signed agreement on file
-            </span>
-          )
+          ) : undefined
         }
       />
 
