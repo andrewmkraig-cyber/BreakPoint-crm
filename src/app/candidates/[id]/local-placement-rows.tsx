@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -10,6 +11,7 @@ import {
   Loader2,
   MapPin,
   PhoneCall,
+  Send,
   Trash2,
   Video,
   X,
@@ -121,6 +123,7 @@ export function LocalPlacementRows({
         {jobs.map((j) => (
           <LocalJobActionRow
             key={j.placementId}
+            candidateId={candidateId}
             job={j}
             onSchedule={() => setScheduleFor(j)}
             onClientInvite={() => setClientInviteFor(j)}
@@ -202,17 +205,31 @@ export function LocalPlacementRows({
 }
 
 function LocalJobActionRow({
+  candidateId,
   job,
   onSchedule,
   onClientInvite,
   onReschedule,
 }: {
+  candidateId: string;
   job: LocalJobRow;
   onSchedule: () => void;
   onClientInvite: () => void;
   onReschedule: (iv: LocalInterview) => void;
 }) {
-  const canSchedule = job.stage !== "hired" && job.stage !== "cancelled" && job.stage !== "rejected";
+  const normalizedStage = (job.stage ?? "sourced").trim().toLowerCase();
+  const canSchedule = normalizedStage !== "hired" && normalizedStage !== "cancelled" && normalizedStage !== "rejected";
+  // Submit is the primary action for pre-submittal stages. Candidates
+  // who are already Submitted, Interviewing, Offer, Hired, Rejected,
+  // or Cancelled shouldn't resurface the submittal composer on this
+  // row — the next action depends on where they are, not another
+  // Submit. The deep-link href opens the existing SubmitModal in
+  // LocalCandidateActions with this job pre-selected (see the
+  // ?submit= handler in that component).
+  const canSubmit =
+    normalizedStage === "sourced" ||
+    normalizedStage === "applied" ||
+    normalizedStage === "kept";
 
   return (
     <div className="space-y-2 rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
@@ -231,25 +248,36 @@ function LocalJobActionRow({
             {job.stage}
           </div>
         </div>
-        {canSchedule && (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onSchedule}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+        <div className="flex flex-wrap items-center gap-2">
+          {canSubmit && (
+            <Link
+              href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+              title="Open submittal composer"
             >
-              <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
-            </button>
-            <button
-              type="button"
-              onClick={onClientInvite}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
-              title="Log an interview the client is scheduling themselves — adds to your calendar only"
-            >
-              <CalendarPlus className="h-3.5 w-3.5" /> Client Sending Invite
-            </button>
-          </div>
-        )}
+              <Send className="h-3.5 w-3.5" /> Submit
+            </Link>
+          )}
+          {canSchedule && (
+            <>
+              <button
+                type="button"
+                onClick={onSchedule}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+              >
+                <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
+              </button>
+              <button
+                type="button"
+                onClick={onClientInvite}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+                title="Log an interview the client is scheduling themselves — adds to your calendar only"
+              >
+                <CalendarPlus className="h-3.5 w-3.5" /> Client Sending Invite
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {(() => {

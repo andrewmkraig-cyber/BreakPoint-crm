@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   FileSignature,
   Loader2,
@@ -35,7 +35,29 @@ export function LocalCandidateActions(props: {
   candidateEmail: string | null;
   openJobs: LocalOpenJob[];
 }) {
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
   const [modal, setModal] = useState<"apply" | "submit" | "reference" | null>(null);
+  // Pre-seed value for SubmitModal when the user arrives via a per-row
+  // deep link from LocalPlacementRows (`?submit=<jobRfId>`). The modal
+  // reads this on mount to skip the job-picker step.
+  const [submitInitialJobRfId, setSubmitInitialJobRfId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const raw = searchParams?.get("submit");
+    if (!raw) return;
+    const jobId = Number(raw);
+    if (Number.isFinite(jobId)) {
+      setSubmitInitialJobRfId(jobId);
+      setModal("submit");
+    }
+    // Strip the param so refreshes / back-nav don't re-fire the modal.
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("submit");
+    const qs = next.toString();
+    router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router]);
 
   return (
     <div className="rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm">
@@ -76,7 +98,11 @@ export function LocalCandidateActions(props: {
           candidateId={props.candidateId}
           candidateName={props.candidateName}
           openJobs={props.openJobs}
-          onClose={() => setModal(null)}
+          initialJobRfId={submitInitialJobRfId}
+          onClose={() => {
+            setModal(null);
+            setSubmitInitialJobRfId(null);
+          }}
         />
       )}
       {modal === "reference" && (
@@ -163,10 +189,14 @@ function SubmitModal(props: {
   candidateId: string;
   candidateName: string;
   openJobs: LocalOpenJob[];
+  // Pre-selection from per-row Submit button deep-link. When set, the
+  // modal mounts with this job already selected so the recruiter skips
+  // the job-picker step.
+  initialJobRfId?: number | null;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [jobRfId, setJobRfId] = useState<number | null>(null);
+  const [jobRfId, setJobRfId] = useState<number | null>(props.initialJobRfId ?? null);
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
   const [subject, setSubject] = useState("");
