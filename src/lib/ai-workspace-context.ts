@@ -230,8 +230,19 @@ export async function buildClientContext(clientId: string): Promise<string> {
     const guarantee = guaranteeFromPlacement?.guaranteePeriodDays != null ? `${guaranteeFromPlacement.guaranteePeriodDays}-day guarantee` : null;
     lines.push(`  Terms (from placements): ${[fee, guarantee].filter(Boolean).join(", ")}`);
   }
-  if (benefits?.body?.trim()) {
-    lines.push(`  Benefits notes: ${benefits.body.slice(0, 200).trim()}${benefits.body.length > 200 ? "…" : ""}`);
+  lines.push("");
+
+  // Benefits summary — the authoritative text lives on ClientBenefits.body
+  // (either hand-authored or produced by the "Generate Summary" Claude
+  // button on the Benefits tab). Embed it verbatim so the assistant
+  // answers benefits questions from the stored summary instead of
+  // re-parsing the raw carrier PDFs every turn.
+  lines.push("BENEFITS SUMMARY:");
+  const benefitsBody = benefits?.body?.trim() ?? "";
+  if (benefitsBody) {
+    for (const bLine of benefitsBody.split("\n")) lines.push(`  ${bLine}`);
+  } else {
+    lines.push("  (no benefits summary on file — generate one on the Benefits tab)");
   }
   lines.push("");
 
