@@ -6,7 +6,7 @@ import {
   recruiterflow,
   normalizeJob,
   flattenPipeline,
-  canonicalStage,
+  type PipelineBucket,
 } from "@/lib/recruiterflow";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
@@ -64,21 +64,28 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   const pipelineRows: JobPipelineRow[] = flatForJob.map((r) => {
     const local = localByCandidate.get(r.candidateId);
     if (local) {
+      // Local Placement.stage is the source of truth — pass it through
+      // raw. No canonicalStage() wrapper; the stage is already written
+      // in the canonical-string shape by the server actions.
       return {
         candidateId: r.candidateId,
         candidateName: r.candidateName,
         candidateTitle: r.candidateTitle,
         stageName: local.stage,
-        bucket: canonicalStage(local.stage),
+        bucket: local.stage as PipelineBucket,
         stageMovedAt: local.movedAt,
       };
     }
+    // RF-only candidate (never touched by Ace on this job). Show them
+    // as "sourced" so the recruiter gets Apply / Submit / Keep / Reject
+    // on the row and can engage from here. Dropped the previous
+    // canonicalStage(RF stage_name) computation.
     return {
       candidateId: r.candidateId,
       candidateName: r.candidateName,
       candidateTitle: r.candidateTitle,
       stageName: r.stageName,
-      bucket: canonicalStage(r.stageName),
+      bucket: "sourced",
       stageMovedAt: r.stageMovedAt,
     };
   });

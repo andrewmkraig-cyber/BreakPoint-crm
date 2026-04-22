@@ -591,7 +591,12 @@ function JobActionRow({
   onCancel: () => void;
   onReschedule: (iv: InterviewSummary) => void;
 }) {
-  const effective: Bucket = (job.placement?.stage ?? job.rfStageBucket) as Bucket;
+  // Local Neon Placement.stage is the single source of truth for which
+  // action buttons render. If there's no local Placement yet, treat the
+  // candidate as "sourced" (unengaged RF record). Dropped the previous
+  // `?? job.rfStageBucket` fallback so RF's stage_name / canonicalStage
+  // plumbing is fully out of the button-render path.
+  const effective: Bucket = (job.placement?.stage ?? "sourced") as Bucket;
   const isCancelled = effective === "cancelled";
   const isHired = !isCancelled && effective === "hired";
   const isRejected = !isCancelled && effective === "rejected";
@@ -643,7 +648,7 @@ function JobActionRow({
             clientRfId={job.clientRfId}
             jobTitle={job.jobTitle}
             clientName={job.clientName}
-            bucket={effective}
+            stage={effective}
             onSchedule={onSchedule}
             onOffer={onOffer}
             onPlacement={onPlacement}

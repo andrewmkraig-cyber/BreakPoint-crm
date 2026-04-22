@@ -20,7 +20,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import type { PipelineBucket } from "@/lib/recruiterflow";
 import {
   applyCandidateToJob,
   keepCandidate,
@@ -55,7 +54,12 @@ export type PipelineRowActionsProps = {
   clientRfId: number;
   jobTitle: string;
   clientName: string;
-  bucket: PipelineBucket;
+  // Local Placement.stage value — "sourced" | "applied" | "kept" | "submitted" |
+  // "interviewing" | "offer" | "pending_start" | "hired" | "rejected" |
+  // "cancelled". The switch below matches these literal strings directly, no
+  // RF-derived bucket computation. If the caller has no local Placement row,
+  // pass "sourced" (the unengaged default).
+  stage: string;
   // Optional inline-dialog handlers. When the row is rendered on the
   // candidate profile (where dialogs already exist), passing these
   // skips the navigate-to-candidate-profile fallback and opens the
@@ -158,7 +162,11 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         candidateRfId: props.candidateRfId,
         jobRfId: props.jobRfId,
         clientRfId: props.clientRfId,
-        previousStage: props.bucket,
+        // Server action signature accepts a PipelineBucket today; cast the
+        // local stage string at the boundary so this component stays free
+        // of the RF-derived bucket type. The server writes an ActionLog
+        // row with the raw string either way.
+        previousStage: props.stage as Parameters<typeof moveToKept>[0]["previousStage"],
       }),
     );
   }
@@ -168,12 +176,12 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         candidateRfId: props.candidateRfId,
         jobRfId: props.jobRfId,
         clientRfId: props.clientRfId,
-        previousStage: props.bucket,
+        previousStage: props.stage as Parameters<typeof moveToApplied>[0]["previousStage"],
       }),
     );
   }
 
-  switch (props.bucket) {
+  switch (props.stage) {
     case "sourced":
       // Submit is now also the primary action on Sourced so recruiters
       // can skip straight to the submittal composer without going

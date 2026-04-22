@@ -174,7 +174,7 @@ export function JobPipelineSummary({
                         clientRfId={jobActions.clientRfId}
                         jobTitle={jobActions.jobTitle}
                         clientName={jobActions.clientName}
-                        bucket={r.bucket}
+                        stage={r.bucket}
                       />
                     </td>
                   )}
