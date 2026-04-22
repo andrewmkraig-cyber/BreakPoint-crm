@@ -175,11 +175,21 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
 
   switch (props.bucket) {
     case "sourced":
-      // Apply / Keep / Reject — Submit isn't a sourced-stage move; the
-      // canonical path is Sourced → Applied → Submitted.
+      // Submit is now also the primary action on Sourced so recruiters
+      // can skip straight to the submittal composer without going
+      // through Apply first. Apply stays as a secondary action for
+      // when they just want to track the application without sending
+      // a submittal yet.
       return (
         <ActionRow disabled={isPending}>
-          <ActionButton icon={Plus} label="Apply" tone="primary" onClick={onApply} />
+          <NavButton
+            icon={Send}
+            label="Submit"
+            tone="primary"
+            href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
+            title="Open submittal composer"
+          />
+          <ActionButton icon={Plus} label="Apply" onClick={onApply} />
           <ActionButton icon={Bookmark} label="Keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>

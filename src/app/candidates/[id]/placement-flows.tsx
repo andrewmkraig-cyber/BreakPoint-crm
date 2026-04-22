@@ -2405,7 +2405,6 @@ function SubmitToJobDialog({
   const [composing, setComposing] = useState<boolean>(Boolean(initialPick));
 
   const picked = openJobs.find((o) => String(o.jobRfId) === selectedId) ?? null;
-  const hasAvailable = openJobs.some((j) => !j.alreadyLinked);
 
   function onPickJob() {
     setErr(null);
@@ -2413,10 +2412,10 @@ function SubmitToJobDialog({
       setErr("Pick an open job to submit to.");
       return;
     }
-    if (picked.alreadyLinked) {
-      setErr("Candidate is already linked to this job.");
-      return;
-    }
+    // alreadyLinked is surfaced informationally on each option but no
+    // longer blocks selection — recruiters sometimes want to send a
+    // fresh submittal even when the candidate is already tracked on
+    // the job (e.g. re-submitting after a client request).
     setComposing(true);
   }
 
@@ -2448,18 +2447,13 @@ function SubmitToJobDialog({
         >
           <option value="">Select a job…</option>
           {openJobs.map((j) => (
-            <option key={j.jobRfId} value={String(j.jobRfId)} disabled={j.alreadyLinked}>
+            <option key={j.jobRfId} value={String(j.jobRfId)}>
               {j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle}
-              {j.alreadyLinked ? " (already submitted)" : ""}
+              {j.alreadyLinked ? " (already linked)" : ""}
             </option>
           ))}
         </select>
       </label>
-      {!hasAvailable && (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          This candidate is already linked to every open job.
-        </div>
-      )}
       {picked && (
         <div className="mt-3 rounded-lg border border-court-border bg-court-surface-subtle/60 p-3 text-xs text-court-fg">
           <div className="font-semibold">{picked.jobTitle}</div>
