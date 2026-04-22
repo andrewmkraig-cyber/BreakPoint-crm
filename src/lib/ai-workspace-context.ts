@@ -4,6 +4,7 @@ import {
   normalizeClient,
   normalizeJob,
   canonicalStage,
+  type RFCandidate,
 } from "@/lib/recruiterflow";
 
 // Builds the system prompt for the per-entity AI workspace chat. The spec
@@ -16,6 +17,16 @@ import {
 // Each builder is resilient to RF outages: if a remote call throws, the
 // section degrades to "(unavailable)" rather than failing the whole
 // request.
+//
+// Resume text note: neither the RF nor Ace schemas store parsed resume
+// text — resumes live as binary blobs (Candidate.resumeData / CandidateResume.data).
+// The "Resume" block below is assembled from candidate_summary (RF) or
+// notes (Ace), plus the structured experience/education/skills arrays.
+// This is as close to "full resume text" as the DB can hand us without
+// parsing the PDF on every POST.
+
+const JOB_DESCRIPTION_MAX_CHARS = 1500;
+const RESUME_MAX_CHARS = 3000;
 
 export async function buildClientContext(clientId: string): Promise<string> {
   const rfId = Number(clientId);
@@ -23,7 +34,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
     return "You are an AI recruiting assistant for BreakPoint Talent. No client was selected.";
   }
 
-  const [clients, allJobs, allContacts, allCandidates, placements, agreements, benefits] = await Promise.all([
+  const [clients, allJobs, allContacts, allCandidates, placements, agreements, benefits, jobOverrides] = await Promise.all([
     recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
@@ -34,51 +45,84 @@ export async function buildClientContext(clientId: string): Promise<string> {
       orderBy: { uploadedAt: "desc" },
     }),
     prisma.clientBenefits.findUnique({ where: { clientRfId: rfId } }),
+    prisma.jobOverride.findMany({ select: { jobRfId: true, description: true } }),
   ]);
 
   const rawClient = clients.find((c) => c.id === rfId);
   const client = rawClient ? normalizeClient(rawClient) : null;
   const companyName = client?.name || "(unknown company)";
 
-  // Candidates-by-job map: jobRfId → array of { name, stage }. Built from
-  // RF candidates' jobs[] array; supplemented by local Placement rows for
-  // candidates whose stage only lives in Ace.
-  const candidatesByJob = new Map<number, Array<{ name: string; stage: string }>>();
-  for (const c of allCandidates) {
-    const jobs = Array.isArray(c.jobs) ? c.jobs : [];
-    const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || c.name || "(unnamed)";
-    for (const j of jobs) {
-      if (typeof j.job_id !== "number") continue;
-      if (j.client_company_id !== rfId) continue;
-      const list = candidatesByJob.get(j.job_id) ?? [];
-      list.push({ name, stage: j.stage_name ?? "(no stage)" });
-      candidatesByJob.set(j.job_id, list);
-    }
-  }
-  // Local placements override with the Ace stage when present (RF lags for
-  // stages like offer/hired/rejected that Ace owns locally).
+  const overrideByJob = new Map<number, string | null>();
+  for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
+
+  // Candidate identity lookup — { rfId → full RFCandidate }. Keeps the
+  // list record around so the pipeline + resume-assembly code can share
+  // one in-memory map instead of scanning `allCandidates` twice.
+  const rfCandidateById = new Map<number, RFCandidate>();
+  for (const c of allCandidates) rfCandidateById.set(c.id, c);
+
   const candidateNameByRfId = new Map<number, string>();
   for (const c of allCandidates) {
     const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || c.name || "(unnamed)";
     candidateNameByRfId.set(c.id, name);
   }
+
+  // Candidates-by-job map: jobRfId → array of { name, stage, rfId?, aceId? }.
+  // rfId / aceId let the candidate-details section below look up the
+  // source record for resume assembly.
+  type PipelineEntry = { name: string; stage: string; rfId: number | null; aceId: string | null };
+  const candidatesByJob = new Map<number, PipelineEntry[]>();
+  for (const c of allCandidates) {
+    const jobs = Array.isArray(c.jobs) ? c.jobs : [];
+    const name = candidateNameByRfId.get(c.id) ?? "(unnamed)";
+    for (const j of jobs) {
+      if (typeof j.job_id !== "number") continue;
+      if (j.client_company_id !== rfId) continue;
+      const list = candidatesByJob.get(j.job_id) ?? [];
+      list.push({ name, stage: j.stage_name ?? "(no stage)", rfId: c.id, aceId: null });
+      candidatesByJob.set(j.job_id, list);
+    }
+  }
+  // Local placements override RF stage when present (RF lags for stages
+  // like offer/hired/rejected that Ace owns locally).
   for (const p of placements) {
     const list = candidatesByJob.get(p.jobRfId) ?? [];
     const name = p.candidateRfId != null
       ? candidateNameByRfId.get(p.candidateRfId) ?? `(candidate #${p.candidateRfId})`
       : `(ace candidate ${p.candidateId?.slice(0, 6) ?? "?"})`;
-    // Dedupe by name — RF already contributed a row for this candidate.
     const existing = list.find((x) => x.name === name);
     if (existing) existing.stage = p.stage;
-    else list.push({ name, stage: p.stage });
+    else list.push({ name, stage: p.stage, rfId: p.candidateRfId, aceId: p.candidateId });
     candidatesByJob.set(p.jobRfId, list);
   }
+
+  // Ace-native candidate rows for any placements that point at them via cuid.
+  const aceCandidateIds = placements
+    .map((p) => p.candidateId)
+    .filter((x): x is string => typeof x === "string" && x.length > 0);
+  const aceCandidates = aceCandidateIds.length > 0
+    ? await prisma.candidate.findMany({
+        where: { id: { in: aceCandidateIds } },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          currentDesignation: true,
+          currentOrganization: true,
+          skills: true,
+          notes: true,
+          experience: true,
+          education: true,
+        },
+      })
+    : [];
+  const aceById = new Map(aceCandidates.map((c) => [c.id, c]));
 
   const clientJobs = allJobs
     .filter((j) => j.company_id === rfId || (Array.isArray(rawClient?.open_jobs) && rawClient.open_jobs.some((oj) => oj.id === j.id)) || (Array.isArray(rawClient?.closed_jobs) && rawClient.closed_jobs.some((cj) => cj.id === j.id)))
     .map((raw) => ({ raw, norm: normalizeJob(raw) }));
 
-  function countByBucket(list: Array<{ name: string; stage: string }>): Record<string, number> {
+  function countByBucket(list: PipelineEntry[]): Record<string, number> {
     const counts: Record<string, number> = {
       applied: 0,
       submitted: 0,
@@ -108,7 +152,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
   );
   lines.push("");
 
-  // Jobs block.
+  // Jobs block — now includes the full job description per job.
   lines.push(`JOBS (${activeJobs.length} active):`);
   for (const { raw, norm } of clientJobs) {
     const statusLabel = raw.is_open === false ? "Closed" : norm.statusName || "Active";
@@ -122,6 +166,34 @@ export async function buildClientContext(clientId: string): Promise<string> {
     if (list.length > 0) {
       const names = list.map((x) => `${x.name} (${x.stage})`).join(", ");
       lines.push(`  Candidates: ${names}`);
+    }
+    const description = resolveJobDescription(raw, overrideByJob);
+    if (description) {
+      lines.push("  Description:");
+      for (const dLine of description.split("\n")) lines.push(`    ${dLine}`);
+    }
+    lines.push("");
+  }
+
+  // Candidate details — one Resume block per unique person across the
+  // pipeline. Keeps the AI from needing to stitch metadata to content.
+  const uniqueCandidates = collectUniquePipelineCandidates(candidatesByJob);
+  if (uniqueCandidates.length > 0) {
+    lines.push("CANDIDATE DETAILS:");
+    for (const entry of uniqueCandidates) {
+      const resume = entry.rfId != null
+        ? assembleResumeFromRf(rfCandidateById.get(entry.rfId) ?? null)
+        : entry.aceId != null
+          ? assembleResumeFromAce(aceById.get(entry.aceId) ?? null)
+          : "";
+      const truncated = truncate(resume, RESUME_MAX_CHARS);
+      lines.push(`  ${entry.name} (${entry.stage})`);
+      lines.push("    Resume:");
+      if (truncated.trim()) {
+        for (const rLine of truncated.split("\n")) lines.push(`      ${rLine}`);
+      } else {
+        lines.push("      (no resume content on file)");
+      }
     }
     lines.push("");
   }
@@ -142,9 +214,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
   if (clientContacts.length === 0) lines.push("  (none on file)");
   lines.push("");
 
-  // Agreements block. Fee % / guarantee period don't live on ClientAgreement;
-  // they live on Placement rows. Summarize the agreement file + whatever
-  // fee/guarantee data the placements carry.
+  // Agreements block.
   lines.push("AGREEMENTS:");
   if (agreements.length === 0) {
     lines.push("  (no uploaded agreement)");
@@ -191,8 +261,6 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   const asNumber = Number(candidateId);
   const isRfCandidate = /^\d+$/.test(candidateId) && Number.isFinite(asNumber);
 
-  // Pull local data first — same query shape for both RF and Ace-native
-  // candidates because Sms/CallLog.candidateId is a plain string column.
   const [smsMessages, callLogs, transcripts, placements, aceCandidate] = await Promise.all([
     prisma.smsMessage.findMany({
       where: { candidateId },
@@ -216,8 +284,8 @@ export async function buildCandidateContext(candidateId: string): Promise<string
     isRfCandidate ? Promise.resolve(null) : prisma.candidate.findUnique({ where: { id: candidateId } }),
   ]);
 
-  // Identity block — pulled from RF if this is an RF candidate, otherwise
-  // from the Ace Candidate row. compExpectation only lives on RF.
+  // Identity + resume source. RF candidates get their full RFCandidate
+  // object so we can mine experience/education/candidate_summary below.
   let fullName = "(unknown)";
   let title = "";
   let employer = "";
@@ -226,7 +294,7 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   let phone = "";
   let compTarget = "";
   let skills: string[] = [];
-  const summary = "";
+  let resumeText = "";
   let notes = "";
 
   if (isRfCandidate) {
@@ -235,7 +303,6 @@ export async function buildCandidateContext(candidateId: string): Promise<string
       fullName = rf.name || [rf.first_name, rf.last_name].filter(Boolean).join(" ") || "(unnamed)";
       title = rf.current_designation ?? "";
       employer = rf.current_organization ?? "";
-      // Location on RF is an object with city/state etc. Reduce to "City, ST".
       const loc = rf.location as { city?: string | null; state?: string | null } | null | undefined;
       location = loc ? [loc.city, loc.state].filter(Boolean).join(", ") : "";
       email = Array.isArray(rf.email) ? rf.email[0] ?? "" : rf.email ?? "";
@@ -252,8 +319,9 @@ export async function buildCandidateContext(candidateId: string): Promise<string
       if (Array.isArray(rf.skills)) {
         skills = (rf.skills as unknown[]).filter((s): s is string => typeof s === "string");
       }
+      resumeText = assembleResumeFromRf(rf);
     } catch {
-      // RF fetch failed — fall through with blanks.
+      // RF fetch failed — identity stays blank; resume stays empty.
     }
   } else if (aceCandidate) {
     fullName = [aceCandidate.firstName, aceCandidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
@@ -264,18 +332,26 @@ export async function buildCandidateContext(candidateId: string): Promise<string
     phone = aceCandidate.phone ?? "";
     skills = aceCandidate.skills ?? [];
     notes = aceCandidate.notes ?? "";
+    resumeText = assembleResumeFromAce(aceCandidate);
   }
 
-  // Applications block — cross-ref job titles + client names from RF so
-  // the assistant sees "Tax Manager at Acme" rather than bare numeric ids.
-  const [allJobs, allClients] = await Promise.all([
+  // Applications block — cross-ref job titles + client names from RF and
+  // attach the full job description (override first, RF fallback).
+  const [allJobs, allClients, jobOverrides] = await Promise.all([
     placements.length > 0 ? recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []) : Promise.resolve([]),
     placements.length > 0 ? recruiterflow.listAllClients({ perPage: 100 }).catch(() => []) : Promise.resolve([]),
+    placements.length > 0
+      ? prisma.jobOverride.findMany({
+          where: { jobRfId: { in: placements.map((p) => p.jobRfId) } },
+          select: { jobRfId: true, description: true },
+        })
+      : Promise.resolve([]),
   ]);
-  const jobTitleByRfId = new Map<number, string>();
-  for (const j of allJobs) jobTitleByRfId.set(j.id, normalizeJob(j).title);
+  const jobByRfId = new Map(allJobs.map((j) => [j.id, j]));
   const clientNameByRfId = new Map<number, string>();
   for (const c of allClients) clientNameByRfId.set(c.id, normalizeClient(c).name);
+  const overrideByJob = new Map<number, string | null>();
+  for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
 
   const lines: string[] = [];
   lines.push(
@@ -287,8 +363,17 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   lines.push(`COMP TARGET: ${compTarget || "(not set)"}`);
   lines.push(`CONTACT: ${email || "(no email)"} | ${phone || "(no phone)"}`);
   if (skills.length > 0) lines.push(`SKILLS: ${skills.join(", ")}`);
-  if (summary) lines.push(`SUMMARY: ${summary}`);
   if (notes) lines.push(`NOTES: ${notes.slice(0, 300)}${notes.length > 300 ? "…" : ""}`);
+  lines.push("");
+
+  // Full resume content for this candidate.
+  lines.push("RESUME:");
+  const resumeTrimmed = truncate(resumeText, RESUME_MAX_CHARS);
+  if (resumeTrimmed.trim()) {
+    for (const rLine of resumeTrimmed.split("\n")) lines.push(`  ${rLine}`);
+  } else {
+    lines.push("  (no resume content on file)");
+  }
   lines.push("");
 
   lines.push("ACTIVE APPLICATIONS:");
@@ -296,12 +381,20 @@ export async function buildCandidateContext(candidateId: string): Promise<string
     lines.push("  (none)");
   } else {
     for (const p of placements) {
-      const jobTitle = jobTitleByRfId.get(p.jobRfId) ?? `job #${p.jobRfId}`;
+      const jobRaw = jobByRfId.get(p.jobRfId) ?? null;
+      const jobTitle = jobRaw ? normalizeJob(jobRaw).title : `job #${p.jobRfId}`;
       const clientName = clientNameByRfId.get(p.clientRfId) ?? `client #${p.clientRfId}`;
-      lines.push(`  ${jobTitle} at ${clientName} - Stage: ${p.stage}`);
+      lines.push(`  JOB: ${jobTitle} at ${clientName} - Stage: ${p.stage}`);
+      const description = jobRaw ? resolveJobDescription(jobRaw, overrideByJob) : "";
+      if (description) {
+        lines.push(`  JOB DESCRIPTION:`);
+        for (const dLine of description.split("\n")) lines.push(`    ${dLine}`);
+      } else {
+        lines.push(`  JOB DESCRIPTION: (none on file)`);
+      }
+      lines.push("");
     }
   }
-  lines.push("");
 
   lines.push("RECENT CALLS:");
   if (callLogs.length === 0) {
@@ -322,7 +415,6 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   if (smsMessages.length === 0) {
     lines.push("  (none)");
   } else {
-    // Return in thread order (oldest → newest).
     for (const m of [...smsMessages].reverse()) {
       const when = m.createdAt.toLocaleDateString();
       lines.push(`  ${when} ${m.direction}: ${m.body.slice(0, 180)}${m.body.length > 180 ? "…" : ""}`);
@@ -338,4 +430,165 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   }
 
   return lines.join("\n");
+}
+
+// --- helpers ---
+
+// Resolve the effective job description for a given RF job. Neon's
+// JobOverride.description wins when set (recruiter-authored in Ace);
+// otherwise fall back to whatever RF imported. Strips HTML tags so the
+// AI isn't burning tokens on <p></p> wrappers. Truncates to keep the
+// system prompt bounded when RF returns a giant JD.
+function resolveJobDescription(
+  raw: { description?: unknown; id: number },
+  overrideByJob: Map<number, string | null>,
+): string {
+  const override = overrideByJob.get(raw.id);
+  const source =
+    override && override.trim().length > 0
+      ? override
+      : typeof raw.description === "string"
+        ? raw.description
+        : "";
+  if (!source) return "";
+  return truncate(stripHtml(source).trim(), JOB_DESCRIPTION_MAX_CHARS);
+}
+
+type ExperienceRaw = {
+  designation?: string | null;
+  organization?: string | null;
+  description?: string | null;
+  from?: [number | null, number | null] | null;
+  to?: [number | null, number | null] | null;
+};
+
+type EducationRaw = {
+  school?: string | null;
+  degree?: string | null;
+  description?: string | null;
+  from?: [number | null, number | null] | null;
+  to?: [number | null, number | null] | null;
+};
+
+// Assemble a resume-equivalent text blob from an RF candidate record.
+// Pulls candidate_summary, skills, experience[], education[] and flattens
+// into labeled blocks. Called by both builders.
+function assembleResumeFromRf(c: RFCandidate | null): string {
+  if (!c) return "";
+  const parts: string[] = [];
+
+  const summary = typeof c.candidate_summary === "string" ? stripHtml(c.candidate_summary).trim() : "";
+  if (summary) parts.push(`Summary: ${summary}`);
+
+  const skills = Array.isArray(c.skills) ? (c.skills as unknown[]).filter((s): s is string => typeof s === "string") : [];
+  if (skills.length > 0) parts.push(`Skills: ${skills.join(", ")}`);
+
+  const experience = Array.isArray(c.experience) ? (c.experience as ExperienceRaw[]) : [];
+  if (experience.length > 0) {
+    parts.push("Experience:");
+    for (const e of experience) {
+      const header = [e.designation, e.organization].filter(Boolean).join(" · ") || "(role)";
+      const range = formatMonthYearRange(e.from ?? null, e.to ?? null);
+      parts.push(`- ${header}${range ? ` (${range})` : ""}`);
+      if (e.description) parts.push(`  ${stripHtml(e.description).trim()}`);
+    }
+  }
+
+  const education = Array.isArray(c.education) ? (c.education as EducationRaw[]) : [];
+  if (education.length > 0) {
+    parts.push("Education:");
+    for (const e of education) {
+      const header = [e.degree, e.school].filter(Boolean).join(" · ") || "(degree)";
+      const range = formatMonthYearRange(e.from ?? null, e.to ?? null);
+      parts.push(`- ${header}${range ? ` (${range})` : ""}`);
+      if (e.description) parts.push(`  ${stripHtml(e.description).trim()}`);
+    }
+  }
+
+  return parts.join("\n");
+}
+
+type AceCandidateLite = {
+  firstName: string;
+  lastName: string | null;
+  currentDesignation: string | null;
+  currentOrganization: string | null;
+  skills: string[];
+  notes: string | null;
+  experience: unknown;
+  education: unknown;
+};
+
+function assembleResumeFromAce(c: AceCandidateLite | null): string {
+  if (!c) return "";
+  const parts: string[] = [];
+
+  if (c.notes?.trim()) parts.push(`Notes: ${c.notes.trim()}`);
+  if (c.skills.length > 0) parts.push(`Skills: ${c.skills.join(", ")}`);
+
+  type AceExp = { designation?: string; organization?: string; description?: string; from_year?: number | null; to_year?: number | null };
+  type AceEdu = { school?: string; degree?: string; description?: string; from_year?: number | null; to_year?: number | null };
+
+  const experience = Array.isArray(c.experience) ? (c.experience as AceExp[]) : [];
+  if (experience.length > 0) {
+    parts.push("Experience:");
+    for (const e of experience) {
+      const header = [e.designation, e.organization].filter(Boolean).join(" · ") || "(role)";
+      const range = [e.from_year, e.to_year ?? "present"].filter((x) => x != null).join(" – ");
+      parts.push(`- ${header}${range ? ` (${range})` : ""}`);
+      if (e.description) parts.push(`  ${e.description.trim()}`);
+    }
+  }
+
+  const education = Array.isArray(c.education) ? (c.education as AceEdu[]) : [];
+  if (education.length > 0) {
+    parts.push("Education:");
+    for (const e of education) {
+      const header = [e.degree, e.school].filter(Boolean).join(" · ") || "(degree)";
+      const range = [e.from_year, e.to_year].filter((x) => x != null).join(" – ");
+      parts.push(`- ${header}${range ? ` (${range})` : ""}`);
+    }
+  }
+
+  return parts.join("\n");
+}
+
+// Dedupe a jobRfId → entries map into a single list of unique candidates,
+// preferring the entry with the highest-stage bucket when the same person
+// appears on multiple jobs.
+function collectUniquePipelineCandidates(
+  candidatesByJob: Map<number, Array<{ name: string; stage: string; rfId: number | null; aceId: string | null }>>,
+): Array<{ name: string; stage: string; rfId: number | null; aceId: string | null }> {
+  const byKey = new Map<string, { name: string; stage: string; rfId: number | null; aceId: string | null }>();
+  for (const list of Array.from(candidatesByJob.values())) {
+    for (const entry of list) {
+      const key = entry.rfId != null ? `rf:${entry.rfId}` : entry.aceId != null ? `ace:${entry.aceId}` : `name:${entry.name}`;
+      if (!byKey.has(key)) byKey.set(key, entry);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+function stripHtml(s: string): string {
+  return s.replace(/<br\s*\/?\s*>/gi, "\n").replace(/<\/p>/gi, "\n").replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}…`;
+}
+
+function formatMonthYearRange(
+  from: [number | null, number | null] | null,
+  to: [number | null, number | null] | null,
+): string {
+  const fromStr = formatMonthYearSingle(from);
+  const toStr = formatMonthYearSingle(to) || "Present";
+  return fromStr ? `${fromStr} – ${toStr}` : "";
+}
+
+function formatMonthYearSingle(my: [number | null, number | null] | null): string {
+  if (!my || my[1] == null) return "";
+  const m = my[0] ? String(my[0]).padStart(2, "0") : "";
+  return m ? `${m}/${my[1]}` : String(my[1]);
 }
