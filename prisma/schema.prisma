@@ -138,7 +138,8 @@ model ActionLog {
 // separate object-store dependency. Can swap to Vercel Blob later if volume grows.
 model ClientAgreement {
   id               String    @id @default(cuid())
-  clientRfId       Int       // RecruiterFlow client/company id
+  clientRfId       Int       // RecruiterFlow client/company id (Phase 5: drop)
+  clientId         String?   // cuid FK to Client — backfilled in Phase 0
   filename         String
   mimeType         String
   size             Int
@@ -151,9 +152,11 @@ model ClientAgreement {
   summary          String?   @db.Text
   summaryUpdatedAt DateTime?
 
-  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientRfId, uploadedAt])
+  @@index([clientId, uploadedAt])
 }
 
 // Free-form benefits notes per client. Persisted as plain text with line breaks
@@ -161,11 +164,13 @@ model ClientAgreement {
 model ClientBenefits {
   id          String   @id @default(cuid())
   clientRfId  Int      @unique
+  clientId    String?  @unique
   body        String   @db.Text
   updatedById String
   updatedAt   DateTime @updatedAt
 
-  updatedBy User @relation(fields: [updatedById], references: [id], onDelete: Cascade)
+  updatedBy User    @relation(fields: [updatedById], references: [id], onDelete: Cascade)
+  client    Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 }
 
 // PDFs and docs attached to the benefits tab. Large files (>4.5MB) bypass the
@@ -175,6 +180,7 @@ model ClientBenefits {
 model ClientBenefitsFile {
   id             String   @id @default(cuid())
   clientRfId     Int
+  clientId       String?
   filename       String
   mimeType       String
   size           Int
@@ -185,9 +191,11 @@ model ClientBenefitsFile {
   uploadedById   String
   uploadedAt     DateTime @default(now())
 
-  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedBy User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientRfId, uploadedAt])
+  @@index([clientId, uploadedAt])
 }
 
 // One row per candidate-job placement lifecycle. Ace owns the stage locally
@@ -203,7 +211,9 @@ model Placement {
   candidateRfId         Int?
   candidateId           String?
   jobRfId               Int
+  jobId                 String?   // cuid FK to Job — backfilled in Phase 0
   clientRfId            Int
+  clientId              String?   // cuid FK to Client — backfilled in Phase 0
   stage                 String    // "offer" | "pending_start" | "hired"
 
   // Offer details
@@ -259,12 +269,17 @@ model Placement {
   createdById           String
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
-  createdBy             User      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy             User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
   candidate             Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job                   Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  client                Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@unique([candidateRfId, jobRfId])
   @@unique([candidateId, jobRfId])
+  @@unique([candidateId, jobId])
   @@index([clientRfId, stage])
+  @@index([clientId, stage])
+  @@index([jobId, stage])
   @@index([stage, expectedStartDate])
   @@index([candidateId, stage])
 }
@@ -302,9 +317,11 @@ model Candidate {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  createdBy           User        @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy           User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
   placements          Placement[]
   interviews          Interview[]
+  resume              CandidateResume?
+  krispcalls          KrispcallLog[]
 
   @@index([email])
   @@index([createdById, createdAt])
@@ -317,6 +334,7 @@ model Candidate {
 model CandidateResume {
   id             String   @id @default(cuid())
   candidateRfId  Int      @unique
+  candidateId    String?  @unique
   filename       String
   mimeType       String
   size           Int
@@ -333,7 +351,8 @@ model CandidateResume {
   redactedSize     Int?
   redactedAt       DateTime?
 
-  uploadedBy User @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  candidate  Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 }
 
 // Interview schedule. Polymorphic on candidate like Placement: exactly one of
@@ -346,7 +365,9 @@ model Interview {
   candidateRfId   Int?
   candidateId     String?
   jobRfId         Int
+  jobId           String?   // cuid FK to Job — backfilled in Phase 0
   clientRfId      Int
+  clientId        String?   // cuid FK to Client — backfilled in Phase 0
   scheduledAt     DateTime
   durationMin     Int       @default(30)
   type            String    // "phone_screen" | "video" | "in_person"
@@ -383,10 +404,14 @@ model Interview {
 
   createdBy       User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
   candidate       Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job             Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  client          Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([candidateRfId, scheduledAt])
   @@index([candidateId, scheduledAt])
   @@index([jobRfId, scheduledAt])
+  @@index([jobId, scheduledAt])
+  @@index([clientId, scheduledAt])
   @@index([status, scheduledAt])
 }
 
@@ -413,7 +438,8 @@ model KrispcallLog {
   krispcallId   String   @unique
   direction     String   // "inbound" | "outbound"
   kind          String   // "call" | "sms"
-  candidateRfId String?  // RecruiterFlow candidate id if matched
+  candidateRfId String?  // RecruiterFlow candidate id if matched (Phase 5: drop)
+  candidateId   String?  // cuid FK to Candidate
   phoneNumber   String
   durationSec   Int?
   recordingUrl  String?
@@ -422,10 +448,12 @@ model KrispcallLog {
   occurredAt    DateTime
   createdAt     DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
 
   @@index([userId, occurredAt])
   @@index([candidateRfId])
+  @@index([candidateId, occurredAt])
 }
 
 // Local override for fields that RF either doesn't expose or that the
@@ -436,6 +464,7 @@ model KrispcallLog {
 // and merge-field resolution.
 model JobOverride {
   jobRfId     Int      @id
+  jobId       String?  @unique
   // Optional Ace-authored title that wins over whatever RF's title /
   // name / position_title fields give us. Lets recruiters fix
   // "(untitled job)" rows on the Applicants list when RF imports
@@ -447,6 +476,7 @@ model JobOverride {
   updatedById String?
 
   updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  job       Job?  @relation(fields: [jobId], references: [id], onDelete: Cascade)
 }
 
 model SmsMessage {
@@ -493,4 +523,106 @@ model AiWorkspaceMessage {
   createdAt  DateTime @default(now())
 
   @@index([entityType, entityId])
+}
+
+// ---- Ace-native client/job/contact models (Phase 0 of RF removal) ----
+// legacyRfId columns are scaffolding for the migration — dropped in Phase 5
+// once all reads/writes have moved to cuid FKs.
+
+model Client {
+  id             String    @id @default(cuid())
+  legacyRfId     Int?      @unique // Phase 5: drop
+  name           String
+  domain         String?
+  industry       String?
+  linkedinPage   String?
+  careersPage    String?
+  companySize    String?
+  overview       String?   @db.Text
+  location       Json?
+  phoneNumbers   Json?
+  tags           String[]  @default([])
+  status         Json?
+  revenue        Json?
+  leadOwner      Json?
+  customFields   Json?
+  addedAt        DateTime?
+  lastContact    DateTime?
+  lastEngagement DateTime?
+  raw            Json?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  jobs          Job[]
+  contacts      Contact[]
+  agreements    ClientAgreement[]
+  benefits      ClientBenefits?
+  benefitsFiles ClientBenefitsFile[]
+  placements    Placement[]
+  interviews    Interview[]
+
+  @@index([name])
+}
+
+model Job {
+  id               String    @id @default(cuid())
+  legacyRfId       Int?      @unique // Phase 5: drop
+  title            String
+  clientId         String?
+  locations        String[]  @default([])
+  isOpen           Boolean   @default(true)
+  jobStatus        Json?
+  jobType          Json?
+  employmentType   String?
+  department       String?
+  salaryRangeStart Int?
+  salaryRangeEnd   Int?
+  salaryCurrency   String?
+  salaryFrequency  String?
+  expectedFee      Json?
+  billRate         Json?
+  payRate          Json?
+  numberOfOpenings Int?
+  currentOpening   Int?
+  hiringTeam       Json?
+  customFields     Json?
+  applyLink        String?
+  lastOpenedAt     DateTime?
+  createdAtRf      DateTime?
+  raw              Json?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  client     Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  override   JobOverride?
+  placements Placement[]
+  interviews Interview[]
+
+  @@index([clientId])
+  @@index([isOpen])
+  @@index([title])
+}
+
+model Contact {
+  id                 String    @id @default(cuid())
+  legacyRfId         Int?      @unique // Phase 5: drop
+  firstName          String?
+  lastName           String?
+  name               String?
+  emails             String[]  @default([])
+  phoneNumbers       Json?
+  clientId           String?
+  currentDesignation String?
+  linkedinProfile    String?
+  leadOwner          Json?
+  addedAt            DateTime?
+  lastActivityAt     DateTime?
+  raw                Json?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  @@index([clientId])
+  @@index([name])
 }
