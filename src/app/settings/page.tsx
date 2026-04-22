@@ -49,22 +49,22 @@ export default async function SettingsPage() {
         description="Preferences and reusable email templates for submittals and candidate notifications."
       />
 
-      <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
         <div className="mb-4">
-          <h2 className="font-serif text-lg font-semibold text-navy">Court Mode</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <h2 className="font-serif text-lg font-semibold text-court-fg">Court Mode</h2>
+          <p className="mt-1 text-xs text-court-fg-muted">
             Pick the palette Ace renders with. Persists per browser via localStorage and flips
             instantly — no reload needed. Per-component theming lands surface by surface;
-            today only the selector mechanism is wired.
+            today only Settings consumes the court-* tokens.
           </p>
         </div>
         <CourtModeView />
       </section>
 
-      <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
         <div className="mb-4">
-          <h2 className="font-serif text-lg font-semibold text-navy">Preferences</h2>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <h2 className="font-serif text-lg font-semibold text-court-fg">Preferences</h2>
+          <p className="mt-1 text-xs text-court-fg-muted">
             Controls how Ace behaves around email delivery.
           </p>
         </div>
@@ -76,14 +76,14 @@ export default async function SettingsPage() {
         />
       </section>
 
-      <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-navy">Email templates</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Email templates</h2>
+            <p className="mt-1 text-xs text-court-fg-muted">
               Reusable subject + body you can drop into any email you send from Ace. Use the
-              {" "}<span className="rounded bg-muted px-1 py-0.5 text-[10px] font-semibold text-navy">Insert Field</span> picker in the editor to add merge fields like
-              {" "}<code className="rounded bg-muted px-1 py-0.5 text-[10px] text-navy">[Candidate First Name]</code>.
+              {" "}<span className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] font-semibold text-court-fg">Insert Field</span> picker in the editor to add merge fields like
+              {" "}<code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg">[Candidate First Name]</code>.
             </p>
           </div>
         </div>

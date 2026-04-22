@@ -36,6 +36,20 @@ const config: Config = {
           foreground: "#5B6476",
         },
         border: "#E5E8ED",
+        // Court Mode token namespace — values resolve from CSS variables
+        // defined in globals.css (:root / .dark / .grass). Any component
+        // using `bg-court-surface` / `text-court-fg` / etc. will re-skin
+        // when the Court Mode selector flips the <html> class.
+        court: {
+          surface: "rgb(var(--court-surface) / <alpha-value>)",
+          "surface-subtle": "rgb(var(--court-surface-subtle) / <alpha-value>)",
+          fg: "rgb(var(--court-fg) / <alpha-value>)",
+          "fg-muted": "rgb(var(--court-fg-muted) / <alpha-value>)",
+          border: "rgb(var(--court-border) / <alpha-value>)",
+          accent: "rgb(var(--court-accent) / <alpha-value>)",
+          "accent-dark": "rgb(var(--court-accent-dark) / <alpha-value>)",
+          "accent-tint": "rgb(var(--court-accent-tint) / <alpha-value>)",
+        },
       },
       fontFamily: {
         sans: ["var(--font-dm-sans)", "system-ui", "sans-serif"],

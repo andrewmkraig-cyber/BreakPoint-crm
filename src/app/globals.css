@@ -2,10 +2,81 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Court Mode tokens. Each block scopes CSS variables that Tailwind's
+  `bg-court-*` / `text-court-*` utilities (see tailwind.config.ts) pull from,
+  so flipping the class on <html> reskins every themed element in lockstep —
+  no component-level dark:/grass: overrides needed on surfaces that already
+  consume the court-* tokens.
+  Values are stored as `R G B` triples so Tailwind's <alpha-value> placeholder
+  still resolves for opacity utilities like `ring-court-accent/30`.
+  Scope is deliberately narrow right now: only Settings (/settings) uses
+  court-* utilities; adding dark/grass/hard variants to a new surface means
+  rewriting just that surface's color classes to court-*, then these tokens
+  flip for free.
+*/
+:root {
+  /* Hard Court — default white/navy palette, matches the existing theme. */
+  --court-surface:        255 255 255;
+  --court-surface-subtle: 244 246 248;
+  --court-fg:              15  27  45;
+  --court-fg-muted:        91 100 118;
+  --court-border:         229 232 237;
+  --court-accent:          90 150  66;
+  --court-accent-dark:     63 112  48;
+  --court-accent-tint:    234 244 228;
+}
+
+/* Selectors are tightened to `html.dark` / `html.grass` so it's
+   unambiguous that these variables are scoped to the root element. Plain
+   `.dark` / `.grass` would match any element with that class — which in
+   practice is only the html element today, but the explicit form is
+   safer against future stray class use and makes DevTools inspection
+   obvious: `<html class="dark ...">` lights up these rules. */
+html.dark {
+  /* Clay Court — dark slate surfaces, light text. accent-dark lightens to
+     stay readable on dark backgrounds. */
+  --court-surface:         15  23  42;
+  --court-surface-subtle:  30  41  59;
+  --court-fg:             241 245 249;
+  --court-fg-muted:       148 163 184;
+  --court-border:          51  65  85;
+  --court-accent:          90 150  66;
+  --court-accent-dark:    139 192 105;
+  --court-accent-tint:     45  58  79;
+}
+
+html.grass {
+  /* Grass Court — BreakPoint greens end-to-end. accent-dark lifts to cream-
+     green for legibility on the dark grass surface. */
+  --court-surface:         26  46  26;
+  --court-surface-subtle:  45  74  45;
+  --court-fg:             234 244 228;
+  --court-fg-muted:       152 179 144;
+  --court-border:          60  90  60;
+  --court-accent:          90 150  66;
+  --court-accent-dark:    183 214 160;
+  --court-accent-tint:     45  74  45;
+}
+
 @layer base {
+  /* Hard Court body stays on the legacy Tailwind tokens (bg-background = white,
+     text-foreground = navy). Clay + Grass ride higher-specificity html.*
+     selectors so they override the @apply'd values whenever the court mode
+     class is on <html>. Using hex literals here (rather than var()) keeps
+     these rules standalone — they keep working even on pages that never
+     load the Tailwind theme, and they match the exact palette in the spec. */
   html,
   body {
     @apply bg-background text-foreground antialiased;
+  }
+  html.dark body {
+    background-color: #0f172a;
+    color: #f1f5f9;
+  }
+  html.grass body {
+    background-color: #1a2e1a;
+    color: #EAF4E4;
   }
 
   h1,

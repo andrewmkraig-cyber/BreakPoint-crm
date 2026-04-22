@@ -66,11 +66,11 @@ export function PreferencesView({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
         <label className="flex items-start justify-between gap-4">
           <div>
-            <div className="text-sm font-semibold text-navy">Auto-send candidate confirmation after submittal</div>
-            <div className="mt-1 text-xs text-muted-foreground">
+            <div className="text-sm font-semibold text-court-fg">Auto-send candidate confirmation after submittal</div>
+            <div className="mt-1 text-xs text-court-fg-muted">
               When on, the &quot;BreakPoint Talent has reviewed…&quot; email is sent immediately after a successful client
               submittal. When off, it lands in your Gmail Drafts for review.
             </div>
@@ -83,7 +83,12 @@ export function PreferencesView({
             disabled={isTogglePending}
             className={cn(
               "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-              enabled ? "bg-brand" : "bg-muted-foreground/30",
+              // `bg-brand` on the ON state stays the BreakPoint green in
+              // every mode (intentional — the brand color is consistent).
+              // OFF state swaps `bg-muted-foreground/30` for a mode-aware
+              // `bg-court-fg-muted/40` so the track reads against the
+              // themed card background in Clay / Grass.
+              enabled ? "bg-brand" : "bg-court-fg-muted/40",
               isTogglePending && "opacity-60",
             )}
           >
@@ -97,18 +102,18 @@ export function PreferencesView({
         </label>
       </div>
 
-      <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
         <div className="flex items-end justify-between gap-4">
           <label className="flex-1">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Your phone number</span>
-            <div className="mt-1 text-xs text-muted-foreground">
-              Populates <code className="rounded bg-muted px-1 py-0.5 text-[10px]">[Recruiter Phone]</code> in templates when you send. Signed in as {myEmail}.
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Your phone number</span>
+            <div className="mt-1 text-xs text-court-fg-muted">
+              Populates <code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg">[Recruiter Phone]</code> in templates when you send. Signed in as {myEmail}.
             </div>
             <input
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="216-488-5565"
-              className="mt-2 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              className="mt-2 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20"
             />
           </label>
           <button
@@ -122,10 +127,10 @@ export function PreferencesView({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-white p-4 shadow-sm">
+      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
         <div className="mb-2">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Email signature</div>
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email signature</div>
+          <div className="mt-1 text-xs text-court-fg-muted">
             Auto-appended to every email sent from Ace — submittals, rejections, candidate confirmations, reference
             requests, manual emails. Don&apos;t paste a signature inside a template body or you&apos;ll duplicate.
           </div>
@@ -134,7 +139,7 @@ export function PreferencesView({
           value={signature}
           onChange={(e) => setSignature(e.target.value)}
           rows={6}
-          className="mt-2 w-full resize-vertical whitespace-pre-wrap rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-2 w-full resize-vertical whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20"
         />
         <div className="mt-2 flex items-center justify-end gap-2">
           <button

@@ -49,29 +49,41 @@ export function CourtModeView() {
             type="button"
             onClick={() => setMode(opt.value)}
             aria-pressed={active}
+            // Both active and inactive carry `border-2` so selecting a card
+            // doesn't shift the grid by 1px as the border widens; the
+            // difference is color + background tint, not thickness.
             className={cn(
-              "flex flex-col items-start gap-2 rounded-xl border bg-white px-4 py-3 text-left shadow-sm transition",
+              "flex flex-col items-start gap-2 rounded-xl border-2 px-4 py-3 text-left shadow-sm transition",
               active
-                ? "border-brand ring-2 ring-brand/30"
-                : "border-border hover:border-brand/40",
+                ? "border-court-accent bg-court-accent-tint"
+                : "border-court-border bg-court-surface hover:border-court-accent/40",
             )}
           >
             <div className="flex w-full items-center justify-between">
-              <span className="font-serif text-sm font-semibold text-navy">{opt.label}</span>
+              <span className="font-serif text-sm font-semibold text-court-fg">{opt.label}</span>
+              {/* Swatch color is a fixed preview of the three modes, so it
+                  intentionally stays on inline hex regardless of the active
+                  theme — that's the whole point of a preview tile. */}
               <span
                 aria-hidden="true"
-                className="inline-block h-4 w-4 rounded-full border border-border/70 shadow-inner"
+                className="inline-block h-4 w-4 rounded-full border border-court-border/70 shadow-inner"
                 style={{ backgroundColor: opt.swatch }}
               />
             </div>
-            <p className="text-xs text-muted-foreground">{opt.description}</p>
+            <p className="text-xs text-court-fg-muted">{opt.description}</p>
             <span
               className={cn(
-                "mt-1 text-[10px] font-semibold uppercase tracking-wider",
-                active ? "text-brand-dark" : "text-muted-foreground",
+                "mt-1 text-[10px] uppercase tracking-wider",
+                // ACTIVE goes bold + mode-aware accent green. In Hard that
+                // renders as the brand-dark (#3F7030); Clay lifts to
+                // #8BC069; Grass lifts further to #B7D6A0 so it stays
+                // readable on the dark-green tint background.
+                active
+                  ? "font-bold text-court-accent-dark"
+                  : "font-semibold text-court-fg-muted",
               )}
             >
-              {active ? "Active" : "Select"}
+              {active ? "ACTIVE" : "Select"}
             </span>
           </button>
         );

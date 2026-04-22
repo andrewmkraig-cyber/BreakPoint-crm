@@ -53,30 +53,61 @@ function readStoredMode(): CourtMode {
   return "hard";
 }
 
-// Swap the managed classes on <html>. Kept in a separate fn so the inline
-// pre-hydration script in layout.tsx can share the exact logic if we inline
-// it there later to kill the first-paint flash.
+// Swap the managed classes on <html>. Also stamps a `data-court-mode`
+// attribute so DevTools inspection is unambiguous: a Clay-mode <html> reads
+// `<html class="… dark" data-court-mode="clay">` — no guessing whether
+// some other `.dark` class elsewhere is responsible.
 function applyModeToHtml(mode: CourtMode) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
   for (const cls of MANAGED_CLASSES) root.classList.remove(cls);
   if (mode === "clay") root.classList.add("dark");
   else if (mode === "grass") root.classList.add("grass");
+  root.setAttribute("data-court-mode", mode);
 }
 
 export function CourtModeProvider({ children }: { children: ReactNode }) {
-  // Seed with "hard" so server-render and first client render agree. We
-  // reconcile to the real stored value in the useEffect below. If a
-  // pre-hydration script (injected by layout.tsx) already flipped the class,
-  // this provider's effect will confirm + keep it in sync with state.
+  // Seed with "hard" so the server-rendered HTML matches the first client
+  // render (no hydration mismatch). The real stored value lands via the
+  // hydration effect below, which then drives the DOM-sync effect.
   const [mode, setModeState] = useState<CourtMode>("hard");
+  // Gate on hydration so the first render doesn't clobber the class that
+  // the pre-hydration script already stamped onto <html>. Without this, the
+  // mount-time "hard" state would briefly reset .dark / .grass before
+  // useEffect could read localStorage and put it back — a visible flash.
+  const [hydrated, setHydrated] = useState(false);
 
+  // Mount-only: pull the persisted mode and hand control to the sync
+  // effect below.
   useEffect(() => {
-    const stored = readStoredMode();
-    setModeState(stored);
-    applyModeToHtml(stored);
+    setModeState(readStoredMode());
+    setHydrated(true);
   }, []);
 
+  // Reconciliation effect: runs whenever state changes post-hydration. The
+  // click handler also mutates the DOM directly (see setMode below), so this
+  // is defense-in-depth — ensures the DOM stays in sync even if effects are
+  // ever skipped or batched oddly.
+  useEffect(() => {
+    if (!hydrated) return;
+    applyModeToHtml(mode);
+    try {
+      window.localStorage.setItem(STORAGE_KEY, mode);
+    } catch {
+      // Storage disabled — in-memory state is still correct for this session.
+    }
+  }, [hydrated, mode]);
+
+  // Click handler: mutate state AND mutate the DOM + storage synchronously.
+  // Earlier this function only called setModeState, relying on the effect
+  // above to reflect it to the DOM. That's correct in principle, but it
+  // routes a click-time side-effect through React's scheduler, and any
+  // weirdness there (Strict Mode double-invoke, batched state updates that
+  // fire effects out of order, an early-returning effect that missed a
+  // prior render) silently swallows the visual change. Doing the DOM mutate
+  // here as well is idempotent — the reconciliation effect will no-op on
+  // re-apply — and makes clicks unconditionally produce a <html> class
+  // change, which is what the Court Mode selector is meant to do.
   const setMode = useCallback((next: CourtMode) => {
     setModeState(next);
     applyModeToHtml(next);
@@ -107,5 +138,5 @@ export function useCourtMode(): CourtModeContextShape {
 // unthemed content. Exported as a string so layout.tsx can drop it into
 // a <script dangerouslySetInnerHTML> right at the top of <body>.
 export const COURT_MODE_PRE_HYDRATION_SCRIPT = `
-(function(){try{var m=localStorage.getItem(${JSON.stringify(STORAGE_KEY)});if(m==="clay"){document.documentElement.classList.add("dark");}else if(m==="grass"){document.documentElement.classList.add("grass");}}catch(e){}})();
+(function(){try{var m=localStorage.getItem(${JSON.stringify(STORAGE_KEY)});var r=document.documentElement;if(m==="clay"){r.classList.add("dark");r.setAttribute("data-court-mode","clay");}else if(m==="grass"){r.classList.add("grass");r.setAttribute("data-court-mode","grass");}else{r.setAttribute("data-court-mode","hard");}}catch(e){}})();
 `.trim();
