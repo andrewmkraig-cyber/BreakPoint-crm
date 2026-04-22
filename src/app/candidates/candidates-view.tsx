@@ -41,22 +41,27 @@ export function CandidatesView({
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-muted-foreground">
+      <div className="text-xs text-court-fg-muted">
         {candidates.length === 0
           ? "No candidates"
           : `${candidates.length.toLocaleString()} candidate${candidates.length === 1 ? "" : "s"}${initialQuery ? ` matching "${initialQuery}"` : ""}`}
       </div>
       <form
         onSubmit={onSubmit}
-        className="flex flex-col gap-2 rounded-xl border border-border bg-white p-3 shadow-sm md:flex-row md:items-center"
+        className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
       >
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search by name, title, employer, location…"
-            className="w-full rounded-lg border border-transparent bg-muted py-2 pl-10 pr-3 text-sm text-navy placeholder:text-muted-foreground focus:border-brand focus:bg-white focus:outline-none"
+            // Focus state lifts the input background from surface-subtle to
+            // surface — in Hard that's bg-muted → bg-white (the legacy
+            // behaviour); in Clay / Grass it's a subtle step from the
+            // slightly-lighter surface-subtle down to the deeper surface,
+            // which still reads as "focused" against the card body.
+            className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-court-surface focus:outline-none"
           />
         </div>
         <button
@@ -67,6 +72,8 @@ export function CandidatesView({
         </button>
       </form>
 
+      {/* Error panel keeps red semantics in all three modes — destructive /
+          error cues stay red regardless of the active palette. */}
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <div className="font-semibold">Couldn&apos;t load candidates.</div>
@@ -74,9 +81,9 @@ export function CandidatesView({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+          <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <tr>
               <th className="px-5 py-3 font-medium">Name</th>
               <th className="px-5 py-3 font-medium">Current Title</th>
@@ -85,10 +92,10 @@ export function CandidatesView({
               <th className="px-5 py-3 font-medium">Last Updated</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border">
+          <tbody className="divide-y divide-court-border">
             {candidates.length === 0 && !error && (
               <tr>
-                <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
                   No candidates{initialQuery ? ` match "${initialQuery}"` : ""}.
                 </td>
               </tr>
@@ -96,22 +103,22 @@ export function CandidatesView({
             {candidates.map((c) => (
               <tr
                 key={c.id}
-                className="cursor-pointer transition hover:bg-brand-tint/40"
+                className="cursor-pointer transition hover:bg-court-accent-tint/40"
                 onClick={() => router.push(`/candidates/${c.id}`)}
               >
-                <td className="px-5 py-3 font-medium text-navy">
+                <td className="px-5 py-3 font-medium text-court-fg">
                   <Link
                     href={`/candidates/${c.id}`}
-                    className="hover:text-brand-dark"
+                    className="hover:text-court-accent-dark"
                     onClick={(e) => e.stopPropagation()}
                   >
                     {c.name}
                   </Link>
                 </td>
-                <td className="px-5 py-3 text-navy-400">{c.title || "—"}</td>
-                <td className="px-5 py-3 text-navy-400">{c.employer || "—"}</td>
-                <td className="px-5 py-3 text-navy-400">{c.location || "—"}</td>
-                <td className="px-5 py-3 text-navy-400">
+                <td className="px-5 py-3 text-court-fg-muted">{c.title || "—"}</td>
+                <td className="px-5 py-3 text-court-fg-muted">{c.employer || "—"}</td>
+                <td className="px-5 py-3 text-court-fg-muted">{c.location || "—"}</td>
+                <td className="px-5 py-3 text-court-fg-muted">
                   {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "—"}
                 </td>
               </tr>
