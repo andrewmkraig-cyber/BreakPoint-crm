@@ -64,7 +64,7 @@ export function TextingExchanges({ candidateId }: { candidateId: string }) {
   }, [open, fetchMessages]);
 
   return (
-    <section className="rounded-xl border border-border bg-white shadow-sm">
+    <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -72,28 +72,28 @@ export function TextingExchanges({ candidateId }: { candidateId: string }) {
         aria-expanded={open}
       >
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-muted-foreground" />
-          <h2 className="font-serif text-base font-semibold text-navy">Texting Exchanges</h2>
+          <MessageSquare className="h-4 w-4 text-court-fg-muted" />
+          <h2 className="font-serif text-base font-semibold text-court-fg">Texting Exchanges</h2>
           {loaded && messages.length > 0 && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-navy-400">
+            <span className="rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-semibold text-court-fg-muted">
               {messages.length}
             </span>
           )}
         </div>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
+            "h-4 w-4 text-court-fg-muted transition-transform",
             open && "rotate-180",
           )}
         />
       </button>
 
       {open && (
-        <div className="border-t border-border p-4">
+        <div className="border-t border-court-border p-4">
           {!loaded ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">Loading messages…</div>
+            <div className="py-6 text-center text-sm text-court-fg-muted">Loading messages…</div>
           ) : messages.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">No messages yet</div>
+            <div className="py-6 text-center text-sm text-court-fg-muted">No messages yet</div>
           ) : (
             <ul className="space-y-3">
               {messages.map((m) => {
@@ -108,13 +108,13 @@ export function TextingExchanges({ candidateId }: { candidateId: string }) {
                         "max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm",
                         outbound
                           ? "bg-emerald-600 text-white"
-                          : "bg-muted text-navy",
+                          : "bg-court-surface-subtle text-court-fg",
                         m.status === "failed" && outbound && "bg-red-500",
                       )}
                     >
                       {m.body}
                     </div>
-                    <div className="mt-1 text-[10px] text-muted-foreground">
+                    <div className="mt-1 text-[10px] text-court-fg-muted">
                       {formatTs(m.createdAt)}
                       {m.status === "failed" && outbound && (
                         <span className="ml-1 font-semibold text-red-700">· failed</span>

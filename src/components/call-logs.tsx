@@ -79,7 +79,7 @@ export function CallLogs({ candidateId }: { candidateId: string }) {
   }, [open, fetchLogs]);
 
   return (
-    <section className="rounded-xl border border-border bg-white shadow-sm">
+    <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -87,28 +87,28 @@ export function CallLogs({ candidateId }: { candidateId: string }) {
         aria-expanded={open}
       >
         <div className="flex items-center gap-2">
-          <Phone className="h-4 w-4 text-muted-foreground" />
-          <h2 className="font-serif text-base font-semibold text-navy">Call Logs</h2>
+          <Phone className="h-4 w-4 text-court-fg-muted" />
+          <h2 className="font-serif text-base font-semibold text-court-fg">Call Logs</h2>
           {loaded && logs.length > 0 && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-navy-400">
+            <span className="rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-semibold text-court-fg-muted">
               {logs.length}
             </span>
           )}
         </div>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-muted-foreground transition-transform",
+            "h-4 w-4 text-court-fg-muted transition-transform",
             open && "rotate-180",
           )}
         />
       </button>
 
       {open && (
-        <div className="border-t border-border p-4">
+        <div className="border-t border-court-border p-4">
           {!loaded ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">Loading calls…</div>
+            <div className="py-6 text-center text-sm text-court-fg-muted">Loading calls…</div>
           ) : logs.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">No calls logged yet</div>
+            <div className="py-6 text-center text-sm text-court-fg-muted">No calls logged yet</div>
           ) : (
             <ul className="divide-y divide-border">
               {logs.map((row) => (
@@ -179,7 +179,7 @@ function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }
             <div
               className={cn(
                 "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                outbound ? "bg-emerald-50 text-emerald-700" : "bg-muted text-navy-400",
+                outbound ? "bg-emerald-50 text-emerald-700" : "bg-court-surface-subtle text-court-fg-muted",
               )}
               title={directionLabel}
               aria-label={directionLabel}
@@ -188,12 +188,12 @@ function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-semibold text-navy">{directionLabel}</span>
+                <span className="font-semibold text-court-fg">{directionLabel}</span>
                 {counterpartNumber && (
-                  <span className="text-xs text-muted-foreground">· {counterpartNumber}</span>
+                  <span className="text-xs text-court-fg-muted">· {counterpartNumber}</span>
                 )}
               </div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
+              <div className="mt-0.5 text-[11px] text-court-fg-muted">
                 {formatTs(row.createdAt)}
                 {row.duration != null && <span className="ml-2">· {formatDuration(row.duration)}</span>}
               </div>
@@ -220,7 +220,7 @@ function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }
           <button
             type="button"
             onClick={() => setTranscriptModalOpen(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
           >
             <FileText className="h-3 w-3" />
             {hasTranscript ? "Edit Transcript" : "Paste Transcript"}
@@ -239,7 +239,7 @@ function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }
         </div>
 
         {currentSummary && (
-          <div className="ml-10 rounded-lg border border-brand/20 bg-brand-tint/20 px-3 py-2 text-xs text-navy whitespace-pre-wrap">
+          <div className="ml-10 rounded-lg border border-brand/20 bg-brand-tint/20 px-3 py-2 text-xs text-court-fg whitespace-pre-wrap">
             <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
               <Sparkles className="h-2.5 w-2.5" /> Summary
             </div>
@@ -311,11 +311,11 @@ function TranscriptModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" role="dialog" aria-modal="true">
-      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl">
-        <div className="flex items-start justify-between border-b border-border px-5 py-3">
+      <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
+        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
           <div>
-            <h3 className="font-serif text-base font-semibold text-navy">Paste call transcript</h3>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">
+            <h3 className="font-serif text-base font-semibold text-court-fg">Paste call transcript</h3>
+            <p className="mt-0.5 text-[11px] text-court-fg-muted">
               Save verbatim text; Claude will summarize on demand via Generate Summary.
             </p>
           </div>
@@ -323,7 +323,7 @@ function TranscriptModal({
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
+            className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle disabled:opacity-60"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -335,18 +335,18 @@ function TranscriptModal({
             onChange={(e) => setText(e.target.value)}
             rows={14}
             placeholder="Paste the transcript here…"
-            className="w-full flex-1 resize-y rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="w-full flex-1 resize-y rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{error}</div>
           )}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-court-border bg-court-surface-subtle/40 px-5 py-3">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             Cancel
           </button>
@@ -373,7 +373,7 @@ function StatusPill({ status }: { status: string }) {
         ? "bg-red-50 text-red-700"
         : status === "initiated" || status === "in_progress"
           ? "bg-amber-50 text-amber-700"
-          : "bg-muted text-navy-400";
+          : "bg-court-surface-subtle text-court-fg-muted";
   return (
     <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider", tone)}>
       {status}

@@ -108,12 +108,12 @@ export function EditableResume({
   const canRedact = resume?.mimeType === "application/pdf";
 
   return (
-    <div className="rounded-xl border border-border bg-white shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3">
+    <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-court-border px-5 py-3">
         <div className="min-w-0">
-          <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
+          <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
           {resume && (
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="truncate text-xs text-court-fg-muted">
               {resume.filename}
               {resume.sizeBytes > 0 && ` · ${formatBytes(resume.sizeBytes)}`}
               {resume.uploadedAt && ` · uploaded ${new Date(resume.uploadedAt).toLocaleDateString()}`}
@@ -127,7 +127,7 @@ export function EditableResume({
                 type="button"
                 onClick={() => setRedactorOpen(true)}
                 disabled={isUploading || isPending}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy disabled:opacity-60"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
               >
                 <Edit3 className="h-3 w-3" /> Edit Resume
               </button>
@@ -136,7 +136,7 @@ export function EditableResume({
               <button
                 type="button"
                 onClick={() => setShowRedacted((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
                 title="Toggle between original and redacted version"
               >
                 {showRedacted ? "Viewing redacted" : "Viewing original"}
@@ -144,7 +144,7 @@ export function EditableResume({
             )}
             <Link
               href={downloadUrl}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
             >
               <Download className="h-3 w-3" /> Download
             </Link>
@@ -160,7 +160,7 @@ export function EditableResume({
               type="button"
               onClick={onDelete}
               disabled={isUploading || isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30 disabled:opacity-60"
             >
               {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
             </button>
@@ -171,7 +171,7 @@ export function EditableResume({
             type="button"
             onClick={() => setReplacing(false)}
             disabled={isUploading}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             Cancel
           </button>
@@ -208,11 +208,11 @@ export function EditableResume({
               {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
               Upload Resume
             </button>
-            <span className="text-[11px] text-muted-foreground">or drag and drop a file above.</span>
+            <span className="text-[11px] text-court-fg-muted">or drag and drop a file above.</span>
           </div>
           {replacing && resume && (
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              Current resume: <span className="font-medium text-navy">{resume.filename}</span>. Drop a new file
+            <p className="mt-3 text-[11px] text-court-fg-muted">
+              Current resume: <span className="font-medium text-court-fg">{resume.filename}</span>. Drop a new file
               to replace it — the existing resume will be overwritten.
             </p>
           )}
@@ -226,8 +226,8 @@ export function EditableResume({
               className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
             />
           ) : (
-            <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-border bg-muted/20 text-sm text-muted-foreground">
-              <FileText className="h-6 w-6 text-muted-foreground" />
+            <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">
+              <FileText className="h-6 w-6 text-court-fg-muted" />
               {resume?.filename ?? "No resume on file."}
               {resume && (
                 <Link href={downloadUrl} className="text-brand-dark hover:underline">

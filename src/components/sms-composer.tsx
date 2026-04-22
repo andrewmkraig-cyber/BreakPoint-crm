@@ -53,9 +53,9 @@ export function SmsComposer({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white shadow-sm">
-      <div className="border-b border-border px-4 py-2">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="border-b border-court-border px-4 py-2">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Text this candidate
         </h3>
       </div>
@@ -78,7 +78,7 @@ export function SmsComposer({
             }}
             placeholder={toNumber ? "Type a text…" : "No phone on file"}
             disabled={!toNumber || sending}
-            className="flex-1 rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-muted/40"
+            className="flex-1 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-court-surface-subtle/60"
           />
           <button
             type="button"

@@ -392,7 +392,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   return (
     <CandidateProfileBoundary>
     <div className="space-y-6">
-      <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
+      <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
 
@@ -408,7 +408,7 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
               </span>
             )}
             {displayTags.slice(0, 3).map((t) => (
-              <span key={t} className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-navy-400">
+              <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
                 {t}
               </span>
             ))}

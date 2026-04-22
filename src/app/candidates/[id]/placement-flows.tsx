@@ -301,14 +301,14 @@ export function PlacementActions({
   return (
     <>
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Jobs ({jobs.length})
         </div>
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onRequestReferences}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
           >
             <UserCheck className="h-3.5 w-3.5" />
             Request References
@@ -316,7 +316,7 @@ export function PlacementActions({
           <button
             type="button"
             onClick={() => setApplyOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
           >
             <Plus className="h-3.5 w-3.5" /> Apply to Job
           </button>
@@ -331,7 +331,7 @@ export function PlacementActions({
       </div>
 
       {jobs.length === 0 && (
-        <div className="rounded-xl border border-dashed border-border bg-muted/30 px-5 py-4 text-xs text-muted-foreground">
+        <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/40 px-5 py-4 text-xs text-court-fg-muted">
           No jobs linked to this candidate yet — click <span className="font-semibold">Submit to Job</span> to add one.
         </div>
       )}
@@ -599,16 +599,16 @@ function JobActionRow({
   const badgeSuffix = badgeSuffixFor(effective, job);
 
   return (
-    <div className="space-y-2 rounded-xl border border-border bg-white p-4 shadow-sm">
+    <div className="space-y-2 rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-sm font-semibold text-navy">
-              <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-court-fg">
+              <Briefcase className="h-3.5 w-3.5 text-court-fg-muted" />
               <span className="truncate">{job.jobTitle}</span>
             </div>
             {job.clientName && (
-              <div className="mt-0.5 pl-[1.375rem] text-xs text-muted-foreground">{job.clientName}</div>
+              <div className="mt-0.5 pl-[1.375rem] text-xs text-court-fg-muted">{job.clientName}</div>
             )}
             {isCancelled && job.placement?.cancellationReason && (
               <div className="mt-0.5 pl-[1.375rem] text-[11px] text-red-700">
@@ -706,7 +706,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={isPending}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
       >
         {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
         Actions
@@ -718,7 +718,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
               this, the click bubbled up to the backdrop's onClose and
               the whole dialog unmounted (taking any state with it). */}
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-[70] mt-1 w-60 overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          <div className="absolute right-0 z-[70] mt-1 w-60 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="py-1 text-sm">
               <li>
                 <button
@@ -728,7 +728,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                       reapplyCancelledPlacement({ placementId }),
                     )
                   }
-                  className="block w-full px-3 py-2 text-left text-navy hover:bg-brand-tint"
+                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-brand-tint"
                 >
                   Reapply (move to Submitted)
                 </button>
@@ -741,7 +741,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                       moveCancelledToAceStage({ placementId, target: "sourced" }),
                     )
                   }
-                  className="block w-full px-3 py-2 text-left text-navy hover:bg-brand-tint"
+                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-brand-tint"
                 >
                   Move to Sourced
                 </button>
@@ -754,7 +754,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                       moveCancelledToAceStage({ placementId, target: "applied" }),
                     )
                   }
-                  className="block w-full px-3 py-2 text-left text-navy hover:bg-brand-tint"
+                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-brand-tint"
                 >
                   Move to Applied
                 </button>
@@ -771,7 +771,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                       removeCancelledFromJob({ placementId }),
                     );
                   }}
-                  className="block w-full border-t border-border px-3 py-2 text-left text-red-700 hover:bg-red-50"
+                  className="block w-full border-t border-court-border px-3 py-2 text-left text-red-700 hover:bg-red-50"
                 >
                   Remove from Job
                 </button>
@@ -926,16 +926,16 @@ function OfferDialog({
           <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
         </div>
       </div>
-      <label className="mt-4 flex items-start gap-2 rounded-lg border border-border bg-muted/40 p-3 text-xs">
+      <label className="mt-4 flex items-start gap-2 rounded-lg border border-court-border bg-court-surface-subtle/60 p-3 text-xs">
         <input
           type="checkbox"
           checked={accepted}
           onChange={(e) => setAccepted(e.target.checked)}
-          className="mt-0.5 h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+          className="mt-0.5 h-3.5 w-3.5 rounded border-court-border text-brand focus:ring-brand/30"
         />
         <span>
-          <span className="font-semibold text-navy">Candidate accepted this offer</span>
-          <span className="block text-muted-foreground">
+          <span className="font-semibold text-court-fg">Candidate accepted this offer</span>
+          <span className="block text-court-fg-muted">
             When checked, sending saves the offer and auto-emails the client (CC the candidate) using your
             Offer Acceptance template with [Offer Amount] and [Start Date] filled in.
           </span>
@@ -1169,38 +1169,38 @@ function PlacementDialog({
         <LabeledField label="Expected start date" type="date" value={startDate} onChange={setStartDate} />
       </div>
 
-      <div className="mt-4 rounded-lg border border-border bg-muted/30 p-3">
-        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+      <div className="mt-4 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3">
+        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           {usedOverride ? "Fee (flat override)" : "Calculated fee"}
         </div>
-        <div className="mt-1 font-serif text-2xl font-semibold text-navy">
+        <div className="mt-1 font-serif text-2xl font-semibold text-court-fg">
           {formatMoney(feeTotal, acceptedCurrency)}
           {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
           {usedOverride && <span className="ml-2 text-xs text-brand-dark">(flat override)</span>}
         </div>
         {usedOverride ? (
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="mt-1 text-xs text-court-fg-muted">
             Flat-fee amount; salary × fee % calc is ignored while this is set.
           </div>
         ) : salaryNum && pctNum ? (
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="mt-1 text-xs text-court-fg-muted">
             {formatMoney(salaryNum, acceptedCurrency)} × {pctNum}% = {formatMoney(rawFee, acceptedCurrency)}
           </div>
         ) : (
-          <div className="mt-1 text-xs text-muted-foreground">
+          <div className="mt-1 text-xs text-court-fg-muted">
             Enter salary + fee % to calculate, or type a flat fee amount above.
           </div>
         )}
       </div>
 
       <div className="mt-5 flex items-end justify-between gap-3">
-        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Billing contacts
         </h3>
         <button
           type="button"
           onClick={addContactRow}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
         >
           <Plus className="h-3 w-3" /> Add Contact
         </button>
@@ -1209,17 +1209,17 @@ function PlacementDialog({
         {billingContacts.map((row) => (
           <div
             key={row.key}
-            className="grid grid-cols-1 items-end gap-2 rounded-lg border border-border bg-muted/20 p-3 sm:grid-cols-[1fr_1fr_auto]"
+            className="grid grid-cols-1 items-end gap-2 rounded-lg border border-court-border bg-court-surface-subtle/30 p-3 sm:grid-cols-[1fr_1fr_auto]"
           >
             <div>
-              <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Name</label>
+              <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Name</label>
               <input
                 type="text"
                 value={row.name}
                 onChange={(e) => setContactField(row.key, "name", e.target.value)}
                 placeholder="Contact name"
                 list={`billing-contact-suggestions-${row.key}`}
-                className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               />
               {/* Native datalist mirrors the candidate's known client contacts
                   so typing offers quick-fill. Picking via onChange of a
@@ -1238,7 +1238,7 @@ function PlacementDialog({
                       key={c.id}
                       type="button"
                       onClick={() => pickKnownContact(row.key, String(c.id))}
-                      className="rounded-full border border-border bg-white px-2 py-0.5 text-[10px] text-navy-400 transition hover:border-brand/40 hover:text-navy"
+                      className="rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[10px] text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
                       title={`Fill from ${c.name}`}
                     >
                       {c.name.split(/\s+/)[0]}
@@ -1248,19 +1248,19 @@ function PlacementDialog({
               )}
             </div>
             <div>
-              <label className="text-[11px] uppercase tracking-wider text-muted-foreground">Email</label>
+              <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email</label>
               <input
                 type="email"
                 value={row.email}
                 onChange={(e) => setContactField(row.key, "email", e.target.value)}
                 placeholder="name@client.com"
-                className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               />
             </div>
             <button
               type="button"
               onClick={() => removeContactRow(row.key)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-white text-muted-foreground transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
               title="Remove this contact"
               aria-label="Remove contact"
             >
@@ -1269,7 +1269,7 @@ function PlacementDialog({
           </div>
         ))}
       </div>
-      <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Hiring manager</h3>
+      <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">Hiring manager</h3>
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <LabeledField label="Name" value={hiringName} onChange={setHiringName} />
         <LabeledField label="Email" type="email" value={hiringEmail} onChange={setHiringEmail} />
@@ -1426,7 +1426,7 @@ function ConfirmStartDialog({
 
   return (
     <Modal title="Confirm start" subtitle={jobTitle} onClose={onClose}>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-court-fg-muted">
         Upload a screenshot of the start confirmation (email, portal, HR tool). This seals the placement and flags it
         for invoicing.
       </p>
@@ -1445,15 +1445,15 @@ function ConfirmStartDialog({
         onDragLeave={onDragLeave}
         onDrop={onDrop}
         className={cn(
-          "mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border bg-muted/30 px-6 py-8 text-center transition hover:border-brand/40 hover:bg-brand-tint/20",
+          "mt-3 flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-court-border bg-court-surface-subtle/40 px-6 py-8 text-center transition hover:border-brand/40 hover:bg-brand-tint/20",
           (file || dragActive) && "border-brand/40 bg-brand-tint/20",
         )}
       >
-        <UploadCloud className="h-5 w-5 text-muted-foreground" />
-        <div className="text-sm font-semibold text-navy">
+        <UploadCloud className="h-5 w-5 text-court-fg-muted" />
+        <div className="text-sm font-semibold text-court-fg">
           {file ? file.name : dragActive ? "Drop screenshot here" : "Click or drag a screenshot here"}
         </div>
-        <div className="text-xs text-muted-foreground">PNG / JPG up to 4MB</div>
+        <div className="text-xs text-court-fg-muted">PNG / JPG up to 4MB</div>
         <input
           ref={inputRef}
           type="file"
@@ -1463,7 +1463,7 @@ function ConfirmStartDialog({
         />
       </div>
       {previewUrl && (
-        <div className="mt-3 overflow-hidden rounded-lg border border-border bg-white">
+        <div className="mt-3 overflow-hidden rounded-lg border border-court-border bg-court-surface">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={previewUrl} alt="Start confirmation preview" className="max-h-64 w-full object-contain" />
         </div>
@@ -1476,8 +1476,8 @@ function ConfirmStartDialog({
           outlined so it reads as secondary navigation, not a destructive
           button. Closes Confirm and hands off to the parent, which opens
           the pre-filled PlacementDialog for the same (candidate, job). */}
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
-        <span className="text-muted-foreground">
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs">
+        <span className="text-court-fg-muted">
           Need to fix the fee, start date, or billing contacts first?
         </span>
         <button
@@ -1487,7 +1487,7 @@ function ConfirmStartDialog({
             onEditPlacement();
           }}
           disabled={isPending}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
         >
           <Edit3 className="h-3 w-3" /> Edit Placement
         </button>
@@ -1596,7 +1596,7 @@ function ScheduleInterviewDialog({
       <div className="grid grid-cols-1 gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-2">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
             <DateTime15Picker
               value={scheduledAt}
               onChange={setScheduledAt}
@@ -1606,11 +1606,11 @@ function ScheduleInterviewDialog({
           <DurationSelect value={durationMin} onChange={setDurationMin} />
         </div>
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
           <select
             value={type}
             onChange={(e) => setType(e.target.value as InterviewType)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             <option value="phone_screen">Phone Screen</option>
             <option value="video">Video (Google Meet)</option>
@@ -1619,15 +1619,15 @@ function ScheduleInterviewDialog({
         </label>
         {type === "in_person" && (
           <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Address</span>
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Address</span>
             <input
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             />
-            <span className="mt-1 block text-[11px] text-muted-foreground">
+            <span className="mt-1 block text-[11px] text-court-fg-muted">
               Appears in the calendar invite with a Map link.
             </span>
           </label>
@@ -1738,24 +1738,24 @@ function ClientInviteDialog({
       subtitle={`${job.jobTitle} · ${job.clientName}`}
       onClose={onClose}
     >
-      <p className="mb-3 text-xs text-muted-foreground">
+      <p className="mb-3 text-xs text-court-fg-muted">
         Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
         log it for tracking and drop it on your calendar — no invite is sent to the candidate or client.
       </p>
       <div className="grid grid-cols-1 gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-2">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
             <DateTime15Picker value={scheduledAt} onChange={setScheduledAt} className="mt-1" />
           </label>
           <DurationSelect value={durationMin} onChange={setDurationMin} />
         </div>
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
           <select
             value={type}
             onChange={(e) => setType(e.target.value as InterviewType)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             <option value="phone_screen">Phone Screen</option>
             <option value="video">Video</option>
@@ -1764,18 +1764,18 @@ function ClientInviteDialog({
         </label>
         {type === "in_person" && (
           <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Address</span>
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Address</span>
             <input
               type="text"
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             />
           </label>
         )}
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Interviewer name (optional)</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Interviewer name (optional)</span>
           <input
             type="text"
             value={interviewerName}
@@ -1784,7 +1784,7 @@ function ClientInviteDialog({
             data-lpignore="true"
             data-form-type="other"
             onChange={(e) => setInterviewerName(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
         </label>
         <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
@@ -1835,7 +1835,7 @@ function RescheduleDialog({
     <Modal title="Reschedule interview" onClose={onClose}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
           <DateTime15Picker
             value={scheduledAt}
             onChange={setScheduledAt}
@@ -1869,8 +1869,8 @@ function InterviewList({
   if (active.length === 0) return null;
   const sorted = [...active].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
   return (
-    <div className="mt-2 space-y-1.5 border-t border-border pt-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="mt-2 space-y-1.5 border-t border-court-border pt-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
         Interviews ({sorted.length})
       </div>
       <ul className="space-y-1.5">
@@ -1918,19 +1918,19 @@ function InterviewRow({
       className={cn(
         "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
         isCancelled
-          ? "border-border bg-muted/30 text-muted-foreground line-through"
+          ? "border-court-border bg-court-surface-subtle/40 text-court-fg-muted line-through"
           : isPast
-            ? "border-border bg-muted/30 text-muted-foreground"
-            : "border-border bg-muted/10 text-navy",
+            ? "border-court-border bg-court-surface-subtle/40 text-court-fg-muted"
+            : "border-court-border bg-court-surface-subtle/20 text-court-fg",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <Icon className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
         <div className="min-w-0">
           <div className="truncate font-medium">
             {formatInterviewWhen(when)} · {iv.durationMin}m · {formatInterviewType(iv.type)}
           </div>
-          <div className="truncate text-[11px] text-muted-foreground">
+          <div className="truncate text-[11px] text-court-fg-muted">
             {iv.source === "client_scheduled" ? "Client-scheduled" : "Ace-scheduled"}
             {iv.attendees.length > 0 ? ` · with ${iv.attendees.map((a) => a.name).join(", ")}` : ""}
             {iv.meetLink ? ` · Meet` : ""}
@@ -1944,7 +1944,7 @@ function InterviewRow({
               href={iv.meetLink}
               target="_blank"
               rel="noreferrer"
-              className="rounded-md border border-border bg-white px-2 py-1 font-semibold text-navy hover:border-brand/40 hover:text-brand-dark"
+              className="rounded-md border border-court-border bg-court-surface px-2 py-1 font-semibold text-court-fg hover:border-brand/40 hover:text-brand-dark"
             >
               Open Meet
             </a>
@@ -1952,7 +1952,7 @@ function InterviewRow({
           <button
             type="button"
             onClick={() => onReschedule(iv)}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 font-semibold text-navy hover:border-brand/40 hover:text-brand-dark"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 font-semibold text-court-fg hover:border-brand/40 hover:text-brand-dark"
           >
             <Clock className="h-3 w-3" /> Reschedule
           </button>
@@ -1960,7 +1960,7 @@ function InterviewRow({
             type="button"
             onClick={onCancel}
             disabled={isCancelling}
-            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 font-semibold text-red-700 hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-court-surface px-2 py-1 font-semibold text-red-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30 disabled:opacity-60"
           >
             {isCancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
             Cancel
@@ -2096,24 +2096,24 @@ function RejectDialog({
 
   return (
     <Modal title="Reject candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
-      <p className="text-sm text-navy">
+      <p className="text-sm text-court-fg">
         <span className="font-semibold">Reject {nameLabel} for {job.jobTitle}?</span>
       </p>
-      <p className="mt-2 text-xs text-muted-foreground">
-        Pick one: <span className="font-semibold text-navy">Reject &amp; Send Email</span> runs your Candidate Rejection
-        template to the candidate. <span className="font-semibold text-navy">Reject Only</span> updates the stage with no
+      <p className="mt-2 text-xs text-court-fg-muted">
+        Pick one: <span className="font-semibold text-court-fg">Reject &amp; Send Email</span> runs your Candidate Rejection
+        template to the candidate. <span className="font-semibold text-court-fg">Reject Only</span> updates the stage with no
         email sent. Either way the stage moves to Rejected.
       </p>
       <div className="mt-3">
         <LabeledTextarea label="Internal reason (optional — not sent)" value={reason} onChange={setReason} rows={3} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-border pt-4">
+      <div className="mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-court-border pt-4">
         <button
           type="button"
           onClick={onClose}
           disabled={isPending}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
         >
           Cancel
         </button>
@@ -2121,7 +2121,7 @@ function RejectDialog({
           type="button"
           onClick={() => run(false)}
           disabled={isPending}
-          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-court-surface px-3 py-2 text-xs font-semibold text-red-700 shadow-sm transition hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30 disabled:opacity-60"
         >
           {isPending && mode === "only" ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
           Reject Only
@@ -2181,7 +2181,7 @@ function UnrejectDialog({
 
   return (
     <Modal title="Reactivate candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-court-fg-muted">
         Reactivating sends this candidate back into the pipeline at{" "}
         <strong>{PIPELINE_LABELS[targetStage]}</strong> and logs the action to activity.
       </p>
@@ -2242,17 +2242,17 @@ function CancelPlacementDialog({
 
   return (
     <Modal title="Cancel placement" subtitle={`${jobTitle}${clientName ? ` · ${clientName}` : ""}`} onClose={onClose}>
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-court-fg-muted">
         This moves the candidate out of Hired and logs the cancellation. Invoicing flag is cleared; the placement
         record is kept for audit.
       </p>
 
       <label className="mt-4 block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Reason</span>
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Reason</span>
         <select
           value={reason}
           onChange={(e) => setReason(e.target.value as CancelReasonValue)}
-          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           {CANCEL_REASONS.map((r) => (
             <option key={r.value} value={r.value}>
@@ -2340,11 +2340,11 @@ function ApplyToJobDialog({
   return (
     <Modal title="Apply to Job" subtitle="Pick an open job — no email goes out." onClose={onClose}>
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Open job</span>
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Open job</span>
         <select
           value={selectedId}
           onChange={(e) => setSelectedId(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           <option value="">Select a job…</option>
           {openJobs.map((j) => (
@@ -2440,11 +2440,11 @@ function SubmitToJobDialog({
   return (
     <Modal title="Submit to Job" subtitle="Pick an open job for this candidate" onClose={onClose}>
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Open job</span>
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Open job</span>
         <select
           value={selectedId}
           onChange={(e) => setSelectedId(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           <option value="">Select a job…</option>
           {openJobs.map((j) => (
@@ -2461,10 +2461,10 @@ function SubmitToJobDialog({
         </div>
       )}
       {picked && (
-        <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-navy">
+        <div className="mt-3 rounded-lg border border-court-border bg-court-surface-subtle/60 p-3 text-xs text-court-fg">
           <div className="font-semibold">{picked.jobTitle}</div>
-          <div className="text-muted-foreground">{picked.clientName || "—"}</div>
-          <div className="mt-1 text-[11px] text-muted-foreground">
+          <div className="text-court-fg-muted">{picked.clientName || "—"}</div>
+          <div className="mt-1 text-[11px] text-court-fg-muted">
             {picked.clientContacts.length > 0
               ? `${picked.clientContacts.length} contact${picked.clientContacts.length === 1 ? "" : "s"} on file — first becomes the To:, rest are Cc.`
               : "No client contacts on file — you'll need to enter the recipient manually."}
@@ -2574,16 +2574,16 @@ function SubmittalEmailCompose({
               composer's row above the footer) so the recruiter sees the
               current state at send time. Defaults ON; flipping OFF skips
               deliverCandidateConfirmation for this one send only. */}
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs">
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border bg-court-surface-subtle/30 px-3 py-2 text-xs">
             <input
               type="checkbox"
               checked={sendCandidateConfirmation}
               onChange={(e) => setSendCandidateConfirmation(e.target.checked)}
-              className="mt-0.5 h-3.5 w-3.5 rounded border-border text-brand focus:ring-brand/30"
+              className="mt-0.5 h-3.5 w-3.5 rounded border-court-border text-brand focus:ring-brand/30"
             />
             <span className="flex-1">
-              <span className="font-semibold text-navy">Send candidate confirmation email</span>
-              <span className="block text-muted-foreground">
+              <span className="font-semibold text-court-fg">Send candidate confirmation email</span>
+              <span className="block text-court-fg-muted">
                 {sendCandidateConfirmation
                   ? "After the submittal sends, auto-fires the candidate confirmation using the Settings-level send/draft preference."
                   : "Turned off for this send only — only the client submittal will go out; no candidate follow-up."}
@@ -2712,7 +2712,7 @@ function SubmittalResumeAttachmentPicker({
 }) {
   if (!loaded) {
     return (
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-[11px] text-court-fg-muted">
         <Loader2 className="h-3 w-3 animate-spin" /> Loading resumes…
       </div>
     );
@@ -2731,11 +2731,11 @@ function SubmittalResumeAttachmentPicker({
   return (
     <div>
       <div className="flex items-center justify-between">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Resume attachment
         </div>
         {selectedOption && (
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-[11px] text-court-fg-muted">
             {formatBytes(selectedOption.size)} · uploaded {formatDate(selectedOption.uploadedAt)}
           </div>
         )}
@@ -2748,7 +2748,7 @@ function SubmittalResumeAttachmentPicker({
               "flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-xs transition",
               selected === o.variant
                 ? "border-brand bg-brand-tint"
-                : "border-border bg-white hover:border-brand/40",
+                : "border-court-border bg-court-surface hover:border-brand/40",
             )}
           >
             <input
@@ -2759,8 +2759,8 @@ function SubmittalResumeAttachmentPicker({
               className="mt-0.5 h-3.5 w-3.5 text-brand focus:ring-brand/30"
             />
             <div className="flex min-w-0 flex-1 flex-col">
-              <span className="font-medium text-navy">{o.label}</span>
-              <span className="truncate text-[11px] text-muted-foreground">
+              <span className="font-medium text-court-fg">{o.label}</span>
+              <span className="truncate text-[11px] text-court-fg-muted">
                 {o.filename} · {formatBytes(o.size)} · {formatDate(o.uploadedAt)}
               </span>
             </div>
@@ -2796,17 +2796,17 @@ function Modal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" onClick={onClose}>
       <div
         className={cn(
-          "w-full overflow-hidden rounded-xl border border-border bg-white shadow-xl",
+          "w-full overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl",
           wide ? "max-w-2xl" : "max-w-lg",
         )}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between border-b border-border px-5 py-3">
+        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-navy">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+            <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -2834,12 +2834,12 @@ function ModalFooter({
       ? RotateCcw
       : Save;
   return (
-    <div className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
+    <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
       <button
         type="button"
         onClick={onCancel}
         disabled={saving}
-        className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+        className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
       >
         <X className="h-3 w-3" /> Cancel
       </button>
@@ -2873,7 +2873,7 @@ function NumericField({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <input
         type="number"
         inputMode="decimal"
@@ -2892,7 +2892,7 @@ function NumericField({
           if (min != null && n < min) return;
           onChange(next);
         }}
-        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
     </label>
   );
@@ -3198,11 +3198,11 @@ export function DurationSelect({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <select
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       >
         {DURATION_OPTIONS.map((n) => (
           <option key={n} value={n}>
@@ -3259,7 +3259,7 @@ export function CcBccPicker({
   return (
     <div className="space-y-2">
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           Cc (optional) · client contacts
         </span>
         <InlineContactMultiInput
@@ -3270,7 +3270,7 @@ export function CcBccPicker({
         />
       </label>
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           Bcc (optional) · Ace team
         </span>
         <InlineContactMultiInput
@@ -3310,13 +3310,13 @@ function PickerOption({
           onToggle();
         }}
         disabled={!email}
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-navy hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span
           aria-hidden="true"
           className={cn(
             "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
-            checked ? "border-brand bg-brand text-white" : "border-border bg-white",
+            checked ? "border-brand bg-brand text-white" : "border-court-border bg-court-surface",
           )}
         >
           {checked && (
@@ -3327,7 +3327,7 @@ function PickerOption({
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="truncate">{name}</span>
-          <span className="truncate text-[11px] text-muted-foreground">
+          <span className="truncate text-[11px] text-court-fg-muted">
             {email || "No email on file"}
           </span>
         </span>
@@ -3395,13 +3395,13 @@ function InlineContactMultiInput({
   return (
     <div className="relative mt-1">
       <div
-        className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-lg border border-border bg-white px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
+        className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
         onClick={() => setOpen(true)}
       >
         {Array.from(selected).map((email) => (
           <span
             key={email}
-            className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-navy"
+            className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] text-court-fg"
           >
             {email}
             <button
@@ -3411,7 +3411,7 @@ function InlineContactMultiInput({
                 remove(email);
               }}
               aria-label={`Remove ${email}`}
-              className="text-muted-foreground hover:text-navy"
+              className="text-court-fg-muted hover:text-court-fg"
             >
               <X className="h-3 w-3" />
             </button>
@@ -3449,11 +3449,11 @@ function InlineContactMultiInput({
               the modal panel's stopPropagation. Modal stays open,
               chip persists. */}
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-border bg-white shadow-lg">
+          <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="max-h-56 overflow-y-auto py-1">
               {pinnedList.length > 0 && (
                 <>
-                  <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <li className="px-3 pb-0.5 pt-2 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
                     Quick pick
                   </li>
                   {pinnedList.map((c) => (
@@ -3465,11 +3465,11 @@ function InlineContactMultiInput({
                       onToggle={() => toggle(c.email)}
                     />
                   ))}
-                  <li className="mx-2 my-1 border-t border-border" />
+                  <li className="mx-2 my-1 border-t border-court-border" />
                 </>
               )}
               {rest.length === 0 && pinnedList.length === 0 && (
-                <li className="px-3 py-2 text-xs text-muted-foreground">
+                <li className="px-3 py-2 text-xs text-court-fg-muted">
                   No contacts on file. Type an email + Enter to add.
                 </li>
               )}
@@ -3483,7 +3483,7 @@ function InlineContactMultiInput({
                 />
               ))}
             </ul>
-            <div className="border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] text-muted-foreground">
+            <div className="border-t border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-[10px] text-court-fg-muted">
               Or type an email and press Enter.
             </div>
           </div>
@@ -3589,13 +3589,13 @@ export function InterviewerPicker({
   return (
     <div className="space-y-2">
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           Interviewer (client contact)
         </span>
         <select
           value={mode}
           onChange={(e) => setSelection(e.target.value)}
-          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           <option value="">
             {contacts.length === 0 ? "No contacts on file — pick an option…" : "Select an interviewer…"}
@@ -3652,7 +3652,7 @@ export function InterviewerPicker({
               type="button"
               onClick={() => setSelection("")}
               disabled={isAdding}
-              className="rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy-400 hover:text-navy disabled:opacity-60"
+              className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted hover:text-court-fg disabled:opacity-60"
             >
               Cancel
             </button>
@@ -3718,7 +3718,7 @@ function BareInput({
       data-lpignore="true"
       data-form-type="other"
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+      className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
     />
   );
 }

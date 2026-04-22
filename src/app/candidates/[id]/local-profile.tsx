@@ -217,7 +217,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
 
   return (
     <div className="space-y-6">
-      <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
+      <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
 
@@ -258,12 +258,12 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           ~70% resume / ~30% sidebar on lg+, so the recruiter opens the
           profile and lands directly on the document they came to read. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        <section className="rounded-xl border border-border bg-white shadow-sm lg:col-span-7">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-3">
+        <section className="rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-court-border px-5 py-3">
             <div className="min-w-0">
-              <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
+              <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
               {candidate.resumeFilename && (
-                <p className="truncate text-xs text-muted-foreground">
+                <p className="truncate text-xs text-court-fg-muted">
                   {candidate.resumeFilename}
                   {candidate.resumeSize ? ` · ${(candidate.resumeSize / 1024).toFixed(0)} KB` : ""}
                   {candidate.resumeUploadedAt ? ` · uploaded ${candidate.resumeUploadedAt.toLocaleDateString()}` : ""}
@@ -273,7 +273,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
             {candidate.resumeFilename && (
               <a
                 href={`/api/local-candidate-resumes/${candidate.id}`}
-                className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
               >
                 <FileDown className="h-3 w-3" /> Download
               </a>
@@ -288,17 +288,17 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
               className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
             />
           ) : candidate.resumeFilename ? (
-            <p className="px-5 py-8 text-center text-xs text-muted-foreground">
+            <p className="px-5 py-8 text-center text-xs text-court-fg-muted">
               Preview unavailable for this file type — use Download to open.
             </p>
           ) : (
-            <p className="px-5 py-8 text-center text-xs text-muted-foreground">No resume on file.</p>
+            <p className="px-5 py-8 text-center text-xs text-court-fg-muted">No resume on file.</p>
           )}
         </section>
 
         <aside className="space-y-6 lg:col-span-3">
-          <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-            <h2 className="font-serif text-base font-semibold text-navy">Contact</h2>
+          <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+            <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
               <Row icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={candidate.email} href={candidate.email ? `mailto:${candidate.email}` : null} />
               <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
@@ -314,11 +314,11 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           />
 
           {candidate.skills.length > 0 && (
-            <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-navy">Skills</h2>
+            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+              <h2 className="font-serif text-base font-semibold text-court-fg">Skills</h2>
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {candidate.skills.map((s) => (
-                  <span key={s} className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-xs text-navy">
+                  <span key={s} className="rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-xs text-court-fg">
                     {s}
                   </span>
                 ))}
@@ -327,19 +327,19 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           )}
 
           {experience.length > 0 && (
-            <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-navy">Experience</h2>
+            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+              <h2 className="font-serif text-base font-semibold text-court-fg">Experience</h2>
               <ul className="mt-3 space-y-3 text-sm">
                 {experience.map((r, i) => (
-                  <li key={`exp-${i}`} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                    <div className="font-medium text-navy">
+                  <li key={`exp-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
+                    <div className="font-medium text-court-fg">
                       {r.designation || "(role)"}{" "}
-                      <span className="font-normal text-muted-foreground">· {r.organization || "(employer)"}</span>
+                      <span className="font-normal text-court-fg-muted">· {r.organization || "(employer)"}</span>
                     </div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-[11px] text-court-fg-muted">
                       {[r.from_year, r.to_year ?? "present"].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
                     </div>
-                    {r.description && <p className="mt-1 text-xs text-muted-foreground">{r.description}</p>}
+                    {r.description && <p className="mt-1 text-xs text-court-fg-muted">{r.description}</p>}
                   </li>
                 ))}
               </ul>
@@ -347,16 +347,16 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           )}
 
           {education.length > 0 && (
-            <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-navy">Education</h2>
+            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+              <h2 className="font-serif text-base font-semibold text-court-fg">Education</h2>
               <ul className="mt-3 space-y-3 text-sm">
                 {education.map((r, i) => (
-                  <li key={`edu-${i}`} className="rounded-lg border border-border bg-muted/20 px-3 py-2">
-                    <div className="font-medium text-navy">
+                  <li key={`edu-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
+                    <div className="font-medium text-court-fg">
                       {r.degree || "(degree)"}{" "}
-                      <span className="font-normal text-muted-foreground">· {r.school || "(school)"}</span>
+                      <span className="font-normal text-court-fg-muted">· {r.school || "(school)"}</span>
                     </div>
-                    <div className="text-[11px] text-muted-foreground">
+                    <div className="text-[11px] text-court-fg-muted">
                       {[r.from_year, r.to_year].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
                     </div>
                   </li>
@@ -366,25 +366,25 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           )}
 
           {candidate.notes && (
-            <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-navy">Notes</h2>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-navy">{candidate.notes}</p>
+            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+              <h2 className="font-serif text-base font-semibold text-court-fg">Notes</h2>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-court-fg">{candidate.notes}</p>
             </section>
           )}
 
-          <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-            <h2 className="font-serif text-base font-semibold text-navy">About this record</h2>
-            <dl className="mt-3 space-y-1 text-xs text-muted-foreground">
+          <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+            <h2 className="font-serif text-base font-semibold text-court-fg">About this record</h2>
+            <dl className="mt-3 space-y-1 text-xs text-court-fg-muted">
               <div>
-                <span className="font-medium text-navy">ID:</span>{" "}
+                <span className="font-medium text-court-fg">ID:</span>{" "}
                 <span className="font-mono">{candidate.id}</span>
               </div>
               <div>
-                <span className="font-medium text-navy">Created:</span>{" "}
+                <span className="font-medium text-court-fg">Created:</span>{" "}
                 {candidate.createdAt.toLocaleString()}
               </div>
               <div>
-                <span className="font-medium text-navy">Source:</span> Ace (local)
+                <span className="font-medium text-court-fg">Source:</span> Ace (local)
               </div>
             </dl>
           </section>
@@ -409,11 +409,11 @@ function Row({
 }) {
   return (
     <div>
-      <dt className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-muted-foreground">
+      <dt className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-court-fg-muted">
         {icon}
         {label}
       </dt>
-      <dd className="mt-0.5 truncate text-navy">
+      <dd className="mt-0.5 truncate text-court-fg">
         {value ? (
           href ? (
             <a href={href} className="hover:underline" target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined}>
@@ -423,7 +423,7 @@ function Row({
             value
           )
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-court-fg-muted">—</span>
         )}
       </dd>
     </div>

@@ -114,6 +114,9 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
         canvas.height = Math.round(viewport.height * dpr);
         canvas.style.width = `${viewport.width}px`;
         canvas.style.height = `${viewport.height}px`;
+        // Literal white: PDF pages are paper — always render against a
+        // white sheet regardless of Court Mode. A court-* surface token
+        // would tint the page in Clay/Grass and make body text unreadable.
         canvas.className = "block rounded-md bg-white shadow-sm";
         host.appendChild(canvas);
         const ctx = canvas.getContext("2d");
@@ -152,10 +155,10 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
   return (
     <div
       ref={containerRef}
-      className={"flex flex-col overflow-hidden bg-muted/30 " + (className ?? "")}
+      className={"flex flex-col overflow-hidden bg-court-surface-subtle/60 " + (className ?? "")}
     >
-      <div className="flex items-center justify-between border-b border-border bg-white px-3 py-1.5">
-        <div className="text-[11px] text-muted-foreground">
+      <div className="flex items-center justify-between border-b border-court-border bg-court-surface px-3 py-1.5">
+        <div className="text-[11px] text-court-fg-muted">
           {loading ? "Loading…" : err ? "Failed to load" : `${pct}%${usingFit ? " · fit to width" : ""}`}
         </div>
         <div className="flex items-center gap-1">
@@ -163,7 +166,7 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
             type="button"
             onClick={zoomOut}
             disabled={loading || !!err || displayedScale <= MIN_SCALE}
-            className="inline-flex h-6 w-6 items-center justify-center rounded border border-border bg-white text-navy-400 hover:text-navy disabled:opacity-40"
+            className="inline-flex h-6 w-6 items-center justify-center rounded border border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg disabled:opacity-40"
             title="Zoom out"
           >
             <Minus className="h-3 w-3" />
@@ -172,7 +175,7 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
             type="button"
             onClick={resetFit}
             disabled={loading || !!err}
-            className="inline-flex h-6 items-center gap-1 rounded border border-border bg-white px-2 text-[11px] text-navy-400 hover:text-navy disabled:opacity-40"
+            className="inline-flex h-6 items-center gap-1 rounded border border-court-border bg-court-surface px-2 text-[11px] text-court-fg-muted hover:text-court-fg disabled:opacity-40"
             title="Fit to width"
           >
             <RotateCcw className="h-3 w-3" /> Fit
@@ -181,7 +184,7 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
             type="button"
             onClick={zoomIn}
             disabled={loading || !!err || displayedScale >= MAX_SCALE}
-            className="inline-flex h-6 w-6 items-center justify-center rounded border border-border bg-white text-navy-400 hover:text-navy disabled:opacity-40"
+            className="inline-flex h-6 w-6 items-center justify-center rounded border border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg disabled:opacity-40"
             title="Zoom in"
           >
             <Plus className="h-3 w-3" />
@@ -190,13 +193,17 @@ export function PdfCanvasViewer({ src, className, initialScale = "fit" }: PdfCan
       </div>
       <div className="flex-1 overflow-auto p-4">
         {loading && (
-          <div className="flex h-full min-h-[400px] items-center justify-center gap-2 text-sm text-muted-foreground">
+          <div className="flex h-full min-h-[400px] items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading PDF…
           </div>
         )}
         {err && !loading && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-800">
-            Couldn&apos;t render this PDF in the browser: {err}. Use Download to open it instead.
+            <div className="font-semibold">Couldn&apos;t render this PDF in the browser.</div>
+            <div className="mt-1 font-mono">{err}</div>
+            <div className="mt-2">
+              Try reloading the page — this is usually a stale client bundle. If reloading doesn&apos;t help, use Download to open it instead.
+            </div>
           </div>
         )}
         <div ref={canvasHostRef} className="flex flex-col items-center gap-3" />

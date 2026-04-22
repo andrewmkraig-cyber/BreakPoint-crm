@@ -239,23 +239,23 @@ export function ResumeRedactor({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/70 p-4" onMouseUp={onMouseUp}>
-      <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-border bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+      <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
+        <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-navy">Edit Resume — Redaction</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Edit Resume — Redaction</h2>
+            <p className="text-xs text-court-fg-muted">
               Drag to draw a white rectangle over any section (phone, email, etc.). Original stays untouched.
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
             <X className="h-4 w-4" />
           </button>
         </div>
 
-        <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-2 text-xs">
+        <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-2 text-xs">
           <div className="flex items-center gap-2">
-            <Eraser className="h-3.5 w-3.5 text-muted-foreground" />
-            <span className="text-muted-foreground">
+            <Eraser className="h-3.5 w-3.5 text-court-fg-muted" />
+            <span className="text-court-fg-muted">
               {rects.length === 0
                 ? "No redactions yet."
                 : `${rects.length} redaction${rects.length === 1 ? "" : "s"} pending.`}
@@ -266,7 +266,7 @@ export function ResumeRedactor({
               type="button"
               onClick={onUndo}
               disabled={rects.length === 0 || saving}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-50"
             >
               <Undo2 className="h-3 w-3" /> Undo last
             </button>
@@ -282,9 +282,9 @@ export function ResumeRedactor({
           </div>
         </div>
 
-        <div ref={containerRef} className="flex-1 overflow-auto bg-muted/30 p-4">
+        <div ref={containerRef} className="flex-1 overflow-auto bg-court-surface-subtle/60 p-4">
           {loadingDoc && (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            <div className="flex h-full items-center justify-center text-sm text-court-fg-muted">
               <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading PDF…
             </div>
           )}
@@ -292,14 +292,14 @@ export function ResumeRedactor({
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{loadError}</div>
           )}
           {!loadingDoc && !loadError && pages.length === 0 && (
-            <div className="text-sm text-muted-foreground">No pages rendered.</div>
+            <div className="text-sm text-court-fg-muted">No pages rendered.</div>
           )}
           <div className="mx-auto flex max-w-3xl flex-col items-center gap-4">
             {pages.map((p) => {
               const pageRects = rects.filter((r) => r.page === p.pageNumber);
               return (
                 <div key={p.pageNumber} className="w-fit">
-                  <div className="mb-1 flex items-center justify-between text-[11px] text-muted-foreground">
+                  <div className="mb-1 flex items-center justify-between text-[11px] text-court-fg-muted">
                     <span>
                       Page {p.pageNumber} of {pages.length}
                       {(totalPerPage.get(p.pageNumber) ?? 0) > 0 &&
@@ -309,14 +309,14 @@ export function ResumeRedactor({
                       <button
                         type="button"
                         onClick={() => onClearPage(p.pageNumber)}
-                        className="text-[11px] text-muted-foreground underline hover:text-navy"
+                        className="text-[11px] text-court-fg-muted underline hover:text-court-fg"
                       >
                         Clear page
                       </button>
                     )}
                   </div>
                   <div
-                    className="relative cursor-crosshair select-none border border-border bg-white shadow-sm"
+                    className="relative cursor-crosshair select-none border border-court-border bg-white shadow-sm"
                     style={{ width: p.widthPx, height: p.heightPx }}
                     onMouseDown={(e) => onMouseDown(p.pageNumber, e)}
                     onMouseMove={(e) => onMouseMove(p.pageNumber, e)}

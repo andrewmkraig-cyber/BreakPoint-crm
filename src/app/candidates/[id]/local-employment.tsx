@@ -57,14 +57,14 @@ export function LocalEmployment({
   }
 
   return (
-    <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
       <div className="flex items-center justify-between">
-        <h2 className="font-serif text-base font-semibold text-navy">Employment</h2>
+        <h2 className="font-serif text-base font-semibold text-court-fg">Employment</h2>
         {!editing ? (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
           >
             <Pencil className="h-3 w-3" /> Edit
           </button>
@@ -74,7 +74,7 @@ export function LocalEmployment({
               type="button"
               onClick={onCancel}
               disabled={isSaving}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm hover:text-navy disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm hover:text-court-fg disabled:opacity-60"
             >
               <X className="h-3 w-3" /> Cancel
             </button>
@@ -93,21 +93,21 @@ export function LocalEmployment({
       {editing ? (
         <div className="mt-3 space-y-3">
           <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Current title</span>
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Current title</span>
             <input
               type="text"
               value={draftDesignation}
               onChange={(e) => setDraftDesignation(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             />
           </label>
           <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Current employer</span>
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Current employer</span>
             <input
               type="text"
               value={draftOrganization}
               onChange={(e) => setDraftOrganization(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
             />
           </label>
           {err && (
@@ -117,10 +117,10 @@ export function LocalEmployment({
       ) : (
         <dl className="mt-3 space-y-3 text-sm">
           <Row label="Current title" icon={<Briefcase className="h-3 w-3" />}>
-            {savedDesignation || <span className="text-muted-foreground">—</span>}
+            {savedDesignation || <span className="text-court-fg-muted">—</span>}
           </Row>
           <Row label="Current employer" icon={<Building2 className="h-3 w-3" />}>
-            {savedOrganization || <span className="text-muted-foreground">—</span>}
+            {savedOrganization || <span className="text-court-fg-muted">—</span>}
           </Row>
         </dl>
       )}
@@ -139,8 +139,8 @@ function Row({
 }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 inline-flex items-center gap-1 text-navy">
+      <dt className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</dt>
+      <dd className="mt-0.5 inline-flex items-center gap-1 text-court-fg">
         {icon}
         {children}
       </dd>

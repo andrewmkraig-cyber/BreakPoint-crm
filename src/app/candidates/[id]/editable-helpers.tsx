@@ -13,9 +13,9 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-white shadow-sm">
-      <div className="flex items-center justify-between border-b border-border px-5 py-3">
-        <h2 className="font-serif text-base font-semibold text-navy">{title}</h2>
+    <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
+        <h2 className="font-serif text-base font-semibold text-court-fg">{title}</h2>
         {right}
       </div>
       <div className="p-5">{children}</div>
@@ -40,7 +40,7 @@ export function LabeledField({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <input
         type={type}
         value={value}
@@ -48,7 +48,7 @@ export function LabeledField({
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          "mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
           disabled && "cursor-not-allowed opacity-60",
         )}
       />
@@ -71,13 +71,13 @@ export function LabeledTextarea({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <textarea
         value={value}
         rows={rows}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
     </label>
   );

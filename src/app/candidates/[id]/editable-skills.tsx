@@ -62,9 +62,9 @@ export function EditableSkills({
       title="Skills"
       right={
         isPending ? (
-          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+          <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />
         ) : (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[11px] text-court-fg-muted">
             {skills.length} {skills.length === 1 ? "skill" : "skills"}
           </span>
         )
@@ -93,13 +93,13 @@ export function EditableSkills({
           onKeyDown={onKey}
           onBlur={addSkill}
           placeholder={skills.length === 0 ? "Add a skill and press Enter…" : "Add…"}
-          className="min-w-[120px] flex-1 rounded-md border border-transparent bg-muted/30 px-2 py-1 text-xs text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:bg-white focus:outline-none"
+          className="min-w-[120px] flex-1 rounded-md border border-transparent bg-court-surface-subtle/40 px-2 py-1 text-xs text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:bg-court-surface focus:outline-none"
         />
         <button
           type="button"
           onClick={addSkill}
           disabled={!input.trim()}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-50"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-50"
         >
           <Plus className="h-3 w-3" /> Add
         </button>

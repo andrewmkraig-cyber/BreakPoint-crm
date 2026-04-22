@@ -34,7 +34,7 @@ export function ActivityPanel({ interviews }: { interviews: ActivityInterview[] 
   const total = past.length;
 
   return (
-    <section className="rounded-xl border border-border bg-white shadow-sm">
+    <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -42,14 +42,14 @@ export function ActivityPanel({ interviews }: { interviews: ActivityInterview[] 
       >
         <div className="flex items-center gap-2">
           {open ? (
-            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            <ChevronDown className="h-4 w-4 text-court-fg-muted" />
           ) : (
-            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            <ChevronRight className="h-4 w-4 text-court-fg-muted" />
           )}
-          <History className="h-4 w-4 text-muted-foreground" />
-          <h2 className="font-serif text-base font-semibold text-navy">Activity</h2>
+          <History className="h-4 w-4 text-court-fg-muted" />
+          <h2 className="font-serif text-base font-semibold text-court-fg">Activity</h2>
           {total > 0 && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-court-fg-muted">
               (
               {[
                 counts.cancelled ? `${counts.cancelled} cancelled` : null,
@@ -64,7 +64,7 @@ export function ActivityPanel({ interviews }: { interviews: ActivityInterview[] 
         </div>
       </button>
       {open && (
-        <div className="border-t border-border px-5 py-4 space-y-5">
+        <div className="border-t border-court-border px-5 py-4 space-y-5">
           <ActivitySection title="Interview history" emptyText="No past interviews yet.">
             {past.length === 0 ? null : (
               <ul className="space-y-1.5">
@@ -97,10 +97,10 @@ function ActivitySection({
 }) {
   return (
     <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
         {title}
       </div>
-      <div className="mt-1.5">{children ?? <p className="text-xs text-muted-foreground">{emptyText}</p>}</div>
+      <div className="mt-1.5">{children ?? <p className="text-xs text-court-fg-muted">{emptyText}</p>}</div>
     </div>
   );
 }
@@ -129,12 +129,12 @@ function InterviewHistoryRow({ iv }: { iv: ActivityInterview }) {
     minute: "2-digit",
   });
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-xs">
+    <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs">
       <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-medium text-navy">
+        <span className="truncate font-medium text-court-fg">
           {formattedWhen} · {iv.durationMin}m · {formatType(iv.type)}
         </span>
-        <span className="truncate text-[11px] text-muted-foreground">
+        <span className="truncate text-[11px] text-court-fg-muted">
           {iv.jobTitle}
           {iv.attendees.length > 0 ? ` · with ${iv.attendees.map((a) => a.name).join(", ")}` : ""}
           {iv.source === "client_scheduled" ? " · Client-scheduled" : ""}

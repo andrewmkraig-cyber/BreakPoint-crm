@@ -148,7 +148,7 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
                 {saved.email}
               </EmailLink>
             ) : (
-              <span className="text-muted-foreground">—</span>
+              <span className="text-court-fg-muted">—</span>
             )}
           </Row>
           <Row label="Phone" icon={<PhoneIcon className="h-3 w-3" />}>
@@ -156,13 +156,13 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
               <button
                 type="button"
                 onClick={() => setCallDialogOpen(true)}
-                className="text-navy underline-offset-2 hover:text-brand-dark hover:underline"
+                className="text-court-fg underline-offset-2 hover:text-brand-dark hover:underline"
                 title="Click to call"
               >
                 {formatPhone(saved.phone)}
               </button>
             ) : (
-              <span className="text-muted-foreground">—</span>
+              <span className="text-court-fg-muted">—</span>
             )}
           </Row>
           <Row label="LinkedIn">
@@ -171,7 +171,7 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
                 Profile <ExternalLink className="h-3 w-3" />
               </a>
             ) : (
-              <span className="text-muted-foreground">—</span>
+              <span className="text-court-fg-muted">—</span>
             )}
           </Row>
           <Row label="Location" icon={<MapPin className="h-3 w-3" />}>
@@ -214,29 +214,29 @@ function CallConfirmDialog({
       role="dialog"
       aria-modal="true"
     >
-      <div className="w-full max-w-sm overflow-hidden rounded-xl border border-border bg-white shadow-xl">
-        <div className="flex items-start justify-between border-b border-border px-5 py-3">
-          <h3 className="font-serif text-base font-semibold text-navy">Place a call</h3>
+      <div className="w-full max-w-sm overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
+        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
+          <h3 className="font-serif text-base font-semibold text-court-fg">Place a call</h3>
           <button
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted disabled:opacity-60"
+            className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle disabled:opacity-60"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="px-5 py-4 text-sm text-navy">
+        <div className="px-5 py-4 text-sm text-court-fg">
           Call <span className="font-semibold">{candidateName}</span> at{" "}
           <span className="font-mono">{formatPhone(phone)}</span>?
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-border bg-muted/30 px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-court-border bg-court-surface-subtle/30 px-5 py-3">
           <button
             type="button"
             onClick={onCancel}
             disabled={busy}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             Cancel
           </button>
@@ -261,8 +261,8 @@ function CallConfirmDialog({
 function Row({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 inline-flex items-center gap-1 text-navy">
+      <dt className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</dt>
+      <dd className="mt-0.5 inline-flex items-center gap-1 text-court-fg">
         {icon}
         {children}
       </dd>
@@ -275,7 +275,7 @@ export function EditBtn({ onClick, label = "Edit" }: { onClick: () => void; labe
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
     >
       <Pencil className="h-3 w-3" /> {label}
     </button>
@@ -297,7 +297,7 @@ export function SaveCancel({
         type="button"
         onClick={onCancel}
         disabled={saving}
-        className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+        className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
       >
         <X className="h-3 w-3" /> Cancel
       </button>

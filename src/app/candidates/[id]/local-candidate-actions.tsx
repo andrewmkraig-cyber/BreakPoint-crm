@@ -38,7 +38,7 @@ export function LocalCandidateActions(props: {
   const [modal, setModal] = useState<"apply" | "submit" | "reference" | null>(null);
 
   return (
-    <div className="rounded-xl border border-border bg-white px-5 py-4 shadow-sm">
+    <div className="rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -50,14 +50,14 @@ export function LocalCandidateActions(props: {
         <button
           type="button"
           onClick={() => setModal("apply")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:bg-muted"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
         >
           <Target className="h-3 w-3" /> Apply to Job
         </button>
         <button
           type="button"
           onClick={() => setModal("reference")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:bg-muted"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
         >
           <UserCheck className="h-3 w-3" /> Request References
         </button>
@@ -131,7 +131,7 @@ function ApplyModal(props: {
 
   return (
     <ModalShell title="Apply to Job" onClose={props.onClose}>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-court-fg-muted">
         Creates a local Applied placement row — no RecruiterFlow push.
       </p>
       <JobPicker openJobs={props.openJobs} value={jobRfId} onChange={setJobRfId} />
@@ -139,7 +139,7 @@ function ApplyModal(props: {
         <button
           type="button"
           onClick={props.onClose}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 hover:text-navy"
+          className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted hover:text-court-fg"
         >
           Cancel
         </button>
@@ -238,7 +238,7 @@ function SubmitModal(props: {
         type="button"
         onClick={onGenerate}
         disabled={!jobRfId || isGenerating}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:bg-muted disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-50"
       >
         {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
         Generate with Claude
@@ -248,12 +248,12 @@ function SubmitModal(props: {
       <Field label="CC" value={cc} onChange={setCc} placeholder="optional, comma-separated" />
       <Field label="Subject" value={subject} onChange={setSubject} />
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Body</span>
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Body</span>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={14}
-          className="mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 font-mono text-xs leading-relaxed text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 font-mono text-xs leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
       </label>
 
@@ -261,7 +261,7 @@ function SubmitModal(props: {
         <button
           type="button"
           onClick={props.onClose}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 hover:text-navy"
+          className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted hover:text-court-fg"
         >
           Cancel
         </button>
@@ -332,19 +332,19 @@ function ReferenceModal(props: {
       <Field label="CC" value={cc} onChange={setCc} placeholder="optional, comma-separated" />
       <Field label="Subject" value={subject} onChange={setSubject} />
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Body</span>
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Body</span>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
           rows={10}
-          className="mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
       </label>
       <div className="flex justify-end gap-2 pt-2">
         <button
           type="button"
           onClick={props.onClose}
-          className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 hover:text-navy"
+          className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted hover:text-court-fg"
         >
           Cancel
         </button>
@@ -366,11 +366,11 @@ function ReferenceModal(props: {
 
 function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
-      <div className="w-full max-w-2xl space-y-3 rounded-xl border border-border bg-white p-5 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
+      <div className="w-full max-w-2xl space-y-3 rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
         <div className="flex items-center justify-between">
-          <h3 className="font-serif text-lg font-semibold text-navy">{title}</h3>
-          <button type="button" onClick={onClose} className="text-muted-foreground hover:text-navy">
+          <h3 className="font-serif text-lg font-semibold text-court-fg">{title}</h3>
+          <button type="button" onClick={onClose} className="text-court-fg-muted hover:text-court-fg">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -391,11 +391,11 @@ function JobPicker({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Open jobs</span>
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Open jobs</span>
       <select
         value={value ?? ""}
         onChange={(e) => onChange(e.target.value ? Number(e.target.value) : null)}
-        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       >
         <option value="">— pick a job —</option>
         {openJobs.map((j) => (
@@ -406,7 +406,7 @@ function JobPicker({
         ))}
       </select>
       {openJobs.length === 0 && (
-        <p className="mt-1 text-[11px] text-muted-foreground">No open jobs in RecruiterFlow.</p>
+        <p className="mt-1 text-[11px] text-court-fg-muted">No open jobs in RecruiterFlow.</p>
       )}
     </label>
   );
@@ -425,14 +425,14 @@ function Field({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <input
         type="text"
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         className={cn(
-          "mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60",
+          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
           "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
         )}
       />

@@ -22,7 +22,7 @@ const PlacementActionsLazy = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="rounded-xl border border-dashed border-border bg-muted/30 px-5 py-4 text-xs text-muted-foreground">
+      <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/40 px-5 py-4 text-xs text-court-fg-muted">
         Loading actions…
       </div>
     ),

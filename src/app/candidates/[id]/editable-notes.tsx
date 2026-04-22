@@ -84,25 +84,25 @@ export function EditableNotes({
       title="Notes"
       right={
         isPending ? (
-          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+          <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />
         ) : (
-          <span className="text-[11px] text-muted-foreground">
+          <span className="text-[11px] text-court-fg-muted">
             {notes.length} {notes.length === 1 ? "note" : "notes"}
           </span>
         )
       }
     >
       <div className="space-y-3">
-        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-3">
+        <div className="rounded-lg border border-dashed border-court-border bg-court-surface-subtle/40 p-3">
           <textarea
             value={newNote}
             onChange={(e) => setNewNote(e.target.value)}
             rows={3}
             placeholder="Add a note…"
-            className="w-full resize-vertical rounded-md border border-transparent bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="w-full resize-vertical rounded-md border border-transparent bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
           <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] text-muted-foreground">{newNote.length} chars</span>
+            <span className="text-[11px] text-court-fg-muted">{newNote.length} chars</span>
             <button
               type="button"
               onClick={onAdd}
@@ -115,27 +115,27 @@ export function EditableNotes({
         </div>
 
         {notes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No notes yet.</p>
+          <p className="text-sm text-court-fg-muted">No notes yet.</p>
         ) : (
           <ul className="space-y-3">
             {notes.map((n, i) => {
               const isEditing = editingIndex === i;
               return (
-                <li key={n.id ?? `new-${i}`} className="rounded-lg border border-border bg-white p-3 text-sm shadow-sm">
+                <li key={n.id ?? `new-${i}`} className="rounded-lg border border-court-border bg-court-surface p-3 text-sm shadow-sm">
                   {isEditing ? (
                     <div className="space-y-2">
                       <textarea
                         value={editDraft}
                         onChange={(e) => setEditDraft(e.target.value)}
                         rows={4}
-                        className="w-full resize-vertical rounded-md border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                        className="w-full resize-vertical rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
                         autoFocus
                       />
                       <div className="flex items-center justify-end gap-2">
                         <button
                           type="button"
                           onClick={cancelEdit}
-                          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+                          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
                         >
                           <X className="h-3 w-3" /> Cancel
                         </button>
@@ -151,8 +151,8 @@ export function EditableNotes({
                     </div>
                   ) : (
                     <>
-                      <div className="whitespace-pre-wrap text-navy">{n.note}</div>
-                      <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground">
+                      <div className="whitespace-pre-wrap text-court-fg">{n.note}</div>
+                      <div className="mt-2 flex items-center justify-between text-[11px] text-court-fg-muted">
                         <span>
                           {n.addedByName ?? "Unknown"}
                           {n.addedAt ? ` · ${new Date(n.addedAt).toLocaleString()}` : ""}
@@ -161,14 +161,14 @@ export function EditableNotes({
                           <button
                             type="button"
                             onClick={() => startEdit(i)}
-                            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+                            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
                           >
                             <Pencil className="h-3 w-3" /> Edit
                           </button>
                           <button
                             type="button"
                             onClick={() => removeAt(i)}
-                            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+                            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30"
                           >
                             <Trash2 className="h-3 w-3" />
                           </button>

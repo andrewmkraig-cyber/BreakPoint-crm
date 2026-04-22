@@ -116,11 +116,11 @@ export function EditableEducation({
       right={
         !adding && editingIndex == null ? (
           <div className="flex items-center gap-2">
-            {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
             <button
               type="button"
               onClick={startAdd}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
             >
               <Plus className="h-3 w-3" /> Add
             </button>
@@ -139,35 +139,35 @@ export function EditableEducation({
           />
         )}
         {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No education on file. Click Add to create one.</p>
+          <p className="text-sm text-court-fg-muted">No education on file. Click Add to create one.</p>
         ) : (
           <ol className="space-y-3">
             {items.map((e, i) =>
               editingIndex === i ? null : (
-                <li key={i} className="rounded-lg border border-border bg-white p-3 shadow-sm">
+                <li key={i} className="rounded-lg border border-court-border bg-court-surface p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="font-medium text-navy">{e.school || "—"}</div>
-                      <div className="text-xs text-muted-foreground">
+                      <div className="font-medium text-court-fg">{e.school || "—"}</div>
+                      <div className="text-xs text-court-fg-muted">
                         {e.degree || "—"}
                         {rangeLabel(e.from, e.to) ? ` · ${rangeLabel(e.from, e.to)}` : ""}
                       </div>
                       {e.description && (
-                        <p className="mt-1 whitespace-pre-wrap text-xs text-muted-foreground">{e.description}</p>
+                        <p className="mt-1 whitespace-pre-wrap text-xs text-court-fg-muted">{e.description}</p>
                       )}
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
                       <button
                         type="button"
                         onClick={() => startEdit(i)}
-                        className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+                        className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
                       >
                         <Pencil className="h-3 w-3" />
                       </button>
                       <button
                         type="button"
                         onClick={() => removeAt(i)}
-                        className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+                        className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30"
                       >
                         <Trash2 className="h-3 w-3" />
                       </button>
@@ -225,7 +225,7 @@ function EntryForm({
         <button
           type="button"
           onClick={onCancel}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
         >
           <X className="h-3 w-3" /> Cancel
         </button>

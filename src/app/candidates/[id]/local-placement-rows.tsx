@@ -113,8 +113,8 @@ export function LocalPlacementRows({
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
 
   return (
-    <div className="rounded-xl border border-border bg-white px-5 py-4 shadow-sm">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+    <div className="rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm">
+      <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
         Linked jobs ({jobs.length})
       </div>
       <div className="space-y-2">
@@ -215,19 +215,19 @@ function LocalJobActionRow({
   const canSchedule = job.stage !== "hired" && job.stage !== "cancelled" && job.stage !== "rejected";
 
   return (
-    <div className="space-y-2 rounded-xl border border-border bg-white p-4 shadow-sm">
+    <div className="space-y-2 rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-sm font-semibold text-navy">
-              <Briefcase className="h-3.5 w-3.5 text-muted-foreground" />
+            <div className="flex items-center gap-2 text-sm font-semibold text-court-fg">
+              <Briefcase className="h-3.5 w-3.5 text-court-fg-muted" />
               <span className="truncate">{job.jobTitle}</span>
             </div>
             {job.clientName && (
-              <div className="mt-0.5 pl-[1.375rem] text-xs text-muted-foreground">{job.clientName}</div>
+              <div className="mt-0.5 pl-[1.375rem] text-xs text-court-fg-muted">{job.clientName}</div>
             )}
           </div>
-          <div className="shrink-0 rounded-full border border-border bg-muted/40 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-navy-400">
+          <div className="shrink-0 rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
             {job.stage}
           </div>
         </div>
@@ -236,14 +236,14 @@ function LocalJobActionRow({
             <button
               type="button"
               onClick={onSchedule}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
             >
               <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
             </button>
             <button
               type="button"
               onClick={onClientInvite}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
               title="Log an interview the client is scheduling themselves — adds to your calendar only"
             >
               <CalendarPlus className="h-3.5 w-3.5" /> Client Sending Invite
@@ -260,8 +260,8 @@ function LocalJobActionRow({
         const active = job.interviews.filter((iv) => iv.status === "scheduled");
         if (active.length === 0) return null;
         return (
-          <div className="mt-1 space-y-1.5 border-t border-border pt-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="mt-1 space-y-1.5 border-t border-court-border pt-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
               Interviews ({active.length})
             </div>
             <ul className="space-y-1.5">
@@ -304,19 +304,19 @@ function InterviewRow({ iv, onReschedule }: { iv: LocalInterview; onReschedule: 
       className={cn(
         "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
         isCancelled
-          ? "border-border bg-muted/30 text-muted-foreground line-through"
+          ? "border-court-border bg-court-surface-subtle/40 text-court-fg-muted line-through"
           : isPast
-            ? "border-border bg-muted/30 text-muted-foreground"
-            : "border-border bg-muted/10 text-navy",
+            ? "border-court-border bg-court-surface-subtle/40 text-court-fg-muted"
+            : "border-court-border bg-court-surface-subtle/20 text-court-fg",
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-2">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+        <Icon className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
         <div className="min-w-0">
           <div className="truncate font-medium">
             {formatWhen(when)} · {iv.durationMin}m · {formatType(iv.type)}
           </div>
-          <div className="truncate text-[11px] text-muted-foreground">
+          <div className="truncate text-[11px] text-court-fg-muted">
             {iv.source === "client_scheduled" ? "Client-scheduled" : "Ace-scheduled"}
             {iv.attendees.length > 0 ? ` · with ${iv.attendees.map((a) => a.name).join(", ")}` : ""}
             {iv.meetLink ? ` · Meet` : ""}
@@ -330,7 +330,7 @@ function InterviewRow({ iv, onReschedule }: { iv: LocalInterview; onReschedule: 
               href={iv.meetLink}
               target="_blank"
               rel="noreferrer"
-              className="rounded-md border border-border bg-white px-2 py-1 font-semibold text-navy hover:border-brand/40 hover:text-brand-dark"
+              className="rounded-md border border-court-border bg-court-surface px-2 py-1 font-semibold text-court-fg hover:border-brand/40 hover:text-brand-dark"
             >
               Open Meet
             </a>
@@ -338,7 +338,7 @@ function InterviewRow({ iv, onReschedule }: { iv: LocalInterview; onReschedule: 
           <button
             type="button"
             onClick={() => onReschedule(iv)}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 font-semibold text-navy hover:border-brand/40 hover:text-brand-dark"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 font-semibold text-court-fg hover:border-brand/40 hover:text-brand-dark"
           >
             <Clock className="h-3 w-3" /> Reschedule
           </button>
@@ -346,7 +346,7 @@ function InterviewRow({ iv, onReschedule }: { iv: LocalInterview; onReschedule: 
             type="button"
             onClick={onCancel}
             disabled={isCancelling}
-            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2 py-1 font-semibold text-red-700 hover:border-red-300 hover:bg-red-50 disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-court-surface px-2 py-1 font-semibold text-red-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30 disabled:opacity-60"
           >
             {isCancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
             Cancel
@@ -540,7 +540,7 @@ function ClientInviteDialog({
 
   return (
     <ModalShell title="Client sending invite" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
-      <p className="mb-3 text-xs text-muted-foreground">
+      <p className="mb-3 text-xs text-court-fg-muted">
         Use this when the client is scheduling the interview themselves and will send the invite. We&apos;ll
         log it for tracking and drop it on your calendar — no invite is sent to candidate or client.
       </p>
@@ -603,7 +603,7 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
     <ModalShell title="Reschedule interview" onClose={onClose}>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
           <DateTime15Picker
             value={scheduledAt}
             onChange={setScheduledAt}
@@ -640,7 +640,7 @@ function ScheduleFields(props: {
     <div className="grid grid-cols-1 gap-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Date &amp; time</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
           <DateTime15Picker
             value={props.scheduledAt}
             onChange={props.setScheduledAt}
@@ -650,11 +650,11 @@ function ScheduleFields(props: {
         <DurationSelect value={props.durationMin} onChange={props.setDurationMin} />
       </div>
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Type</span>
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
         <select
           value={props.type}
           onChange={(e) => props.setType(e.target.value as InterviewType)}
-          className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           <option value="phone_screen">Phone Screen</option>
           <option value="video">Video (Google Meet)</option>
@@ -663,15 +663,15 @@ function ScheduleFields(props: {
       </label>
       {props.type === "in_person" && (
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Address</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Address</span>
           <input
             type="text"
             value={props.location}
             onChange={(e) => props.setLocation(e.target.value)}
             placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
-          <span className="mt-1 block text-[11px] text-muted-foreground">
+          <span className="mt-1 block text-[11px] text-court-fg-muted">
             Appears in the calendar invite with a Map link.
           </span>
         </label>
@@ -679,12 +679,12 @@ function ScheduleFields(props: {
       {props.interviewerSlot}
       {props.ccBccSlot}
       <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Notes</span>
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
         <textarea
           value={props.notes}
           onChange={(e) => props.setNotes(e.target.value)}
           rows={3}
-          className="mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         />
       </label>
     </div>
@@ -705,15 +705,15 @@ function ModalShell({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" onClick={onClose}>
       <div
-        className="w-full max-w-lg overflow-hidden rounded-xl border border-border bg-white shadow-xl"
+        className="w-full max-w-lg overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start justify-between border-b border-border px-5 py-3">
+        <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-navy">{title}</h2>
-            {subtitle && <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>}
+            <h2 className="font-serif text-lg font-semibold text-court-fg">{title}</h2>
+            {subtitle && <p className="mt-0.5 text-xs text-court-fg-muted">{subtitle}</p>}
           </div>
-          <button type="button" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted">
+          <button type="button" onClick={onClose} className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -735,12 +735,12 @@ function Footer({
   label: string;
 }) {
   return (
-    <div className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
+    <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
       <button
         type="button"
         onClick={onCancel}
         disabled={saving}
-        className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+        className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
       >
         <X className="h-3 w-3" /> Cancel
       </button>
