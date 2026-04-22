@@ -87,7 +87,7 @@ export function ClientsView({
         <Tabs tab={tab} activeCount={activeCount} inactiveCount={inactiveCount} buildHref={buildHref} />
       </div>
 
-      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <div className="flex items-center gap-3 text-xs text-court-fg-muted">
         <span>
           {total.toLocaleString()} {total === 1 ? "client" : "clients"}
           {q ? ` matching "${q}"` : ""}
@@ -101,15 +101,15 @@ export function ClientsView({
 
       <form
         onSubmit={onSubmitSearch}
-        className="flex flex-col gap-2 rounded-xl border border-border bg-white p-3 shadow-sm md:flex-row md:items-center"
+        className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
       >
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by client name, industry, or location…"
-            className="w-full rounded-lg border border-transparent bg-muted py-2 pl-10 pr-3 text-sm text-navy placeholder:text-muted-foreground focus:border-brand focus:bg-white focus:outline-none"
+            className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:bg-court-surface focus:outline-none"
           />
         </div>
         <button
@@ -129,7 +129,7 @@ export function ClientsView({
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.length === 0 && !error ? (
-          <div className="col-span-full rounded-xl border border-border bg-white p-12 text-center text-sm text-muted-foreground">
+          <div className="col-span-full rounded-xl border border-court-border bg-court-surface p-12 text-center text-sm text-court-fg-muted">
             No clients{q ? ` match "${q}"` : ""}.
           </div>
         ) : (
@@ -138,7 +138,7 @@ export function ClientsView({
       </div>
 
       {total > 0 && (
-        <div className="rounded-xl border border-border bg-white shadow-sm">
+        <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
           <Pagination
             page={page}
             totalPages={totalPages}
@@ -165,7 +165,7 @@ function Tabs({
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-border bg-white p-1 shadow-sm">
+    <div className="inline-flex rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <TabLink label="Active" count={activeCount} active={tab === "active"} href={buildHref({ tab: "active", page: 1 })} />
       <TabLink label="Inactive" count={inactiveCount} active={tab === "inactive"} href={buildHref({ tab: "inactive", page: 1 })} />
     </div>
@@ -178,14 +178,14 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
       href={href}
       className={cn(
         "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-navy-400 hover:bg-muted",
+        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
       )}
     >
       <span>{label}</span>
       <span
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          active ? "bg-brand text-white" : "bg-muted text-muted-foreground",
+          active ? "bg-brand text-white" : "bg-court-surface-subtle text-court-fg-muted",
         )}
       >
         {count.toLocaleString()}
@@ -198,14 +198,14 @@ function Card({ card }: { card: ClientCard }) {
   return (
     <Link
       href={`/clients/${card.id}`}
-      className="group flex flex-col rounded-xl border border-border bg-white p-5 shadow-sm transition hover:border-brand/40 hover:shadow-md"
+      className="group flex flex-col rounded-xl border border-court-border bg-court-surface p-5 shadow-sm transition hover:border-brand/40 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="break-words font-serif text-lg font-semibold leading-tight text-navy group-hover:text-brand-dark">
+          <h3 className="break-words font-serif text-lg font-semibold leading-tight text-court-fg group-hover:text-brand-dark">
             {card.name || "(unnamed)"}
           </h3>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-court-fg-muted">
             {card.industry && <span>{card.industry}</span>}
             {card.industry && card.location && <span>·</span>}
             {card.location && (
@@ -223,7 +223,7 @@ function Card({ card }: { card: ClientCard }) {
               e.stopPropagation();
               window.open(card.website!, "_blank", "noopener,noreferrer");
             }}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-brand-dark"
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-brand-dark"
           >
             Site <ExternalLink className="h-3 w-3" />
           </span>
@@ -238,13 +238,13 @@ function Card({ card }: { card: ClientCard }) {
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-muted/50 p-3 text-center">
+      <div className="mt-4 grid grid-cols-3 gap-2 rounded-lg bg-court-surface-subtle/60 p-3 text-center">
         <Stat label="Submitted" value={card.submittedCount} tone="brand" />
         <Stat label="Interviewing" value={card.interviewingCount} tone="blue" />
         <Stat label="Hired" value={card.hiredCount} tone="emerald" />
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground">
+      <div className="mt-3 flex items-center justify-between text-[11px] text-court-fg-muted">
         <span className="inline-flex items-center gap-1">
           <Briefcase className="h-3 w-3" />
           {card.openJobsCount} open · {card.closedJobsCount} closed
@@ -263,8 +263,8 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "bra
   }[tone];
   return (
     <div>
-      <div className={cn("font-serif text-xl font-semibold", value > 0 ? cls : "text-muted-foreground/60")}>{value}</div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className={cn("font-serif text-xl font-semibold", value > 0 ? cls : "text-court-fg-muted/60")}>{value}</div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">{label}</div>
     </div>
   );
 }

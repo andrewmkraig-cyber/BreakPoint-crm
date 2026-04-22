@@ -86,15 +86,15 @@ export function JobsView(props: JobsViewProps) {
 
       <form
         onSubmit={onSubmitSearch}
-        className="flex flex-col gap-2 rounded-xl border border-border bg-white p-3 shadow-sm md:flex-row md:items-center"
+        className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
       >
         <div className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-400" />
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search by job title, client, or location…"
-            className="w-full rounded-lg border border-transparent bg-muted py-2 pl-10 pr-3 text-sm text-navy placeholder:text-muted-foreground focus:border-brand focus:bg-white focus:outline-none"
+            className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:bg-court-surface focus:outline-none"
           />
         </div>
         <button
@@ -112,10 +112,10 @@ export function JobsView(props: JobsViewProps) {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
               <tr>
                 <Th><SortableHeader label="Client" columnKey="client" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></Th>
                 <Th><SortableHeader label="Job Title" columnKey="title" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></Th>
@@ -130,7 +130,7 @@ export function JobsView(props: JobsViewProps) {
             <tbody className="divide-y divide-border">
               {rows.length === 0 && !error && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={8} className="px-5 py-12 text-center text-sm text-court-fg-muted">
                     {tab === "active" ? "No active jobs" : "No inactive jobs"}
                     {q ? ` matching "${q}"` : ""}.
                   </td>
@@ -142,29 +142,29 @@ export function JobsView(props: JobsViewProps) {
                   className="cursor-pointer transition hover:bg-brand-tint/40"
                   onClick={() => router.push(`/jobs/${r.id}`)}
                 >
-                  <td className="px-5 py-3 align-top font-medium text-navy">
+                  <td className="px-5 py-3 align-top font-medium text-court-fg">
                     <Link href={`/jobs/${r.id}`} className="hover:text-brand-dark" onClick={(e) => e.stopPropagation()}>
                       {r.company || "—"}
                     </Link>
                   </td>
-                  <td className="px-5 py-3 align-top text-navy">
+                  <td className="px-5 py-3 align-top text-court-fg">
                     <div className="font-medium">{r.title}</div>
-                    <div className="mt-0.5 text-xs text-muted-foreground">
+                    <div className="mt-0.5 text-xs text-court-fg-muted">
                       {[r.jobType, r.employmentType].filter(Boolean).join(" · ")}
                     </div>
                   </td>
-                  <td className="px-5 py-3 align-top text-navy-400">
+                  <td className="px-5 py-3 align-top text-court-fg-muted">
                     {r.location ? (
                       <span className="inline-flex items-center gap-1">
-                        <MapPin className="h-3 w-3 text-muted-foreground" />
+                        <MapPin className="h-3 w-3 text-court-fg-muted" />
                         {r.location}
                       </span>
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td className="px-5 py-3 align-top text-navy-400">{r.compensation || "—"}</td>
-                  <td className="px-5 py-3 align-top text-navy-400">
+                  <td className="px-5 py-3 align-top text-court-fg-muted">{r.compensation || "—"}</td>
+                  <td className="px-5 py-3 align-top text-court-fg-muted">
                     {r.lastEditedAt ? new Date(r.lastEditedAt).toLocaleDateString() : "—"}
                   </td>
                   <td className="px-5 py-3 align-top text-right">
@@ -212,7 +212,7 @@ function Tabs({
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-border bg-white p-1 shadow-sm">
+    <div className="inline-flex rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <TabLink label="Active" count={activeCount} active={tab === "active"} href={buildHref({ tab: "active", page: 1 })} />
       <TabLink label="Inactive" count={inactiveCount} active={tab === "inactive"} href={buildHref({ tab: "inactive", page: 1 })} />
     </div>
@@ -225,14 +225,14 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
       href={href}
       className={cn(
         "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-navy-400 hover:bg-muted",
+        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
       )}
     >
       <span>{label}</span>
       <span
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          active ? "bg-brand text-white" : "bg-muted text-muted-foreground",
+          active ? "bg-brand text-white" : "bg-court-surface-subtle text-court-fg-muted",
         )}
       >
         {count.toLocaleString()}
@@ -242,7 +242,7 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
 }
 
 function CountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "hired" }) {
-  if (!value) return <span className="text-muted-foreground/60">0</span>;
+  if (!value) return <span className="text-court-fg-muted/60">0</span>;
   const cls = {
     submitted: "bg-brand-tint text-brand-dark",
     interviewing: "bg-blue-50 text-blue-700",
