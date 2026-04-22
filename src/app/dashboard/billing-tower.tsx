@@ -30,17 +30,17 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       : "Fees earned on placements that hit start date.";
 
   return (
-    <section className="rounded-2xl border border-border bg-white p-6 shadow-sm">
+    <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <div className="text-[11px] uppercase tracking-[0.2em] text-brand-dark">Billing Tower</div>
-          <h2 className="mt-1 font-serif text-xl font-semibold text-navy">{activeLabel}</h2>
+          <div className="text-[11px] uppercase tracking-[0.2em] text-court-accent-dark">Billing Tower</div>
+          <h2 className="mt-1 font-serif text-xl font-semibold text-court-fg">{activeLabel}</h2>
         </div>
         <div className="relative">
           <select
             value={period}
             onChange={(e) => setPeriod(e.target.value as typeof period)}
-            className="appearance-none rounded-lg border border-border bg-white py-2 pl-3 pr-9 text-sm font-medium text-navy shadow-sm focus:border-brand focus:outline-none"
+            className="appearance-none rounded-lg border border-court-border bg-court-surface py-2 pl-3 pr-9 text-sm font-medium text-court-fg shadow-sm focus:border-court-accent focus:outline-none"
           >
             {PERIODS.map((p) => (
               <option key={p.value} value={p.value}>
@@ -48,7 +48,7 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
               </option>
             ))}
           </select>
-          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-400" />
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
         </div>
       </div>
 
@@ -74,12 +74,15 @@ function formatUsd(amount: number): string {
 
 function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/50 px-4 py-3">
+    // Sub-card sits inside the BillingTower's bg-court-surface section — using
+    // `bg-court-surface-subtle` here lifts it a step against the parent
+    // (mirrors the Hard palette's `bg-muted/50` visual rhythm in Clay + Grass).
+    <div className="rounded-xl border border-court-border bg-court-surface-subtle px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
-        <div className="font-serif text-4xl font-extrabold leading-none tracking-tight text-navy">{value}</div>
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
+        <div className="font-serif text-4xl font-extrabold leading-none tracking-tight text-court-fg">{value}</div>
       </div>
-      <p className="mt-2 text-[11px] text-muted-foreground">{hint}</p>
+      <p className="mt-2 text-[11px] text-court-fg-muted">{hint}</p>
     </div>
   );
 }

@@ -48,12 +48,14 @@ html.dark {
 
 html.grass {
   /* Grass Court — BreakPoint greens end-to-end. accent-dark lifts to cream-
-     green for legibility on the dark grass surface. */
+     green for legibility on the dark grass surface. Border bumped to
+     #3d6b3d (61 107 61) per the Dashboard palette spec — slightly brighter
+     green so card edges read against the lighter surface-subtle wrapper. */
   --court-surface:         26  46  26;
   --court-surface-subtle:  45  74  45;
   --court-fg:             234 244 228;
   --court-fg-muted:       152 179 144;
-  --court-border:          60  90  60;
+  --court-border:          61 107  61;
   --court-accent:          90 150  66;
   --court-accent-dark:    183 214 160;
   --court-accent-tint:     45  74  45;
