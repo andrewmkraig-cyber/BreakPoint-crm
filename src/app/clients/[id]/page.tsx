@@ -112,7 +112,7 @@ export default async function ClientDetailPage({
 
   return (
     <div className="space-y-6">
-      <Link href="/clients" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
+      <Link href="/clients" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
         <ArrowLeft className="h-3 w-3" /> Back to clients
       </Link>
 
@@ -153,11 +153,11 @@ export default async function ClientDetailPage({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <EditableCompany clientId={id} initial={companyInitial} />
 
-          <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-            <h2 className="font-serif text-lg font-semibold text-navy">Fee Agreement</h2>
+          <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Fee Agreement</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <Detail label="Status" icon={<ShieldCheck className="h-3 w-3" />}>
-                <span className={client.isVerified ? "font-medium text-brand-dark" : "text-muted-foreground"}>
+                <span className={client.isVerified ? "font-medium text-brand-dark" : "text-court-fg-muted"}>
                   {client.isVerified ? "Signed" : "Unsigned"}
                 </span>
               </Detail>
@@ -182,19 +182,19 @@ export default async function ClientDetailPage({
             </dl>
           </div>
 
-          <div className="rounded-xl border border-border bg-white shadow-sm lg:col-span-3">
-            <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <h2 className="font-serif text-lg font-semibold text-navy">Jobs</h2>
-              <span className="text-xs text-muted-foreground">
+          <div className="rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
+            <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
+              <h2 className="font-serif text-lg font-semibold text-court-fg">Jobs</h2>
+              <span className="text-xs text-court-fg-muted">
                 {openJobs.length} open · {closedJobs.length} closed
               </span>
             </div>
             {openJobs.length + closedJobs.length === 0 ? (
-              <div className="px-5 py-12 text-center text-sm text-muted-foreground">No jobs yet for this client.</div>
+              <div className="px-5 py-12 text-center text-sm text-court-fg-muted">No jobs yet for this client.</div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-border bg-muted/40 text-[11px] uppercase tracking-wider text-muted-foreground">
+                  <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
                     <tr>
                       <th className="px-5 py-2.5 font-medium">Job</th>
                       <th className="px-5 py-2.5 font-medium">Status</th>
@@ -203,7 +203,7 @@ export default async function ClientDetailPage({
                       <th className="px-5 py-2.5 text-right font-medium">Hired</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
+                  <tbody className="divide-y divide-court-border">
                     {[...openJobs, ...closedJobs].map((j) => {
                       const isOpen = openJobs.includes(j);
                       const c = jobCountsById.get(j.id) ?? emptyJobCounts();
@@ -212,9 +212,9 @@ export default async function ClientDetailPage({
                           <td className="px-5 py-2.5">
                             <Link
                               href={`/jobs/${j.id}`}
-                              className="flex items-center gap-2 font-medium text-navy hover:text-brand-dark"
+                              className="flex items-center gap-2 font-medium text-court-fg hover:text-brand-dark"
                             >
-                              <Briefcase className="h-4 w-4 text-muted-foreground" />
+                              <Briefcase className="h-4 w-4 text-court-fg-muted" />
                               <span>{j.name ?? j.title ?? "(untitled)"}</span>
                             </Link>
                           </td>
@@ -224,7 +224,7 @@ export default async function ClientDetailPage({
                                 "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
                                 isOpen
                                   ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-muted text-navy-400",
+                                  : "bg-court-surface-subtle text-court-fg-muted",
                               )}
                             >
                               {isOpen ? "Active" : "Closed"}
@@ -319,7 +319,7 @@ function Tabs({
   hasBenefits: boolean;
 }) {
   return (
-    <div className="inline-flex flex-wrap rounded-lg border border-border bg-white p-1 shadow-sm">
+    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <TabLink label="Overview" href={`/clients/${clientId}?tab=overview`} active={tab === "overview"} />
       <TabLink label="Contacts" count={contactsCount} href={`/clients/${clientId}?tab=contacts`} active={tab === "contacts"} />
       <TabLink label="Agreements" count={agreementsCount} href={`/clients/${clientId}?tab=agreements`} active={tab === "agreements"} />
@@ -340,7 +340,7 @@ function TabLink({ label, href, active, count, dot }: { label: string; href: str
       href={href}
       className={cn(
         "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-navy-400 hover:bg-muted",
+        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
       )}
     >
       <span>{label}</span>
@@ -354,7 +354,7 @@ function TabLink({ label, href, active, count, dot }: { label: string; href: str
         <span
           className={cn(
             "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-            active ? "bg-brand text-white" : "bg-muted text-muted-foreground",
+            active ? "bg-brand text-white" : "bg-court-surface-subtle text-court-fg-muted",
           )}
         >
           {count.toLocaleString()}
@@ -367,8 +367,8 @@ function TabLink({ label, href, active, count, dot }: { label: string; href: str
 function Detail({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 inline-flex items-center gap-1 text-navy">
+      <dt className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</dt>
+      <dd className="mt-0.5 inline-flex items-center gap-1 text-court-fg">
         {icon}
         {children}
       </dd>
@@ -378,23 +378,23 @@ function Detail({ label, icon, children }: { label: string; icon?: React.ReactNo
 
 function Stat({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "brand" | "blue" | "emerald" | "muted" }) {
   const cls = {
-    default: "text-navy",
+    default: "text-court-fg",
     brand: "text-brand-dark",
     blue: "text-blue-700",
     emerald: "text-emerald-700",
-    muted: "text-navy-400",
+    muted: "text-court-fg-muted",
   }[tone];
-  const effective = (typeof value === "number" && value === 0) ? "text-muted-foreground/60" : cls;
+  const effective = (typeof value === "number" && value === 0) ? "text-court-fg-muted/60" : cls;
   return (
-    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-border bg-white px-4 py-2.5 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
       <div className={cn("font-serif text-4xl font-extrabold leading-none tracking-tight", effective)}>{value}</div>
     </div>
   );
 }
 
 function JobCountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "hired" }) {
-  if (!value) return <span className="text-muted-foreground/60">0</span>;
+  if (!value) return <span className="text-court-fg-muted/60">0</span>;
   const cls = {
     submitted: "bg-brand-tint text-brand-dark",
     interviewing: "bg-blue-50 text-blue-700",

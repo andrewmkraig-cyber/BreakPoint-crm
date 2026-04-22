@@ -52,8 +52,8 @@ const STAGE_LABELS: Record<PipelineBucket, string> = {
 
 // Same green-brand progression as StageBadge so pipeline visuals match across pages.
 const STAGE_TONE: Record<PipelineBucket, string> = {
-  applied: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
-  sourced: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
+  applied: "border-court-border bg-court-surface-subtle text-court-fg-muted hover:border-court-fg-muted/30",
+  sourced: "border-court-border bg-court-surface-subtle text-court-fg-muted hover:border-court-fg-muted/30",
   kept: "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300",
   submitted: "border-brand/30 bg-brand-tint text-brand-dark hover:border-brand/60",
   interviewing: "border-brand/40 bg-brand/25 text-brand-dark hover:border-brand/70",
@@ -62,7 +62,7 @@ const STAGE_TONE: Record<PipelineBucket, string> = {
   hired: "border-brand-dark bg-brand-dark text-white hover:brightness-110",
   rejected: "border-red-200 bg-red-50 text-red-700 hover:border-red-300",
   cancelled: "border-red-300 bg-red-100 text-red-800 hover:border-red-400",
-  other: "border-border bg-muted text-navy-400 hover:border-muted-foreground/30",
+  other: "border-court-border bg-court-surface-subtle text-court-fg-muted hover:border-court-fg-muted/30",
 };
 
 export function JobPipelineSummary({
@@ -130,21 +130,21 @@ export function JobPipelineSummary({
       </div>
 
       {activeItem && activeItem.count > 0 && (
-        <div className="mt-3 overflow-hidden rounded-xl border border-border bg-white">
-          <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <div className="mt-3 overflow-hidden rounded-xl border border-court-border bg-court-surface">
+          <div className="flex items-center justify-between border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <span>
               {activeItem.label} · {activeItem.count} {activeItem.count === 1 ? "candidate" : "candidates"}
             </span>
             <button
               type="button"
-              className="text-muted-foreground hover:text-navy"
+              className="text-court-fg-muted hover:text-court-fg"
               onClick={() => setOpenBucket(null)}
             >
               Close
             </button>
           </div>
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-border text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="border-b border-court-border text-[11px] uppercase tracking-wider text-court-fg-muted">
               <tr>
                 <th className="px-4 py-2 font-medium">Candidate</th>
                 <th className="px-4 py-2 font-medium">Stage</th>
@@ -152,19 +152,19 @@ export function JobPipelineSummary({
                 {jobActions && <th className="px-4 py-2 text-right font-medium">Actions</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-court-border">
               {activeItem.rows.map((r) => (
                 <tr key={r.candidateId} className="transition hover:bg-brand-tint/40">
                   <td className="px-4 py-2">
-                    <Link href={`/candidates/${r.candidateId}`} className="font-medium text-navy hover:text-brand-dark">
+                    <Link href={`/candidates/${r.candidateId}`} className="font-medium text-court-fg hover:text-brand-dark">
                       {r.candidateName}
                     </Link>
-                    <div className="text-xs text-muted-foreground">{r.candidateTitle || "—"}</div>
+                    <div className="text-xs text-court-fg-muted">{r.candidateTitle || "—"}</div>
                   </td>
                   <td className="px-4 py-2">
                     <StageBadgeFromName stageName={r.stageName} />
                   </td>
-                  <td className="px-4 py-2 text-xs text-muted-foreground">{formatDate(r.stageMovedAt)}</td>
+                  <td className="px-4 py-2 text-xs text-court-fg-muted">{formatDate(r.stageMovedAt)}</td>
                   {jobActions && (
                     <td className="px-4 py-2">
                       <PipelineRowActions

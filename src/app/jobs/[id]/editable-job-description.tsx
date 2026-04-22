@@ -68,11 +68,11 @@ export function EditableJobDescription({
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-navy">Description</h2>
-          <p className="text-[11px] text-muted-foreground">
+          <h2 className="font-serif text-lg font-semibold text-court-fg">Description</h2>
+          <p className="text-[11px] text-court-fg-muted">
             {usingOverride
               ? "Local Ace override · merge fields use this text"
               : rfDescription
@@ -84,7 +84,7 @@ export function EditableJobDescription({
           <button
             type="button"
             onClick={onStartEditing}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
           >
             <Pencil className="h-3 w-3" /> Edit
           </button>
@@ -94,7 +94,7 @@ export function EditableJobDescription({
               type="button"
               onClick={onCancel}
               disabled={isSaving}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 hover:text-navy disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted hover:text-court-fg disabled:opacity-60"
             >
               <X className="h-3 w-3" /> Cancel
             </button>
@@ -117,21 +117,21 @@ export function EditableJobDescription({
             onChange={(e) => setDraft(e.target.value)}
             rows={12}
             placeholder="Describe the role — responsibilities, requirements, anything the candidate or client needs to see in [Job Description] merge fields."
-            className="w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
           {err && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>
           )}
           {rfDescription && draft.trim() === "" && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-court-fg-muted">
               Saving an empty description clears the local override and reverts to the RF text below.
             </p>
           )}
           {rfDescription && (
-            <details className="text-[11px] text-muted-foreground">
+            <details className="text-[11px] text-court-fg-muted">
               <summary className="cursor-pointer">Show RecruiterFlow source description</summary>
               <div
-                className="prose prose-sm mt-2 max-w-none text-navy"
+                className="prose prose-sm mt-2 max-w-none text-court-fg"
                 dangerouslySetInnerHTML={{ __html: rfDescription }}
               />
             </details>
@@ -139,15 +139,15 @@ export function EditableJobDescription({
         </div>
       ) : effective.trim().length > 0 ? (
         usingOverride ? (
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-navy">{effective}</p>
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-court-fg">{effective}</p>
         ) : (
           <div
-            className="prose prose-sm mt-3 max-w-none text-navy"
+            className="prose prose-sm mt-3 max-w-none text-court-fg"
             dangerouslySetInnerHTML={{ __html: effective }}
           />
         )
       ) : (
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 text-xs text-court-fg-muted">
           No description on this job yet. Click Edit to add one.
         </p>
       )}

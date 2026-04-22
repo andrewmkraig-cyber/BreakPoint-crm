@@ -80,14 +80,14 @@ export function EditableCompany({
   const websiteHref = draft.website ? (draft.website.startsWith("http") ? draft.website : `https://${draft.website}`) : "";
 
   return (
-    <div className="rounded-xl border border-border bg-white p-5 shadow-sm lg:col-span-2">
+    <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm lg:col-span-2">
       <div className="flex items-center justify-between">
-        <h2 className="font-serif text-lg font-semibold text-navy">Company</h2>
+        <h2 className="font-serif text-lg font-semibold text-court-fg">Company</h2>
         {!editing && (
           <button
             type="button"
             onClick={() => setEditing(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2.5 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
           >
             <Pencil className="h-3 w-3" /> Edit
           </button>
@@ -101,11 +101,11 @@ export function EditableCompany({
             <LabeledField label="LinkedIn" value={draft.linkedin} onChange={(v) => setDraft({ ...draft, linkedin: v })} placeholder="https://linkedin.com/company/…" />
             <LabeledField label="Phone" value={draft.phone} onChange={(v) => setDraft({ ...draft, phone: v })} placeholder="+1 555-555-5555" />
             <label className="block text-sm">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Industry</span>
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Industry</span>
               <select
                 value={draft.industry}
                 onChange={(e) => setDraft({ ...draft, industry: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               >
                 <option value="">—</option>
                 {INDUSTRY_OPTIONS.map((opt) => (
@@ -116,7 +116,7 @@ export function EditableCompany({
               </select>
             </label>
           </div>
-          <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Address</div>
+          <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">Address</div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <LabeledField label="Street" value={draft.street1} onChange={(v) => setDraft({ ...draft, street1: v })} />
             <LabeledField label="Street 2" value={draft.street2} onChange={(v) => setDraft({ ...draft, street2: v })} />
@@ -126,12 +126,12 @@ export function EditableCompany({
             <LabeledField label="Country" value={draft.country} onChange={(v) => setDraft({ ...draft, country: v })} />
           </div>
           {err && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-          <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
+          <div className="flex items-center justify-end gap-2 border-t border-court-border pt-3">
             <button
               type="button"
               onClick={onCancel}
               disabled={isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
             >
               <X className="h-3 w-3" /> Cancel
             </button>
@@ -170,7 +170,7 @@ export function EditableCompany({
           </Detail>
           <Detail label="Phone" icon={<Phone className="h-3 w-3" />}>
             {draft.phone ? (
-              <a href={telHref(draft.phone)} className="text-navy hover:text-brand-dark">
+              <a href={telHref(draft.phone)} className="text-court-fg hover:text-brand-dark">
                 {formatPhone(draft.phone)}
               </a>
             ) : (
@@ -179,7 +179,7 @@ export function EditableCompany({
           </Detail>
           <Detail label="Address" icon={<MapPin className="h-3 w-3" />}>
             {addressLines.length ? (
-              <div className="space-y-0.5 text-navy">
+              <div className="space-y-0.5 text-court-fg">
                 {addressLines.map((line, i) => (
                   <div key={i}>{line}</div>
                 ))}
@@ -197,8 +197,8 @@ export function EditableCompany({
 function Detail({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 inline-flex items-center gap-1 text-navy">
+      <dt className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</dt>
+      <dd className="mt-0.5 inline-flex items-center gap-1 text-court-fg">
         {icon}
         {children}
       </dd>

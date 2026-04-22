@@ -56,7 +56,7 @@ export function ContactsTab({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
+        <div className="text-sm text-court-fg-muted">
           {initialContacts.length === 0
             ? "No contacts on file yet."
             : `${initialContacts.length} ${initialContacts.length === 1 ? "contact" : "contacts"} on file`}
@@ -80,8 +80,8 @@ export function ContactsTab({
       )}
 
       {open && (
-        <form onSubmit={onSubmit} className="rounded-xl border border-border bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2 border-b border-border pb-3 text-sm font-semibold text-navy">
+        <form onSubmit={onSubmit} className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+          <div className="flex items-center gap-2 border-b border-court-border pb-3 text-sm font-semibold text-court-fg">
             <UserPlus className="h-4 w-4 text-brand-dark" /> New contact
           </div>
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -99,7 +99,7 @@ export function ContactsTab({
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy"
+              className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
             >
               Cancel
             </button>
@@ -115,9 +115,9 @@ export function ContactsTab({
         </form>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+          <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <tr>
               <th className="px-5 py-3 font-medium">Name</th>
               <th className="px-5 py-3 font-medium">Title</th>
@@ -129,7 +129,7 @@ export function ContactsTab({
           <tbody className="divide-y divide-border">
             {initialContacts.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
                   No contacts for this client yet. Add one with the button above.
                 </td>
               </tr>
@@ -138,11 +138,11 @@ export function ContactsTab({
                 <tr key={c.id} className="transition hover:bg-brand-tint/40">
                   <td className="px-5 py-3 align-top">
                     <div className="flex items-center gap-2">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-[11px] font-semibold text-navy-400">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
                         {initials(c.name)}
                       </div>
                       <div>
-                        <div className="font-medium text-navy">{c.name}</div>
+                        <div className="font-medium text-court-fg">{c.name}</div>
                         {c.linkedIn && (
                           <a
                             href={c.linkedIn}
@@ -156,34 +156,34 @@ export function ContactsTab({
                       </div>
                     </div>
                   </td>
-                  <td className="px-5 py-3 align-top text-navy-400">{c.title || "—"}</td>
+                  <td className="px-5 py-3 align-top text-court-fg-muted">{c.title || "—"}</td>
                   <td className="px-5 py-3 align-top">
                     {c.email ? (
                       <EmailLink
                         email={c.email}
-                        className="inline-flex items-center gap-1 text-navy hover:text-brand-dark"
+                        className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark"
                         mergeValues={{
                           clientContactFullName: c.name,
                           clientContactFirstName: c.name.trim().split(/\s+/)[0] ?? "",
                           clientCompanyName: clientName,
                         }}
                       >
-                        <Mail className="h-3 w-3 text-muted-foreground" /> {c.email}
+                        <Mail className="h-3 w-3 text-court-fg-muted" /> {c.email}
                       </EmailLink>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-court-fg-muted">—</span>
                     )}
                   </td>
                   <td className="px-5 py-3 align-top">
                     {c.phone ? (
-                      <a href={telHref(c.phone)} className="inline-flex items-center gap-1 text-navy hover:text-brand-dark">
-                        <PhoneIcon className="h-3 w-3 text-muted-foreground" /> {formatPhone(c.phone)}
+                      <a href={telHref(c.phone)} className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark">
+                        <PhoneIcon className="h-3 w-3 text-court-fg-muted" /> {formatPhone(c.phone)}
                       </a>
                     ) : (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-court-fg-muted">—</span>
                     )}
                   </td>
-                  <td className="px-5 py-3 align-top text-xs text-muted-foreground">
+                  <td className="px-5 py-3 align-top text-xs text-court-fg-muted">
                     {c.lastContactedAt ? new Date(c.lastContactedAt).toLocaleDateString() : "—"}
                   </td>
                 </tr>
@@ -213,7 +213,7 @@ function Field({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
@@ -224,7 +224,7 @@ function Field({
         placeholder={placeholder}
         autoFocus={autoFocus}
         className={cn(
-          "mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60",
+          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
           "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
         )}
       />

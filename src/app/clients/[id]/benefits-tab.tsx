@@ -195,11 +195,11 @@ function BenefitsTabInner({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-border bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-border px-5 py-3">
+      <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-navy">Benefits documents</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Benefits documents</h2>
+            <p className="text-xs text-court-fg-muted">
               Drop PDFs, Word docs, or plain-text carrier packets here. Files are private to Ace.
             </p>
           </div>
@@ -229,11 +229,11 @@ function BenefitsTabInner({
         </div>
       </div>
 
-      <div className="rounded-xl border border-border bg-white shadow-sm">
-        <div className="flex flex-col items-start justify-between gap-3 border-b border-border px-5 py-3 md:flex-row md:items-center">
+      <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="flex flex-col items-start justify-between gap-3 border-b border-court-border px-5 py-3 md:flex-row md:items-center">
           <div>
-            <h2 className="font-serif text-lg font-semibold text-navy">Benefits summary</h2>
-            <p className="text-xs text-muted-foreground">
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Benefits summary</h2>
+            <p className="text-xs text-court-fg-muted">
               Paste raw notes or generate a clean summary with Claude from uploaded docs + pasted text.
             </p>
           </div>
@@ -251,7 +251,7 @@ function BenefitsTabInner({
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-semibold text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
               >
                 <Pencil className="h-3 w-3" /> Edit
               </button>
@@ -272,7 +272,7 @@ function BenefitsTabInner({
                 rows={18}
                 placeholder="Paste benefits info here, or click Summarize with Claude to generate from uploaded docs…"
                 className={cn(
-                  "w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy",
+                  "w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg",
                   "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
                 )}
               />
@@ -280,13 +280,13 @@ function BenefitsTabInner({
                 <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{saveError}</div>
               )}
               <div className="flex items-center justify-between">
-                <div className="text-[11px] text-muted-foreground">{draft.length.toLocaleString()} characters</div>
+                <div className="text-[11px] text-court-fg-muted">{draft.length.toLocaleString()} characters</div>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={onCancel}
                     disabled={isSaving}
-                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
                   >
                     <X className="h-3 w-3" /> Cancel
                   </button>
@@ -306,14 +306,14 @@ function BenefitsTabInner({
             <>
               <PlainProse text={saved.body} />
               {saved.updatedAt && (
-                <div className="mt-4 border-t border-border pt-3 text-[11px] text-muted-foreground">
+                <div className="mt-4 border-t border-court-border pt-3 text-[11px] text-court-fg-muted">
                   Last updated {safeDateString(saved.updatedAt)}
                   {saved.updatedByName ? ` by ${saved.updatedByName}` : ""}
                 </div>
               )}
             </>
           ) : (
-            <div className="py-8 text-center text-sm text-muted-foreground">
+            <div className="py-8 text-center text-sm text-court-fg-muted">
               No benefits summary yet. Upload a PDF and click Summarize with Claude, or edit to paste your own notes.
             </div>
           )}
@@ -353,7 +353,7 @@ class ClientErrorBoundary extends Component<{ children: ReactNode }, { message: 
           <button
             type="button"
             onClick={() => this.setState({ message: null })}
-            className="mt-3 rounded-md border border-red-300 bg-white px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-100"
+            className="mt-3 rounded-md border border-red-300 bg-red-100 px-3 py-1 text-xs font-medium text-red-700 hover:bg-red-200"
           >
             Try again
           </button>

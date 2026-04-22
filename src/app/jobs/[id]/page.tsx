@@ -106,7 +106,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     <div className="space-y-6">
       <Link
         href="/jobs"
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy"
+        className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg"
       >
         <ArrowLeft className="h-3 w-3" /> Back to jobs
       </Link>
@@ -119,7 +119,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           job.companyId ? (
             <Link
               href={`/clients/${job.companyId}`}
-              className="inline-flex items-center gap-1 rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:border-brand/40 hover:text-navy"
+              className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
             >
               <Building2 className="h-3 w-3" /> Client profile
             </Link>
@@ -134,8 +134,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         <Stat label="Hired" value={counts.hired} />
       </div>
 
-      <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
-        <h2 className="font-serif text-lg font-semibold text-navy">Overview</h2>
+      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+        <h2 className="font-serif text-lg font-semibold text-court-fg">Overview</h2>
         <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <DT label="Compensation" value={job.compensation || "—"} />
           <DT label="Openings" value={String(job.openings ?? "—")} />
@@ -147,7 +147,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           <DT label="Fee" value={feePct ? `${feePct}%${estFee ? ` (est. $${estFee.toLocaleString()})` : ""}` : "—"} />
         </dl>
         {raw.apply_link && (
-          <div className="mt-5 border-t border-border pt-4">
+          <div className="mt-5 border-t border-court-border pt-4">
             <Link
               href={raw.apply_link}
               target="_blank"
@@ -160,16 +160,16 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         )}
       </div>
 
-      <div className="rounded-xl border border-border bg-white p-5 shadow-sm">
+      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
         <div className="flex items-center justify-between">
-          <h2 className="font-serif text-lg font-semibold text-navy">Pipeline</h2>
-          <div className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          <h2 className="font-serif text-lg font-semibold text-court-fg">Pipeline</h2>
+          <div className="inline-flex items-center gap-1 text-xs text-court-fg-muted">
             <Users className="h-3 w-3" />
             {pipelineRows.length} {pipelineRows.length === 1 ? "candidate" : "candidates"}
           </div>
         </div>
         {pipelineRows.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">
+          <div className="py-8 text-center text-sm text-court-fg-muted">
             No candidates have been added to this job yet.
           </div>
         ) : (
@@ -204,8 +204,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 function DT({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 inline-flex items-center gap-1 text-navy">
+      <dt className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</dt>
+      <dd className="mt-0.5 inline-flex items-center gap-1 text-court-fg">
         {icon}
         {value}
       </dd>
@@ -215,9 +215,9 @@ function DT({ label, value, icon }: { label: string; value: string; icon?: React
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-border bg-white px-4 py-2.5 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className="font-serif text-4xl font-extrabold leading-none tracking-tight text-navy">
+    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
+      <div className="font-serif text-4xl font-extrabold leading-none tracking-tight text-court-fg">
         {value}
       </div>
     </div>
@@ -229,20 +229,20 @@ function Stat({ label, value }: { label: string; value: string | number }) {
 // blow up to a 4xl serif italic and looked garish next to clean numbers.
 function StatusCard({ isOpen }: { isOpen: boolean }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-white px-4 py-2.5 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Status</div>
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">Status</div>
       <span
         className={cn(
           "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider",
           isOpen
             ? "bg-brand-tint text-brand-dark"
-            : "bg-muted text-muted-foreground",
+            : "bg-court-surface-subtle text-court-fg-muted",
         )}
       >
         <span
           className={cn(
             "h-1.5 w-1.5 rounded-full",
-            isOpen ? "bg-brand-dark" : "bg-muted-foreground",
+            isOpen ? "bg-brand-dark" : "bg-court-fg-muted",
           )}
         />
         {isOpen ? "Active" : "Inactive"}

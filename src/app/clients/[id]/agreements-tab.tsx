@@ -88,10 +88,10 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-white shadow-sm">
-        <div className="border-b border-border px-5 py-3">
-          <h3 className="font-serif text-base font-semibold text-navy">Upload agreement</h3>
-          <p className="text-xs text-muted-foreground">
+      <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="border-b border-court-border px-5 py-3">
+          <h3 className="font-serif text-base font-semibold text-court-fg">Upload agreement</h3>
+          <p className="text-xs text-court-fg-muted">
             PDFs or Word documents, up to 20MB. Stored privately in Ace. DocuSign auto-import will come later.
           </p>
         </div>
@@ -110,10 +110,10 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-        <div className="border-b border-border px-5 py-3 text-sm font-semibold text-navy">Uploaded agreements</div>
+      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="border-b border-court-border px-5 py-3 text-sm font-semibold text-court-fg">Uploaded agreements</div>
         {items.length === 0 ? (
-          <div className="px-5 py-12 text-center text-sm text-muted-foreground">No agreements uploaded yet.</div>
+          <div className="px-5 py-12 text-center text-sm text-court-fg-muted">No agreements uploaded yet.</div>
         ) : (
           <ul className="divide-y divide-border">
             {items.map((a) => (
@@ -165,13 +165,13 @@ function AgreementItem({
             href={`/api/client-agreements/${agreement.id}`}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-2 font-medium text-navy hover:text-brand-dark"
+            className="inline-flex items-center gap-2 font-medium text-court-fg hover:text-brand-dark"
           >
-            <FileText className="h-4 w-4 text-muted-foreground" />
+            <FileText className="h-4 w-4 text-court-fg-muted" />
             {agreement.filename}
-            <ExternalLink className="h-3 w-3 text-muted-foreground" />
+            <ExternalLink className="h-3 w-3 text-court-fg-muted" />
           </Link>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-court-fg-muted">
             <span>{formatBytes(agreement.sizeBytes)}</span>
             <span>{new Date(agreement.uploadedAt).toLocaleString()}</span>
             {agreement.uploadedByName && <span>by {agreement.uploadedByName}</span>}
@@ -197,7 +197,7 @@ function AgreementItem({
             <button
               type="button"
               onClick={() => setExpanded((v) => !v)}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
             >
               {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               {expanded ? "Hide" : "Show"} summary
@@ -205,14 +205,14 @@ function AgreementItem({
           )}
           <Link
             href={`/api/client-agreements/${agreement.id}?download=1`}
-            className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-navy-400 shadow-sm transition hover:text-navy"
+            className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
           >
             Download
           </Link>
           <button
             type="button"
             onClick={() => onDelete(agreement.id, agreement.filename)}
-            className="rounded-md border border-border bg-white px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50"
+            className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-red-600 shadow-sm transition hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30"
           >
             <Trash2 className="h-3 w-3" />
           </button>
@@ -222,8 +222,8 @@ function AgreementItem({
       {error && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
 
       {summary && expanded && (
-        <div className={cn("mt-3 rounded-lg border border-border bg-muted/30 p-4")}>
-          <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+        <div className={cn("mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-4")}>
+          <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <Sparkles className="h-3 w-3 text-brand-dark" /> Key terms
             {summaryUpdatedAt && <span className="normal-case tracking-normal">· updated {new Date(summaryUpdatedAt).toLocaleString()}</span>}
           </div>
