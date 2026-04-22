@@ -59,10 +59,10 @@ function JobCell({
   const headLine = jobLocation ? `${jobTitle} - ${jobLocation}` : jobTitle;
   return (
     <div>
-      <Link href={`/jobs/${jobId}`} className="font-medium text-navy hover:text-brand-dark">
+      <Link href={`/jobs/${jobId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
         {headLine}
       </Link>
-      {clientName && <div className="text-xs text-muted-foreground">{clientName}</div>}
+      {clientName && <div className="text-xs text-court-fg-muted">{clientName}</div>}
     </div>
   );
 }
@@ -100,19 +100,19 @@ export function ApplicantsView({
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 border-b border-border">
+      <div className="flex items-center gap-2 border-b border-court-border">
         <TabButton active={tab === "applied"} onClick={() => setTab("applied")}>
-          Applied <span className="ml-1 text-muted-foreground">({applied.length})</span>
+          Applied <span className="ml-1 text-court-fg-muted">({applied.length})</span>
         </TabButton>
         <TabButton active={tab === "kept"} onClick={() => setTab("kept")}>
-          Kept <span className="ml-1 text-muted-foreground">({kept.length})</span>
+          Kept <span className="ml-1 text-court-fg-muted">({kept.length})</span>
         </TabButton>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="border-b border-border bg-muted/60 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
               <tr>
                 <ColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
                 <ColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
@@ -128,7 +128,7 @@ export function ApplicantsView({
                 <th className="px-5 py-3 font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-court-border">
               {tab === "applied" ? (
                 sortedApplied.length === 0 ? (
                   <EmptyRow label="No applicants in this view." />
@@ -165,7 +165,9 @@ function TabButton({
       onClick={onClick}
       className={cn(
         "border-b-2 px-4 py-2 text-sm font-semibold transition",
-        active ? "border-brand text-navy" : "border-transparent text-muted-foreground hover:text-navy",
+        active
+          ? "border-court-accent text-court-fg"
+          : "border-transparent text-court-fg-muted hover:text-court-fg",
       )}
     >
       {children}
@@ -176,7 +178,7 @@ function TabButton({
 function EmptyRow({ label }: { label: string }) {
   return (
     <tr>
-      <td colSpan={5} className="px-5 py-12 text-center text-sm text-muted-foreground">
+      <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
         {label}
       </td>
     </tr>
@@ -201,7 +203,7 @@ function ColHeader({
         onClick={onClick}
         className={cn(
           "inline-flex items-center gap-1 uppercase tracking-wider",
-          active ? "text-navy" : "text-muted-foreground hover:text-navy",
+          active ? "text-court-fg" : "text-court-fg-muted hover:text-court-fg",
         )}
       >
         {label}
@@ -228,9 +230,9 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
   }
 
   return (
-    <tr className="transition hover:bg-brand-tint/40">
+    <tr className="transition hover:bg-court-accent-tint/40">
       <td className="px-5 py-3 align-top">
-        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-navy hover:text-brand-dark">
+        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}
         </Link>
       </td>
@@ -242,11 +244,11 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-xs text-muted-foreground">{formatDate(row.appliedAt)}</td>
-      <td className="px-5 py-3 align-top text-sm text-navy-400">{formatSourceLabel(row.source)}</td>
+      <td className="px-5 py-3 align-top text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
+      <td className="px-5 py-3 align-top text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
       <td className="px-5 py-3 align-top">
         <div className="flex flex-wrap items-center gap-1.5">
-          {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit hands off to the candidate profile's submittal
               composer via the ?compose=submittal&jobId=N deep link.
               The actual stage move to "submitted" happens when the
@@ -317,9 +319,9 @@ function KeptRowView({ row }: { row: KeptRow }) {
   }
 
   return (
-    <tr className="transition hover:bg-brand-tint/40">
+    <tr className="transition hover:bg-court-accent-tint/40">
       <td className="px-5 py-3 align-top">
-        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-navy hover:text-brand-dark">
+        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}
         </Link>
       </td>
@@ -331,10 +333,10 @@ function KeptRowView({ row }: { row: KeptRow }) {
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-xs text-muted-foreground">{formatDate(row.keptAt)}</td>
+      <td className="px-5 py-3 align-top text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
       <td className="px-5 py-3 align-top">
         <div className="flex flex-wrap items-center gap-1.5">
-          {isPending && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+          {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit hands off to the candidate profile's submittal
               composer via the deep link. The Kept row gets cleaned up
               after the recruiter sends — the composer's onSend path
@@ -388,11 +390,17 @@ function ActionButton({
       disabled={disabled}
       className={cn(
         "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 text-[11px] font-bold shadow-sm transition disabled:opacity-60",
+        // Primary stays brand-green across every mode. Destructive keeps red
+        // border + red text (status semantics) but the card bg tracks the
+        // court surface and the hover tint gates on mode: Hard keeps
+        // bg-red-50 for a light-red hover; Clay + Grass get a translucent
+        // red glow so the hover doesn't surface a light patch on the dark
+        // page. Neutral default routes through court-* tokens.
         primary
           ? "bg-brand text-white hover:bg-brand-dark"
           : destructive
-            ? "border border-red-200 bg-white text-red-700 hover:border-red-300 hover:bg-red-50"
-            : "border border-border bg-white text-navy hover:border-brand/40 hover:text-brand-dark",
+            ? "border border-red-200 bg-court-surface text-red-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30"
+            : "border border-court-border bg-court-surface text-court-fg hover:border-court-accent/40 hover:text-court-accent-dark",
       )}
     >
       {children}
