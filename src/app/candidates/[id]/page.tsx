@@ -43,9 +43,13 @@ import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAppPreferences } from "@/lib/preferences";
+import AiWorkspace from "@/components/AiWorkspace";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
+
+type CandidateTab = "profile" | "game-plan";
 
 // Placement.billingContacts is a Json column — Prisma types it loosely as
 // JsonValue. Coerce to our snapshot shape defensively: keep only objects with
@@ -85,7 +89,13 @@ type EducationRaw = {
 
 type NoteRaw = { id?: number; note?: string; added_time?: string; added_by?: { name?: string } | null };
 
-export default async function CandidateProfilePage({ params }: { params: { id: string } }) {
+export default async function CandidateProfilePage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { tab?: CandidateTab };
+}) {
   // Ace-native candidates have cuid string ids; RF candidates have numeric ids.
   // Route accordingly so /candidates/[id] works for both without a separate URL.
   if (!/^\d+$/.test(params.id)) {
@@ -93,6 +103,8 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
   }
   const id = Number(params.id);
   if (!Number.isFinite(id)) notFound();
+
+  const tab: CandidateTab = searchParams?.tab === "game-plan" ? "game-plan" : "profile";
 
   const [candidates, clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
     recruiterflow.listAllCandidates({ perPage: 100 }),
@@ -439,40 +451,71 @@ export default async function CandidateProfilePage({ params }: { params: { id: s
         aceTeam={aceTeam}
       />
 
-      {/* Resume-first layout: the resume PDF is the primary content —
-          ~70% viewport on lg+, the remaining ~30% is a scannable right
-          sidebar with everything else. The 10-col grid is picked so the
-          split lands at ~70/30, which is visibly resume-dominant
-          instead of the old ~60/40 that still felt symmetric. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        <div className="space-y-6 lg:col-span-7">
-          <EditableResume candidateRfId={id} initial={localResumeInitial} />
-          {/* Collapsible SMS thread. Sits right below the resume so recruiters
-              can glance at prior texts without scrolling to Activity. */}
-          <TextingExchanges candidateId={String(id)} />
-          {/* Call-log accordion. Click-to-call on the sidebar phone number
-              seeds this with an "initiated" row; the Krispcall webhook
-              back-fills duration + recording + final status later. */}
-          <CallLogs candidateId={String(id)} />
-        </div>
+      <Tabs tab={tab} candidateId={id} />
 
-        <aside className="space-y-6 lg:col-span-3">
-          <EditableContact candidateId={id} initial={contactInitial} />
-          {/* SMS composer slots in directly below the phone-number card so
-              the input sits next to the number it'll be texting. Pass the
-              normalized candidate phone from EditableContact's source. */}
-          <SmsComposer candidateId={String(id)} toNumber={normalizePhone(c.phone_number) || null} />
-          <EditableEmployment candidateId={id} initial={employmentInitial} />
-          <EditableSkills candidateId={id} initial={skillsInitial} />
-          <EditableExperience candidateId={id} initial={experienceInitial} />
-          <EditableEducation candidateId={id} initial={educationInitial} />
-          <EditableNotes candidateId={id} initial={notesInitial} />
-        </aside>
-      </div>
+      {tab === "game-plan" ? (
+        <AiWorkspace entityType="candidate" entityId={String(id)} />
+      ) : (
+        <>
+          {/* Resume-first layout: the resume PDF is the primary content —
+              ~70% viewport on lg+, the remaining ~30% is a scannable right
+              sidebar with everything else. The 10-col grid is picked so the
+              split lands at ~70/30, which is visibly resume-dominant
+              instead of the old ~60/40 that still felt symmetric. */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+            <div className="space-y-6 lg:col-span-7">
+              <EditableResume candidateRfId={id} initial={localResumeInitial} />
+              {/* Collapsible SMS thread. Sits right below the resume so recruiters
+                  can glance at prior texts without scrolling to Activity. */}
+              <TextingExchanges candidateId={String(id)} />
+              {/* Call-log accordion. Click-to-call on the sidebar phone number
+                  seeds this with an "initiated" row; the Krispcall webhook
+                  back-fills duration + recording + final status later. */}
+              <CallLogs candidateId={String(id)} />
+            </div>
 
-      <ActivityPanel interviews={buildActivityInterviews(interviews, placementJobs)} />
+            <aside className="space-y-6 lg:col-span-3">
+              <EditableContact candidateId={id} initial={contactInitial} />
+              {/* SMS composer slots in directly below the phone-number card so
+                  the input sits next to the number it'll be texting. Pass the
+                  normalized candidate phone from EditableContact's source. */}
+              <SmsComposer candidateId={String(id)} toNumber={normalizePhone(c.phone_number) || null} />
+              <EditableEmployment candidateId={id} initial={employmentInitial} />
+              <EditableSkills candidateId={id} initial={skillsInitial} />
+              <EditableExperience candidateId={id} initial={experienceInitial} />
+              <EditableEducation candidateId={id} initial={educationInitial} />
+              <EditableNotes candidateId={id} initial={notesInitial} />
+            </aside>
+          </div>
+
+          <ActivityPanel interviews={buildActivityInterviews(interviews, placementJobs)} />
+        </>
+      )}
     </div>
     </CandidateProfileBoundary>
+  );
+}
+
+function Tabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
+  return (
+    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
+      <TabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
+      <TabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
+    </div>
+  );
+}
+
+function TabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
+      )}
+    >
+      <span>{label}</span>
+    </Link>
   );
 }
 
