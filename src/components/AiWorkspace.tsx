@@ -264,3 +264,5 @@ function formatTimestamp(iso: string): string {
     return iso;
   }
 }
+
+export default AiWorkspace;

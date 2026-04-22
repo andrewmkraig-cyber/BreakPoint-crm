@@ -35,7 +35,9 @@ export async function POST(req: NextRequest) {
   const messages = history.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
 
   const response = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    // Project standard — src/lib/claude.ts. The original spec's
+    // `claude-sonnet-4-20250514` 404s against this Anthropic account.
+    model: 'claude-opus-4-7',
     max_tokens: 1024,
     system: systemPrompt,
     messages,

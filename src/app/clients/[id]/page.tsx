@@ -21,13 +21,14 @@ import { ContactsTab } from "@/app/clients/[id]/contacts-tab";
 import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
 import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
+import AiWorkspace from "@/components/AiWorkspace";
 
 export const dynamic = "force-dynamic";
 // Claude summarization on a 25-page PDF can take 30–60s. Default Hobby
 // function timeout is 10s; bump to the Hobby ceiling.
 export const maxDuration = 60;
 
-type ClientTab = "overview" | "contacts" | "agreements" | "benefits";
+type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan";
 
 export default async function ClientDetailPage({
   params,
@@ -42,7 +43,8 @@ export default async function ClientDetailPage({
   const tab: ClientTab =
     searchParams?.tab === "contacts" ||
     searchParams?.tab === "agreements" ||
-    searchParams?.tab === "benefits"
+    searchParams?.tab === "benefits" ||
+    searchParams?.tab === "game-plan"
       ? searchParams.tab
       : "overview";
 
@@ -281,7 +283,7 @@ export default async function ClientDetailPage({
             summaryUpdatedAt: a.summaryUpdatedAt?.toISOString() ?? null,
           }))}
         />
-      ) : (
+      ) : tab === "benefits" ? (
         <BenefitsTab
           clientId={id}
           initial={{
@@ -298,6 +300,8 @@ export default async function ClientDetailPage({
             uploadedByName: f.uploadedBy?.name ?? f.uploadedBy?.email ?? null,
           }))}
         />
+      ) : (
+        <AiWorkspace entityType="client" entityId={String(client.id)} />
       )}
     </div>
   );
@@ -330,6 +334,7 @@ function Tabs({
         href={`/clients/${clientId}?tab=benefits`}
         active={tab === "benefits"}
       />
+      <TabLink label="Game Plan" href={`/clients/${clientId}?tab=game-plan`} active={tab === "game-plan"} />
     </div>
   );
 }
