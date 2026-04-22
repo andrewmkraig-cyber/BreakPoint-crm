@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Loader2, Send, Trash2 } from "lucide-react";
+import { Check, Copy, Loader2, Send, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
@@ -221,22 +221,63 @@ export function AiWorkspace({ entityType, entityId, title }: AiWorkspaceProps) {
 
 function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === "user";
+  // Hide the copy affordance on the "Thinking…" placeholder — copying that
+  // placeholder text is never useful and would just be noise while the
+  // real response streams in.
+  const showCopy = !isUser && message.content.trim().length > 0 && message.content !== "Thinking…";
   return (
     <li className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm shadow-sm",
+          "relative max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm shadow-sm",
           isUser
             ? "bg-brand text-white"
             : "bg-court-surface-subtle text-court-fg",
+          // Extra bottom padding on assistant bubbles so the Copy button at
+          // absolute bottom-right doesn't overlap the last line of text.
+          showCopy && "pb-7",
         )}
       >
         {renderWithLineBreaks(message.content)}
+        {showCopy && <CopyButton text={message.content} />}
       </div>
       <div className="mt-1 text-[10px] text-court-fg-muted">
         {formatTimestamp(message.createdAt)}
       </div>
     </li>
+  );
+}
+
+// Ghost icon button pinned to the bottom-right of an assistant bubble.
+// Copies the message as plain text — message.content is already plain
+// text in the DB (the system prompt tells Claude no markdown), so
+// navigator.clipboard.writeText hands it to the clipboard untouched.
+// Shows a checkmark for 2s on success.
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can fail in non-secure contexts or with permissions
+      // denied. Silent fail is fine here — the UX still works on localhost
+      // and the deployed HTTPS site, which are the only places Ace runs.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void onCopy()}
+      aria-label={copied ? "Copied" : "Copy message"}
+      title={copied ? "Copied" : "Copy to clipboard"}
+      className="absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-md text-court-fg-muted/70 transition hover:bg-court-border/40 hover:text-court-fg"
+    >
+      {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+    </button>
   );
 }
 
