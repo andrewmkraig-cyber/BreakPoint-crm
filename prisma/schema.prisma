@@ -483,3 +483,14 @@ model CallTranscript {
   summary    String?  @db.Text
   createdAt  DateTime @default(now())
 }
+
+model AiWorkspaceMessage {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  role       String
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+}
