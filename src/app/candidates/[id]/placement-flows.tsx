@@ -3355,8 +3355,10 @@ function PickerOption({
 // Smaller sibling of the composer's ContactComboMulti that lives outside
 // a modal. Intentionally duplicated (not imported from email-composer.tsx)
 // to keep the composer module's client dependency tree focused on email
-// concerns.
-function InlineContactMultiInput({
+// concerns. Exported so the Ace-native Submit modal can reuse the same
+// picker semantics (same chip rendering, same rapid-click-safe latest-
+// value ref, same dropdown close-on-outside-click behaviour).
+export function InlineContactMultiInput({
   value,
   onChange,
   options,

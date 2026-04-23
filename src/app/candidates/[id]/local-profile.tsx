@@ -114,6 +114,22 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
     .map((raw) => {
       const j = normalizeJob(raw);
       const client = j.companyId != null ? clientById.get(j.companyId) : null;
+      // Filter the contact list to this job's client so the Submit
+      // modal's To/Cc picker only surfaces relevant people. Mirrors
+      // the shape the RF-imported Submit flow uses in placement-flows.
+      const clientContacts = j.companyId != null
+        ? allContacts
+            .filter((ct) => ct.client_company_id === j.companyId)
+            .map((ct) => ({
+              id: ct.id,
+              name:
+                [ct.first_name, ct.last_name].filter(Boolean).join(" ") ||
+                ct.name ||
+                "(unnamed)",
+              title: ct.current_designation ?? "",
+              email: Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "",
+            }))
+        : [];
       return {
         jobRfId: j.id,
         jobTitle: j.title,
@@ -121,6 +137,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         clientName: client ? normalizeClient(client).name : j.company,
         alreadyLinked: linkedByJob.has(j.id),
         linkedStage: linkedByJob.get(j.id) ?? null,
+        clientContacts,
       };
     })
     .sort((a, b) => {

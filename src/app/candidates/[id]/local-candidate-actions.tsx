@@ -18,6 +18,18 @@ import {
   sendLocalReferenceRequest,
   sendLocalSubmittalEmail,
 } from "@/app/candidates/[id]/local-placement-actions";
+import { InlineContactMultiInput, buildCcBccOptions } from "@/app/candidates/[id]/placement-flows";
+
+// Contact shape the Submit modal's To/Cc pickers draw from. Same tuple
+// layout placement-flows / local-placement-rows already use for the
+// existing Submit and Interview composers — keeps the Ace-native path
+// consistent with the RF-imported path.
+export type LocalClientContact = {
+  id: number;
+  name: string;
+  title: string;
+  email: string;
+};
 
 export type LocalOpenJob = {
   jobRfId: number;
@@ -26,6 +38,12 @@ export type LocalOpenJob = {
   clientName: string;
   alreadyLinked: boolean;
   linkedStage?: string | null;
+  // Client contacts for this job's client. Populated in local-profile.tsx
+  // by filtering allContacts on clientRfId so the picker matches what the
+  // RF-imported Submit modal shows for the same client. Optional with an
+  // empty-array default so older callers that haven't been updated yet
+  // still compile.
+  clientContacts?: LocalClientContact[];
 };
 
 export function LocalCandidateActions(props: {
@@ -199,6 +217,7 @@ function SubmitModal(props: {
   const [jobRfId, setJobRfId] = useState<number | null>(props.initialJobRfId ?? null);
   const [to, setTo] = useState("");
   const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [isGenerating, startGenerate] = useTransition();
@@ -207,6 +226,14 @@ function SubmitModal(props: {
   const selectedJob = useMemo(
     () => (jobRfId ? props.openJobs.find((j) => j.jobRfId === jobRfId) : null),
     [jobRfId, props.openJobs],
+  );
+
+  // Picker options rebuild when the selected job changes so the To/Cc
+  // dropdowns show that job's client contacts. Empty list when no job
+  // is selected yet (picker falls through to free-text entry).
+  const pickerOptions = useMemo(
+    () => buildCcBccOptions(selectedJob?.clientContacts ?? []),
+    [selectedJob],
   );
 
   useEffect(() => {
@@ -232,10 +259,15 @@ function SubmitModal(props: {
     });
   }
 
+  function parseList(raw: string): string[] {
+    return raw.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+  }
+
   function onSend() {
     if (!jobRfId || !selectedJob) return;
-    const toList = to.split(",").map((s) => s.trim()).filter(Boolean);
-    const ccList = cc.split(",").map((s) => s.trim()).filter(Boolean);
+    const toList = parseList(to);
+    const ccList = parseList(cc);
+    const bccList = parseList(bcc);
     if (toList.length === 0) {
       toast.error("At least one recipient is required.");
       return;
@@ -248,6 +280,7 @@ function SubmitModal(props: {
         clientRfId: selectedJob.clientRfId,
         to: toList,
         cc: ccList,
+        bcc: bccList,
         subject: subject.trim(),
         bodyText: body.trim(),
       });
@@ -274,8 +307,43 @@ function SubmitModal(props: {
         Generate with Claude
       </button>
 
-      <Field label="To" value={to} onChange={setTo} placeholder="client.contact@example.com" />
-      <Field label="CC" value={cc} onChange={setCc} placeholder="optional, comma-separated" />
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          To · client contacts
+        </span>
+        <InlineContactMultiInput
+          value={to}
+          onChange={setTo}
+          options={pickerOptions}
+          placeholder={
+            selectedJob
+              ? "Pick a client contact or type email…"
+              : "Pick a job first to see client contacts"
+          }
+        />
+      </label>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Cc (optional) · client contacts
+        </span>
+        <InlineContactMultiInput
+          value={cc}
+          onChange={setCc}
+          options={pickerOptions}
+          placeholder="Pick a client contact or type email…"
+        />
+      </label>
+      <label className="block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Bcc (optional)
+        </span>
+        <InlineContactMultiInput
+          value={bcc}
+          onChange={setBcc}
+          options={pickerOptions}
+          placeholder="Pick a contact or type email…"
+        />
+      </label>
       <Field label="Subject" value={subject} onChange={setSubject} />
       <label className="block text-sm">
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Body</span>

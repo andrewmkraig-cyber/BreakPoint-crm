@@ -9,7 +9,11 @@ import type { PipelineBucket } from "@/lib/recruiterflow";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 
 export type JobPipelineRow = {
-  candidateId: number;
+  // Can be either the RF numeric id (RF-imported candidates) or a cuid
+  // string (Ace-native candidates whose Placement was written by the
+  // applyLocalCandidateToJob path). The href uses it directly so
+  // /candidates/[id] works for both.
+  candidateId: number | string;
   candidateName: string;
   candidateTitle: string;
   stageName: string;
@@ -165,7 +169,7 @@ export function JobPipelineSummary({
                     <StageBadgeFromName stageName={r.stageName} />
                   </td>
                   <td className="px-4 py-2 text-xs text-court-fg-muted">{formatDate(r.stageMovedAt)}</td>
-                  {jobActions && (
+                  {jobActions && typeof r.candidateId === "number" && (
                     <td className="px-4 py-2">
                       <PipelineRowActions
                         candidateRfId={r.candidateId}
@@ -176,6 +180,16 @@ export function JobPipelineSummary({
                         clientName={jobActions.clientName}
                         stage={r.bucket}
                       />
+                    </td>
+                  )}
+                  {jobActions && typeof r.candidateId === "string" && (
+                    <td className="px-4 py-2 text-right">
+                      <Link
+                        href={`/candidates/${r.candidateId}`}
+                        className="text-xs text-court-fg-muted underline-offset-2 hover:text-court-fg hover:underline"
+                      >
+                        Open profile
+                      </Link>
                     </td>
                   )}
                 </tr>

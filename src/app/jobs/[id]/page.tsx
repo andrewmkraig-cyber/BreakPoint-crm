@@ -24,17 +24,18 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     recruiterflow.listAllJobs({ perPage: 100 }),
     getRfCandidatesForOrg(),
     prisma.jobOverride.findUnique({ where: { jobRfId: id } }),
-    // Local Placement state for this job's RF candidates. RF doesn't
-    // accept stage moves to "rejected" / "offer" / "pending_start" /
-    // "hired" / "cancelled" via /external (see trySyncRfStage), so
-    // those buckets only ever live in Postgres. Without overlaying
-    // them here, clicking Reject in the pipeline row would write
-    // stage="rejected" locally but the row would stay under Sourced
-    // because flattenPipeline only reads RF stage_name.
+    // Local Placement state for this job. Two row shapes share this
+    // table: RF-imported candidates carry candidateRfId (number) and
+    // Ace-native candidates carry candidateId (cuid string). We want
+    // both on the pipeline — pre-Phase-1 the query was scoped to
+    // candidateRfId only, so Ace-native Applies were invisible here.
+    // Pulling the candidateId column lets the renderer below build
+    // Ace-native rows via a Neon Candidate lookup.
     prisma.placement.findMany({
-      where: { jobRfId: id, candidateRfId: { not: null } },
+      where: { jobRfId: id },
       select: {
         candidateRfId: true,
+        candidateId: true,
         stage: true,
         updatedAt: true,
       },
@@ -91,42 +92,70 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     };
   });
 
-  // Union in local Placements whose candidateRfId isn't in the candidate
-  // snapshot's c.jobs for this job yet. This is the "just applied via
-  // Ace" case: applyCandidateToJob writes a Placement with
-  // stage="applied" to Neon without calling RF (per the no-RF-on-create
-  // rule), so the snapshot has no c.jobs[] entry linking the candidate
-  // to the job — flattenPipeline produces nothing for them and the
-  // pipeline row was invisible until this overlay.
+  // Union in local Placements that aren't already represented in
+  // mainPipelineRows. Two cases:
+  //   1. RF-imported candidate with a Placement row but no matching
+  //      c.jobs[] entry yet (60s RF list cache hasn't caught up on a
+  //      recent Apply/Submit).
+  //   2. Ace-native candidate (candidateRfId null, candidateId set) —
+  //      applyLocalCandidateToJob writes these and flattenPipeline
+  //      never sees them. Pre-Phase-1 their rows were invisible here;
+  //      the reader widening + this branch surface them so the Job
+  //      page Applied bucket shows Tyler Brennan (and friends).
   //
   // Same root cause as commit 8a40cdd (Ace-native candidate profile
   // couldn't see its own Submit button) — the pattern is "local
-  // Placement exists but the renderer only knew about RF-derived
-  // state." Fix is additive: keep the existing RF-path rows above,
-  // then append local-only rows for candidates RF hasn't caught up on.
+  // Placement exists but the renderer only knew about one key shape."
   const rfCandidateIdsInFlat = new Set(flatForJob.map((r) => r.candidateId));
+  const aceNativeIdsNeeded = new Set<string>();
+  for (const p of localPlacements) {
+    if (p.candidateRfId == null && p.candidateId) {
+      aceNativeIdsNeeded.add(p.candidateId);
+    }
+  }
+  const aceNativeCandidates = aceNativeIdsNeeded.size > 0
+    ? await prisma.candidate.findMany({
+        where: { id: { in: Array.from(aceNativeIdsNeeded) } },
+        select: { id: true, firstName: true, lastName: true, currentDesignation: true },
+      })
+    : [];
+  const aceNativeById = new Map(aceNativeCandidates.map((c) => [c.id, c]));
+
   const extraRows: JobPipelineRow[] = [];
   for (const p of localPlacements) {
-    if (p.candidateRfId == null) continue;
-    if (rfCandidateIdsInFlat.has(p.candidateRfId)) continue;
-    // Name/title come from the RF candidates list we already fetched —
-    // same source flattenPipeline uses so the row reads identically to
-    // an RF-synced row. Fallback covers the rare case where the RF
-    // list is stale beyond its 60s cache or the candidate is on a
-    // page we didn't fetch.
-    const rfCand = candidates.find((c) => c.id === p.candidateRfId) ?? null;
-    const candidateName = rfCand
-      ? [rfCand.first_name, rfCand.last_name].filter(Boolean).join(" ") || rfCand.name || "(unnamed)"
-      : `Candidate #${p.candidateRfId}`;
-    const candidateTitle = rfCand?.current_designation ?? "";
-    extraRows.push({
-      candidateId: p.candidateRfId,
-      candidateName,
-      candidateTitle,
-      stageName: p.stage,
-      bucket: p.stage as PipelineBucket,
-      stageMovedAt: p.updatedAt.toISOString(),
-    });
+    // RF-path row.
+    if (p.candidateRfId != null) {
+      if (rfCandidateIdsInFlat.has(p.candidateRfId)) continue;
+      const rfCand = candidates.find((c) => c.id === p.candidateRfId) ?? null;
+      const candidateName = rfCand
+        ? [rfCand.first_name, rfCand.last_name].filter(Boolean).join(" ") || rfCand.name || "(unnamed)"
+        : `Candidate #${p.candidateRfId}`;
+      const candidateTitle = rfCand?.current_designation ?? "";
+      extraRows.push({
+        candidateId: p.candidateRfId,
+        candidateName,
+        candidateTitle,
+        stageName: p.stage,
+        bucket: p.stage as PipelineBucket,
+        stageMovedAt: p.updatedAt.toISOString(),
+      });
+      continue;
+    }
+    // Ace-native row (candidateRfId null, candidateId set).
+    if (p.candidateId) {
+      const ace = aceNativeById.get(p.candidateId);
+      const candidateName = ace
+        ? [ace.firstName, ace.lastName].filter(Boolean).join(" ") || "(unnamed)"
+        : "(unnamed)";
+      extraRows.push({
+        candidateId: p.candidateId,
+        candidateName,
+        candidateTitle: ace?.currentDesignation ?? "",
+        stageName: p.stage,
+        bucket: p.stage as PipelineBucket,
+        stageMovedAt: p.updatedAt.toISOString(),
+      });
+    }
   }
 
   const pipelineRows: JobPipelineRow[] = [...mainPipelineRows, ...extraRows];
