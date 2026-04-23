@@ -6,14 +6,13 @@ import {
 } from "@/app/applicants/applicants-view";
 import { prisma } from "@/lib/prisma";
 import {
-  recruiterflow,
   canonicalStage,
   normalizeJob,
   type RFCandidate,
   type RFCandidateJob,
   type RFJob,
 } from "@/lib/recruiterflow";
-import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { resolveJobTitle } from "@/lib/job-title";
 
 export const dynamic = "force-dynamic";
@@ -40,11 +39,12 @@ export default async function ApplicantsPage() {
           updatedAt: true,
         },
       }),
-      // Pull the full RF job list so we can resolve each row's title /
+      // Pull the full job list so we can resolve each row's title /
       // location. The RFCandidateJob rows hanging off c.jobs are sparse
       // (often title-only with no location) — the canonical Job record
-      // has the full data we want for the Applicants table.
-      recruiterflow.listAllJobs({ perPage: 100 }),
+      // has the full data we want for the Applicants table. Reads from
+      // Neon now so the page renders even when RF is unreachable.
+      getRfJobsForOrg(),
       prisma.jobOverride.findMany({ select: { jobRfId: true, title: true } }),
     ]);
 

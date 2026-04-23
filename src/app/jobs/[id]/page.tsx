@@ -3,12 +3,11 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, MapPin, Users, Building2, ExternalLink } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
-  recruiterflow,
   normalizeJob,
   flattenPipeline,
   type PipelineBucket,
 } from "@/lib/recruiterflow";
-import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +20,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   if (!Number.isFinite(id)) notFound();
 
   const [jobs, candidates, override, localPlacements] = await Promise.all([
-    recruiterflow.listAllJobs({ perPage: 100 }),
+    getRfJobsForOrg(),
     getRfCandidatesForOrg(),
     prisma.jobOverride.findUnique({ where: { jobRfId: id } }),
     // Local Placement state for this job. Two row shapes share this

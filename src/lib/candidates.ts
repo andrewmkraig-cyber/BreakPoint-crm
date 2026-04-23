@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import type { RFCandidate } from "@/lib/recruiterflow";
+import type { RFCandidate, RFClient, RFContact, RFJob } from "@/lib/recruiterflow";
 
 // Row shape used by the /candidates list table.
 export type CandidateListRow = {
@@ -132,4 +132,97 @@ export async function getRfCandidateByRfId(rfId: number): Promise<RFCandidate | 
     linkedin_profile: row.linkedinProfile ?? undefined,
     skills: row.skills,
   };
+}
+
+// ---- Jobs / Clients / Contacts RF-shaped shims (reads from Neon) ----
+//
+// Phase 0 imported the full RF payload for each of these into the
+// Job.raw / Client.raw / Contact.raw columns. These shims return the
+// stored RF-shaped data so pages that still consume RFJob[] / RFClient[]
+// / RFContact[] can operate against Neon without a live RF call. The
+// smoke tests in CI run against a ci-smoke Neon branch that can't reach
+// RF — these shims make the profile / job / applicants pages work
+// anyway. Production continues to work unchanged because Phase 0
+// populated `raw` for every imported row.
+
+export async function getRfJobsForOrg(): Promise<RFJob[]> {
+  const org = await getCurrentOrg();
+  const rows = await prisma.job.findMany({
+    where: { organizationId: org.id, legacyRfId: { not: null } },
+    select: { legacyRfId: true, raw: true, title: true, isOpen: true },
+  });
+  const out: RFJob[] = [];
+  for (const r of rows) {
+    if (r.legacyRfId == null) continue;
+    const raw = r.raw as RFJob | null;
+    if (raw && typeof raw === "object") {
+      out.push({ ...raw, id: r.legacyRfId });
+      continue;
+    }
+    // Fallback shape for rows without raw (e.g., smoke-seeded jobs that
+    // skip the RF payload). Hand back the minimum RFJob shape the
+    // callers index into.
+    out.push({ id: r.legacyRfId, title: r.title, is_open: r.isOpen });
+  }
+  return out;
+}
+
+export async function getRfClientsForOrg(): Promise<RFClient[]> {
+  const org = await getCurrentOrg();
+  const rows = await prisma.client.findMany({
+    where: { organizationId: org.id, legacyRfId: { not: null } },
+    select: { legacyRfId: true, raw: true, name: true },
+  });
+  const out: RFClient[] = [];
+  for (const r of rows) {
+    if (r.legacyRfId == null) continue;
+    const raw = r.raw as RFClient | null;
+    if (raw && typeof raw === "object") {
+      out.push({ ...raw, id: r.legacyRfId });
+      continue;
+    }
+    out.push({ id: r.legacyRfId, name: r.name });
+  }
+  return out;
+}
+
+export async function getRfContactsForOrg(): Promise<RFContact[]> {
+  const org = await getCurrentOrg();
+  const rows = await prisma.contact.findMany({
+    where: { organizationId: org.id, legacyRfId: { not: null } },
+    select: { legacyRfId: true, raw: true, firstName: true, lastName: true, emails: true, clientId: true, currentDesignation: true },
+  });
+  // contactsByClientLegacyRfId needs the clientRfId on the contact (RF
+  // id, not cuid). Look up the Client row once so we can populate
+  // client_company_id on each contact payload even if `raw` is absent.
+  const clientIdToLegacyRf = new Map<string, number>();
+  if (rows.some((r) => r.clientId)) {
+    const clientRows = await prisma.client.findMany({
+      where: { id: { in: Array.from(new Set(rows.map((r) => r.clientId).filter((x): x is string => Boolean(x)))) } },
+      select: { id: true, legacyRfId: true },
+    });
+    for (const c of clientRows) {
+      if (c.legacyRfId != null) clientIdToLegacyRf.set(c.id, c.legacyRfId);
+    }
+  }
+  const out: RFContact[] = [];
+  for (const r of rows) {
+    if (r.legacyRfId == null) continue;
+    const raw = r.raw as RFContact | null;
+    if (raw && typeof raw === "object") {
+      out.push({ ...raw, id: r.legacyRfId });
+      continue;
+    }
+    // Fallback shape.
+    const clientRfId = r.clientId ? clientIdToLegacyRf.get(r.clientId) ?? null : null;
+    out.push({
+      id: r.legacyRfId,
+      first_name: r.firstName,
+      last_name: r.lastName,
+      email: r.emails && r.emails.length > 0 ? r.emails : null,
+      current_designation: r.currentDesignation,
+      client_company_id: clientRfId,
+    });
+  }
+  return out;
 }

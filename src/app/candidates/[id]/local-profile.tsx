@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, FileDown, Link2, Mail, MapPin, Phone } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
-import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
@@ -56,11 +57,13 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
       where: { candidateId: id },
       orderBy: { scheduledAt: "asc" },
     }),
-    // Read-side RF lookups are fine under the no-RF-on-create rule — we're
-    // populating the Submit/Apply dropdowns with existing open jobs.
-    recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
-    recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
-    recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
+    // Populates the Submit/Apply dropdowns with existing open jobs.
+    // Reads are served from Neon (the Phase 0 import populated Job/
+    // Client/Contact from the RF payload). This keeps the page working
+    // when RF is unreachable — the smoke test in CI depends on it.
+    getRfJobsForOrg().catch(() => []),
+    getRfClientsForOrg().catch(() => []),
+    getRfContactsForOrg().catch(() => []),
     prisma.jobOverride.findMany({ select: { jobRfId: true, description: true } }),
     getServerSession(authOptions),
     getAppPreferences(),

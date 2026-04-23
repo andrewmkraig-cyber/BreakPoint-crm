@@ -95,17 +95,32 @@ test("happy path: create → apply → verify on job page → applicants → sub
     await page.getByRole("button", { name: /apply to job/i }).click();
 
     // The JobPicker inside ApplyModal renders a native <select> with
-    // label "Open jobs". Pick the first option that isn't the empty
-    // placeholder and isn't disabled (already-linked jobs show up but
-    // are disabled; Playwright errors on disabled selectOption).
+    // label "Open jobs". Enumerate every option + its state before
+    // picking so a future failure leaves a diagnostic trail in the
+    // log (previously this failed in CI with "no selectable open jobs
+    // available" and the report gave us no hint of whether the
+    // dropdown was empty / filtered / disabled).
     const jobSelect = page.getByLabel("Open jobs");
-    const firstEnabledValue = await jobSelect.evaluate((el) => {
+    const optionsSnapshot = await jobSelect.evaluate((el) => {
       const select = el as HTMLSelectElement;
-      for (const opt of Array.from(select.options)) {
-        if (!opt.disabled && opt.value) return opt.value;
-      }
-      return "";
+      return Array.from(select.options).map((o) => ({
+        value: o.value,
+        label: o.textContent?.trim() ?? "",
+        disabled: o.disabled,
+      }));
     });
+    console.log("[smoke] Apply modal <select> options:", JSON.stringify(optionsSnapshot));
+
+    // Prefer the dedicated Smoke Test Job (seeded by
+    // scripts/seed-smoke-data.ts in CI) so the rest of the flow
+    // always targets the same deterministic row. Fall back to the
+    // first non-disabled option for local runs against main where
+    // the seed isn't present.
+    const seeded = optionsSnapshot.find(
+      (o) => !o.disabled && o.value && /smoke test/i.test(o.label),
+    );
+    const firstEnabled = optionsSnapshot.find((o) => !o.disabled && o.value);
+    const firstEnabledValue = seeded?.value ?? firstEnabled?.value ?? "";
     expect(firstEnabledValue, "no selectable open jobs available").not.toBe("");
     await jobSelect.selectOption(firstEnabledValue);
 

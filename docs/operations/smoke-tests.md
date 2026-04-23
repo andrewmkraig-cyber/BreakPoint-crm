@@ -42,6 +42,12 @@ The spec auto-starts `next dev -p 3456` via the Playwright `webServer` block. Fi
 
 Database: runs against whatever `DATABASE_URL` is set in `.env.local`. That's usually main on a local dev machine — the cleanup step makes that safe, but CI uses a dedicated Neon branch (`CI_SMOKE_DATABASE_URL` secret) so CI writes never touch production data.
 
+## RF independence
+
+The smoke test does **not** depend on the RecruiterFlow API being reachable. Pages that used to pull Jobs / Clients / Contacts from RF (`/candidates/[id]` Ace-native profile, `/jobs/[id]`, `/applicants`) now read the same data from Neon via the `getRfJobsForOrg` / `getRfClientsForOrg` / `getRfContactsForOrg` shims in `src/lib/candidates.ts`. The shims return RF-shaped payloads out of the `Job.raw` / `Client.raw` / `Contact.raw` columns Phase 0 populated, so downstream callers that consume `RFJob[]` / `RFClient[]` / `RFContact[]` keep working unchanged.
+
+CI additionally seeds a dedicated **Smoke Test Inc** + **Smoke Test Field Engineer** + **Smoke Test Contact** row into the `ci-smoke` Neon branch before the Playwright run — see `scripts/seed-smoke-data.ts` — so the test targets deterministic data instead of whichever of the 13 imported production jobs happens to sort first in the dropdown. The seed is idempotent (upsert by sentinel `legacyRfId`), so re-running the workflow on the same branch is safe.
+
 ## CI secrets required
 
 Before the first successful CI run, the following GitHub Actions secrets must be configured at **Settings → Secrets and variables → Actions**:
