@@ -62,6 +62,8 @@ model User {
   jobOverrides     JobOverride[]
   candidates      Candidate[]
   interviews      Interview[]
+  ownedOrganizations Organization[]           @relation("OrganizationOwner")
+  memberships        OrganizationMembership[]
 }
 
 enum UserRole {
@@ -151,26 +153,33 @@ model ClientAgreement {
   // re-summarize every view; cleared when the user re-generates or deletes.
   summary          String?   @db.Text
   summaryUpdatedAt DateTime?
+  organizationId   String?
 
-  uploadedBy User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([clientRfId, uploadedAt])
   @@index([clientId, uploadedAt])
+  @@index([organizationId])
 }
 
 // Free-form benefits notes per client. Persisted as plain text with line breaks
 // preserved; we can upgrade to markdown/rich text later without a schema change.
 model ClientBenefits {
-  id          String   @id @default(cuid())
-  clientRfId  Int      @unique
-  clientId    String?  @unique
-  body        String   @db.Text
-  updatedById String
-  updatedAt   DateTime @updatedAt
+  id             String   @id @default(cuid())
+  clientRfId     Int      @unique
+  clientId       String?  @unique
+  body           String   @db.Text
+  updatedById    String
+  updatedAt      DateTime @updatedAt
+  organizationId String?
 
-  updatedBy User    @relation(fields: [updatedById], references: [id], onDelete: Cascade)
-  client    Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  updatedBy    User          @relation(fields: [updatedById], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
 }
 
 // PDFs and docs attached to the benefits tab. Large files (>4.5MB) bypass the
@@ -191,11 +200,15 @@ model ClientBenefitsFile {
   uploadedById   String
   uploadedAt     DateTime @default(now())
 
-  uploadedBy User    @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  client     Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organizationId String?
+
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([clientRfId, uploadedAt])
   @@index([clientId, uploadedAt])
+  @@index([organizationId])
 }
 
 // One row per candidate-job placement lifecycle. Ace owns the stage locally
@@ -267,12 +280,14 @@ model Placement {
   source                String?
 
   createdById           String
+  organizationId        String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
-  createdBy             User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  candidate             Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  job                   Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  client                Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy             User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  candidate             Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job                   Job?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  client                Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization          Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@unique([candidateRfId, jobRfId])
   @@unique([candidateId, jobRfId])
@@ -282,6 +297,7 @@ model Placement {
   @@index([jobId, stage])
   @@index([stage, expectedStartDate])
   @@index([candidateId, stage])
+  @@index([organizationId])
 }
 
 // Ace-native candidate record. Created by /candidates/new — no RF
@@ -314,10 +330,12 @@ model Candidate {
   resumeUploadedAt    DateTime?
 
   createdById         String
+  organizationId      String?
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  createdBy           User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy           User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  organization        Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   placements          Placement[]
   interviews          Interview[]
   resume              CandidateResume?
@@ -325,6 +343,7 @@ model Candidate {
 
   @@index([email])
   @@index([createdById, createdAt])
+  @@index([organizationId])
 }
 
 // Persistent resume file attached to an existing RF candidate record. Unique
@@ -350,9 +369,13 @@ model CandidateResume {
   redactedMimeType String?
   redactedSize     Int?
   redactedAt       DateTime?
+  organizationId   String?
 
-  uploadedBy User       @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  candidate  Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  uploadedBy   User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  candidate    Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
 }
 
 // Interview schedule. Polymorphic on candidate like Placement: exactly one of
@@ -399,13 +422,15 @@ model Interview {
   meetConferenceId       String?
 
   createdById     String
+  organizationId  String?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  createdBy       User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  candidate       Candidate? @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  job             Job?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  client          Client?    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy       User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  candidate       Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job             Job?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  client          Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([candidateRfId, scheduledAt])
   @@index([candidateId, scheduledAt])
@@ -413,6 +438,7 @@ model Interview {
   @@index([jobId, scheduledAt])
   @@index([clientId, scheduledAt])
   @@index([status, scheduledAt])
+  @@index([organizationId])
 }
 
 // Staging table for chunk-uploaded resume PDFs. Transient: parseCandidate
@@ -445,15 +471,18 @@ model KrispcallLog {
   recordingUrl  String?
   transcript    String?  @db.Text
   body          String?  @db.Text
-  occurredAt    DateTime
-  createdAt     DateTime @default(now())
+  occurredAt     DateTime
+  createdAt      DateTime @default(now())
+  organizationId String?
 
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  candidate Candidate? @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  candidate    Candidate?    @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([userId, occurredAt])
   @@index([candidateRfId])
   @@index([candidateId, occurredAt])
+  @@index([organizationId])
 }
 
 // Local override for fields that RF either doesn't expose or that the
@@ -463,20 +492,24 @@ model KrispcallLog {
 // When present, Ace prefers the override over the RF value for display
 // and merge-field resolution.
 model JobOverride {
-  jobRfId     Int      @id
-  jobId       String?  @unique
+  jobRfId        Int      @id
+  jobId          String?  @unique
   // Optional Ace-authored title that wins over whatever RF's title /
   // name / position_title fields give us. Lets recruiters fix
   // "(untitled job)" rows on the Applicants list when RF imports
   // come in with empty title columns.
-  title       String?
-  description String?  @db.Text
-  updatedAt   DateTime @updatedAt
-  createdAt   DateTime @default(now())
-  updatedById String?
+  title          String?
+  description    String?  @db.Text
+  updatedAt      DateTime @updatedAt
+  createdAt      DateTime @default(now())
+  updatedById    String?
+  organizationId String?
 
-  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
-  job       Job?  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  updatedBy    User?         @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  job          Job?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
 }
 
 model SmsMessage {
@@ -550,9 +583,11 @@ model Client {
   lastContact    DateTime?
   lastEngagement DateTime?
   raw            Json?
+  organizationId String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  organization  Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
   jobs          Job[]
   contacts      Contact[]
   agreements    ClientAgreement[]
@@ -562,6 +597,7 @@ model Client {
   interviews    Interview[]
 
   @@index([name])
+  @@index([organizationId])
 }
 
 model Job {
@@ -590,17 +626,20 @@ model Job {
   lastOpenedAt     DateTime?
   createdAtRf      DateTime?
   raw              Json?
+  organizationId   String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  client     Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  override   JobOverride?
-  placements Placement[]
-  interviews Interview[]
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  override     JobOverride?
+  placements   Placement[]
+  interviews   Interview[]
 
   @@index([clientId])
   @@index([isOpen])
   @@index([title])
+  @@index([organizationId])
 }
 
 model Contact {
@@ -618,11 +657,61 @@ model Contact {
   addedAt            DateTime?
   lastActivityAt     DateTime?
   raw                Json?
+  organizationId     String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([clientId])
   @@index([name])
+  @@index([organizationId])
+}
+
+// ---- Multi-tenancy scaffolding (Phase 1) ----
+// Additive only: every tenant table has a nullable organizationId column and
+// relation, so existing code paths (which don't yet read the column) keep
+// working unchanged. The seed script stamps every existing row with the
+// default BreakPoint Talent org cuid. Later phases will narrow the columns
+// to NOT NULL and wire getCurrentOrg() into every server action.
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      String   @default("personal")
+  ownerId   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner       User                     @relation("OrganizationOwner", fields: [ownerId], references: [id])
+  memberships OrganizationMembership[]
+
+  candidates          Candidate[]
+  jobs                Job[]
+  clients             Client[]
+  contacts            Contact[]
+  placements          Placement[]
+  interviews          Interview[]
+  clientAgreements    ClientAgreement[]
+  clientBenefits      ClientBenefits[]
+  clientBenefitsFiles ClientBenefitsFile[]
+  candidateResumes    CandidateResume[]
+  jobOverrides        JobOverride[]
+  krispcallLogs       KrispcallLog[]
+}
+
+model OrganizationMembership {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  role           String   @default("member")
+  joinedAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
 }
