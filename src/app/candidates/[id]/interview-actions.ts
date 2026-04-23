@@ -498,6 +498,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       candidateRfId: true,
       candidateId: true,
       jobRfId: true,
+      jobId: true,
       location: true,
     },
   });
@@ -513,11 +514,22 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   let resolvedBodyText = input.bodyText;
   let resolvedSubject = input.subject;
   if (resolvedBodyText.includes("[Job Description]") || resolvedSubject.includes("[Job Description]")) {
-    const override = await prisma.jobOverride.findUnique({
-      where: { jobRfId: interview.jobRfId },
-      select: { description: true },
-    });
-    const description = override?.description ?? "";
+    // Ace-native interviews carry jobRfId=null and jobId=cuid; pull the
+    // description off Job.description in that case instead of the
+    // override layer (which only exists for RF-imported jobs).
+    const override = interview.jobRfId != null
+      ? await prisma.jobOverride.findUnique({
+          where: { jobRfId: interview.jobRfId },
+          select: { description: true },
+        })
+      : null;
+    const aceJob = interview.jobRfId == null && interview.jobId
+      ? await prisma.job.findUnique({
+          where: { id: interview.jobId },
+          select: { description: true },
+        })
+      : null;
+    const description = override?.description ?? aceJob?.description ?? "";
     // eslint-disable-next-line no-console
     console.log("[sendInterviewInvite] resolving [Job Description] server-side", {
       interviewId: input.interviewId,

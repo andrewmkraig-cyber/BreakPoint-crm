@@ -7,18 +7,16 @@ import { NewJobForm } from "@/app/jobs/new/new-job-form";
 export const dynamic = "force-dynamic";
 
 export default async function NewJobPage() {
-  // The Job-create action still writes to RF (Phase 2), so the dropdown
-  // is restricted to clients that have an RF id. Ace-native Clients
-  // (cuid-only) are hidden here until the Jobs cutover lands — they'd
-  // get rejected by RF on create.
-  let clients: Array<{ id: number; name: string }> = [];
+  // Phase 2: writes go to Neon, so the dropdown surfaces EVERY client in
+  // the tenant — both RF-imported (legacyRfId set) and Ace-native rows
+  // created via /clients/new. The form submits `clientId` (cuid) directly.
+  let clients: Array<{ id: string; name: string }> = [];
   let error: string | null = null;
 
   try {
     const rows = await getClientsForOrg();
     clients = rows
-      .filter((c) => c.legacyRfId != null)
-      .map((c) => ({ id: c.legacyRfId as number, name: c.name }))
+      .map((c) => ({ id: c.id, name: c.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load clients.";
@@ -26,7 +24,7 @@ export default async function NewJobPage() {
 
   return (
     <div className="space-y-6">
-      <Link href="/jobs" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-navy">
+      <Link href="/jobs" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
         <ArrowLeft className="h-3 w-3" /> Back to jobs
       </Link>
 

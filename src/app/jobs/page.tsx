@@ -2,12 +2,11 @@ import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { JobsView, type JobRow } from "@/app/jobs/jobs-view";
 import {
-  recruiterflow,
   normalizeJob,
   buildJobCounts,
   emptyJobCounts,
 } from "@/lib/recruiterflow";
-import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 
 export const dynamic = "force-dynamic";
 
@@ -59,8 +58,10 @@ export default async function JobsPage({
   let error: string | null = null;
 
   try {
+    // Phase 2: Jobs list reads from Neon via the broadened shim —
+    // includes both RF-imported and Ace-native Jobs in one iteration.
     const [jobs, candidates] = await Promise.all([
-      recruiterflow.listAllJobs({ perPage: 100 }),
+      getRfJobsForOrg(),
       getRfCandidatesForOrg(),
     ]);
     const counts = buildJobCounts(candidates);

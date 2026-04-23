@@ -32,7 +32,9 @@ export default async function ApplicantsPage() {
           candidateRfId: true,
           candidateId: true,
           jobRfId: true,
+          jobId: true,
           clientRfId: true,
+          clientId: true,
           stage: true,
           source: true,
           createdAt: true,
@@ -55,7 +57,10 @@ export default async function ApplicantsPage() {
     const overrideByJob = new Map<number, { title: string | null }>();
     for (const o of jobOverrides) overrideByJob.set(o.jobRfId, { title: o.title });
 
-    const describeJob = (jobId: number, fallbackJob?: RFCandidateJob): { title: string; location: string; clientName: string } => {
+    const describeJob = (jobId: number | null, fallbackJob?: RFCandidateJob): { title: string; location: string; clientName: string } => {
+      if (jobId == null) {
+        return { title: "(job)", location: "", clientName: "" };
+      }
       const rfJob = jobById.get(jobId) ?? null;
       const normalized = rfJob ? normalizeJob(rfJob) : null;
       const title = resolveJobTitle({
@@ -93,10 +98,22 @@ export default async function ApplicantsPage() {
     // Keys are discriminated so rf vs ace rows never collide. RF key uses
     // the numeric candidateRfId; Ace key uses the cuid. A Placement with
     // neither key set is impossible given the app-layer XOR invariant.
-    const placementKey = (p: { candidateRfId: number | null; candidateId: string | null; jobRfId: number }) =>
-      p.candidateRfId != null
-        ? `rf:${p.candidateRfId}:${p.jobRfId}`
-        : `ace:${p.candidateId ?? "?"}:${p.jobRfId}`;
+    // Phase 2: jobRfId / jobId are both nullable on Placement now. Pick
+    // whichever identity is set to build a dedupe key — the two shapes
+    // never collide because rf: prefixes one namespace and ace: the
+    // other. Placements with neither key would be DB corruption; render
+    // them under "?" so they're visible rather than silently dropped.
+    const placementKey = (p: {
+      candidateRfId: number | null;
+      candidateId: string | null;
+      jobRfId: number | null;
+      jobId: string | null;
+    }) => {
+      const jobKey = p.jobRfId != null ? String(p.jobRfId) : p.jobId ?? "?";
+      return p.candidateRfId != null
+        ? `rf:${p.candidateRfId}:${jobKey}`
+        : `ace:${p.candidateId ?? "?"}:${jobKey}`;
+    };
 
     const placedPairsHidden = new Set<string>();
     const localApplied = new Map<string, (typeof placements)[number]>();
@@ -171,6 +188,11 @@ export default async function ApplicantsPage() {
     for (const r of appliedRows) seenAppliedKey.add(`rf:${r.candidateId}:${r.jobId}`);
     for (const [key, p] of Array.from(localApplied.entries())) {
       if (seenAppliedKey.has(key)) continue;
+      // Pick whichever identity the placement row carries. Ace-native
+      // Jobs come back with jobId (cuid); RF-imported jobs with jobRfId.
+      // The table renders either via AppliedRow.jobId: number | string
+      // and the /jobs/[id] route resolves either via getJobByIdentifier.
+      const rowJobId: number | string = p.jobRfId != null ? p.jobRfId : p.jobId ?? "";
       if (p.candidateRfId != null) {
         const cand = candidateById.get(p.candidateRfId);
         const candJob = cand && Array.isArray(cand.jobs)
@@ -184,7 +206,7 @@ export default async function ApplicantsPage() {
         appliedRows.push({
           candidateId: p.candidateRfId,
           candidateName: candName || "(unnamed)",
-          jobId: p.jobRfId,
+          jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,
@@ -210,7 +232,7 @@ export default async function ApplicantsPage() {
         appliedRows.push({
           candidateId: p.candidateId,
           candidateName: aceName,
-          jobId: p.jobRfId,
+          jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,
@@ -233,6 +255,7 @@ export default async function ApplicantsPage() {
     // gate so Ace-native Kept rows show up here too.
     for (const p of placements) {
       if (p.stage !== "kept") continue;
+      const rowJobId: number | string = p.jobRfId != null ? p.jobRfId : p.jobId ?? "";
       if (p.candidateRfId != null) {
         const cand = candidateById.get(p.candidateRfId);
         const candName =
@@ -246,7 +269,7 @@ export default async function ApplicantsPage() {
         keptRows.push({
           candidateId: p.candidateRfId,
           candidateName: candName || "(unnamed)",
-          jobId: p.jobRfId,
+          jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,
@@ -264,7 +287,7 @@ export default async function ApplicantsPage() {
         keptRows.push({
           candidateId: p.candidateId,
           candidateName: aceName,
-          jobId: p.jobRfId,
+          jobId: rowJobId,
           jobTitle: desc.title,
           jobLocation: desc.location,
           clientRfId: p.clientRfId,

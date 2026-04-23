@@ -37,7 +37,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
 
   const [clients, allJobs, allContacts, allCandidates, placements, agreements, benefits, jobOverrides] = await Promise.all([
     getRfClientsForOrg().catch(() => []),
-    recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
+    (await import("@/lib/candidates")).getRfJobsForOrg().catch(() => []),
     recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
     getRfCandidatesForOrg().catch(() => []),
     prisma.placement.findMany({ where: { clientRfId: rfId } }),
@@ -87,6 +87,9 @@ export async function buildClientContext(clientId: string): Promise<string> {
   // Local placements override RF stage when present (RF lags for stages
   // like offer/hired/rejected that Ace owns locally).
   for (const p of placements) {
+    // Workspace is RF-job scoped today. Ace-native Job placements are
+    // indexed separately in Phase 4/5; skip them here.
+    if (p.jobRfId == null) continue;
     const list = candidatesByJob.get(p.jobRfId) ?? [];
     const name = p.candidateRfId != null
       ? candidateNameByRfId.get(p.candidateRfId) ?? `(candidate #${p.candidateRfId})`
@@ -349,12 +352,21 @@ export async function buildCandidateContext(candidateId: string): Promise<string
 
   // Applications block — cross-ref job titles + client names from RF and
   // attach the full job description (override first, RF fallback).
+  // Phase 2: jobs reads come through the Neon-backed shim
+  // (getRfJobsForOrg) instead of live RF. JobOverride lookup scopes to
+  // the RF-imported placements only — Ace-native placements carry
+  // description on Job.description directly and are fetched separately
+  // below if needed.
+  const { getRfJobsForOrg } = await import("@/lib/candidates");
+  const rfJobRfIds = placements
+    .map((p) => p.jobRfId)
+    .filter((v): v is number => typeof v === "number");
   const [allJobs, allClients, jobOverrides] = await Promise.all([
-    placements.length > 0 ? recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []) : Promise.resolve([]),
+    placements.length > 0 ? getRfJobsForOrg().catch(() => []) : Promise.resolve([]),
     placements.length > 0 ? getRfClientsForOrg().catch(() => []) : Promise.resolve([]),
-    placements.length > 0
+    rfJobRfIds.length > 0
       ? prisma.jobOverride.findMany({
-          where: { jobRfId: { in: placements.map((p) => p.jobRfId) } },
+          where: { jobRfId: { in: rfJobRfIds } },
           select: { jobRfId: true, description: true },
         })
       : Promise.resolve([]),
@@ -393,9 +405,15 @@ export async function buildCandidateContext(candidateId: string): Promise<string
     lines.push("  (none)");
   } else {
     for (const p of placements) {
-      const jobRaw = jobByRfId.get(p.jobRfId) ?? null;
-      const jobTitle = jobRaw ? normalizeJob(jobRaw).title : `job #${p.jobRfId}`;
-      const clientName = clientNameByRfId.get(p.clientRfId) ?? `client #${p.clientRfId}`;
+      const jobRaw = p.jobRfId != null ? jobByRfId.get(p.jobRfId) ?? null : null;
+      const jobTitle = jobRaw
+        ? normalizeJob(jobRaw).title
+        : p.jobRfId != null
+          ? `job #${p.jobRfId}`
+          : `job ${p.jobId ?? "?"}`;
+      const clientName = p.clientRfId != null
+        ? clientNameByRfId.get(p.clientRfId) ?? `client #${p.clientRfId}`
+        : `client ${p.clientId ?? "?"}`;
       lines.push(`  JOB: ${jobTitle} at ${clientName} - Stage: ${p.stage}`);
       const description = jobRaw ? resolveJobDescription(jobRaw, overrideByJob) : "";
       if (description) {

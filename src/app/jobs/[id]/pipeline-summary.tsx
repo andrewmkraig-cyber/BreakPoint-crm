@@ -80,8 +80,14 @@ export function JobPipelineSummary({
   // global /pipeline page where the same component is reused) the Actions
   // column is suppressed and the table renders read-only.
   jobActions?: {
+    // RF-imported job ids. Carry 0 for Ace-native Jobs — the inline
+    // action buttons fall back to "Open profile" for Ace-native
+    // candidates (typeof r.candidateId === "string"), and the RF-
+    // keyed server actions never fire with a 0 jobRfId.
     jobRfId: number;
+    jobCuid?: string | null;
     clientRfId: number;
+    clientCuid?: string | null;
     jobTitle: string;
     clientName: string;
   };

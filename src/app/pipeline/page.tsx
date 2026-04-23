@@ -95,6 +95,10 @@ export default async function PipelinePage({
       // local profile's own action list. Skip until a unified view lands.
       if (p.candidateRfId == null) continue;
       counts[stageName] += 1;
+      // Pipeline rows are RF-keyed today. Skip Placements against Ace-
+      // native Jobs (jobRfId null) — those flow through the candidate
+      // profile UI until Phase 4 widens the pipeline view.
+      if (p.jobRfId == null) continue;
       allRows.push({
         candidateId: p.candidateRfId,
         candidateName: candidateNameById.get(p.candidateRfId) ?? rfEntry?.candidateName ?? "(unknown)",

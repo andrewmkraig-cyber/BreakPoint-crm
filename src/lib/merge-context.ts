@@ -62,7 +62,12 @@ export async function buildFullMergeValues(
           } catch {
             // fall through to list
           }
-          const all = await recruiterflow.listAllJobs({ perPage: 100 });
+          // Phase 2: fall back to the Neon-backed shim instead of a
+          // second live RF call. Callers only need the shape; RF /job/{id}
+          // is the primary path and only fails when the id hasn't been
+          // cached by the RF list endpoint yet.
+          const { getRfJobsForOrg } = await import("@/lib/candidates");
+          const all = await getRfJobsForOrg();
           return all.find((x) => x.id === input.jobRfId) ?? null;
         })
       : null,

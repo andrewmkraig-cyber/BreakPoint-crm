@@ -376,13 +376,13 @@ async function backfillForeignKeys(maps: {
   const out: Record<string, BackfillCounts> = {};
 
   out["Placement.jobId"] = await backfillFk(
-    await prisma.placement.findMany({ where: { jobId: null }, select: { id: true, jobRfId: true } }),
-    (row) => maps.jobByRfId.get(row.jobRfId) ?? null,
+    await prisma.placement.findMany({ where: { jobId: null, jobRfId: { not: null } }, select: { id: true, jobRfId: true } }),
+    (row) => row.jobRfId != null ? maps.jobByRfId.get(row.jobRfId) ?? null : null,
     (key, value) => prisma.placement.update({ where: { id: key as string }, data: { jobId: value } }),
   );
   out["Placement.clientId"] = await backfillFk(
-    await prisma.placement.findMany({ where: { clientId: null }, select: { id: true, clientRfId: true } }),
-    (row) => maps.clientByRfId.get(row.clientRfId) ?? null,
+    await prisma.placement.findMany({ where: { clientId: null, clientRfId: { not: null } }, select: { id: true, clientRfId: true } }),
+    (row) => row.clientRfId != null ? maps.clientByRfId.get(row.clientRfId) ?? null : null,
     (key, value) => prisma.placement.update({ where: { id: key as string }, data: { clientId: value } }),
   );
   // Placement has unique constraints on (candidateId, jobRfId) and
@@ -416,13 +416,13 @@ async function backfillForeignKeys(maps: {
   );
 
   out["Interview.jobId"] = await backfillFk(
-    await prisma.interview.findMany({ where: { jobId: null }, select: { id: true, jobRfId: true } }),
-    (row) => maps.jobByRfId.get(row.jobRfId) ?? null,
+    await prisma.interview.findMany({ where: { jobId: null, jobRfId: { not: null } }, select: { id: true, jobRfId: true } }),
+    (row) => row.jobRfId != null ? maps.jobByRfId.get(row.jobRfId) ?? null : null,
     (key, value) => prisma.interview.update({ where: { id: key as string }, data: { jobId: value } }),
   );
   out["Interview.clientId"] = await backfillFk(
-    await prisma.interview.findMany({ where: { clientId: null }, select: { id: true, clientRfId: true } }),
-    (row) => maps.clientByRfId.get(row.clientRfId) ?? null,
+    await prisma.interview.findMany({ where: { clientId: null, clientRfId: { not: null } }, select: { id: true, clientRfId: true } }),
+    (row) => row.clientRfId != null ? maps.clientByRfId.get(row.clientRfId) ?? null : null,
     (key, value) => prisma.interview.update({ where: { id: key as string }, data: { clientId: value } }),
   );
   out["Interview.candidateId"] = await backfillFk(

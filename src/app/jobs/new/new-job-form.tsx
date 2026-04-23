@@ -12,7 +12,9 @@ import { cn } from "@/lib/utils";
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
 const EMPLOYMENT_TYPES = ["Full time", "Part time", "Contract"] as const;
 
-export function NewJobForm({ clients }: { clients: Array<{ id: number; name: string }> }) {
+// Phase 2: clients dropdown carries cuids (Ace-native + RF-imported) — the
+// form submits clientId directly to the Neon-native createJob action.
+export function NewJobForm({ clients }: { clients: Array<{ id: string; name: string }> }) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState<string>("");
@@ -113,7 +115,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
     startSave(async () => {
       const result = await createJob({
         title: title.trim(),
-        clientCompanyId: clientId ? Number(clientId) : null,
+        clientId,
         locations: location.trim() ? [location.trim()] : [],
         jobType,
         employmentType,
@@ -129,31 +131,27 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
         return;
       }
       toast.success("Job created");
-      if (result.value.id) {
-        router.push(`/jobs/${result.value.id}`);
-      } else {
-        router.push("/jobs");
-      }
+      router.push(`/jobs/${result.value.slug}`);
       router.refresh();
     });
   }
 
   return (
-    <div className="rounded-xl border border-border bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="md:col-span-2">
           <LabeledField label="Job title" value={title} onChange={setTitle} placeholder="e.g. Senior Full Stack Engineer" />
         </div>
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Client</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Client</span>
           <select
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             <option value="">Select a client…</option>
             {clients.map((c) => (
-              <option key={c.id} value={String(c.id)}>
+              <option key={c.id} value={c.id}>
                 {c.name}
               </option>
             ))}
@@ -161,11 +159,11 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
         </label>
         <LabeledField label="Location" value={location} onChange={setLocation} placeholder="Remote, New York, NY" />
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Job type</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Job type</span>
           <select
             value={jobType}
             onChange={(e) => setJobType(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             {JOB_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -175,11 +173,11 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
           </select>
         </label>
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Employment type</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Employment type</span>
           <select
             value={employmentType}
             onChange={(e) => setEmploymentType(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             {EMPLOYMENT_TYPES.map((t) => (
               <option key={t} value={t}>
@@ -204,27 +202,27 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
         />
         <LabeledField label="Currency" value={currency} onChange={setCurrency} placeholder="USD" />
         <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Openings</span>
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Openings</span>
           <input
             type="number"
             min={1}
             value={openings}
             onChange={(e) => setOpenings(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
         </label>
         <div className="md:col-span-2 space-y-2">
-          <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-2 rounded-lg border border-dashed border-court-border bg-court-surface-subtle/40 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-center gap-2 text-sm">
               {jdFile ? (
                 <>
                   <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
-                  <span className="truncate font-medium text-navy">{jdFile.name}</span>
-                  <span className="text-xs text-muted-foreground">{formatSize(jdFile.size)}</span>
+                  <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
+                  <span className="text-xs text-court-fg-muted">{formatSize(jdFile.size)}</span>
                   <button
                     type="button"
                     onClick={clearJd}
-                    className="ml-1 rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-navy"
+                    className="ml-1 rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
                     aria-label="Remove uploaded JD"
                   >
                     <X className="h-3 w-3" />
@@ -232,8 +230,8 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
                 </>
               ) : (
                 <>
-                  <UploadCloud className="h-4 w-4 shrink-0 text-muted-foreground" />
-                  <span className="text-muted-foreground">Upload a JD file (PDF/DOCX) to reformat with Claude, or skip and write below.</span>
+                  <UploadCloud className="h-4 w-4 shrink-0 text-court-fg-muted" />
+                  <span className="text-court-fg-muted">Upload a JD file (PDF/DOCX) to reformat with Claude, or skip and write below.</span>
                 </>
               )}
             </div>
@@ -242,7 +240,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
                 type="button"
                 onClick={() => jdInputRef.current?.click()}
                 disabled={isGenerating}
-                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-semibold text-navy shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
               >
                 <UploadCloud className="h-3.5 w-3.5" />
                 {jdFile ? "Replace file" : "Upload JD"}
@@ -273,8 +271,8 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
             placeholder="Blank canvas. Paste or write the job description — or upload a JD above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
           />
           {description.trim() && (
-            <div className="rounded-lg border border-border bg-muted/30 p-4">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 p-4">
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
                 Preview
               </div>
               <PlainProse text={description} />
@@ -290,12 +288,12 @@ export function NewJobForm({ clients }: { clients: Array<{ id: number; name: str
       )}
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
 
-      <div className="mt-5 flex items-center justify-end gap-2 border-t border-border pt-4">
+      <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
         <button
           type="button"
           onClick={() => router.push("/jobs")}
           disabled={isPending}
-          className="inline-flex items-center gap-1 rounded-md border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy disabled:opacity-60"
+          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
         >
           Cancel
         </button>
@@ -344,7 +342,7 @@ function SalaryField({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
       <input
         type="number"
         min={0}
@@ -355,10 +353,10 @@ function SalaryField({
         }}
         onBlur={onBlur}
         className={cn(
-          "mt-1 w-full rounded-lg border px-3 py-2 text-sm text-navy focus:outline-none focus:ring-2",
+          "mt-1 w-full rounded-lg border px-3 py-2 text-sm text-court-fg focus:outline-none focus:ring-2",
           invalid
             ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-amber-200"
-            : "border-border bg-white focus:border-brand focus:ring-brand/20",
+            : "border-court-border bg-court-surface focus:border-brand focus:ring-brand/20",
         )}
       />
     </label>

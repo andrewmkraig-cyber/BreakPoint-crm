@@ -287,7 +287,7 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
       where: { id: input.placementId },
       select: { jobRfId: true, candidateRfId: true },
     });
-    const sync = existing && existing.candidateRfId != null
+    const sync = existing && existing.candidateRfId != null && existing.jobRfId != null
       ? await trySyncRfStage({
           candidateRfId: existing.candidateRfId,
           jobRfId: existing.jobRfId,
@@ -831,7 +831,10 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
     };
     if (Number.isFinite(input.jobRfId)) {
       try {
-        const jobs = await recruiterflow.listAllJobs({ perPage: 100 });
+        // Phase 2: jobs list comes from Neon via the broadened shim so
+        // writeup generation still works even when RF is unreachable.
+        const { getRfJobsForOrg } = await import("@/lib/candidates");
+        const jobs = await getRfJobsForOrg();
         const j = jobs.find((x) => x.id === input.jobRfId);
         if (j) jobCtx = buildSubmittalJobContext(j, input.jobTitle, input.clientName);
       } catch {

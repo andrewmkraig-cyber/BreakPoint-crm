@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { prisma } from "@/lib/prisma";
 import { generateJobDescription } from "@/lib/claude";
-import { recruiterflow } from "@/lib/recruiterflow";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -85,7 +86,10 @@ export async function generateJobDescriptionFromSource(
 
 export type NewJobInput = {
   title: string;
-  clientCompanyId: number | null;
+  // cuid FK into Client. Empty string = no client association (the form's
+  // "Select a client…" option). Both Ace-native and RF-imported Clients
+  // are identified by their cuid — the dropdown carries cuids now.
+  clientId: string;
   locations: string[];
   jobType: string;
   employmentType: string;
@@ -96,7 +100,14 @@ export type NewJobInput = {
   description: string;
 };
 
-export async function createJob(input: NewJobInput): Promise<ActionResult<{ id: number | null }>> {
+// Ace-native create path. Writes a new Job row to Neon with the current
+// tenant's organizationId stamped. No RecruiterFlow call. The returned
+// slug is legacyRfId-as-string when available (keeps URLs backward-
+// compat for RF-imported Clients whose jobs route through the numeric
+// id), otherwise the cuid.
+export async function createJob(
+  input: NewJobInput,
+): Promise<ActionResult<{ slug: string; jobCuid: string }>> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return { ok: false, error: "Not signed in." };
 
@@ -112,31 +123,47 @@ export async function createJob(input: NewJobInput): Promise<ActionResult<{ id: 
   }
 
   try {
-    const res = await recruiterflow.createJob({
-      title,
-      client_company_id: input.clientCompanyId ?? undefined,
-      locations: input.locations.length ? input.locations : undefined,
-      job_type: input.jobType || undefined,
-      employment_type: input.employmentType || undefined,
-      salary_range_start: lo ?? undefined,
-      salary_range_end: hi ?? undefined,
-      salary_range_currency: input.salaryCurrency || "USD",
-      number_of_openings: input.openings ?? undefined,
-      description: input.description.trim() || undefined,
-      is_open: true,
-    });
+    const org = await getCurrentOrg();
 
-    if (res && typeof res === "object" && "RESULT" in res && res.RESULT && res.RESULT !== "SUCCESS") {
-      return { ok: false, error: `RecruiterFlow returned ${res.RESULT}` };
+    // Validate the clientId (if any) belongs to the caller's tenant — the
+    // dropdown is built against the same tenant, but another tab could
+    // change state between form load and submit.
+    let clientId: string | null = null;
+    if (input.clientId) {
+      const client = await prisma.client.findFirst({
+        where: { id: input.clientId, organizationId: org.id },
+        select: { id: true },
+      });
+      if (!client) return { ok: false, error: "Selected client is not available." };
+      clientId = client.id;
     }
 
-    const newId =
-      (res && typeof res === "object" && "id" in res && typeof res.id === "number" && res.id) ||
-      (res && typeof res === "object" && "job_id" in res && typeof res.job_id === "number" && res.job_id) ||
-      null;
+    const description = input.description.trim();
+    const jobType = input.jobType.trim();
+    const employmentType = input.employmentType.trim();
 
+    const job = await prisma.job.create({
+      data: {
+        title,
+        clientId,
+        locations: input.locations.filter((l) => l.trim().length > 0),
+        isOpen: true,
+        employmentType: employmentType || null,
+        jobType: jobType ? { name: jobType } : undefined,
+        salaryRangeStart: lo ?? null,
+        salaryRangeEnd: hi ?? null,
+        salaryCurrency: (input.salaryCurrency || "USD").trim().toUpperCase().slice(0, 3),
+        numberOfOpenings: input.openings ?? null,
+        description: description || null,
+        organizationId: org.id,
+      },
+      select: { id: true, legacyRfId: true },
+    });
+
+    const slug = job.legacyRfId != null ? String(job.legacyRfId) : job.id;
     revalidatePath("/jobs");
-    return { ok: true, value: { id: newId } };
+    revalidatePath(`/jobs/${slug}`);
+    return { ok: true, value: { slug, jobCuid: job.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create job." };
   }

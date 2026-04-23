@@ -13,8 +13,17 @@ import { prisma } from "@/lib/prisma";
 
 type Result = { ok: true } | { ok: false; error: string };
 
+// Unified job-description save. Two storage locations:
+//   - RF-imported jobs (legacyRfId set) → JobOverride.description layered
+//     over RF's raw.description. Preserves the pre-Phase-2 override UX.
+//   - Ace-native jobs (legacyRfId null) → Job.description directly. The
+//     JobOverride table keys on Int jobRfId (primary key), which Ace-
+//     native rows don't have.
+// Callers pass whichever identifier they have; the action resolves the
+// Job row once and branches on legacyRfId.
 export async function updateJobOverrideDescription(args: {
-  jobRfId: number;
+  jobRfId?: number | null;
+  jobCuid?: string | null;
   description: string;
 }): Promise<Result> {
   const session = await getServerSession(authOptions);
@@ -24,25 +33,55 @@ export async function updateJobOverrideDescription(args: {
     select: { id: true },
   });
   if (!user) return { ok: false, error: "User not found." };
-  if (!Number.isFinite(args.jobRfId)) return { ok: false, error: "Job id invalid." };
+
+  const rfId = args.jobRfId ?? null;
+  const cuid = args.jobCuid ?? null;
+  if (rfId == null && !cuid) return { ok: false, error: "Job id invalid." };
 
   const description = args.description.trim();
   try {
+    // Resolve the Job row by whichever id we have so we can tell RF-
+    // imported (legacyRfId set) from Ace-native (null).
+    const job = await prisma.job.findFirst({
+      where: cuid ? { id: cuid } : { legacyRfId: rfId! },
+      select: { id: true, legacyRfId: true },
+    });
+
+    if (job && job.legacyRfId == null) {
+      // Ace-native: write the description directly onto the Job row.
+      await prisma.job.update({
+        where: { id: job.id },
+        data: { description: description || null },
+      });
+      // eslint-disable-next-line no-console
+      console.log("[updateJobOverrideDescription] ace-native saved", {
+        jobId: job.id,
+        descLength: description.length,
+      });
+      revalidatePath(`/jobs/${job.id}`);
+      revalidatePath("/candidates", "layout");
+      return { ok: true };
+    }
+
+    // RF-imported: layer via JobOverride. Use the legacyRfId from the
+    // resolved Job row when available (more trustworthy than whatever
+    // the caller passed in).
+    const resolvedRfId = job?.legacyRfId ?? rfId;
+    if (resolvedRfId == null) return { ok: false, error: "Job id invalid." };
     const saved = await prisma.jobOverride.upsert({
-      where: { jobRfId: args.jobRfId },
+      where: { jobRfId: resolvedRfId },
       update: {
         description: description || null,
         updatedById: user.id,
       },
       create: {
-        jobRfId: args.jobRfId,
+        jobRfId: resolvedRfId,
+        jobId: job?.id ?? null,
         description: description || null,
         updatedById: user.id,
       },
       select: { jobRfId: true, description: true, updatedAt: true },
     });
-    // Audit log so a "I saved a description but the merge field is blank"
-    // report can be traced — this confirms the row landed in Postgres.
     // eslint-disable-next-line no-console
     console.log("[updateJobOverrideDescription] upserted", {
       jobRfId: saved.jobRfId,
@@ -50,11 +89,7 @@ export async function updateJobOverrideDescription(args: {
       descPreview: saved.description?.slice(0, 200) ?? null,
       updatedAt: saved.updatedAt.toISOString(),
     });
-    // Invalidate every page that surfaces the JD via merge-field resolution
-    // — Job detail (where the user just edited), the candidates list (some
-    // tiles use the description), and every candidate profile (the candidate
-    // profile is what builds InviteFlowState.jobDescription on schedule).
-    revalidatePath(`/jobs/${args.jobRfId}`);
+    revalidatePath(`/jobs/${resolvedRfId}`);
     revalidatePath("/candidates", "layout");
     return { ok: true };
   } catch (e) {

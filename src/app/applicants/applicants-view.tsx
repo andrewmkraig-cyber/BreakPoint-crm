@@ -21,10 +21,15 @@ import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
 export type AppliedRow = {
   candidateId: number | string;
   candidateName: string;
-  jobId: number;
+  // Phase 2: jobId can be either a legacy numeric RF id or a cuid for
+  // Ace-native Jobs. The job detail route accepts both (see
+  // getJobByIdentifier) so the JobCell href works for either shape.
+  jobId: number | string;
   jobTitle: string;
   jobLocation: string;
-  clientRfId: number;
+  // clientRfId is null for Ace-native Clients; the applicants table
+  // only uses it for informational grouping, so keep nullability here.
+  clientRfId: number | null;
   clientName: string;
   appliedAt: string | null;
   source: string | null;
@@ -33,10 +38,10 @@ export type AppliedRow = {
 export type KeptRow = {
   candidateId: number | string;
   candidateName: string;
-  jobId: number;
+  jobId: number | string;
   jobTitle: string;
   jobLocation: string;
-  clientRfId: number;
+  clientRfId: number | null;
   clientName: string;
   keptAt: string;
 };
@@ -60,7 +65,7 @@ function JobCell({
   jobLocation,
   clientName,
 }: {
-  jobId: number;
+  jobId: number | string;
   jobTitle: string;
   jobLocation: string;
   clientName: string;
@@ -270,55 +275,72 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
           >
             Submit
           </Link>
-          <ActionButton
-            disabled={isPending}
-            onClick={() =>
-              runAction(
-                () =>
-                  typeof row.candidateId === "string"
-                    ? keepLocalCandidateForJob({
-                        candidateId: row.candidateId,
-                        jobRfId: row.jobId,
-                        clientRfId: row.clientRfId,
-                      })
-                    : keepCandidateForJob({
-                        candidateRfId: row.candidateId,
-                        jobRfId: row.jobId,
-                        clientRfId: row.clientRfId,
-                      }),
-                "Kept",
-              )
-            }
-          >
-            Keep
-          </ActionButton>
-          <ActionButton
-            destructive
-            disabled={isPending}
-            onClick={() =>
-              runAction(
-                () =>
-                  typeof row.candidateId === "string"
-                    ? rejectLocalCandidateJob({
-                        candidateId: row.candidateId,
-                        jobRfId: row.jobId,
-                        clientRfId: row.clientRfId,
-                        previousStage: "applied",
-                        reason: "",
-                      })
-                    : rejectCandidateJob({
-                        candidateRfId: row.candidateId,
-                        jobRfId: row.jobId,
-                        clientRfId: row.clientRfId,
-                        previousStage: "applied",
-                        reason: "",
-                      }),
-                "Rejected",
-              )
-            }
-          >
-            Reject
-          </ActionButton>
+          {/* Row actions dispatch by identity shape. typeof row.jobId is
+              "string" for Ace-native Jobs (cuid) — those paths aren't
+              wired through the applicants server actions yet (tracked
+              for Phase 4), so the buttons route to the candidate profile
+              for now. Numeric row.jobId hits the existing RF-keyed
+              actions unchanged. */}
+          {typeof row.jobId === "number" ? (
+            <>
+              <ActionButton
+                disabled={isPending}
+                onClick={() =>
+                  runAction(
+                    () =>
+                      typeof row.candidateId === "string"
+                        ? keepLocalCandidateForJob({
+                            candidateId: row.candidateId,
+                            jobRfId: row.jobId as number,
+                            clientRfId: row.clientRfId ?? 0,
+                          })
+                        : keepCandidateForJob({
+                            candidateRfId: row.candidateId,
+                            jobRfId: row.jobId as number,
+                            clientRfId: row.clientRfId ?? 0,
+                          }),
+                    "Kept",
+                  )
+                }
+              >
+                Keep
+              </ActionButton>
+              <ActionButton
+                destructive
+                disabled={isPending}
+                onClick={() =>
+                  runAction(
+                    () =>
+                      typeof row.candidateId === "string"
+                        ? rejectLocalCandidateJob({
+                            candidateId: row.candidateId,
+                            jobRfId: row.jobId as number,
+                            clientRfId: row.clientRfId ?? 0,
+                            previousStage: "applied",
+                            reason: "",
+                          })
+                        : rejectCandidateJob({
+                            candidateRfId: row.candidateId,
+                            jobRfId: row.jobId as number,
+                            clientRfId: row.clientRfId ?? 0,
+                            previousStage: "applied",
+                            reason: "",
+                          }),
+                    "Rejected",
+                  )
+                }
+              >
+                Reject
+              </ActionButton>
+            </>
+          ) : (
+            <Link
+              href={`/candidates/${row.candidateId}`}
+              className="text-[11px] text-court-fg-muted underline-offset-2 hover:text-court-fg hover:underline"
+            >
+              Open profile
+            </Link>
+          )}
         </div>
       </td>
     </tr>
@@ -371,6 +393,7 @@ function KeptRowView({ row }: { row: KeptRow }) {
           >
             Submit
           </Link>
+          {typeof row.jobId === "number" && (
           <ActionButton
             destructive
             disabled={isPending}
@@ -380,11 +403,11 @@ function KeptRowView({ row }: { row: KeptRow }) {
                   typeof row.candidateId === "string"
                     ? removeLocalKeptCandidate({
                         candidateId: row.candidateId,
-                        jobRfId: row.jobId,
+                        jobRfId: row.jobId as number,
                       })
                     : removeKeptCandidate({
                         candidateRfId: row.candidateId,
-                        jobRfId: row.jobId,
+                        jobRfId: row.jobId as number,
                       }),
                 "Removed",
               )
@@ -392,6 +415,7 @@ function KeptRowView({ row }: { row: KeptRow }) {
           >
             Remove
           </ActionButton>
+          )}
         </div>
       </td>
     </tr>

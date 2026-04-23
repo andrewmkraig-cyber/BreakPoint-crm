@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
-import { getCandidateByIdentifier, getRfClientsForOrg } from "@/lib/candidates";
+import { getCandidateByIdentifier, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import {
   recruiterflow,
   canonicalStage,
@@ -137,7 +137,10 @@ export default async function CandidateProfilePage({
   const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
     getRfClientsForOrg(),
     recruiterflow.listAllContacts({ perPage: 100 }),
-    recruiterflow.listAllJobs({ perPage: 100 }),
+    // Phase 2: jobs come from Neon via the broadened shim (includes
+    // both RF-imported and Ace-native rows; Ace-native rows carry
+    // _aceJobId + _aceClientId for cuid-based write paths).
+    getRfJobsForOrg(),
     prisma.placement.findMany({ where: { candidateId: candidate.id } }),
     prisma.interview.findMany({
       where: { candidateId: candidate.id },
@@ -233,8 +236,16 @@ export default async function CandidateProfilePage({
 
   // Build the placement-action context: one row per linked job with RF stage,
   // local Placement snapshot (if any), and the client's default fee %.
+  // Phase 2: Placement.jobRfId is nullable for Ace-native Jobs. This
+  // lookup only fires for RF-imported candidates on the RF-page path —
+  // their linked submittals come from RFCandidate.jobs[] which is
+  // always keyed by RF numeric id. Skip rows where jobRfId is null
+  // (those are Placements against Ace-native Jobs; they round-trip
+  // through the localOnlyJobs loop below via the jobId cuid FK).
   const placementByJob = new Map<number, (typeof placements)[number]>();
-  for (const p of placements) placementByJob.set(p.jobRfId, p);
+  for (const p of placements) {
+    if (p.jobRfId != null) placementByJob.set(p.jobRfId, p);
+  }
 
   // Map the latest cancel_placement reason per placementId so the cancelled
   // badge can surface the reason the recruiter originally picked.
@@ -262,6 +273,7 @@ export default async function CandidateProfilePage({
 
   const interviewsByJob = new Map<number, InterviewSummary[]>();
   for (const iv of interviews) {
+    if (iv.jobRfId == null) continue;
     const list = interviewsByJob.get(iv.jobRfId) ?? [];
     list.push(toInterviewSummary(iv));
     interviewsByJob.set(iv.jobRfId, list);
@@ -346,28 +358,34 @@ export default async function CandidateProfilePage({
   // works for jobs attached only locally.
   const rfJobIdSet = new Set(placementJobs.map((j) => j.jobRfId));
   const localOnlyJobs: PlacementContextJob[] = placements
-    .filter((p) => !rfJobIdSet.has(p.jobRfId))
+    // RF-imported placements only (we're on the RF-candidate path).
+    // Ace-native Job placements for this RF candidate are Phase 4
+    // scope — they'd need the PlacementActions island to route writes
+    // by jobCuid. Skip them here so the types stay clean.
+    .filter((p) => p.jobRfId != null && !rfJobIdSet.has(p.jobRfId))
     .map((p) => {
-      const rfJob = allJobs.find((j) => j.id === p.jobRfId) ?? null;
+      const jobRfId = p.jobRfId as number;
+      const clientRfId = p.clientRfId ?? 0;
+      const rfJob = allJobs.find((j) => j.id === jobRfId) ?? null;
       const job = rfJob ? normalizeJob(rfJob) : null;
-      const clientRaw = clients.find((cl) => cl.id === p.clientRfId) ?? null;
+      const clientRaw = clients.find((cl) => cl.id === clientRfId) ?? null;
       const client = clientRaw ? normalizeClient(clientRaw) : null;
       const clientContacts = contacts
-        .filter((ct) => ct.client_company_id === p.clientRfId)
+        .filter((ct) => ct.client_company_id === clientRfId)
         .map((ct) => {
           const firstEmail = Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "";
           const fullName = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
           return { id: ct.id, name: fullName, title: ct.current_designation ?? "", email: firstEmail };
         });
       return {
-        jobRfId: p.jobRfId,
+        jobRfId,
         jobTitle: job?.title ?? "(job)",
         jobLocation: job?.location ?? "",
         jobDescription:
-          overrideByJob.get(p.jobRfId) ??
+          overrideByJob.get(jobRfId) ??
           (typeof rfJob?.description === "string" ? rfJob.description : ""),
         jobSalaryRange: job?.compensation ?? "",
-        clientRfId: p.clientRfId,
+        clientRfId,
         clientName: client?.name ?? "",
         clientWebsite: client?.website ?? "",
         clientLinkedIn: client?.linkedIn ?? "",
@@ -404,7 +422,7 @@ export default async function CandidateProfilePage({
           cancellationDetail: null,
           rejectedAt: p.stage === "rejected" ? p.updatedAt.toISOString() : null,
         },
-        interviews: interviewsByJob.get(p.jobRfId) ?? [],
+        interviews: interviewsByJob.get(jobRfId) ?? [],
       };
     });
   placementJobs.push(...localOnlyJobs);
@@ -656,7 +674,7 @@ function buildActivityInterviews(
       type: iv.type as ActivityInterview["type"],
       status: iv.status as ActivityInterview["status"],
       source: iv.source as ActivityInterview["source"],
-      jobTitle: titleByJob.get(iv.jobRfId) ?? "Interview",
+      jobTitle: iv.jobRfId != null ? titleByJob.get(iv.jobRfId) ?? "Interview" : "Interview",
       attendees,
     };
   });

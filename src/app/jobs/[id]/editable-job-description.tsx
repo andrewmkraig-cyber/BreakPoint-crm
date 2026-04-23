@@ -13,10 +13,15 @@ import { updateJobOverrideDescription } from "@/app/jobs/[id]/job-override-actio
 // field [Job Description] resolves to.
 export function EditableJobDescription({
   jobRfId,
+  jobCuid,
   rfDescription,
   initialOverride,
 }: {
-  jobRfId: number;
+  // Pre-Phase-2 callers pass jobRfId; Ace-native callers pass jobCuid.
+  // At least one must be set — the server action branches on whichever
+  // identifies an Ace-native vs RF-imported Job row.
+  jobRfId: number | null;
+  jobCuid: string | null;
   rfDescription: string | null;
   initialOverride: string | null;
 }) {
@@ -50,7 +55,7 @@ export function EditableJobDescription({
       draftPreview: draft.slice(0, 200),
     });
     startSave(async () => {
-      const result = await updateJobOverrideDescription({ jobRfId, description: draft });
+      const result = await updateJobOverrideDescription({ jobRfId, jobCuid, description: draft });
       if (!result.ok) {
         // eslint-disable-next-line no-console
         console.error("[EditableJobDescription] save failed", { jobRfId, error: result.error });

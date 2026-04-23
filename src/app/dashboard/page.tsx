@@ -5,8 +5,8 @@ import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
 import { prisma } from "@/lib/prisma";
-import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
-import { getRfCandidatesForOrg, getRfClientsForOrg } from "@/lib/candidates";
+import { normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getEasternWeekBounds } from "@/lib/week";
 import {
   CalendarCheck2,
@@ -81,7 +81,7 @@ export default async function DashboardPage() {
       },
     }),
     getRfCandidatesForOrg().catch(() => []),
-    recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
+    getRfJobsForOrg().catch(() => []),
     getRfClientsForOrg().catch(() => []),
     // Apply transitions logged by applyCandidateToJob. Inbound job-
     // board applicants don't write ActionLog yet; when that pipeline
@@ -162,8 +162,8 @@ export default async function DashboardPage() {
       id: iv.id,
       candidateName,
       candidateHref,
-      jobTitle: rfJobTitle.get(iv.jobRfId) ?? "(job)",
-      clientName: rfClientName.get(iv.clientRfId) ?? "",
+      jobTitle: iv.jobRfId != null ? rfJobTitle.get(iv.jobRfId) ?? "(job)" : "(job)",
+      clientName: iv.clientRfId != null ? rfClientName.get(iv.clientRfId) ?? "" : "",
       scheduledAt: iv.scheduledAt.toISOString(),
       durationMin: iv.durationMin,
       type: iv.type as UpcomingInterviewRow["type"],

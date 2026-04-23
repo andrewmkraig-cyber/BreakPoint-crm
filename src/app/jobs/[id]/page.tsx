@@ -6,8 +6,10 @@ import {
   normalizeJob,
   flattenPipeline,
   type PipelineBucket,
+  type RFJob,
 } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import { getJobByIdentifier } from "@/lib/jobs";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
 import { prisma } from "@/lib/prisma";
@@ -16,22 +18,24 @@ import { cn, formatDate } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function JobDetailPage({ params }: { params: { id: string } }) {
-  const id = Number(params.id);
-  if (!Number.isFinite(id)) notFound();
+  // Phase 2: accept both cuid (Ace-native, post-cutover canonical) and
+  // legacy numeric RF id (back-compat for existing URLs / external links).
+  const jobRow = await getJobByIdentifier(params.id);
+  if (!jobRow) notFound();
+
+  const rfId = jobRow.legacyRfId;
+  const isAceNative = rfId == null;
 
   const [jobs, candidates, override, localPlacements] = await Promise.all([
     getRfJobsForOrg(),
     getRfCandidatesForOrg(),
-    prisma.jobOverride.findUnique({ where: { jobRfId: id } }),
-    // Local Placement state for this job. Two row shapes share this
-    // table: RF-imported candidates carry candidateRfId (number) and
-    // Ace-native candidates carry candidateId (cuid string). We want
-    // both on the pipeline — pre-Phase-1 the query was scoped to
-    // candidateRfId only, so Ace-native Applies were invisible here.
-    // Pulling the candidateId column lets the renderer below build
-    // Ace-native rows via a Neon Candidate lookup.
+    rfId != null ? prisma.jobOverride.findUnique({ where: { jobRfId: rfId } }) : Promise.resolve(null),
+    // Placements against this job. Two identity shapes:
+    //   - RF-imported job → Placement.jobRfId = legacyRfId
+    //   - Ace-native job  → Placement.jobId = cuid (jobRfId null)
+    // Query both and unify below.
     prisma.placement.findMany({
-      where: { jobRfId: id },
+      where: isAceNative ? { jobId: jobRow.id } : { jobRfId: rfId ?? undefined },
       select: {
         candidateRfId: true,
         candidateId: true,
@@ -40,34 +44,49 @@ export default async function JobDetailPage({ params }: { params: { id: string }
       },
     }),
   ]);
-  const raw = jobs.find((j) => j.id === id);
-  if (!raw) notFound();
+
+  // Locate the RFJob-shaped payload for display. RF-imported rows land
+  // via legacyRfId match; Ace-native rows land via the synthetic-id
+  // treatment inside getRfJobsForOrg (shim surfaces them keyed on
+  // -djb2(cuid)). Falls back to a minimal shape built from the Neon
+  // Job row if the shim-side build hasn't caught up yet.
+  const raw: RFJob =
+    (isAceNative
+      ? jobs.find((j) => (j as { _aceJobId?: string })._aceJobId === jobRow.id)
+      : jobs.find((j) => j.id === rfId)) ??
+    ({
+      id: rfId ?? 0,
+      title: jobRow.title,
+      is_open: jobRow.isOpen,
+      locations: jobRow.locations,
+      description: jobRow.description ?? undefined,
+    } as RFJob);
 
   const job = normalizeJob(raw);
 
-  // Local stage overlay: candidateRfId → { stage, movedAt }. Local
-  // Placement is the source of truth for every stage Ace knows
-  // about. RF's c.jobs[].stage_name is only used for candidates
-  // that DON'T have a local Placement row yet (the long tail of
-  // sourced rows). The 60s RF data-cache TTL means RF stage_name
-  // can lag a recently-clicked action; trusting local first means
-  // Reject / Submit / Apply / etc. move the row immediately.
-  const stageByCandidate = new Map<number, { stage: string; movedAt: string }>();
+  // Local stage overlay: RF-imported candidates are keyed by
+  // candidateRfId; Ace-native candidates by candidateId. Two maps keep
+  // the lookup keys type-correct without string-munging cuids vs ints.
+  const stageByRfCandidate = new Map<number, { stage: string; movedAt: string }>();
+  const stageByAceCandidate = new Map<string, { stage: string; movedAt: string }>();
   for (const p of localPlacements) {
-    if (p.candidateRfId == null) continue;
-    stageByCandidate.set(p.candidateRfId, {
-      stage: p.stage,
-      movedAt: p.updatedAt.toISOString(),
-    });
+    if (p.candidateRfId != null) {
+      stageByRfCandidate.set(p.candidateRfId, { stage: p.stage, movedAt: p.updatedAt.toISOString() });
+    } else if (p.candidateId) {
+      stageByAceCandidate.set(p.candidateId, { stage: p.stage, movedAt: p.updatedAt.toISOString() });
+    }
   }
 
-  const flatForJob = flattenPipeline(candidates).filter((r) => r.jobId === id);
+  // RF-sourced rows only apply to RF-imported Jobs. Ace-native Jobs
+  // never appear in c.jobs[] arrays (that field comes from RF payloads),
+  // so `flatForJob` is empty for them — pipelineRows is built entirely
+  // from the local Placement rows below.
+  const flatForJob = rfId != null
+    ? flattenPipeline(candidates).filter((r) => r.jobId === rfId)
+    : [];
   const mainPipelineRows: JobPipelineRow[] = flatForJob.map((r) => {
-    const local = stageByCandidate.get(r.candidateId);
+    const local = stageByRfCandidate.get(r.candidateId);
     if (local) {
-      // Local Placement.stage is the source of truth — pass it through
-      // raw. No canonicalStage() wrapper; the stage is already written
-      // in the canonical-string shape by the server actions.
       return {
         candidateId: r.candidateId,
         candidateName: r.candidateName,
@@ -77,10 +96,6 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         stageMovedAt: local.movedAt,
       };
     }
-    // RF-only candidate (never touched by Ace on this job). Show them
-    // as "sourced" so the recruiter gets Apply / Submit / Keep / Reject
-    // on the row and can engage from here. Dropped the previous
-    // canonicalStage(RF stage_name) computation.
     return {
       candidateId: r.candidateId,
       candidateName: r.candidateName,
@@ -91,20 +106,6 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     };
   });
 
-  // Union in local Placements that aren't already represented in
-  // mainPipelineRows. Two cases:
-  //   1. RF-imported candidate with a Placement row but no matching
-  //      c.jobs[] entry yet (60s RF list cache hasn't caught up on a
-  //      recent Apply/Submit).
-  //   2. Ace-native candidate (candidateRfId null, candidateId set) —
-  //      applyLocalCandidateToJob writes these and flattenPipeline
-  //      never sees them. Pre-Phase-1 their rows were invisible here;
-  //      the reader widening + this branch surface them so the Job
-  //      page Applied bucket shows Tyler Brennan (and friends).
-  //
-  // Same root cause as commit 8a40cdd (Ace-native candidate profile
-  // couldn't see its own Submit button) — the pattern is "local
-  // Placement exists but the renderer only knew about one key shape."
   const rfCandidateIdsInFlat = new Set(flatForJob.map((r) => r.candidateId));
   const aceNativeIdsNeeded = new Set<string>();
   for (const p of localPlacements) {
@@ -122,7 +123,6 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
   const extraRows: JobPipelineRow[] = [];
   for (const p of localPlacements) {
-    // RF-path row.
     if (p.candidateRfId != null) {
       if (rfCandidateIdsInFlat.has(p.candidateRfId)) continue;
       const rfCand = candidates.find((c) => c.id === p.candidateRfId) ?? null;
@@ -140,7 +140,6 @@ export default async function JobDetailPage({ params }: { params: { id: string }
       });
       continue;
     }
-    // Ace-native row (candidateRfId null, candidateId set).
     if (p.candidateId) {
       const ace = aceNativeById.get(p.candidateId);
       const candidateName = ace
@@ -159,11 +158,6 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
   const pipelineRows: JobPipelineRow[] = [...mainPipelineRows, ...extraRows];
 
-  // Recompute the top-row Submitted/Interviewing/Hired counts off
-  // the overlaid pipelineRows so they match what the recruiter
-  // actually sees in the columns below — buildJobCounts only knew
-  // about RF stage_name and would over-count Hired-to-cancelled
-  // candidates as still Hired.
   const counts = pipelineRows.reduce(
     (acc, r) => {
       if (r.bucket === "submitted") acc.submitted += 1;
@@ -174,9 +168,27 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     { submitted: 0, interviewing: 0, hired: 0 },
   );
 
-  const billingContact = raw.custom_fields?.find((f) => f.name?.toLowerCase() === "billing contact")?.value as string | undefined;
-  const feePct = raw.custom_fields?.find((f) => f.name?.toLowerCase().includes("client fee"))?.value as number | undefined;
-  const estFee = raw.custom_fields?.find((f) => f.name?.toLowerCase().includes("estimated fee") || f.name?.toLowerCase().includes("etimated fee"))?.value as number | undefined;
+  const customFields = Array.isArray(raw.custom_fields) ? raw.custom_fields : [];
+  const billingContact = customFields.find((f) => f.name?.toLowerCase() === "billing contact")?.value as string | undefined;
+  const feePct = customFields.find((f) => f.name?.toLowerCase().includes("client fee"))?.value as number | undefined;
+  const estFee = customFields.find((f) => f.name?.toLowerCase().includes("estimated fee") || f.name?.toLowerCase().includes("etimated fee"))?.value as number | undefined;
+
+  // Client slug for the "Client profile" button. Prefer the Client row's
+  // legacyRfId (back-compat URLs); fall back to cuid for Ace-native.
+  const clientSlug = jobRow.clientId
+    ? await (async () => {
+        const cl = await prisma.client.findUnique({
+          where: { id: jobRow.clientId! },
+          select: { id: true, legacyRfId: true },
+        });
+        if (!cl) return null;
+        return cl.legacyRfId != null ? String(cl.legacyRfId) : cl.id;
+      })()
+    : null;
+
+  // Description read order: JobOverride (RF-imported only) > Job.description
+  // (Ace-native native column) > raw.description (RF payload fallback).
+  const rfDescription = typeof raw.description === "string" ? raw.description : null;
 
   return (
     <div className="space-y-6">
@@ -192,9 +204,9 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         title={job.title}
         description={[job.jobType, job.employmentType, job.location].filter(Boolean).join(" · ")}
         actions={
-          job.companyId ? (
+          clientSlug ? (
             <Link
-              href={`/clients/${job.companyId}`}
+              href={`/clients/${clientSlug}`}
               className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
             >
               <Building2 className="h-3 w-3" /> Client profile
@@ -217,7 +229,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
           <DT label="Openings" value={String(job.openings ?? "—")} />
           <DT label="Location" value={job.location || "—"} icon={<MapPin className="h-3 w-3" />} />
           <DT label="Job Type" value={[job.jobType, job.employmentType].filter(Boolean).join(" · ") || "—"} />
-          <DT label="Status (RF)" value={job.statusName || (job.isOpen ? "Active" : "Closed")} />
+          <DT label={isAceNative ? "Status" : "Status (RF)"} value={job.statusName || (job.isOpen ? "Active" : "Closed")} />
           <DT label="Last Edited" value={formatDate(job.lastEditedAt)} />
           <DT label="Billing Contact" value={billingContact || "—"} />
           <DT label="Fee" value={feePct ? `${feePct}%${estFee ? ` (est. $${estFee.toLocaleString()})` : ""}` : "—"} />
@@ -253,13 +265,14 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             <JobPipelineSummary
               rows={pipelineRows}
               jobActions={{
-                jobRfId: id,
-                // RF jobs may have no company link; fall back to 0 so the
-                // Placement schema still has a numeric clientRfId. The
-                // server actions tolerate this — it just means the local
-                // Placement row points to "no client", which shows up as
-                // unknown on downstream UI but doesn't block the action.
+                // Pre-Phase-2 callers keyed on a single numeric jobRfId.
+                // Ace-native Jobs carry legacyRfId null; pass 0 as a
+                // sentinel and let write paths (placement-actions)
+                // branch on jobCuid when present.
+                jobRfId: rfId ?? 0,
+                jobCuid: isAceNative ? jobRow.id : null,
                 clientRfId: job.companyId ?? 0,
+                clientCuid: jobRow.clientId ?? null,
                 jobTitle: job.title,
                 clientName: job.company || "",
               }}
@@ -269,8 +282,9 @@ export default async function JobDetailPage({ params }: { params: { id: string }
       </div>
 
       <EditableJobDescription
-        jobRfId={id}
-        rfDescription={typeof raw.description === "string" ? raw.description : null}
+        jobRfId={rfId}
+        jobCuid={isAceNative ? jobRow.id : null}
+        rfDescription={rfDescription}
         initialOverride={override?.description ?? null}
       />
     </div>
@@ -300,9 +314,6 @@ function Stat({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-// Status occupies the same stat-card slot as the count tiles but renders
-// its value as a small pill instead of giant numerals — "Active" used to
-// blow up to a 4xl serif italic and looked garish next to clean numbers.
 function StatusCard({ isOpen }: { isOpen: boolean }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm">

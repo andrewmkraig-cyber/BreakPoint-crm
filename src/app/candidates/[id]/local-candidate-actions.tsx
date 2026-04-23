@@ -32,9 +32,15 @@ export type LocalClientContact = {
 };
 
 export type LocalOpenJob = {
+  // For Ace-native Jobs the shim synthesizes a negative numeric id
+  // (djb2-of-cuid, negated) so this field keeps a stable numeric type
+  // for React keys and picker state. The real identity lives on jobCuid
+  // when set — write paths use it and leave Placement.jobRfId null.
   jobRfId: number;
+  jobCuid?: string | null;
   jobTitle: string;
   clientRfId: number;
+  clientCuid?: string | null;
   clientName: string;
   alreadyLinked: boolean;
   linkedStage?: string | null;
@@ -171,10 +177,16 @@ function ApplyModal(props: {
     if (!job) return;
     const toastId = toast.loading("Applying…");
     startSubmit(async () => {
+      // Ace-native Jobs carry a synthetic negative jobRfId on LocalOpenJob
+      // — the real identity is jobCuid / clientCuid. Route the write by
+      // presence of the cuid fields so Placement.jobId is set and
+      // Placement.jobRfId stays null.
       const res = await applyLocalCandidateToJob({
         candidateId: props.candidateId,
-        jobRfId: job.jobRfId,
-        clientRfId: job.clientRfId,
+        jobRfId: job.jobCuid ? null : job.jobRfId,
+        jobId: job.jobCuid ?? null,
+        clientRfId: job.clientCuid ? null : job.clientRfId,
+        clientId: job.clientCuid ?? null,
       });
       if (!res.ok) {
         toast.error("Couldn't apply", { id: toastId, description: res.error });
@@ -262,7 +274,12 @@ function SubmitModal(props: {
     }
     const toastId = toast.loading("Drafting with Claude…");
     startGenerate(async () => {
-      const res = await generateLocalSubmittal({ candidateId: props.candidateId, jobRfId });
+      const job = props.openJobs.find((j) => j.jobRfId === jobRfId);
+      const res = await generateLocalSubmittal({
+        candidateId: props.candidateId,
+        jobRfId: job?.jobCuid ? null : jobRfId,
+        jobId: job?.jobCuid ?? null,
+      });
       if (!res.ok) {
         toast.error("Draft failed", { id: toastId, description: res.error });
         return;
@@ -289,8 +306,10 @@ function SubmitModal(props: {
     startSend(async () => {
       const res = await sendLocalSubmittalEmail({
         candidateId: props.candidateId,
-        jobRfId: selectedJob.jobRfId,
-        clientRfId: selectedJob.clientRfId,
+        jobRfId: selectedJob.jobCuid ? null : selectedJob.jobRfId,
+        jobId: selectedJob.jobCuid ?? null,
+        clientRfId: selectedJob.clientCuid ? null : selectedJob.clientRfId,
+        clientId: selectedJob.clientCuid ?? null,
         to: toList,
         cc: ccList,
         bcc: bccList,

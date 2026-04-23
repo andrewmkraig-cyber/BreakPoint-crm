@@ -50,21 +50,42 @@ async function loadLocalCandidate(id: string) {
 
 // ---- Apply ----
 
+// Phase 2: `jobRfId` + `clientRfId` are optional — callers pass a cuid
+// (jobId / clientId) when the target is Ace-native. Exactly one of
+// {jobRfId, jobId} should be set; same for clients. When jobId is set,
+// jobRfId is written as null and the Placement points at Job via the
+// cuid FK, and symmetrically for Client.
 export type ApplyLocalInput = {
   candidateId: string;
-  jobRfId: number;
-  clientRfId: number;
+  jobRfId?: number | null;
+  jobId?: string | null;
+  clientRfId?: number | null;
+  clientId?: string | null;
 };
 
 export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<Result> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  const jobRfId = input.jobRfId ?? null;
+  const jobId = input.jobId ?? null;
+  const clientRfId = input.clientRfId ?? null;
+  const clientId = input.clientId ?? null;
+  if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
+
   try {
-    const existing = await prisma.placement.findUnique({
-      where: { candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId } },
-      select: { id: true, stage: true },
-    });
+    // Dupe check by whichever identity key is available. Ace-native
+    // jobs use the (candidateId, jobId) unique index; RF-imported jobs
+    // use (candidateId, jobRfId).
+    const existing = jobId
+      ? await prisma.placement.findUnique({
+          where: { candidateId_jobId: { candidateId: input.candidateId, jobId } },
+          select: { id: true, stage: true },
+        })
+      : await prisma.placement.findUnique({
+          where: { candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: jobRfId! } },
+          select: { id: true, stage: true },
+        });
     if (existing) {
       return { ok: false, error: `Candidate already linked to this job (stage: ${existing.stage}).` };
     }
@@ -73,9 +94,12 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
       data: {
         candidateId: input.candidateId,
         candidateRfId: null,
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
+        jobRfId,
+        jobId,
+        clientRfId,
+        clientId,
         stage: "applied",
+        source: "recruiter_applied",
         createdById: user.id,
         syncedToRf: false,
       },
@@ -86,7 +110,7 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
       actionType: "apply",
       subjectType: "candidate",
       subjectId: input.candidateId,
-      metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId, local: true },
+      metadata: { jobRfId, jobId, clientRfId, clientId, local: true },
     });
 
     revalidatePath(`/candidates/${input.candidateId}`);
@@ -101,7 +125,11 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
 
 export type GenerateLocalSubmittalInput = {
   candidateId: string;
-  jobRfId: number;
+  // Either jobRfId (RF-imported job) or jobId (Ace-native cuid) — at
+  // least one must be set. Writeup generation reads job metadata from
+  // whichever is present.
+  jobRfId?: number | null;
+  jobId?: string | null;
 };
 
 export type GenerateLocalSubmittalResult =
@@ -126,16 +154,34 @@ export async function generateLocalSubmittal(
     const c = await loadLocalCandidate(input.candidateId);
     if (!c) return { ok: false, error: "Candidate not found." };
 
-    // Job context still comes via RF read (Phase 2 territory). Client
-    // lookups are now Neon-backed via the getRfClientsForOrg shim so
-    // this code path no longer depends on /client/list for the name.
+    const jobRfId = input.jobRfId ?? null;
+    const jobId = input.jobId ?? null;
+    if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
+
+    // Resolve job metadata by whichever id the caller supplied. Ace-
+    // native jobs come straight from Neon; RF-imported jobs go through
+    // the RF read endpoint (that path is unchanged — retiring it is
+    // Phase 4/5 scope).
     const { recruiterflow } = await import("@/lib/recruiterflow");
     const { getRfClientsForOrg } = await import("@/lib/candidates");
-    const [job, clients] = await Promise.all([
-      recruiterflow.getJob(input.jobRfId).catch(() => null),
+    const [job, clients, aceJob] = await Promise.all([
+      jobRfId != null
+        ? recruiterflow.getJob(jobRfId).catch(() => null)
+        : Promise.resolve(null),
       getRfClientsForOrg().catch(() => []),
+      jobId
+        ? prisma.job.findUnique({
+            where: { id: jobId },
+            select: {
+              title: true,
+              locations: true,
+              description: true,
+              client: { select: { name: true } },
+            },
+          })
+        : Promise.resolve(null),
     ]);
-    const clientName = (() => {
+    const clientName = aceJob?.client?.name ?? (() => {
       if (!job?.company_id) return "";
       const cl = clients.find((x) => x.id === job.company_id);
       return cl?.name ?? "";
@@ -167,17 +213,19 @@ export async function generateLocalSubmittal(
         linkedin: c.linkedinProfile ?? "",
       },
       job: {
-        title: job?.title ?? "(job)",
+        title: aceJob?.title ?? job?.title ?? "(job)",
         clientName,
-        locations: Array.isArray(job?.locations)
+        locations: aceJob?.locations ?? (Array.isArray(job?.locations)
           ? (job!.locations as { location?: string }[]).map((l) => l.location ?? "").filter(Boolean)
-          : [],
+          : []),
         salaryRange: undefined,
         employmentType: undefined,
         jobType: undefined,
         department: undefined,
         experienceRange: undefined,
-        description: typeof job?.description === "string" ? job.description : undefined,
+        description:
+          aceJob?.description ??
+          (typeof job?.description === "string" ? job.description : undefined),
         customFields: [],
       },
     });
@@ -192,8 +240,10 @@ export async function generateLocalSubmittal(
 
 export type SendLocalSubmittalInput = {
   candidateId: string;
-  jobRfId: number;
-  clientRfId: number;
+  jobRfId?: number | null;
+  jobId?: string | null;
+  clientRfId?: number | null;
+  clientId?: string | null;
   to: string[];
   cc?: string[];
   bcc?: string[];
@@ -227,22 +277,52 @@ export async function sendLocalSubmittalEmail(
       bodyHtml: submittalToHtml(input.bodyText),
     });
 
-    const placement = await prisma.placement.upsert({
-      where: {
-        candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId },
-      },
-      create: {
-        candidateId: input.candidateId,
-        candidateRfId: null,
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
-        stage: "submitted",
-        createdById: user.id,
-        syncedToRf: false,
-      },
-      update: { stage: "submitted", syncedToRf: false },
-      select: { id: true },
-    });
+    const jobRfId = input.jobRfId ?? null;
+    const jobId = input.jobId ?? null;
+    const clientRfId = input.clientRfId ?? null;
+    const clientId = input.clientId ?? null;
+    if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
+
+    // Upsert keyed on whichever identity the caller supplied — mirrors
+    // the Apply dupe-check logic so resubmits to the same job land on
+    // the existing row.
+    const placement = jobId
+      ? await prisma.placement.upsert({
+          where: { candidateId_jobId: { candidateId: input.candidateId, jobId } },
+          create: {
+            candidateId: input.candidateId,
+            candidateRfId: null,
+            jobRfId,
+            jobId,
+            clientRfId,
+            clientId,
+            stage: "submitted",
+            source: "recruiter_applied",
+            createdById: user.id,
+            syncedToRf: false,
+          },
+          update: { stage: "submitted", syncedToRf: false },
+          select: { id: true },
+        })
+      : await prisma.placement.upsert({
+          where: {
+            candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: jobRfId! },
+          },
+          create: {
+            candidateId: input.candidateId,
+            candidateRfId: null,
+            jobRfId,
+            jobId,
+            clientRfId,
+            clientId,
+            stage: "submitted",
+            source: "recruiter_applied",
+            createdById: user.id,
+            syncedToRf: false,
+          },
+          update: { stage: "submitted", syncedToRf: false },
+          select: { id: true },
+        });
 
     await createActionLog({
       userId: user.id,
@@ -250,8 +330,10 @@ export async function sendLocalSubmittalEmail(
       subjectType: "candidate",
       subjectId: input.candidateId,
       metadata: {
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
+        jobRfId,
+        jobId,
+        clientRfId,
+        clientId,
         gmailMessageId: sendResult.id,
         local: true,
       },

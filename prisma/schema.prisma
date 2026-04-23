@@ -226,9 +226,9 @@ model Placement {
   // local candidates use candidateId (cuid) and leave candidateRfId null.
   candidateRfId         Int?
   candidateId           String?
-  jobRfId               Int
+  jobRfId               Int?      // Phase 2: nullable — Ace-native Jobs leave this null
   jobId                 String?   // cuid FK to Job — backfilled in Phase 0
-  clientRfId            Int
+  clientRfId            Int?      // Phase 2: nullable — Ace-native Clients leave this null
   clientId              String?   // cuid FK to Client — backfilled in Phase 0
   stage                 String    // "offer" | "pending_start" | "hired"
 
@@ -401,9 +401,9 @@ model Interview {
   id              String    @id @default(cuid())
   candidateRfId   Int?
   candidateId     String?
-  jobRfId         Int
+  jobRfId         Int?      // Phase 2: nullable — Ace-native Jobs leave this null
   jobId           String?   // cuid FK to Job — backfilled in Phase 0
-  clientRfId      Int
+  clientRfId      Int?      // Phase 2: nullable — Ace-native Clients leave this null
   clientId        String?   // cuid FK to Client — backfilled in Phase 0
   scheduledAt     DateTime
   durationMin     Int       @default(30)
@@ -639,6 +639,11 @@ model Job {
   applyLink        String?
   lastOpenedAt     DateTime?
   createdAtRf      DateTime?
+  // Phase 2: Ace-native Jobs store their description here. RF-imported
+  // jobs keep rendering via raw.description + JobOverride.description
+  // (the override layer pre-dates this column). Reads prefer, in order:
+  //   JobOverride.description > Job.description > raw.description
+  description      String?   @db.Text
   raw              Json?
   organizationId   String?
   createdAt        DateTime  @default(now())

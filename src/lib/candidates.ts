@@ -145,24 +145,77 @@ export async function getRfCandidateByRfId(rfId: number): Promise<RFCandidate | 
 // anyway. Production continues to work unchanged because Phase 0
 // populated `raw` for every imported row.
 
-export async function getRfJobsForOrg(): Promise<RFJob[]> {
+// Phase 2: the shim now surfaces Ace-native Jobs (legacyRfId = null) too.
+// Ace-native rows get a synthetic negative numeric `id` (djb2 hash of cuid,
+// negated) so the RFJob.id field can remain a number without colliding with
+// any real RF positive id. The cuid is carried alongside on `_aceJobId` so
+// write paths (Placement / Interview creation) can set jobId (cuid FK) and
+// leave jobRfId null. Same treatment for the companyId (→ _aceClientId).
+export type RFJobWithAce = RFJob & {
+  _aceJobId?: string;
+  _aceClientId?: string;
+};
+
+// djb2 → 31-bit unsigned → negate so Ace-native synthetic ids land in
+// (-2^31, -1] and can never collide with positive RF ids.
+function syntheticIdFromCuid(cuid: string): number {
+  let hash = 5381;
+  for (let i = 0; i < cuid.length; i++) {
+    hash = ((hash << 5) + hash + cuid.charCodeAt(i)) >>> 0;
+  }
+  return -((hash & 0x7fffffff) || 1);
+}
+
+export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
   const org = await getCurrentOrg();
   const rows = await prisma.job.findMany({
-    where: { organizationId: org.id, legacyRfId: { not: null } },
-    select: { legacyRfId: true, raw: true, title: true, isOpen: true },
+    where: { organizationId: org.id },
+    select: {
+      id: true,
+      legacyRfId: true,
+      raw: true,
+      title: true,
+      isOpen: true,
+      locations: true,
+      description: true,
+      clientId: true,
+      client: { select: { id: true, legacyRfId: true, name: true } },
+    },
   });
-  const out: RFJob[] = [];
+  const out: RFJobWithAce[] = [];
   for (const r of rows) {
-    if (r.legacyRfId == null) continue;
     const raw = r.raw as RFJob | null;
-    if (raw && typeof raw === "object") {
-      out.push({ ...raw, id: r.legacyRfId });
+    if (r.legacyRfId != null) {
+      // RF-imported row: hand back the original payload keyed by its
+      // legacyRfId so every existing indexer (jobs.find(j => j.id === rfId))
+      // keeps working unchanged.
+      if (raw && typeof raw === "object") {
+        out.push({ ...raw, id: r.legacyRfId });
+      } else {
+        out.push({ id: r.legacyRfId, title: r.title, is_open: r.isOpen });
+      }
       continue;
     }
-    // Fallback shape for rows without raw (e.g., smoke-seeded jobs that
-    // skip the RF payload). Hand back the minimum RFJob shape the
-    // callers index into.
-    out.push({ id: r.legacyRfId, title: r.title, is_open: r.isOpen });
+    // Ace-native row. No RF payload — synthesize a minimal RFJob shape
+    // from the Neon columns plus the cuid identity fields so write paths
+    // can persist Placement.jobId correctly.
+    const syntheticId = syntheticIdFromCuid(r.id);
+    const companyRef = r.client
+      ? {
+          id: r.client.legacyRfId ?? syntheticIdFromCuid(r.client.id),
+          name: r.client.name,
+        }
+      : null;
+    out.push({
+      id: syntheticId,
+      title: r.title,
+      is_open: r.isOpen,
+      locations: Array.isArray(r.locations) ? r.locations : [],
+      company: companyRef,
+      description: r.description ?? undefined,
+      _aceJobId: r.id,
+      _aceClientId: r.client && r.client.legacyRfId == null ? r.client.id : undefined,
+    });
   }
   return out;
 }
