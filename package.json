@@ -15,6 +15,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@auth/prisma-adapter": "^2.11.2",
     "@prisma/client": "^6.19.3",
+    "@sentry/nextjs": "^10.50.0",
     "@tiptap/extension-underline": "^2.27.2",
     "@tiptap/pm": "^2.27.2",
     "@tiptap/react": "^2.27.2",
