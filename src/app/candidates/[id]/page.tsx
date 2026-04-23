@@ -27,6 +27,7 @@ import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-note
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
 import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
+import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
 import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { CallLogs } from "@/components/call-logs";
@@ -471,6 +472,11 @@ export default async function CandidateProfilePage({
               instead of the old ~60/40 that still felt symmetric. */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
             <div className="space-y-6 lg:col-span-7">
+              {localResumeInitial && (
+                <div className="flex justify-end">
+                  <BrandResumeButton candidateId={candidate.id} />
+                </div>
+              )}
               <EditableResume candidateRfId={id} initial={localResumeInitial} />
               {/* Collapsible SMS thread. Sits right below the resume so recruiters
                   can glance at prior texts without scrolling to Activity. */}
