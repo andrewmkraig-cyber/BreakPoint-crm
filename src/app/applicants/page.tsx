@@ -31,6 +31,7 @@ export default async function ApplicantsPage() {
         select: {
           id: true,
           candidateRfId: true,
+          candidateId: true,
           jobRfId: true,
           clientRfId: true,
           stage: true,
@@ -88,16 +89,47 @@ export default async function ApplicantsPage() {
       "cancelled",
       "kept",
     ]);
+
+    // Keys are discriminated so rf vs ace rows never collide. RF key uses
+    // the numeric candidateRfId; Ace key uses the cuid. A Placement with
+    // neither key set is impossible given the app-layer XOR invariant.
+    const placementKey = (p: { candidateRfId: number | null; candidateId: string | null; jobRfId: number }) =>
+      p.candidateRfId != null
+        ? `rf:${p.candidateRfId}:${p.jobRfId}`
+        : `ace:${p.candidateId ?? "?"}:${p.jobRfId}`;
+
     const placedPairsHidden = new Set<string>();
     const localApplied = new Map<string, (typeof placements)[number]>();
     for (const p of placements) {
-      const key = `${p.candidateRfId}:${p.jobRfId}`;
+      const key = placementKey(p);
       if (HIDE_FROM_APPLIED.has(p.stage)) {
         placedPairsHidden.add(key);
       } else if (p.stage === "applied") {
         localApplied.set(key, p);
       }
     }
+
+    // Batch-fetch Neon Candidate rows for every Ace-native candidateId
+    // referenced by an Applied or Kept Placement. Lookup map powers the
+    // name / title rendering for the rows the legacy skip-gates used to
+    // drop.
+    const aceCandidateIds = new Set<string>();
+    for (const p of placements) {
+      if (p.candidateRfId == null && p.candidateId) aceCandidateIds.add(p.candidateId);
+    }
+    const aceCandidates = aceCandidateIds.size > 0
+      ? await prisma.candidate.findMany({
+          where: { id: { in: Array.from(aceCandidateIds) } },
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            currentDesignation: true,
+            createdAt: true,
+          },
+        })
+      : [];
+    const aceById = new Map(aceCandidates.map((c) => [c.id, c]));
 
     // RF-sourced applied rows: candidates whose RF stage_name canonicalizes
     // to "applied" and that haven't been moved past Applied locally.
@@ -129,37 +161,64 @@ export default async function ApplicantsPage() {
     // Local-Placement applied rows: clicking Apply in Ace writes
     // Placement.stage="applied"; surface those even when RF still says
     // sourced (RF /external doesn't reliably accept stage moves, so we
-    // can't rely on RF stage_name catching up). Dedupe against the RF
-    // pass above by (candidateId, jobId).
+    // can't rely on RF stage_name catching up). Two row shapes come out
+    // of the same table — RF-imported rows (candidateRfId set) and
+    // Ace-native rows (candidateId set, candidateRfId null). The skip
+    // gate that used to drop Ace-native rows has been removed; the
+    // dedupe keys use the same rf/ace discriminator as placementKey so
+    // the two shapes never collide on the RF numeric id.
     const seenAppliedKey = new Set<string>();
-    for (const r of appliedRows) seenAppliedKey.add(`${r.candidateId}:${r.jobId}`);
+    for (const r of appliedRows) seenAppliedKey.add(`rf:${r.candidateId}:${r.jobId}`);
     for (const [key, p] of Array.from(localApplied.entries())) {
-      if (p.candidateRfId == null) continue;
       if (seenAppliedKey.has(key)) continue;
-      const cand = candidateById.get(p.candidateRfId);
-      const candJob = cand && Array.isArray(cand.jobs)
-        ? (cand.jobs as RFCandidateJob[]).find((j) => j.job_id === p.jobRfId)
-        : null;
-      const candName =
-        cand?.name ??
-        [cand?.first_name, cand?.last_name].filter(Boolean).join(" ") ??
-        "(unnamed)";
-      const desc = describeJob(p.jobRfId, candJob ?? undefined);
-      appliedRows.push({
-        candidateId: p.candidateRfId,
-        candidateName: candName || "(unnamed)",
-        jobId: p.jobRfId,
-        jobTitle: desc.title,
-        jobLocation: desc.location,
-        clientRfId: p.clientRfId,
-        clientName: desc.clientName,
-        appliedAt: p.updatedAt.toISOString(),
-        // Local Placement carries its own source (e.g.
-        // "recruiter_applied" stamped by applyCandidateToJob from the
-        // PlacementActions UI). Falls back to RF's candidate-level
-        // source_name if the local row was older than the source field.
-        source: p.source ?? cand?.source_name ?? null,
-      });
+      if (p.candidateRfId != null) {
+        const cand = candidateById.get(p.candidateRfId);
+        const candJob = cand && Array.isArray(cand.jobs)
+          ? (cand.jobs as RFCandidateJob[]).find((j) => j.job_id === p.jobRfId)
+          : null;
+        const candName =
+          cand?.name ??
+          [cand?.first_name, cand?.last_name].filter(Boolean).join(" ") ??
+          "(unnamed)";
+        const desc = describeJob(p.jobRfId, candJob ?? undefined);
+        appliedRows.push({
+          candidateId: p.candidateRfId,
+          candidateName: candName || "(unnamed)",
+          jobId: p.jobRfId,
+          jobTitle: desc.title,
+          jobLocation: desc.location,
+          clientRfId: p.clientRfId,
+          clientName: desc.clientName,
+          appliedAt: p.updatedAt.toISOString(),
+          // Local Placement carries its own source (e.g.
+          // "recruiter_applied" stamped by applyCandidateToJob from the
+          // PlacementActions UI). Falls back to RF's candidate-level
+          // source_name if the local row was older than the source field.
+          source: p.source ?? cand?.source_name ?? null,
+        });
+        continue;
+      }
+      // Ace-native applied row. Name / title come from the Neon Candidate
+      // row we batch-fetched up top. No RF candidate to cross-reference,
+      // and c.jobs[] doesn't apply — just render the Placement directly.
+      if (p.candidateId) {
+        const ace = aceById.get(p.candidateId);
+        const aceName = ace
+          ? [ace.firstName, ace.lastName].filter(Boolean).join(" ") || "(unnamed)"
+          : "(unnamed)";
+        const desc = describeJob(p.jobRfId);
+        appliedRows.push({
+          candidateId: p.candidateId,
+          candidateName: aceName,
+          jobId: p.jobRfId,
+          jobTitle: desc.title,
+          jobLocation: desc.location,
+          clientRfId: p.clientRfId,
+          clientName: desc.clientName,
+          appliedAt: p.updatedAt.toISOString(),
+          source: p.source ?? null,
+        });
+      }
     }
 
     appliedRows.sort((a, b) => {
@@ -168,32 +227,51 @@ export default async function ApplicantsPage() {
       return tb - ta;
     });
 
-    // Kept tab: local Placement rows with stage="kept". Enrich from RF
-    // candidate+job data for display. Ace-local candidates (candidateRfId
-    // null) aren't rendered here yet — the Kept tab is RF-scoped until the
-    // local pipeline work lands.
+    // Kept tab: local Placement rows with stage="kept". Handles both
+    // RF-imported (candidateRfId) and Ace-native (candidateId) rows.
+    // Symmetric with the Applied assembly above — dropped the null-skip
+    // gate so Ace-native Kept rows show up here too.
     for (const p of placements) {
       if (p.stage !== "kept") continue;
-      if (p.candidateRfId == null) continue;
-      const cand = candidateById.get(p.candidateRfId);
-      const candName =
-        cand?.name ??
-        [cand?.first_name, cand?.last_name].filter(Boolean).join(" ") ??
-        "(unnamed)";
-      const candJob = cand && Array.isArray(cand.jobs)
-        ? (cand.jobs as RFCandidateJob[]).find((j) => j.job_id === p.jobRfId)
-        : null;
-      const desc = describeJob(p.jobRfId, candJob ?? undefined);
-      keptRows.push({
-        candidateId: p.candidateRfId,
-        candidateName: candName || "(unnamed)",
-        jobId: p.jobRfId,
-        jobTitle: desc.title,
-        jobLocation: desc.location,
-        clientRfId: p.clientRfId,
-        clientName: desc.clientName,
-        keptAt: p.updatedAt.toISOString(),
-      });
+      if (p.candidateRfId != null) {
+        const cand = candidateById.get(p.candidateRfId);
+        const candName =
+          cand?.name ??
+          [cand?.first_name, cand?.last_name].filter(Boolean).join(" ") ??
+          "(unnamed)";
+        const candJob = cand && Array.isArray(cand.jobs)
+          ? (cand.jobs as RFCandidateJob[]).find((j) => j.job_id === p.jobRfId)
+          : null;
+        const desc = describeJob(p.jobRfId, candJob ?? undefined);
+        keptRows.push({
+          candidateId: p.candidateRfId,
+          candidateName: candName || "(unnamed)",
+          jobId: p.jobRfId,
+          jobTitle: desc.title,
+          jobLocation: desc.location,
+          clientRfId: p.clientRfId,
+          clientName: desc.clientName,
+          keptAt: p.updatedAt.toISOString(),
+        });
+        continue;
+      }
+      if (p.candidateId) {
+        const ace = aceById.get(p.candidateId);
+        const aceName = ace
+          ? [ace.firstName, ace.lastName].filter(Boolean).join(" ") || "(unnamed)"
+          : "(unnamed)";
+        const desc = describeJob(p.jobRfId);
+        keptRows.push({
+          candidateId: p.candidateId,
+          candidateName: aceName,
+          jobId: p.jobRfId,
+          jobTitle: desc.title,
+          jobLocation: desc.location,
+          clientRfId: p.clientRfId,
+          clientName: desc.clientName,
+          keptAt: p.updatedAt.toISOString(),
+        });
+      }
     }
     keptRows.sort((a, b) => new Date(b.keptAt).getTime() - new Date(a.keptAt).getTime());
   } catch (e) {

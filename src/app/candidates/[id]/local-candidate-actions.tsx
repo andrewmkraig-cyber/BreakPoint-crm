@@ -57,22 +57,35 @@ export function LocalCandidateActions(props: {
   const pathname = usePathname();
   const router = useRouter();
   const [modal, setModal] = useState<"apply" | "submit" | "reference" | null>(null);
-  // Pre-seed value for SubmitModal when the user arrives via a per-row
-  // deep link from LocalPlacementRows (`?submit=<jobRfId>`). The modal
-  // reads this on mount to skip the job-picker step.
+  // Pre-seed value for SubmitModal when the user arrives via a deep
+  // link. Two URL shapes are accepted so every Submit entry point lands
+  // on the same modal:
+  //   ?submit=<jobRfId>                          — LocalPlacementRows per-row Submit
+  //   ?compose=submittal&jobId=<jobRfId>         — /applicants row Submit button
+  // Both strip the params on read so back-nav / refresh doesn't re-open
+  // the modal unexpectedly.
   const [submitInitialJobRfId, setSubmitInitialJobRfId] = useState<number | null>(null);
 
   useEffect(() => {
-    const raw = searchParams?.get("submit");
-    if (!raw) return;
-    const jobId = Number(raw);
-    if (Number.isFinite(jobId)) {
-      setSubmitInitialJobRfId(jobId);
-      setModal("submit");
+    const submitParam = searchParams?.get("submit");
+    const composeParam = searchParams?.get("compose");
+    const jobIdParam = searchParams?.get("jobId");
+    let jobId: number | null = null;
+    const paramsToStrip: string[] = [];
+    if (submitParam) {
+      const n = Number(submitParam);
+      if (Number.isFinite(n)) jobId = n;
+      paramsToStrip.push("submit");
+    } else if (composeParam === "submittal" && jobIdParam) {
+      const n = Number(jobIdParam);
+      if (Number.isFinite(n)) jobId = n;
+      paramsToStrip.push("compose", "jobId");
     }
-    // Strip the param so refreshes / back-nav don't re-fire the modal.
+    if (jobId == null) return;
+    setSubmitInitialJobRfId(jobId);
+    setModal("submit");
     const next = new URLSearchParams(searchParams?.toString() ?? "");
-    next.delete("submit");
+    for (const key of paramsToStrip) next.delete(key);
     const qs = next.toString();
     router.replace(`${pathname}${qs ? `?${qs}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router]);

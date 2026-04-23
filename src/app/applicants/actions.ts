@@ -147,3 +147,142 @@ export async function removeKeptCandidate(input: RemoveKeptInput): Promise<Resul
     return { ok: false, error: e instanceof Error ? e.message : "Remove failed." };
   }
 }
+
+// ---- Ace-native variants ----
+//
+// Mirror the three RF-keyed actions above but target Placement by the
+// candidateId (cuid) + jobRfId compound unique instead of candidateRfId +
+// jobRfId. These exist so the /applicants row actions can Keep / Remove /
+// Reject / (handoff) Submit on Ace-native candidates like Tyler Brennan
+// without ever touching RF. Called from AppliedRowView / KeptRowView when
+// the row's candidateId is a cuid string.
+
+export type KeepLocalCandidateInput = {
+  candidateId: string;
+  jobRfId: number;
+  clientRfId: number;
+};
+
+export async function keepLocalCandidateForJob(input: KeepLocalCandidateInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    await prisma.placement.upsert({
+      where: {
+        candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId },
+      },
+      create: {
+        candidateId: input.candidateId,
+        candidateRfId: null,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        stage: "kept",
+        createdById: userId,
+        syncedToRf: false,
+      },
+      update: {
+        stage: "kept",
+        syncedToRf: false,
+        invoicingFlagged: false,
+      },
+    });
+    await createActionLog({
+      userId,
+      actionType: "keep",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId, local: true },
+    });
+    revalidatePath("/applicants");
+    revalidatePath(`/candidates/${input.candidateId}`);
+    revalidatePath("/pipeline");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Keep failed." };
+  }
+}
+
+export type RemoveLocalKeptInput = {
+  candidateId: string;
+  jobRfId: number;
+};
+
+export async function removeLocalKeptCandidate(input: RemoveLocalKeptInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    const existing = await prisma.placement.findUnique({
+      where: {
+        candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId },
+      },
+      select: { id: true, stage: true },
+    });
+    if (!existing) return { ok: false, error: "Kept record not found." };
+    if (existing.stage !== "kept") return { ok: false, error: "Not a kept placement." };
+    await prisma.placement.delete({ where: { id: existing.id } });
+    await createActionLog({
+      userId,
+      actionType: "remove_kept",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: { jobRfId: input.jobRfId, local: true },
+    });
+    revalidatePath("/applicants");
+    revalidatePath(`/candidates/${input.candidateId}`);
+    revalidatePath("/pipeline");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Remove failed." };
+  }
+}
+
+export type RejectLocalCandidateInput = {
+  candidateId: string;
+  jobRfId: number;
+  clientRfId: number;
+  previousStage: string | null;
+  reason: string;
+  detail?: string | null;
+};
+
+export async function rejectLocalCandidateJob(input: RejectLocalCandidateInput): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  try {
+    await prisma.placement.upsert({
+      where: {
+        candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId },
+      },
+      create: {
+        candidateId: input.candidateId,
+        candidateRfId: null,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        stage: "rejected",
+        createdById: userId,
+        syncedToRf: false,
+      },
+      update: { stage: "rejected", syncedToRf: false },
+    });
+    await createActionLog({
+      userId,
+      actionType: "reject",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        previousStage: input.previousStage,
+        reason: input.reason,
+        detail: input.detail ?? null,
+        local: true,
+      },
+    });
+    revalidatePath("/applicants");
+    revalidatePath(`/candidates/${input.candidateId}`);
+    revalidatePath("/pipeline");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Reject failed." };
+  }
+}

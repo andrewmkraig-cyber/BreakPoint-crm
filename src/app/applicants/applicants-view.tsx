@@ -6,11 +6,20 @@ import { useMemo, useState, useTransition } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
-import { keepCandidateForJob, removeKeptCandidate } from "@/app/applicants/actions";
+import {
+  keepCandidateForJob,
+  keepLocalCandidateForJob,
+  rejectLocalCandidateJob,
+  removeKeptCandidate,
+  removeLocalKeptCandidate,
+} from "@/app/applicants/actions";
 import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
 
+// candidateId is polymorphic: RF-imported rows carry the numeric RF id;
+// Ace-native rows carry a cuid string. The row-level action buttons
+// branch on `typeof candidateId` to pick the right server action.
 export type AppliedRow = {
-  candidateId: number;
+  candidateId: number | string;
   candidateName: string;
   jobId: number;
   jobTitle: string;
@@ -22,7 +31,7 @@ export type AppliedRow = {
 };
 
 export type KeptRow = {
-  candidateId: number;
+  candidateId: number | string;
   candidateName: string;
   jobId: number;
   jobTitle: string;
@@ -266,11 +275,17 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
             onClick={() =>
               runAction(
                 () =>
-                  keepCandidateForJob({
-                    candidateRfId: row.candidateId,
-                    jobRfId: row.jobId,
-                    clientRfId: row.clientRfId,
-                  }),
+                  typeof row.candidateId === "string"
+                    ? keepLocalCandidateForJob({
+                        candidateId: row.candidateId,
+                        jobRfId: row.jobId,
+                        clientRfId: row.clientRfId,
+                      })
+                    : keepCandidateForJob({
+                        candidateRfId: row.candidateId,
+                        jobRfId: row.jobId,
+                        clientRfId: row.clientRfId,
+                      }),
                 "Kept",
               )
             }
@@ -283,13 +298,21 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
             onClick={() =>
               runAction(
                 () =>
-                  rejectCandidateJob({
-                    candidateRfId: row.candidateId,
-                    jobRfId: row.jobId,
-                    clientRfId: row.clientRfId,
-                    previousStage: "applied",
-                    reason: "",
-                  }),
+                  typeof row.candidateId === "string"
+                    ? rejectLocalCandidateJob({
+                        candidateId: row.candidateId,
+                        jobRfId: row.jobId,
+                        clientRfId: row.clientRfId,
+                        previousStage: "applied",
+                        reason: "",
+                      })
+                    : rejectCandidateJob({
+                        candidateRfId: row.candidateId,
+                        jobRfId: row.jobId,
+                        clientRfId: row.clientRfId,
+                        previousStage: "applied",
+                        reason: "",
+                      }),
                 "Rejected",
               )
             }
@@ -354,10 +377,15 @@ function KeptRowView({ row }: { row: KeptRow }) {
             onClick={() =>
               runAction(
                 () =>
-                  removeKeptCandidate({
-                    candidateRfId: row.candidateId,
-                    jobRfId: row.jobId,
-                  }),
+                  typeof row.candidateId === "string"
+                    ? removeLocalKeptCandidate({
+                        candidateId: row.candidateId,
+                        jobRfId: row.jobId,
+                      })
+                    : removeKeptCandidate({
+                        candidateRfId: row.candidateId,
+                        jobRfId: row.jobId,
+                      }),
                 "Removed",
               )
             }
