@@ -120,19 +120,22 @@ model KpiCache {
 }
 
 model ActionLog {
-  id          String   @id @default(cuid())
-  userId      String
-  actionType  String   // "email_sent" | "call_made" | "note_added" | "status_change" | "stage_change" | "submit" | "reject" | "keep" | "schedule_interview"
-  subjectType String   // "candidate" | "job" | "client" | "contact"
-  subjectId   String
-  metadata    Json?
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  userId         String
+  actionType     String   // "email_sent" | "call_made" | "note_added" | "status_change" | "stage_change" | "submit" | "reject" | "keep" | "schedule_interview"
+  subjectType    String   // "candidate" | "job" | "client" | "contact"
+  subjectId      String
+  metadata       Json?
+  organizationId String?
+  createdAt      DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
 
   @@index([userId, createdAt])
   @@index([subjectType, subjectId])
   @@index([actionType])
+  @@index([organizationId])
 }
 
 // Manually uploaded client-facing agreements (PDFs etc). We store the binary
@@ -317,9 +320,20 @@ model Candidate {
   location            String?
   linkedinProfile     String?
   skills              String[]  @default([])
+  // Free-form tags + RF attributes normalized to strings (e.g. "kept",
+  // "keep"). Used by the profile chips and the keep filter.
+  tags                String[]  @default([])
+  // RF expected-salary blob { number, currency } kept as Json so we don't
+  // have to split it into columns just to preserve the display shape.
+  expectedSalary      Json?
   notes               String?   @db.Text
   experience          Json?
   education           Json?
+  // RF-imported candidates get the original payload stashed here so profile
+  // features that depend on RF-only fields (linked jobs[], source_name,
+  // candidate_summary, etc.) keep working without an ongoing RF dependency.
+  // Ace-native candidates leave it null.
+  raw                 Json?
 
   // Resume copied from the ResumeUpload staging row on save. Kept in the
   // same row so the profile page can stream it back with a single query.
@@ -700,6 +714,7 @@ model Organization {
   candidateResumes    CandidateResume[]
   jobOverrides        JobOverride[]
   krispcallLogs       KrispcallLog[]
+  actionLogs          ActionLog[]
 }
 
 model OrganizationMembership {

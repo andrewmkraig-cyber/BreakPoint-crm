@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 
@@ -37,16 +38,14 @@ export async function setApplicantStatus(input: SetApplicantStatusInput): Promis
   if (!userId) return { ok: false, error: "Not signed in." };
   if (!VALID.has(input.status)) return { ok: false, error: "Invalid status." };
   try {
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "applicant_status",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          jobRfId: input.jobRfId,
-          status: input.status,
-        },
+    await createActionLog({
+      userId,
+      actionType: "applicant_status",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: {
+        jobRfId: input.jobRfId,
+        status: input.status,
       },
     });
     revalidatePath("/applicants");
@@ -96,14 +95,12 @@ export async function keepCandidateForJob(input: KeepCandidateInput): Promise<Re
         invoicingFlagged: false,
       },
     });
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "keep",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId },
-      },
+    await createActionLog({
+      userId,
+      actionType: "keep",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId },
     });
     revalidatePath("/applicants");
     revalidatePath(`/candidates/${input.candidateRfId}`);
@@ -135,14 +132,12 @@ export async function removeKeptCandidate(input: RemoveKeptInput): Promise<Resul
     if (!existing) return { ok: false, error: "Kept record not found." };
     if (existing.stage !== "kept") return { ok: false, error: "Not a kept placement." };
     await prisma.placement.delete({ where: { id: existing.id } });
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "remove_kept",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: { jobRfId: input.jobRfId },
-      },
+    await createActionLog({
+      userId,
+      actionType: "remove_kept",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: { jobRfId: input.jobRfId },
     });
     revalidatePath("/applicants");
     revalidatePath(`/candidates/${input.candidateRfId}`);

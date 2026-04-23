@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -11,6 +11,7 @@ import {
   setMeetOpenAccess,
   updateCalendarEvent,
 } from "@/lib/google-calendar";
+import { prisma } from "@/lib/prisma";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
 // Ace-local candidates (candidateId cuid). The Interview model is polymorphic
@@ -246,24 +247,22 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
     });
 
     const subjectId = ref.candidateRfId != null ? String(ref.candidateRfId) : ref.candidateId!;
-    await prisma.actionLog.create({
-      data: {
-        userId: user.id,
-        actionType: "schedule_interview",
-        subjectType: "candidate",
-        subjectId,
-        metadata: {
-          interviewId: interview.id,
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          scheduledAt: when.toISOString(),
-          durationMin: input.durationMin,
-          type: input.type,
-          source: input.source,
-          meetLink,
-          googleEventIdMine,
-          local: ref.candidateId != null,
-        },
+    await createActionLog({
+      userId: user.id,
+      actionType: "schedule_interview",
+      subjectType: "candidate",
+      subjectId,
+      metadata: {
+        interviewId: interview.id,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        scheduledAt: when.toISOString(),
+        durationMin: input.durationMin,
+        type: input.type,
+        source: input.source,
+        meetLink,
+        googleEventIdMine,
+        local: ref.candidateId != null,
       },
     });
 
@@ -326,14 +325,12 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
     });
 
     const subjectId = existing.candidateRfId != null ? String(existing.candidateRfId) : existing.candidateId!;
-    await prisma.actionLog.create({
-      data: {
-        userId: user.id,
-        actionType: "cancel_interview",
-        subjectType: "candidate",
-        subjectId,
-        metadata: { interviewId },
-      },
+    await createActionLog({
+      userId: user.id,
+      actionType: "cancel_interview",
+      subjectType: "candidate",
+      subjectId,
+      metadata: { interviewId },
     });
 
     revalidateForCandidate({ candidateRfId: existing.candidateRfId, candidateId: existing.candidateId });
@@ -409,18 +406,16 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
     });
 
     const subjectId = existing.candidateRfId != null ? String(existing.candidateRfId) : existing.candidateId!;
-    await prisma.actionLog.create({
-      data: {
-        userId: user.id,
-        actionType: "reschedule_interview",
-        subjectType: "candidate",
-        subjectId,
-        metadata: {
-          interviewId: input.interviewId,
-          from: existing.scheduledAt.toISOString(),
-          to: when.toISOString(),
-          durationMin,
-        },
+    await createActionLog({
+      userId: user.id,
+      actionType: "reschedule_interview",
+      subjectType: "candidate",
+      subjectId,
+      metadata: {
+        interviewId: input.interviewId,
+        from: existing.scheduledAt.toISOString(),
+        to: when.toISOString(),
+        durationMin,
       },
     });
 
@@ -642,20 +637,18 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
 
   const subjectId =
     interview.candidateRfId != null ? String(interview.candidateRfId) : interview.candidateId!;
-  await prisma.actionLog.create({
-    data: {
-      userId: user.id,
-      actionType: input.party === "client" ? "interview_invite_client" : "interview_invite_candidate",
-      subjectType: "candidate",
-      subjectId,
-      metadata: {
-        interviewId: interview.id,
-        attendeeEmail: input.attendeeEmail,
-        eventSummary: input.subject,
-        googleEventId: created.eventId,
-        meetLink: created.meetLink,
-        deliveredVia: "calendar",
-      },
+  await createActionLog({
+    userId: user.id,
+    actionType: input.party === "client" ? "interview_invite_client" : "interview_invite_candidate",
+    subjectType: "candidate",
+    subjectId,
+    metadata: {
+      interviewId: interview.id,
+      attendeeEmail: input.attendeeEmail,
+      eventSummary: input.subject,
+      googleEventId: created.eventId,
+      meetLink: created.meetLink,
+      deliveredVia: "calendar",
     },
   });
 

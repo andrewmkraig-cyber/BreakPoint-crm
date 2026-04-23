@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { Prisma } from "@prisma/client";
-import { prisma } from "@/lib/prisma";
-import { recruiterflow } from "@/lib/recruiterflow";
+import { createActionLog } from "@/lib/action-log";
+import { authOptions } from "@/lib/auth";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
+import { prisma } from "@/lib/prisma";
+import { recruiterflow } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg, getRfCandidateByRfId } from "@/lib/candidates";
 import {
   submittalEditorHtmlToPlainText,
   submittalToHtml,
@@ -358,19 +360,17 @@ export async function cancelPlacement(input: CancelPlacementInput): Promise<Resu
       },
     });
 
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "cancel_placement",
-        subjectType: "candidate",
-        subjectId: String(existing.candidateRfId),
-        metadata: {
-          placementId: input.placementId,
-          jobRfId: existing.jobRfId,
-          clientRfId: existing.clientRfId,
-          reason: input.reason,
-          detail: input.detail || null,
-        },
+    await createActionLog({
+      userId,
+      actionType: "cancel_placement",
+      subjectType: "candidate",
+      subjectId: String(existing.candidateRfId),
+      metadata: {
+        placementId: input.placementId,
+        jobRfId: existing.jobRfId,
+        clientRfId: existing.clientRfId,
+        reason: input.reason,
+        detail: input.detail || null,
       },
     });
 
@@ -424,14 +424,12 @@ export async function reapplyCancelledPlacement(input: ReapplyInput): Promise<Re
     if (p.stage !== "cancelled") return { ok: false, error: "Not a cancelled placement." };
 
     await prisma.placement.delete({ where: { id: input.placementId } });
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "reapply_cancelled_placement",
-        subjectType: "candidate",
-        subjectId: String(p.candidateRfId),
-        metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: "submitted" },
-      },
+    await createActionLog({
+      userId,
+      actionType: "reapply_cancelled_placement",
+      subjectType: "candidate",
+      subjectId: String(p.candidateRfId),
+      metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: "submitted" },
     });
     revalidatePath(`/candidates/${p.candidateRfId}`);
     revalidatePath(`/pipeline`);
@@ -464,14 +462,12 @@ export async function moveCancelledToAceStage(input: MoveCancelledInput): Promis
       where: { id: input.placementId },
       data: { stage: input.target, syncedToRf: false, invoicingFlagged: false },
     });
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "move_cancelled_placement",
-        subjectType: "candidate",
-        subjectId: String(p.candidateRfId),
-        metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: input.target },
-      },
+    await createActionLog({
+      userId,
+      actionType: "move_cancelled_placement",
+      subjectType: "candidate",
+      subjectId: String(p.candidateRfId),
+      metadata: { jobRfId: p.jobRfId, clientRfId: p.clientRfId, placementId: input.placementId, target: input.target },
     });
     revalidatePath(`/candidates/${p.candidateRfId}`);
     revalidatePath(`/pipeline`);
@@ -502,8 +498,8 @@ export async function removeCancelledFromJob(input: RemoveFromJobInput): Promise
     if (p.candidateRfId != null) {
       const candidateRfId = p.candidateRfId;
       try {
-        const rf = await recruiterflow.getCandidate(candidateRfId);
-        const existing = Array.isArray(rf.jobs) ? rf.jobs : [];
+        const rf = await getRfCandidateByRfId(candidateRfId);
+        const existing = Array.isArray(rf?.jobs) ? rf.jobs : [];
         const filtered: Array<{ job_id: number; stage_name?: string }> = [];
         for (const j of existing) {
           if (typeof j?.job_id !== "number") continue;
@@ -523,19 +519,17 @@ export async function removeCancelledFromJob(input: RemoveFromJobInput): Promise
       }
     }
 
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "remove_cancelled_from_job",
-        subjectType: "candidate",
-        subjectId: String(p.candidateRfId),
-        metadata: {
-          jobRfId: p.jobRfId,
-          clientRfId: p.clientRfId,
-          placementId: input.placementId,
-          rfSynced,
-          rfError,
-        },
+    await createActionLog({
+      userId,
+      actionType: "remove_cancelled_from_job",
+      subjectType: "candidate",
+      subjectId: String(p.candidateRfId),
+      metadata: {
+        jobRfId: p.jobRfId,
+        clientRfId: p.clientRfId,
+        placementId: input.placementId,
+        rfSynced,
+        rfError,
       },
     });
     revalidatePath(`/candidates/${p.candidateRfId}`);
@@ -591,18 +585,16 @@ export async function rejectCandidateJob(input: RejectCandidateInput): Promise<R
       },
     });
 
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "reject",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          previousStage: input.previousStage,
-          reason: input.reason || null,
-        },
+    await createActionLog({
+      userId,
+      actionType: "reject",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        previousStage: input.previousStage,
+        reason: input.reason || null,
       },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
@@ -654,17 +646,15 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
         syncedToRf: false,
       },
     });
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "unreject",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          targetStage: nextStage,
-        },
+    await createActionLog({
+      userId,
+      actionType: "unreject",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        targetStage: nextStage,
       },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
@@ -699,8 +689,8 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
   // Client Submission stage, and push the merged list through /candidate/update.
   // RF may replace vs merge — we send the full array so either behavior works.
   try {
-    const existing = await recruiterflow.getCandidate(input.candidateRfId);
-    const existingJobs = Array.isArray(existing.jobs) ? existing.jobs : [];
+    const existing = await getRfCandidateByRfId(input.candidateRfId);
+    const existingJobs = Array.isArray(existing?.jobs) ? existing.jobs : [];
     const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
     if (!alreadyLinked) {
       const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
@@ -757,21 +747,19 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
       },
     });
 
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "submit",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          jobTitle: input.jobTitle,
-          clientName: input.clientName,
-          targetStage: "submitted",
-          rfSynced,
-          rfError,
-        },
+    await createActionLog({
+      userId,
+      actionType: "submit",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        jobTitle: input.jobTitle,
+        clientName: input.clientName,
+        targetStage: "submitted",
+        rfSynced,
+        rfError,
       },
     });
     revalidatePath(`/candidates/${input.candidateRfId}`);
@@ -818,7 +806,7 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
     // RF /candidate/{id} returns 404 on the external API (the whole reason the
     // rest of the app reads /candidate/list and filters). We mirror that here
     // so the generator works like every other candidate read-path in Ace.
-    const candidates = await recruiterflow.listAllCandidates({ perPage: 100 });
+    const candidates = await getRfCandidatesForOrg();
     const c = candidates.find((x) => x.id === input.candidateRfId);
     if (!c) return { ok: false, error: "Candidate not found in RecruiterFlow." };
     const { firstName, lastName } = extractCandidateFields(c);
@@ -1009,8 +997,8 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   let rfSynced = false;
   let rfError: string | null = null;
   try {
-    const existing = await recruiterflow.getCandidate(input.candidateRfId);
-    const existingJobs = Array.isArray(existing.jobs) ? existing.jobs : [];
+    const existing = await getRfCandidateByRfId(input.candidateRfId);
+    const existingJobs = Array.isArray(existing?.jobs) ? existing.jobs : [];
     const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
     if (!alreadyLinked) {
       const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
@@ -1038,22 +1026,20 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   }
 
   try {
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "apply",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          placementId,
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          jobTitle: input.jobTitle,
-          clientName: input.clientName,
-          targetStage: "applied",
-          rfSynced,
-          rfError,
-        },
+    await createActionLog({
+      userId,
+      actionType: "apply",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: {
+        placementId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        jobTitle: input.jobTitle,
+        clientName: input.clientName,
+        targetStage: "applied",
+        rfSynced,
+        rfError,
       },
     });
   } catch {
@@ -1092,7 +1078,8 @@ export async function generateSubmittalEmailBody(args: {
   if (!userId) return { ok: false, error: "Not signed in." };
 
   try {
-    const c = await recruiterflow.getCandidate(args.candidateRfId);
+    const c = await getRfCandidateByRfId(args.candidateRfId);
+    if (!c) return { ok: false, error: "Candidate not found in RecruiterFlow." };
     const { firstName, lastName } = extractCandidateFields(c);
     const expectedSalary = (c.expected_salary ?? null) as
       | { number?: number | null; currency?: string | null }
@@ -1386,25 +1373,23 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
     const msg = e instanceof Error ? e.message : "Failed to send submittal email.";
     // Log the failed attempt so it shows in the activity log.
     try {
-      await prisma.actionLog.create({
-        data: {
-          userId,
-          actionType: "submit",
-          subjectType: "candidate",
-          subjectId: String(input.candidateRfId),
-          metadata: {
-            placementId,
-            jobRfId: input.jobRfId,
-            clientRfId: input.clientRfId,
-            jobTitle: input.jobTitle,
-            clientName: input.clientName,
-            targetStage: "submitted",
-            emailSent: false,
-            emailError: msg,
-            to: input.to,
-            cc: input.cc,
-            subject: input.subject,
-          },
+      await createActionLog({
+        userId,
+        actionType: "submit",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          placementId,
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          jobTitle: input.jobTitle,
+          clientName: input.clientName,
+          targetStage: "submitted",
+          emailSent: false,
+          emailError: msg,
+          to: input.to,
+          cc: input.cc,
+          subject: input.subject,
         },
       });
     } catch {
@@ -1419,28 +1404,26 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
   }
 
   try {
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "submit",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          placementId,
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          jobTitle: input.jobTitle,
-          clientName: input.clientName,
-          targetStage: "submitted",
-          emailSent: true,
-          gmailMessageId: sent.id,
-          gmailThreadId: sent.threadId,
-          to: input.to,
-          cc: input.cc,
-          subject: input.subject,
-          attachmentVariant: input.attachment?.variant ?? null,
-          attachmentFilename: attachments?.[0]?.filename ?? null,
-        },
+    await createActionLog({
+      userId,
+      actionType: "submit",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: {
+        placementId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        jobTitle: input.jobTitle,
+        clientName: input.clientName,
+        targetStage: "submitted",
+        emailSent: true,
+        gmailMessageId: sent.id,
+        gmailThreadId: sent.threadId,
+        to: input.to,
+        cc: input.cc,
+        subject: input.subject,
+        attachmentVariant: input.attachment?.variant ?? null,
+        attachmentFilename: attachments?.[0]?.filename ?? null,
       },
     });
   } catch {
@@ -1451,8 +1434,8 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
   // a Client Submission stage. Swallow errors — the email has gone out and
   // the Placement row carries the source of truth either way.
   try {
-    const rf = await recruiterflow.getCandidate(input.candidateRfId);
-    const existingJobs = Array.isArray(rf.jobs) ? rf.jobs : [];
+    const rf = await getRfCandidateByRfId(input.candidateRfId);
+    const existingJobs = Array.isArray(rf?.jobs) ? rf.jobs : [];
     const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
     if (!alreadyLinked) {
       const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
@@ -1552,18 +1535,16 @@ export async function deliverCandidateConfirmation(
         bodyText: body,
         bodyHtml: plainToHtml(body),
       });
-      await prisma.actionLog.create({
-        data: {
-          userId,
-          actionType: "candidate_confirmation_sent",
-          subjectType: "candidate",
-          subjectId: String(input.candidateRfId),
-          metadata: {
-            to: input.candidateEmail,
-            subject,
-            gmailMessageId: sent.id,
-            gmailThreadId: sent.threadId,
-          },
+      await createActionLog({
+        userId,
+        actionType: "candidate_confirmation_sent",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          to: input.candidateEmail,
+          subject,
+          gmailMessageId: sent.id,
+          gmailThreadId: sent.threadId,
         },
       });
       return { ok: true, value: { mode: "sent", id: sent.id, threadId: sent.threadId } };
@@ -1578,18 +1559,16 @@ export async function deliverCandidateConfirmation(
       bodyText: body,
       bodyHtml: plainToHtml(body),
     });
-    await prisma.actionLog.create({
-      data: {
-        userId,
-        actionType: "candidate_confirmation_drafted",
-        subjectType: "candidate",
-        subjectId: String(input.candidateRfId),
-        metadata: {
-          to: input.candidateEmail,
-          subject,
-          gmailDraftId: draft.id,
-          gmailThreadId: draft.threadId,
-        },
+    await createActionLog({
+      userId,
+      actionType: "candidate_confirmation_drafted",
+      subjectType: "candidate",
+      subjectId: String(input.candidateRfId),
+      metadata: {
+        to: input.candidateEmail,
+        subject,
+        gmailDraftId: draft.id,
+        gmailThreadId: draft.threadId,
       },
     });
     return { ok: true, value: { mode: "drafted", id: draft.id, threadId: draft.threadId } };
@@ -1683,24 +1662,22 @@ async function logFire(args: {
   userId: string;
 }): Promise<void> {
   try {
-    await prisma.actionLog.create({
-      data: {
-        userId: args.userId,
-        actionType: args.actionType,
-        subjectType: "candidate",
-        subjectId: String(args.candidateRfId),
-        metadata: {
-          ...args.metadata,
-          fireStatus: args.fire.status,
-          fireDetail:
-            args.fire.status === "sent"
-              ? { gmailMessageId: args.fire.result.id, gmailThreadId: args.fire.result.threadId, subject: args.fire.subject }
-              : args.fire.status === "drafted"
-                ? { gmailDraftId: args.fire.result.id, gmailThreadId: args.fire.result.threadId, subject: args.fire.subject }
-                : args.fire.status === "skipped"
-                  ? { reason: args.fire.reason }
-                  : { error: args.fire.error },
-        },
+    await createActionLog({
+      userId: args.userId,
+      actionType: args.actionType,
+      subjectType: "candidate",
+      subjectId: String(args.candidateRfId),
+      metadata: {
+        ...args.metadata,
+        fireStatus: args.fire.status,
+        fireDetail:
+          args.fire.status === "sent"
+            ? { gmailMessageId: args.fire.result.id, gmailThreadId: args.fire.result.threadId, subject: args.fire.subject }
+            : args.fire.status === "drafted"
+              ? { gmailDraftId: args.fire.result.id, gmailThreadId: args.fire.result.threadId, subject: args.fire.subject }
+              : args.fire.status === "skipped"
+                ? { reason: args.fire.reason }
+                : { error: args.fire.error },
       },
     });
   } catch {
@@ -1731,8 +1708,8 @@ export async function sendRejectionEmail(input: SendRejectionEmailInput): Promis
   if (!userId) return { ok: false, error: "Not signed in." };
 
   try {
-    const c = await recruiterflow.getCandidate(input.candidateRfId);
-    const candidateEmail = normalizeCandidateEmail(c);
+    const c = await getRfCandidateByRfId(input.candidateRfId);
+    const candidateEmail = c ? normalizeCandidateEmail(c) : "";
     if (!candidateEmail) {
       return {
         ok: true,
@@ -1800,8 +1777,8 @@ export async function sendOfferAcceptanceEmail(
   if (!userId) return { ok: false, error: "Not signed in." };
 
   try {
-    const c = await recruiterflow.getCandidate(input.candidateRfId);
-    const candidateEmail = normalizeCandidateEmail(c);
+    const c = await getRfCandidateByRfId(input.candidateRfId);
+    const candidateEmail = c ? normalizeCandidateEmail(c) : "";
     const outcome = await fireTriggerForCandidateJob({
       trigger: OFFER_ACCEPTANCE_TRIGGER,
       candidateRfId: input.candidateRfId,
@@ -1856,8 +1833,8 @@ export async function sendInterviewConfirmationEmail(
   if (!userId) return { ok: false, error: "Not signed in." };
 
   try {
-    const c = await recruiterflow.getCandidate(input.candidateRfId);
-    const candidateEmail = normalizeCandidateEmail(c);
+    const c = await getRfCandidateByRfId(input.candidateRfId);
+    const candidateEmail = c ? normalizeCandidateEmail(c) : "";
     if (!candidateEmail) {
       return { ok: true, value: { status: "skipped", reason: "no_recipient" } };
     }
@@ -1923,8 +1900,8 @@ export async function sendReferenceCheckRequest(
   if (!userId) return { ok: false, error: "Not signed in." };
 
   try {
-    const c = await recruiterflow.getCandidate(input.candidateRfId);
-    const candidateEmail = normalizeCandidateEmail(c);
+    const c = await getRfCandidateByRfId(input.candidateRfId);
+    const candidateEmail = c ? normalizeCandidateEmail(c) : "";
     if (!candidateEmail) {
       return { ok: true, value: { status: "skipped", reason: "no_recipient" } };
     }
@@ -2003,16 +1980,14 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
           syncedToRf: false,
         },
       }),
-      prisma.actionLog.create({
-        data: {
-          userId,
-          actionType: "keep",
-          subjectType: "candidate",
-          subjectId: String(input.candidateRfId),
-          metadata: {
-            jobRfId: input.jobRfId,
-            clientRfId: input.clientRfId,
-          },
+      createActionLog({
+        userId,
+        actionType: "keep",
+        subjectType: "candidate",
+        subjectId: String(input.candidateRfId),
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
         },
       }),
     ]);
@@ -2077,18 +2052,16 @@ async function flipPlacementStage(args: {
           syncedToRf: false,
         },
       }),
-      prisma.actionLog.create({
-        data: {
-          userId: args.userId,
-          actionType: args.actionType,
-          subjectType: "candidate",
-          subjectId: String(args.input.candidateRfId),
-          metadata: {
-            jobRfId: args.input.jobRfId,
-            clientRfId: args.input.clientRfId,
-            fromStage: args.input.previousStage,
-            toStage: args.toStage,
-          },
+      createActionLog({
+        userId: args.userId,
+        actionType: args.actionType,
+        subjectType: "candidate",
+        subjectId: String(args.input.candidateRfId),
+        metadata: {
+          jobRfId: args.input.jobRfId,
+          clientRfId: args.input.clientRfId,
+          fromStage: args.input.previousStage,
+          toStage: args.toStage,
         },
       }),
     ]);

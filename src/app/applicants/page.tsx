@@ -13,6 +13,7 @@ import {
   type RFCandidateJob,
   type RFJob,
 } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { resolveJobTitle } from "@/lib/job-title";
 
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export default async function ApplicantsPage() {
 
   try {
     const [candidates, placements, allJobs, jobOverrides] = await Promise.all([
-      recruiterflow.listAllCandidates({ perPage: 100 }),
+      getRfCandidatesForOrg(),
       prisma.placement.findMany({
         where: { stage: { in: ["kept", "rejected", "offer", "pending_start", "hired", "cancelled", "submitted", "applied", "sourced"] } },
         select: {

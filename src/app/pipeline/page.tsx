@@ -2,12 +2,12 @@ import { PageHeader } from "@/components/page-header";
 import { PipelineView, type NextInterview, type PipelineRow, type PlacementDetails } from "@/app/pipeline/pipeline-view";
 import { prisma } from "@/lib/prisma";
 import {
-  recruiterflow,
   flattenPipeline,
   PIPELINE_LABELS,
   daysBetween,
   type PipelineBucket,
 } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +40,7 @@ export default async function PipelinePage({
 
   try {
     const [candidates, placements, interviews] = await Promise.all([
-      recruiterflow.listAllCandidates({ perPage: 100 }),
+      getRfCandidatesForOrg(),
       prisma.placement.findMany(),
       prisma.interview.findMany({
         where: { status: "scheduled", scheduledAt: { gte: new Date() } },

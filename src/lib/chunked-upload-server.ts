@@ -25,7 +25,7 @@ export type ChunkPayload = {
 
 export type ChunkedUploadHandlers<CreateExtra> = {
   allowedMime: Set<string>;
-  parseExtra: (body: ChunkPayload) => CreateExtra;
+  parseExtra: (body: ChunkPayload) => CreateExtra | Promise<CreateExtra>;
   createFirstRow: (args: {
     userId: string;
     filename: string;
@@ -89,7 +89,7 @@ export function createChunkedUploadHandler<E>(handlers: ChunkedUploadHandlers<E>
       if (!handlers.allowedMime.has(body.mimeType)) {
         return NextResponse.json({ error: `Mime type not allowed: ${body.mimeType}` }, { status: 400 });
       }
-      const extra = handlers.parseExtra(body);
+      const extra = await handlers.parseExtra(body);
       const created = await handlers.createFirstRow({
         userId,
         filename: body.filename,

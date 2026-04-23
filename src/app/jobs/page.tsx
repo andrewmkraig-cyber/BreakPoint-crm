@@ -7,6 +7,7 @@ import {
   buildJobCounts,
   emptyJobCounts,
 } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 
 export const dynamic = "force-dynamic";
 
@@ -60,7 +61,7 @@ export default async function JobsPage({
   try {
     const [jobs, candidates] = await Promise.all([
       recruiterflow.listAllJobs({ perPage: 100 }),
-      recruiterflow.listAllCandidates({ perPage: 100 }),
+      getRfCandidatesForOrg(),
     ]);
     const counts = buildJobCounts(candidates);
     const all: JobRow[] = jobs.map((raw) => {

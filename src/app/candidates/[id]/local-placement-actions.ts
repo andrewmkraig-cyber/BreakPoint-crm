@@ -2,10 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/prisma";
 import { generateSubmittalWriteup } from "@/lib/claude";
 import { sendGmail } from "@/lib/gmail";
+import { prisma } from "@/lib/prisma";
 import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
 
 // Local-candidate placement actions. Mirror the three RF actions (Apply /
@@ -80,14 +81,12 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
       },
     });
 
-    await prisma.actionLog.create({
-      data: {
-        userId: user.id,
-        actionType: "apply",
-        subjectType: "candidate",
-        subjectId: input.candidateId,
-        metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId, local: true },
-      },
+    await createActionLog({
+      userId: user.id,
+      actionType: "apply",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId, local: true },
     });
 
     revalidatePath(`/candidates/${input.candidateId}`);
@@ -244,18 +243,16 @@ export async function sendLocalSubmittalEmail(
       select: { id: true },
     });
 
-    await prisma.actionLog.create({
-      data: {
-        userId: user.id,
-        actionType: "submit",
-        subjectType: "candidate",
-        subjectId: input.candidateId,
-        metadata: {
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          gmailMessageId: sendResult.id,
-          local: true,
-        },
+    await createActionLog({
+      userId: user.id,
+      actionType: "submit",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        gmailMessageId: sendResult.id,
+        local: true,
       },
     });
 
@@ -303,14 +300,12 @@ export async function sendLocalReferenceRequest(
       bodyText: input.bodyText,
     });
 
-    await prisma.actionLog.create({
-      data: {
-        userId: user.id,
-        actionType: "reference_check_request",
-        subjectType: "candidate",
-        subjectId: input.candidateId,
-        metadata: { gmailMessageId: sendResult.id, local: true },
-      },
+    await createActionLog({
+      userId: user.id,
+      actionType: "reference_check_request",
+      subjectType: "candidate",
+      subjectId: input.candidateId,
+      metadata: { gmailMessageId: sendResult.id, local: true },
     });
 
     revalidatePath(`/candidates/${input.candidateId}`);

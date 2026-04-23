@@ -61,6 +61,9 @@ async function stamp(orgId: string): Promise<Record<string, number>> {
   out["KrispcallLog"] = (
     await prisma.krispcallLog.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
   ).count;
+  out["ActionLog"] = (
+    await prisma.actionLog.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
+  ).count;
 
   return out;
 }

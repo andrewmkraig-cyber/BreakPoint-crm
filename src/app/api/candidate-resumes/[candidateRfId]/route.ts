@@ -5,10 +5,12 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// Session-gated resume download / inline preview. The [candidateRfId] path
-// param is the RF id — one resume per candidate. `?download=1` forces
-// Content-Disposition: attachment for "Save As"; default is inline so the
-// browser can render the PDF in an iframe on the profile.
+// Session-gated resume download / inline preview. The path segment used to
+// be the RF id — post-Phase-1 cutover it can be either the legacy RF id
+// (numeric) or a Candidate cuid. We resolve to Candidate.id internally and
+// query CandidateResume by candidateId so we never filter on candidateRfId.
+// `?download=1` forces Content-Disposition: attachment; default is inline
+// for the iframe preview on the profile.
 export async function GET(
   req: NextRequest,
   { params }: { params: { candidateRfId: string } },
@@ -16,11 +18,14 @@ export async function GET(
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return new NextResponse("Unauthorized", { status: 401 });
 
-  const candidateRfId = Number(params.candidateRfId);
-  if (!Number.isFinite(candidateRfId)) return new NextResponse("Bad id", { status: 400 });
+  const raw = params.candidateRfId;
+  const candidate = /^\d+$/.test(raw)
+    ? await prisma.candidate.findFirst({ where: { rfId: Number(raw) }, select: { id: true } })
+    : await prisma.candidate.findFirst({ where: { id: raw }, select: { id: true } });
+  if (!candidate) return new NextResponse("Not found", { status: 404 });
 
   const resume = await prisma.candidateResume.findUnique({
-    where: { candidateRfId },
+    where: { candidateId: candidate.id },
   });
   if (!resume || !resume.uploadComplete) return new NextResponse("Not found", { status: 404 });
 

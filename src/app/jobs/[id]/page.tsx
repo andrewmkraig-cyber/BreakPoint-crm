@@ -8,6 +8,7 @@ import {
   flattenPipeline,
   type PipelineBucket,
 } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
 import { prisma } from "@/lib/prisma";
@@ -21,7 +22,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
   const [jobs, candidates, override, localPlacements] = await Promise.all([
     recruiterflow.listAllJobs({ perPage: 100 }),
-    recruiterflow.listAllCandidates({ perPage: 100 }),
+    getRfCandidatesForOrg(),
     prisma.jobOverride.findUnique({ where: { jobRfId: id } }),
     // Local Placement state for this job's RF candidates. RF doesn't
     // accept stage moves to "rejected" / "offer" / "pending_start" /
@@ -51,18 +52,18 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   // sourced rows). The 60s RF data-cache TTL means RF stage_name
   // can lag a recently-clicked action; trusting local first means
   // Reject / Submit / Apply / etc. move the row immediately.
-  const localByCandidate = new Map<number, { stage: string; movedAt: string }>();
+  const stageByCandidate = new Map<number, { stage: string; movedAt: string }>();
   for (const p of localPlacements) {
     if (p.candidateRfId == null) continue;
-    localByCandidate.set(p.candidateRfId, {
+    stageByCandidate.set(p.candidateRfId, {
       stage: p.stage,
       movedAt: p.updatedAt.toISOString(),
     });
   }
 
   const flatForJob = flattenPipeline(candidates).filter((r) => r.jobId === id);
-  const pipelineRowsFromRf: JobPipelineRow[] = flatForJob.map((r) => {
-    const local = localByCandidate.get(r.candidateId);
+  const mainPipelineRows: JobPipelineRow[] = flatForJob.map((r) => {
+    const local = stageByCandidate.get(r.candidateId);
     if (local) {
       // Local Placement.stage is the source of truth — pass it through
       // raw. No canonicalStage() wrapper; the stage is already written
@@ -90,13 +91,13 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     };
   });
 
-  // Union in local Placements whose candidateRfId isn't in RF's c.jobs
-  // for this job yet. This is the "just applied via Ace" case:
-  // applyCandidateToJob writes a Placement with stage="applied" to Neon
-  // without calling RF (per the no-RF-on-create rule), so RF's
-  // listAllCandidates snapshot has no c.jobs[] entry linking the
-  // candidate to the job — flattenPipeline produces nothing for them
-  // and the pipeline row was invisible until this overlay.
+  // Union in local Placements whose candidateRfId isn't in the candidate
+  // snapshot's c.jobs for this job yet. This is the "just applied via
+  // Ace" case: applyCandidateToJob writes a Placement with
+  // stage="applied" to Neon without calling RF (per the no-RF-on-create
+  // rule), so the snapshot has no c.jobs[] entry linking the candidate
+  // to the job — flattenPipeline produces nothing for them and the
+  // pipeline row was invisible until this overlay.
   //
   // Same root cause as commit 8a40cdd (Ace-native candidate profile
   // couldn't see its own Submit button) — the pattern is "local
@@ -128,7 +129,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     });
   }
 
-  const pipelineRows: JobPipelineRow[] = [...pipelineRowsFromRf, ...extraRows];
+  const pipelineRows: JobPipelineRow[] = [...mainPipelineRows, ...extraRows];
 
   // Recompute the top-row Submitted/Interviewing/Hired counts off
   // the overlaid pipelineRows so they match what the recruiter

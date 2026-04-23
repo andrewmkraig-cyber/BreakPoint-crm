@@ -6,6 +6,7 @@ import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow, normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getEasternWeekBounds } from "@/lib/week";
 import {
   CalendarCheck2,
@@ -79,7 +80,7 @@ export default async function DashboardPage() {
         candidate: { select: { id: true, firstName: true, lastName: true } },
       },
     }),
-    recruiterflow.listAllCandidates({ perPage: 100 }).catch(() => []),
+    getRfCandidatesForOrg().catch(() => []),
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
     // Apply transitions logged by applyCandidateToJob. Inbound job-

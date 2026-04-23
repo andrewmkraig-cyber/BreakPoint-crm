@@ -15,6 +15,7 @@ import {
   buildJobCounts,
   emptyJobCounts,
 } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { ContactsTab } from "@/app/clients/[id]/contacts-tab";
@@ -50,7 +51,7 @@ export default async function ClientDetailPage({
 
   const [clients, candidates, contacts, agreements, benefits, benefitsFiles] = await Promise.all([
     recruiterflow.listAllClients({ perPage: 100 }),
-    recruiterflow.listAllCandidates({ perPage: 100 }),
+    getRfCandidatesForOrg(),
     recruiterflow.listAllContacts({ perPage: 100 }),
     prisma.clientAgreement.findMany({
       where: { clientRfId: id, uploadComplete: true },

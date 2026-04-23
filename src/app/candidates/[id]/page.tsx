@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
+import { getCandidateByIdentifier } from "@/lib/candidates";
 import {
   recruiterflow,
   canonicalStage,
@@ -96,28 +97,53 @@ export default async function CandidateProfilePage({
   params: { id: string };
   searchParams?: { tab?: CandidateTab };
 }) {
-  // Ace-native candidates have cuid string ids; RF candidates have numeric ids.
-  // Route accordingly so /candidates/[id] works for both without a separate URL.
-  if (!/^\d+$/.test(params.id)) {
-    return <LocalCandidateProfile id={params.id} />;
+  // Phase 1 candidate cutover: every candidate profile resolves through
+  // Neon. The URL segment can be either a cuid (the canonical post-cutover
+  // form) or a legacy numeric RF id; `getCandidateByIdentifier` handles
+  // both and scopes the lookup by the caller's tenant.
+  const candidate = await getCandidateByIdentifier(params.id);
+  if (!candidate) notFound();
+
+  // Ace-native candidates (never imported from RF) have no rfId and route
+  // to the simpler LocalCandidateProfile UI — unchanged from pre-Phase 1.
+  if (candidate.rfId == null) {
+    return <LocalCandidateProfile id={candidate.id} />;
   }
-  const id = Number(params.id);
-  if (!Number.isFinite(id)) notFound();
+
+  const id = candidate.rfId;
+  // `raw` is the full RF payload captured during the Phase 0 import (and
+  // refreshed by scripts/backfill-candidate-extras.ts). We read the display
+  // fields from it so the existing profile template keeps working. Writes
+  // go through updateCandidate() which merges back into `raw` + top-level
+  // columns.
+  const c: RFCandidate = (candidate.raw as RFCandidate | null) ?? {
+    id,
+    first_name: candidate.firstName,
+    last_name: candidate.lastName ?? undefined,
+    email: candidate.email ?? undefined,
+    phone_number: candidate.phone ?? undefined,
+    current_designation: candidate.currentDesignation ?? undefined,
+    current_organization: candidate.currentOrganization ?? undefined,
+    linkedin_profile: candidate.linkedinProfile ?? undefined,
+    skills: candidate.skills,
+  };
 
   const tab: CandidateTab = searchParams?.tab === "game-plan" ? "game-plan" : "profile";
 
-  const [candidates, clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
-    recruiterflow.listAllCandidates({ perPage: 100 }),
+  // Placement / Interview / CandidateResume are scoped by candidateId
+  // (cuid) — candidateRfId is retained only as a historical reference and
+  // must not be used in application queries.
+  const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
     recruiterflow.listAllClients({ perPage: 100 }),
     recruiterflow.listAllContacts({ perPage: 100 }),
     recruiterflow.listAllJobs({ perPage: 100 }),
-    prisma.placement.findMany({ where: { candidateRfId: id } }),
+    prisma.placement.findMany({ where: { candidateId: candidate.id } }),
     prisma.interview.findMany({
-      where: { candidateRfId: id },
+      where: { candidateId: candidate.id },
       orderBy: { scheduledAt: "asc" },
     }),
     prisma.candidateResume.findUnique({
-      where: { candidateRfId: id },
+      where: { candidateId: candidate.id },
       select: {
         filename: true,
         mimeType: true,
@@ -135,28 +161,6 @@ export default async function CandidateProfilePage({
   const aceTeam = await listAceTeam();
   const overrideByJob = new Map<number, string | null>();
   for (const o of jobOverrides) overrideByJob.set(o.jobRfId, o.description);
-  // eslint-disable-next-line no-console
-  console.log("[candidate page]", id, "loaded jobOverrides", {
-    count: jobOverrides.length,
-    descriptions: jobOverrides.map((o) => ({
-      jobRfId: o.jobRfId,
-      descLength: o.description?.length ?? 0,
-    })),
-  });
-
-  // Two-source lookup: /candidate/list caches for 60s (Next Data Cache), so a
-  // freshly-created candidate may not appear immediately. /candidate/{id}
-  // has been flaky externally but sometimes succeeds. Try both; only 404 if
-  // the candidate truly can't be resolved from either source.
-  const listed = candidates.find((x) => x.id === id) ?? null;
-  let c: RFCandidate | null = listed;
-  try {
-    const fetched = await recruiterflow.getCandidate(id);
-    if (fetched && typeof fetched === "object") c = fetched;
-  } catch {
-    // keep the listed record if getCandidate fails
-  }
-  if (!c) notFound();
   const extractedName = extractCandidateFields(c);
 
   const name =
@@ -233,10 +237,13 @@ export default async function CandidateProfilePage({
 
   // Map the latest cancel_placement reason per placementId so the cancelled
   // badge can surface the reason the recruiter originally picked.
+  // subjectId is polymorphic — legacy rows written before the Phase 1 cutover
+  // carry String(rfId); rows written after carry the cuid. Query both so the
+  // cancel reason surfaces regardless of when the placement was cancelled.
   const cancelLogs = await prisma.actionLog.findMany({
     where: {
       subjectType: "candidate",
-      subjectId: String(id),
+      subjectId: { in: [candidate.id, String(id)] },
       actionType: "cancel_placement",
     },
     orderBy: { createdAt: "desc" },

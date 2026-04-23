@@ -1,3 +1,4 @@
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
@@ -38,7 +39,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
     recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
-    recruiterflow.listAllCandidates({ perPage: 100 }).catch(() => []),
+    getRfCandidatesForOrg().catch(() => []),
     prisma.placement.findMany({ where: { clientRfId: rfId } }),
     prisma.clientAgreement.findMany({
       where: { clientRfId: rfId, uploadComplete: true },
@@ -269,34 +270,38 @@ export async function buildClientContext(clientId: string): Promise<string> {
 }
 
 export async function buildCandidateContext(candidateId: string): Promise<string> {
-  const asNumber = Number(candidateId);
-  const isRfCandidate = /^\d+$/.test(candidateId) && Number.isFinite(asNumber);
+  // The URL segment may be a cuid (post-Phase-1 canonical form) or a
+  // legacy numeric RF id. Resolve to the Candidate row and query every
+  // downstream table by the cuid — candidateRfId is reserved for history
+  // only after the cutover.
+  const candidate = /^\d+$/.test(candidateId)
+    ? await prisma.candidate.findFirst({ where: { rfId: Number(candidateId) } })
+    : await prisma.candidate.findUnique({ where: { id: candidateId } });
 
-  const [smsMessages, callLogs, transcripts, placements, aceCandidate] = await Promise.all([
+  const cuid = candidate?.id ?? candidateId;
+
+  const [smsMessages, callLogs, transcripts, placements] = await Promise.all([
     prisma.smsMessage.findMany({
-      where: { candidateId },
+      where: { candidateId: cuid },
       orderBy: { createdAt: "desc" },
       take: 10,
     }),
     prisma.callLog.findMany({
-      where: { candidateId },
+      where: { candidateId: cuid },
       orderBy: { createdAt: "desc" },
       take: 5,
       include: { transcript: true },
     }),
     prisma.callTranscript.findMany({
-      where: { callLog: { candidateId } },
+      where: { callLog: { candidateId: cuid } },
       orderBy: { createdAt: "desc" },
       take: 3,
     }),
-    prisma.placement.findMany({
-      where: isRfCandidate ? { candidateRfId: asNumber } : { candidateId },
-    }),
-    isRfCandidate ? Promise.resolve(null) : prisma.candidate.findUnique({ where: { id: candidateId } }),
+    candidate
+      ? prisma.placement.findMany({ where: { candidateId: candidate.id } })
+      : Promise.resolve([]),
   ]);
 
-  // Identity + resume source. RF candidates get their full RFCandidate
-  // object so we can mine experience/education/candidate_summary below.
   let fullName = "(unknown)";
   let title = "";
   let employer = "";
@@ -308,42 +313,38 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   let resumeText = "";
   let notes = "";
 
-  if (isRfCandidate) {
-    try {
-      const rf = await recruiterflow.getCandidate(asNumber);
-      fullName = rf.name || [rf.first_name, rf.last_name].filter(Boolean).join(" ") || "(unnamed)";
-      title = rf.current_designation ?? "";
-      employer = rf.current_organization ?? "";
-      const loc = rf.location as { city?: string | null; state?: string | null } | null | undefined;
-      location = loc ? [loc.city, loc.state].filter(Boolean).join(", ") : "";
-      email = Array.isArray(rf.email) ? rf.email[0] ?? "" : rf.email ?? "";
-      const rfPhone = rf.phone_number;
-      if (Array.isArray(rfPhone) && rfPhone.length > 0) {
-        phone = typeof rfPhone[0] === "string" ? rfPhone[0] : rfPhone[0]?.number ?? "";
-      } else if (typeof rfPhone === "string") {
-        phone = rfPhone;
-      }
-      const expSal = rf.expected_salary as { number?: number | null; currency?: string | null } | null | undefined;
+  if (candidate) {
+    fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
+    title = candidate.currentDesignation ?? "";
+    employer = candidate.currentOrganization ?? "";
+    location = candidate.location ?? "";
+    email = candidate.email ?? "";
+    phone = candidate.phone ?? "";
+    skills = candidate.skills ?? [];
+    notes = candidate.notes ?? "";
+
+    // RF-imported candidates carry their original RF payload in `raw`
+    // (Phase 1 backfill). Prefer that for the resume assembly because it
+    // includes candidate_summary + full experience/education arrays.
+    const rawAsRf = candidate.raw as RFCandidate | null;
+    if (rawAsRf && typeof rawAsRf === "object") {
+      const expSal = (rawAsRf as { expected_salary?: { number?: number | null; currency?: string | null } })
+        .expected_salary;
       if (expSal?.number != null) {
         compTarget = `${expSal.currency ?? "USD"} ${expSal.number.toLocaleString()}`;
       }
-      if (Array.isArray(rf.skills)) {
-        skills = (rf.skills as unknown[]).filter((s): s is string => typeof s === "string");
-      }
-      resumeText = assembleResumeFromRf(rf);
-    } catch {
-      // RF fetch failed — identity stays blank; resume stays empty.
+      resumeText = assembleResumeFromRf(rawAsRf);
+    } else {
+      // Ace-native candidate — assemble from the structured Neon columns.
+      resumeText = assembleResumeFromAce(candidate);
     }
-  } else if (aceCandidate) {
-    fullName = [aceCandidate.firstName, aceCandidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
-    title = aceCandidate.currentDesignation ?? "";
-    employer = aceCandidate.currentOrganization ?? "";
-    location = aceCandidate.location ?? "";
-    email = aceCandidate.email ?? "";
-    phone = aceCandidate.phone ?? "";
-    skills = aceCandidate.skills ?? [];
-    notes = aceCandidate.notes ?? "";
-    resumeText = assembleResumeFromAce(aceCandidate);
+
+    if (!compTarget) {
+      const es = candidate.expectedSalary as { number?: number | null; currency?: string | null } | null;
+      if (es?.number != null) {
+        compTarget = `${es.currency ?? "USD"} ${es.number.toLocaleString()}`;
+      }
+    }
   }
 
   // Applications block — cross-ref job titles + client names from RF and

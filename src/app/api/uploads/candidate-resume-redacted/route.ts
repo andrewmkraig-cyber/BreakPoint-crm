@@ -8,22 +8,39 @@ export const maxDuration = 30;
 // Redaction output is always application/pdf (pdf-lib saves PDFs).
 const ALLOWED = new Set(["application/pdf"]);
 
-// Saves a redacted variant alongside the existing CandidateResume row. Must
-// hit a row that already exists — the redactor loads the original first, so
-// by the time we're uploading the redacted copy the original is on file.
-// Writes to `redactedData`/`redactedMimeType`/`redactedSize`/`redactedAt`;
-// never touches `data` so the original stays pristine.
-export const POST = createChunkedUploadHandler<{ candidateRfId: number }>({
+// Saves a redacted variant on the existing CandidateResume row. Caller
+// can identify the candidate by cuid or legacy RF id — we resolve to
+// Candidate.id and target CandidateResume by candidateId. Writes to
+// `redacted*` fields only; `data` (the original) stays pristine.
+type RedactExtra = { candidateId: string; candidateRfId: number | null };
+
+export const POST = createChunkedUploadHandler<RedactExtra>({
   allowedMime: ALLOWED,
-  parseExtra: (body) => {
-    const id = Number((body as { candidateRfId?: number | string }).candidateRfId);
-    if (!Number.isFinite(id)) throw new Error("candidateRfId missing or invalid");
-    return { candidateRfId: id };
+  parseExtra: async (body) => {
+    const b = body as { candidateId?: string; candidateRfId?: number | string };
+    if (typeof b.candidateId === "string" && b.candidateId.length > 0) {
+      const row = await prisma.candidate.findUnique({
+        where: { id: b.candidateId },
+        select: { id: true, rfId: true },
+      });
+      if (!row) throw new Error("candidateId not found");
+      return { candidateId: row.id, candidateRfId: row.rfId };
+    }
+    if (b.candidateRfId != null) {
+      const rfId = Number(b.candidateRfId);
+      if (!Number.isFinite(rfId)) throw new Error("candidateRfId invalid");
+      const row = await prisma.candidate.findFirst({
+        where: { rfId },
+        select: { id: true, rfId: true },
+      });
+      if (!row) throw new Error("candidateRfId not found");
+      return { candidateId: row.id, candidateRfId: row.rfId };
+    }
+    throw new Error("candidateId or candidateRfId required");
   },
   createFirstRow: async ({ mimeType, size, firstChunk, isLast, extra }) => {
-    // Use the existing row id so append steps target the same record.
     const existing = await prisma.candidateResume.findUnique({
-      where: { candidateRfId: extra.candidateRfId },
+      where: { candidateId: extra.candidateId },
       select: { id: true },
     });
     if (!existing) throw new Error("Original resume row not found");
@@ -38,7 +55,10 @@ export const POST = createChunkedUploadHandler<{ candidateRfId: number }>({
       },
       select: { id: true, redactedData: true },
     });
-    if (isLast) revalidatePath(`/candidates/${extra.candidateRfId}`);
+    if (isLast) {
+      revalidatePath(`/candidates/${extra.candidateId}`);
+      if (extra.candidateRfId != null) revalidatePath(`/candidates/${extra.candidateRfId}`);
+    }
     return {
       id: updated.id,
       totalBytesStored: updated.redactedData ? updated.redactedData.byteLength : 0,
@@ -47,7 +67,7 @@ export const POST = createChunkedUploadHandler<{ candidateRfId: number }>({
   appendChunk: async ({ id, chunk, isLast }) => {
     const existing = await prisma.candidateResume.findUnique({
       where: { id },
-      select: { redactedData: true, candidateRfId: true },
+      select: { redactedData: true, candidateId: true, candidateRfId: true },
     });
     if (!existing) throw new Error("Upload session not found");
     const prior = existing.redactedData ? Buffer.from(existing.redactedData) : Buffer.alloc(0);
@@ -59,7 +79,10 @@ export const POST = createChunkedUploadHandler<{ candidateRfId: number }>({
         redactedAt: isLast ? new Date() : null,
       },
     });
-    if (isLast) revalidatePath(`/candidates/${existing.candidateRfId}`);
+    if (isLast) {
+      if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
+      revalidatePath(`/candidates/${existing.candidateRfId}`);
+    }
     return { totalBytesStored: combined.byteLength };
   },
 });

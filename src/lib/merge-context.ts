@@ -9,6 +9,7 @@ import {
   type RFClient,
   type RFContact,
 } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg, getRfCandidateByRfId } from "@/lib/candidates";
 import type { MergeFieldValues } from "@/lib/merge-fields";
 
 export type BuildMergeContextInput = {
@@ -44,12 +45,12 @@ export async function buildFullMergeValues(
     input.candidateRfId
       ? safeCall(async () => {
           try {
-            const direct = await recruiterflow.getCandidate(input.candidateRfId!);
+            const direct = await getRfCandidateByRfId(input.candidateRfId!);
             if (direct && typeof direct === "object") return direct;
           } catch {
             // fall through to list
           }
-          const all = await recruiterflow.listAllCandidates({ perPage: 100 });
+          const all = await getRfCandidatesForOrg();
           return all.find((x) => x.id === input.candidateRfId) ?? null;
         })
       : null,

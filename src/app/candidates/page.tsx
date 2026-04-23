@@ -2,7 +2,7 @@ import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { CandidatesView } from "@/app/candidates/candidates-view";
-import { recruiterflow, normalizeCandidate } from "@/lib/recruiterflow";
+import { getCandidatesForOrg, type CandidateListRow } from "@/lib/candidates";
 
 export const dynamic = "force-dynamic";
 
@@ -12,12 +12,11 @@ export default async function CandidatesPage({
   searchParams?: { q?: string };
 }) {
   const query = searchParams?.q ?? "";
-  let candidates: ReturnType<typeof normalizeCandidate>[] = [];
+  let candidates: CandidateListRow[] = [];
   let error: string | null = null;
 
   try {
-    const list = await recruiterflow.listAllCandidates({ query, perPage: 100 });
-    candidates = list.map(normalizeCandidate);
+    candidates = await getCandidatesForOrg({ query });
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch candidates";
   }

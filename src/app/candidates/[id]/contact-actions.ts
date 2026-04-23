@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { recruiterflow } from "@/lib/recruiterflow";
@@ -83,19 +84,17 @@ export async function createClientContact(
       select: { id: true },
     });
     if (user) {
-      await prisma.actionLog.create({
-        data: {
-          userId: user.id,
-          actionType: "contact_created",
-          subjectType: "client",
-          subjectId: String(input.clientRfId),
-          metadata: {
-            contactRfId: created.id,
-            firstName,
-            lastName: input.lastName?.trim() || null,
-            email: input.email?.trim() || null,
-            title: input.title?.trim() || null,
-          },
+      await createActionLog({
+        userId: user.id,
+        actionType: "contact_created",
+        subjectType: "client",
+        subjectId: String(input.clientRfId),
+        metadata: {
+          contactRfId: created.id,
+          firstName,
+          lastName: input.lastName?.trim() || null,
+          email: input.email?.trim() || null,
+          title: input.title?.trim() || null,
         },
       });
     }

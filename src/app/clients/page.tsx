@@ -9,6 +9,7 @@ import {
   emptyJobCounts,
   canonicalStage,
 } from "@/lib/recruiterflow";
+import { getRfCandidatesForOrg } from "@/lib/candidates";
 
 export const dynamic = "force-dynamic";
 
@@ -31,7 +32,7 @@ export default async function ClientsPage({
   try {
     const [clients, candidates] = await Promise.all([
       recruiterflow.listAllClients({ perPage: 100 }),
-      recruiterflow.listAllCandidates({ perPage: 100 }),
+      getRfCandidatesForOrg(),
     ]);
     const counts = buildClientCounts(candidates);
     const recentPlacementIds = recentlyPlacedClientIds(candidates);
@@ -119,7 +120,7 @@ export default async function ClientsPage({
 
 // Walks every candidate's jobs[] array and returns the set of client_company_ids
 // that have had a stage_moved to a "hired" stage within the last 6 months.
-function recentlyPlacedClientIds(candidates: Awaited<ReturnType<typeof recruiterflow.listAllCandidates>>): Set<number> {
+function recentlyPlacedClientIds(candidates: Awaited<ReturnType<typeof getRfCandidatesForOrg>>): Set<number> {
   const cutoff = Date.now() - PLACEMENT_WINDOW_MS;
   const out = new Set<number>();
   for (const c of candidates) {

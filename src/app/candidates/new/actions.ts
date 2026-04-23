@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { parseCandidateFields, type ParsedCandidate } from "@/lib/claude";
 import { prisma } from "@/lib/prisma";
 import { fallbackParseCandidate } from "@/lib/resume-fallback";
@@ -260,6 +261,7 @@ export async function createCandidate(
       educationCount: eduRows.length,
     });
 
+    const org = await getCurrentOrg();
     const created = await prisma.candidate.create({
       data: {
         firstName: first,
@@ -280,6 +282,7 @@ export async function createCandidate(
         resumeData: resumeBytes ?? null,
         resumeUploadedAt: resumeMeta ? new Date() : null,
         createdById: userId,
+        organizationId: org.id,
       },
       select: { id: true, currentDesignation: true, currentOrganization: true },
     });

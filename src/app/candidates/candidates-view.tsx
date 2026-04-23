@@ -6,7 +6,7 @@ import { useState, useTransition, type FormEvent } from "react";
 import { Search, Loader2 } from "lucide-react";
 
 type Candidate = {
-  id: number;
+  id: string;
   name: string;
   title: string;
   employer: string;
