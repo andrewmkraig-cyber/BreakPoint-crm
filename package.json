@@ -38,6 +38,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@types/node": "^20.19.39",
     "@types/pdf-parse": "^1.1.5",
     "@types/react": "^18",

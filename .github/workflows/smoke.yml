@@ -1,0 +1,101 @@
+name: Smoke tests
+
+# Last safety net before merging to main. Runs the Playwright happy-path
+# spec against a dedicated Neon branch ("ci-smoke") so test writes never
+# leak into production data. If this workflow fails, revert the head
+# commit or land a fix before the next push.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  happy-path:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Secrets required in the repo settings (Settings → Secrets → Actions):
+    #   CI_SMOKE_DATABASE_URL    Neon branch URL dedicated to smoke tests
+    #   NEXTAUTH_SECRET          Same secret the dev/prod app uses — must match
+    #                            so forged JWTs verify against the running dev server
+    #   NEXTAUTH_URL             http://localhost:3456 in CI
+    #   GOOGLE_CLIENT_ID         Required by the Google provider init even though
+    #   GOOGLE_CLIENT_SECRET     the smoke forges its own session cookie; the app
+    #                            imports the provider at boot and will throw if unset
+    #   RECRUITERFLOW_API_KEY    Needed for Job/Client/Contact reads on the profile
+    #                            pages until Phases 2-4 finish the Neon cutover
+    #   ANTHROPIC_API_KEY        Optional — smoke skips Claude parsing. Safe to stub.
+    env:
+      DATABASE_URL: ${{ secrets.CI_SMOKE_DATABASE_URL }}
+      NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+      NEXTAUTH_URL: http://localhost:3456
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+      RECRUITERFLOW_API_KEY: ${{ secrets.RECRUITERFLOW_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      PLAYWRIGHT_PORT: "3456"
+      PLAYWRIGHT_BASE_URL: http://localhost:3456
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Install Playwright (chromium + OS deps)
+        run: npx playwright install --with-deps chromium
+
+      - name: Build Next.js
+        # Using `next build` then `next start` instead of `next dev` gives us
+        # the same code paths production runs, and avoids dev-time compile
+        # overhead inflating the test timeout. Build failures fail the job
+        # immediately — a real safety net.
+        run: npx next build
+        env:
+          # Build reads SENTRY_AUTH_TOKEN for source-map upload; skip that
+          # in CI to avoid needing a token here. The source maps still
+          # upload on the regular Vercel build for the deploy.
+          NEXT_DISABLE_SENTRY: "true"
+
+      - name: Start Next.js in background
+        run: npx next start -p 3456 &
+        env:
+          PORT: "3456"
+
+      - name: Wait for Next.js to be ready
+        run: |
+          for i in $(seq 1 60); do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3456/sign-in | grep -qE '^(2|3)'; then
+              echo "ready after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "next start never became ready"
+          exit 1
+
+      - name: Run Playwright smoke
+        run: npx playwright test --reporter=list
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
