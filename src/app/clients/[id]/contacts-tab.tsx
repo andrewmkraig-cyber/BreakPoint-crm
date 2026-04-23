@@ -9,7 +9,8 @@ import { EmailLink } from "@/components/email-link";
 import { cn } from "@/lib/utils";
 
 export type ContactRow = {
-  id: number;
+  id: string;
+  legacyRfId: number | null;
   name: string;
   title: string;
   email: string;
@@ -19,11 +20,11 @@ export type ContactRow = {
 };
 
 export function ContactsTab({
-  clientId,
+  clientCuid,
   clientName,
   initialContacts,
 }: {
-  clientId: number;
+  clientCuid: string;
   clientName: string;
   initialContacts: ContactRow[];
 }) {
@@ -41,7 +42,7 @@ export function ContactsTab({
     const data = new FormData(form);
 
     startTransition(async () => {
-      const result = await addContact(clientId, data);
+      const result = await addContact(clientCuid, data);
       if (!result.ok) {
         setError(result.error);
         return;

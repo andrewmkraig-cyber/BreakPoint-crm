@@ -61,9 +61,8 @@ export function NewClientForm() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const parseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastParsedUrl = useRef<string | null>(null);
-  // Duplicate-domain check state. Clients live in RecruiterFlow (there is no
-  // local Postgres Client table), so the pre-flight hits the RF listAllClients
-  // endpoint via the checkClientDomain server action. status resolves to:
+  // Duplicate-domain check state. Scans the tenant's Neon Client table
+  // (Phase 3: reads moved off RF). status resolves to:
   //   idle      — nothing to show
   //   checking  — roundtrip in flight
   //   clean     — typed domain isn't in the existing client list
@@ -71,7 +70,7 @@ export function NewClientForm() {
   const [domainCheckStatus, setDomainCheckStatus] = useState<
     "idle" | "checking" | "clean" | "duplicate"
   >("idle");
-  const [domainDuplicate, setDomainDuplicate] = useState<{ id: number; name: string } | null>(null);
+  const [domainDuplicate, setDomainDuplicate] = useState<{ slug: string; name: string } | null>(null);
 
   function onWebsiteChange(v: string) {
     setWebsiteUrl(v);
@@ -94,15 +93,15 @@ export function NewClientForm() {
     setDomainCheckStatus("checking");
     const res = await checkClientDomain(domain);
     if (!res.ok) {
-      // Couldn't check (RF down, network blip). Clear the red-flag state but
-      // don't mark "clean" either — let the save go through and let RF's own
-      // 403 surface as a save error, same as before this pre-flight existed.
+      // Couldn't check (DB blip). Clear the red-flag state but don't
+      // mark "clean" either — let the save proceed and surface any
+      // server-side duplicate guard in that path instead.
       setDomainDuplicate(null);
       setDomainCheckStatus("idle");
       return { duplicate: false, error: res.error };
     }
     if (res.duplicate) {
-      setDomainDuplicate(res.duplicate);
+      setDomainDuplicate({ slug: res.duplicate.slug, name: res.duplicate.name });
       setDomainCheckStatus("duplicate");
       return { duplicate: true, error: null };
     }
@@ -144,7 +143,7 @@ export function NewClientForm() {
       if (verdict.duplicate) {
         toast.error("Client not available", {
           id: toastId,
-          description: "A client with this domain already exists in RecruiterFlow.",
+          description: "A client with this domain already exists.",
         });
         return;
       }
@@ -203,7 +202,7 @@ export function NewClientForm() {
         const verdict = await runDomainCheck(websiteRaw);
         if (verdict.duplicate) {
           toast.error("Client not available", {
-            description: "A client with this domain already exists in RecruiterFlow.",
+            description: "A client with this domain already exists.",
           });
           return;
         }
@@ -215,7 +214,7 @@ export function NewClientForm() {
         return;
       }
       toast.success(`Saved ${form.name.trim()}`);
-      router.push(`/clients/${result.value.id}`);
+      router.push(`/clients/${result.value.slug}`);
     });
   }
 
@@ -223,18 +222,18 @@ export function NewClientForm() {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Left: website + auto-fill */}
       <div className="space-y-6 lg:col-span-2">
-        <div className="rounded-xl border border-border bg-white shadow-sm">
-          <div className="border-b border-border px-5 py-3">
-            <h2 className="font-serif text-base font-semibold text-navy">Website</h2>
-            <p className="text-xs text-muted-foreground">
+        <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+          <div className="border-b border-court-border px-5 py-3">
+            <h2 className="font-serif text-base font-semibold text-court-fg">Website</h2>
+            <p className="text-xs text-court-fg-muted">
               Paste a company URL — we&apos;ll read the homepage and pre-fill the fields on the right.
             </p>
           </div>
           <div className="space-y-3 p-5">
             <label className="block text-sm">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Company URL</span>
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Company URL</span>
               <div className="relative mt-1">
-                <Globe className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Globe className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted" />
                 <input
                   type="url"
                   value={websiteUrl}
@@ -245,10 +244,10 @@ export function NewClientForm() {
                   onBlur={onWebsiteBlur}
                   placeholder="acme.com or https://acme.com"
                   className={cn(
-                    "w-full rounded-lg border bg-white py-2 pl-8 pr-3 text-sm text-navy placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2",
+                    "w-full rounded-lg border bg-court-surface py-2 pl-8 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:outline-none focus:ring-2",
                     domainCheckStatus === "duplicate"
                       ? "border-red-300 focus:border-red-400 focus:ring-red-200"
-                      : "border-border focus:border-brand focus:ring-brand/20",
+                      : "border-court-border focus:border-brand focus:ring-brand/20",
                   )}
                 />
               </div>
@@ -259,7 +258,7 @@ export function NewClientForm() {
                 <div>
                   <div className="font-semibold">Client not available</div>
                   <div className="text-red-700/80">
-                    A client with this domain already exists in RecruiterFlow
+                    A client with this domain already exists
                     {domainDuplicate?.name ? ` (${domainDuplicate.name})` : ""}.
                   </div>
                 </div>
@@ -267,11 +266,11 @@ export function NewClientForm() {
             )}
             <div className="flex items-center gap-2 text-[11px]">
               {isParsing ? (
-                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <span className="inline-flex items-center gap-1 text-court-fg-muted">
                   <Loader2 className="h-3 w-3 animate-spin" /> Reading website…
                 </span>
               ) : domainCheckStatus === "checking" ? (
-                <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <span className="inline-flex items-center gap-1 text-court-fg-muted">
                   <Loader2 className="h-3 w-3 animate-spin" /> Checking for existing client…
                 </span>
               ) : parseSource === "claude" ? (
@@ -279,7 +278,7 @@ export function NewClientForm() {
                   <Sparkles className="h-3 w-3" /> Auto-filled — edit anything on the right.
                 </span>
               ) : (
-                <span className="text-muted-foreground">Auto-fill runs a moment after you stop typing.</span>
+                <span className="text-court-fg-muted">Auto-fill runs a moment after you stop typing.</span>
               )}
             </div>
           </div>
@@ -288,11 +287,11 @@ export function NewClientForm() {
 
       {/* Right: editable fields */}
       <div className="lg:col-span-3">
-        <div className="rounded-xl border border-border bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-border px-5 py-3">
+        <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+          <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
             <div>
-              <h2 className="font-serif text-base font-semibold text-navy">Client fields</h2>
-              <p className="text-xs text-muted-foreground">
+              <h2 className="font-serif text-base font-semibold text-court-fg">Client fields</h2>
+              <p className="text-xs text-court-fg-muted">
                 {parseSource === "claude"
                   ? "Pre-filled — review and edit before saving."
                   : "Drop a URL on the left or fill in manually."}
@@ -304,7 +303,7 @@ export function NewClientForm() {
               disabled={isSaving || domainCheckStatus === "duplicate"}
               title={
                 domainCheckStatus === "duplicate"
-                  ? "This domain already exists in RecruiterFlow — pick a different URL."
+                  ? "This domain already exists in Ace — pick a different URL."
                   : undefined
               }
               className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
@@ -324,11 +323,11 @@ export function NewClientForm() {
               placeholder="https://acme.com"
             />
             <label className="block text-sm">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Industry</span>
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Industry</span>
               <select
                 value={form.industry}
                 onChange={(e) => setForm({ ...form, industry: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               >
                 <option value="">Select…</option>
                 {INDUSTRIES.map((i) => (
@@ -341,11 +340,11 @@ export function NewClientForm() {
             <Field label="Phone" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} />
             <Field label="City" value={form.city} onChange={(v) => setForm({ ...form, city: v })} />
             <label className="block text-sm">
-              <span className="text-[11px] uppercase tracking-wider text-muted-foreground">State</span>
+              <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">State</span>
               <select
                 value={form.state}
                 onChange={(e) => setForm({ ...form, state: e.target.value })}
-                className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
               >
                 <option value="">Select…</option>
                 {US_STATES.map((s) => (
@@ -366,14 +365,14 @@ export function NewClientForm() {
             </div>
             <div className="sm:col-span-2">
               <label className="block text-sm">
-                <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Overview</span>
+                <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Overview</span>
                 <textarea
                   value={form.overview}
                   onChange={(e) => setForm({ ...form, overview: e.target.value })}
                   rows={3}
                   placeholder="Short description of what the company does."
                   className={cn(
-                    "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy",
+                    "mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg",
                     "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
                   )}
                 />
@@ -381,8 +380,8 @@ export function NewClientForm() {
             </div>
           </div>
 
-          <div className="border-t border-border px-5 py-3">
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <div className="border-t border-court-border px-5 py-3">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
               Primary Contact (optional)
             </h3>
           </div>
@@ -417,7 +416,7 @@ export function NewClientForm() {
           </div>
 
           {saveError && (
-            <div className="border-t border-border px-5 py-3 text-xs text-red-800">
+            <div className="border-t border-court-border px-5 py-3 text-xs text-red-800">
               <div className="rounded-lg border border-red-200 bg-red-50 p-3">{saveError}</div>
             </div>
           )}
@@ -444,7 +443,7 @@ function Field({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-muted-foreground">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
       </span>
@@ -454,7 +453,7 @@ function Field({
         required={required}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
-        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
     </label>
   );

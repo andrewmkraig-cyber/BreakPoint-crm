@@ -1,22 +1,24 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
-import { recruiterflow, normalizeClient } from "@/lib/recruiterflow";
+import { getClientsForOrg } from "@/lib/clients";
 import { NewJobForm } from "@/app/jobs/new/new-job-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewJobPage() {
+  // The Job-create action still writes to RF (Phase 2), so the dropdown
+  // is restricted to clients that have an RF id. Ace-native Clients
+  // (cuid-only) are hidden here until the Jobs cutover lands — they'd
+  // get rejected by RF on create.
   let clients: Array<{ id: number; name: string }> = [];
   let error: string | null = null;
 
   try {
-    const rawClients = await recruiterflow.listAllClients({ perPage: 100 });
-    clients = rawClients
-      .map((c) => {
-        const n = normalizeClient(c);
-        return { id: n.id, name: n.name };
-      })
+    const rows = await getClientsForOrg();
+    clients = rows
+      .filter((c) => c.legacyRfId != null)
+      .map((c) => ({ id: c.legacyRfId as number, name: c.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load clients.";

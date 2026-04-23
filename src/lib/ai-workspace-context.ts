@@ -1,4 +1,4 @@
-import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getRfCandidatesForOrg, getRfClientsForOrg } from "@/lib/candidates";
 import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
@@ -36,7 +36,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
   }
 
   const [clients, allJobs, allContacts, allCandidates, placements, agreements, benefits, jobOverrides] = await Promise.all([
-    recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
+    getRfClientsForOrg().catch(() => []),
     recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []),
     recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
     getRfCandidatesForOrg().catch(() => []),
@@ -351,7 +351,7 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   // attach the full job description (override first, RF fallback).
   const [allJobs, allClients, jobOverrides] = await Promise.all([
     placements.length > 0 ? recruiterflow.listAllJobs({ perPage: 100 }).catch(() => []) : Promise.resolve([]),
-    placements.length > 0 ? recruiterflow.listAllClients({ perPage: 100 }).catch(() => []) : Promise.resolve([]),
+    placements.length > 0 ? getRfClientsForOrg().catch(() => []) : Promise.resolve([]),
     placements.length > 0
       ? prisma.jobOverride.findMany({
           where: { jobRfId: { in: placements.map((p) => p.jobRfId) } },

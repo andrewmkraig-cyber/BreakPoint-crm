@@ -2,14 +2,9 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ClientsView, type ClientCard } from "@/app/clients/clients-view";
-import {
-  recruiterflow,
-  normalizeClient,
-  buildClientCounts,
-  emptyJobCounts,
-  canonicalStage,
-} from "@/lib/recruiterflow";
+import { buildClientCounts, emptyJobCounts, canonicalStage } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getClientsForOrg } from "@/lib/clients";
 
 export const dynamic = "force-dynamic";
 
@@ -31,21 +26,35 @@ export default async function ClientsPage({
 
   try {
     const [clients, candidates] = await Promise.all([
-      recruiterflow.listAllClients({ perPage: 100 }),
+      getClientsForOrg(),
       getRfCandidatesForOrg(),
     ]);
+    // Pipeline counts are keyed by RF client_company_id. Ace-native
+    // Clients have no legacyRfId yet, so they fall through to zero
+    // counts — the right answer until a Candidate/Placement lands on
+    // them post-Phase-2.
     const counts = buildClientCounts(candidates);
     const recentPlacementIds = recentlyPlacedClientIds(candidates);
-    all = clients.map((raw) => {
-      const c = normalizeClient(raw);
-      const pc = counts.get(c.id) ?? emptyJobCounts();
-      const hasOpenJob = Array.isArray(raw.open_jobs) && raw.open_jobs.length > 0;
-      const hadRecentPlacement = recentPlacementIds.has(c.id);
-      // Compact "City, ST" for the list card — drop street, zip, country, etc.
-      const cityState = [raw.location?.city, raw.location?.state].filter(Boolean).join(", ");
+    all = clients.map((c) => {
+      const legacyId = c.legacyRfId;
+      const pc = legacyId != null ? counts.get(legacyId) ?? emptyJobCounts() : emptyJobCounts();
+      const hadRecentPlacement = legacyId != null && recentPlacementIds.has(legacyId);
+      const hasOpenJob = c.openJobsCount > 0;
+      const website = c.domain ? (c.domain.startsWith("http") ? c.domain : `https://${c.domain}`) : null;
       return {
-        ...c,
-        location: cityState || c.location,
+        slug: c.slug,
+        legacyRfId: c.legacyRfId,
+        name: c.name,
+        domain: c.domain,
+        website,
+        industry: c.industry,
+        linkedIn: c.linkedIn,
+        location: c.location ?? "",
+        phone: c.phone,
+        openJobsCount: c.openJobsCount,
+        closedJobsCount: c.closedJobsCount,
+        isVerified: c.isVerified,
+        feePct: c.feePct,
         submittedCount: pc.submitted,
         interviewingCount: pc.interviewing,
         hiredCount: pc.hired,
@@ -71,7 +80,6 @@ export default async function ClientsPage({
     );
   }
 
-  // Unnamed companies to the bottom; verified first, then most open jobs, then alpha.
   cards.sort((a, b) => {
     if (!a.name && b.name) return 1;
     if (a.name && !b.name) return -1;
@@ -118,8 +126,9 @@ export default async function ClientsPage({
   );
 }
 
-// Walks every candidate's jobs[] array and returns the set of client_company_ids
-// that have had a stage_moved to a "hired" stage within the last 6 months.
+// Walks every candidate's jobs[] array and returns the set of
+// client_company_ids that have had a stage_moved to a "hired" stage
+// within the last 6 months.
 function recentlyPlacedClientIds(candidates: Awaited<ReturnType<typeof getRfCandidatesForOrg>>): Set<number> {
   const cutoff = Date.now() - PLACEMENT_WINDOW_MS;
   const out = new Set<number>();

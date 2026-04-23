@@ -9,13 +9,13 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
-  recruiterflow,
-  normalizeClient,
   buildClientCounts,
   buildJobCounts,
   emptyJobCounts,
+  type RFClient,
 } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getClientByIdentifier } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { ContactsTab } from "@/app/clients/[id]/contacts-tab";
@@ -25,11 +25,18 @@ import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-
 import AiWorkspace from "@/components/AiWorkspace";
 
 export const dynamic = "force-dynamic";
-// Claude summarization on a 25-page PDF can take 30–60s. Default Hobby
-// function timeout is 10s; bump to the Hobby ceiling.
 export const maxDuration = 60;
 
 type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan";
+
+type LocationJson = {
+  street_address_1?: string | null;
+  street_address_2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+} | null;
 
 export default async function ClientDetailPage({
   params,
@@ -38,8 +45,10 @@ export default async function ClientDetailPage({
   params: { id: string };
   searchParams?: { tab?: ClientTab };
 }) {
-  const id = Number(params.id);
-  if (!Number.isFinite(id)) notFound();
+  // Accept either a cuid (Ace-native, post-Phase-3 canonical) or a
+  // numeric legacyRfId (back-compat with URLs that predate the cutover).
+  const client = await getClientByIdentifier(params.id);
+  if (!client) notFound();
 
   const tab: ClientTab =
     searchParams?.tab === "contacts" ||
@@ -49,69 +58,132 @@ export default async function ClientDetailPage({
       ? searchParams.tab
       : "overview";
 
-  const [clients, candidates, contacts, agreements, benefits, benefitsFiles] = await Promise.all([
-    recruiterflow.listAllClients({ perPage: 100 }),
+  const raw = (client.raw ?? null) as RFClient | null;
+  const legacyRfId = client.legacyRfId;
+
+  // Agreements / benefits are keyed by the legacy numeric id (Phase 5
+  // drop). Ace-native Clients without a legacyRfId have no agreements
+  // or benefits yet; skip the query rather than fetching with a sentinel.
+  const [candidates, contacts, agreements, benefits, benefitsFiles] = await Promise.all([
     getRfCandidatesForOrg(),
-    recruiterflow.listAllContacts({ perPage: 100 }),
-    prisma.clientAgreement.findMany({
-      where: { clientRfId: id, uploadComplete: true },
-      orderBy: { uploadedAt: "desc" },
-      select: {
-        id: true,
-        filename: true,
-        mimeType: true,
-        size: true,
-        uploadedAt: true,
-        summary: true,
-        summaryUpdatedAt: true,
-        uploadedBy: { select: { name: true, email: true } },
-      },
-    }),
-    prisma.clientBenefits.findUnique({
-      where: { clientRfId: id },
-      select: {
-        body: true,
-        updatedAt: true,
-        updatedBy: { select: { name: true, email: true } },
-      },
-    }),
-    prisma.clientBenefitsFile.findMany({
-      where: { clientRfId: id, uploadComplete: true },
-      orderBy: { uploadedAt: "desc" },
-      select: {
-        id: true,
-        filename: true,
-        mimeType: true,
-        size: true,
-        uploadedAt: true,
-        uploadedBy: { select: { name: true, email: true } },
-      },
-    }),
+    legacyRfId != null
+      ? prisma.contact.findMany({
+          where: { OR: [{ clientId: client.id }, { client: { legacyRfId } }] },
+          select: {
+            id: true,
+            legacyRfId: true,
+            firstName: true,
+            lastName: true,
+            name: true,
+            emails: true,
+            phoneNumbers: true,
+            currentDesignation: true,
+            linkedinProfile: true,
+            lastActivityAt: true,
+            addedAt: true,
+          },
+        })
+      : prisma.contact.findMany({
+          where: { clientId: client.id },
+          select: {
+            id: true,
+            legacyRfId: true,
+            firstName: true,
+            lastName: true,
+            name: true,
+            emails: true,
+            phoneNumbers: true,
+            currentDesignation: true,
+            linkedinProfile: true,
+            lastActivityAt: true,
+            addedAt: true,
+          },
+        }),
+    legacyRfId != null
+      ? prisma.clientAgreement.findMany({
+          where: { clientRfId: legacyRfId, uploadComplete: true },
+          orderBy: { uploadedAt: "desc" },
+          select: {
+            id: true,
+            filename: true,
+            mimeType: true,
+            size: true,
+            uploadedAt: true,
+            summary: true,
+            summaryUpdatedAt: true,
+            uploadedBy: { select: { name: true, email: true } },
+          },
+        })
+      : Promise.resolve([] as Array<never>),
+    legacyRfId != null
+      ? prisma.clientBenefits.findUnique({
+          where: { clientRfId: legacyRfId },
+          select: {
+            body: true,
+            updatedAt: true,
+            updatedBy: { select: { name: true, email: true } },
+          },
+        })
+      : Promise.resolve(null),
+    legacyRfId != null
+      ? prisma.clientBenefitsFile.findMany({
+          where: { clientRfId: legacyRfId, uploadComplete: true },
+          orderBy: { uploadedAt: "desc" },
+          select: {
+            id: true,
+            filename: true,
+            mimeType: true,
+            size: true,
+            uploadedAt: true,
+            uploadedBy: { select: { name: true, email: true } },
+          },
+        })
+      : Promise.resolve([] as Array<never>),
   ]);
 
-  const raw = clients.find((c) => c.id === id);
-  if (!raw) notFound();
+  const location = (client.location as LocationJson) ?? null;
+  const cityState = [location?.city, location?.state].filter(Boolean).join(", ");
+  const displayName = client.name || "(unnamed)";
 
-  const client = normalizeClient(raw);
-  const counts = buildClientCounts(candidates).get(id) ?? emptyJobCounts();
+  // Custom-field scraping from raw — only meaningful for RF-imported rows.
+  const customField = (match: (name: string) => boolean): unknown => {
+    if (!Array.isArray(raw?.custom_fields)) return undefined;
+    return raw!.custom_fields!.find((f) => typeof f?.name === "string" && match(f.name.toLowerCase()))?.value;
+  };
+  const signedFlag = customField((n) => n.includes("signed agreement"));
+  const agreementDate = customField((n) => n === "agreement date" || n.includes("agreement date"));
+  const feePctRaw = customField((n) => n.includes("avg fee") || n.includes("fee %") || n.includes("fee percent"));
+  const billingContact = customField((n) => n.includes("billing contact"));
+  const agreementFile = Array.isArray(raw?.files)
+    ? raw!.files!.find((f) => typeof f?.filename === "string" && f.filename.toLowerCase().includes("agreement")) ?? null
+    : null;
+  const isVerified = agreements.length > 0 || Boolean(signedFlag) || Boolean(agreementFile);
+  const feePct =
+    typeof feePctRaw === "number" ? feePctRaw : typeof feePctRaw === "string" ? parseFloat(feePctRaw) || null : null;
+
+  const counts =
+    legacyRfId != null
+      ? buildClientCounts(candidates).get(legacyRfId) ?? emptyJobCounts()
+      : emptyJobCounts();
   const jobCountsById = buildJobCounts(candidates);
-  const clientContacts = contacts.filter((c) => c.client_company_id === id);
 
-  const openJobs = Array.isArray(raw.open_jobs) ? raw.open_jobs : [];
-  const closedJobs = Array.isArray(raw.closed_jobs) ? raw.closed_jobs : [];
+  const openJobs = Array.isArray(raw?.open_jobs) ? raw!.open_jobs! : [];
+  const closedJobs = Array.isArray(raw?.closed_jobs) ? raw!.closed_jobs! : [];
 
   const companyInitial: CompanyState = {
     website: client.domain ?? "",
-    linkedin: client.linkedIn ?? "",
-    phone: client.phone ?? "",
+    linkedin: client.linkedinPage ?? "",
+    phone: firstPhone(client.phoneNumbers),
     industry: client.industry ?? "",
-    street1: raw.location?.street_address_1 ?? "",
-    street2: raw.location?.street_address_2 ?? "",
-    city: raw.location?.city ?? "",
-    state: raw.location?.state ?? "",
-    postalCode: raw.location?.postal_code ?? "",
-    country: raw.location?.country ?? "",
+    street1: location?.street_address_1 ?? "",
+    street2: location?.street_address_2 ?? "",
+    city: location?.city ?? "",
+    state: location?.state ?? "",
+    postalCode: location?.postal_code ?? "",
+    country: location?.country ?? "",
   };
+
+  const industryAndLoc = [client.industry, cityState].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-6">
@@ -121,15 +193,9 @@ export default async function ClientDetailPage({
 
       <PageHeader
         eyebrow="Client"
-        title={client.name || "(unnamed)"}
-        description={[client.industry, client.location].filter(Boolean).join(" · ") || undefined}
+        title={displayName}
+        description={industryAndLoc || undefined}
         actions={
-          // Only show the Verified pill when there's at least one uploaded
-          // agreement file in Neon for this client. RF's custom-field
-          // `isVerified` flag was noisy (some RF clients had the flag set
-          // but no actual document on file in Ace). If no agreement has
-          // been uploaded here, render nothing at all — the earlier amber
-          // "No signed agreement on file" pill was unnecessary noise.
           agreements.length > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-3 py-1 text-xs font-semibold text-brand-dark">
               <ShieldCheck className="h-3 w-3" /> Verified · signed agreement
@@ -147,8 +213,8 @@ export default async function ClientDetailPage({
 
       <Tabs
         tab={tab}
-        clientId={id}
-        contactsCount={clientContacts.length}
+        slug={client.legacyRfId != null ? String(client.legacyRfId) : client.id}
+        contactsCount={contacts.length}
         agreementsCount={agreements.length}
         benefitsFilesCount={benefitsFiles.length}
         hasBenefits={Boolean(benefits?.body?.trim())}
@@ -156,29 +222,29 @@ export default async function ClientDetailPage({
 
       {tab === "overview" ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <EditableCompany clientId={id} initial={companyInitial} />
+          <EditableCompany clientCuid={client.id} initial={companyInitial} />
 
           <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-lg font-semibold text-court-fg">Fee Agreement</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <Detail label="Status" icon={<ShieldCheck className="h-3 w-3" />}>
-                <span className={client.isVerified ? "font-medium text-brand-dark" : "text-court-fg-muted"}>
-                  {client.isVerified ? "Signed" : "Unsigned"}
+                <span className={isVerified ? "font-medium text-brand-dark" : "text-court-fg-muted"}>
+                  {isVerified ? "Signed" : "Unsigned"}
                 </span>
               </Detail>
               <Detail label="Signed On">
-                <span>{client.agreementDate ? new Date(client.agreementDate).toLocaleDateString() : "—"}</span>
+                <span>{typeof agreementDate === "string" && agreementDate ? new Date(agreementDate).toLocaleDateString() : "—"}</span>
               </Detail>
               <Detail label="Fee">
-                <span>{client.feePct != null ? `${client.feePct}%` : "—"}</span>
+                <span>{feePct != null ? `${feePct}%` : "—"}</span>
               </Detail>
               <Detail label="Billing Contact">
-                <span>{client.billingContact || "—"}</span>
+                <span>{typeof billingContact === "string" && billingContact.trim() ? billingContact : "—"}</span>
               </Detail>
               <Detail label="Agreement File" icon={<FileText className="h-3 w-3" />}>
-                {client.agreementFileUrl ? (
-                  <a href={client.agreementFileUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-dark hover:underline">
-                    {client.agreementFileName ?? "Open PDF"} <ExternalLink className="h-3 w-3" />
+                {agreementFile?.link ? (
+                  <a href={agreementFile.link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-brand-dark hover:underline">
+                    {agreementFile.filename ?? "Open PDF"} <ExternalLink className="h-3 w-3" />
                   </a>
                 ) : (
                   <span>—</span>
@@ -227,9 +293,7 @@ export default async function ClientDetailPage({
                             <span
                               className={cn(
                                 "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                                isOpen
-                                  ? "bg-emerald-50 text-emerald-700"
-                                  : "bg-court-surface-subtle text-court-fg-muted",
+                                isOpen ? "bg-emerald-50 text-emerald-700" : "bg-court-surface-subtle text-court-fg-muted",
                               )}
                             >
                               {isOpen ? "Active" : "Closed"}
@@ -255,26 +319,26 @@ export default async function ClientDetailPage({
         </div>
       ) : tab === "contacts" ? (
         <ContactsTab
-          clientId={id}
-          clientName={client.name ?? ""}
-          initialContacts={clientContacts.map((c) => ({
+          clientCuid={client.id}
+          clientName={displayName}
+          initialContacts={contacts.map((c) => ({
             id: c.id,
-            name: [c.first_name, c.last_name].filter(Boolean).join(" ") || c.name || "(unnamed)",
-            title: c.current_designation ?? "",
-            email: Array.isArray(c.email) ? c.email[0] ?? "" : c.email ?? "",
-            phone:
-              Array.isArray(c.phone_number) && c.phone_number.length > 0
-                ? typeof c.phone_number[0] === "string"
-                  ? c.phone_number[0]
-                  : c.phone_number[0]?.number ?? ""
-                : "",
-            linkedIn: c.linkedin_profile ?? null,
-            lastContactedAt: c.latest_activity_time ?? c.added_time ?? null,
+            legacyRfId: c.legacyRfId,
+            name:
+              [c.firstName, c.lastName].filter(Boolean).join(" ") ||
+              c.name ||
+              "(unnamed)",
+            title: c.currentDesignation ?? "",
+            email: Array.isArray(c.emails) && c.emails.length > 0 ? c.emails[0] : "",
+            phone: firstPhone(c.phoneNumbers),
+            linkedIn: c.linkedinProfile ?? null,
+            lastContactedAt:
+              (c.lastActivityAt?.toISOString() ?? c.addedAt?.toISOString()) ?? null,
           }))}
         />
-      ) : tab === "agreements" ? (
+      ) : tab === "agreements" && legacyRfId != null ? (
         <AgreementsTab
-          clientId={id}
+          clientId={legacyRfId}
           items={agreements.map((a) => ({
             id: a.id,
             filename: a.filename,
@@ -286,9 +350,9 @@ export default async function ClientDetailPage({
             summaryUpdatedAt: a.summaryUpdatedAt?.toISOString() ?? null,
           }))}
         />
-      ) : tab === "benefits" ? (
+      ) : tab === "benefits" && legacyRfId != null ? (
         <BenefitsTab
-          clientId={id}
+          clientId={legacyRfId}
           initial={{
             body: benefits?.body ?? "",
             updatedAt: benefits?.updatedAt?.toISOString() ?? null,
@@ -303,8 +367,12 @@ export default async function ClientDetailPage({
             uploadedByName: f.uploadedBy?.name ?? f.uploadedBy?.email ?? null,
           }))}
         />
+      ) : tab === "game-plan" && legacyRfId != null ? (
+        <AiWorkspace entityType="client" entityId={String(legacyRfId)} />
       ) : (
-        <AiWorkspace entityType="client" entityId={String(client.id)} />
+        <div className="rounded-xl border border-court-border bg-court-surface p-6 text-sm text-court-fg-muted">
+          This tab isn&apos;t available yet for Ace-native clients.
+        </div>
       )}
     </div>
   );
@@ -312,14 +380,14 @@ export default async function ClientDetailPage({
 
 function Tabs({
   tab,
-  clientId,
+  slug,
   contactsCount,
   agreementsCount,
   benefitsFilesCount,
   hasBenefits,
 }: {
   tab: ClientTab;
-  clientId: number;
+  slug: string;
   contactsCount: number;
   agreementsCount: number;
   benefitsFilesCount: number;
@@ -327,17 +395,17 @@ function Tabs({
 }) {
   return (
     <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      <TabLink label="Overview" href={`/clients/${clientId}?tab=overview`} active={tab === "overview"} />
-      <TabLink label="Contacts" count={contactsCount} href={`/clients/${clientId}?tab=contacts`} active={tab === "contacts"} />
-      <TabLink label="Agreements" count={agreementsCount} href={`/clients/${clientId}?tab=agreements`} active={tab === "agreements"} />
+      <TabLink label="Overview" href={`/clients/${slug}?tab=overview`} active={tab === "overview"} />
+      <TabLink label="Contacts" count={contactsCount} href={`/clients/${slug}?tab=contacts`} active={tab === "contacts"} />
+      <TabLink label="Agreements" count={agreementsCount} href={`/clients/${slug}?tab=agreements`} active={tab === "agreements"} />
       <TabLink
         label="Benefits"
         count={benefitsFilesCount > 0 ? benefitsFilesCount : undefined}
         dot={hasBenefits && benefitsFilesCount === 0}
-        href={`/clients/${clientId}?tab=benefits`}
+        href={`/clients/${slug}?tab=benefits`}
         active={tab === "benefits"}
       />
-      <TabLink label="Game Plan" href={`/clients/${clientId}?tab=game-plan`} active={tab === "game-plan"} />
+      <TabLink label="Game Plan" href={`/clients/${slug}?tab=game-plan`} active={tab === "game-plan"} />
     </div>
   );
 }
@@ -415,3 +483,13 @@ function JobCountPill({ value, tone }: { value: number; tone: "submitted" | "int
   );
 }
 
+function firstPhone(raw: unknown): string {
+  if (!Array.isArray(raw) || raw.length === 0) return "";
+  const first = raw[0];
+  if (typeof first === "string") return first;
+  if (first && typeof first === "object" && "number" in (first as object)) {
+    const n = (first as { number?: string }).number;
+    return typeof n === "string" ? n : "";
+  }
+  return "";
+}

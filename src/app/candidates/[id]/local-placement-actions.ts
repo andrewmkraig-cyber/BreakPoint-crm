@@ -126,13 +126,14 @@ export async function generateLocalSubmittal(
     const c = await loadLocalCandidate(input.candidateId);
     if (!c) return { ok: false, error: "Candidate not found." };
 
-    // Pull job details via RF read (read-side lookups of existing RF records
-    // are still fine under the no-RF-on-create rule — we're not creating, just
-    // reading job context to frame the writeup).
+    // Job context still comes via RF read (Phase 2 territory). Client
+    // lookups are now Neon-backed via the getRfClientsForOrg shim so
+    // this code path no longer depends on /client/list for the name.
     const { recruiterflow } = await import("@/lib/recruiterflow");
+    const { getRfClientsForOrg } = await import("@/lib/candidates");
     const [job, clients] = await Promise.all([
       recruiterflow.getJob(input.jobRfId).catch(() => null),
-      recruiterflow.listAllClients({ perPage: 100 }).catch(() => []),
+      getRfClientsForOrg().catch(() => []),
     ]);
     const clientName = (() => {
       if (!job?.company_id) return "";

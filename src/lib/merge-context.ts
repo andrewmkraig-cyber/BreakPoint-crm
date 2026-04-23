@@ -9,7 +9,7 @@ import {
   type RFClient,
   type RFContact,
 } from "@/lib/recruiterflow";
-import { getRfCandidatesForOrg, getRfCandidateByRfId } from "@/lib/candidates";
+import { getRfCandidatesForOrg, getRfCandidateByRfId, getRfClientsForOrg } from "@/lib/candidates";
 import type { MergeFieldValues } from "@/lib/merge-fields";
 
 export type BuildMergeContextInput = {
@@ -66,7 +66,7 @@ export async function buildFullMergeValues(
           return all.find((x) => x.id === input.jobRfId) ?? null;
         })
       : null,
-    input.clientRfId ? safeCall(() => recruiterflow.listAllClients({ perPage: 100 })) : null,
+    input.clientRfId ? safeCall(() => getRfClientsForOrg()) : null,
     input.clientRfId ? safeCall(() => recruiterflow.listAllContacts({ perPage: 100 })) : null,
   ]);
 

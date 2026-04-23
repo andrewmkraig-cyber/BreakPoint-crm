@@ -43,10 +43,10 @@ export type CompanyState = {
 };
 
 export function EditableCompany({
-  clientId,
+  clientCuid,
   initial,
 }: {
-  clientId: number;
+  clientCuid: string;
   initial: CompanyState;
 }) {
   const router = useRouter();
@@ -64,7 +64,7 @@ export function EditableCompany({
   function onSave() {
     setErr(null);
     startSave(async () => {
-      const result = await updateClientCompany({ id: clientId, ...draft });
+      const result = await updateClientCompany({ clientCuid, ...draft });
       if (!result.ok) {
         setErr(result.error);
         toast.error("Couldn't save client", { description: result.error });

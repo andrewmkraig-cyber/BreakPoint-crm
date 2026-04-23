@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
-import { getCandidateByIdentifier } from "@/lib/candidates";
+import { getCandidateByIdentifier, getRfClientsForOrg } from "@/lib/candidates";
 import {
   recruiterflow,
   canonicalStage,
@@ -134,7 +134,7 @@ export default async function CandidateProfilePage({
   // (cuid) — candidateRfId is retained only as a historical reference and
   // must not be used in application queries.
   const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
-    recruiterflow.listAllClients({ perPage: 100 }),
+    getRfClientsForOrg(),
     recruiterflow.listAllContacts({ perPage: 100 }),
     recruiterflow.listAllJobs({ perPage: 100 }),
     prisma.placement.findMany({ where: { candidateId: candidate.id } }),

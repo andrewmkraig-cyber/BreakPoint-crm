@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
-import { recruiterflow } from "@/lib/recruiterflow";
+import { findClientByDomain, normalizeDomainKey } from "@/lib/clients";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -19,52 +20,30 @@ async function requireSession(): Promise<boolean> {
   return Boolean(u);
 }
 
-// Normalize a user-typed or RF-stored domain down to a comparable key. Drops
-// protocol, any path/querystring, a leading `www.`, and lowercases. Both sides
-// of the duplicate check run through this so https://www.Acme.COM/about and
-// acme.com collapse to the same string.
-function normalizeDomain(raw: string | null | undefined): string {
-  if (!raw) return "";
-  return raw
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
-    .split(/[\/?#]/)[0] ?? "";
-}
-
 export type CheckClientDomainResult =
-  | { ok: true; duplicate: { id: number; name: string; domain: string } | null }
+  | { ok: true; duplicate: { slug: string; name: string; domain: string } | null }
   | { ok: false; error: string };
 
-// Pre-flight duplicate check. Clients live in RecruiterFlow (no local Postgres
-// Client table), so the source of truth is `listAllClients` — we normalize
-// every stored domain and compare against the user's input. On RF failures we
-// return ok:false and the caller treats it as "don't know" (lets save through
-// and lets RF's own 403 surface as a save error, which is the pre-existing
-// behavior).
+// Pre-flight duplicate check. Scans the tenant's Neon Client rows and
+// returns the first record whose stored domain collapses to the same
+// key as the user's input. The caller renders the inline red flag and
+// deep-links to the existing client via the returned slug (legacyRfId
+// stringified for RF-imported rows, cuid for Ace-native).
 export async function checkClientDomain(domainRaw: string): Promise<CheckClientDomainResult> {
   if (!(await requireSession())) return { ok: false, error: "Not signed in." };
-  const needle = normalizeDomain(domainRaw);
+  const needle = normalizeDomainKey(domainRaw);
   if (!needle) return { ok: true, duplicate: null };
   try {
-    const clients = await recruiterflow.listAllClients({ perPage: 100 });
-    for (const c of clients) {
-      const hit = normalizeDomain(c.domain ?? null);
-      if (hit && hit === needle) {
-        return {
-          ok: true,
-          duplicate: {
-            id: c.id,
-            name: c.name ?? "(unnamed client)",
-            domain: hit,
-          },
-        };
-      }
+    const hit = await findClientByDomain(domainRaw);
+    if (hit) {
+      return {
+        ok: true,
+        duplicate: { slug: hit.slug, name: hit.name, domain: hit.domain },
+      };
     }
     return { ok: true, duplicate: null };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Couldn't check RecruiterFlow for duplicates." };
+    return { ok: false, error: e instanceof Error ? e.message : "Couldn't check for duplicate clients." };
   }
 }
 
@@ -86,68 +65,86 @@ export type CreateClientPayload = {
   };
 };
 
-export type CreateClientResult = Result<{ id: number; primaryContactId: number | null }>;
+export type CreateClientResult = Result<{ slug: string; clientCuid: string; primaryContactId: string | null }>;
 
+// Ace-native create path. Writes a new Client row to Neon with the
+// current tenant's organizationId stamped. No RecruiterFlow call. If
+// the user supplied a primary contact, a Contact row is created in
+// the same transaction and linked via clientId (cuid FK).
 export async function createClient(payload: CreateClientPayload): Promise<CreateClientResult> {
   if (!(await requireSession())) return { ok: false, error: "Not signed in." };
   const name = payload.name.trim();
   if (!name) return { ok: false, error: "Company name is required." };
 
   try {
-    // Strip http(s):// for RF domain, which expects the bare hostname.
+    const org = await getCurrentOrg();
     const domainRaw = payload.website.trim();
-    const domain = domainRaw ? domainRaw.replace(/^https?:\/\//i, "").replace(/\/.*$/, "") : undefined;
+    const domain = domainRaw ? domainRaw.replace(/^https?:\/\//i, "").replace(/\/.*$/, "") : null;
 
-    const locationParts: { city?: string; state?: string } = {};
-    if (payload.city.trim()) locationParts.city = payload.city.trim();
-    if (payload.state.trim()) locationParts.state = payload.state.trim();
-
-    const created = await recruiterflow.createClient({
-      name,
-      domain: domain || undefined,
-      industry: payload.industry.trim() || undefined,
-      linkedin_page: payload.linkedin.trim() || undefined,
-      phone_number: payload.phone.trim() || undefined,
-      overview: payload.overview.trim() || undefined,
-      location: Object.keys(locationParts).length > 0 ? locationParts : undefined,
-    });
-
-    const clientId =
-      typeof created.id === "number"
-        ? created.id
-        : typeof (created as unknown as { client_company_id?: number }).client_company_id === "number"
-          ? (created as unknown as { client_company_id: number }).client_company_id
-          : null;
-
-    if (!clientId) {
-      return { ok: false, error: "RecruiterFlow didn't return a client id for the new company." };
-    }
-
-    let primaryContactId: number | null = null;
-    const pc = payload.primaryContact;
-    const hasContact = (pc.firstName + pc.lastName + pc.email + pc.phone).trim().length > 0;
-    if (hasContact) {
-      try {
-        const contact = await recruiterflow.createContact({
-          first_name: pc.firstName.trim() || "Contact",
-          last_name: pc.lastName.trim() || undefined,
-          email: pc.email.trim() || undefined,
-          phone_number: pc.phone.trim() || undefined,
-          current_designation: pc.title.trim() || undefined,
-          client_company_id: clientId,
-        });
-        if (typeof contact?.id === "number") primaryContactId = contact.id;
-      } catch (e) {
-        // Non-fatal: client saved; contact failed. Surface in response so the
-        // UI can warn the user but still navigate to the client detail page.
-        // eslint-disable-next-line no-console
-        console.warn("[createClient] primary contact create failed:", e instanceof Error ? e.message : e);
+    // Hard duplicate-domain guard on the server too. The client-side
+    // pre-flight gates the Save button, but another tab can create the
+    // same domain between blur and submit.
+    if (domain) {
+      const dup = await findClientByDomain(domain);
+      if (dup) {
+        return { ok: false, error: `A client with this domain already exists (${dup.name}).` };
       }
     }
 
+    const city = payload.city.trim();
+    const state = payload.state.trim();
+    const locationJson: Record<string, string> | undefined =
+      city || state
+        ? {
+            ...(city ? { city } : {}),
+            ...(state ? { state } : {}),
+          }
+        : undefined;
+    const phone = payload.phone.trim();
+
+    const pc = payload.primaryContact;
+    const hasContact = (pc.firstName + pc.lastName + pc.email + pc.phone).trim().length > 0;
+
+    const client = await prisma.client.create({
+      data: {
+        name,
+        domain,
+        industry: payload.industry.trim() || null,
+        linkedinPage: payload.linkedin.trim() || null,
+        overview: payload.overview.trim() || null,
+        location: locationJson,
+        phoneNumbers: phone ? [{ number: phone }] : [],
+        organizationId: org.id,
+        addedAt: new Date(),
+      },
+      select: { id: true, legacyRfId: true },
+    });
+
+    let primaryContactId: string | null = null;
+    if (hasContact) {
+      const first = pc.firstName.trim() || "Contact";
+      const last = pc.lastName.trim() || "";
+      const contact = await prisma.contact.create({
+        data: {
+          firstName: first,
+          lastName: last || null,
+          name: [first, last].filter(Boolean).join(" "),
+          emails: pc.email.trim() ? [pc.email.trim()] : [],
+          phoneNumbers: pc.phone.trim() ? [{ number: pc.phone.trim() }] : undefined,
+          currentDesignation: pc.title.trim() || null,
+          clientId: client.id,
+          organizationId: org.id,
+          addedAt: new Date(),
+        },
+        select: { id: true },
+      });
+      primaryContactId = contact.id;
+    }
+
+    const slug = client.legacyRfId != null ? String(client.legacyRfId) : client.id;
     revalidatePath("/clients");
-    revalidatePath(`/clients/${clientId}`);
-    return { ok: true, value: { id: clientId, primaryContactId } };
+    revalidatePath(`/clients/${slug}`);
+    return { ok: true, value: { slug, clientCuid: client.id, primaryContactId } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create client." };
   }
@@ -155,10 +152,10 @@ export async function createClient(payload: CreateClientPayload): Promise<Create
 
 // ---- Website auto-parse ----
 //
-// User pastes a URL into the form; we fetch the homepage HTML, strip to text,
-// and ask Claude to extract structured company fields. AUTO per the project
-// rule — structured extraction, no hand-written content. Caller debounces the
-// paste so we don't hammer arbitrary URLs on every keystroke.
+// User pastes a URL; we fetch the homepage HTML, strip to text, and ask
+// Claude to extract structured company fields. AUTO per the project rule
+// — structured extraction, no hand-written content. The client-side form
+// debounces the paste so we don't hammer arbitrary URLs on every keystroke.
 
 export type WebsiteParseFields = {
   name: string | null;

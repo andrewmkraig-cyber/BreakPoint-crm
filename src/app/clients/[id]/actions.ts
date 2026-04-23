@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { recruiterflow } from "@/lib/recruiterflow";
 import {
   summarizeAgreementTerms as summarizeAgreementTermsWithClaude,
   summarizeBenefits as summarizeBenefitsWithClaude,
@@ -25,9 +25,9 @@ async function requireUserId(): Promise<{ id: string; email: string } | null> {
 
 // ---- Contacts ----
 
-export type AddContactResult = ActionResult<{ id: number }>;
+export type AddContactResult = ActionResult<{ id: string }>;
 
-export async function addContact(clientId: number, formData: FormData): Promise<AddContactResult> {
+export async function addContact(clientCuid: string, formData: FormData): Promise<AddContactResult> {
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
 
@@ -41,16 +41,30 @@ export async function addContact(clientId: number, formData: FormData): Promise<
   if (!first) return { ok: false, error: "First name is required." };
 
   try {
-    const created = await recruiterflow.createContact({
-      first_name: first,
-      last_name: last || undefined,
-      email: email || undefined,
-      phone_number: phone || undefined,
-      current_designation: title || undefined,
-      linkedin_profile: linkedin || undefined,
-      client_company_id: clientId,
+    const org = await getCurrentOrg();
+    const client = await prisma.client.findFirst({
+      where: { id: clientCuid, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
     });
-    revalidatePath(`/clients/${clientId}`);
+    if (!client) return { ok: false, error: "Client not found." };
+
+    const created = await prisma.contact.create({
+      data: {
+        firstName: first,
+        lastName: last || null,
+        name: [first, last].filter(Boolean).join(" "),
+        emails: email ? [email] : [],
+        phoneNumbers: phone ? [{ number: phone }] : undefined,
+        currentDesignation: title || null,
+        linkedinProfile: linkedin || null,
+        clientId: client.id,
+        organizationId: org.id,
+        addedAt: new Date(),
+      },
+      select: { id: true },
+    });
+    const urlSlug = client.legacyRfId != null ? String(client.legacyRfId) : client.id;
+    revalidatePath(`/clients/${urlSlug}`);
     return { ok: true, value: { id: created.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to create contact" };
@@ -190,7 +204,7 @@ export async function summarizeBenefitsWithAI(
 // ---- Company (client/update) ----
 
 export type UpdateClientInput = {
-  id: number;
+  clientCuid: string;
   website: string;
   linkedin: string;
   phone: string;
@@ -206,30 +220,41 @@ export type UpdateClientInput = {
 export async function updateClientCompany(input: UpdateClientInput): Promise<ActionResult> {
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
-  if (!Number.isFinite(input.id)) return { ok: false, error: "Missing client id." };
+  if (!input.clientCuid) return { ok: false, error: "Missing client id." };
 
   const domain = input.website.trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
 
   try {
-    const res = (await recruiterflow.updateClient({
-      id: input.id,
-      domain: domain || undefined,
-      industry: input.industry || undefined,
-      linkedin_page: input.linkedin.trim() || undefined,
-      phone_number: input.phone.trim() || undefined,
-      location: {
-        street_address_1: input.street1.trim() || undefined,
-        street_address_2: input.street2.trim() || undefined,
-        city: input.city.trim() || undefined,
-        state: input.state.trim() || undefined,
-        postal_code: input.postalCode.trim() || undefined,
-        country: input.country.trim() || undefined,
+    const org = await getCurrentOrg();
+    const existing = await prisma.client.findFirst({
+      where: { id: input.clientCuid, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!existing) return { ok: false, error: "Client not found." };
+
+    const location = {
+      street_address_1: input.street1.trim() || null,
+      street_address_2: input.street2.trim() || null,
+      city: input.city.trim() || null,
+      state: input.state.trim() || null,
+      postal_code: input.postalCode.trim() || null,
+      country: input.country.trim() || null,
+    };
+    const phoneTrimmed = input.phone.trim();
+
+    await prisma.client.update({
+      where: { id: existing.id },
+      data: {
+        domain: domain || null,
+        industry: input.industry.trim() || null,
+        linkedinPage: input.linkedin.trim() || null,
+        phoneNumbers: phoneTrimmed ? [{ number: phoneTrimmed }] : [],
+        location,
       },
-    })) as { RESULT?: string };
-    if (res && typeof res === "object" && "RESULT" in res && res.RESULT && res.RESULT !== "SUCCESS") {
-      return { ok: false, error: `RecruiterFlow returned ${res.RESULT}` };
-    }
-    revalidatePath(`/clients/${input.id}`);
+    });
+
+    const slug = existing.legacyRfId != null ? String(existing.legacyRfId) : existing.id;
+    revalidatePath(`/clients/${slug}`);
     revalidatePath(`/clients`);
     return { ok: true };
   } catch (e) {

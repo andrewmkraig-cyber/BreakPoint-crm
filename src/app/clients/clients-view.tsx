@@ -8,7 +8,8 @@ import { Pagination } from "@/components/pagination";
 import { cn } from "@/lib/utils";
 
 export type ClientCard = {
-  id: number;
+  slug: string;
+  legacyRfId: number | null;
   name: string;
   domain: string | null;
   website: string | null;
@@ -20,13 +21,10 @@ export type ClientCard = {
   closedJobsCount: number;
   isVerified: boolean;
   isActive: boolean;
-  agreementDate: string | null;
   feePct: number | null;
-  billingContact: string | null;
   submittedCount: number;
   interviewingCount: number;
   hiredCount: number;
-  statusName: string | null;
 };
 
 type Props = {
@@ -133,7 +131,7 @@ export function ClientsView({
             No clients{q ? ` match "${q}"` : ""}.
           </div>
         ) : (
-          cards.map((c) => <Card key={c.id} card={c} />)
+          cards.map((c) => <Card key={c.slug} card={c} />)
         )}
       </div>
 
@@ -197,7 +195,7 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
 function Card({ card }: { card: ClientCard }) {
   return (
     <Link
-      href={`/clients/${card.id}`}
+      href={`/clients/${card.slug}`}
       className="group flex flex-col rounded-xl border border-court-border bg-court-surface p-5 shadow-sm transition hover:border-brand/40 hover:shadow-md"
     >
       <div className="flex items-start justify-between gap-3">
