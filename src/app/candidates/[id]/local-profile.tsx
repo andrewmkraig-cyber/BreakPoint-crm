@@ -11,6 +11,7 @@ import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
+import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAppPreferences } from "@/lib/preferences";
@@ -291,12 +292,15 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
               )}
             </div>
             {candidate.resumeFilename && (
-              <a
-                href={`/api/local-candidate-resumes/${candidate.id}`}
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
-              >
-                <FileDown className="h-3 w-3" /> Download
-              </a>
+              <div className="flex items-center gap-2">
+                <BrandResumeButton candidateId={candidate.id} />
+                <a
+                  href={`/api/local-candidate-resumes/${candidate.id}`}
+                  className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+                >
+                  <FileDown className="h-3 w-3" /> Download
+                </a>
+              </div>
             )}
           </div>
           {candidate.resumeFilename && candidate.resumeMimeType === "application/pdf" ? (
