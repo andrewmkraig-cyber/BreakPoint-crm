@@ -124,7 +124,7 @@ export function TopBarSearch() {
       // Contacts live on a client profile — navigate to the parent
       // client. If the contact somehow has no linked client, fall
       // back to the clients index rather than a dead /clients/ URL.
-      router.push(item.clientSlug ? `/clients/${item.clientSlug}` : "/clients");
+      router.push(item.clientSlug ? `/clients/${item.clientSlug}?tab=contacts` : "/clients");
     }
   }
 
