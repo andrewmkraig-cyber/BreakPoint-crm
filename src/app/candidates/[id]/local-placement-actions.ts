@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
+import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup } from "@/lib/claude";
@@ -342,6 +343,26 @@ export async function sendLocalSubmittalEmail(
         clientRfId,
         clientId,
         gmailMessageId: sendResult.id,
+        local: true,
+      },
+    });
+
+    // Phase 4c: ActivityLog — Ace-native candidate submittal path.
+    // Mirrors the RF-imported sendSubmittalEmail audit entry so both
+    // profile variants land a submittal_sent row on the same targetType
+    // (placement) with the same metadata shape.
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "submittal_sent",
+      targetType: "placement",
+      targetId: placement.id,
+      metadata: {
+        jobId: jobId ?? null,
+        jobRfId: jobRfId ?? null,
+        candidateId: input.candidateId,
+        clientId: clientId ?? null,
+        clientRfId: clientRfId ?? null,
         local: true,
       },
     });

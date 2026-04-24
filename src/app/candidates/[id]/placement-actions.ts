@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { createActionLog } from "@/lib/action-log";
+import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
@@ -325,6 +326,7 @@ export type ConfirmStartInput = {
 export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
 
   const rawBase64 = input.screenshotBase64.includes(",")
     ? input.screenshotBase64.split(",")[1]
@@ -347,7 +349,14 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
 
     const existing = await prisma.placement.findUnique({
       where: { id: input.placementId },
-      select: { jobRfId: true, candidateRfId: true },
+      select: {
+        jobRfId: true,
+        candidateRfId: true,
+        feeTotal: true,
+        acceptedSalary: true,
+        feePercentage: true,
+        expectedStartDate: true,
+      },
     });
     const sync = existing && existing.candidateRfId != null && existing.jobRfId != null
       ? await trySyncRfStage({
@@ -368,6 +377,23 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
         syncedToRf: sync.synced,
       },
     });
+
+    // Phase 4c: audit-feed entry for the confirmed placement. Non-
+    // throwing; instrumentation never blocks the user action.
+    await logActivity({
+      organizationId: org.id,
+      userId,
+      actionType: "placement_confirmed",
+      targetType: "placement",
+      targetId: input.placementId,
+      metadata: {
+        feeAmount: existing?.feeTotal ?? null,
+        acceptedSalary: existing?.acceptedSalary ?? null,
+        feePercentage: existing?.feePercentage ?? null,
+        startDate: existing?.expectedStartDate?.toISOString() ?? null,
+      },
+    });
+
     revalidatePath(`/candidates/${placement.candidateRfId}`);
     revalidatePath(`/pipeline`);
     return { ok: true };
@@ -1579,6 +1605,27 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
   } catch {
     // ignored
   }
+
+  // Phase 4c: audit-feed entry for the submittal. Non-throwing.
+  // Stamps placementId as the target so the activity feed can link
+  // back to the specific placement; jobId/candidateId/clientId live in
+  // metadata for rollup filters.
+  await logActivity({
+    organizationId: org.id,
+    userId,
+    actionType: "submittal_sent",
+    targetType: "placement",
+    targetId: placementId,
+    metadata: {
+      jobId: jobId ?? null,
+      jobRfId: input.jobRfId,
+      candidateRfId: input.candidateRfId,
+      clientId: clientId ?? null,
+      clientRfId: input.clientRfId,
+      jobTitle: input.jobTitle,
+      clientName: input.clientName,
+    },
+  });
 
   revalidatePath(`/candidates/${input.candidateRfId}`);
   revalidatePath(`/pipeline`);

@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { parseCandidateFields, type ParsedCandidate } from "@/lib/claude";
+import { logActivity } from "@/lib/activity";
 import { prisma } from "@/lib/prisma";
 import { fallbackParseCandidate } from "@/lib/resume-fallback";
 
@@ -296,6 +297,21 @@ export async function createCandidate(
     if (input.resumeUploadId) {
       await prisma.resumeUpload.deleteMany({ where: { id: input.resumeUploadId } });
     }
+
+    // Phase 4c: audit-feed entry for the new candidate. Non-throwing;
+    // a failed activity write never breaks the user's save.
+    await logActivity({
+      organizationId: org.id,
+      userId,
+      actionType: "candidate_created",
+      targetType: "candidate",
+      targetId: created.id,
+      metadata: {
+        source: "manual",
+        hasResume: Boolean(resumeMeta),
+        hasEmail: Boolean(email),
+      },
+    });
 
     revalidatePath("/candidates");
     revalidatePath(`/candidates/${created.id}`);

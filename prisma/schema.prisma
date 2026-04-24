@@ -52,6 +52,7 @@ model User {
   accounts        Account[]
   sessions        Session[]
   actions         ActionLog[]
+  activities      ActivityLog[]
   krispcalls      KrispcallLog[]
   agreements      ClientAgreement[]
   benefitsUpdates ClientBenefits[]
@@ -720,6 +721,48 @@ model Organization {
   jobOverrides        JobOverride[]
   krispcallLogs       KrispcallLog[]
   actionLogs          ActionLog[]
+  activityLogs        ActivityLog[]
+}
+
+// Phase 4c: ActivityLog is the canonical, tenant-scoped audit feed for
+// user-initiated events across Ace. Separate from ActionLog (which is
+// an older, hand-curated log used by specific workflows) — ActivityLog
+// is general-purpose: every important user action lands here with a
+// standard shape so Dashboard rollups, per-entity activity panels, and
+// future admin audit tooling all read from one table.
+//
+// Action types fired today (Phase 4c):
+//   candidate_created, submittal_sent, placement_confirmed
+// Future (Phase 4d or wire-as-touched):
+//   candidate_applied_to_job, interview_scheduled,
+//   interview_cancelled, offer_extended, email_sent
+// Intentionally excluded:
+//   call_logged — Quo (Krispcall webhook → KrispcallLog) owns calls.
+//
+// targetType / targetId are a polymorphic FK to whatever the action is
+// about (candidate / job / client / placement / interview). No referential
+// integrity at the DB level so retention can tombstone target rows
+// without cascading here.
+model ActivityLog {
+  id             String   @id @default(cuid())
+  organizationId String
+  userId         String
+  timestamp      DateTime @default(now())
+  actionType     String
+  targetType     String
+  targetId       String
+  metadata       Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Composite index powers the Dashboard + per-user activity feeds
+  // without a sort-after-filter step. (orgId, timestamp DESC) is the
+  // typical read pattern: newest-first inside one tenant.
+  @@index([organizationId, timestamp(sort: Desc)])
+  @@index([userId, timestamp(sort: Desc)])
+  @@index([targetType, targetId])
+  @@index([actionType])
 }
 
 model OrganizationMembership {
