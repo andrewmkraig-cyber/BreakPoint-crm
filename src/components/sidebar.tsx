@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -15,16 +16,24 @@ import {
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
 
+// Main nav in the recruiter's workflow order: Dashboard → Mail (daily
+// inbox check) → Pipeline → Applicants (active work) → Candidates →
+// Clients → Jobs (reference surfaces).
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/candidates", label: "Candidates", icon: Users },
+  { href: "/mail", label: "Mail", icon: Mail },
   { href: "/pipeline", label: "Pipeline", icon: GitBranch },
   { href: "/applicants", label: "Applicants", icon: Inbox },
-  { href: "/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/candidates", label: "Candidates", icon: Users },
   { href: "/clients", label: "Clients", icon: Building2 },
-  { href: "/mail", label: "Mail", icon: Mail },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/jobs", label: "Jobs", icon: Briefcase },
 ] as const;
+
+// Settings is pinned to the bottom of the sidebar, visually separated
+// from the main nav by a border and its own padding block. Matches the
+// "account / settings drawer at the bottom" treatment used by most
+// CRMs (Apollo, HubSpot, Linear).
+const FOOTER_NAV = [{ href: "/settings", label: "Settings", icon: Settings }] as const;
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -42,29 +51,14 @@ export function Sidebar() {
         <BrandMark withTag />
       </div>
       <nav className="flex-1 space-y-0.5 p-3">
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href || pathname.startsWith(`${href}/`);
-          return (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                active
-                  ? "bg-court-accent-tint text-court-accent-dark"
-                  // Hover uses fg-at-low-opacity so it reads as "subtle
-                  // lift" in all three modes — darker-than-bg in Hard (fg
-                  // is near-black), lighter-than-bg in Clay / Grass (fg
-                  // is near-white). A court-surface-subtle hover would
-                  // collide with the sidebar bg in Clay/Grass.
-                  : "text-court-fg-muted hover:bg-court-fg/5 hover:text-court-fg",
-              )}
-            >
-              <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />
-              {label}
-            </Link>
-          );
-        })}
+        {NAV.map((item) => (
+          <NavLink key={item.href} item={item} pathname={pathname} />
+        ))}
+      </nav>
+      <nav className="space-y-0.5 border-t border-court-border p-3">
+        {FOOTER_NAV.map((item) => (
+          <NavLink key={item.href} item={item} pathname={pathname} />
+        ))}
       </nav>
       <div className="border-t border-court-border p-4 text-[11px] uppercase tracking-wider text-court-fg-muted">
         BreakPoint Talent
@@ -73,5 +67,35 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+  );
+}
+
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+};
+
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+        active
+          ? "bg-court-accent-tint text-court-accent-dark"
+          // Hover uses fg-at-low-opacity so it reads as "subtle lift"
+          // in all three modes — darker-than-bg in Hard (fg is
+          // near-black), lighter-than-bg in Clay / Grass (fg is
+          // near-white). A court-surface-subtle hover would collide
+          // with the sidebar bg in Clay/Grass.
+          : "text-court-fg-muted hover:bg-court-fg/5 hover:text-court-fg",
+      )}
+    >
+      <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />
+      {item.label}
+    </Link>
   );
 }
