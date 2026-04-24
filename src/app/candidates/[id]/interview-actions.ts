@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
+import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -291,6 +292,25 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       },
     });
 
+    // Phase 4d: ActivityLog audit-feed entry.
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "interview_scheduled",
+      targetType: "interview",
+      targetId: interview.id,
+      metadata: {
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        candidateRfId: ref.candidateRfId,
+        candidateId: ref.candidateId,
+        scheduledAt: when.toISOString(),
+        durationMin: input.durationMin,
+        type: input.type,
+        source: input.source,
+      },
+    });
+
     revalidateForCandidate(ref);
     return { ok: true, value: { interviewId: interview.id, meetLink, googleEventIdMine } };
   } catch (e) {
@@ -356,6 +376,26 @@ export async function cancelInterview(interviewId: string): Promise<Result> {
       subjectType: "candidate",
       subjectId,
       metadata: { interviewId },
+    });
+
+    // Phase 4d: ActivityLog audit-feed entry. cancelInterview has no
+    // reason field today (single-click cancel from the activity panel);
+    // metadata carries the calendar-event delete tally + source so the
+    // activity feed can render "cancelled by {user}" without a join.
+    const org = await getCurrentOrg();
+    const eventDeletions = eventIds.filter((e) => e.id).length;
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "interview_cancelled",
+      targetType: "interview",
+      targetId: interviewId,
+      metadata: {
+        candidateRfId: existing.candidateRfId,
+        candidateId: existing.candidateId,
+        priorStatus: existing.status,
+        calendarEventsDeleted: eventDeletions,
+      },
     });
 
     revalidateForCandidate({ candidateRfId: existing.candidateRfId, candidateId: existing.candidateId });
@@ -685,6 +725,30 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       eventSummary: input.subject,
       googleEventId: created.eventId,
       meetLink: created.meetLink,
+      deliveredVia: "calendar",
+    },
+  });
+
+  // Phase 4d: ActivityLog audit-feed entry. Interview invites go out
+  // via Google Calendar (sendUpdates: all) rather than a raw Gmail
+  // send, but from the recruiter's POV they're emails — the
+  // "email_sent" tile on the Dashboard counts them. targetType is
+  // "interview" (the invite hangs off an Interview row); metadata
+  // carries the recipient + subject so per-user activity feeds can
+  // render "invited {email} to {subject}" without a join.
+  const org = await getCurrentOrg();
+  await logActivity({
+    organizationId: org.id,
+    userId: user.id,
+    actionType: "email_sent",
+    targetType: "interview",
+    targetId: interview.id,
+    metadata: {
+      kind: "interview_invite",
+      party: input.party,
+      recipientEmail: input.attendeeEmail,
+      subject: input.subject,
+      googleEventId: created.eventId,
       deliveredVia: "calendar",
     },
   });

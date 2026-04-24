@@ -176,6 +176,25 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
       },
       select: { id: true, syncedToRf: true },
     });
+
+    // Phase 4d: ActivityLog audit-feed entry for the recorded offer.
+    await logActivity({
+      organizationId: org.id,
+      userId,
+      actionType: "offer_extended",
+      targetType: "placement",
+      targetId: row.id,
+      metadata: {
+        offerAmount: input.salary ?? null,
+        currency: input.currency || "USD",
+        title: input.title || null,
+        startDate: input.startDate ?? null,
+        candidateRfId: input.candidateRfId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+      },
+    });
+
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
     return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
@@ -1186,6 +1205,34 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   } catch {
     // ActionLog is observability, not load-bearing. Swallow.
   }
+
+  // Phase 4d: audit-feed entry for candidate_applied_to_job. Non-
+  // throwing. targetId is the Neon Candidate.id (cuid); we look it up
+  // by rfId since applyCandidateToJob's input is still RF-keyed.
+  const candidateRow = await prisma.candidate.findFirst({
+    where: { rfId: input.candidateRfId, organizationId: org.id },
+    select: { id: true },
+  });
+  if (candidateRow) {
+    await logActivity({
+      organizationId: org.id,
+      userId,
+      actionType: "candidate_applied_to_job",
+      targetType: "candidate",
+      targetId: candidateRow.id,
+      metadata: {
+        placementId,
+        jobId: jobId ?? null,
+        jobRfId: input.jobRfId,
+        clientId: clientId ?? null,
+        clientRfId: input.clientRfId,
+        jobTitle: input.jobTitle,
+        clientName: input.clientName,
+        rfSynced,
+      },
+    });
+  }
+
   revalidatePath(`/candidates/${input.candidateRfId}`);
   revalidatePath(`/pipeline`);
   revalidatePath(`/jobs/${input.jobRfId}`);

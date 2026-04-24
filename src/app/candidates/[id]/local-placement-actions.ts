@@ -117,6 +117,24 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
       metadata: { jobRfId, jobId, clientRfId, clientId, local: true },
     });
 
+    // Phase 4d: ActivityLog audit-feed entry for the Ace-native apply
+    // path. Mirrors the RF-imported applyCandidateToJob log so both
+    // profile variants land under the same actionType.
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "candidate_applied_to_job",
+      targetType: "candidate",
+      targetId: input.candidateId,
+      metadata: {
+        jobId: jobId ?? null,
+        jobRfId: jobRfId ?? null,
+        clientId: clientId ?? null,
+        clientRfId: clientRfId ?? null,
+        local: true,
+      },
+    });
+
     revalidatePath(`/candidates/${input.candidateId}`);
     revalidatePath("/pipeline");
     return { ok: true };

@@ -40,33 +40,41 @@ model ActivityLog {
 
 `(organizationId, timestamp DESC)` is the Dashboard read pattern (newest-first in one tenant). `(userId, timestamp DESC)` powers per-user recent-activity feeds. `(targetType, targetId)` backs the per-entity activity panels that'll land on candidate / job / client profiles. `(actionType)` covers filter-by-event-type rollups.
 
-## Action types firing today (Phase 4c)
+## Action types firing today
 
-| `actionType` | `targetType` | `targetId` | `metadata` |
-|---|---|---|---|
-| `candidate_created` | `candidate` | new Candidate.id | `{ source: "manual", hasResume, hasEmail }` |
-| `submittal_sent` | `placement` | Placement.id | `{ jobId, jobRfId, candidateRfId \| candidateId, clientId, clientRfId, jobTitle, clientName, local? }` |
-| `placement_confirmed` | `placement` | Placement.id | `{ feeAmount, acceptedSalary, feePercentage, startDate }` |
+Phase 4c wired the first three; Phase 4d wired the remaining five. Every entry below lands a row through `logActivity` — no call site writes `prisma.activityLog.create` directly.
 
-### Where each fires
+| `actionType` | `targetType` | `targetId` | Trigger server action | Key `metadata` fields | Dual-path? |
+|---|---|---|---|---|---|
+| `candidate_created` | `candidate` | new Candidate.id | `createCandidate` | `source`, `hasResume`, `hasEmail` | No — single action (Ace-native create only) |
+| `candidate_applied_to_job` | `candidate` | Candidate.id | `applyCandidateToJob` + `applyLocalCandidateToJob` | `placementId?`, `jobId`, `jobRfId`, `clientId`, `clientRfId`, `jobTitle?`, `clientName?`, `local?`, `rfSynced?` | **Yes** — RF-imported path + Ace-native path |
+| `submittal_sent` | `placement` | Placement.id | `sendSubmittalEmail` + `sendLocalSubmittalEmail` | `jobId`, `jobRfId`, `candidateRfId ∣ candidateId`, `clientId`, `clientRfId`, `jobTitle`, `clientName`, `local?` | **Yes** — same dual-path as above |
+| `interview_scheduled` | `interview` | Interview.id | `scheduleInterview` | `jobRfId`, `clientRfId`, `candidateRfId ∣ candidateId`, `scheduledAt`, `durationMin`, `type`, `source` | No — single shared action |
+| `interview_cancelled` | `interview` | Interview.id | `cancelInterview` | `candidateRfId ∣ candidateId`, `priorStatus`, `calendarEventsDeleted` | No — single shared action |
+| `offer_extended` | `placement` | Placement.id | `recordOffer` | `offerAmount`, `currency`, `title`, `startDate`, `candidateRfId`, `jobRfId`, `clientRfId` | No — single shared action |
+| `placement_confirmed` | `placement` | Placement.id | `confirmStart` | `feeAmount`, `acceptedSalary`, `feePercentage`, `startDate` | No — single shared action |
+| `email_sent` | `interview` (when it's an invite) | Interview.id | `sendInterviewInvite` | `kind`, `party`, `recipientEmail`, `subject`, `googleEventId`, `deliveredVia` | No — single shared action |
 
-- `candidate_created` — `src/app/candidates/new/actions.ts` `createCandidate`.
-- `submittal_sent` — **two sites**: `src/app/candidates/[id]/placement-actions.ts` `sendSubmittalEmail` (RF-imported candidate profile, `page.tsx`) and `src/app/candidates/[id]/local-placement-actions.ts` `sendLocalSubmittalEmail` (Ace-native candidate profile, `local-profile.tsx`). Same `actionType` + `targetType`; `metadata.local: true` distinguishes the Ace-native path.
-- `placement_confirmed` — `src/app/candidates/[id]/placement-actions.ts` `confirmStart`. Shared between both candidate profile variants via the `PlacementActionsIsland`.
+### Dual-path notes
+
+- `candidate_applied_to_job` and `submittal_sent` each fire from **two sites**, not a shared action layer: `placement-actions.ts` serves the RF-imported candidate profile (`candidates/[id]/page.tsx`); `local-placement-actions.ts` serves the Ace-native profile (`candidates/[id]/local-profile.tsx`). Metadata carries `local: true` on the Ace-native writer.
+- `interview_scheduled`, `interview_cancelled`, `offer_extended`, `placement_confirmed`, and `email_sent` (interview invite flavor) fire from a **single** shared action layer — both profile variants invoke the same server action via the `PlacementActionsIsland`.
+- `candidate_created` is Ace-native only today (`/candidates/new`). RF-side candidate ingestion is historical (bulk import, not a user-initiated action) so it doesn't emit a row.
+
+### `email_sent` scope
+
+Phase 4d wires `email_sent` ONLY for the interview-invite path (`sendInterviewInvite`). Reason: the submittal composer's send already emits `submittal_sent` — double-wiring to `email_sent` would duplicate rows for the same user action. Other email senders (rejection, offer acceptance, interview confirmation, reference check, candidate confirmation) are wire-as-touched in a later commit when the audit feed surfaces them.
 
 ## Not in scope today
 
-### Future wire (Phase 4d or wire-as-touched)
+### Future wire (wire-as-touched in a later commit)
 
-- `candidate_applied_to_job`
-- `interview_scheduled`
-- `interview_cancelled`
-- `offer_extended`
-- `email_sent`
+- `email_sent` from non-invite paths — `sendRejectionEmail`, `sendOfferAcceptanceEmail`, `sendInterviewConfirmationEmail`, `sendReferenceCheckRequest`, `sendLocalReferenceRequest`, `deliverCandidateConfirmation`. Wire whenever the next doc/UI surface needs them on the activity feed.
+- `client_created`, `job_created` — stub out when the per-client and per-job activity panels land.
 
-### Intentionally excluded
+### Intentionally deferred (pending KrispcallLog audit before Phase 5)
 
-- `call_logged` — Quo (Krispcall webhook → `KrispcallLog`) owns call audit. Duplicating into `ActivityLog` would require re-listening for webhooks and would offer no new value over the existing `KrispcallLog` reads.
+- `call_logged` — Quo (Krispcall webhook → `KrispcallLog`) owns call audit today. Migrating into `ActivityLog` requires a `KrispcallLog` audit pass to confirm no consumer reads the existing column shape we'd need to preserve. Deferred to post-Phase-4 / pre-Phase-5.
 
 ## How to write a row
 
