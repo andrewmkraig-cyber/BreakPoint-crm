@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
+import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-payload-shapes";
 
 // Active pipeline stages share one green shade so side-by-side rows read
 // consistently. Inactive buckets (applied/sourced/other) stay muted; rejected

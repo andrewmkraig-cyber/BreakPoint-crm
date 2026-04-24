@@ -1,4 +1,4 @@
-import type { RFCandidate } from "@/lib/recruiterflow";
+import type { RFCandidate } from "@/lib/rf-payload-shapes";
 
 // Shared candidate-name extraction. Uses `||` (not `??`) for every step so
 // empty strings from RF fall through to the next fallback. This was the root

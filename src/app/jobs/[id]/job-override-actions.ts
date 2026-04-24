@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
 // Local-only override layer for RF jobs. RF is the system of record but
@@ -68,6 +69,7 @@ export async function updateJobOverrideDescription(args: {
     // the caller passed in).
     const resolvedRfId = job?.legacyRfId ?? rfId;
     if (resolvedRfId == null) return { ok: false, error: "Job id invalid." };
+    const org = await getCurrentOrg();
     const saved = await prisma.jobOverride.upsert({
       where: { jobRfId: resolvedRfId },
       update: {
@@ -79,6 +81,7 @@ export async function updateJobOverrideDescription(args: {
         jobId: job?.id ?? null,
         description: description || null,
         updatedById: user.id,
+        organizationId: org.id,
       },
       select: { jobRfId: true, description: true, updatedAt: true },
     });

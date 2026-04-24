@@ -4,12 +4,12 @@ import { extractCandidateFields } from "@/lib/candidate-fields";
 import { getRecruiterPhone } from "@/lib/preferences";
 import { formatLocation } from "@/lib/utils";
 import {
-  recruiterflow,
   type RFJob,
   type RFClient,
   type RFContact,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfCandidateByRfId, getRfClientsForOrg } from "@/lib/candidates";
+import { getRfShapedContactsForOrg } from "@/lib/contacts";
 import type { MergeFieldValues } from "@/lib/merge-fields";
 
 export type BuildMergeContextInput = {
@@ -56,23 +56,16 @@ export async function buildFullMergeValues(
       : null,
     input.jobRfId
       ? safeCall(async () => {
-          try {
-            const direct = await recruiterflow.getJob(input.jobRfId!);
-            if (direct && typeof direct === "object") return direct;
-          } catch {
-            // fall through to list
-          }
-          // Phase 2: fall back to the Neon-backed shim instead of a
-          // second live RF call. Callers only need the shape; RF /job/{id}
-          // is the primary path and only fails when the id hasn't been
-          // cached by the RF list endpoint yet.
+          // Phase 5: Neon is the only source. The shim indexes the shim
+          // output by jobRfId (RF-imported positive ids); misses return
+          // null and downstream fields come back as empty strings.
           const { getRfJobsForOrg } = await import("@/lib/candidates");
           const all = await getRfJobsForOrg();
           return all.find((x) => x.id === input.jobRfId) ?? null;
         })
       : null,
     input.clientRfId ? safeCall(() => getRfClientsForOrg()) : null,
-    input.clientRfId ? safeCall(() => recruiterflow.listAllContacts({ perPage: 100 })) : null,
+    input.clientRfId ? safeCall(() => getRfShapedContactsForOrg()) : null,
   ]);
 
   const candidateFields = candidate ? extractCandidateFields(candidate) : null;

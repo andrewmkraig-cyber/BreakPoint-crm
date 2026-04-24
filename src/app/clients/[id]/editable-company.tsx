@@ -13,7 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { formatPhone, telHref } from "@/lib/recruiterflow";
+import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { updateClientCompany } from "@/app/clients/[id]/actions";
 import { LabeledField } from "@/app/candidates/[id]/editable-helpers";
 

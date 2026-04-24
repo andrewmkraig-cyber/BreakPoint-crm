@@ -123,11 +123,12 @@ export async function saveBenefits(clientId: number, body: string): Promise<Save
   const user = await requireUserId();
   if (!user) return { ok: false, error: "Not signed in." };
 
+  const org = await getCurrentOrg();
   const trimmed = body.slice(0, 64_000);
   const row = await prisma.clientBenefits.upsert({
     where: { clientRfId: clientId },
     update: { body: trimmed, updatedById: user.id },
-    create: { clientRfId: clientId, body: trimmed, updatedById: user.id },
+    create: { clientRfId: clientId, body: trimmed, updatedById: user.id, organizationId: org.id },
     select: { updatedAt: true },
   });
 

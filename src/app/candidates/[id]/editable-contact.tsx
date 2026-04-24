@@ -6,7 +6,7 @@ import { Loader2, Pencil, Save, X, Mail, Phone as PhoneIcon, MapPin, ExternalLin
 import { toast } from "sonner";
 import { SectionCard, LabeledField } from "@/app/candidates/[id]/editable-helpers";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
-import { formatPhone, telHref, normalizeToE164 } from "@/lib/recruiterflow";
+import { formatPhone, telHref, normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { EmailLink } from "@/components/email-link";
 import { cn } from "@/lib/utils";
 

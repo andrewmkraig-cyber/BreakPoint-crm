@@ -7,7 +7,7 @@ import {
   flattenPipeline,
   type PipelineBucket,
   type RFJob,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getJobByIdentifier } from "@/lib/jobs";
 import { getPlacementsForOrg } from "@/lib/placements";

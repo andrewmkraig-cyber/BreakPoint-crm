@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { tenantScopeExtension } from "@/lib/prisma-tenant-scope";
 
 // Neon cold-start handling: a serverless Postgres instance that's been idle
 // can take a couple of seconds to accept connections, which surfaces to
@@ -24,32 +25,44 @@ function makeClient() {
   const base = new PrismaClient({
     log: process.env.NODE_ENV === "development" ? ["query", "error", "warn"] : ["error"],
   });
-  return base.$extends({
-    query: {
-      $allOperations: async ({ args, query }) => {
-        let lastErr: unknown;
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-          try {
-            return await query(args);
-          } catch (err) {
-            lastErr = err;
-            if (!isReachabilityError(err)) throw err;
-            if (attempt === MAX_ATTEMPTS) break;
-            // Surface the wait in dev logs so a slow Neon cold start looks
-            // like a deliberate pause, not a hang.
-            if (process.env.NODE_ENV !== "production") {
-              // eslint-disable-next-line no-console
-              console.warn(
-                `[prisma] cold-start retry ${attempt}/${MAX_ATTEMPTS - 1} after ${RETRY_DELAY_MS}ms (Can't reach database server)`,
-              );
+  // Extension order matters: the cold-start retry wraps the query call
+  // (catches P1001 from `query(args)`). The tenant-scope extension
+  // mutates args before the retry sees them. Applying tenant-scope
+  // first means the retry still has the org-scoped args after a cold
+  // start, not the original caller payload.
+  // The cast back to the retry-wrapped client keeps the per-delegate
+  // return types (findMany → Candidate[] not unknown[]) flowing through
+  // to callers — the $allOperations extension's generic signature
+  // otherwise widens returns and breaks downstream inference on ~150
+  // query sites.
+  const scoped = base.$extends(tenantScopeExtension) as unknown as typeof base;
+  return scoped
+    .$extends({
+      query: {
+        $allOperations: async ({ args, query }) => {
+          let lastErr: unknown;
+          for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+              return await query(args);
+            } catch (err) {
+              lastErr = err;
+              if (!isReachabilityError(err)) throw err;
+              if (attempt === MAX_ATTEMPTS) break;
+              // Surface the wait in dev logs so a slow Neon cold start looks
+              // like a deliberate pause, not a hang.
+              if (process.env.NODE_ENV !== "production") {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  `[prisma] cold-start retry ${attempt}/${MAX_ATTEMPTS - 1} after ${RETRY_DELAY_MS}ms (Can't reach database server)`,
+                );
+              }
+              await sleep(RETRY_DELAY_MS);
             }
-            await sleep(RETRY_DELAY_MS);
           }
-        }
-        throw lastErr;
+          throw lastErr;
+        },
       },
-    },
-  });
+    });
 }
 
 const globalForPrisma = globalThis as unknown as {

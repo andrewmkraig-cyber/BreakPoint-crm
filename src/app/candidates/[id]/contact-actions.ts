@@ -4,27 +4,25 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { recruiterflow } from "@/lib/recruiterflow";
 
 // Quick-add contact used by the Schedule Interview dialog's "+ Add new
-// contact" option. Creates the contact in RecruiterFlow (the source of
-// truth for contacts), then returns the RF shape so the client can
-// splice it into the dropdown and auto-select it.
-//
-// Note on the no-RF-on-create rule: that rule scopes to candidates /
-// clients / jobs, which Ace is progressively owning locally. Contacts
-// under existing clients still live in RF — we read them everywhere and
-// the dialog needs the new contact to be visible in the same list as
-// the existing ones. Pushing to RF keeps one source of truth. If RF
-// rejects (rate limit, transient error), we surface the error.
+// contact" option. Phase 5: contacts are Neon-native now — write goes
+// straight to the Contact table scoped by organizationId. No RF call.
+// The dialog's client gets back a row shaped the same way it consumes
+// the existing contact list (id / name / title / email), so splicing
+// the new row into the dropdown + auto-selecting it still works.
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
   | { ok: false; error: string };
 
 export type CreateContactInput = {
-  clientRfId: number;
+  // The caller may know the client by either legacyRfId (numeric, RF-
+  // imported clients) or cuid (Ace-native clients). Exactly one is set.
+  clientRfId?: number | null;
+  clientId?: string | null;
   firstName: string;
   lastName?: string;
   email?: string;
@@ -34,7 +32,9 @@ export type CreateContactInput = {
 };
 
 export type CreatedContact = {
-  id: number;
+  // The Contact row's cuid — stable identity across both RF-imported
+  // and Ace-native clients.
+  id: string;
   name: string;
   title: string;
   email: string;
@@ -45,40 +45,54 @@ export async function createClientContact(
 ): Promise<Result<CreatedContact>> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return { ok: false, error: "Not signed in." };
-  if (!input.clientRfId || !Number.isFinite(input.clientRfId)) {
-    return { ok: false, error: "Client id is required." };
-  }
+
   const firstName = input.firstName.trim();
   if (!firstName) return { ok: false, error: "First name is required." };
 
+  const clientRfId = input.clientRfId ?? null;
+  const clientIdCuid = input.clientId ?? null;
+  if (clientRfId == null && !clientIdCuid) {
+    return { ok: false, error: "Client id is required." };
+  }
+
   try {
-    const created = await recruiterflow.createContact({
-      first_name: firstName,
-      last_name: input.lastName?.trim() || undefined,
-      email: input.email?.trim() || undefined,
-      phone_number: input.phone?.trim() || undefined,
-      current_designation: input.title?.trim() || undefined,
-      client_company_id: input.clientRfId,
-      linkedin_profile: input.linkedinUrl?.trim() || undefined,
+    const org = await getCurrentOrg();
+    // Resolve the Client row by whichever identity the caller sent.
+    // Tenant-scoped so a hostile caller can't force a contact onto
+    // another org's client.
+    const client = clientIdCuid
+      ? await prisma.client.findFirst({
+          where: { id: clientIdCuid, organizationId: org.id },
+          select: { id: true, legacyRfId: true },
+        })
+      : await prisma.client.findFirst({
+          where: { legacyRfId: clientRfId!, organizationId: org.id },
+          select: { id: true, legacyRfId: true },
+        });
+    if (!client) return { ok: false, error: "Client not found in this tenant." };
+
+    const lastName = input.lastName?.trim() || null;
+    const email = input.email?.trim() || "";
+    const phone = input.phone?.trim() || "";
+    const title = input.title?.trim() || null;
+    const linkedin = input.linkedinUrl?.trim() || null;
+
+    const created = await prisma.contact.create({
+      data: {
+        firstName,
+        lastName,
+        name: [firstName, lastName].filter(Boolean).join(" "),
+        emails: email ? [email] : [],
+        phoneNumbers: phone ? [{ number: phone }] : undefined,
+        currentDesignation: title,
+        linkedinProfile: linkedin,
+        clientId: client.id,
+        organizationId: org.id,
+        addedAt: new Date(),
+      },
+      select: { id: true, name: true, currentDesignation: true, emails: true },
     });
 
-    const fullName =
-      [created.first_name, created.last_name].filter(Boolean).join(" ") ||
-      (typeof created.name === "string" ? created.name : "") ||
-      firstName;
-    const firstEmail = Array.isArray(created.email)
-      ? created.email[0] ?? ""
-      : typeof created.email === "string"
-        ? created.email
-        : (input.email?.trim() ?? "");
-    const value: CreatedContact = {
-      id: created.id,
-      name: fullName,
-      title: created.current_designation ?? input.title?.trim() ?? "",
-      email: firstEmail,
-    };
-
-    // Log for audit + cache busting.
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
       select: { id: true },
@@ -88,27 +102,38 @@ export async function createClientContact(
         userId: user.id,
         actionType: "contact_created",
         subjectType: "client",
-        subjectId: String(input.clientRfId),
+        subjectId: client.id,
         metadata: {
-          contactRfId: created.id,
+          contactId: created.id,
+          clientLegacyRfId: client.legacyRfId,
           firstName,
-          lastName: input.lastName?.trim() || null,
-          email: input.email?.trim() || null,
-          title: input.title?.trim() || null,
+          lastName,
+          email: email || null,
+          title: title,
         },
       });
     }
 
-    // Invalidate caches that fetch client contacts so the new row appears
-    // across the app on next navigation.
-    revalidatePath(`/clients/${input.clientRfId}`);
+    // Invalidate caches that fetch client contacts so the new row
+    // appears across the app on next navigation. /clients/[id] accepts
+    // both legacyRfId and cuid slugs via getClientByIdentifier.
+    const clientSlug = client.legacyRfId != null ? String(client.legacyRfId) : client.id;
+    revalidatePath(`/clients/${clientSlug}`);
     revalidatePath("/candidates", "layout");
 
-    return { ok: true, value };
+    return {
+      ok: true,
+      value: {
+        id: created.id,
+        name: created.name ?? firstName,
+        title: created.currentDesignation ?? title ?? "",
+        email: created.emails[0] ?? email,
+      },
+    };
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : "Failed to create contact in RecruiterFlow.",
+      error: e instanceof Error ? e.message : "Failed to create contact.",
     };
   }
 }

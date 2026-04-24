@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import type { RFCandidate, RFClient, RFContact, RFJob } from "@/lib/recruiterflow";
+import type { RFCandidate, RFClient, RFContact, RFJob } from "@/lib/rf-payload-shapes";
 
 // Row shape used by the /candidates list table.
 export type CandidateListRow = {

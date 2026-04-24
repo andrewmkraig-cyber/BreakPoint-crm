@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { normalizeToE164 } from "@/lib/recruiterflow";
+import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 // DOCX mime types and filename suffixes we can extract text from via mammoth.
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

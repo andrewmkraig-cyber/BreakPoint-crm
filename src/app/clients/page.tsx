@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ClientsView, type ClientCard } from "@/app/clients/clients-view";
-import { buildClientCounts, emptyJobCounts, canonicalStage } from "@/lib/recruiterflow";
+import { buildClientCounts, emptyJobCounts, canonicalStage } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getClientsForOrg } from "@/lib/clients";
 

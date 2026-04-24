@@ -3,7 +3,7 @@
 import { useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Mail, Phone as PhoneIcon, Plus, UserPlus, X, ExternalLink } from "lucide-react";
-import { formatPhone, telHref } from "@/lib/recruiterflow";
+import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { addContact } from "@/app/clients/[id]/actions";
 import { EmailLink } from "@/components/email-link";
 import { cn } from "@/lib/utils";

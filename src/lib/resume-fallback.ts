@@ -2,7 +2,7 @@
 // regexes for email / phone. Everything here is conservative — we'd rather
 // leave a field blank than populate it with garbage.
 import type { ParsedCandidate } from "@/lib/claude";
-import { normalizeToE164 } from "@/lib/recruiterflow";
+import { normalizeToE164 } from "@/lib/rf-payload-shapes";
 
 const EMPTY: ParsedCandidate = {
   first_name: null,

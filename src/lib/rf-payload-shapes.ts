@@ -1,14 +1,13 @@
+// Phase 5: types + normalizers + helpers that consume cached RF-shaped
+// payloads stored in Neon (Candidate.raw, Client.raw, Job.raw,
+// Contact.raw). No HTTP — the RecruiterFlow API surface was deleted
+// in Phase 5; this file is what survived of the old recruiterflow.ts.
+//
+// Split rationale: 20 files consume these types to parse RF-shaped
+// `raw` JSON columns that Phase 0 stashed in Neon. Those types and
+// helpers aren't "RF integration code" any more — they're Neon
+// payload shapes. Filename reflects that.
 import { formatLocation } from "@/lib/utils";
-
-const RF_BASE_URL = process.env.RECRUITERFLOW_BASE_URL ?? "https://recruiterflow.com/api/external";
-
-function getApiKey(): string {
-  const key = process.env.RECRUITERFLOW_API_KEY;
-  if (!key) {
-    throw new Error("RECRUITERFLOW_API_KEY is not set in environment");
-  }
-  return key;
-}
 
 export type RFLocation = {
   city?: string | null;
@@ -177,328 +176,6 @@ export type RFContact = {
   latest_activity_time?: string | null;
   lead_owner?: RFUserRef | null;
   [key: string]: unknown;
-};
-
-type RFRequestOptions = {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
-  query?: Record<string, string | number | boolean | undefined>;
-  body?: unknown;
-  signal?: AbortSignal;
-  cache?: RequestCache;
-  revalidate?: number;
-};
-
-function buildUrl(path: string, query?: RFRequestOptions["query"]): string {
-  const url = new URL(`${RF_BASE_URL}${path}`);
-  if (query) {
-    for (const [k, v] of Object.entries(query)) {
-      if (v !== undefined && v !== null && v !== "") {
-        url.searchParams.set(k, String(v));
-      }
-    }
-  }
-  return url.toString();
-}
-
-export async function rfFetch<T = unknown>(
-  path: string,
-  opts: RFRequestOptions = {},
-): Promise<T> {
-  const url = buildUrl(path, opts.query);
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "rf-api-key": getApiKey(),
-  };
-
-  const nextOpts: { revalidate?: number } = {};
-  if (typeof opts.revalidate === "number") nextOpts.revalidate = opts.revalidate;
-
-  const res = await fetch(url, {
-    method: opts.method ?? "GET",
-    headers,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
-    signal: opts.signal,
-    cache: opts.cache,
-    next: Object.keys(nextOpts).length ? nextOpts : undefined,
-  });
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`RecruiterFlow API ${res.status} ${res.statusText}: ${text}`);
-  }
-  return (await res.json()) as T;
-}
-
-function unwrap<T>(res: T[] | { data?: T[] } | null | undefined): T[] {
-  if (Array.isArray(res)) return res;
-  return res?.data ?? [];
-}
-
-async function listAllPaged<T>(
-  fetcher: (page: number, perPage: number) => Promise<T[]>,
-  perPage = 100,
-  maxPages = 40,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let page = 1; page <= maxPages; page++) {
-    const batch = await fetcher(page, perPage);
-    out.push(...batch);
-    if (batch.length < perPage) break;
-  }
-  return out;
-}
-
-export const recruiterflow = {
-  // ---- Candidates ----
-
-  async listCandidates(params: {
-    query?: string;
-    page?: number;
-    perPage?: number;
-  } = {}): Promise<RFCandidate[]> {
-    const res = await rfFetch<RFCandidate[] | { data?: RFCandidate[] }>("/candidate/list", {
-      query: {
-        search_query: params.query,
-        current_page: params.page ?? 1,
-        items_per_page: params.perPage ?? 25,
-      },
-      revalidate: 60,
-    });
-    return unwrap(res);
-  },
-
-  async listAllCandidates(params: {
-    query?: string;
-    perPage?: number;
-    maxPages?: number;
-  } = {}): Promise<RFCandidate[]> {
-    return listAllPaged(
-      (page, perPage) =>
-        this.listCandidates({ query: params.query, page, perPage }),
-      params.perPage ?? 100,
-      params.maxPages ?? 40,
-    );
-  },
-
-  async getCandidate(id: number): Promise<RFCandidate> {
-    return rfFetch<RFCandidate>(`/candidate/${id}`, { revalidate: 30 });
-  },
-
-  // ---- Jobs ----
-
-  async getJob(id: number): Promise<RFJob> {
-    return rfFetch<RFJob>(`/job/${id}`, { revalidate: 30 });
-  },
-
-  async listJobs(params: {
-    page?: number;
-    perPage?: number;
-  } = {}): Promise<RFJob[]> {
-    const res = await rfFetch<RFJob[] | { data?: RFJob[] }>("/job/list", {
-      query: {
-        current_page: params.page ?? 1,
-        items_per_page: params.perPage ?? 100,
-      },
-      revalidate: 60,
-    });
-    return unwrap(res);
-  },
-
-  async listAllJobs(params: { perPage?: number; maxPages?: number } = {}): Promise<RFJob[]> {
-    return listAllPaged(
-      (page, perPage) => this.listJobs({ page, perPage }),
-      params.perPage ?? 100,
-      params.maxPages ?? 20,
-    );
-  },
-
-  // ---- Clients (companies) ----
-
-  async listClients(params: {
-    page?: number;
-    perPage?: number;
-  } = {}): Promise<RFClient[]> {
-    const res = await rfFetch<RFClient[] | { data?: RFClient[] }>("/client/list", {
-      query: {
-        current_page: params.page ?? 1,
-        items_per_page: params.perPage ?? 100,
-      },
-      revalidate: 60,
-    });
-    return unwrap(res);
-  },
-
-  async listAllClients(params: { perPage?: number; maxPages?: number } = {}): Promise<RFClient[]> {
-    return listAllPaged(
-      (page, perPage) => this.listClients({ page, perPage }),
-      params.perPage ?? 100,
-      params.maxPages ?? 20,
-    );
-  },
-
-  // ---- Contacts ----
-
-  async listContacts(params: {
-    page?: number;
-    perPage?: number;
-    query?: string;
-  } = {}): Promise<RFContact[]> {
-    const res = await rfFetch<RFContact[] | { data?: RFContact[] }>("/contact/list", {
-      query: {
-        current_page: params.page ?? 1,
-        items_per_page: params.perPage ?? 100,
-        search_query: params.query,
-      },
-      revalidate: 60,
-    });
-    return unwrap(res);
-  },
-
-  async listAllContacts(params: { perPage?: number; maxPages?: number; query?: string } = {}): Promise<RFContact[]> {
-    return listAllPaged(
-      (page, perPage) => this.listContacts({ query: params.query, page, perPage }),
-      params.perPage ?? 100,
-      params.maxPages ?? 20,
-    );
-  },
-
-  async createContact(body: {
-    first_name: string;
-    last_name?: string;
-    email?: string;
-    phone_number?: string;
-    current_designation?: string;
-    client_company_id?: number;
-    linkedin_profile?: string;
-  }): Promise<RFContact> {
-    return rfFetch<RFContact>("/contact/add", { method: "POST", body });
-  },
-
-  async createCandidate(body: {
-    first_name: string;
-    last_name?: string;
-    email?: string;
-    phone_number?: string;
-    current_designation?: string;
-    current_organization?: string;
-    location?: string;
-    linkedin_profile?: string;
-    skills?: string[];
-    source_name?: string;
-    notes?: string;
-  }): Promise<RFCandidate> {
-    return rfFetch<RFCandidate>("/candidate/add", { method: "POST", body });
-  },
-
-  // Creates a job in RF via /job/add. RF hasn't published public docs for this
-  // endpoint; field names are inferred from /job/list response shape and from
-  // the /candidate/add convention (flat body, snake_case). If RF returns a
-  // non-SUCCESS RESULT, the caller surfaces it.
-  async createJob(body: {
-    title: string;
-    client_company_id?: number;
-    department?: string;
-    locations?: string[];
-    job_type?: string;
-    employment_type?: string;
-    salary_range_start?: number;
-    salary_range_end?: number;
-    salary_range_currency?: string;
-    salary_frequency?: string;
-    number_of_openings?: number;
-    description?: string;
-    is_open?: boolean;
-  }): Promise<RFJob | { RESULT?: string; id?: number; job_id?: number }> {
-    return rfFetch("/job/add", { method: "POST", body });
-  },
-
-  // Partial update. /candidate/update accepts any subset of fields; unknown
-  // fields are silently ignored and omitted fields are left alone. All nested
-  // array modifications (add/remove note, experience, skill, education) go
-  // through this by sending the whole replacement array.
-  async updateCandidate(body: {
-    id: number;
-    first_name?: string;
-    last_name?: string;
-    email?: string | string[];
-    phone_number?: string | string[];
-    current_designation?: string;
-    current_organization?: string;
-    linkedin_profile?: string;
-    candidate_summary?: string;
-    location?: { location?: string; city?: string; state?: string; country?: string } | string;
-    expected_salary?: { number?: number | null; currency?: string | null } | null;
-    skills?: string[];
-    notes?: Array<{ id?: number; note: string }>;
-    experience?: Array<{
-      designation?: string;
-      organization?: string;
-      from?: [number | null, number | null];
-      to?: [number | null, number | null];
-      description?: string | null;
-      rank?: number;
-    }>;
-    education?: Array<{
-      school?: string;
-      degree?: string;
-      from?: [number | null, number | null];
-      to?: [number | null, number | null];
-      description?: string | null;
-      rank?: number;
-    }>;
-    tags?: string[];
-    jobs?: Array<{ job_id: number; stage_name?: string }>;
-  }): Promise<{ RESULT?: string } | RFCandidate> {
-    return rfFetch("/candidate/update", { method: "POST", body });
-  },
-
-  // Creates a new company in RF via /client/add. RF accepts a flat body similar
-  // to /candidate/add; unknown fields are ignored. Only `name` is required.
-  // `location` accepts either a string ("Cleveland, OH") or a structured object.
-  async createClient(body: {
-    name: string;
-    domain?: string;
-    industry?: string;
-    linkedin_page?: string;
-    phone_number?: string | string[];
-    overview?: string;
-    location?:
-      | string
-      | {
-          location?: string;
-          city?: string;
-          state?: string;
-          country?: string;
-          postal_code?: string;
-        };
-  }): Promise<RFClient & { id: number }> {
-    return rfFetch<RFClient & { id: number }>("/client/add", { method: "POST", body });
-  },
-
-  // Partial client/company update. Same pattern as /candidate/update — unknown
-  // fields ignored, omitted fields left alone. Nested fields that RF accepts
-  // include website/domain, industry, linkedin, phone, and location.
-  async updateClient(body: {
-    id: number;
-    name?: string;
-    domain?: string;
-    industry?: string;
-    linkedin_page?: string;
-    phone_number?: string | string[];
-    location?:
-      | string
-      | {
-          location?: string;
-          city?: string;
-          state?: string;
-          country?: string;
-          postal_code?: string;
-          street_address_1?: string;
-          street_address_2?: string;
-        };
-  }): Promise<{ RESULT?: string } | RFClient> {
-    return rfFetch("/client/update", { method: "POST", body });
-  },
 };
 
 // ---- Normalizers / helpers ----
@@ -785,7 +462,7 @@ export function normalizeClient(c: RFClient) {
   };
 }
 
-// All Ace phone displays are normalized to `+1 XXX-XXX-XXXX` — Krispcall's
+// All Ace phone displays are normalized to `+1 XXX-XXX-XXXX` — Krispcall/Quo
 // click-to-call expects the +1 prefix on tel: links. Non-US numbers fall
 // through with a `+` prefix on the digits so they still dial out correctly.
 export function formatPhone(raw: string | null | undefined): string {
@@ -818,8 +495,8 @@ export function normalizeToE164(raw: string | null | undefined): string | null {
   return trimmed;
 }
 
-// Builds a `tel:` href (E.164) so Krispcall click-to-call always receives a
-// leading + and country code.
+// Builds a `tel:` href (E.164) so Krispcall/Quo click-to-call always receives
+// a leading + and country code.
 export function telHref(raw: string | null | undefined): string {
   if (!raw) return "";
   const digits = raw.replace(/\D/g, "");

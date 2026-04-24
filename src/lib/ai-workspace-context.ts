@@ -1,13 +1,13 @@
 import { getRfCandidatesForOrg, getRfClientsForOrg } from "@/lib/candidates";
+import { getRfShapedContactsForOrg } from "@/lib/contacts";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import {
-  recruiterflow,
   normalizeClient,
   normalizeJob,
   canonicalStage,
   type RFCandidate,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
 
 // Builds the system prompt for the per-entity AI workspace chat. The spec
 // asks to "query Neon for everything available on this client" — but the
@@ -40,7 +40,7 @@ export async function buildClientContext(clientId: string): Promise<string> {
   const [clients, allJobs, allContacts, allCandidates, placements, agreements, benefits, jobOverrides] = await Promise.all([
     getRfClientsForOrg().catch(() => []),
     (await import("@/lib/candidates")).getRfJobsForOrg().catch(() => []),
-    recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
+    getRfShapedContactsForOrg().catch(() => []),
     getRfCandidatesForOrg().catch(() => []),
     prisma.placement.findMany({ where: { clientRfId: rfId, organizationId: org.id } }),
     prisma.clientAgreement.findMany({

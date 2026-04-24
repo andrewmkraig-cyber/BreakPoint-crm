@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { createChunkedUploadHandler } from "@/lib/chunked-upload-server";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { revalidatePath } from "next/cache";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export const POST = createChunkedUploadHandler<{ clientRfId: number }>({
     return { clientRfId: id };
   },
   createFirstRow: async ({ userId, filename, mimeType, size, firstChunk, isLast, extra }) => {
+    const org = await getCurrentOrg();
     const row = await prisma.clientAgreement.create({
       data: {
         clientRfId: extra.clientRfId,
@@ -28,6 +30,7 @@ export const POST = createChunkedUploadHandler<{ clientRfId: number }>({
         data: new Uint8Array(firstChunk),
         uploadComplete: isLast,
         uploadedById: userId,
+        organizationId: org.id,
       },
       select: { id: true, data: true },
     });

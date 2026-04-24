@@ -2,7 +2,7 @@ import type { Client } from "@prisma/client";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import type { RFClient } from "@/lib/recruiterflow";
+import type { RFClient } from "@/lib/rf-payload-shapes";
 
 // Row shape used by the /clients list and the /jobs/new client dropdown.
 // The `slug` is the stable URL segment — legacyRfId as a string for RF-

@@ -5,7 +5,7 @@ import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
 import { prisma } from "@/lib/prisma";
-import { normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";

@@ -180,34 +180,34 @@ export async function generateLocalSubmittal(
     const jobId = input.jobId ?? null;
     if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
 
-    // Resolve job metadata by whichever id the caller supplied. Ace-
-    // native jobs come straight from Neon; RF-imported jobs go through
-    // the RF read endpoint (that path is unchanged — retiring it is
-    // Phase 4/5 scope).
-    const { recruiterflow } = await import("@/lib/recruiterflow");
-    const { getRfClientsForOrg } = await import("@/lib/candidates");
-    const [job, clients, aceJob] = await Promise.all([
-      jobRfId != null
-        ? recruiterflow.getJob(jobRfId).catch(() => null)
-        : Promise.resolve(null),
-      getRfClientsForOrg().catch(() => []),
-      jobId
-        ? prisma.job.findUnique({
-            where: { id: jobId },
+    // Phase 5: resolve job metadata entirely from Neon. RF-imported
+    // jobs look up via legacyRfId; Ace-native via cuid. Either path
+    // returns the columns + client join we need for the writeup.
+    const jobRow = await (jobId
+      ? prisma.job.findUnique({
+          where: { id: jobId },
+          select: {
+            title: true,
+            locations: true,
+            description: true,
+            raw: true,
+            client: { select: { name: true } },
+          },
+        })
+      : jobRfId != null
+        ? prisma.job.findFirst({
+            where: { legacyRfId: jobRfId },
             select: {
               title: true,
               locations: true,
               description: true,
+              raw: true,
               client: { select: { name: true } },
             },
           })
-        : Promise.resolve(null),
-    ]);
-    const clientName = aceJob?.client?.name ?? (() => {
-      if (!job?.company_id) return "";
-      const cl = clients.find((x) => x.id === job.company_id);
-      return cl?.name ?? "";
-    })();
+        : Promise.resolve(null));
+    const rawJob = (jobRow?.raw ?? null) as { description?: unknown; title?: string; company_id?: number } | null;
+    const clientName = jobRow?.client?.name ?? "";
 
     const experienceRows = (c.experience as unknown as ExpRow[] | null) ?? [];
     const experienceSummary = experienceRows
@@ -235,19 +235,17 @@ export async function generateLocalSubmittal(
         linkedin: c.linkedinProfile ?? "",
       },
       job: {
-        title: aceJob?.title ?? job?.title ?? "(job)",
+        title: jobRow?.title ?? rawJob?.title ?? "(job)",
         clientName,
-        locations: aceJob?.locations ?? (Array.isArray(job?.locations)
-          ? (job!.locations as { location?: string }[]).map((l) => l.location ?? "").filter(Boolean)
-          : []),
+        locations: Array.isArray(jobRow?.locations) ? jobRow!.locations : [],
         salaryRange: undefined,
         employmentType: undefined,
         jobType: undefined,
         department: undefined,
         experienceRange: undefined,
         description:
-          aceJob?.description ??
-          (typeof job?.description === "string" ? job.description : undefined),
+          jobRow?.description ??
+          (typeof rawJob?.description === "string" ? rawJob.description : undefined),
         customFields: [],
       },
     });

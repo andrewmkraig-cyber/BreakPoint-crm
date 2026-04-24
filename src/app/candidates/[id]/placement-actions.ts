@@ -10,7 +10,6 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
-import { recruiterflow } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg, getRfCandidateByRfId } from "@/lib/candidates";
 import {
   submittalEditorHtmlToPlainText,
@@ -24,7 +23,7 @@ import { getAppPreferences } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
-import { formatCompensation, type RFJob } from "@/lib/recruiterflow";
+import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
 import {
   CANDIDATE_CONFIRMATION_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
@@ -598,34 +597,8 @@ export async function removeCancelledFromJob(input: RemoveFromJobInput): Promise
 
     await prisma.placement.delete({ where: { id: input.placementId } });
 
-    // Best-effort RF cleanup — remove the job from the candidate's jobs[].
-    // Skip entirely for Ace-local candidates (no RF id to reach).
-    let rfSynced = false;
-    let rfError: string | null = null;
-    if (p.candidateRfId != null) {
-      const candidateRfId = p.candidateRfId;
-      try {
-        const rf = await getRfCandidateByRfId(candidateRfId);
-        const existing = Array.isArray(rf?.jobs) ? rf.jobs : [];
-        const filtered: Array<{ job_id: number; stage_name?: string }> = [];
-        for (const j of existing) {
-          if (typeof j?.job_id !== "number") continue;
-          if (j.job_id === p.jobRfId) continue;
-          const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
-          if (j.stage_name) entry.stage_name = j.stage_name;
-          filtered.push(entry);
-        }
-        const resp = (await recruiterflow.updateCandidate({ id: candidateRfId, jobs: filtered })) as { RESULT?: string };
-        if (resp && typeof resp === "object" && "RESULT" in resp && resp.RESULT && resp.RESULT !== "SUCCESS") {
-          rfError = `RecruiterFlow returned ${resp.RESULT}`;
-        } else {
-          rfSynced = true;
-        }
-      } catch (e) {
-        rfError = e instanceof Error ? e.message : "Unknown RF error";
-      }
-    }
-
+    // Phase 5: RF sync retired — Ace is the only source of truth.
+    // Placement row is deleted; ActionLog captures the removal.
     await createActionLog({
       userId,
       actionType: "remove_cancelled_from_job",
@@ -635,14 +608,10 @@ export async function removeCancelledFromJob(input: RemoveFromJobInput): Promise
         jobRfId: p.jobRfId,
         clientRfId: p.clientRfId,
         placementId: input.placementId,
-        rfSynced,
-        rfError,
       },
     });
     revalidatePath(`/candidates/${p.candidateRfId}`);
     revalidatePath(`/pipeline`);
-    // Ace is source of truth — if RF refused the jobs[] edit, that's captured
-    // in ActionLog metadata (rfSynced/rfError). We return success either way.
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Remove failed." };
@@ -824,43 +793,11 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
     organizationId: org.id,
   });
 
-  let rfSynced = false;
-  let rfError: string | null = null;
-
-  // Try to actually assign the candidate to the job in RecruiterFlow. We fetch
-  // the candidate, append the new job_id to the existing jobs array with a
-  // Client Submission stage, and push the merged list through /candidate/update.
-  // RF may replace vs merge — we send the full array so either behavior works.
-  try {
-    const existing = await getRfCandidateByRfId(input.candidateRfId);
-    const existingJobs = Array.isArray(existing?.jobs) ? existing.jobs : [];
-    const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
-    if (!alreadyLinked) {
-      const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
-      for (const j of existingJobs) {
-        if (typeof j?.job_id !== "number") continue;
-        const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
-        if (j.stage_name) entry.stage_name = j.stage_name;
-        nextJobs.push(entry);
-      }
-      nextJobs.push({ job_id: input.jobRfId, stage_name: "Client Submission" });
-
-      const resp = (await recruiterflow.updateCandidate({
-        id: input.candidateRfId,
-        jobs: nextJobs,
-      })) as { RESULT?: string };
-      if (resp && typeof resp === "object" && "RESULT" in resp && resp.RESULT && resp.RESULT !== "SUCCESS") {
-        rfError = `RecruiterFlow returned ${resp.RESULT}`;
-      } else {
-        rfSynced = true;
-      }
-    } else {
-      // Already on the candidate in RF — treat as synced.
-      rfSynced = true;
-    }
-  } catch (e) {
-    rfError = e instanceof Error ? e.message : "Unknown RF error";
-  }
+  // Phase 5: RF sync retired. Ace is the only source of truth. The
+  // Placement row below is the canonical record; pipeline / job /
+  // candidate-profile reads all resolve to this row's stage directly.
+  const rfSynced = false;
+  const rfError: string | null = null;
 
   try {
     // Upsert a local Placement at stage="submitted". Mirrors the
@@ -1152,38 +1089,10 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
     };
   }
 
-  // Step 2: Best-effort RF sync. Failures don't undo the local write — the
-  // profile reads from the Placement table and will show the job regardless.
-  let rfSynced = false;
-  let rfError: string | null = null;
-  try {
-    const existing = await getRfCandidateByRfId(input.candidateRfId);
-    const existingJobs = Array.isArray(existing?.jobs) ? existing.jobs : [];
-    const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
-    if (!alreadyLinked) {
-      const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
-      for (const j of existingJobs) {
-        if (typeof j?.job_id !== "number") continue;
-        const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
-        if (j.stage_name) entry.stage_name = j.stage_name;
-        nextJobs.push(entry);
-      }
-      nextJobs.push({ job_id: input.jobRfId, stage_name: "Applied" });
-      const resp = (await recruiterflow.updateCandidate({
-        id: input.candidateRfId,
-        jobs: nextJobs,
-      })) as { RESULT?: string };
-      if (resp && typeof resp === "object" && "RESULT" in resp && resp.RESULT && resp.RESULT !== "SUCCESS") {
-        rfError = `RecruiterFlow returned ${resp.RESULT}`;
-      } else {
-        rfSynced = true;
-      }
-    } else {
-      rfSynced = true;
-    }
-  } catch (e) {
-    rfError = e instanceof Error ? e.message : "Unknown RF error";
-  }
+  // Phase 5: RF sync retired. Ace's Placement row is the only source
+  // of truth for the applied stage; no external write.
+  const rfSynced = false;
+  const rfError: string | null = null;
 
   try {
     await createActionLog({
@@ -1631,27 +1540,8 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
     // swallow: ActionLog is observability, not load-bearing
   }
 
-  // Best-effort RF push: append the job_id to the candidate's jobs[] with
-  // a Client Submission stage. Swallow errors — the email has gone out and
-  // the Placement row carries the source of truth either way.
-  try {
-    const rf = await getRfCandidateByRfId(input.candidateRfId);
-    const existingJobs = Array.isArray(rf?.jobs) ? rf.jobs : [];
-    const alreadyLinked = existingJobs.some((j) => j?.job_id === input.jobRfId);
-    if (!alreadyLinked) {
-      const nextJobs: Array<{ job_id: number; stage_name?: string }> = [];
-      for (const j of existingJobs) {
-        if (typeof j?.job_id !== "number") continue;
-        const entry: { job_id: number; stage_name?: string } = { job_id: j.job_id };
-        if (j.stage_name) entry.stage_name = j.stage_name;
-        nextJobs.push(entry);
-      }
-      nextJobs.push({ job_id: input.jobRfId, stage_name: "Client Submission" });
-      await recruiterflow.updateCandidate({ id: input.candidateRfId, jobs: nextJobs });
-    }
-  } catch {
-    // ignored
-  }
+  // Phase 5: RF push retired. The Placement row + ActionLog above are
+  // the canonical record of the submittal.
 
   // Phase 4c: audit-feed entry for the submittal. Non-throwing.
   // Stamps placementId as the target so the activity feed can link
@@ -1871,7 +1761,7 @@ async function fireTriggerForCandidateJob(input: TriggerFireInput): Promise<Trig
   return { fire, candidateEmail };
 }
 
-function normalizeCandidateEmail(c: import("@/lib/recruiterflow").RFCandidate): string {
+function normalizeCandidateEmail(c: import("@/lib/rf-payload-shapes").RFCandidate): string {
   if (Array.isArray(c.email)) return c.email[0] ?? "";
   return c.email ?? "";
 }
@@ -2063,14 +1953,24 @@ export async function sendInterviewConfirmationEmail(
     let jobDescription = input.jobDescription?.trim() ? input.jobDescription : "";
     let jobLocation = input.jobLocation ?? "";
     if (!jobDescription || !jobLocation) {
+      // Phase 5: job metadata comes from Neon via legacyRfId lookup —
+      // RF fetch retired. description layering: JobOverride > Job.description
+      // > raw.description (mirrors the read order in jobs/[id]/page.tsx).
       try {
-        const j = await recruiterflow.getJob(input.jobRfId);
-        if (!jobDescription) {
-          const raw = j as unknown as { description?: string; job_description?: string };
-          jobDescription = (raw.description ?? raw.job_description ?? "").toString();
-        }
-        if (!jobLocation) {
-          jobLocation = Array.isArray(j.locations) && j.locations.length > 0 ? j.locations.join(", ") : "";
+        const jRow = await prisma.job.findFirst({
+          where: { legacyRfId: input.jobRfId },
+          select: { description: true, locations: true, raw: true },
+        });
+        if (jRow) {
+          if (!jobDescription) {
+            const raw = jRow.raw as { description?: string; job_description?: string } | null;
+            jobDescription = (jRow.description ?? raw?.description ?? raw?.job_description ?? "").toString();
+          }
+          if (!jobLocation) {
+            jobLocation = Array.isArray(jRow.locations) && jRow.locations.length > 0
+              ? jRow.locations.join(", ")
+              : "";
+          }
         }
       } catch {
         // Non-fatal — template renders [Job Description] as empty.

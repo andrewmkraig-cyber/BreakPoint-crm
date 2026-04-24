@@ -11,7 +11,7 @@ import {
   type RFCandidate,
   type RFCandidateJob,
   type RFJob,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { resolveJobTitle } from "@/lib/job-title";

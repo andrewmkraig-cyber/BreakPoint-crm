@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { Bookmark, CalendarClock, Loader2, Search } from "lucide-react";
 import { Pagination } from "@/components/pagination";
-import { PIPELINE_LABELS } from "@/lib/recruiterflow";
+import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
 import { EmailLink } from "@/components/email-link";
 import { cn, formatDate } from "@/lib/utils";

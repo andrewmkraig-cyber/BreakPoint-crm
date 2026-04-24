@@ -25,7 +25,7 @@ import {
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
-import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/recruiterflow";
+import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import {
@@ -3573,7 +3573,11 @@ function findClientContactsForJob(
 //   2. Free-text name/email fields were getting Chrome-autofilled with
 //      the recruiter's own Google profile. Raw inputs with autoComplete
 //      off, non-semantic name attrs, and data-lpignore stop that.
-export type InterviewerContact = { id: number; name: string; title: string; email: string };
+// Phase 5: id widened to number | string. Legacy RF-imported contacts
+// keep a numeric legacyRfId; Ace-native contacts (created via
+// createClientContact or /clients/new) carry a cuid. Either shape
+// survives the picker + server-action round-trip.
+export type InterviewerContact = { id: number | string; name: string; title: string; email: string };
 
 export function InterviewerPicker({
   clientRfId,
@@ -3639,7 +3643,7 @@ export function InterviewerPicker({
       setMode(String(created.id));
       onChange(created.name, created.email ?? "");
       toast.success("Contact added", {
-        description: `${created.name} is now saved to ${clientName} in RecruiterFlow.`,
+        description: `${created.name} is now saved to ${clientName}.`,
       });
     });
   }

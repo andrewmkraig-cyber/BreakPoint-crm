@@ -13,7 +13,7 @@ import {
   buildJobCounts,
   emptyJobCounts,
   type RFClient,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getClientByIdentifier } from "@/lib/clients";
 import { cn } from "@/lib/utils";

@@ -5,7 +5,7 @@ import {
   normalizeJob,
   buildJobCounts,
   emptyJobCounts,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 
 export const dynamic = "force-dynamic";

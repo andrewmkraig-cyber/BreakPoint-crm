@@ -19,50 +19,27 @@ const ORG_NAME = "BreakPoint Talent";
 const ORG_SLUG = "breakpoint-talent";
 const OWNER_EMAIL = "andrew@breakpointtalent.com";
 
-// Tenant-owned tables — every existing row gets the default orgId stamped.
-// Each entry is (label, count+update pair). We keep these as separate calls
-// rather than a generic loop so TypeScript can check the delegate names.
-async function stamp(orgId: string): Promise<Record<string, number>> {
-  const out: Record<string, number> = {};
-
-  out["Candidate"] = (
-    await prisma.candidate.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["Job"] = (
-    await prisma.job.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["Client"] = (
-    await prisma.client.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["Contact"] = (
-    await prisma.contact.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["Placement"] = (
-    await prisma.placement.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["Interview"] = (
-    await prisma.interview.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["ClientAgreement"] = (
-    await prisma.clientAgreement.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["ClientBenefits"] = (
-    await prisma.clientBenefits.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["ClientBenefitsFile"] = (
-    await prisma.clientBenefitsFile.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["CandidateResume"] = (
-    await prisma.candidateResume.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["JobOverride"] = (
-    await prisma.jobOverride.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-  out["ActionLog"] = (
-    await prisma.actionLog.updateMany({ where: { organizationId: null }, data: { organizationId: orgId } })
-  ).count;
-
-  return out;
+// Phase 5: backfill is a historical no-op. organizationId is NOT NULL
+// on every tenant table now — Prisma won't accept `where: { organizationId:
+// null }` as a filter. Left here as a placeholder so the seed script's
+// contract (stamp(orgId) → per-table count map) stays stable; every
+// count is zero post-Phase-5.
+async function stamp(_orgId: string): Promise<Record<string, number>> {
+  void _orgId;
+  return {
+    Candidate: 0,
+    Job: 0,
+    Client: 0,
+    Contact: 0,
+    Placement: 0,
+    Interview: 0,
+    ClientAgreement: 0,
+    ClientBenefits: 0,
+    ClientBenefitsFile: 0,
+    CandidateResume: 0,
+    JobOverride: 0,
+    ActionLog: 0,
+  };
 }
 
 // Updates (or inserts) the DEFAULT_ORG_ID line in .env.local without

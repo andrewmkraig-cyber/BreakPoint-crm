@@ -18,7 +18,9 @@ const ALLOWED = new Set([
 // row keyed by Candidate.id; `candidateRfId` on CandidateResume stays as
 // historical reference only and is filled from the target Candidate's rfId
 // so legacy URL paths (/api/candidate-resumes/<rfId>) continue to match.
-type UploadExtra = { candidateId: string; candidateRfId: number | null; organizationId: string | null };
+// Phase 5: organizationId is NOT NULL on Candidate, so every row the
+// resolver returns carries a concrete orgId — the type reflects that.
+type UploadExtra = { candidateId: string; candidateRfId: number | null; organizationId: string };
 
 async function resolveCandidate(body: unknown): Promise<UploadExtra> {
   const b = body as { candidateId?: string; candidateRfId?: number | string } | null;

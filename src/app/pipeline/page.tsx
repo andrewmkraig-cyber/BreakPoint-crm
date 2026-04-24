@@ -6,7 +6,7 @@ import {
   PIPELINE_LABELS,
   daysBetween,
   type PipelineBucket,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";

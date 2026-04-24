@@ -5,7 +5,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { StageBadgeFromName } from "@/components/stage-badge";
-import type { PipelineBucket } from "@/lib/recruiterflow";
+import type { PipelineBucket } from "@/lib/rf-payload-shapes";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 
 export type JobPipelineRow = {

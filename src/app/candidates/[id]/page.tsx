@@ -10,7 +10,6 @@ import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { getCandidateByIdentifier, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import {
-  recruiterflow,
   canonicalStage,
   normalizeClient,
   normalizeJob,
@@ -19,7 +18,8 @@ import {
   type RFCandidateJob,
   type RFJob,
   type RFClient,
-} from "@/lib/recruiterflow";
+} from "@/lib/rf-payload-shapes";
+import { getRfShapedContactsForOrg } from "@/lib/contacts";
 import { EditableContact, type ContactState } from "@/app/candidates/[id]/editable-contact";
 import { EditableEmployment, type EmploymentState } from "@/app/candidates/[id]/editable-employment";
 import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
@@ -139,7 +139,7 @@ export default async function CandidateProfilePage({
   // must not be used in application queries.
   const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
     getRfClientsForOrg(),
-    recruiterflow.listAllContacts({ perPage: 100 }),
+    getRfShapedContactsForOrg(),
     // Phase 2: jobs come from Neon via the broadened shim (includes
     // both RF-imported and Ace-native rows; Ace-native rows carry
     // _aceJobId + _aceClientId for cuid-based write paths).
@@ -629,7 +629,7 @@ function buildOpenJobOptions({
 }: {
   allJobs: RFJob[];
   clients: RFClient[];
-  contacts: Awaited<ReturnType<typeof recruiterflow.listAllContacts>>;
+  contacts: Awaited<ReturnType<typeof getRfShapedContactsForOrg>>;
   linkedJobIds: Set<number>;
   jobCuidByRfId: Map<number, string>;
   clientCuidByRfId: Map<number, string>;

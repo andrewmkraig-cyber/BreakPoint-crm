@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, FileDown, Link2, Mail, MapPin, Phone } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
-import { normalizeJob, normalizeClient } from "@/lib/recruiterflow";
+import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
