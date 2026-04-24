@@ -72,6 +72,14 @@ export type ClientContactRef = {
 
 export type OpenJobOption = {
   jobRfId: number;
+  // Phase 4b: cuid FKs for the target Job / Client — populated at page
+  // build time via getJob/getClientByIdentifier lookups so server actions
+  // can stamp Placement.jobId / clientId alongside the legacy numeric
+  // ids. For Ace-native Jobs (shim synthetic negative jobRfId) the cuid
+  // is the true identity; for RF-imported Jobs it's a redundant pointer
+  // that makes cross-identity joins work server-side.
+  jobCuid: string | null;
+  clientCuid: string | null;
   jobTitle: string;
   clientRfId: number;
   clientName: string;
@@ -81,6 +89,8 @@ export type OpenJobOption = {
 
 export type PlacementContextJob = {
   jobRfId: number;
+  jobCuid: string | null;
+  clientCuid: string | null;
   jobTitle: string;
   jobLocation: string;
   jobDescription: string;
@@ -864,6 +874,8 @@ function OfferDialog({
         candidateRfId,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
+        jobCuid: job.jobCuid,
+        clientCuid: job.clientCuid,
         salary: salaryNum,
         currency: currency.toUpperCase().slice(0, 3),
         title: title.trim(),
@@ -1099,6 +1111,8 @@ function PlacementDialog({
         candidateRfId,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
+        jobCuid: job.jobCuid,
+        clientCuid: job.clientCuid,
         // When the recruiter is using a flat fee override without a salary,
         // we still need a non-null integer for acceptedSalary (schema column
         // is Int?). Zero is acceptable; the prior value would have been
@@ -2043,6 +2057,8 @@ function RejectDialog({
         candidateRfId,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
+        jobCuid: job.jobCuid,
+        clientCuid: job.clientCuid,
         previousStage,
         reason: reason.trim(),
       });
@@ -2175,6 +2191,8 @@ function UnrejectDialog({
         candidateRfId,
         jobRfId: job.jobRfId,
         clientRfId: job.clientRfId,
+        jobCuid: job.jobCuid,
+        clientCuid: job.clientCuid,
         targetStage,
       });
       if (!result.ok) {
@@ -2324,6 +2342,8 @@ function ApplyToJobDialog({
         candidateRfId,
         jobRfId: picked.jobRfId,
         clientRfId: picked.clientRfId,
+        jobCuid: picked.jobCuid,
+        clientCuid: picked.clientCuid,
         jobTitle: picked.jobTitle,
         clientName: picked.clientName,
       });
@@ -2636,6 +2656,8 @@ function SubmittalEmailCompose({
           candidateRfId,
           jobRfId: job.jobRfId,
           clientRfId: job.clientRfId,
+          jobCuid: job.jobCuid,
+          clientCuid: job.clientCuid,
           jobTitle: job.jobTitle,
           clientName: job.clientName,
           to: draft.to,

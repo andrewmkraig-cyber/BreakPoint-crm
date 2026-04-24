@@ -66,10 +66,22 @@ export default async function PipelinePage({
       });
     }
 
+    // Phase 4b: key on whichever identity the placement carries — RF
+    // numeric for imported rows, cuid for Ace-native. Keeps the dedupe
+    // below honest across both shapes (the flat-pipeline loop emits
+    // RF-keyed entries; Ace-native rows only come from Placements).
+    const placementKey = (p: {
+      candidateRfId: number | null;
+      candidateId: string | null;
+      jobRfId: number | null;
+      jobId: string | null;
+    }) => {
+      const cid = p.candidateRfId != null ? `rf:${p.candidateRfId}` : `ace:${p.candidateId ?? "?"}`;
+      const jid = p.jobRfId != null ? `rf:${p.jobRfId}` : `ace:${p.jobId ?? "?"}`;
+      return `${cid}|${jid}`;
+    };
     const placementByKey = new Map<string, (typeof placements)[number]>();
-    for (const p of placements) {
-      placementByKey.set(`${p.candidateRfId}:${p.jobRfId}`, p);
-    }
+    for (const p of placements) placementByKey.set(placementKey(p), p);
 
     const flat = flattenPipeline(candidates);
     const candidateNameById = new Map<number, string>();
@@ -82,6 +94,31 @@ export default async function PipelinePage({
       );
     }
 
+    // Ace-native candidate + job lookups for rows that carry cuid
+    // identities. Batched once so we don't per-row round-trip Neon.
+    const aceCandidateIds = new Set<string>();
+    const aceJobIds = new Set<string>();
+    for (const p of placements) {
+      if (p.candidateRfId == null && p.candidateId) aceCandidateIds.add(p.candidateId);
+      if (p.jobRfId == null && p.jobId) aceJobIds.add(p.jobId);
+    }
+    const [aceCandidates, aceJobs] = await Promise.all([
+      aceCandidateIds.size > 0
+        ? prisma.candidate.findMany({
+            where: { id: { in: Array.from(aceCandidateIds) } },
+            select: { id: true, firstName: true, lastName: true, currentDesignation: true },
+          })
+        : Promise.resolve([]),
+      aceJobIds.size > 0
+        ? prisma.job.findMany({
+            where: { id: { in: Array.from(aceJobIds) } },
+            select: { id: true, title: true, client: { select: { name: true } } },
+          })
+        : Promise.resolve([]),
+    ]);
+    const aceCandidateById = new Map(aceCandidates.map((c) => [c.id, c]));
+    const aceJobById = new Map(aceJobs.map((j) => [j.id, j]));
+
     // Local placements win over RF's stage_name because Ace drove the move.
     const seen = new Set<string>();
     const allRows: PipelineRow[] = [];
@@ -89,41 +126,58 @@ export default async function PipelinePage({
     for (const p of placements) {
       // Cancelled placements are excluded from the pipeline view entirely.
       if (p.stage === "cancelled") continue;
-      const key = `${p.candidateRfId}:${p.jobRfId}`;
+      const key = placementKey(p);
       seen.add(key);
-      const rfEntry = flat.find(
-        (r) => r.candidateId === p.candidateRfId && r.jobId === p.jobRfId,
-      );
       const stageName = p.stage as Stage;
       if (!(stageName in counts)) continue;
-      // Pipeline rows are RF-scoped for now; Ace-local candidates use the
-      // local profile's own action list. Skip until a unified view lands.
-      if (p.candidateRfId == null) continue;
       counts[stageName] += 1;
-      // Pipeline rows are RF-keyed today. Skip Placements against Ace-
-      // native Jobs (jobRfId null) — those flow through the candidate
-      // profile UI until Phase 4 widens the pipeline view.
-      if (p.jobRfId == null) continue;
+
+      // Pick the identity fields — numeric RF for imported, cuid for
+      // Ace-native. Ace-native rows can't match flat-pipeline entries
+      // (those only come from RFCandidate.jobs[], which is RF-scoped).
+      const isRfCandidate = p.candidateRfId != null;
+      const isRfJob = p.jobRfId != null;
+      const candidateId: number | string = isRfCandidate ? p.candidateRfId! : p.candidateId!;
+      const jobId: number | string = isRfJob ? p.jobRfId! : p.jobId!;
+      const rfEntry = isRfCandidate && isRfJob
+        ? flat.find((r) => r.candidateId === p.candidateRfId && r.jobId === p.jobRfId)
+        : null;
+
+      const aceCandidate = !isRfCandidate && p.candidateId ? aceCandidateById.get(p.candidateId) : null;
+      const aceJob = !isRfJob && p.jobId ? aceJobById.get(p.jobId) : null;
+
+      const candidateName = isRfCandidate
+        ? candidateNameById.get(p.candidateRfId!) ?? rfEntry?.candidateName ?? "(unknown)"
+        : aceCandidate
+          ? [aceCandidate.firstName, aceCandidate.lastName].filter(Boolean).join(" ") || "(unnamed)"
+          : "(unknown)";
+      const candidateTitle = isRfCandidate ? rfEntry?.candidateTitle ?? "" : aceCandidate?.currentDesignation ?? "";
+      const jobTitle = isRfJob ? rfEntry?.jobTitle ?? "" : aceJob?.title ?? "";
+      const clientName = isRfJob ? rfEntry?.clientName ?? "" : aceJob?.client?.name ?? "";
+
       allRows.push({
-        candidateId: p.candidateRfId,
-        candidateName: candidateNameById.get(p.candidateRfId) ?? rfEntry?.candidateName ?? "(unknown)",
-        candidateTitle: rfEntry?.candidateTitle ?? "",
-        jobId: p.jobRfId,
-        jobTitle: rfEntry?.jobTitle ?? "",
-        clientName: rfEntry?.clientName ?? "",
+        candidateId,
+        candidateName,
+        candidateTitle,
+        jobId,
+        jobTitle,
+        clientName,
         stageName: PIPELINE_LABELS[stageName as keyof typeof PIPELINE_LABELS] ?? p.stage,
         bucket: stageName,
         lastActionAt: p.updatedAt.toISOString(),
         daysInStage: daysBetween(p.updatedAt.toISOString()),
         isKept: rfEntry?.isKept ?? false,
         placement: toPlacementDetails(p),
-        nextInterview: nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null,
+        nextInterview: isRfCandidate && isRfJob
+          ? nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null
+          : null,
       });
     }
 
     for (const r of flat) {
       if (!isPipelineStage(r.bucket)) continue;
-      const key = `${r.candidateId}:${r.jobId}`;
+      // flat entries are always RF numeric on both sides.
+      const key = `rf:${r.candidateId}|rf:${r.jobId}`;
       if (seen.has(key)) continue;
       counts[r.bucket] += 1;
       allRows.push({

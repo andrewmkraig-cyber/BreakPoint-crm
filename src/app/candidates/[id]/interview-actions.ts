@@ -109,12 +109,31 @@ async function upsertInterviewingStage(args: {
     : { candidateId_jobRfId: { candidateId: args.candidateId!, jobRfId: args.jobRfId } };
   const existing = await prisma.placement.findUnique({ where: whereUnique, select: { id: true, stage: true } });
   if (!existing) {
+    // Phase 4b: resolve cuid FKs for the new Placement row so the
+    // (jobId, clientId) cuid pointers get stamped on create. Look up
+    // only for positive legacyRfIds — synthetic negatives never match.
+    const [jobRow, clientRow] = await Promise.all([
+      args.jobRfId > 0
+        ? prisma.job.findFirst({
+            where: { legacyRfId: args.jobRfId, organizationId: args.organizationId },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+      args.clientRfId > 0
+        ? prisma.client.findFirst({
+            where: { legacyRfId: args.clientRfId, organizationId: args.organizationId },
+            select: { id: true },
+          })
+        : Promise.resolve(null),
+    ]);
     await prisma.placement.create({
       data: {
         candidateRfId: args.candidateRfId,
         candidateId: args.candidateId,
         jobRfId: args.jobRfId,
+        jobId: jobRow?.id ?? null,
         clientRfId: args.clientRfId,
+        clientId: clientRow?.id ?? null,
         stage: "interviewing",
         createdById: args.userId,
         organizationId: args.organizationId,

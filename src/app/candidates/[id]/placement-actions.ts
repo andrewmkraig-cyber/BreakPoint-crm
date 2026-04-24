@@ -75,12 +75,47 @@ async function trySyncRfStage(args: {
   };
 }
 
+// Phase 4b: every Placement create/upsert now stamps the cuid FKs
+// (jobId, clientId) alongside the legacy numeric RF ids. Callers that
+// already know the cuid (e.g. Ace-native Jobs in the dropdown — the
+// shim carries _aceJobId) can pass jobCuid/clientCuid directly.
+// Otherwise we resolve by looking up Job/Client where legacyRfId
+// matches the caller's numeric id (must be positive — synthetic
+// negative ids from the shim never match a real legacyRfId).
+async function resolveCuidFks(args: {
+  jobRfId: number | null | undefined;
+  jobCuid?: string | null;
+  clientRfId: number | null | undefined;
+  clientCuid?: string | null;
+  organizationId: string;
+}): Promise<{ jobId: string | null; clientId: string | null }> {
+  let jobId: string | null = args.jobCuid ?? null;
+  if (!jobId && args.jobRfId != null && args.jobRfId > 0) {
+    const row = await prisma.job.findFirst({
+      where: { legacyRfId: args.jobRfId, organizationId: args.organizationId },
+      select: { id: true },
+    });
+    jobId = row?.id ?? null;
+  }
+  let clientId: string | null = args.clientCuid ?? null;
+  if (!clientId && args.clientRfId != null && args.clientRfId > 0) {
+    const row = await prisma.client.findFirst({
+      where: { legacyRfId: args.clientRfId, organizationId: args.organizationId },
+      select: { id: true },
+    });
+    clientId = row?.id ?? null;
+  }
+  return { jobId, clientId };
+}
+
 // ---- Offer Received ----
 
 export type RecordOfferInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
   salary: number | null;
   currency: string;
   title: string;
@@ -100,13 +135,23 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
     aceStage: "offer",
   });
 
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
+  });
+
   try {
     const row = await prisma.placement.upsert({
       where: { candidateRfId_jobRfId: { candidateRfId: input.candidateRfId, jobRfId: input.jobRfId } },
       create: {
         candidateRfId: input.candidateRfId,
         jobRfId: input.jobRfId,
+        jobId,
         clientRfId: input.clientRfId,
+        clientId,
         stage: "offer",
         offerReceivedAt: new Date(),
         offerSalary: input.salary ?? null,
@@ -144,6 +189,8 @@ export type RecordPlacementInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
   acceptedSalary: number;
   acceptedCurrency: string;
   feePercentage: number;
@@ -176,6 +223,14 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
     candidateRfId: input.candidateRfId,
     jobRfId: input.jobRfId,
     aceStage: "pending_start",
+  });
+
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
   });
 
   try {
@@ -223,7 +278,9 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
         data: {
           candidateRfId: input.candidateRfId,
           jobRfId: input.jobRfId,
+          jobId,
           clientRfId: input.clientRfId,
+          clientId,
           stage: "pending_start",
           placedAt: new Date(),
           createdById: userId,
@@ -557,6 +614,8 @@ export type RejectCandidateInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
   previousStage: string | null;
   reason: string;
 };
@@ -565,6 +624,13 @@ export async function rejectCandidateJob(input: RejectCandidateInput): Promise<R
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
+  });
   try {
     // Upsert an Ace-local Placement row so the candidate profile shows
     // DISQUALIFIED · <date> regardless of what RF's stage_name is. The
@@ -579,7 +645,9 @@ export async function rejectCandidateJob(input: RejectCandidateInput): Promise<R
       create: {
         candidateRfId: input.candidateRfId,
         jobRfId: input.jobRfId,
+        jobId,
         clientRfId: input.clientRfId,
+        clientId,
         stage: "rejected",
         createdById: userId,
         organizationId: org.id,
@@ -618,6 +686,8 @@ export type UnrejectCandidateInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
   targetStage: string; // previous stage or "submitted" fallback
 };
 
@@ -625,6 +695,13 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
+  });
   try {
     // Actually flip the Placement back — until now this only logged
     // intent, which meant the local-stage overlay on /jobs/[id]
@@ -644,7 +721,9 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
       create: {
         candidateRfId: input.candidateRfId,
         jobRfId: input.jobRfId,
+        jobId,
         clientRfId: input.clientRfId,
+        clientId,
         stage: nextStage,
         createdById: userId,
         organizationId: org.id,
@@ -682,6 +761,8 @@ export type SubmitToJobInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
   jobTitle: string;
   clientName: string;
 };
@@ -690,6 +771,13 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
+  });
 
   let rfSynced = false;
   let rfError: string | null = null;
@@ -746,7 +834,9 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
       create: {
         candidateRfId: input.candidateRfId,
         jobRfId: input.jobRfId,
+        jobId,
         clientRfId: input.clientRfId,
+        clientId,
         stage: "submitted",
         createdById: userId,
         organizationId: org.id,
@@ -949,6 +1039,13 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
+  });
 
   // Step 1: Local Placement row. This is the source of truth for the
   // profile's Jobs panel and the Pipeline — RF's c.jobs[] is advisory.
@@ -990,7 +1087,9 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
           candidateRfId: input.candidateRfId,
           candidateId: null,
           jobRfId: input.jobRfId,
+          jobId,
           clientRfId: input.clientRfId,
+          clientId,
           stage: "applied",
           source: "recruiter_applied",
           createdById: userId,
@@ -1259,6 +1358,8 @@ export type SendSubmittalInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
   jobTitle: string;
   clientName: string;
   to: string[];
@@ -1296,6 +1397,13 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
+  });
 
   if (input.to.length === 0) return { ok: false, error: "At least one recipient (To) required." };
   if (!input.subject.trim()) return { ok: false, error: "Subject required." };
@@ -1327,7 +1435,9 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
           candidateRfId: input.candidateRfId,
           candidateId: null,
           jobRfId: input.jobRfId,
+          jobId,
           clientRfId: input.clientRfId,
+          clientId,
           stage: "submitted",
           createdById: userId,
           organizationId: org.id,
@@ -1963,12 +2073,21 @@ export type KeepCandidateInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
 };
 
 export async function keepCandidate(input: KeepCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: input.jobRfId,
+    jobCuid: input.jobCuid,
+    clientRfId: input.clientRfId,
+    clientCuid: input.clientCuid,
+    organizationId: org.id,
+  });
   try {
     // Placement.upsert and ActionLog.create are independent — the upsert
     // doesn't need the log row (it only references candidateRfId/jobRfId/
@@ -1989,7 +2108,9 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
         create: {
           candidateRfId: input.candidateRfId,
           jobRfId: input.jobRfId,
+          jobId,
           clientRfId: input.clientRfId,
+          clientId,
           stage: "kept",
           createdById: userId,
           organizationId: org.id,
@@ -2039,6 +2160,8 @@ export type StageReversionInput = {
   candidateRfId: number;
   jobRfId: number;
   clientRfId: number;
+  jobCuid?: string | null;
+  clientCuid?: string | null;
   previousStage: string;
 };
 
@@ -2049,6 +2172,13 @@ async function flipPlacementStage(args: {
   toStage: "kept" | "applied";
   actionType: "revert_to_kept" | "revert_to_applied";
 }): Promise<Result> {
+  const { jobId, clientId } = await resolveCuidFks({
+    jobRfId: args.input.jobRfId,
+    jobCuid: args.input.jobCuid,
+    clientRfId: args.input.clientRfId,
+    clientCuid: args.input.clientCuid,
+    organizationId: args.organizationId,
+  });
   try {
     // Parallel insert — the two writes are independent (see keepCandidate
     // for the same pattern and reasoning).
@@ -2063,7 +2193,9 @@ async function flipPlacementStage(args: {
         create: {
           candidateRfId: args.input.candidateRfId,
           jobRfId: args.input.jobRfId,
+          jobId,
           clientRfId: args.input.clientRfId,
+          clientId,
           stage: args.toStage,
           createdById: args.userId,
           organizationId: args.organizationId,

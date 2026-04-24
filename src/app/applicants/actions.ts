@@ -67,43 +67,83 @@ export async function setApplicantStatus(input: SetApplicantStatusInput): Promis
 
 export type KeepCandidateInput = {
   candidateRfId: number;
-  jobRfId: number;
-  clientRfId: number;
+  // Phase 4b: jobRfId / clientRfId / jobId / clientId — RF-imported Jobs
+  // pass numeric RF ids; Ace-native Jobs pass cuid FKs (jobId, clientId)
+  // with jobRfId = null. Exactly one shape per call.
+  jobRfId?: number | null;
+  clientRfId?: number | null;
+  jobId?: string | null;
+  clientId?: string | null;
 };
 
 export async function keepCandidateForJob(input: KeepCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const jobRfId = input.jobRfId ?? null;
+  const clientRfId = input.clientRfId ?? null;
+  const jobId = input.jobId ?? null;
+  const clientId = input.clientId ?? null;
+  if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
   try {
-    await prisma.placement.upsert({
-      where: {
-        candidateRfId_jobRfId: {
+    const whereUnique = jobRfId != null
+      ? { candidateRfId_jobRfId: { candidateRfId: input.candidateRfId, jobRfId } }
+      : null;
+    if (whereUnique) {
+      await prisma.placement.upsert({
+        where: whereUnique,
+        create: {
           candidateRfId: input.candidateRfId,
-          jobRfId: input.jobRfId,
+          jobRfId,
+          jobId,
+          clientRfId,
+          clientId,
+          stage: "kept",
+          createdById: userId,
+          organizationId: org.id,
+          syncedToRf: false,
         },
-      },
-      create: {
-        candidateRfId: input.candidateRfId,
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
-        stage: "kept",
-        createdById: userId,
-        organizationId: org.id,
-        syncedToRf: false,
-      },
-      update: {
-        stage: "kept",
-        syncedToRf: false,
-        invoicingFlagged: false,
-      },
-    });
+        update: {
+          stage: "kept",
+          syncedToRf: false,
+          invoicingFlagged: false,
+        },
+      });
+    } else {
+      // Ace-native job path: Placement has no candidateRfId+jobId unique
+      // for RF candidates (only candidateId+jobId). Match by candidateRfId
+      // + jobId via findFirst then upsert, or create fresh.
+      const existing = await prisma.placement.findFirst({
+        where: { candidateRfId: input.candidateRfId, jobId, organizationId: org.id },
+        select: { id: true },
+      });
+      if (existing) {
+        await prisma.placement.update({
+          where: { id: existing.id },
+          data: { stage: "kept", syncedToRf: false, invoicingFlagged: false },
+        });
+      } else {
+        await prisma.placement.create({
+          data: {
+            candidateRfId: input.candidateRfId,
+            jobRfId,
+            jobId,
+            clientRfId,
+            clientId,
+            stage: "kept",
+            createdById: userId,
+            organizationId: org.id,
+            syncedToRf: false,
+          },
+        });
+      }
+    }
     await createActionLog({
       userId,
       actionType: "keep",
       subjectType: "candidate",
       subjectId: String(input.candidateRfId),
-      metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId },
+      metadata: { jobRfId, clientRfId, jobId, clientId },
     });
     revalidatePath("/applicants");
     revalidatePath(`/candidates/${input.candidateRfId}`);
@@ -116,22 +156,34 @@ export async function keepCandidateForJob(input: KeepCandidateInput): Promise<Re
 
 export type RemoveKeptInput = {
   candidateRfId: number;
-  jobRfId: number;
+  // Phase 4b: either jobRfId (RF-imported Job) or jobId (Ace-native cuid).
+  jobRfId?: number | null;
+  jobId?: string | null;
 };
 
 export async function removeKeptCandidate(input: RemoveKeptInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const jobRfId = input.jobRfId ?? null;
+  const jobId = input.jobId ?? null;
+  if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
   try {
-    const existing = await prisma.placement.findUnique({
-      where: {
-        candidateRfId_jobRfId: {
-          candidateRfId: input.candidateRfId,
-          jobRfId: input.jobRfId,
-        },
-      },
-      select: { id: true, stage: true },
-    });
+    // RF candidate + Ace job combo uses (candidateRfId, jobId) which
+    // isn't a compound unique — findFirst then delete.
+    const existing = jobRfId != null
+      ? await prisma.placement.findUnique({
+          where: {
+            candidateRfId_jobRfId: {
+              candidateRfId: input.candidateRfId,
+              jobRfId,
+            },
+          },
+          select: { id: true, stage: true },
+        })
+      : await prisma.placement.findFirst({
+          where: { candidateRfId: input.candidateRfId, jobId },
+          select: { id: true, stage: true },
+        });
     if (!existing) return { ok: false, error: "Kept record not found." };
     if (existing.stage !== "kept") return { ok: false, error: "Not a kept placement." };
     await prisma.placement.delete({ where: { id: existing.id } });
@@ -140,7 +192,7 @@ export async function removeKeptCandidate(input: RemoveKeptInput): Promise<Resul
       actionType: "remove_kept",
       subjectType: "candidate",
       subjectId: String(input.candidateRfId),
-      metadata: { jobRfId: input.jobRfId },
+      metadata: { jobRfId, jobId },
     });
     revalidatePath("/applicants");
     revalidatePath(`/candidates/${input.candidateRfId}`);
@@ -162,41 +214,57 @@ export async function removeKeptCandidate(input: RemoveKeptInput): Promise<Resul
 
 export type KeepLocalCandidateInput = {
   candidateId: string;
-  jobRfId: number;
-  clientRfId: number;
+  // Phase 4b: either jobRfId (RF-imported Job) or jobId (Ace-native Job
+  // cuid). Exactly one identity shape per call. clientId mirrors.
+  jobRfId?: number | null;
+  clientRfId?: number | null;
+  jobId?: string | null;
+  clientId?: string | null;
 };
 
 export async function keepLocalCandidateForJob(input: KeepLocalCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const jobRfId = input.jobRfId ?? null;
+  const clientRfId = input.clientRfId ?? null;
+  const jobId = input.jobId ?? null;
+  const clientId = input.clientId ?? null;
+  if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
   try {
-    await prisma.placement.upsert({
-      where: {
-        candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId },
-      },
-      create: {
-        candidateId: input.candidateId,
-        candidateRfId: null,
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
-        stage: "kept",
-        createdById: userId,
-        organizationId: org.id,
-        syncedToRf: false,
-      },
-      update: {
-        stage: "kept",
-        syncedToRf: false,
-        invoicingFlagged: false,
-      },
-    });
+    const createData = {
+      candidateId: input.candidateId,
+      candidateRfId: null,
+      jobRfId,
+      jobId,
+      clientRfId,
+      clientId,
+      stage: "kept",
+      createdById: userId,
+      organizationId: org.id,
+      syncedToRf: false,
+    } as const;
+    if (jobId) {
+      await prisma.placement.upsert({
+        where: { candidateId_jobId: { candidateId: input.candidateId, jobId } },
+        create: createData,
+        update: { stage: "kept", syncedToRf: false, invoicingFlagged: false },
+      });
+    } else {
+      await prisma.placement.upsert({
+        where: {
+          candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: jobRfId! },
+        },
+        create: createData,
+        update: { stage: "kept", syncedToRf: false, invoicingFlagged: false },
+      });
+    }
     await createActionLog({
       userId,
       actionType: "keep",
       subjectType: "candidate",
       subjectId: input.candidateId,
-      metadata: { jobRfId: input.jobRfId, clientRfId: input.clientRfId, local: true },
+      metadata: { jobRfId, clientRfId, jobId, clientId, local: true },
     });
     revalidatePath("/applicants");
     revalidatePath(`/candidates/${input.candidateId}`);
@@ -209,19 +277,27 @@ export async function keepLocalCandidateForJob(input: KeepLocalCandidateInput): 
 
 export type RemoveLocalKeptInput = {
   candidateId: string;
-  jobRfId: number;
+  // Phase 4b: either RF-imported Job (jobRfId) or Ace-native Job (jobId).
+  jobRfId?: number | null;
+  jobId?: string | null;
 };
 
 export async function removeLocalKeptCandidate(input: RemoveLocalKeptInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const jobRfId = input.jobRfId ?? null;
+  const jobId = input.jobId ?? null;
+  if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
   try {
-    const existing = await prisma.placement.findUnique({
-      where: {
-        candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId },
-      },
-      select: { id: true, stage: true },
-    });
+    const existing = jobId
+      ? await prisma.placement.findUnique({
+          where: { candidateId_jobId: { candidateId: input.candidateId, jobId } },
+          select: { id: true, stage: true },
+        })
+      : await prisma.placement.findUnique({
+          where: { candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: jobRfId! } },
+          select: { id: true, stage: true },
+        });
     if (!existing) return { ok: false, error: "Kept record not found." };
     if (existing.stage !== "kept") return { ok: false, error: "Not a kept placement." };
     await prisma.placement.delete({ where: { id: existing.id } });
@@ -230,7 +306,7 @@ export async function removeLocalKeptCandidate(input: RemoveLocalKeptInput): Pro
       actionType: "remove_kept",
       subjectType: "candidate",
       subjectId: input.candidateId,
-      metadata: { jobRfId: input.jobRfId, local: true },
+      metadata: { jobRfId, jobId, local: true },
     });
     revalidatePath("/applicants");
     revalidatePath(`/candidates/${input.candidateId}`);
@@ -243,8 +319,11 @@ export async function removeLocalKeptCandidate(input: RemoveLocalKeptInput): Pro
 
 export type RejectLocalCandidateInput = {
   candidateId: string;
-  jobRfId: number;
-  clientRfId: number;
+  // Phase 4b: either RF-imported (jobRfId) or Ace-native (jobId cuid).
+  jobRfId?: number | null;
+  clientRfId?: number | null;
+  jobId?: string | null;
+  clientId?: string | null;
   previousStage: string | null;
   reason: string;
   detail?: string | null;
@@ -254,31 +333,49 @@ export async function rejectLocalCandidateJob(input: RejectLocalCandidateInput):
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
+  const jobRfId = input.jobRfId ?? null;
+  const clientRfId = input.clientRfId ?? null;
+  const jobId = input.jobId ?? null;
+  const clientId = input.clientId ?? null;
+  if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
   try {
-    await prisma.placement.upsert({
-      where: {
-        candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: input.jobRfId },
-      },
-      create: {
-        candidateId: input.candidateId,
-        candidateRfId: null,
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
-        stage: "rejected",
-        createdById: userId,
-        organizationId: org.id,
-        syncedToRf: false,
-      },
-      update: { stage: "rejected", syncedToRf: false },
-    });
+    const createData = {
+      candidateId: input.candidateId,
+      candidateRfId: null,
+      jobRfId,
+      jobId,
+      clientRfId,
+      clientId,
+      stage: "rejected",
+      createdById: userId,
+      organizationId: org.id,
+      syncedToRf: false,
+    } as const;
+    if (jobId) {
+      await prisma.placement.upsert({
+        where: { candidateId_jobId: { candidateId: input.candidateId, jobId } },
+        create: createData,
+        update: { stage: "rejected", syncedToRf: false },
+      });
+    } else {
+      await prisma.placement.upsert({
+        where: {
+          candidateId_jobRfId: { candidateId: input.candidateId, jobRfId: jobRfId! },
+        },
+        create: createData,
+        update: { stage: "rejected", syncedToRf: false },
+      });
+    }
     await createActionLog({
       userId,
       actionType: "reject",
       subjectType: "candidate",
       subjectId: input.candidateId,
       metadata: {
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
+        jobRfId,
+        clientRfId,
+        jobId,
+        clientId,
         previousStage: input.previousStage,
         reason: input.reason,
         detail: input.detail ?? null,

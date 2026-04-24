@@ -33,10 +33,14 @@ export type NextInterview = {
 };
 
 export type PipelineRow = {
-  candidateId: number;
+  // Phase 4b: candidateId / jobId can be a legacy numeric RF id
+  // (RF-imported rows) or a cuid (Ace-native rows). The /candidates/[id]
+  // and /jobs/[id] routes resolve both shapes via their identifier-based
+  // loaders so the Link hrefs work for either.
+  candidateId: number | string;
   candidateName: string;
   candidateTitle: string;
-  jobId: number;
+  jobId: number | string;
   jobTitle: string;
   clientName: string;
   stageName: string;

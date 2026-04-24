@@ -32,6 +32,7 @@ import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { CallLogs } from "@/components/call-logs";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import type {
@@ -283,6 +284,54 @@ export default async function CandidateProfilePage({
     interviewsByJob.set(iv.jobRfId, list);
   }
 
+  // Phase 4b: resolve cuid FKs for every Job / Client referenced by the
+  // placement / open-job builders below. RF-imported rows get the cuid
+  // via a batched legacyRfId → id lookup; Ace-native rows carry their
+  // cuids on the shim payload as _aceJobId / _aceClientId. The maps
+  // below back both PlacementContextJob and OpenJobOption assembly so
+  // every jobCuid / clientCuid field is populated when possible.
+  const jobCuidByRfId = new Map<number, string>();
+  const clientCuidByRfId = new Map<number, string>();
+  const referencedJobRfIds = new Set<number>();
+  const referencedClientRfIds = new Set<number>();
+  for (const j of linkedSubmittals) {
+    if (typeof j.job_id === "number" && j.job_id > 0) referencedJobRfIds.add(j.job_id);
+    if (typeof j.client_company_id === "number" && j.client_company_id > 0) {
+      referencedClientRfIds.add(j.client_company_id);
+    }
+  }
+  for (const raw of allJobs) {
+    if (typeof raw.id === "number" && raw.id > 0) referencedJobRfIds.add(raw.id);
+    if (raw.company && typeof raw.company.id === "number" && raw.company.id > 0) {
+      referencedClientRfIds.add(raw.company.id);
+    }
+  }
+  const orgForCuids = await getCurrentOrg();
+  if (referencedJobRfIds.size > 0) {
+    const rows = await prisma.job.findMany({
+      where: {
+        legacyRfId: { in: Array.from(referencedJobRfIds) },
+        organizationId: orgForCuids.id,
+      },
+      select: { id: true, legacyRfId: true },
+    });
+    for (const r of rows) {
+      if (r.legacyRfId != null) jobCuidByRfId.set(r.legacyRfId, r.id);
+    }
+  }
+  if (referencedClientRfIds.size > 0) {
+    const rows = await prisma.client.findMany({
+      where: {
+        legacyRfId: { in: Array.from(referencedClientRfIds) },
+        organizationId: orgForCuids.id,
+      },
+      select: { id: true, legacyRfId: true },
+    });
+    for (const r of rows) {
+      if (r.legacyRfId != null) clientCuidByRfId.set(r.legacyRfId, r.id);
+    }
+  }
+
   const placementJobs: PlacementContextJob[] = linkedSubmittals.map((j: RFCandidateJob) => {
     const jobRfId = j.job_id!;
     const clientRfId = j.client_company_id ?? 0;
@@ -290,6 +339,12 @@ export default async function CandidateProfilePage({
     const client = clientRaw ? normalizeClient(clientRaw) : null;
     const jobRaw = allJobs.find((jj) => jj.id === jobRfId) ?? null;
     const jobNorm = jobRaw ? normalizeJob(jobRaw) : null;
+    // Phase 4b: cuid FKs — prefer the shim's _ace* for Ace-native Jobs,
+    // fall back to the legacyRfId lookup map for RF-imported rows.
+    const jobCuid = ((jobRaw as { _aceJobId?: string } | null)?._aceJobId ?? null) ||
+      (jobCuidByRfId.get(jobRfId) ?? null);
+    const clientCuid = ((jobRaw as { _aceClientId?: string } | null)?._aceClientId ?? null) ||
+      (clientRfId > 0 ? clientCuidByRfId.get(clientRfId) ?? null : null);
     const local = placementByJob.get(jobRfId);
     const snapshot: PlacementSnapshot | null = local
       ? {
@@ -336,6 +391,8 @@ export default async function CandidateProfilePage({
       });
     return {
       jobRfId,
+      jobCuid,
+      clientCuid,
       jobTitle: j.title ?? j.name ?? "(untitled job)",
       jobLocation: jobNorm?.location ?? "",
       jobDescription:
@@ -381,8 +438,14 @@ export default async function CandidateProfilePage({
           const fullName = [ct.first_name, ct.last_name].filter(Boolean).join(" ") || ct.name || "(unnamed)";
           return { id: ct.id, name: fullName, title: ct.current_designation ?? "", email: firstEmail };
         });
+      const jobCuid = ((rfJob as { _aceJobId?: string } | null)?._aceJobId ?? null) ||
+        (jobCuidByRfId.get(jobRfId) ?? p.jobId ?? null);
+      const clientCuid = ((rfJob as { _aceClientId?: string } | null)?._aceClientId ?? null) ||
+        (clientRfId > 0 ? clientCuidByRfId.get(clientRfId) ?? p.clientId ?? null : p.clientId ?? null);
       return {
         jobRfId,
+        jobCuid,
+        clientCuid,
         jobTitle: job?.title ?? "(job)",
         jobLocation: job?.location ?? "",
         jobDescription:
@@ -477,7 +540,7 @@ export default async function CandidateProfilePage({
           return { firstName, fullName, email, phone };
         })()}
         jobs={placementJobs}
-        openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)) })}
+        openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
         aceTeam={aceTeam}
       />
 
@@ -561,11 +624,15 @@ function buildOpenJobOptions({
   clients,
   contacts,
   linkedJobIds,
+  jobCuidByRfId,
+  clientCuidByRfId,
 }: {
   allJobs: RFJob[];
   clients: RFClient[];
   contacts: Awaited<ReturnType<typeof recruiterflow.listAllContacts>>;
   linkedJobIds: Set<number>;
+  jobCuidByRfId: Map<number, string>;
+  clientCuidByRfId: Map<number, string>;
 }): OpenJobOption[] {
   const clientById = new Map<number, RFClient>();
   for (const cl of clients) clientById.set(cl.id, cl);
@@ -587,8 +654,18 @@ function buildOpenJobOptions({
             email: firstEmail,
           };
         });
+      // Phase 4b: cuid FKs — Ace-native Jobs carry them on the shim
+      // payload as _aceJobId/_aceClientId; RF-imported Jobs get the cuid
+      // via the legacyRfId lookup map built in the parent.
+      const aceJobId = (raw as { _aceJobId?: string })._aceJobId ?? null;
+      const aceClientId = (raw as { _aceClientId?: string })._aceClientId ?? null;
+      const jobCuid = aceJobId || (j.id > 0 ? jobCuidByRfId.get(j.id) ?? null : null);
+      const clientCuid = aceClientId ||
+        (j.companyId != null && j.companyId > 0 ? clientCuidByRfId.get(j.companyId) ?? null : null);
       return {
         jobRfId: j.id,
+        jobCuid,
+        clientCuid,
         jobTitle: j.title,
         clientRfId: j.companyId ?? 0,
         clientName: client ? normalizeClient(client).name : j.company,
