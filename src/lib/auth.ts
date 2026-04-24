@@ -19,6 +19,11 @@ export const GOOGLE_SCOPES: readonly string[] = [
   // this scope existed they'll need to sign out + back in; Google will
   // re-prompt consent because the requested scope set changed.
   "https://www.googleapis.com/auth/gmail.readonly",
+  // Phase-6.1 Archive button: lets us POST to threads.modify to remove
+  // the INBOX label on a thread (Gmail's native "archive" action).
+  // Scoped to the signed-in user's own mailbox — no cross-user writes.
+  // Requires a re-auth the first time, same as the readonly scope.
+  "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/meetings.space.settings",
 ];

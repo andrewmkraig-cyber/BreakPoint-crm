@@ -1,12 +1,22 @@
-# Mail Tab — read-only inbox + thread view
+# Mail Tab — inbox, archive, and reply composer
 
-Ships the first piece of the Mail Tab (Phase 6.0). You can now open your Gmail inbox inside Ace without leaving the app. Reading only in this release — reply composer is next.
+Updated in Phase 6.1. The Mail Tab now handles read, archive, and full rich-text reply — a usable two-way inbox inside Ace.
 
 ## What it does
 
-- **Inbox list** — left rail on `/mail` shows your 50 most recent Gmail threads. For each thread you see the sender name, the subject, a one-line snippet, and a relative timestamp (`12m`, `3h`, `2d`).
-- **Thread detail** — clicking a thread in the left rail opens the full conversation on the right. Messages are ordered oldest → newest, with the sender, recipients, and timestamp on each message.
-- **Sidebar nav entry** — a new **Mail** item appears in the left sidebar below **Clients**. Clicking it routes to `/mail`.
+- **Inbox list** — left rail on `/mail` shows your 50 most recent Gmail threads. For each thread you see the sender name, the subject, a one-line snippet, and a relative timestamp (`12m`, `3h`, `2d`). **Hover a row** and an archive icon appears on the right edge — one click archives that thread without opening it.
+- **Thread detail** — clicking a thread opens the full conversation on the right pane. **Newest message is at the top**, older replies below. Each message shows sender, recipients, and timestamp. The top bar has **Reply** and **Archive** buttons.
+- **Archive** — removes the `INBOX` label on Gmail (native archive). The thread disappears from Ace's inbox list immediately; it's still searchable in Gmail via All Mail or any label you kept. A "Archived" toast confirms.
+- **Reply composer** — inline, slides in below the thread messages.
+  - **To** pre-filled with the sender of the most recent inbound message. **CC** and **BCC** start collapsed; click `+ CC` / `+ BCC` to show.
+  - **Subject** pre-filled with `Re: ...` (skipped if the thread subject already starts with `Re:`).
+  - **Rich text body**: Bold, Italic, Underline, Bulleted list, Numbered list, Link. Keyboard shortcuts work (⌘/Ctrl + B, I, U).
+  - **Paste images inline** — screenshot → ⌘/Ctrl + V straight into the body; the image embeds as a `data:` URL so it renders in Gmail / Apple Mail / Outlook.
+  - **Attachments** — click **Attach** or drag files onto the body. PDF, DOC/DOCX, and any image type are accepted. Each attachment shows filename + size with a remove button.
+  - **Threading** — Gmail threads replies via `threadId`; we also set `In-Reply-To` and `References` headers so external clients thread them too.
+  - **Signature** — your stored email signature is auto-appended (same logic Ace uses for submittal emails). No need to sign off by hand.
+  - After the reply sends, the composer closes, the thread detail re-fetches, and the sent message appears at the top.
+- **Sidebar nav entry** — **Mail** item in the left sidebar routes to `/mail`.
 
 ## When to use it
 
@@ -23,16 +33,40 @@ Don't use it yet for replying — that comes in the next ship.
 3. Click any thread. The right pane loads that thread's messages in order. Messages render as HTML (formatting preserved) or, for plain-text emails, as pre-wrapped text.
 4. Click another thread to switch. Your position in the list is preserved.
 
-## First-time setup — one-time re-sign-in required
+## First-time setup — scopes + re-sign-in
 
-The Mail Tab needs read access to your Gmail (`gmail.readonly` scope). Ace has always requested `gmail.send` (for outbound email) but `gmail.readonly` is new in this release. **If you signed in before this release**, you'll need to sign out and sign back in once to grant the new scope.
+The Mail Tab uses four Gmail-adjacent OAuth scopes. Two are new in Phase 6.1:
+
+| Scope | Purpose | Added in |
+|---|---|---|
+| `https://www.googleapis.com/auth/gmail.readonly` | List + read threads | Phase 6.0 |
+| `https://www.googleapis.com/auth/gmail.send` | Send replies, submittal emails | original |
+| `https://www.googleapis.com/auth/gmail.modify` | Archive (remove `INBOX` label) | Phase 6.1 |
+| `https://www.googleapis.com/auth/calendar.events` | Interview invites | original |
+
+### Google Cloud Console — one-time config
+
+For the app to request these scopes at consent, each has to be listed on the **Data Access** page of the OAuth consent screen in Google Cloud Console:
+
+1. Go to https://console.cloud.google.com/apis/credentials/consent for the `BreakPoint Talent / Ace` project.
+2. Click **Data Access** in the sidebar.
+3. Click **Add or remove scopes**.
+4. Confirm these scopes are checked (or add them):
+   - `.../auth/gmail.readonly`
+   - `.../auth/gmail.send`
+   - `.../auth/gmail.modify`
+   - `.../auth/calendar.events`
+5. Save. Google will show a "changes saved" banner. No app verification review needed for internal-user apps.
+
+### Re-sign-in on each user's end
+
+Once the scope is listed on the consent screen, each user needs to sign out and back in once so Google re-issues a refresh token with the updated scope set:
 
 1. Click your avatar / sign-out link.
-2. Sign in again with Google. The consent screen will show a new permission — "View your email messages and settings."
-3. Approve. You're back in with the updated scope.
-4. `/mail` should now load your inbox.
+2. Sign in again with Google. The consent screen will show new permissions — including "Send email on your behalf" and "Manage drafts and send emails" / "View and modify but not delete your email." Approve.
+3. `/mail` now lets you archive + reply.
 
-If the consent screen doesn't show the new permission, Google may be using a cached grant. Fix: visit `https://myaccount.google.com/permissions`, revoke **BreakPoint Talent / Ace**, then sign in again. Google will re-prompt consent from scratch.
+If the consent screen doesn't show new permissions (Google may be using a cached grant), visit `https://myaccount.google.com/permissions`, revoke **BreakPoint Talent / Ace**, then sign in fresh.
 
 ## How scope + tenant isolation works
 
@@ -53,14 +87,19 @@ Plain-text emails render inside a `<pre>` block so whitespace and line breaks ar
 ## Limits + known behavior
 
 - **50 threads on initial load.** No pagination yet — the next ship will add "Load more" + search.
-- **INBOX label only.** The list filters by `labelIds=INBOX` right now. Sent / Drafts / Starred are not in scope for this release.
-- **No writes.** No mark-as-read, no reply, no forward, no delete. The next release adds a reply composer wired through `gmail.send` (which you already have).
-- **Per-call auth overhead.** Each thread list call hits Google 1× for the thread index and 50× for per-thread metadata headers. That's ~50 concurrent HTTP calls per page load. Gmail's per-user rate limits are generous enough that this is fine for a single user; if it becomes a bottleneck we'll fold down to the thread-index snippet + skip per-thread metadata.
+- **INBOX label only.** The list filters by `labelIds=INBOX` right now. Sent / Drafts / Starred are not surfaced in the left rail.
+- **Archive is soft.** Archive removes the `INBOX` label only. Your messages stay in Gmail All Mail and in any label you've kept. To un-archive, re-apply the `Inbox` label from Gmail directly.
+- **Inline pasted images travel as base64 `data:` URLs.** Gmail, Apple Mail, and Outlook all render them. A handful of mobile / webmail clients strip them silently; if someone reports "I don't see the screenshot," resend with a real attachment.
+- **No mark-as-read yet.** Opening a thread inside Ace does not clear the UNREAD label; the bold treatment in the list is driven by Gmail's unread state. The next Mail ship will add mark-as-read on open.
+- **Per-call auth overhead.** The thread list call hits Google 1× for the thread index and 50× for per-thread metadata headers. That's ~50 concurrent HTTP calls per page load. Gmail's per-user rate limits are generous enough for single-user traffic; if it becomes a bottleneck we'll fold to the thread-index snippet + skip per-thread metadata.
 
 ## Troubleshooting
 
 **"Couldn't load your inbox." at the top of `/mail`.**
-Almost always a missing-scope issue on the first load after this release ships. Sign out, revoke Ace at `myaccount.google.com/permissions`, sign in, re-approve the new `gmail.readonly` permission. If the error persists, check the browser network panel — the 502 body will have the underlying Gmail API error message.
+Almost always a missing-scope issue on the first load after a release. Sign out, revoke Ace at `myaccount.google.com/permissions`, sign in, re-approve the permissions. If the error persists, check the browser network panel — the 502 body will have the underlying Gmail API error message.
+
+**"Couldn't archive" toast, or "Couldn't send reply."**
+Same missing-scope story but for `gmail.modify` (archive) or `gmail.send` (reply). The scope you need is named in the toast description. Confirm it's on the Data Access consent screen in Google Cloud, then sign out + in again.
 
 **Mail item doesn't appear in the sidebar.**
 Force-refresh the page (⌘ / Ctrl + Shift + R). The sidebar component is client-side and can cache across deploys until you reload.
@@ -70,6 +109,9 @@ The thread id Gmail returned in the list call has expired or you've been signed 
 
 **A message renders as a blank pane.**
 The message body was either empty, or it used a mime type outside `text/html` / `text/plain` (rare — encrypted attachments, for example). The message header still renders; the body area shows `(no body content)`.
+
+**Sent reply doesn't appear at the top of the thread.**
+The thread refreshes automatically after Send, but if Gmail hasn't finished indexing the outbound message it may take 1–2 seconds. Refresh `/mail` if you want to be certain.
 
 ## Related features
 

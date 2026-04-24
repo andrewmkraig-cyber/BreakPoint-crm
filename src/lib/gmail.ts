@@ -89,6 +89,11 @@ export type SendEmailInput = {
   bodyHtml?: string;
   threadId?: string;
   attachments?: GmailAttachment[];
+  // RFC 5322 threading headers. Populated by the Mail Tab reply composer
+  // so Apple Mail / Outlook still thread replies — Gmail threads by
+  // threadId alone, but external clients rely on these.
+  inReplyTo?: string;
+  references?: string;
 };
 
 export type SendEmailResult = { id: string; threadId: string };
@@ -147,6 +152,8 @@ function buildRfc2822(params: SendEmailInput): string {
   if (params.cc && params.cc.length > 0) headers.push(`Cc: ${params.cc.join(", ")}`);
   if (params.bcc && params.bcc.length > 0) headers.push(`Bcc: ${params.bcc.join(", ")}`);
   headers.push(`Subject: ${encodeMimeWord(params.subject)}`);
+  if (params.inReplyTo) headers.push(`In-Reply-To: ${params.inReplyTo}`);
+  if (params.references) headers.push(`References: ${params.references}`);
   headers.push("MIME-Version: 1.0");
 
   const hasAttachments = Boolean(params.attachments && params.attachments.length > 0);
@@ -514,4 +521,62 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// ---- Mail Tab archive (Phase 6.1) ----
+// Drops the INBOX label from a thread — Gmail's native "archive". Needs
+// gmail.modify scope in auth.ts. Scoped implicitly to the signed-in
+// user's own mailbox because the access token is theirs.
+export async function archiveGmailThread(userId: string, threadId: string): Promise<void> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ removeLabelIds: ["INBOX"] }),
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail thread.archive failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
+// ---- Mail Tab reply (Phase 6.1) ----
+// Fetches the Message-ID of the latest message in a thread so outbound
+// replies can set the standard In-Reply-To / References headers. Gmail
+// itself will thread via threadId alone, but external clients (Apple
+// Mail, Outlook) still need these for their own threading to work.
+export async function getThreadReplyHeaders(
+  userId: string,
+  threadId: string,
+): Promise<{ messageId: string | null; references: string | null }> {
+  const accessToken = await getFreshAccessToken(userId);
+  const url = new URL(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}`,
+  );
+  url.searchParams.set("format", "metadata");
+  for (const h of ["Message-ID", "References"]) {
+    url.searchParams.append("metadataHeaders", h);
+  }
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!res.ok) return { messageId: null, references: null };
+  const j = (await res.json()) as GmailThreadResponse;
+  const messages = j.messages ?? [];
+  if (messages.length === 0) return { messageId: null, references: null };
+  const last = messages[messages.length - 1];
+  const headers = last.payload?.headers;
+  const messageId = headerValue(headers, "Message-ID") || null;
+  const prior = headerValue(headers, "References") || "";
+  // New References chain = old References + the message we're replying to.
+  const references = [prior, messageId].filter(Boolean).join(" ").trim() || null;
+  return { messageId, references };
 }
