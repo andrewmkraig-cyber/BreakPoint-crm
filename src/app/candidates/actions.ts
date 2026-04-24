@@ -67,11 +67,22 @@ export type QuickClientRow = {
   city: string;
 };
 
+export type QuickContactRow = {
+  id: string;
+  name: string;
+  // Company the contact belongs to — empty string if the contact has no
+  // linked Client (rare but possible for imports that lost their FK).
+  companyName: string;
+  // Slug used by /clients/[id] — same back-compat rules as QuickClientRow.
+  clientSlug: string;
+};
+
 export type QuickGlobalSearchResult =
   | {
       ok: true;
       candidates: QuickSearchRow[];
       clients: QuickClientRow[];
+      contacts: QuickContactRow[];
     }
   | { ok: false; error: string };
 
@@ -84,15 +95,25 @@ type ClientLocationJson = {
   country?: string | null;
 } | null;
 
-// Global header quick-search — returns both candidates + clients in
-// one round-trip. Splits QUICK_LIMIT (8) between the two groups: up
-// to 4 of each, but if one side has fewer matches the other can
-// fill the remaining slots. Keeps the dropdown useful when the query
-// is strongly weighted toward one entity type ("acme" → mostly
-// clients; "smith" → mostly candidates).
+type ContactRaw = {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  clientId: string | null;
+  clientName: string | null;
+  clientLegacyRfId: number | null;
+};
+
+// Global header quick-search — returns candidates + clients + contacts
+// in one round-trip. Splits QUICK_LIMIT (8) across all three groups
+// via round-robin: take one from each pool in turn until the budget
+// is spent or every pool is drained. This keeps the dropdown balanced
+// when the query skews toward one entity type and absorbs slack when
+// one pool is short.
 export async function quickSearchGlobal(query: string): Promise<QuickGlobalSearchResult> {
   const trimmed = query.trim();
-  if (trimmed.length === 0) return { ok: true, candidates: [], clients: [] };
+  if (trimmed.length === 0) return { ok: true, candidates: [], clients: [], contacts: [] };
   try {
     const org = await getCurrentOrg();
     // Candidates via the shared helper (same ILIKE pattern as the full
@@ -111,26 +132,62 @@ export async function quickSearchGlobal(query: string): Promise<QuickGlobalSearc
       orderBy: { name: "asc" },
       take: QUICK_LIMIT,
     });
+    // Contacts: firstName / lastName / legacy `name` ILIKE, plus a
+    // substring check into the `emails: String[]` array. Prisma has no
+    // ILIKE operator for array elements, so this path goes through
+    // $queryRaw — org scope is asserted explicitly in the WHERE since
+    // $queryRaw bypasses the tenant-scope extension.
+    const pattern = `%${trimmed}%`;
+    const contactRowsRaw = await prisma.$queryRaw<ContactRaw[]>`
+      SELECT c.id, c."firstName", c."lastName", c.name,
+             c."clientId",
+             cl.name         AS "clientName",
+             cl."legacyRfId" AS "clientLegacyRfId"
+      FROM "Contact" c
+      LEFT JOIN "Client" cl ON cl.id = c."clientId"
+      WHERE c."organizationId" = ${org.id}
+        AND (
+          c."firstName" ILIKE ${pattern}
+          OR c."lastName" ILIKE ${pattern}
+          OR c.name ILIKE ${pattern}
+          OR EXISTS (SELECT 1 FROM unnest(c.emails) e WHERE e ILIKE ${pattern})
+        )
+      ORDER BY COALESCE(c."lastName", c.name, '') ASC
+      LIMIT ${QUICK_LIMIT}
+    `;
 
-    // Allocate slots: cap each side at half, but let the other side
-    // absorb the remainder so the dropdown never comes back short when
-    // more matches exist in one group than the other.
-    const half = Math.floor(QUICK_LIMIT / 2);
-    const candidateCount = Math.min(candidateRowsRaw.length, half);
-    const clientBudget = QUICK_LIMIT - candidateCount;
-    const clientCount = Math.min(clientRowsRaw.length, clientBudget);
-    // If clients under-fill, let candidates expand into the slack.
-    const candidateBudget = QUICK_LIMIT - clientCount;
-    const candidateFinal = Math.min(candidateRowsRaw.length, candidateBudget);
+    // Round-robin allocation across three pools. One pass takes one
+    // from each non-empty pool until the budget is spent; short pools
+    // drop out and the remaining pools absorb the slack.
+    let remaining = QUICK_LIMIT;
+    let takeCand = 0;
+    let takeCli = 0;
+    let takeCon = 0;
+    while (remaining > 0) {
+      const before = remaining;
+      if (takeCand < candidateRowsRaw.length && remaining > 0) {
+        takeCand++;
+        remaining--;
+      }
+      if (takeCli < clientRowsRaw.length && remaining > 0) {
+        takeCli++;
+        remaining--;
+      }
+      if (takeCon < contactRowsRaw.length && remaining > 0) {
+        takeCon++;
+        remaining--;
+      }
+      if (remaining === before) break;
+    }
 
-    const candidates: QuickSearchRow[] = candidateRowsRaw.slice(0, candidateFinal).map((c) => ({
+    const candidates: QuickSearchRow[] = candidateRowsRaw.slice(0, takeCand).map((c) => ({
       id: c.id,
       name: c.name,
       title: c.title,
       employer: c.employer,
     }));
 
-    const clients: QuickClientRow[] = clientRowsRaw.slice(0, clientCount).map((c) => {
+    const clients: QuickClientRow[] = clientRowsRaw.slice(0, takeCli).map((c) => {
       const loc = c.location as ClientLocationJson;
       const city = loc?.city?.trim() ?? "";
       return {
@@ -140,7 +197,23 @@ export async function quickSearchGlobal(query: string): Promise<QuickGlobalSearc
       };
     });
 
-    return { ok: true, candidates, clients };
+    const contacts: QuickContactRow[] = contactRowsRaw.slice(0, takeCon).map((c) => {
+      const fullName =
+        [c.firstName, c.lastName].filter(Boolean).join(" ").trim() ||
+        c.name?.trim() ||
+        "(unnamed)";
+      return {
+        id: c.id,
+        name: fullName,
+        companyName: c.clientName?.trim() ?? "",
+        clientSlug:
+          c.clientLegacyRfId != null
+            ? String(c.clientLegacyRfId)
+            : c.clientId ?? "",
+      };
+    });
+
+    return { ok: true, candidates, clients, contacts };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Search failed." };
   }

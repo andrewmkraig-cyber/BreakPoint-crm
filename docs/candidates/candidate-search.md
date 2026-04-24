@@ -1,18 +1,18 @@
-# Candidate & client search
+# Candidate, client & contact search
 
 ## What it does
 
 Ace has two places to search, both filtering the same underlying data set:
 
 1. **Candidates page search bar** — the input at the top of `/candidates`. Filters the candidate table in place as you type.
-2. **Global quick-search** — the input in the TopBar (visible on every route). Opens a grouped dropdown with up to 8 matches total — **candidates and clients** — split between the two groups. Clicking or pressing Enter navigates straight to the selected profile.
+2. **Global quick-search** — the input in the TopBar (visible on every route). Opens a grouped dropdown with up to 8 matches total across three groups — **Candidates, Clients, and Contacts** — allocated round-robin. Clicking or pressing Enter navigates straight to the selected profile.
 
-The candidate-page search covers name, email, current employer, and current title. The global quick-search also searches client companies by name. Matching is case-insensitive substring (Postgres ILIKE), scoped by your organization.
+The candidate-page search covers name, email, current employer, and current title. The global quick-search extends that to client companies (by name) and contacts (by first name, last name, or any of the contact's emails). Matching is case-insensitive substring (Postgres ILIKE), scoped by your organization.
 
 ## When to use it
 
 - **Candidates page search** — you're already on `/candidates` and want to narrow the table. Best for browsing, comparing, filtering by a partial match across the whole pool.
-- **Global quick-search** — you know (roughly) who or what company you want and need to jump there from anywhere in the app. Best for "I'm on the pipeline and need to open Jane Doe's profile" or "jump to the Acme client page" — one keystroke, not a navigation + scroll.
+- **Global quick-search** — you know (roughly) who or what company you want and need to jump there from anywhere in the app. Best for "I'm on the pipeline and need to open Jane Doe's profile", "jump to the Acme client page", or "pull up Patrick's contact so I can see which client he sits under" — one keystroke, not a navigation + scroll.
 
 Either surface is fine; they're designed to complement, not duplicate.
 
@@ -28,10 +28,14 @@ Either surface is fine; they're designed to complement, not duplicate.
 ### Global quick-search
 
 1. Click the **Search candidates & clients…** input in the top bar (works on any route).
-2. Type a query. After 300ms a dropdown shows up to 8 matches total, grouped into a **Candidates** section (name + current title + current employer) and a **Clients** section (company name + city). By default each group gets up to 4 slots; if one side has fewer matches the other expands into the slack so the dropdown never comes back short.
+2. Type a query. After 300ms a dropdown shows up to 8 matches total, grouped into three sections:
+   - **Candidates** — name + current title + current employer
+   - **Clients** — company name + city
+   - **Contacts** — full name + the company they work at
+   The 8 slots are allocated round-robin across the three groups, so each gets a fair share. If one group has fewer matches than its share, the others absorb the slack; the dropdown never comes back short when more matches exist elsewhere.
 3. Either:
-   - **Click** a row to navigate — candidate rows open `/candidates/[id]`, client rows open `/clients/[slug]`.
-   - **Arrow keys** — ArrowDown / ArrowUp walk the flat list (candidates first, then clients), Enter opens the highlighted row.
+   - **Click** a row to navigate — candidate rows open `/candidates/[id]`, client rows open `/clients/[slug]`, contact rows open the **parent client profile** (contacts live on client pages, not their own profile).
+   - **Arrow keys** — ArrowDown / ArrowUp walk the flat list in group order (candidates → clients → contacts), Enter opens the highlighted row.
    - **Escape** — close the dropdown and clear the input without navigating.
    - **Click outside** — close the dropdown; input keeps whatever you typed.
 
@@ -51,6 +55,15 @@ Clients (global quick-search only):
 | Field | Source column | Example match |
 |---|---|---|
 | **Company name** | `Client.name` | "acme" → Acme Corp, Acme Industries |
+
+Contacts (global quick-search only):
+
+| Field | Source column | Example match |
+|---|---|---|
+| **First name** | `Contact.firstName` | "patrick" → Patrick Sheehan |
+| **Last name** | `Contact.lastName` | "sheehan" → Patrick Sheehan |
+| **Legacy combined name** | `Contact.name` | for RF-imported contacts where first/last weren't split out |
+| **Email** | `Contact.emails[]` | "@sheehanbros.com" → every contact with an email at that domain |
 
 Matching is:
 - **Case-insensitive** — "acme" matches "Acme" matches "ACME".

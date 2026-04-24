@@ -6,19 +6,20 @@ import { Search, Loader2 } from "lucide-react";
 import {
   quickSearchGlobal,
   type QuickClientRow,
+  type QuickContactRow,
   type QuickSearchRow,
 } from "@/app/candidates/actions";
 
-// Phase 5.3: global quick-search across candidates + clients. Lives
-// in the TopBar, visible on every route. Debounced 300ms. Up to 8
-// total dropdown rows split between Candidates and Clients (half
-// each by default; the split floats when one side has fewer matches
-// so the dropdown never under-fills).
+// Phase 5.4: global quick-search across candidates + clients + contacts.
+// Lives in the TopBar, visible on every route. Debounced 300ms. Up to
+// 8 total dropdown rows split round-robin across the three groups so
+// the dropdown stays balanced regardless of which entity the query
+// weights toward.
 //
 // Keyboard:
 //   - Typing in the input shows matches.
 //   - ArrowDown / ArrowUp walk the flat result order (candidates
-//     first, then clients).
+//     first, then clients, then contacts).
 //   - Enter navigates to the highlighted row.
 //   - Escape closes the dropdown and clears the input.
 //   - Click outside closes the dropdown; input keeps whatever you typed.
@@ -26,13 +27,15 @@ const DEBOUNCE_MS = 300;
 
 type ResultItem =
   | { kind: "candidate"; id: string; name: string; title: string; employer: string }
-  | { kind: "client"; slug: string; name: string; city: string };
+  | { kind: "client"; slug: string; name: string; city: string }
+  | { kind: "contact"; id: string; name: string; companyName: string; clientSlug: string };
 
 export function TopBarSearch() {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [candidates, setCandidates] = useState<QuickSearchRow[]>([]);
   const [clients, setClients] = useState<QuickClientRow[]>([]);
+  const [contacts, setContacts] = useState<QuickContactRow[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -41,8 +44,9 @@ export function TopBarSearch() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Flat list powering keyboard nav + the href on Enter. Candidates
-  // appear above clients so arrow-down walks "my first match" first.
+  // Flat list powering keyboard nav + the href on Enter. Order in the
+  // dropdown: candidates → clients → contacts, so arrow-down walks
+  // "my first match" first.
   const flatResults = useMemo<ResultItem[]>(() => {
     const out: ResultItem[] = [];
     for (const c of candidates) {
@@ -51,14 +55,18 @@ export function TopBarSearch() {
     for (const c of clients) {
       out.push({ kind: "client", slug: c.slug, name: c.name, city: c.city });
     }
+    for (const c of contacts) {
+      out.push({ kind: "contact", id: c.id, name: c.name, companyName: c.companyName, clientSlug: c.clientSlug });
+    }
     return out;
-  }, [candidates, clients]);
+  }, [candidates, clients, contacts]);
 
   const runSearch = useCallback(async (query: string) => {
     const myToken = ++reqToken.current;
     if (query.trim().length === 0) {
       setCandidates([]);
       setClients([]);
+      setContacts([]);
       setIsSearching(false);
       return;
     }
@@ -69,10 +77,12 @@ export function TopBarSearch() {
     if (res.ok) {
       setCandidates(res.candidates);
       setClients(res.clients);
+      setContacts(res.contacts);
       setHighlight(0);
     } else {
       setCandidates([]);
       setClients([]);
+      setContacts([]);
     }
   }, []);
 
@@ -105,10 +115,16 @@ export function TopBarSearch() {
     setQ("");
     setCandidates([]);
     setClients([]);
+    setContacts([]);
     if (item.kind === "candidate") {
       router.push(`/candidates/${item.id}`);
-    } else {
+    } else if (item.kind === "client") {
       router.push(`/clients/${item.slug}`);
+    } else {
+      // Contacts live on a client profile — navigate to the parent
+      // client. If the contact somehow has no linked client, fall
+      // back to the clients index rather than a dead /clients/ URL.
+      router.push(item.clientSlug ? `/clients/${item.clientSlug}` : "/clients");
     }
   }
 
@@ -118,6 +134,7 @@ export function TopBarSearch() {
       setQ("");
       setCandidates([]);
       setClients([]);
+      setContacts([]);
       inputRef.current?.blur();
       return;
     }
@@ -139,6 +156,7 @@ export function TopBarSearch() {
   const showDropdown = isOpen && (hasQuery || flatResults.length > 0);
   const candidateStart = 0;
   const clientStart = candidates.length;
+  const contactStart = candidates.length + clients.length;
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -232,6 +250,36 @@ export function TopBarSearch() {
                   >
                     <span className="font-medium">{c.name}</span>
                     <span className="text-xs text-court-fg-muted">{c.city || "—"}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {contacts.length > 0 && (
+            <>
+              <div className="border-b border-t border-court-border bg-court-surface-subtle/60 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                Contacts
+              </div>
+              {contacts.map((c, i) => {
+                const idx = contactStart + i;
+                return (
+                  <button
+                    key={`con-${c.id}`}
+                    type="button"
+                    role="option"
+                    aria-selected={idx === highlight}
+                    onMouseEnter={() => setHighlight(idx)}
+                    onClick={() => navigate({ kind: "contact", ...c })}
+                    className={
+                      "flex w-full flex-col items-start gap-0.5 px-4 py-2 text-left text-sm transition " +
+                      (idx === highlight
+                        ? "bg-court-accent-tint/60 text-court-fg"
+                        : "text-court-fg hover:bg-court-accent-tint/40")
+                    }
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-xs text-court-fg-muted">{c.companyName || "—"}</span>
                   </button>
                 );
               })}
