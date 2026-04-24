@@ -1,21 +1,24 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Mail, Phone as PhoneIcon, Plus, UserPlus, X, ExternalLink } from "lucide-react";
 import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
-import { addContact } from "@/app/clients/[id]/actions";
+import { addContact, updateContact } from "@/app/clients/[id]/actions";
 import { EmailLink } from "@/components/email-link";
 import { cn } from "@/lib/utils";
 
 export type ContactRow = {
   id: string;
   legacyRfId: number | null;
+  firstName: string;
+  lastName: string;
   name: string;
   title: string;
   email: string;
   phone: string;
   linkedIn: string | null;
+  notes: string;
   lastContactedAt: string | null;
 };
 
@@ -33,6 +36,13 @@ export function ContactsTab({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Local copy of the rows so edits from the slide-over apply without
+  // needing a router.refresh() (SSR round-trip). When the add-contact
+  // form succeeds we still router.refresh() since the new row needs to
+  // come back from the server with its generated id.
+  const [rows, setRows] = useState<ContactRow[]>(initialContacts);
+  useEffect(() => setRows(initialContacts), [initialContacts]);
+  const [editing, setEditing] = useState<ContactRow | null>(null);
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -58,9 +68,9 @@ export function ContactsTab({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div className="text-sm text-court-fg-muted">
-          {initialContacts.length === 0
+          {rows.length === 0
             ? "No contacts on file yet."
-            : `${initialContacts.length} ${initialContacts.length === 1 ? "contact" : "contacts"} on file`}
+            : `${rows.length} ${rows.length === 1 ? "contact" : "contacts"} on file`}
         </div>
         <button
           type="button"
@@ -128,15 +138,19 @@ export function ContactsTab({
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {initialContacts.length === 0 ? (
+            {rows.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
                   No contacts for this client yet. Add one with the button above.
                 </td>
               </tr>
             ) : (
-              initialContacts.map((c) => (
-                <tr key={c.id} className="transition hover:bg-brand-tint/40">
+              rows.map((c) => (
+                <tr
+                  key={c.id}
+                  onClick={() => setEditing(c)}
+                  className="cursor-pointer transition hover:bg-brand-tint/40"
+                >
                   <td className="px-5 py-3 align-top">
                     <div className="flex items-center gap-2">
                       <div className="flex h-8 w-8 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
@@ -149,6 +163,7 @@ export function ContactsTab({
                             href={c.linkedIn}
                             target="_blank"
                             rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
                             className="inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
                           >
                             LinkedIn <ExternalLink className="h-2.5 w-2.5" />
@@ -158,7 +173,14 @@ export function ContactsTab({
                     </div>
                   </td>
                   <td className="px-5 py-3 align-top text-court-fg-muted">{c.title || "—"}</td>
-                  <td className="px-5 py-3 align-top">
+                  <td
+                    className="px-5 py-3 align-top"
+                    onClick={(e) => {
+                      // Let the email/phone links handle their own click so
+                      // the row's open-editor handler doesn't swallow them.
+                      if ((e.target as HTMLElement).closest("a")) e.stopPropagation();
+                    }}
+                  >
                     {c.email ? (
                       <EmailLink
                         email={c.email}
@@ -175,7 +197,12 @@ export function ContactsTab({
                       <span className="text-court-fg-muted">—</span>
                     )}
                   </td>
-                  <td className="px-5 py-3 align-top">
+                  <td
+                    className="px-5 py-3 align-top"
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest("a")) e.stopPropagation();
+                    }}
+                  >
                     {c.phone ? (
                       <a href={telHref(c.phone)} className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark">
                         <PhoneIcon className="h-3 w-3 text-court-fg-muted" /> {formatPhone(c.phone)}
@@ -193,7 +220,184 @@ export function ContactsTab({
           </tbody>
         </table>
       </div>
+
+      {editing && (
+        <ContactEditor
+          contact={editing}
+          onClose={() => setEditing(null)}
+          onSaved={(updated) => {
+            setRows((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
+            setEditing(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function ContactEditor({
+  contact,
+  onClose,
+  onSaved,
+}: {
+  contact: ContactRow;
+  onClose: () => void;
+  onSaved: (row: ContactRow) => void;
+}) {
+  const [firstName, setFirstName] = useState(contact.firstName);
+  const [lastName, setLastName] = useState(contact.lastName);
+  const [title, setTitle] = useState(contact.title);
+  const [email, setEmail] = useState(contact.email);
+  const [phone, setPhone] = useState(contact.phone);
+  const [linkedin, setLinkedin] = useState(contact.linkedIn ?? "");
+  const [notes, setNotes] = useState(contact.notes);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+
+  useEffect(() => {
+    function onEsc(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onEsc);
+    return () => document.removeEventListener("keydown", onEsc);
+  }, [onClose]);
+
+  function onSubmit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError(null);
+    startSaving(async () => {
+      const res = await updateContact({
+        contactId: contact.id,
+        firstName,
+        lastName,
+        title,
+        email,
+        phone,
+        linkedin,
+        notes,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      onSaved({
+        ...contact,
+        firstName: res.value.firstName,
+        lastName: res.value.lastName,
+        name: res.value.name || "(unnamed)",
+        title: res.value.title,
+        email: res.value.email,
+        phone: res.value.phone,
+        linkedIn: res.value.linkedin || null,
+        notes: res.value.notes,
+      });
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
+      <div
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+        aria-label="Close contact editor"
+      />
+      <aside className="relative flex h-full w-full max-w-lg flex-col overflow-y-auto bg-court-surface shadow-2xl">
+        <div className="flex items-center justify-between border-b border-court-border px-5 py-4">
+          <h2 className="font-serif text-base font-semibold text-court-fg">Edit contact</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <form onSubmit={onSubmit} className="flex flex-1 flex-col gap-4 px-5 py-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <EditorField label="First name" required value={firstName} onChange={setFirstName} autoFocus />
+            <EditorField label="Last name" value={lastName} onChange={setLastName} />
+          </div>
+          <EditorField label="Title" value={title} onChange={setTitle} placeholder="e.g. VP Engineering" />
+          <EditorField label="Email" type="email" value={email} onChange={setEmail} placeholder="name@company.com" />
+          <EditorField label="Phone" value={phone} onChange={setPhone} placeholder="(555) 555-5555" />
+          <EditorField label="LinkedIn URL" value={linkedin} onChange={setLinkedin} placeholder="https://linkedin.com/in/…" />
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={5}
+              className={cn(
+                "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
+                "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+              )}
+              placeholder="Conversation history, role specifics, gotchas…"
+            />
+          </label>
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>
+          )}
+          <div className="mt-auto flex items-center justify-end gap-2 border-t border-court-border pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+            >
+              {saving && <Loader2 className="h-3 w-3 animate-spin" />}
+              Save
+            </button>
+          </div>
+        </form>
+      </aside>
+    </div>
+  );
+}
+
+function EditorField({
+  label,
+  value,
+  onChange,
+  type = "text",
+  required,
+  placeholder,
+  autoFocus,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  type?: string;
+  required?: boolean;
+  placeholder?: string;
+  autoFocus?: boolean;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+        {label}
+        {required && <span className="ml-0.5 text-red-500">*</span>}
+      </span>
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        required={required}
+        placeholder={placeholder}
+        autoFocus={autoFocus}
+        className={cn(
+          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
+          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+        )}
+      />
+    </label>
   );
 }
 

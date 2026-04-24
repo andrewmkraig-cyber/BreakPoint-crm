@@ -79,6 +79,7 @@ export default async function ClientDetailPage({
             phoneNumbers: true,
             currentDesignation: true,
             linkedinProfile: true,
+            notes: true,
             lastActivityAt: true,
             addedAt: true,
           },
@@ -95,6 +96,7 @@ export default async function ClientDetailPage({
             phoneNumbers: true,
             currentDesignation: true,
             linkedinProfile: true,
+            notes: true,
             lastActivityAt: true,
             addedAt: true,
           },
@@ -324,6 +326,8 @@ export default async function ClientDetailPage({
           initialContacts={contacts.map((c) => ({
             id: c.id,
             legacyRfId: c.legacyRfId,
+            firstName: c.firstName ?? "",
+            lastName: c.lastName ?? "",
             name:
               [c.firstName, c.lastName].filter(Boolean).join(" ") ||
               c.name ||
@@ -332,6 +336,7 @@ export default async function ClientDetailPage({
             email: Array.isArray(c.emails) && c.emails.length > 0 ? c.emails[0] : "",
             phone: firstPhone(c.phoneNumbers),
             linkedIn: c.linkedinProfile ?? null,
+            notes: c.notes ?? "",
             lastContactedAt:
               (c.lastActivityAt?.toISOString() ?? c.addedAt?.toISOString()) ?? null,
           }))}

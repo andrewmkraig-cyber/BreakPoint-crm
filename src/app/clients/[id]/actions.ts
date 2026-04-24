@@ -71,6 +71,115 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
   }
 }
 
+export type UpdateContactInput = {
+  contactId: string;
+  firstName: string;
+  lastName: string;
+  title: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  notes: string;
+};
+
+export type UpdateContactResult = ActionResult<{
+  id: string;
+  firstName: string;
+  lastName: string;
+  name: string;
+  title: string;
+  email: string;
+  phone: string;
+  linkedin: string;
+  notes: string;
+}>;
+
+// Edits a single contact from the client-profile Contacts tab. Scoped by
+// organizationId — refuses to write if the contact isn't in the caller's
+// org, even if a malicious client forged the contactId. Shapes the
+// response so the optimistic UI update in ContactsTab can replace the
+// row without a full router.refresh().
+export async function updateContact(input: UpdateContactInput): Promise<UpdateContactResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!input.contactId) return { ok: false, error: "Missing contact id." };
+
+  const first = input.firstName.trim();
+  const last = input.lastName.trim();
+  if (!first) return { ok: false, error: "First name is required." };
+
+  try {
+    const org = await getCurrentOrg();
+    const existing = await prisma.contact.findFirst({
+      where: { id: input.contactId, organizationId: org.id },
+      select: { id: true, client: { select: { id: true, legacyRfId: true } } },
+    });
+    if (!existing) return { ok: false, error: "Contact not found." };
+
+    const email = input.email.trim();
+    const phone = input.phone.trim();
+    const title = input.title.trim();
+    const linkedin = input.linkedin.trim();
+    const notes = input.notes.trim();
+    const combined = [first, last].filter(Boolean).join(" ");
+
+    const updated = await prisma.contact.update({
+      where: { id: existing.id },
+      data: {
+        firstName: first,
+        lastName: last || null,
+        name: combined,
+        emails: email ? [email] : [],
+        phoneNumbers: phone ? [{ number: phone }] : undefined,
+        currentDesignation: title || null,
+        linkedinProfile: linkedin || null,
+        notes: notes || null,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        name: true,
+        currentDesignation: true,
+        emails: true,
+        phoneNumbers: true,
+        linkedinProfile: true,
+        notes: true,
+      },
+    });
+
+    if (existing.client) {
+      const slug =
+        existing.client.legacyRfId != null
+          ? String(existing.client.legacyRfId)
+          : existing.client.id;
+      revalidatePath(`/clients/${slug}`);
+    }
+
+    const phoneOut = (() => {
+      const pn = updated.phoneNumbers as Array<{ number?: string | null }> | null;
+      return pn?.[0]?.number ?? "";
+    })();
+
+    return {
+      ok: true,
+      value: {
+        id: updated.id,
+        firstName: updated.firstName ?? "",
+        lastName: updated.lastName ?? "",
+        name: updated.name ?? combined,
+        title: updated.currentDesignation ?? "",
+        email: Array.isArray(updated.emails) && updated.emails.length > 0 ? updated.emails[0] : "",
+        phone: phoneOut,
+        linkedin: updated.linkedinProfile ?? "",
+        notes: updated.notes ?? "",
+      },
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update contact." };
+  }
+}
+
 // ---- Agreements ----
 // Uploads go through /api/uploads/agreement (chunked). Summarize and delete
 // stay as server actions because they're small one-shot calls.

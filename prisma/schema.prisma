@@ -644,6 +644,7 @@ model Contact {
   clientId           String?
   currentDesignation String?
   linkedinProfile    String?
+  notes              String?   @db.Text
   leadOwner          Json?
   addedAt            DateTime?
   lastActivityAt     DateTime?
