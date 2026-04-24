@@ -37,7 +37,7 @@ Do **not** use it to edit an existing candidate — open their profile instead. 
 | **Experience** | Array of roles. Each row is a designation + organization + date range + optional description. Parser fills this from the resume where available. | Optional. |
 | **Education** | Array of degrees. School + degree + date range + optional description. | Optional. |
 | **Notes** | Free-form. Good for "spoke to her on 4/22 — interested in remote roles under $150k." Visible to the team in the notes panel on the profile. | Optional. |
-| **Resume** | The uploaded file, stored on the candidate row. Download and inline PDF preview are available from the profile. | Optional — you can create a candidate without a resume and add one later. |
+| **Resume** | The uploaded file, stored on the candidate row. Inline preview is available from the profile for both PDF (canvas viewer) and DOCX (rendered to HTML server-side via mammoth). Other file types fall back to a "Preview not available" message with a Download link. | Optional — you can create a candidate without a resume and add one later. |
 
 ## Common questions
 

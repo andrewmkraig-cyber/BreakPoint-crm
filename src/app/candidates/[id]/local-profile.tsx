@@ -11,6 +11,7 @@ import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
+import { DocxPreview } from "@/components/docx-preview";
 import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -347,9 +348,17 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
               src={`/api/local-candidate-resumes/${candidate.id}`}
               className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
             />
+          ) : candidate.resumeFilename &&
+            (candidate.resumeMimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+              candidate.resumeMimeType === "application/msword" ||
+              /\.(docx?|DOCX?)$/.test(candidate.resumeFilename)) ? (
+            <DocxPreview
+              idOrRfId={candidate.id}
+              className="min-h-[900px] w-full overflow-auto rounded-b-xl [height:calc(100vh-200px)]"
+            />
           ) : candidate.resumeFilename ? (
             <p className="px-5 py-8 text-center text-xs text-court-fg-muted">
-              Preview unavailable for this file type — use Download to open.
+              Preview not available for this file type — use Download to open.
             </p>
           ) : (
             <p className="px-5 py-8 text-center text-xs text-court-fg-muted">No resume on file.</p>

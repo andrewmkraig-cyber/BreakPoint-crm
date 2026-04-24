@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Download, Edit3, FileText, Loader2, Replace, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
+import { DocxPreview } from "@/components/docx-preview";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { deleteCandidateResume } from "@/app/candidates/[id]/actions";
@@ -106,6 +107,12 @@ export function EditableResume({
   const showDropzone = !resume || replacing;
   const hasRedacted = Boolean(resume?.redactedAt);
   const canRedact = resume?.mimeType === "application/pdf";
+  const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  const LEGACY_DOC_MIME = "application/msword";
+  const isDocxResume =
+    resume?.mimeType === DOCX_MIME ||
+    resume?.mimeType === LEGACY_DOC_MIME ||
+    /\.(docx?|DOCX?)$/.test(resume?.filename ?? "");
 
   return (
     <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
@@ -225,10 +232,15 @@ export function EditableResume({
               src={pdfUrl}
               className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
             />
+          ) : resume && isDocxResume ? (
+            <DocxPreview
+              idOrRfId={candidateRfId}
+              className="min-h-[900px] w-full overflow-auto rounded-b-xl [height:calc(100vh-200px)]"
+            />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">
               <FileText className="h-6 w-6 text-court-fg-muted" />
-              {resume?.filename ?? "No resume on file."}
+              {resume ? "Preview not available for this file type." : "No resume on file."}
               {resume && (
                 <Link href={downloadUrl} className="text-brand-dark hover:underline">
                   Download to view

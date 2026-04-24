@@ -1,24 +1,38 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search, Loader2 } from "lucide-react";
-import { quickSearchCandidates, type QuickSearchRow } from "@/app/candidates/actions";
+import {
+  quickSearchGlobal,
+  type QuickClientRow,
+  type QuickSearchRow,
+} from "@/app/candidates/actions";
 
-// Phase 5.1: global quick-search for candidates. Lives in the TopBar,
-// visible on every route. Debounced 300ms. Up to 8 dropdown rows with
-// name + title + employer. Keyboard:
+// Phase 5.3: global quick-search across candidates + clients. Lives
+// in the TopBar, visible on every route. Debounced 300ms. Up to 8
+// total dropdown rows split between Candidates and Clients (half
+// each by default; the split floats when one side has fewer matches
+// so the dropdown never under-fills).
+//
+// Keyboard:
 //   - Typing in the input shows matches.
-//   - ArrowDown / ArrowUp move highlight.
+//   - ArrowDown / ArrowUp walk the flat result order (candidates
+//     first, then clients).
 //   - Enter navigates to the highlighted row.
 //   - Escape closes the dropdown and clears the input.
-//   - Click outside closes the dropdown.
+//   - Click outside closes the dropdown; input keeps whatever you typed.
 const DEBOUNCE_MS = 300;
+
+type ResultItem =
+  | { kind: "candidate"; id: string; name: string; title: string; employer: string }
+  | { kind: "client"; slug: string; name: string; city: string };
 
 export function TopBarSearch() {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [rows, setRows] = useState<QuickSearchRow[]>([]);
+  const [candidates, setCandidates] = useState<QuickSearchRow[]>([]);
+  const [clients, setClients] = useState<QuickClientRow[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [highlight, setHighlight] = useState(0);
@@ -27,22 +41,38 @@ export function TopBarSearch() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
+  // Flat list powering keyboard nav + the href on Enter. Candidates
+  // appear above clients so arrow-down walks "my first match" first.
+  const flatResults = useMemo<ResultItem[]>(() => {
+    const out: ResultItem[] = [];
+    for (const c of candidates) {
+      out.push({ kind: "candidate", id: c.id, name: c.name, title: c.title, employer: c.employer });
+    }
+    for (const c of clients) {
+      out.push({ kind: "client", slug: c.slug, name: c.name, city: c.city });
+    }
+    return out;
+  }, [candidates, clients]);
+
   const runSearch = useCallback(async (query: string) => {
     const myToken = ++reqToken.current;
     if (query.trim().length === 0) {
-      setRows([]);
+      setCandidates([]);
+      setClients([]);
       setIsSearching(false);
       return;
     }
     setIsSearching(true);
-    const res = await quickSearchCandidates(query);
-    if (myToken !== reqToken.current) return; // a newer keystroke superseded this
+    const res = await quickSearchGlobal(query);
+    if (myToken !== reqToken.current) return; // superseded by a newer keystroke
     setIsSearching(false);
     if (res.ok) {
-      setRows(res.rows);
+      setCandidates(res.candidates);
+      setClients(res.clients);
       setHighlight(0);
     } else {
-      setRows([]);
+      setCandidates([]);
+      setClients([]);
     }
   }, []);
 
@@ -70,36 +100,45 @@ export function TopBarSearch() {
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [isOpen]);
 
-  function navigate(id: string) {
+  function navigate(item: ResultItem) {
     setIsOpen(false);
     setQ("");
-    setRows([]);
-    router.push(`/candidates/${id}`);
+    setCandidates([]);
+    setClients([]);
+    if (item.kind === "candidate") {
+      router.push(`/candidates/${item.id}`);
+    } else {
+      router.push(`/clients/${item.slug}`);
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
       setIsOpen(false);
       setQ("");
-      setRows([]);
+      setCandidates([]);
+      setClients([]);
       inputRef.current?.blur();
       return;
     }
-    if (!isOpen || rows.length === 0) return;
+    if (!isOpen || flatResults.length === 0) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setHighlight((h) => (h + 1) % rows.length);
+      setHighlight((h) => (h + 1) % flatResults.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setHighlight((h) => (h - 1 + rows.length) % rows.length);
+      setHighlight((h) => (h - 1 + flatResults.length) % flatResults.length);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const pick = rows[highlight];
-      if (pick) navigate(pick.id);
+      const pick = flatResults[highlight];
+      if (pick) navigate(pick);
     }
   }
 
-  const showDropdown = isOpen && (q.trim().length > 0 || rows.length > 0);
+  const hasQuery = q.trim().length > 0;
+  const showDropdown = isOpen && (hasQuery || flatResults.length > 0);
+  const candidateStart = 0;
+  const clientStart = candidates.length;
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -115,8 +154,8 @@ export function TopBarSearch() {
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Search candidates…"
-          aria-label="Global candidate search"
+          placeholder="Search candidates & clients…"
+          aria-label="Global search"
           // Autocomplete off + unusual name stops Chrome from filling this
           // with the recruiter's stored profile.
           autoComplete="off"
@@ -133,30 +172,71 @@ export function TopBarSearch() {
           role="listbox"
           className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg"
         >
-          {rows.length === 0 && !isSearching && q.trim().length > 0 && (
-            <div className="px-4 py-3 text-xs text-court-fg-muted">No candidates match your search</div>
+          {flatResults.length === 0 && !isSearching && hasQuery && (
+            <div className="px-4 py-3 text-xs text-court-fg-muted">No matches</div>
           )}
-          {rows.map((r, i) => (
-            <button
-              key={r.id}
-              type="button"
-              role="option"
-              aria-selected={i === highlight}
-              onMouseEnter={() => setHighlight(i)}
-              onClick={() => navigate(r.id)}
-              className={
-                "flex w-full flex-col items-start gap-0.5 px-4 py-2 text-left text-sm transition " +
-                (i === highlight
-                  ? "bg-court-accent-tint/60 text-court-fg"
-                  : "text-court-fg hover:bg-court-accent-tint/40")
-              }
-            >
-              <span className="font-medium">{r.name}</span>
-              <span className="text-xs text-court-fg-muted">
-                {[r.title, r.employer].filter(Boolean).join(" · ") || "—"}
-              </span>
-            </button>
-          ))}
+
+          {candidates.length > 0 && (
+            <>
+              <div className="border-b border-court-border bg-court-surface-subtle/60 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                Candidates
+              </div>
+              {candidates.map((c, i) => {
+                const idx = candidateStart + i;
+                return (
+                  <button
+                    key={`cand-${c.id}`}
+                    type="button"
+                    role="option"
+                    aria-selected={idx === highlight}
+                    onMouseEnter={() => setHighlight(idx)}
+                    onClick={() => navigate({ kind: "candidate", ...c })}
+                    className={
+                      "flex w-full flex-col items-start gap-0.5 px-4 py-2 text-left text-sm transition " +
+                      (idx === highlight
+                        ? "bg-court-accent-tint/60 text-court-fg"
+                        : "text-court-fg hover:bg-court-accent-tint/40")
+                    }
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-xs text-court-fg-muted">
+                      {[c.title, c.employer].filter(Boolean).join(" · ") || "—"}
+                    </span>
+                  </button>
+                );
+              })}
+            </>
+          )}
+
+          {clients.length > 0 && (
+            <>
+              <div className="border-b border-t border-court-border bg-court-surface-subtle/60 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                Clients
+              </div>
+              {clients.map((c, i) => {
+                const idx = clientStart + i;
+                return (
+                  <button
+                    key={`cli-${c.slug}`}
+                    type="button"
+                    role="option"
+                    aria-selected={idx === highlight}
+                    onMouseEnter={() => setHighlight(idx)}
+                    onClick={() => navigate({ kind: "client", ...c })}
+                    className={
+                      "flex w-full flex-col items-start gap-0.5 px-4 py-2 text-left text-sm transition " +
+                      (idx === highlight
+                        ? "bg-court-accent-tint/60 text-court-fg"
+                        : "text-court-fg hover:bg-court-accent-tint/40")
+                    }
+                  >
+                    <span className="font-medium">{c.name}</span>
+                    <span className="text-xs text-court-fg-muted">{c.city || "—"}</span>
+                  </button>
+                );
+              })}
+            </>
+          )}
         </div>
       )}
     </div>
