@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Archive, Loader2, Mail as MailIcon, Reply } from "lucide-react";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
+import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { MailComposer } from "@/app/mail/mail-composer";
 
 // Two-pane Mail Tab layout. The server fetched the thread list; the
@@ -13,9 +14,15 @@ import { MailComposer } from "@/app/mail/mail-composer";
 export function MailView({
   threads: initialThreads,
   currentUserEmail,
+  templates,
+  currentUserFirstName,
+  currentUserFullName,
 }: {
   threads: MailListThread[];
   currentUserEmail: string;
+  templates: ActiveTemplateSummary[];
+  currentUserFirstName: string;
+  currentUserFullName: string;
 }) {
   const [threads, setThreads] = useState<MailListThread[]>(initialThreads);
   useEffect(() => setThreads(initialThreads), [initialThreads]);
@@ -139,6 +146,9 @@ export function MailView({
             composerOpen={composerOpen}
             archiving={archiving === detail.id}
             currentUserEmail={currentUserEmail}
+            currentUserFirstName={currentUserFirstName}
+            currentUserFullName={currentUserFullName}
+            templates={templates}
             onArchive={() => archiveThread(detail.id)}
             onReply={() => setComposerOpen(true)}
             onComposerClose={() => setComposerOpen(false)}
@@ -234,6 +244,9 @@ function ThreadDetail({
   composerOpen,
   archiving,
   currentUserEmail,
+  currentUserFirstName,
+  currentUserFullName,
+  templates,
   onArchive,
   onReply,
   onComposerClose,
@@ -244,6 +257,9 @@ function ThreadDetail({
   composerOpen: boolean;
   archiving: boolean;
   currentUserEmail: string;
+  currentUserFirstName: string;
+  currentUserFullName: string;
+  templates: ActiveTemplateSummary[];
   onArchive: () => void;
   onReply: () => void;
   onComposerClose: () => void;
@@ -310,6 +326,13 @@ function ThreadDetail({
           defaultTo={defaultTo}
           defaultCc={defaultCc}
           defaultSubject={defaultSubject}
+          templates={templates}
+          mergeContext={{
+            user: {
+              firstName: currentUserFirstName,
+              fullName: currentUserFullName,
+            },
+          }}
           onClose={onComposerClose}
           onSent={onComposerSent}
         />

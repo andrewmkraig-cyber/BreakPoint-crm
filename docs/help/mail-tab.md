@@ -13,10 +13,34 @@ Updated in Phase 6.1. The Mail Tab now handles read, archive, and full rich-text
   - **Rich text body**: Bold, Italic, Underline, Bulleted list, Numbered list, Link. Keyboard shortcuts work (⌘/Ctrl + B, I, U).
   - **Paste images inline** — screenshot → ⌘/Ctrl + V straight into the body; the image embeds as a `data:` URL so it renders in Gmail / Apple Mail / Outlook.
   - **Attachments** — click **Attach** or drag files onto the body. PDF, DOC/DOCX, and any image type are accepted. Each attachment shows filename + size with a remove button.
+  - **Use Template** — the first button in the composer add-on toolbar. Opens a dropdown listing every active template from Settings → Templates. Click one; its subject + body drop into the composer (confirmation prompt if you already started typing).
+  - **Insert Field** — the second toolbar button. Drops a handlebars-style merge tag at the caret of whichever input was last focused (Subject or Body). 14 tags available — see the field list below.
+  - **Generate with Claude** — the sparkly third button. Opens a small textarea; describe what you want to say ("tell Linda her interview moved to Monday and apologize for the late notice") and Claude writes the body for you, with the current thread as context. Replaces whatever is in the body (with a confirm prompt if you already started typing). Signature auto-appends on send; Claude never writes one.
   - **Threading** — Gmail threads replies via `threadId`; we also set `In-Reply-To` and `References` headers so external clients thread them too.
   - **Signature** — the full Gmail-style signature block is auto-appended (logo + name + title + email/phone/website rows with green-circle icons). Edit the pieces in **Settings → Branding & Signature**.
   - **Default To** — the composer pre-fills **To** with the "other party" on the latest message: if you sent that message, the To recipients get it (minus you); if someone else sent it, the reply goes back to them. Your own email address never auto-fills into To or CC.
   - After the reply sends, the composer closes, the thread detail re-fetches, and the sent message appears at the top.
+
+### Merge fields (Insert Field dropdown)
+
+Tags use handlebars-style `{{dot.path}}` form. On send, every tag is resolved against the composer's context — if a tag can't be resolved (missing context branch, empty value), the composer shows a confirm prompt listing the unresolved tags before sending. The Mail Tab today always has your user context available (so `{{user.first_name}}` and `{{user.full_name}}` always resolve), but candidate/job/client context is populated when the composer is opened from an entity profile (that wiring lands in a future release).
+
+| Tag | What it inserts |
+|---|---|
+| `{{candidate.first_name}}` | Candidate's first name |
+| `{{candidate.last_name}}` | Candidate's last name |
+| `{{candidate.full_name}}` | `First Last` (or `First` if no last) |
+| `{{candidate.email}}` | Candidate email |
+| `{{candidate.current_title}}` | Candidate's current job title |
+| `{{candidate.current_company}}` | Candidate's current employer |
+| `{{job.title}}` | Job title you're filling |
+| `{{job.client_name}}` | Client company on the job |
+| `{{job.city}}` / `{{job.state}}` | Job location parts |
+| `{{client.name}}` | Client company name |
+| `{{client.primary_contact_first_name}}` | Main contact at the client |
+| `{{user.first_name}}` / `{{user.full_name}}` | Your name (from Branding settings) |
+
+Templates stored in Settings → Templates can mix the two conventions; the Mail Tab only resolves `{{dot.path}}` tags, while the legacy `[Square Bracket]` tokens pass through untouched. Update any old templates you want Mail Tab to resolve to the new convention.
 - **Sidebar nav entry** — **Mail** item in the left sidebar routes to `/mail`.
 
 ## When to use it

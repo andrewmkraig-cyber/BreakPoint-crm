@@ -17,9 +17,19 @@ import {
   X,
   Loader2,
   Send,
+  FileText,
+  Sparkles,
+  Variable,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import type { ActiveTemplateSummary } from "@/app/email/actions";
+import {
+  MAIL_MERGE_FIELDS,
+  applyMailMergeFields,
+  type MailMergeContext,
+} from "@/lib/mail-merge-fields";
 
 // Inline reply composer for the Mail Tab. Hangs off a thread, sends
 // through /api/mail/threads/[id]/reply, then lets the parent refresh
@@ -49,15 +59,24 @@ type Props = {
   defaultTo: string;
   defaultCc?: string;
   defaultSubject: string;
+  templates?: ActiveTemplateSummary[];
+  mergeContext?: MailMergeContext;
   onClose: () => void;
   onSent: () => void;
 };
+
+// Tracks which input the caret was last in so Insert Field splices the
+// token into whichever field the recruiter was typing in (subject or
+// body). Defaults to body — it's the common case.
+type LastFocused = "subject" | "body";
 
 export function MailComposer({
   threadId,
   defaultTo,
   defaultCc,
   defaultSubject,
+  templates = [],
+  mergeContext = {},
   onClose,
   onSent,
 }: Props) {
@@ -74,6 +93,20 @@ export function MailComposer({
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const subjectRef = useRef<HTMLInputElement | null>(null);
+
+  // Dropdown open/close state for the three composer extras.
+  const [openTemplateMenu, setOpenTemplateMenu] = useState(false);
+  const [openFieldMenu, setOpenFieldMenu] = useState(false);
+  const [openAiPanel, setOpenAiPanel] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiBusy, setAiBusy] = useState(false);
+
+  // Insert Field splices at the caret position of whichever control was
+  // last focused. Body is the default — tiptap's insertContent handles
+  // the caret. Subject is a plain <input>, so we splice via selection
+  // indices on the DOM element.
+  const lastFocused = useRef<LastFocused>("body");
 
   const editor = useEditor({
     extensions: [
@@ -151,6 +184,92 @@ export function MailComposer({
     setAttachments((prev) => prev.filter((a) => a.key !== key));
   }
 
+  // Apply a template: replace subject + body with the template's
+  // content. Asks for confirmation if the body is already non-empty
+  // to avoid trashing a draft.
+  function pickTemplate(template: ActiveTemplateSummary) {
+    const currentBody = editor?.getHTML() ?? "";
+    const bodyHasContent = stripHtml(currentBody).trim().length > 0;
+    if (bodyHasContent && !confirm("Replace the current draft with this template?")) {
+      setOpenTemplateMenu(false);
+      return;
+    }
+    setSubject(template.subject);
+    // Template bodies come in two flavors: legacy plain-text and
+    // richer HTML. If the body has any tag, we assume HTML; else we
+    // wrap in a <p>. Either way tiptap normalizes on insert.
+    const looksHtml = /<[a-z][^>]*>/i.test(template.body);
+    const html = looksHtml ? template.body : `<p>${escapeHtml(template.body).replace(/\n/g, "<br/>")}</p>`;
+    editor?.commands.setContent(html, true);
+    setOpenTemplateMenu(false);
+  }
+
+  // Insert Field: splice the tag at the last-focused position.
+  function insertMergeTag(tag: string) {
+    if (lastFocused.current === "subject") {
+      const el = subjectRef.current;
+      if (!el) {
+        setSubject((s) => s + tag);
+      } else {
+        const start = el.selectionStart ?? el.value.length;
+        const end = el.selectionEnd ?? el.value.length;
+        const next = el.value.slice(0, start) + tag + el.value.slice(end);
+        setSubject(next);
+        // Restore caret position after React re-renders.
+        requestAnimationFrame(() => {
+          el.focus();
+          const pos = start + tag.length;
+          el.setSelectionRange(pos, pos);
+        });
+      }
+    } else {
+      editor?.chain().focus().insertContent(tag).run();
+    }
+    setOpenFieldMenu(false);
+  }
+
+  // Generate with Claude: POSTs the user's prompt + thread id; server
+  // returns { bodyHtml } which we drop into the editor (replacing the
+  // current draft, with the same confirm prompt as Use Template).
+  async function onGenerate() {
+    const prompt = aiPrompt.trim();
+    if (!prompt) return;
+    const currentBody = editor?.getHTML() ?? "";
+    const bodyHasContent = stripHtml(currentBody).trim().length > 0;
+    if (bodyHasContent && !confirm("Replace the current draft with the generated email?")) {
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const res = await fetch("/api/mail/ai-compose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, threadId }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = body?.error ?? `Generation failed (${res.status})`;
+        toast.error("Claude couldn't draft that", { description: msg });
+        return;
+      }
+      const html = body?.bodyHtml ?? "";
+      if (html) {
+        editor?.commands.setContent(html, true);
+        toast.success("Draft generated");
+        setAiPrompt("");
+        setOpenAiPanel(false);
+      } else {
+        toast.error("Claude returned an empty draft");
+      }
+    } catch (e) {
+      toast.error("Claude couldn't draft that", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   async function onSend() {
     setError(null);
     const toArr = splitAddresses(to);
@@ -160,11 +279,33 @@ export function MailComposer({
     }
     const ccArr = showCc ? splitAddresses(cc) : [];
     const bccArr = showBcc ? splitAddresses(bcc) : [];
-    const bodyHtml = editor?.getHTML() ?? "";
+    let bodyHtml = editor?.getHTML() ?? "";
+    let subjectOut = subject;
     if (!stripHtml(bodyHtml).trim() && attachments.length === 0) {
       setError("Write a reply, paste content, or attach a file before sending.");
       return;
     }
+
+    // Resolve merge tags against the composer's context. Unresolved
+    // tags (missing context branch OR empty context value) get
+    // surfaced in a confirm() so the recruiter doesn't accidentally
+    // ship `{{candidate.first_name}}` to the actual candidate.
+    const bodyMerge = applyMailMergeFields(bodyHtml, mergeContext);
+    const subjectMerge = applyMailMergeFields(subjectOut, mergeContext);
+    const allUnresolved = Array.from(
+      new Set([...bodyMerge.unresolved, ...subjectMerge.unresolved]),
+    );
+    if (allUnresolved.length > 0) {
+      const confirmed = confirm(
+        `These merge fields couldn't be resolved and will send literally:\n\n${allUnresolved.join(
+          ", ",
+        )}\n\nSend anyway?`,
+      );
+      if (!confirmed) return;
+    }
+    bodyHtml = bodyMerge.output;
+    subjectOut = subjectMerge.output;
+
     setSending(true);
     try {
       const res = await fetch(`/api/mail/threads/${encodeURIComponent(threadId)}/reply`, {
@@ -174,7 +315,7 @@ export function MailComposer({
           to: toArr,
           cc: ccArr.length > 0 ? ccArr : undefined,
           bcc: bccArr.length > 0 ? bccArr : undefined,
-          subject,
+          subject: subjectOut,
           bodyHtml,
           attachments: attachments.map((a) => ({
             filename: a.filename,
@@ -236,8 +377,67 @@ export function MailComposer({
         </div>
         {showCc && <AddressRow label="CC" value={cc} onChange={setCc} />}
         {showBcc && <AddressRow label="BCC" value={bcc} onChange={setBcc} />}
-        <AddressRow label="Subject" value={subject} onChange={setSubject} />
+        <label className="flex items-center gap-2 text-sm">
+          <span className="w-16 shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Subject
+          </span>
+          <input
+            ref={subjectRef}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+            onFocus={() => (lastFocused.current = "subject")}
+            className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+        </label>
       </div>
+
+      <ComposerAddonToolbar
+        templates={templates}
+        openTemplate={openTemplateMenu}
+        setOpenTemplate={setOpenTemplateMenu}
+        onPickTemplate={pickTemplate}
+        openField={openFieldMenu}
+        setOpenField={setOpenFieldMenu}
+        onInsertField={insertMergeTag}
+        openAi={openAiPanel}
+        setOpenAi={setOpenAiPanel}
+      />
+      {openAiPanel && (
+        <div className="space-y-2 border-b border-court-border bg-court-surface px-5 py-3">
+          <label className="block text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Describe what you want to say
+          </label>
+          <textarea
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            rows={3}
+            placeholder="e.g. Tell Linda her interview moved to Monday 10am and apologize for the late notice."
+            className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setOpenAiPanel(false);
+                setAiPrompt("");
+              }}
+              disabled={aiBusy}
+              className="rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onGenerate}
+              disabled={aiBusy || !aiPrompt.trim()}
+              className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+            >
+              {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              Generate
+            </button>
+          </div>
+        </div>
+      )}
 
       <Toolbar editor={editor} />
 
@@ -252,6 +452,7 @@ export function MailComposer({
           setDragOver(false);
           if (e.dataTransfer.files.length > 0) await addFiles(e.dataTransfer.files);
         }}
+        onFocusCapture={() => (lastFocused.current = "body")}
         className={cn(
           "mx-5 rounded-lg transition",
           dragOver && "ring-2 ring-brand/50 ring-offset-2 ring-offset-court-surface-subtle",
@@ -416,6 +617,124 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
         <LinkIcon className="h-3.5 w-3.5" />,
         "Link",
       )}
+    </div>
+  );
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function ComposerAddonToolbar({
+  templates,
+  openTemplate,
+  setOpenTemplate,
+  onPickTemplate,
+  openField,
+  setOpenField,
+  onInsertField,
+  openAi,
+  setOpenAi,
+}: {
+  templates: ActiveTemplateSummary[];
+  openTemplate: boolean;
+  setOpenTemplate: (v: boolean) => void;
+  onPickTemplate: (t: ActiveTemplateSummary) => void;
+  openField: boolean;
+  setOpenField: (v: boolean) => void;
+  onInsertField: (tag: string) => void;
+  openAi: boolean;
+  setOpenAi: (v: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-5 py-2">
+      {/* Use Template */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            setOpenTemplate(!openTemplate);
+            setOpenField(false);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+        >
+          <FileText className="h-3 w-3" /> Use Template <ChevronDown className="h-3 w-3" />
+        </button>
+        {openTemplate && (
+          <div
+            role="menu"
+            className="absolute left-0 top-full z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+          >
+            {templates.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-court-fg-muted">
+                No templates yet. Create one in Settings &gt; Templates.
+              </div>
+            ) : (
+              templates.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onPickTemplate(t)}
+                  className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
+                >
+                  <span className="font-medium">{t.name}</span>
+                  {t.category && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wider text-court-fg-muted">
+                      {t.category}
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Insert Field */}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => {
+            setOpenField(!openField);
+            setOpenTemplate(false);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+        >
+          <Variable className="h-3 w-3" /> Insert Field <ChevronDown className="h-3 w-3" />
+        </button>
+        {openField && (
+          <div
+            role="menu"
+            className="absolute left-0 top-full z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+          >
+            {MAIL_MERGE_FIELDS.map((f) => (
+              <button
+                key={f.tag}
+                type="button"
+                onClick={() => onInsertField(f.tag)}
+                className="flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
+              >
+                <span className="truncate">{f.label}</span>
+                <code className="shrink-0 rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg-muted">
+                  {f.tag}
+                </code>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Generate with Claude */}
+      <button
+        type="button"
+        onClick={() => setOpenAi(!openAi)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-brand/30 bg-brand-tint/40 px-2 py-1 text-[11px] font-medium text-brand-dark shadow-sm transition hover:bg-brand-tint/60"
+      >
+        <Sparkles className="h-3 w-3" /> Generate with Claude
+      </button>
     </div>
   );
 }

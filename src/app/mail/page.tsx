@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { listGmailThreads, type MailListThread } from "@/lib/gmail";
 import { MailView } from "@/app/mail/mail-view";
+import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 
 // Read-only Mail Tab foundation (Phase 6.0). The left-rail thread list
 // is server-rendered so the first paint shows real inbox content
@@ -38,11 +39,27 @@ export default async function MailPage() {
 
   let threads: MailListThread[] = [];
   let error: string | null = null;
+  let templates: ActiveTemplateSummary[] = [];
   try {
-    threads = await listGmailThreads(user.id, { maxResults: 50 });
+    [threads, templates] = await Promise.all([
+      listGmailThreads(user.id, { maxResults: 50 }),
+      listActiveTemplates(),
+    ]);
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to load Gmail inbox";
   }
+
+  // Resolve the current user's name so the composer can fill the
+  // {{user.first_name}} / {{user.full_name}} merge fields without
+  // another round-trip. UserProfile.fullName wins over User.name so
+  // Andrew can display a branded name without touching his Google
+  // account profile.
+  const userRow = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { name: true, profile: { select: { fullName: true } } },
+  });
+  const myFullName = userRow?.profile?.fullName?.trim() || userRow?.name?.trim() || "";
+  const myFirstName = myFullName.split(/\s+/)[0] ?? "";
 
   return (
     <div>
@@ -61,7 +78,13 @@ export default async function MailPage() {
           </p>
         </div>
       ) : (
-        <MailView threads={threads} currentUserEmail={session.user.email} />
+        <MailView
+          threads={threads}
+          currentUserEmail={session.user.email}
+          templates={templates}
+          currentUserFirstName={myFirstName}
+          currentUserFullName={myFullName}
+        />
       )}
     </div>
   );
