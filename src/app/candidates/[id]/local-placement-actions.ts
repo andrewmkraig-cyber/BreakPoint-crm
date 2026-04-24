@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup } from "@/lib/claude";
 import { sendGmail } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
@@ -90,6 +91,7 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
       return { ok: false, error: `Candidate already linked to this job (stage: ${existing.stage}).` };
     }
 
+    const org = await getCurrentOrg();
     await prisma.placement.create({
       data: {
         candidateId: input.candidateId,
@@ -101,6 +103,7 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
         stage: "applied",
         source: "recruiter_applied",
         createdById: user.id,
+        organizationId: org.id,
         syncedToRf: false,
       },
     });
@@ -283,6 +286,8 @@ export async function sendLocalSubmittalEmail(
     const clientId = input.clientId ?? null;
     if (jobRfId == null && !jobId) return { ok: false, error: "Missing job reference." };
 
+    const org = await getCurrentOrg();
+
     // Upsert keyed on whichever identity the caller supplied — mirrors
     // the Apply dupe-check logic so resubmits to the same job land on
     // the existing row.
@@ -299,6 +304,7 @@ export async function sendLocalSubmittalEmail(
             stage: "submitted",
             source: "recruiter_applied",
             createdById: user.id,
+            organizationId: org.id,
             syncedToRf: false,
           },
           update: { stage: "submitted", syncedToRf: false },
@@ -318,6 +324,7 @@ export async function sendLocalSubmittalEmail(
             stage: "submitted",
             source: "recruiter_applied",
             createdById: user.id,
+            organizationId: org.id,
             syncedToRf: false,
           },
           update: { stage: "submitted", syncedToRf: false },

@@ -32,6 +32,8 @@ import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { CallLogs } from "@/components/call-logs";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
+import { getPlacementsForOrg } from "@/lib/placements";
+import { getInterviewsForOrg } from "@/lib/interviews";
 import type {
   InterviewSummary,
   OpenJobOption,
@@ -141,11 +143,13 @@ export default async function CandidateProfilePage({
     // both RF-imported and Ace-native rows; Ace-native rows carry
     // _aceJobId + _aceClientId for cuid-based write paths).
     getRfJobsForOrg(),
-    prisma.placement.findMany({ where: { candidateId: candidate.id } }),
-    prisma.interview.findMany({
-      where: { candidateId: candidate.id },
-      orderBy: { scheduledAt: "asc" },
-    }),
+    // Phase 4a: Placement / Interview reads routed through the
+    // tenant-scoped helpers. The helpers return full rows ordered by
+    // scheduledAt asc (interviews) with no projection trimming — the
+    // downstream renderers index into the full Placement / Interview
+    // shapes.
+    getPlacementsForOrg({ candidateId: candidate.id }),
+    getInterviewsForOrg({ candidateId: candidate.id }),
     prisma.candidateResume.findUnique({
       where: { candidateId: candidate.id },
       select: {

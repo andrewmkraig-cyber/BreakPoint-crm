@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
@@ -90,6 +91,7 @@ export type RecordOfferInput = {
 export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id: string; syncedToRf: boolean }>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
   const startDate = input.startDate ? new Date(input.startDate) : null;
 
   const sync = await trySyncRfStage({
@@ -114,6 +116,7 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         offerNotes: input.notes || null,
         syncedToRf: sync.synced,
         createdById: userId,
+        organizationId: org.id,
       },
       update: {
         stage: "offer",
@@ -167,6 +170,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   if (!input.expectedStartDate) return { ok: false, error: "Expected start date is required." };
+  const org = await getCurrentOrg();
 
   const sync = await trySyncRfStage({
     candidateRfId: input.candidateRfId,
@@ -223,6 +227,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
           stage: "pending_start",
           placedAt: new Date(),
           createdById: userId,
+          organizationId: org.id,
           ...commonData,
         },
         select: { id: true, syncedToRf: true },
@@ -559,6 +564,7 @@ export type RejectCandidateInput = {
 export async function rejectCandidateJob(input: RejectCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
   try {
     // Upsert an Ace-local Placement row so the candidate profile shows
     // DISQUALIFIED · <date> regardless of what RF's stage_name is. The
@@ -576,6 +582,7 @@ export async function rejectCandidateJob(input: RejectCandidateInput): Promise<R
         clientRfId: input.clientRfId,
         stage: "rejected",
         createdById: userId,
+        organizationId: org.id,
         syncedToRf: false,
       },
       update: {
@@ -617,6 +624,7 @@ export type UnrejectCandidateInput = {
 export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
   try {
     // Actually flip the Placement back — until now this only logged
     // intent, which meant the local-stage overlay on /jobs/[id]
@@ -639,6 +647,7 @@ export async function unrejectCandidateJob(input: UnrejectCandidateInput): Promi
         clientRfId: input.clientRfId,
         stage: nextStage,
         createdById: userId,
+        organizationId: org.id,
         syncedToRf: false,
       },
       update: {
@@ -680,6 +689,7 @@ export type SubmitToJobInput = {
 export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
 
   let rfSynced = false;
   let rfError: string | null = null;
@@ -739,6 +749,7 @@ export async function submitCandidateToJob(input: SubmitToJobInput): Promise<Res
         clientRfId: input.clientRfId,
         stage: "submitted",
         createdById: userId,
+        organizationId: org.id,
         syncedToRf: rfSynced,
       },
       update: {
@@ -937,6 +948,7 @@ function summarizeNotesForSubmittal(raw: unknown): string {
 export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Result<{ placementId: string }>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
 
   // Step 1: Local Placement row. This is the source of truth for the
   // profile's Jobs panel and the Pipeline — RF's c.jobs[] is advisory.
@@ -982,6 +994,7 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
           stage: "applied",
           source: "recruiter_applied",
           createdById: userId,
+          organizationId: org.id,
           syncedToRf: false,
         },
         select: { id: true },
@@ -1282,6 +1295,7 @@ const STAGES_AFTER_SUBMITTED = new Set([
 export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Result<SubmittalSendResult>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
 
   if (input.to.length === 0) return { ok: false, error: "At least one recipient (To) required." };
   if (!input.subject.trim()) return { ok: false, error: "Subject required." };
@@ -1316,6 +1330,7 @@ export async function sendSubmittalEmail(input: SendSubmittalInput): Promise<Res
           clientRfId: input.clientRfId,
           stage: "submitted",
           createdById: userId,
+          organizationId: org.id,
           syncedToRf: false,
         },
         select: { id: true },
@@ -1953,6 +1968,7 @@ export type KeepCandidateInput = {
 export async function keepCandidate(input: KeepCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
   try {
     // Placement.upsert and ActionLog.create are independent — the upsert
     // doesn't need the log row (it only references candidateRfId/jobRfId/
@@ -1976,6 +1992,7 @@ export async function keepCandidate(input: KeepCandidateInput): Promise<Result> 
           clientRfId: input.clientRfId,
           stage: "kept",
           createdById: userId,
+          organizationId: org.id,
           syncedToRf: false,
         },
         update: {
@@ -2027,6 +2044,7 @@ export type StageReversionInput = {
 
 async function flipPlacementStage(args: {
   userId: string;
+  organizationId: string;
   input: StageReversionInput;
   toStage: "kept" | "applied";
   actionType: "revert_to_kept" | "revert_to_applied";
@@ -2048,6 +2066,7 @@ async function flipPlacementStage(args: {
           clientRfId: args.input.clientRfId,
           stage: args.toStage,
           createdById: args.userId,
+          organizationId: args.organizationId,
           syncedToRf: false,
         },
         update: {
@@ -2081,11 +2100,13 @@ async function flipPlacementStage(args: {
 export async function moveToKept(input: StageReversionInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
-  return flipPlacementStage({ userId, input, toStage: "kept", actionType: "revert_to_kept" });
+  const org = await getCurrentOrg();
+  return flipPlacementStage({ userId, organizationId: org.id, input, toStage: "kept", actionType: "revert_to_kept" });
 }
 
 export async function moveToApplied(input: StageReversionInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
-  return flipPlacementStage({ userId, input, toStage: "applied", actionType: "revert_to_applied" });
+  const org = await getCurrentOrg();
+  return flipPlacementStage({ userId, organizationId: org.id, input, toStage: "applied", actionType: "revert_to_applied" });
 }

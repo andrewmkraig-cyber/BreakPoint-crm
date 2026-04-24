@@ -8,6 +8,8 @@ import {
   type PipelineBucket,
 } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
+import { getPlacementsForOrg } from "@/lib/placements";
+import { getInterviewsForOrg } from "@/lib/interviews";
 
 export const dynamic = "force-dynamic";
 
@@ -39,13 +41,16 @@ export default async function PipelinePage({
   let error: string | null = null;
 
   try {
+    // Phase 4a: Placement + Interview reads routed through the tenant-
+    // scoped helpers. The pipeline view is global to the signed-in org
+    // (no per-candidate filter) so the helpers are called with just the
+    // filters this page cares about.
     const [candidates, placements, interviews] = await Promise.all([
       getRfCandidatesForOrg(),
-      prisma.placement.findMany(),
-      prisma.interview.findMany({
-        where: { status: "scheduled", scheduledAt: { gte: new Date() } },
-        orderBy: { scheduledAt: "asc" },
-        select: { candidateRfId: true, jobRfId: true, scheduledAt: true, type: true },
+      getPlacementsForOrg(),
+      getInterviewsForOrg({
+        statuses: ["scheduled"],
+        scheduledAfter: new Date(),
       }),
     ]);
 

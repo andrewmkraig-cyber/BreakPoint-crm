@@ -14,6 +14,8 @@ import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getPlacementsForOrg } from "@/lib/placements";
+import { getInterviewsForOrg } from "@/lib/interviews";
 import { getAppPreferences } from "@/lib/preferences";
 
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
@@ -44,22 +46,13 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         createdAt: true,
       },
     }),
-    prisma.placement.findMany({
-      where: { candidateId: id },
-      select: {
-        id: true,
-        jobRfId: true,
-        jobId: true,
-        clientRfId: true,
-        clientId: true,
-        stage: true,
-        updatedAt: true,
-      },
-    }),
-    prisma.interview.findMany({
-      where: { candidateId: id },
-      orderBy: { scheduledAt: "asc" },
-    }),
+    // Phase 4a: Placement / Interview reads routed through the
+    // tenant-scoped helpers. Both take candidateId and return the full
+    // row — the local-profile renderer reads jobRfId, jobId, clientRfId,
+    // clientId, stage, updatedAt off each row so no select projection
+    // was load-bearing.
+    getPlacementsForOrg({ candidateId: id }),
+    getInterviewsForOrg({ candidateId: id }),
     // Populates the Submit/Apply dropdowns with existing open jobs.
     // Reads are served from Neon (the Phase 0 import populated Job/
     // Client/Contact from the RF payload). This keeps the page working

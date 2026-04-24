@@ -10,6 +10,7 @@ import {
 } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getJobByIdentifier } from "@/lib/jobs";
+import { getPlacementsForOrg } from "@/lib/placements";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
 import { prisma } from "@/lib/prisma";
@@ -30,18 +31,12 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     getRfJobsForOrg(),
     getRfCandidatesForOrg(),
     rfId != null ? prisma.jobOverride.findUnique({ where: { jobRfId: rfId } }) : Promise.resolve(null),
-    // Placements against this job. Two identity shapes:
-    //   - RF-imported job → Placement.jobRfId = legacyRfId
-    //   - Ace-native job  → Placement.jobId = cuid (jobRfId null)
-    // Query both and unify below.
-    prisma.placement.findMany({
-      where: isAceNative ? { jobId: jobRow.id } : { jobRfId: rfId ?? undefined },
-      select: {
-        candidateRfId: true,
-        candidateId: true,
-        stage: true,
-        updatedAt: true,
-      },
+    // Phase 4a: Placement read routed through the tenant-scoped
+    // helper. The helper picks the right identity shape (jobRfId
+    // numeric for RF-imported; jobId cuid for Ace-native) from the
+    // jobIdentifier typeof.
+    getPlacementsForOrg({
+      jobIdentifier: isAceNative ? jobRow.id : (rfId as number),
     }),
   ]);
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
@@ -101,6 +102,7 @@ async function upsertInterviewingStage(args: {
   jobRfId: number;
   clientRfId: number;
   userId: string;
+  organizationId: string;
 }) {
   const whereUnique = args.candidateRfId != null
     ? { candidateRfId_jobRfId: { candidateRfId: args.candidateRfId, jobRfId: args.jobRfId } }
@@ -115,6 +117,7 @@ async function upsertInterviewingStage(args: {
         clientRfId: args.clientRfId,
         stage: "interviewing",
         createdById: args.userId,
+        organizationId: args.organizationId,
         syncedToRf: false,
       },
     });
@@ -216,6 +219,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   }
 
   try {
+    const org = await getCurrentOrg();
     const interview = await prisma.interview.create({
       data: {
         candidateRfId: ref.candidateRfId,
@@ -234,6 +238,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
         source: input.source,
         googleEventIdMine,
         createdById: user.id,
+        organizationId: org.id,
       },
       select: { id: true },
     });
@@ -244,6 +249,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       jobRfId: input.jobRfId,
       clientRfId: input.clientRfId,
       userId: user.id,
+      organizationId: org.id,
     });
 
     const subjectId = ref.candidateRfId != null ? String(ref.candidateRfId) : ref.candidateId!;

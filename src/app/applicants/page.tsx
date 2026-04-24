@@ -13,6 +13,7 @@ import {
   type RFJob,
 } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import { getPlacementsForOrg } from "@/lib/placements";
 import { resolveJobTitle } from "@/lib/job-title";
 
 export const dynamic = "force-dynamic";
@@ -25,21 +26,22 @@ export default async function ApplicantsPage() {
   try {
     const [candidates, placements, allJobs, jobOverrides] = await Promise.all([
       getRfCandidatesForOrg(),
-      prisma.placement.findMany({
-        where: { stage: { in: ["kept", "rejected", "offer", "pending_start", "hired", "cancelled", "submitted", "applied", "sourced"] } },
-        select: {
-          id: true,
-          candidateRfId: true,
-          candidateId: true,
-          jobRfId: true,
-          jobId: true,
-          clientRfId: true,
-          clientId: true,
-          stage: true,
-          source: true,
-          createdAt: true,
-          updatedAt: true,
-        },
+      // Phase 4a: the Placement read routes through the tenant-scoped
+      // helper with the applicants page's stage filter. The helper
+      // returns full rows (no select projection); every column the
+      // renderer reads below lives on the Placement model.
+      getPlacementsForOrg({
+        stages: [
+          "kept",
+          "rejected",
+          "offer",
+          "pending_start",
+          "hired",
+          "cancelled",
+          "submitted",
+          "applied",
+          "sourced",
+        ],
       }),
       // Pull the full job list so we can resolve each row's title /
       // location. The RFCandidateJob rows hanging off c.jobs are sparse

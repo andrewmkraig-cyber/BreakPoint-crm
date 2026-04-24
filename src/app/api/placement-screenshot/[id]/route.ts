@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -12,8 +13,11 @@ export async function GET(
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return new NextResponse("Unauthorized", { status: 401 });
 
-  const p = await prisma.placement.findUnique({
-    where: { id: params.id },
+  // Phase 4a: scope the Placement read by organizationId so cross-
+  // tenant id probing can't ever 200 on another org's screenshot.
+  const org = await getCurrentOrg();
+  const p = await prisma.placement.findFirst({
+    where: { id: params.id, organizationId: org.id },
     select: { startConfirmationFile: true, startConfirmationMime: true },
   });
   if (!p?.startConfirmationFile) return new NextResponse("Not found", { status: 404 });

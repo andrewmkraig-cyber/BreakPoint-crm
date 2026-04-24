@@ -7,6 +7,8 @@ import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/u
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/recruiterflow";
 import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import { getInterviewsForOrg } from "@/lib/interviews";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getEasternWeekBounds } from "@/lib/week";
 import {
   CalendarCheck2,
@@ -60,6 +62,14 @@ export default async function DashboardPage() {
   const q2Start = new Date("2026-04-01T00:00:00.000Z");
   const q2EndExclusive = new Date("2026-07-01T00:00:00.000Z");
 
+  // Phase 4a: every Placement / Interview read on the dashboard scopes
+  // by organizationId. The two row-fetch shapes (upcoming interviews +
+  // RF context) route through the getInterviewsForOrg helper; the
+  // count/aggregate shapes stay direct because the helper is a row
+  // reader and doesn't project to counts. Single org lookup up top so
+  // the nine queries below share the same tenant resolution.
+  const org = await getCurrentOrg();
+
   const [
     upcomingInterviews,
     rfCandidates,
@@ -73,12 +83,10 @@ export default async function DashboardPage() {
     placementsMadeCount,
     q2BilledRevenueAgg,
   ] = await Promise.all([
-    prisma.interview.findMany({
-      where: { status: "scheduled", scheduledAt: { gte: now, lte: upcomingWindowEnd } },
-      orderBy: { scheduledAt: "asc" },
-      include: {
-        candidate: { select: { id: true, firstName: true, lastName: true } },
-      },
+    getInterviewsForOrg({
+      statuses: ["scheduled"],
+      scheduledAfter: now,
+      scheduledBefore: upcomingWindowEnd,
     }),
     getRfCandidatesForOrg().catch(() => []),
     getRfJobsForOrg().catch(() => []),
@@ -87,19 +95,19 @@ export default async function DashboardPage() {
     // board applicants don't write ActionLog yet; when that pipeline
     // lands, add another source here or bundle them into this query.
     prisma.actionLog.count({
-      where: { actionType: "apply", createdAt: { gte: weekStart, lt: weekEnd } },
+      where: { actionType: "apply", organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Submit transitions — includes the `submit` log written by both
     // applyCandidateToJob follow-ups and the full submittal flow.
     prisma.actionLog.count({
-      where: { actionType: "submit", createdAt: { gte: weekStart, lt: weekEnd } },
+      where: { actionType: "submit", organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Every interview booked in the ET week, regardless of its
     // current status. A scheduled-then-cancelled interview still
     // counts as "scheduled this week" because the scheduling event
     // is the activity we're measuring.
     prisma.interview.count({
-      where: { createdAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Completed = past scheduledAt within the ET week AND not
     // cancelled. `lt: now` keeps us from counting interviews booked
@@ -108,6 +116,7 @@ export default async function DashboardPage() {
     // the same interview landing on its new time.
     prisma.interview.count({
       where: {
+        organizationId: org.id,
         scheduledAt: { gte: weekStart, lt: now < weekEnd ? now : weekEnd },
         status: { not: "cancelled" },
       },
@@ -116,12 +125,12 @@ export default async function DashboardPage() {
     // Counted regardless of whether the offer was later accepted,
     // declined, or the candidate was rejected — we want the activity.
     prisma.placement.count({
-      where: { offerReceivedAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, offerReceivedAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Placements — Placement.placedAt is stamped by recordPlacement.
     // Cancelled placements still count as activity that happened.
     prisma.placement.count({
-      where: { placedAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, placedAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Sum of feeTotal across Q2 2026 placements (expectedStartDate in-range),
     // limited to pending_start + hired so we don't count cancelled/rejected
@@ -130,11 +139,31 @@ export default async function DashboardPage() {
     prisma.placement.aggregate({
       _sum: { feeTotal: true },
       where: {
+        organizationId: org.id,
         stage: { in: ["pending_start", "hired"] },
         expectedStartDate: { gte: q2Start, lt: q2EndExclusive },
       },
     }),
   ]);
+
+  // getInterviewsForOrg returns full Interview rows but no `candidate`
+  // relation — do a single batched Candidate lookup for the Ace-native
+  // rows (candidateRfId null, candidateId set) so we can render their
+  // names the way the previous `include: { candidate }` query did.
+  const aceCandidateIds = Array.from(
+    new Set(
+      upcomingInterviews
+        .filter((iv) => iv.candidateRfId == null && iv.candidateId)
+        .map((iv) => iv.candidateId as string),
+    ),
+  );
+  const aceCandidates = aceCandidateIds.length > 0
+    ? await prisma.candidate.findMany({
+        where: { id: { in: aceCandidateIds }, organizationId: org.id },
+        select: { id: true, firstName: true, lastName: true },
+      })
+    : [];
+  const aceCandidateById = new Map(aceCandidates.map((c) => [c.id, c]));
   const interviews = upcomingInterviews;
 
   const rfCandidateName = new Map<number, string>();
@@ -148,10 +177,11 @@ export default async function DashboardPage() {
   for (const cl of rfClients) rfClientName.set(cl.id, normalizeClient(cl).name);
 
   const upcoming: UpcomingInterviewRow[] = interviews.map((iv) => {
+    const aceCandidate = iv.candidateId ? aceCandidateById.get(iv.candidateId) : undefined;
     const candidateName = iv.candidateRfId != null
       ? rfCandidateName.get(iv.candidateRfId) ?? "(unknown)"
-      : iv.candidate
-        ? [iv.candidate.firstName, iv.candidate.lastName].filter(Boolean).join(" ") || "(unnamed)"
+      : aceCandidate
+        ? [aceCandidate.firstName, aceCandidate.lastName].filter(Boolean).join(" ") || "(unnamed)"
         : "(unknown)";
     const candidateHref = iv.candidateRfId != null
       ? `/candidates/${iv.candidateRfId}`

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -73,6 +74,7 @@ export type KeepCandidateInput = {
 export async function keepCandidateForJob(input: KeepCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
   try {
     await prisma.placement.upsert({
       where: {
@@ -87,6 +89,7 @@ export async function keepCandidateForJob(input: KeepCandidateInput): Promise<Re
         clientRfId: input.clientRfId,
         stage: "kept",
         createdById: userId,
+        organizationId: org.id,
         syncedToRf: false,
       },
       update: {
@@ -166,6 +169,7 @@ export type KeepLocalCandidateInput = {
 export async function keepLocalCandidateForJob(input: KeepLocalCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
   try {
     await prisma.placement.upsert({
       where: {
@@ -178,6 +182,7 @@ export async function keepLocalCandidateForJob(input: KeepLocalCandidateInput): 
         clientRfId: input.clientRfId,
         stage: "kept",
         createdById: userId,
+        organizationId: org.id,
         syncedToRf: false,
       },
       update: {
@@ -248,6 +253,7 @@ export type RejectLocalCandidateInput = {
 export async function rejectLocalCandidateJob(input: RejectLocalCandidateInput): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
   try {
     await prisma.placement.upsert({
       where: {
@@ -260,6 +266,7 @@ export async function rejectLocalCandidateJob(input: RejectLocalCandidateInput):
         clientRfId: input.clientRfId,
         stage: "rejected",
         createdById: userId,
+        organizationId: org.id,
         syncedToRf: false,
       },
       update: { stage: "rejected", syncedToRf: false },

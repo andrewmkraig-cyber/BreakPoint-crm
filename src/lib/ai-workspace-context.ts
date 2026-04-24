@@ -1,4 +1,5 @@
 import { getRfCandidatesForOrg, getRfClientsForOrg } from "@/lib/candidates";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import {
   recruiterflow,
@@ -35,12 +36,13 @@ export async function buildClientContext(clientId: string): Promise<string> {
     return "You are an AI recruiting assistant for BreakPoint Talent. No client was selected.";
   }
 
+  const org = await getCurrentOrg();
   const [clients, allJobs, allContacts, allCandidates, placements, agreements, benefits, jobOverrides] = await Promise.all([
     getRfClientsForOrg().catch(() => []),
     (await import("@/lib/candidates")).getRfJobsForOrg().catch(() => []),
     recruiterflow.listAllContacts({ perPage: 100 }).catch(() => []),
     getRfCandidatesForOrg().catch(() => []),
-    prisma.placement.findMany({ where: { clientRfId: rfId } }),
+    prisma.placement.findMany({ where: { clientRfId: rfId, organizationId: org.id } }),
     prisma.clientAgreement.findMany({
       where: { clientRfId: rfId, uploadComplete: true },
       orderBy: { uploadedAt: "desc" },
@@ -282,6 +284,7 @@ export async function buildCandidateContext(candidateId: string): Promise<string
     : await prisma.candidate.findUnique({ where: { id: candidateId } });
 
   const cuid = candidate?.id ?? candidateId;
+  const org = await getCurrentOrg();
 
   const [smsMessages, callLogs, transcripts, placements] = await Promise.all([
     prisma.smsMessage.findMany({
@@ -301,7 +304,7 @@ export async function buildCandidateContext(candidateId: string): Promise<string
       take: 3,
     }),
     candidate
-      ? prisma.placement.findMany({ where: { candidateId: candidate.id } })
+      ? prisma.placement.findMany({ where: { candidateId: candidate.id, organizationId: org.id } })
       : Promise.resolve([]),
   ]);
 
