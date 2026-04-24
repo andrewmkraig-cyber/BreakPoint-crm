@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Mail, Phone as PhoneIcon, Plus, UserPlus, X, ExternalLink } from "lucide-react";
 import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { addContact, updateContact } from "@/app/clients/[id]/actions";
-import { EmailLink } from "@/components/email-link";
+import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn } from "@/lib/utils";
 
 export type ContactRow = {
@@ -182,17 +182,18 @@ export function ContactsTab({
                     }}
                   >
                     {c.email ? (
-                      <EmailLink
+                      <EmailPopupLauncher
                         email={c.email}
                         className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark"
-                        mergeValues={{
-                          clientContactFullName: c.name,
-                          clientContactFirstName: c.name.trim().split(/\s+/)[0] ?? "",
-                          clientCompanyName: clientName,
+                        context={{
+                          client: {
+                            name: clientName,
+                            primaryContactFirstName: c.firstName || c.name.trim().split(/\s+/)[0] || "",
+                          },
                         }}
                       >
                         <Mail className="h-3 w-3 text-court-fg-muted" /> {c.email}
-                      </EmailLink>
+                      </EmailPopupLauncher>
                     ) : (
                       <span className="text-court-fg-muted">—</span>
                     )}

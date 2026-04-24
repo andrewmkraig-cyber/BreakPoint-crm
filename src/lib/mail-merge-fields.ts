@@ -17,6 +17,7 @@ export type MailMergeContext = {
     clientName?: string | null;
     city?: string | null;
     state?: string | null;
+    description?: string | null;
   } | null;
   client?: {
     name?: string | null;
@@ -41,6 +42,7 @@ export const MAIL_MERGE_FIELDS = [
   { tag: "{{job.client_name}}", label: "Job — client name" },
   { tag: "{{job.city}}", label: "Job — city" },
   { tag: "{{job.state}}", label: "Job — state" },
+  { tag: "{{job.description}}", label: "Job — full description" },
   { tag: "{{client.name}}", label: "Client name" },
   { tag: "{{client.primary_contact_first_name}}", label: "Client primary contact first name" },
   { tag: "{{user.first_name}}", label: "Your first name" },
@@ -83,6 +85,8 @@ function resolveOne(tag: string, ctx: MailMergeContext): string | undefined {
       return trimOr(ctx.job?.city);
     case "{{job.state}}":
       return trimOr(ctx.job?.state);
+    case "{{job.description}}":
+      return trimOr(ctx.job?.description);
     case "{{client.name}}":
       return trimOr(ctx.client?.name);
     case "{{client.primary_contact_first_name}}":

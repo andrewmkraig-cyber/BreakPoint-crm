@@ -1,6 +1,5 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import { prisma } from "@/lib/prisma";
+import { DEFAULT_BRAND_LOGO_BASE64, DEFAULT_BRAND_LOGO_MIME } from "@/lib/default-brand-logo";
 
 // Gmail-style HTML-table signature rendered from the user's UserProfile.
 // Kept intentionally in one file so the render logic, the plain-text
@@ -41,16 +40,12 @@ const ANDREW_DEFAULTS = {
   website: "www.breakpointtalent.com",
 };
 
-// Reads the shipped default signature logo from /public/brand/ at
-// request time. Cached per process (a Node fs read on cold start is
-// fine but not every call). Returns { mime, base64 }.
-let cachedDefaultLogo: { mime: string; base64: string } | null = null;
-async function loadDefaultLogo(): Promise<{ mime: string; base64: string }> {
-  if (cachedDefaultLogo) return cachedDefaultLogo;
-  const file = path.join(process.cwd(), "public", "brand", "breakpoint_logo_signature.png");
-  const bytes = await fs.readFile(file);
-  cachedDefaultLogo = { mime: "image/png", base64: bytes.toString("base64") };
-  return cachedDefaultLogo;
+// Default signature logo lives in src/lib/default-brand-logo.ts as a
+// base64 constant compiled into the bundle. Reading from /public at
+// runtime fails on Vercel serverless (the /public dir isn't shipped in
+// the function bundle), so we never touch the filesystem here.
+function loadDefaultLogo(): { mime: string; base64: string } {
+  return { mime: DEFAULT_BRAND_LOGO_MIME, base64: DEFAULT_BRAND_LOGO_BASE64 };
 }
 
 // Fetch the user's profile, returning a fully-populated record with
@@ -65,7 +60,7 @@ export async function getUserBrandingProfile(userId: string): Promise<UserProfil
   if (!user) {
     // Shouldn't happen in practice — caller already verified the session.
     // Fall back to the BreakPoint defaults so we never return null.
-    const def = await loadDefaultLogo();
+    const def = loadDefaultLogo();
     return {
       userId,
       email: "",
@@ -86,7 +81,7 @@ export async function getUserBrandingProfile(userId: string): Promise<UserProfil
     logoDataBase64 = Buffer.from(p!.logoData!).toString("base64");
     logoMimeType = p!.logoMimeType ?? "image/png";
   } else {
-    const def = await loadDefaultLogo();
+    const def = loadDefaultLogo();
     logoDataBase64 = def.base64;
     logoMimeType = def.mime;
   }

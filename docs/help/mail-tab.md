@@ -36,11 +36,27 @@ Tags use handlebars-style `{{dot.path}}` form. On send, every tag is resolved ag
 | `{{job.title}}` | Job title you're filling |
 | `{{job.client_name}}` | Client company on the job |
 | `{{job.city}}` / `{{job.state}}` | Job location parts |
+| `{{job.description}}` | Full job description text (long — insert then edit down) |
 | `{{client.name}}` | Client company name |
 | `{{client.primary_contact_first_name}}` | Main contact at the client |
 | `{{user.first_name}}` / `{{user.full_name}}` | Your name (from Branding settings) |
 
 Templates stored in Settings → Templates can mix the two conventions; the Mail Tab only resolves `{{dot.path}}` tags, while the legacy `[Square Bracket]` tokens pass through untouched. Update any old templates you want Mail Tab to resolve to the new convention.
+
+## Click-to-email popup (Phase 6.4)
+
+Every email address across Ace is a click → full Mail composer popup now (no more `mailto:` handoff to external Gmail). The popup is the **same composer** as `/mail`, opened as a centered modal over whatever page you were on. Same rich text, same attachments, same inline-image paste, same templates, same Insert Field picker, same Claude Generate — and the signature always appends.
+
+Click-to-email surfaces + the merge context they pass:
+
+| Surface | Context included |
+|---|---|
+| Candidate profile sidebar / editable contact | `candidate.*` (name, email, title, company) |
+| Client profile contacts tab | `client.name`, `client.primary_contact_first_name` |
+| Pipeline placement row (billing contact) | `candidate.first_name`, `client.name`, `client.primary_contact_first_name`, `job.title` |
+| Anywhere else the email renders | `user.*` always; other tags stay literal + warn on send |
+
+The popup closes on the X button, the Cancel-adjacent close, or a click outside the composer panel.
 - **Sidebar nav entry** — **Mail** item in the left sidebar routes to `/mail`.
 
 ## When to use it

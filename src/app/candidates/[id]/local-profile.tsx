@@ -12,6 +12,7 @@ import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { DocxPreview } from "@/components/docx-preview";
+import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -369,7 +370,32 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
-              <Row icon={<Mail className="h-3.5 w-3.5" />} label="Email" value={candidate.email} href={candidate.email ? `mailto:${candidate.email}` : null} />
+              <Row
+                icon={<Mail className="h-3.5 w-3.5" />}
+                label="Email"
+                value={candidate.email}
+                render={(v) =>
+                  candidate.email ? (
+                    <EmailPopupLauncher
+                      email={candidate.email}
+                      className="hover:underline"
+                      context={{
+                        candidate: {
+                          firstName: candidate.firstName,
+                          lastName: candidate.lastName,
+                          email: candidate.email,
+                          currentTitle: candidate.currentDesignation,
+                          currentCompany: candidate.currentOrganization,
+                        },
+                      }}
+                    >
+                      {v}
+                    </EmailPopupLauncher>
+                  ) : (
+                    <>{v}</>
+                  )
+                }
+              />
               <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
               <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={candidate.location} />
               <Row icon={<Link2 className="h-3.5 w-3.5" />} label="LinkedIn" value={candidate.linkedinProfile} href={candidate.linkedinProfile} />
@@ -470,11 +496,16 @@ function Row({
   label,
   value,
   href,
+  render,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string | null;
   href?: string | null;
+  // Optional custom render override, used by the email row to inject
+  // the click-to-email popup while keeping the label+dash treatment
+  // consistent with plain rows.
+  render?: (value: string) => React.ReactNode;
 }) {
   return (
     <div>
@@ -484,7 +515,9 @@ function Row({
       </dt>
       <dd className="mt-0.5 truncate text-court-fg">
         {value ? (
-          href ? (
+          render ? (
+            render(value)
+          ) : href ? (
             <a href={href} className="hover:underline" target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined}>
               {value}
             </a>

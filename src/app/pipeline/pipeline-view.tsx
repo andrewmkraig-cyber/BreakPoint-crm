@@ -7,7 +7,7 @@ import { Bookmark, CalendarClock, Loader2, Search } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
-import { EmailLink } from "@/components/email-link";
+import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
 
 type Stage = keyof typeof PIPELINE_LABELS;
@@ -356,20 +356,23 @@ function HiredCells({ row }: { row: PipelineRow }) {
             <div className="text-court-fg">{p.billingContactName}</div>
             {p.billingContactEmail && (
               <span onClick={(e) => e.stopPropagation()}>
-                <EmailLink
+                <EmailPopupLauncher
                   email={p.billingContactEmail}
                   className="text-court-accent-dark hover:underline"
-                  mergeValues={{
-                    candidateFirstName: (row.candidateName.split(/\s+/)[0] ?? "").trim(),
-                    candidateFullName: row.candidateName,
-                    clientContactFullName: p.billingContactName ?? "",
-                    clientContactFirstName: (p.billingContactName?.split(/\s+/)[0] ?? "").trim(),
-                    clientCompanyName: row.clientName,
-                    jobTitle: row.jobTitle,
+                  context={{
+                    candidate: {
+                      firstName: (row.candidateName.split(/\s+/)[0] ?? "").trim(),
+                    },
+                    client: {
+                      name: row.clientName,
+                      primaryContactFirstName:
+                        (p.billingContactName?.split(/\s+/)[0] ?? "").trim(),
+                    },
+                    job: { title: row.jobTitle },
                   }}
                 >
                   {p.billingContactEmail}
-                </EmailLink>
+                </EmailPopupLauncher>
               </span>
             )}
           </div>

@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { SectionCard, LabeledField } from "@/app/candidates/[id]/editable-helpers";
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { formatPhone, telHref, normalizeToE164 } from "@/lib/rf-payload-shapes";
-import { EmailLink } from "@/components/email-link";
+import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn } from "@/lib/utils";
 
 export type ContactState = {
@@ -135,18 +135,19 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
         <dl className="space-y-3 text-sm">
           <Row label="Email" icon={<Mail className="h-3 w-3" />}>
             {saved.email ? (
-              <EmailLink
+              <EmailPopupLauncher
                 email={saved.email}
                 className="text-brand-dark hover:underline"
-                mergeValues={{
-                  candidateFirstName: saved.first_name,
-                  candidateLastName: saved.last_name,
-                  candidateFullName: [saved.first_name, saved.last_name].filter(Boolean).join(" "),
-                  candidateEmail: saved.email,
+                context={{
+                  candidate: {
+                    firstName: saved.first_name,
+                    lastName: saved.last_name,
+                    email: saved.email,
+                  },
                 }}
               >
                 {saved.email}
-              </EmailLink>
+              </EmailPopupLauncher>
             ) : (
               <span className="text-court-fg-muted">—</span>
             )}

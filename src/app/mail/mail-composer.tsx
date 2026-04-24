@@ -55,12 +55,18 @@ type AttachmentDraft = {
 };
 
 type Props = {
-  threadId: string;
+  // Threaded reply when present; fresh send (click-to-email popup) when omitted.
+  threadId?: string;
   defaultTo: string;
   defaultCc?: string;
   defaultSubject: string;
   templates?: ActiveTemplateSummary[];
   mergeContext?: MailMergeContext;
+  // When true, render as a full-screen modal overlay (click-to-email
+  // popup case). When false/absent, render inline (Mail Tab Reply).
+  asModal?: boolean;
+  // Header text shown in modal mode.
+  modalTitle?: string;
   onClose: () => void;
   onSent: () => void;
 };
@@ -77,6 +83,8 @@ export function MailComposer({
   defaultSubject,
   templates = [],
   mergeContext = {},
+  asModal = false,
+  modalTitle = "New email",
   onClose,
   onSent,
 }: Props) {
@@ -308,10 +316,11 @@ export function MailComposer({
 
     setSending(true);
     try {
-      const res = await fetch(`/api/mail/threads/${encodeURIComponent(threadId)}/reply`, {
+      const res = await fetch(`/api/mail/send`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          threadId,
           to: toArr,
           cc: ccArr.length > 0 ? ccArr : undefined,
           bcc: bccArr.length > 0 ? bccArr : undefined,
@@ -328,25 +337,31 @@ export function MailComposer({
       if (!res.ok) {
         const msg = body?.error ?? `Send failed (${res.status})`;
         setError(msg);
-        toast.error("Couldn't send reply", { description: msg });
+        toast.error("Couldn't send email", { description: msg });
         return;
       }
-      toast.success("Reply sent");
+      toast.success(threadId ? "Reply sent" : "Email sent");
       onSent();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Send failed";
       setError(msg);
-      toast.error("Couldn't send reply", { description: msg });
+      toast.error("Couldn't send email", { description: msg });
     } finally {
       setSending(false);
     }
   }
 
-  return (
-    <div className="border-t border-court-border bg-court-surface-subtle/30">
+  const composerBody = (
+    <div
+      className={
+        asModal
+          ? "flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+          : "border-t border-court-border bg-court-surface-subtle/30"
+      }
+    >
       <div className="flex items-center justify-between border-b border-court-border px-5 py-2">
         <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
-          Reply
+          {asModal ? modalTitle : "Reply"}
         </div>
         <button
           type="button"
@@ -529,6 +544,25 @@ export function MailComposer({
       </div>
     </div>
   );
+
+  if (asModal) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
+      >
+        <div
+          // Backdrop click closes; inner clicks stay inside.
+          onClick={onClose}
+          aria-hidden="true"
+          className="absolute inset-0"
+        />
+        <div className="relative w-full max-w-3xl">{composerBody}</div>
+      </div>
+    );
+  }
+  return composerBody;
 }
 
 function AddressRow({
