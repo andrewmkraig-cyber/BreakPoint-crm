@@ -1,5 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { getEmailSignature } from "@/lib/preferences";
+import {
+  getUserBrandingProfile,
+  renderSignatureHtml,
+  renderSignatureText,
+  SIGNATURE_DELIMITER_HTML,
+  SIGNATURE_DELIMITER_TEXT,
+} from "@/lib/signature";
 
 // Gmail API helpers. We keep a single refresh token per user in the Account
 // row NextAuth's PrismaAdapter populated on first sign-in. For every Gmail
@@ -231,10 +238,43 @@ export function appendSignature(body: string, signature: string): string {
 }
 
 async function withSignature(input: SendEmailInput): Promise<SendEmailInput> {
-  const signature = await getEmailSignature(input.from);
-  const bodyText = appendSignature(input.bodyText, signature);
-  const bodyHtml = input.bodyHtml ? appendSignature(input.bodyHtml, plainToHtml(signature)) : plainToHtml(bodyText);
+  // Phase 6.2: Gmail-style HTML-table signature. Pulled from the sender's
+  // UserProfile (logo, name, title, phone, website). If the signature
+  // is already embedded in the body (e.g. a template that bakes it in
+  // or a re-edit that's already signed), appendSignature / HTML guard
+  // prevents a second copy from appearing.
+  const branding = await getUserBrandingProfile(input.userId);
+  const textSig = renderSignatureText(branding);
+  const htmlSig = renderSignatureHtml(branding);
+
+  // Plain-text body: append "-- \n" + text sig, unless the sig is
+  // already in the body (fallback preserves the legacy per-email
+  // signatures map so older seed data still works).
+  const legacyFallback = await getEmailSignature(input.from);
+  const textSigBlock = textSig.trim().length > 0
+    ? `${SIGNATURE_DELIMITER_TEXT}\n${textSig}`
+    : legacyFallback;
+  const bodyText = appendSignature(input.bodyText, textSigBlock);
+
+  // HTML body: splice in the delimiter + rendered HTML table. If the
+  // caller didn't supply HTML, convert the plain-text body first so the
+  // recipient still gets the formatted signature.
+  const htmlSigBlock = `<br/><br/>${SIGNATURE_DELIMITER_HTML}${htmlSig}`;
+  const baseHtml = input.bodyHtml ?? plainToHtml(input.bodyText);
+  const bodyHtml = containsSignature(baseHtml, htmlSig) ? baseHtml : `${baseHtml}${htmlSigBlock}`;
+
   return { ...input, bodyText, bodyHtml };
+}
+
+// Cheap guard against double-signing: if the body already includes the
+// rendered signature table's distinctive marker (the fullName line or
+// the email href), skip appending a second copy.
+function containsSignature(body: string, sig: string): boolean {
+  // Extract the first URL/email from the signature — if it's in the
+  // body we assume the signature is already there.
+  const match = sig.match(/href="(mailto:[^"]+|https?:[^"]+)"/);
+  if (!match) return false;
+  return body.includes(match[1]);
 }
 
 export async function sendGmail(input: SendEmailInput): Promise<SendEmailResult> {

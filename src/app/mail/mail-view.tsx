@@ -10,7 +10,13 @@ import { MailComposer } from "@/app/mail/mail-composer";
 // client manages selection + loads each thread's detail on demand.
 // Selection is kept in component state, not the URL — the Mail Tab
 // behaves like a native mail client, not a deep-link surface.
-export function MailView({ threads: initialThreads }: { threads: MailListThread[] }) {
+export function MailView({
+  threads: initialThreads,
+  currentUserEmail,
+}: {
+  threads: MailListThread[];
+  currentUserEmail: string;
+}) {
   const [threads, setThreads] = useState<MailListThread[]>(initialThreads);
   useEffect(() => setThreads(initialThreads), [initialThreads]);
   const [selected, setSelected] = useState<string | null>(initialThreads[0]?.id ?? null);
@@ -132,6 +138,7 @@ export function MailView({ threads: initialThreads }: { threads: MailListThread[
             selectedThread={selectedThread}
             composerOpen={composerOpen}
             archiving={archiving === detail.id}
+            currentUserEmail={currentUserEmail}
             onArchive={() => archiveThread(detail.id)}
             onReply={() => setComposerOpen(true)}
             onComposerClose={() => setComposerOpen(false)}
@@ -226,6 +233,7 @@ function ThreadDetail({
   selectedThread,
   composerOpen,
   archiving,
+  currentUserEmail,
   onArchive,
   onReply,
   onComposerClose,
@@ -235,6 +243,7 @@ function ThreadDetail({
   selectedThread: MailListThread | null;
   composerOpen: boolean;
   archiving: boolean;
+  currentUserEmail: string;
   onArchive: () => void;
   onReply: () => void;
   onComposerClose: () => void;
@@ -245,8 +254,15 @@ function ThreadDetail({
   const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
   const latest = orderedMessages[0];
 
-  // Pre-fill reply to the sender of the most recent inbound message.
-  const defaultTo = latest?.fromEmail ?? selectedThread?.fromEmail ?? "";
+  // Reply-recipient logic: the "other party" on the latest message.
+  // - If I sent the last message, reply to whoever I sent it to.
+  // - If someone else sent it, reply to them.
+  // Never pre-fill To with my own address.
+  const { defaultTo, defaultCc } = computeReplyRecipients(
+    latest,
+    selectedThread,
+    currentUserEmail,
+  );
   const defaultSubject = detail.subject.toLowerCase().startsWith("re:")
     ? detail.subject
     : `Re: ${detail.subject}`;
@@ -292,6 +308,7 @@ function ThreadDetail({
         <MailComposer
           threadId={detail.id}
           defaultTo={defaultTo}
+          defaultCc={defaultCc}
           defaultSubject={defaultSubject}
           onClose={onComposerClose}
           onSent={onComposerSent}
@@ -330,6 +347,65 @@ function MessageBlock({ msg, isFirst }: { msg: MailThreadMessage; isFirst: boole
       />
     </article>
   );
+}
+
+// Works out who the reply should go to.
+// - If the most recent message was sent BY the current user, the "other
+//   party" is whoever was on the To / Cc of that outbound message.
+// - If the most recent message was sent TO the current user, the "other
+//   party" is the sender (From header).
+// In both cases the current user's own address is stripped out of To
+// and Cc so replies never accidentally copy self.
+function computeReplyRecipients(
+  latest: MailThreadMessage | undefined,
+  selectedThread: MailListThread | null,
+  me: string,
+): { defaultTo: string; defaultCc: string } {
+  const myLower = me.trim().toLowerCase();
+  const toAddresses = splitAddrHeader(latest?.to ?? "");
+  const ccAddresses = splitAddrHeader(latest?.cc ?? "");
+  const fromEmail = (latest?.fromEmail ?? "").trim();
+  const fromIsMe = Boolean(fromEmail) && fromEmail.toLowerCase() === myLower;
+
+  if (fromIsMe) {
+    // I was the last sender; reply to the recipients of that send.
+    const toMinusMe = toAddresses.filter((a) => a.email.toLowerCase() !== myLower);
+    const ccMinusMe = ccAddresses.filter((a) => a.email.toLowerCase() !== myLower);
+    return {
+      defaultTo: toMinusMe.map((a) => a.original).join(", "),
+      defaultCc: ccMinusMe.map((a) => a.original).join(", "),
+    };
+  }
+
+  // Someone else sent the last message to me; reply to them.
+  // Cc anyone who was on the Cc line of that inbound message, minus me.
+  const ccMinusMe = ccAddresses
+    .filter((a) => a.email.toLowerCase() !== myLower)
+    .map((a) => a.original)
+    .join(", ");
+  const to = fromEmail || selectedThread?.fromEmail || "";
+  return {
+    // Belt-and-suspenders guard against still landing on my own email
+    // (e.g. a truly self-addressed thread — rare but possible).
+    defaultTo: to.toLowerCase() === myLower ? "" : to,
+    defaultCc: ccMinusMe,
+  };
+}
+
+// RFC 5322 address header splitter — handles "Name <addr>, Name2 <addr2>"
+// format and returns both the email-only form (for matching) and the
+// original token (for re-display).
+function splitAddrHeader(header: string): Array<{ email: string; original: string }> {
+  if (!header.trim()) return [];
+  return header
+    .split(/,(?![^<]*>)/)
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .map((token) => {
+      const m = token.match(/<([^>]+)>/);
+      const email = (m ? m[1] : token).trim();
+      return { email, original: token };
+    });
 }
 
 function formatRelative(iso: string | null): string {

@@ -64,6 +64,27 @@ model User {
   interviews      Interview[]
   ownedOrganizations Organization[]           @relation("OrganizationOwner")
   memberships        OrganizationMembership[]
+  profile            UserProfile?
+}
+
+// Per-user branding for the email signature, resume header, and any
+// surface that wants a recruiter-specific identity block. One row per
+// User, cascade-deletes with the User. Logo bytes live inline so the
+// signature HTML can embed them as a data: URI (email clients won't
+// load remote images without user action).
+model UserProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  fullName     String?
+  jobTitle     String?
+  phone        String?
+  website      String?
+  logoData     Bytes?
+  logoMimeType String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 enum UserRole {

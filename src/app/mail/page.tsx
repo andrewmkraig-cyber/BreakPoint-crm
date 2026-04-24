@@ -61,7 +61,7 @@ export default async function MailPage() {
           </p>
         </div>
       ) : (
-        <MailView threads={threads} />
+        <MailView threads={threads} currentUserEmail={session.user.email} />
       )}
     </div>
   );

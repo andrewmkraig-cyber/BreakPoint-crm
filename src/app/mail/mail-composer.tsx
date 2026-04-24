@@ -47,17 +47,27 @@ type AttachmentDraft = {
 type Props = {
   threadId: string;
   defaultTo: string;
+  defaultCc?: string;
   defaultSubject: string;
   onClose: () => void;
   onSent: () => void;
 };
 
-export function MailComposer({ threadId, defaultTo, defaultSubject, onClose, onSent }: Props) {
+export function MailComposer({
+  threadId,
+  defaultTo,
+  defaultCc,
+  defaultSubject,
+  onClose,
+  onSent,
+}: Props) {
   const [to, setTo] = useState(defaultTo);
-  const [cc, setCc] = useState("");
+  const [cc, setCc] = useState(defaultCc ?? "");
   const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
-  const [showCc, setShowCc] = useState(false);
+  // Default CC to visible if we pre-populated it — otherwise the user
+  // won't realize extra recipients are being carried over.
+  const [showCc, setShowCc] = useState(Boolean(defaultCc && defaultCc.trim()));
   const [showBcc, setShowBcc] = useState(false);
   const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
   const [sending, setSending] = useState(false);

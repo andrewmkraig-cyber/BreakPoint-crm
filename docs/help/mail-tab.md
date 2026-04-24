@@ -14,7 +14,8 @@ Updated in Phase 6.1. The Mail Tab now handles read, archive, and full rich-text
   - **Paste images inline** — screenshot → ⌘/Ctrl + V straight into the body; the image embeds as a `data:` URL so it renders in Gmail / Apple Mail / Outlook.
   - **Attachments** — click **Attach** or drag files onto the body. PDF, DOC/DOCX, and any image type are accepted. Each attachment shows filename + size with a remove button.
   - **Threading** — Gmail threads replies via `threadId`; we also set `In-Reply-To` and `References` headers so external clients thread them too.
-  - **Signature** — your stored email signature is auto-appended (same logic Ace uses for submittal emails). No need to sign off by hand.
+  - **Signature** — the full Gmail-style signature block is auto-appended (logo + name + title + email/phone/website rows with green-circle icons). Edit the pieces in **Settings → Branding & Signature**.
+  - **Default To** — the composer pre-fills **To** with the "other party" on the latest message: if you sent that message, the To recipients get it (minus you); if someone else sent it, the reply goes back to them. Your own email address never auto-fills into To or CC.
   - After the reply sends, the composer closes, the thread detail re-fetches, and the sent message appears at the top.
 - **Sidebar nav entry** — **Mail** item in the left sidebar routes to `/mail`.
 

@@ -6,7 +6,9 @@ import { ensureDefaultTemplates } from "@/app/settings/templates-actions";
 import { TemplatesView, type TemplateRow } from "@/app/settings/templates-view";
 import { PreferencesView } from "@/app/settings/preferences-view";
 import { CourtModeView } from "@/app/settings/court-mode-view";
+import { BrandingView, type BrandingInitial } from "@/app/settings/branding-view";
 import { ensureDefaultPreferences, getAppPreferences } from "@/lib/preferences";
+import { getUserBrandingProfile } from "@/lib/signature";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +43,32 @@ export default async function SettingsPage() {
     prefs.emailSignatures["andrew@breakpointtalent.com"] ??
     "";
 
+  // Branding profile for the new Branding & Signature section. Pulls
+  // the signed-in user's UserProfile (with default-logo fallback from
+  // /public/brand/) and shapes it for the client component.
+  let brandingInitial: BrandingInitial | null = null;
+  if (session?.user?.email) {
+    const userRow = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    });
+    if (userRow) {
+      const profile = await getUserBrandingProfile(userRow.id);
+      brandingInitial = {
+        email: profile.email,
+        fullName: profile.fullName,
+        jobTitle: profile.jobTitle,
+        phone: profile.phone,
+        website: profile.website,
+        logoPreviewDataUri:
+          profile.logoDataBase64.length > 0
+            ? `data:${profile.logoMimeType};base64,${profile.logoDataBase64}`
+            : "",
+        hasCustomLogo: profile.hasCustomLogo,
+      };
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -60,6 +88,19 @@ export default async function SettingsPage() {
         </div>
         <CourtModeView />
       </section>
+
+      {brandingInitial && (
+        <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+          <div className="mb-4">
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Branding &amp; Signature</h2>
+            <p className="mt-1 text-xs text-court-fg-muted">
+              Used as the signature block on every email you send from Ace — Mail Tab replies,
+              submittals, candidate confirmations. Stored per user; never shared across the org.
+            </p>
+          </div>
+          <BrandingView initial={brandingInitial} />
+        </section>
+      )}
 
       <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
         <div className="mb-4">
