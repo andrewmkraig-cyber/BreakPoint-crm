@@ -53,7 +53,6 @@ model User {
   sessions        Session[]
   actions         ActionLog[]
   activities      ActivityLog[]
-  krispcalls      KrispcallLog[]
   agreements      ClientAgreement[]
   benefitsUpdates ClientBenefits[]
   benefitsFiles   ClientBenefitsFile[]
@@ -354,7 +353,6 @@ model Candidate {
   placements          Placement[]
   interviews          Interview[]
   resume              CandidateResume?
-  krispcalls          KrispcallLog[]
 
   @@index([email])
   @@index([createdById, createdAt])
@@ -471,33 +469,6 @@ model ResumeUpload {
   uploader User @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
 
   @@index([uploaderId, createdAt])
-}
-
-model KrispcallLog {
-  id            String   @id @default(cuid())
-  userId        String
-  krispcallId   String   @unique
-  direction     String   // "inbound" | "outbound"
-  kind          String   // "call" | "sms"
-  candidateRfId String?  // RecruiterFlow candidate id if matched (Phase 5: drop)
-  candidateId   String?  // cuid FK to Candidate
-  phoneNumber   String
-  durationSec   Int?
-  recordingUrl  String?
-  transcript    String?  @db.Text
-  body          String?  @db.Text
-  occurredAt     DateTime
-  createdAt      DateTime @default(now())
-  organizationId String?
-
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  candidate    Candidate?    @relation(fields: [candidateId], references: [id], onDelete: SetNull)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-
-  @@index([userId, occurredAt])
-  @@index([candidateRfId])
-  @@index([candidateId, occurredAt])
-  @@index([organizationId])
 }
 
 // Local override for fields that RF either doesn't expose or that the
@@ -719,7 +690,6 @@ model Organization {
   clientBenefitsFiles ClientBenefitsFile[]
   candidateResumes    CandidateResume[]
   jobOverrides        JobOverride[]
-  krispcallLogs       KrispcallLog[]
   actionLogs          ActionLog[]
   activityLogs        ActivityLog[]
 }
@@ -737,7 +707,10 @@ model Organization {
 //   candidate_applied_to_job, interview_scheduled,
 //   interview_cancelled, offer_extended, email_sent
 // Intentionally excluded:
-//   call_logged — Quo (Krispcall webhook → KrispcallLog) owns calls.
+//   call_logged — Quo (OpenPhone-rebranded) webhook writes to CallLog.
+//   Deferred until the audit-feed surfaces call rows on the activity
+//   panel — at that point wire logActivity into the same webhook code
+//   path that writes CallLog.
 //
 // targetType / targetId are a polymorphic FK to whatever the action is
 // about (candidate / job / client / placement / interview). No referential

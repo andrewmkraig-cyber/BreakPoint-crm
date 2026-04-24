@@ -460,16 +460,10 @@ async function backfillForeignKeys(maps: {
     (row) => row.jobRfId,
   );
 
-  out["KrispcallLog.candidateId"] = await backfillFk(
-    await prisma.krispcallLog.findMany({ where: { candidateId: null, candidateRfId: { not: null } }, select: { id: true, candidateRfId: true } }),
-    (row) => {
-      if (!row.candidateRfId) return null;
-      const n = Number(row.candidateRfId);
-      if (Number.isNaN(n)) return null;
-      return maps.candidateByRfId.get(n) ?? null;
-    },
-    (key, value) => prisma.krispcallLog.update({ where: { id: key as string }, data: { candidateId: value } }),
-  );
+  // KrispcallLog was dropped in the audit pass — it never had any rows
+  // and the real call audit table is CallLog (written by the
+  // Krispcall/Quo webhook at src/app/api/krispcall/webhook/route.ts).
+  // No FK backfill needed here.
 
   return out;
 }

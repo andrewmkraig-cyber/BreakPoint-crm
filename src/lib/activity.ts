@@ -17,12 +17,11 @@ import { prisma } from "@/lib/prisma";
 //   and swallow. The user's action completed — losing the audit row is
 //   recoverable; breaking the action is not.
 //
-// Action types fired today: candidate_created, submittal_sent,
-// placement_confirmed. Remaining types from the Phase 4c spec
-// (candidate_applied_to_job, interview_scheduled, interview_cancelled,
-// offer_extended, email_sent) are wire-as-touched in later commits.
-// call_logged is intentionally excluded — Quo (Krispcall webhook →
-// KrispcallLog) owns calls.
+// Action types fired today: see docs/operations/activity-log.md for
+// the complete wire-map. call_logged is deferred — the real call
+// audit table is CallLog (written by the Krispcall/Quo webhook at
+// src/app/api/krispcall/webhook/route.ts). Wire logActivity into
+// that webhook when the activity panel surfaces call rows.
 
 export type LogActivityInput = {
   organizationId: string;

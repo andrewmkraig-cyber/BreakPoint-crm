@@ -72,9 +72,9 @@ Phase 4d wires `email_sent` ONLY for the interview-invite path (`sendInterviewIn
 - `email_sent` from non-invite paths — `sendRejectionEmail`, `sendOfferAcceptanceEmail`, `sendInterviewConfirmationEmail`, `sendReferenceCheckRequest`, `sendLocalReferenceRequest`, `deliverCandidateConfirmation`. Wire whenever the next doc/UI surface needs them on the activity feed.
 - `client_created`, `job_created` — stub out when the per-client and per-job activity panels land.
 
-### Intentionally deferred (pending KrispcallLog audit before Phase 5)
+### Intentionally deferred
 
-- `call_logged` — Quo (Krispcall webhook → `KrispcallLog`) owns call audit today. Migrating into `ActivityLog` requires a `KrispcallLog` audit pass to confirm no consumer reads the existing column shape we'd need to preserve. Deferred to post-Phase-4 / pre-Phase-5.
+- `call_logged` — Audit completed 2026-04-24: the dead `KrispcallLog` table was dropped from the schema (zero rows, zero application reads/writes). The real call audit table is `CallLog`, written by the Krispcall/Quo webhook at `src/app/api/krispcall/webhook/route.ts`. Wire `logActivity` into that webhook when the per-entity activity panel surfaces call rows alongside email / interview events. No blocker for Phase 5 now.
 
 ## How to write a row
 
