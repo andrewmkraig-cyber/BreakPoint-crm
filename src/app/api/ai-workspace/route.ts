@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { buildClientContext, buildCandidateContext } from '@/lib/ai-workspace-context'
+import { CLAUDE_MODEL } from '@/lib/claude'
 
 const anthropic = new Anthropic()
 
@@ -74,9 +75,12 @@ export async function POST(req: NextRequest) {
   let errorMessage = ''
   try {
     const response = await anthropic.messages.create({
-      // Project standard — src/lib/claude.ts. The original spec's
-      // `claude-sonnet-4-20250514` 404s against this Anthropic account.
-      model: 'claude-opus-4-7',
+      // Route through the project's single model constant
+      // (src/lib/claude.ts CLAUDE_MODEL). Every Claude caller in Ace —
+      // submittal writeup, JD reformat, call summary, candidate parse,
+      // client auto-fill — already reads from this constant. Swap
+      // models in one place, not seven.
+      model: CLAUDE_MODEL,
       max_tokens: 1024,
       system: systemPrompt,
       messages,

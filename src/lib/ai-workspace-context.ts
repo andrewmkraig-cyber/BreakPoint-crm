@@ -27,8 +27,14 @@ import {
 // This is as close to "full resume text" as the DB can hand us without
 // parsing the PDF on every POST.
 
-const JOB_DESCRIPTION_MAX_CHARS = 1500;
-const RESUME_MAX_CHARS = 3000;
+// Candidate-context Game Plan sends the full resume + full JDs —
+// Claude gets the whole story, not a 3k-char summary.
+// Client-context loops over every candidate in pipeline though, so
+// per-candidate resume stays capped to prevent a 20-candidate client
+// from blowing up the prompt. 10k/candidate gives ~3x the old cap and
+// still keeps total payload under the 60s function budget for wide
+// pipelines.
+const CLIENT_LOOP_RESUME_MAX_CHARS = 10_000;
 
 export async function buildClientContext(clientId: string): Promise<string> {
   const rfId = Number(clientId);
@@ -192,11 +198,11 @@ export async function buildClientContext(clientId: string): Promise<string> {
         : entry.aceId != null
           ? assembleResumeFromAce(aceById.get(entry.aceId) ?? null)
           : "";
-      const truncated = truncate(resume, RESUME_MAX_CHARS);
+      const capped = truncate(resume, CLIENT_LOOP_RESUME_MAX_CHARS);
       lines.push(`  ${entry.name} (${entry.stage})`);
       lines.push("    Resume:");
-      if (truncated.trim()) {
-        for (const rLine of truncated.split("\n")) lines.push(`      ${rLine}`);
+      if (capped.trim()) {
+        for (const rLine of capped.split("\n")) lines.push(`      ${rLine}`);
       } else {
         lines.push("      (no resume content on file)");
       }
@@ -393,11 +399,13 @@ export async function buildCandidateContext(candidateId: string): Promise<string
   if (notes) lines.push(`NOTES: ${notes.slice(0, 300)}${notes.length > 300 ? "…" : ""}`);
   lines.push("");
 
-  // Full resume content for this candidate.
+  // Full resume content for this candidate. No truncation — Game Plan
+  // on a single candidate profile gets the complete resume so Claude
+  // can reason over the whole document (multi-role history, detailed
+  // bullets, reference sections, etc.).
   lines.push("RESUME:");
-  const resumeTrimmed = truncate(resumeText, RESUME_MAX_CHARS);
-  if (resumeTrimmed.trim()) {
-    for (const rLine of resumeTrimmed.split("\n")) lines.push(`  ${rLine}`);
+  if (resumeText.trim()) {
+    for (const rLine of resumeText.split("\n")) lines.push(`  ${rLine}`);
   } else {
     lines.push("  (no resume content on file)");
   }
@@ -484,7 +492,9 @@ function resolveJobDescription(
         ? raw.description
         : "";
   if (!source) return "";
-  return truncate(stripHtml(source).trim(), JOB_DESCRIPTION_MAX_CHARS);
+  // Full JD — no cap. A 10k-char JD is normal; truncating to 1500
+  // dropped the "What You'll Do" bullets on half of them.
+  return stripHtml(source).trim();
 }
 
 type ExperienceRaw = {
