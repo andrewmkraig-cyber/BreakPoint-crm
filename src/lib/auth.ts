@@ -13,6 +13,12 @@ export const GOOGLE_SCOPES: readonly string[] = [
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.send",
+  // Phase-6 Mail Tab: read-only access to list + fetch Gmail threads for
+  // the signed-in user's own inbox. No cross-user reads — every call
+  // runs against the caller's refresh token. If a user signed in before
+  // this scope existed they'll need to sign out + back in; Google will
+  // re-prompt consent because the requested scope set changed.
+  "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/calendar.events",
   "https://www.googleapis.com/auth/meetings.space.settings",
 ];

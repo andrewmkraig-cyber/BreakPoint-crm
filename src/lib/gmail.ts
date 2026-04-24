@@ -271,3 +271,247 @@ export async function createGmailDraft(input: SendEmailInput): Promise<SendEmail
   const json = (await res.json()) as { id: string; message: { id: string; threadId: string } };
   return { id: json.message.id, threadId: json.message.threadId };
 }
+
+// ---- Mail Tab read paths (Phase 6) ----
+// Read-only list + fetch for the signed-in user's own inbox. Uses the
+// same refresh-token-per-user plumbing as the send path above so there
+// is no extra OAuth ceremony — the `gmail.readonly` scope added in
+// src/lib/auth.ts is all that was needed.
+
+export type MailListThread = {
+  id: string;
+  // Snippet, "from" name, subject — all from the thread's most recent
+  // message. That's what the left-rail preview shows.
+  snippet: string;
+  fromName: string;
+  fromEmail: string;
+  subject: string;
+  // `internalDate` is ms-since-epoch as a string in Gmail's API. We
+  // ship it as an ISO string for the client formatter.
+  timestampIso: string | null;
+  unread: boolean;
+};
+
+type GmailListThreadsResponse = {
+  threads?: Array<{ id: string; snippet?: string; historyId?: string }>;
+  nextPageToken?: string;
+  resultSizeEstimate?: number;
+};
+
+type GmailHeader = { name: string; value: string };
+
+type GmailMessagePart = {
+  partId?: string;
+  mimeType?: string;
+  filename?: string;
+  headers?: GmailHeader[];
+  body?: { size?: number; data?: string; attachmentId?: string };
+  parts?: GmailMessagePart[];
+};
+
+type GmailMessage = {
+  id: string;
+  threadId: string;
+  labelIds?: string[];
+  snippet?: string;
+  internalDate?: string;
+  payload?: GmailMessagePart;
+};
+
+type GmailThreadResponse = {
+  id: string;
+  historyId?: string;
+  messages?: GmailMessage[];
+};
+
+function headerValue(headers: GmailHeader[] | undefined, name: string): string {
+  if (!headers) return "";
+  const h = headers.find((x) => x.name.toLowerCase() === name.toLowerCase());
+  return h?.value ?? "";
+}
+
+// RFC 5322 "Name <email@host>" → { name, email }.
+function parseAddress(raw: string): { name: string; email: string } {
+  if (!raw) return { name: "", email: "" };
+  const m = raw.match(/^\s*(?:"?([^"<]*?)"?\s*)?<([^>]+)>\s*$/);
+  if (m) return { name: (m[1] ?? "").trim(), email: m[2].trim() };
+  // Bare address, no name.
+  return { name: "", email: raw.trim() };
+}
+
+export async function listGmailThreads(
+  userId: string,
+  opts: { maxResults?: number; labelIds?: string[] } = {},
+): Promise<MailListThread[]> {
+  const accessToken = await getFreshAccessToken(userId);
+  const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/threads");
+  url.searchParams.set("maxResults", String(opts.maxResults ?? 50));
+  for (const id of opts.labelIds ?? ["INBOX"]) {
+    url.searchParams.append("labelIds", id);
+  }
+  const listRes = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!listRes.ok) {
+    const text = await listRes.text().catch(() => "");
+    throw new Error(`Gmail threads.list failed (${listRes.status}): ${text || "no body"}`);
+  }
+  const listJson = (await listRes.json()) as GmailListThreadsResponse;
+  const ids = (listJson.threads ?? []).map((t) => t.id);
+  if (ids.length === 0) return [];
+
+  // Hydrate each thread's most-recent-message summary via metadata format
+  // (saves bandwidth — no body). Concurrent fetches; Gmail rate limits
+  // are generous enough for 50 parallel metadata calls per user.
+  const enriched = await Promise.all(
+    ids.map(async (id) => {
+      const tUrl = new URL(
+        `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(id)}`,
+      );
+      tUrl.searchParams.set("format", "metadata");
+      for (const h of ["From", "Subject", "Date"]) {
+        tUrl.searchParams.append("metadataHeaders", h);
+      }
+      const r = await fetch(tUrl.toString(), {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        cache: "no-store",
+      });
+      if (!r.ok) return null;
+      const j = (await r.json()) as GmailThreadResponse;
+      const messages = j.messages ?? [];
+      if (messages.length === 0) return null;
+      // Most recent message is the last one in the array.
+      const last = messages[messages.length - 1];
+      const from = parseAddress(headerValue(last.payload?.headers, "From"));
+      const subject = headerValue(last.payload?.headers, "Subject");
+      const internalDate = last.internalDate;
+      const isoTs = internalDate ? new Date(Number(internalDate)).toISOString() : null;
+      const labels = last.labelIds ?? [];
+      return {
+        id: j.id,
+        snippet: last.snippet ?? "",
+        fromName: from.name || from.email,
+        fromEmail: from.email,
+        subject: subject || "(no subject)",
+        timestampIso: isoTs,
+        unread: labels.includes("UNREAD"),
+      } satisfies MailListThread;
+    }),
+  );
+  // Sort by timestamp desc so the newest thread sits at the top even
+  // if Gmail returned them in a different order.
+  return enriched
+    .filter((x): x is MailListThread => x !== null)
+    .sort((a, b) => (b.timestampIso ?? "").localeCompare(a.timestampIso ?? ""));
+}
+
+export type MailThreadMessage = {
+  id: string;
+  fromName: string;
+  fromEmail: string;
+  to: string;
+  cc: string;
+  dateIso: string | null;
+  subject: string;
+  // HTML body (already sanitized by the route) if available; otherwise
+  // the plain-text body converted to HTML via <pre>.
+  bodyHtml: string;
+};
+
+export type MailThreadDetail = {
+  id: string;
+  subject: string;
+  messages: MailThreadMessage[];
+};
+
+// Recursively walks the MIME tree looking for the first html part, then
+// falls back to the first text/plain part if no html was found.
+function pickBestBody(
+  payload: GmailMessagePart | undefined,
+): { mimeType: "text/html" | "text/plain"; data: string } | null {
+  if (!payload) return null;
+  const htmlPart = findPart(payload, "text/html");
+  if (htmlPart?.body?.data) {
+    return { mimeType: "text/html", data: decodeB64Url(htmlPart.body.data) };
+  }
+  const textPart = findPart(payload, "text/plain");
+  if (textPart?.body?.data) {
+    return { mimeType: "text/plain", data: decodeB64Url(textPart.body.data) };
+  }
+  // Some Gmail messages store the body directly on the top-level payload.
+  if (payload.body?.data) {
+    const mt = (payload.mimeType ?? "text/plain") === "text/html" ? "text/html" : "text/plain";
+    return { mimeType: mt, data: decodeB64Url(payload.body.data) };
+  }
+  return null;
+}
+
+function findPart(root: GmailMessagePart, mimeType: string): GmailMessagePart | null {
+  if (root.mimeType === mimeType && root.body?.data) return root;
+  if (root.parts) {
+    for (const child of root.parts) {
+      const found = findPart(child, mimeType);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+function decodeB64Url(s: string): string {
+  // Gmail returns base64url-encoded data. Standard-base64 would fail on
+  // Gmail's `-`/`_` chars.
+  const norm = s.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = norm.length % 4 === 0 ? norm : norm + "=".repeat(4 - (norm.length % 4));
+  return Buffer.from(pad, "base64").toString("utf-8");
+}
+
+export async function getGmailThread(userId: string, threadId: string): Promise<MailThreadDetail> {
+  const accessToken = await getFreshAccessToken(userId);
+  const tUrl = new URL(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}`,
+  );
+  tUrl.searchParams.set("format", "full");
+  const r = await fetch(tUrl.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!r.ok) {
+    const text = await r.text().catch(() => "");
+    throw new Error(`Gmail thread.get failed (${r.status}): ${text || "no body"}`);
+  }
+  const j = (await r.json()) as GmailThreadResponse;
+  const messages = (j.messages ?? []).map<MailThreadMessage>((m) => {
+    const headers = m.payload?.headers;
+    const from = parseAddress(headerValue(headers, "From"));
+    const body = pickBestBody(m.payload);
+    const bodyHtml = body
+      ? body.mimeType === "text/html"
+        ? body.data
+        : `<pre class="whitespace-pre-wrap font-sans text-sm text-court-fg">${escapeHtml(body.data)}</pre>`
+      : `<p class="text-xs text-court-fg-muted">(no body content)</p>`;
+    return {
+      id: m.id,
+      fromName: from.name || from.email,
+      fromEmail: from.email,
+      to: headerValue(headers, "To"),
+      cc: headerValue(headers, "Cc"),
+      dateIso: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : null,
+      subject: headerValue(headers, "Subject"),
+      bodyHtml,
+    };
+  });
+  // The top-level subject is the subject of the first message (usually the
+  // originating send before anyone hit Reply).
+  const subject = messages[0]?.subject ?? "(no subject)";
+  return { id: j.id, subject, messages };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
