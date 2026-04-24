@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
 import { LogOut } from "lucide-react";
+import { TopBarSearch } from "@/components/top-bar-search";
 
 export function TopBar() {
   const { data: session } = useSession();
@@ -13,9 +14,12 @@ export function TopBar() {
     // #2d4a2d. All text/border colors route through court-* tokens so
     // they track each mode's palette without per-class dark:/grass:
     // overrides.
-    <header className="flex h-16 items-center justify-between border-b border-court-border bg-white dark:bg-[#1e293b] grass:bg-[#2d4a2d] px-6">
-      <div className="text-xs uppercase tracking-[0.18em] text-court-fg-muted">
+    <header className="flex h-16 items-center justify-between gap-4 border-b border-court-border bg-white dark:bg-[#1e293b] grass:bg-[#2d4a2d] px-6">
+      <div className="hidden text-xs uppercase tracking-[0.18em] text-court-fg-muted md:block">
         Internal Ops &middot; {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+      </div>
+      <div className="flex-1 md:flex-none md:w-80">
+        <TopBarSearch />
       </div>
       <div className="flex items-center gap-3">
         <div className="text-right">
