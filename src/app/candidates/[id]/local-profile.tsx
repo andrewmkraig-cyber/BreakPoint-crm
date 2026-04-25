@@ -13,7 +13,8 @@ import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/act
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { DocxPreview } from "@/components/docx-preview";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
-import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
+// BrandResumeButton removed in 5A.5.a — branding moves into the
+// Edit Resume modal in 5A.5.b. The component itself still exists.
 import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -333,7 +334,6 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
             </div>
             {candidate.resumeFilename && (
               <div className="flex items-center gap-2">
-                <BrandResumeButton candidateId={candidate.id} />
                 <a
                   href={`/api/local-candidate-resumes/${candidate.id}`}
                   className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"

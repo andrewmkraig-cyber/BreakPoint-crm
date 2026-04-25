@@ -56,8 +56,11 @@ export async function POST(req: NextRequest) {
     mimeType = candidate.resumeMimeType;
     filename = candidate.resumeFilename ?? "resume";
   } else {
-    const cr = await prisma.candidateResume.findUnique({
-      where: { candidateId: candidate.id },
+    // Phase 5A.5.a: candidateId is no longer @unique; pick the most-
+    // recent uploaded version as the redaction source.
+    const cr = await prisma.candidateResume.findFirst({
+      where: { candidateId: candidate.id, uploadComplete: true },
+      orderBy: { uploadedAt: "desc" },
       select: { data: true, mimeType: true, filename: true, uploadComplete: true },
     });
     if (cr && cr.uploadComplete) {

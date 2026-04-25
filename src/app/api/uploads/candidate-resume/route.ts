@@ -49,15 +49,16 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
   allowedMime: ALLOWED,
   parseExtra: resolveCandidate,
   createFirstRow: async ({ userId, filename, mimeType, size, firstChunk, isLast, extra }) => {
-    const row = await prisma.candidateResume.upsert({
-      where: { candidateId: extra.candidateId },
-      create: {
+    // Phase 5A.5.a: every upload creates a NEW row instead of upserting
+    // by candidate. The @unique constraints on candidateId / candidateRfId
+    // were dropped in the same migration. Each candidate can now carry
+    // multiple uploaded versions; the version dropdown on the profile
+    // surfaces them. The candidateRfId fallback to negative synthetic IDs
+    // for Ace-native uploads is kept (column is still required Int) but
+    // is now harmless — no unique collision possible.
+    const row = await prisma.candidateResume.create({
+      data: {
         candidateId: extra.candidateId,
-        // Mirror the RF id onto the row for legacy reporting; required by
-        // the @unique constraint on CandidateResume.candidateRfId. For
-        // Ace-native candidates (no rfId) we fall back to a negative synthetic
-        // id so the unique constraint still holds while we wait for Phase 5
-        // to drop the column.
         candidateRfId: extra.candidateRfId ?? -Date.now(),
         organizationId: extra.organizationId,
         filename,
@@ -66,16 +67,6 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
         data: new Uint8Array(firstChunk),
         uploadComplete: isLast,
         uploadedById: userId,
-      },
-      update: {
-        filename,
-        mimeType,
-        size,
-        data: new Uint8Array(firstChunk),
-        uploadComplete: isLast,
-        uploadedById: userId,
-        uploadedAt: new Date(),
-        organizationId: extra.organizationId,
       },
       select: { id: true, data: true },
     });

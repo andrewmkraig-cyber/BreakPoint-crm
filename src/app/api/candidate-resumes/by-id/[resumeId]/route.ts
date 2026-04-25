@@ -1,45 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// Session-gated resume download / inline preview. The path segment used to
-// be the RF id — post-Phase-1 cutover it can be either the legacy RF id
-// (numeric) or a Candidate cuid. We resolve to Candidate.id internally and
-// query CandidateResume by candidateId so we never filter on candidateRfId.
-// `?download=1` forces Content-Disposition: attachment; default is inline
-// for the iframe preview on the profile.
+// Phase 5A.5.a: fetches a specific CandidateResume row by id. Used by
+// the version dropdown on the candidate profile when the recruiter
+// picks an older version. The legacy `/api/candidate-resumes/[idOrRfId]`
+// route still serves the most-recent version for back-compat URLs.
+//
+// Tenant scope: every read filters by organizationId via getCurrentOrg
+// + the row's organizationId column. A forged resumeId from another
+// tenant returns 404.
 export async function GET(
   req: NextRequest,
-  { params }: { params: { candidateRfId: string } },
+  { params }: { params: { resumeId: string } },
 ) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return new NextResponse("Unauthorized", { status: 401 });
 
-  const raw = params.candidateRfId;
-  const candidate = /^\d+$/.test(raw)
-    ? await prisma.candidate.findFirst({ where: { rfId: Number(raw) }, select: { id: true } })
-    : await prisma.candidate.findFirst({ where: { id: raw }, select: { id: true } });
-  if (!candidate) return new NextResponse("Not found", { status: 404 });
-
-  // Phase 5A.5.a: switched to findFirst orderBy uploadedAt desc so the
-  // legacy URL `/api/candidate-resumes/[idOrRfId]` resolves to the most
-  // recent uploaded version. Specific older versions are fetched via
-  // /api/candidate-resumes/by-id/[resumeId]. Same redacted-variant
-  // semantics; same download disposition. Display filename prefers
-  // displayName when set so the Content-Disposition matches what the
-  // recruiter renamed it to.
+  const org = await getCurrentOrg();
   const resume = await prisma.candidateResume.findFirst({
-    where: { candidateId: candidate.id, uploadComplete: true },
-    orderBy: { uploadedAt: "desc" },
+    where: { id: params.resumeId, organizationId: org.id, uploadComplete: true },
   });
   if (!resume) return new NextResponse("Not found", { status: 404 });
 
   const wantsRedacted = req.nextUrl.searchParams.get("variant") === "redacted";
   const hasRedacted = Boolean(resume.redactedData && resume.redactedAt);
-
   const useRedacted = wantsRedacted && hasRedacted;
   const bytes = useRedacted ? resume.redactedData! : resume.data;
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;

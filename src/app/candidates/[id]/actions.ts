@@ -173,3 +173,46 @@ export async function deleteCandidateResume(candidateIdOrRfId: number | string):
     return { ok: false, error: e instanceof Error ? e.message : "Failed to delete resume." };
   }
 }
+
+// Phase 5A.5.a: rename a specific CandidateResume version. Trims the
+// input + falls back to clearing displayName when blank — the UI
+// then renders the original upload filename. Scoped by organizationId
+// so a forged resumeId from another tenant errors out cleanly.
+export async function renameCandidateResume(input: {
+  resumeId: string;
+  displayName: string;
+}): Promise<ActionResult> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  if (!input.resumeId) return { ok: false, error: "Missing resume id." };
+
+  const trimmed = input.displayName.trim();
+  // Strip any extension the user typed — we always serve as .pdf and
+  // we don't want "Linda.pdf.pdf" surfacing in the download header.
+  const stripped = trimmed.replace(/\.(pdf|docx?|txt)$/i, "");
+  // 200 is generous for an email subject / display chip; clamp here
+  // so a 5MB paste doesn't smuggle into a Bytes-adjacent column.
+  if (stripped.length > 200) {
+    return { ok: false, error: "Display name is too long (max 200)." };
+  }
+
+  try {
+    const { getCurrentOrg } = await import("@/lib/auth/getCurrentOrg");
+    const org = await getCurrentOrg();
+    const existing = await prisma.candidateResume.findFirst({
+      where: { id: input.resumeId, organizationId: org.id },
+      select: { id: true, candidateId: true, candidateRfId: true },
+    });
+    if (!existing) return { ok: false, error: "Resume not found." };
+
+    await prisma.candidateResume.update({
+      where: { id: existing.id },
+      data: { displayName: stripped.length > 0 ? stripped : null },
+    });
+
+    if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
+    if (existing.candidateRfId > 0) revalidatePath(`/candidates/${existing.candidateRfId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to rename resume." };
+  }
+}

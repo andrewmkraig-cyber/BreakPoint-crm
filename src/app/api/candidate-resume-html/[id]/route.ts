@@ -41,9 +41,12 @@ export async function GET(
   }
 
   // Prefer CandidateResume (RF-imported path); fall back to inline
-  // Candidate.resumeData (Ace-native upload path).
-  const cr = await prisma.candidateResume.findUnique({
-    where: { candidateId: candidate.id },
+  // Candidate.resumeData (Ace-native upload path). Phase 5A.5.a:
+  // candidateId is no longer @unique — pick the most-recent uploaded
+  // version for the docx-html preview.
+  const cr = await prisma.candidateResume.findFirst({
+    where: { candidateId: candidate.id, uploadComplete: true },
+    orderBy: { uploadedAt: "desc" },
   });
 
   let bytes: Buffer | null = null;

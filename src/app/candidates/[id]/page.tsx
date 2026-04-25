@@ -26,8 +26,9 @@ import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
 import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-notes";
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
-import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
-import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
+import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editable-resume";
+// BrandResumeButton import removed in 5A.5.a — branding moves into the
+// Edit Resume modal in 5A.5.b. The component itself still exists.
 import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
@@ -152,13 +153,19 @@ export default async function CandidateProfilePage({
     // shapes.
     getPlacementsForOrg({ candidateId: candidate.id }),
     getInterviewsForOrg({ candidateId: candidate.id }),
-    prisma.candidateResume.findUnique({
-      where: { candidateId: candidate.id },
+    // Phase 5A.5.a: candidate can carry N resume versions. Fetch all
+    // of them sorted newest-first so the version dropdown is driven
+    // by real data; the display picks the most-recent or its redacted
+    // variant by default (preserving the prior single-resume default).
+    prisma.candidateResume.findMany({
+      where: { candidateId: candidate.id, uploadComplete: true },
+      orderBy: { uploadedAt: "desc" },
       select: {
+        id: true,
         filename: true,
+        displayName: true,
         mimeType: true,
         size: true,
-        uploadComplete: true,
         uploadedAt: true,
         redactedAt: true,
         uploadedBy: { select: { name: true, email: true } },
@@ -178,16 +185,38 @@ export default async function CandidateProfilePage({
     [c.first_name, c.last_name].filter(Boolean).join(" ") ??
     "(unnamed)";
   const locationLabel = formatLocation(c.location);
-  const localResumeInitial: ResumeState = localResume && localResume.uploadComplete
-    ? {
-        filename: localResume.filename,
-        mimeType: localResume.mimeType,
-        sizeBytes: localResume.size,
-        uploadedAt: localResume.uploadedAt.toISOString(),
-        uploadedByName: localResume.uploadedBy?.name ?? localResume.uploadedBy?.email ?? null,
-        redactedAt: localResume.redactedAt ? localResume.redactedAt.toISOString() : null,
-      }
-    : null;
+  // Phase 5A.5.a: flatten the N resume rows into the version array
+  // the new EditableResume component renders. Each row becomes one
+  // "Original (date)" entry plus optionally a "Redacted (date)" entry
+  // when redactedAt is set. The array is already sorted newest-first.
+  const resumeVersions: ResumeVersion[] = [];
+  for (const r of localResume) {
+    resumeVersions.push({
+      key: r.id,
+      resumeId: r.id,
+      kind: "original",
+      filename: r.filename,
+      displayName: r.displayName,
+      mimeType: r.mimeType,
+      sizeBytes: r.size,
+      uploadedAt: r.uploadedAt.toISOString(),
+      uploadedByName: r.uploadedBy?.name ?? r.uploadedBy?.email ?? null,
+    });
+    if (r.redactedAt) {
+      resumeVersions.push({
+        key: `${r.id}:redacted`,
+        resumeId: r.id,
+        kind: "redacted",
+        filename: r.filename,
+        displayName: r.displayName,
+        // Redacted variant is always served as PDF by the redactor.
+        mimeType: "application/pdf",
+        sizeBytes: 0,
+        uploadedAt: r.redactedAt.toISOString(),
+        uploadedByName: r.uploadedBy?.name ?? r.uploadedBy?.email ?? null,
+      });
+    }
+  }
   const tagSet = collectTags(c);
   const isKept = tagSet.has("kept") || tagSet.has("keep");
   const displayTags = Array.from(tagSet).filter((t) => t !== "kept" && t !== "keep");
@@ -559,12 +588,10 @@ export default async function CandidateProfilePage({
               instead of the old ~60/40 that still felt symmetric. */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
             <div className="space-y-6 lg:col-span-7">
-              {localResumeInitial && (
-                <div className="flex justify-end">
-                  <BrandResumeButton candidateId={candidate.id} />
-                </div>
-              )}
-              <EditableResume candidateRfId={id} initial={localResumeInitial} />
+              <EditableResume
+                candidateRfId={id}
+                versions={resumeVersions}
+              />
               {/* Collapsible SMS thread. Sits right below the resume so recruiters
                   can glance at prior texts without scrolling to Activity. */}
               <TextingExchanges candidateId={String(id)} />

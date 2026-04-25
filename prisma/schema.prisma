@@ -376,7 +376,8 @@ model Candidate {
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   placements          Placement[]
   interviews          Interview[]
-  resume              CandidateResume?
+  // Phase 5A.5.a: now 1:N — multiple resume versions per candidate.
+  resumes             CandidateResume[]
   // Phase 5A.4: candidate-list memberships. Cascade-delete on the
   // membership side so removing a candidate cleans up their list
   // memberships without affecting the lists themselves.
@@ -393,9 +394,19 @@ model Candidate {
 // bytes.
 model CandidateResume {
   id             String   @id @default(cuid())
-  candidateRfId  Int      @unique
-  candidateId    String?  @unique
+  // Phase 5A.5.a: dropped the @unique on candidateRfId / candidateId
+  // so a candidate can carry multiple uploaded versions. Each upload
+  // creates its own row; the most-recent-by-uploadedAt is the default
+  // legacy lookup target. The negative-synthetic candidateRfId hack
+  // for Ace-native uploads stays (the column is still required Int).
+  candidateRfId  Int
+  candidateId    String?
   filename       String
+  // Recruiter-set display name overriding the raw upload filename.
+  // Used everywhere the resume name shows (header, dropdown, download
+  // Content-Disposition). Falls back to filename when null/empty so
+  // the UI never displays a blank.
+  displayName    String?
   mimeType       String
   size           Int
   data           Bytes

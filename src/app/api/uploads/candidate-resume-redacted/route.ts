@@ -39,8 +39,11 @@ export const POST = createChunkedUploadHandler<RedactExtra>({
     throw new Error("candidateId or candidateRfId required");
   },
   createFirstRow: async ({ mimeType, size, firstChunk, isLast, extra }) => {
-    const existing = await prisma.candidateResume.findUnique({
-      where: { candidateId: extra.candidateId },
+    // Phase 5A.5.a: candidateId is no longer @unique; pick the most-
+    // recent uploaded version as the redaction target.
+    const existing = await prisma.candidateResume.findFirst({
+      where: { candidateId: extra.candidateId, uploadComplete: true },
+      orderBy: { uploadedAt: "desc" },
       select: { id: true },
     });
     if (!existing) throw new Error("Original resume row not found");

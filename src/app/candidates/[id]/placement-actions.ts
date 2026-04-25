@@ -1263,8 +1263,11 @@ export async function listSubmittalResumeOptions(
 ): Promise<ListSubmittalResumeOptionsResult> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
-  const row = await prisma.candidateResume.findUnique({
-    where: { candidateRfId },
+  // Phase 5A.5.a: candidateRfId is no longer @unique; pick the most-
+  // recent uploaded version for the submittal-attachment dropdown.
+  const row = await prisma.candidateResume.findFirst({
+    where: { candidateRfId, uploadComplete: true },
+    orderBy: { uploadedAt: "desc" },
     select: {
       filename: true,
       mimeType: true,
@@ -1276,7 +1279,7 @@ export async function listSubmittalResumeOptions(
       redactedAt: true,
     },
   });
-  if (!row || !row.uploadComplete) return { ok: true, value: [] };
+  if (!row) return { ok: true, value: [] };
   const options: SubmittalResumeOption[] = [
     {
       variant: "original",
@@ -1305,10 +1308,13 @@ async function loadSubmittalAttachment(
   candidateRfId: number,
   variant: SubmittalResumeVariant,
 ): Promise<{ ok: true; value: GmailAttachment } | { ok: false; error: string }> {
-  const row = await prisma.candidateResume.findUnique({
-    where: { candidateRfId },
+  // Phase 5A.5.a: candidateRfId is no longer @unique; pick the most-
+  // recent uploaded version for the submittal email attachment.
+  const row = await prisma.candidateResume.findFirst({
+    where: { candidateRfId, uploadComplete: true },
+    orderBy: { uploadedAt: "desc" },
   });
-  if (!row || !row.uploadComplete) {
+  if (!row) {
     return { ok: false, error: "No resume uploaded for this candidate." };
   }
   if (variant === "branded") {
