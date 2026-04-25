@@ -16,15 +16,6 @@
 12. Every new component uses Court Mode design system tokens. Never hardcoded colors. No bg-white.
 13. Pipeline stage source of truth: Neon only. JobApplication for applied state, Placement for post-submit stages. One Neon query per job page feeds all rows, bucket counts, and action buttons.
 
-## Session Opening (17.0+)
-
-Fetch these three files at the start of every session before any other work:
-https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_RULES.md
-https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_STATE.md
-https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_ROADMAP.md
-
-Apply doc hygiene rule, recite all rules, confirm next task and prompt ready to paste.
-
 ## Doc Hygiene Rule
 
 At start of every session: identify stale rules, superseded plans, completed items still in active lists. Clean in one pass before other work. When a plan changes, replace - do not append. Completed items move to log only.
@@ -44,6 +35,24 @@ At start of every session: identify stale rules, superseded plans, completed ite
 - Always give Claude Code prompts and answers as exact paste-ready blocks with plain English explanation before them.
 - No developer jargon. Explain every step as if Andrew has never coded.
 - Never mix answers and explanations - context first, then the exact text to paste in a clean block.
+
+## External Step Links (permanent)
+
+When any task requires Andrew to do something outside Claude Code (Google Cloud Console, Vercel, GitHub settings, Stripe, DocuSign, Mac system settings, etc.), Claude must always provide the exact clickable URL. Never describe a navigation path without the link. Andrew is not a developer - every external step needs a direct URL plus step-by-step instructions written in plain English.
+
+## Session Opening Protocol (17.0+) - UPDATED
+
+Fetch these three files at the start of every session before any other work:
+https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_RULES.md
+https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_STATE.md
+https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_ROADMAP.md
+
+After fetching, in order:
+1. Apply doc hygiene rule - identify stale rules, superseded plans, completed items in active lists. Clean in one pass.
+2. Recite all architecture non-negotiables plus prompt rules and communication rules.
+3. Confirm the next task from ACE_STATE.md.
+4. Give the first Claude Code prompt paste-ready.
+5. Give a Session Brief: what we are accomplishing in this session (list of atomic ships) and a realistic time estimate in minutes for Andrew's side (browser testing, pasting prompts, reporting back). Do not estimate Claude Code's compute time.
 
 ## Session Transition Protocol
 
