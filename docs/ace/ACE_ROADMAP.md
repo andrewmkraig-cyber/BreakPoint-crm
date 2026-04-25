@@ -182,3 +182,78 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 - Market Insights tab
 - Client Strategy tab (Claude chat workspace per client)
 - Cosmetic polish batch: Generate with Claude button visibility on Clay Court dark mode (currently invisible), plus any other visual polish surfaced during 18.0 testing. Bundle with Week 4 UX Polish Batch.
+
+## Recovered Backlog (audit 2026-04-25)
+
+### Week 2
+
+- BD Automation Engine (full vision): Daily 6 AM cron. Step 1 (Indeed API): scan last-24hr jobs, filter for public accounting firms by company name (CPA/Associates/Partners/Accounting/Advisory/Group) OR JD signals (audit/tax/public accounting). Discard staffing agencies and corporate in-house. Output 20 companies/day. Step 2 (Apollo API): one best contact per company - Managing Partner, Tax Partner, Controller, CFO, or HR Director. Step 3: Write each prospect to Ace's Prospect table with company, contact, title, email, LinkedIn, triggering job posting. Step 4: Auto-enroll in email sequence using warmed burner domains. All sending and tracking in Ace, not Apollo. BD Settings screen for keywords/titles/limit/sequence. BD feed showing overnight additions and sequence status. Apollo is data source only. Replaces Andrew's manual BD flow.
+- Word of the Day - Vercel Cron 6 AM EST same as Daily Industry Briefing.
+- Market Insights Tab - Tab 6 on client detail. Generate market briefs inline. Save brief history per client. Pick recipients from contacts. Compose/auto-generate email, attach PDF, send from Ace. Same design as the market-brief skill.
+- Game Plan Web Search "Find Matches" button - candidate page queries Indeed/ZipRecruiter/SimplyHired/career pages, client/job page queries Neon candidates.
+- Cosmetic polish pass: billing tower, h1 contrast Clay/Grass, counter subtext removal, replace "Welcome back, Andrew" with "Activity Dashboard", remove INTERNAL OPS header, fix footer location.
+- Mail composer Generate-from-prompt input box: small input at top of composer. User types a prompt like "email Linda a summary of highlights regarding this company". Click Generate. Claude writes the email body. Context Claude gets: candidate/client name from open profile, recent thread history if reply, signature stays intact. Originally bundled in Prompt 2C with templates+merge-fields - templates and merge fields shipped, this Generate input was either skipped or never surfaced. Verify or rebuild as ~10 min task.
+
+### Week 3
+
+- JD auto-generate Claude button on job page.
+- Resume parser improvements (5-10 test resumes to tune).
+- Quo auto-transcription webhook (call.transcript.completed, save transcript + Claude summary).
+- Boolean candidate search - skills/location/title/employer/education with AND/OR/NOT.
+- MPC (Most Placeable Candidates) feature.
+- Sentry N+1 fixes: ACE-CRM-5 (37 events), ACE-CRM-6 (28 events), ACE-CRM-7 (2 events), ACE-CRM-9 (1 event), ACE-CRM-A (1 event). Plus one Hydration Error. Fix via Prisma include eager-loading.
+
+### Week 4
+
+- Night Court mode (4th theme).
+- BP circle icon + Ace logo + favicon + footer cleanup.
+- YouTube floating player.
+- DocuSign auto-import.
+- Invoicing workflow with Slack-to-Austin trigger on confirmed start.
+- Slack integration sidebar panel.
+- PWA conversion - manifest, service worker, push notifications.
+- Activity-to-Revenue Analytics.
+- Job Order + ARPO templates with call transcription auto-fill.
+- Demo mode (sandbox toggle).
+- UX polish batch (15 items per audit canvas).
+
+### Candidate Profile Redesign (Jobot-style)
+
+- Tabs at top: Profile, Notes, History, Skills & Answers, Splits.
+- Applied Jobs table near top (Client / Job / Compensation / Match% / Action buttons).
+- Stage action buttons row directly below tabs.
+- Resume display dropdown showing all uploaded resumes with timestamps.
+- Cloud upload icon, three-dot menu (Brand, Anonymize, Delete, Download).
+- Left sidebar: Contact, expected comp, current employer, work auth, education, Recruiter Notes with stage indicator + skip-outreach toggle.
+- Resume preview center 60%.
+- Right sidebar: contextual data.
+- Stage-Triggered Action Buttons: Move to Offer Stage, Reject (with reason dropdown), Schedule Interview, Keep, Apply to Job, Add Note, Edit PDF Again.
+
+### Interview Scheduler Redesign
+
+17 fields from Ace 17 chat.
+
+### Template Library Enhancements
+
+Stage tag, side tag (candidate-facing vs client-facing), bracket+merge syntax, attachment defaults.
+
+### Infrastructure
+
+- CandidateResume audit + migrate file bytes from Postgres to Vercel Blob.
+- Background job queue (Job table + Vercel Cron) for any operation over 60 seconds.
+- Postgres tsvector + GIN indexes for fast Boolean search as DB grows.
+- ZDR (Anthropic Zero Data Retention) request on Andrew's API key.
+
+### Phase 5 Carry List
+
+- Copy sweep (17 RecruiterFlow user-visible strings).
+- Compound-unique widening (3 Placement compound uniques don't include organizationId).
+- SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping.
+- Manual Andrew actions: delete RECRUITERFLOW_API_KEY from .env.local and GitHub Actions secrets, delete src/lib/recruiterflow/ entirely.
+
+### Removed From Roadmap (productization deferred indefinitely)
+
+- Help Docs Corpus (Architecture Non-Negotiable #10 relaxed).
+- Per-org color theming.
+- Ask Claude in-app support panel.
+- BYOC, CustomerRequest table, Stripe billing, marketing site, trademark, legal review, code escrow, public REST API, MCP server v1, custom fields UI, hierarchical RBAC, demo accounts, external SSO, SOC 2.

@@ -75,3 +75,14 @@ When drifting or tasks complete: update ACE_STATE.md and ACE_ROADMAP.md as part 
 - Force fresh deploy when cache issues arise: npx vercel --prod --yes --force
 - Resume session: cd /Users/andrewkraig/Projects/breakpoint-crm then claude --resume
 - Comp conventions: contracting 79% markup (pay rate x 1.79 = bill rate), conversion fee 20% of first-year base, contract-to-hire 35% of bill rate x hours remaining until 520.
+
+## Compaction Recovery + Hyperlink Rules (added 2026-04-25)
+
+- HYPERLINKS: Always format URLs as clickable markdown links, never plain text. No exceptions.
+- After ANY compaction event in Code (when "Compacting conversation" appears), the next prompt MUST explicitly restate the in-progress task and reference any uncommitted local files. Do not assume Code remembers what it was working on.
+- Never run background /loop tasks during active feature work.
+- /clear in Code between every two feature ships. Do not chain features in one Code session.
+- Sessions over 3 hours or 5+ feature ships approach compaction risk. Proactively /clear before that threshold.
+- GitHub doc updates are additive-only. Deferred items stay verbatim in ACE_ROADMAP.md until Andrew explicitly cancels them.
+- ACE_DESIGN.md is a 4th required fetch at session open alongside ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md.
+- Architecture Non-Negotiable #10 (help docs required for every feature) is RELAXED to nice-to-have. Andrew is not selling Ace as SaaS. Code can write help docs when natural but does not gate-keep on missing help doc.

@@ -63,3 +63,13 @@ Composer UX overhaul mostly shipped. Lists feature schema landed, UI next sessio
 - RF fully removed since Phase 5
 - Neon Postgres sole source of truth for all writes
 - All Gmail OAuth scopes granted: gmail.readonly, gmail.modify, gmail.send
+
+## Ace 19.0 close (2026-04-25)
+
+5A.5.b deployed to ace.breakpointtalent.com but uncommitted. Three known bugs to fix as Ace 20.0 first task:
+
+- (A) Resume upload broken with 500 "Chunk 1/1 failed" on all candidates - regression from candidateRfId-nullable plumbing in /candidates/new/actions.ts and local-profile.tsx lazy-backfill.
+- (B) Brand and Redact don't persist together - only one saves, reproduced on Lesley Snell and Sidney Long.
+- (C) Re-editing existing branded version doesn't load existing state, opens fresh Brand mode and Redact button doesn't work.
+
+Local files uncommitted: prisma/schema.prisma (variant column), src/lib/default-brand-logo.ts, src/app/candidates/[id]/brand-resume-actions.ts, resume-brander.tsx, resume-editor.tsx, resume-redactor.tsx (refactored), editable-resume.tsx, page.tsx, local-profile.tsx, src/app/candidates/new/actions.ts, docs/help/resume-branding.md.
