@@ -13,6 +13,18 @@ Picks up the 13 backlog items from Ace 17.0 plus the Interview Scheduling Overha
 4. Dual-format merge field parser. Both [Bracket Format] and {{double.curly}} syntaxes resolve to the same data. Existing field map covers both forms. Insert Field dropdown defaults to inserting {{}} but parser handles both for backward compatibility with RF-imported templates.
 5. Smart context resolution. When popup opens from a candidate profile: if candidate has 1 active applied job, auto-load that job + its client as context. If 2+, show a small "Which job is this email about?" dropdown above the composer body. User picks, context loads, all merge fields resolve.
 
+#### Prompt 5A.3 - Candidate page pagination + Clay Court dark mode polish
+1. /candidates page paginates at 25 candidates per page. Add page controls (prev/next/jump-to-page) at the bottom. Default sort preserved. Search and filter still work across full dataset, paginate the results.
+2. Fix Generate with Claude button visibility on Clay Court dark mode. Currently invisible / blends into background. Use Court Mode token that has correct contrast on dark theme.
+3. (Reserved for one related UI polish item to be defined when 5A.3 ships.)
+
+#### Prompt 5A.4 - Lists feature
+1. New Neon tables: candidate_list (id, organizationId, name, createdAt, createdBy) and candidate_list_membership (id, listId, candidateId, addedAt). Both scoped by organizationId.
+2. Add "Add to List" button on candidate profile. Click opens popup composer with two options: "Create new list" (text input + Save) or "Add to existing list" (dropdown of lists for current user's org). Multi-select allowed - candidate can be on multiple lists at once.
+3. /candidates page top search bar gets a "Lists" filter dropdown alongside existing search. Pick a list, candidates filter to only members of that list. "All candidates" option clears the filter. Lists dropdown sorted alphabetically.
+4. Lists management: small page at /candidates/lists for renaming, deleting lists. Deleting a list removes the membership rows but does NOT delete the candidates.
+5. All queries scope by organizationId (Rule 8).
+
 #### Prompt 5B - Rebuild 3 core templates in {{}} format
 1. Submittal Confirmation to Candidate ("Great News - You've Been Submitted!")
 2. Application Received (matches the screenshot Andrew sent: "Hi {{candidate.first_name}}, I received your application to the {{job.title}} position you applied for in {{job.city}}, {{job.state}}. This is with {{client.name}}. What salary are you targeting? How is the commute for you to {{job.city}}? Why are you open to new opportunities at this time and what are you looking for in your next role?")
