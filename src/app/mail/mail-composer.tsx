@@ -684,6 +684,11 @@ export function MailComposer({
         onFocusCapture={() => (lastFocused.current = "body")}
         className={cn(
           "mx-5 rounded-lg transition",
+          // Modal mode: editor body is the flex-1 scroll region so the
+          // footer (Send button) stays pinned at the bottom regardless
+          // of composer size. min-h-0 lets the wrapper shrink below
+          // the editor's intrinsic min-height when the modal is small.
+          asModal && "flex-1 min-h-0 overflow-y-auto",
           dragOver && "ring-2 ring-brand/50 ring-offset-2 ring-offset-court-surface-subtle",
         )}
       >
@@ -691,7 +696,7 @@ export function MailComposer({
       </div>
 
       {attachments.length > 0 && (
-        <ul className="mx-5 mt-2 space-y-1">
+        <ul className={cn("mx-5 mt-2 space-y-1", asModal && "shrink-0")}>
           {attachments.map((a) => (
             <li
               key={a.key}
@@ -716,12 +721,21 @@ export function MailComposer({
       )}
 
       {error && (
-        <div className="mx-5 mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+        <div className={cn("mx-5 mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800", asModal && "shrink-0")}>
           {error}
         </div>
       )}
 
-      <div className="flex items-center justify-between px-5 py-3">
+      <div
+        className={cn(
+          "flex items-center justify-between px-5 py-3",
+          // Modal mode: pin the footer so the Send button is always
+          // visible. shrink-0 prevents the parent flex from collapsing
+          // it. Top border + surface bg separates it from the scroll
+          // content above. Tokens only — no hardcoded colors.
+          asModal && "shrink-0 border-t border-court-border bg-court-surface",
+        )}
+      >
         <div className="flex items-center gap-2">
           <input
             ref={fileInputRef}

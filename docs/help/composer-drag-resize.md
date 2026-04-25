@@ -16,6 +16,10 @@ The popup email composer that opens on every click-to-email surface (candidate p
 - **Maximum size**: viewport size minus a 40px margin on each side.
 - Same lifecycle as drag: size resets when you close + reopen.
 
+### Send button stays visible at every size
+
+The footer (Attach + Send) is pinned to the bottom of the modal. The body / rich text editor scrolls internally if content overflows. This means: even at the minimum 480×400 size, with a long draft + attachments + an error message, **the Send button is always reachable** without scrolling the modal itself. Resize to maximum, write a 30-paragraph reply, attach 4 files — Send stays in the same spot at the bottom-right of the composer.
+
 ## Minimize
 
 - The minimize button (a horizontal "−" icon, to the left of the X in the header) collapses the composer to a **pill** anchored at the bottom-left of the screen.

@@ -46,21 +46,28 @@ export function Sidebar() {
     // because this surface wants the *subtle* shade in Clay/Grass while
     // still being pure white in Hard — no single existing token matches
     // that across all three modes.
-    <aside className="hidden w-60 shrink-0 border-r border-court-border bg-white dark:bg-[#1e293b] grass:bg-[#2d4a2d] md:flex md:flex-col">
-      <div className="flex h-16 items-center border-b border-court-border px-5">
+    // Sticky positioning + h-screen makes the sidebar always visible as
+    // the page content scrolls. self-start anchors it to the top of the
+    // flex parent so its height stays bounded by the viewport instead
+    // of stretching to match the (potentially much taller) page. The
+    // main-nav block gets its own internal scroll so the Settings
+    // footer + brand blurb stay pinned at the bottom of the sidebar
+    // even on viewports too short to fit every nav item.
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 self-start border-r border-court-border bg-white dark:bg-[#1e293b] grass:bg-[#2d4a2d] md:flex md:flex-col">
+      <div className="flex h-16 shrink-0 items-center border-b border-court-border px-5">
         <BrandMark withTag />
       </div>
-      <nav className="flex-1 space-y-0.5 p-3">
+      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {NAV.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} />
         ))}
       </nav>
-      <nav className="space-y-0.5 border-t border-court-border p-3">
+      <nav className="shrink-0 space-y-0.5 border-t border-court-border p-3">
         {FOOTER_NAV.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} />
         ))}
       </nav>
-      <div className="border-t border-court-border p-4 text-[11px] uppercase tracking-wider text-court-fg-muted">
+      <div className="shrink-0 border-t border-court-border p-4 text-[11px] uppercase tracking-wider text-court-fg-muted">
         BreakPoint Talent
         <div className="mt-1 text-[10px] normal-case tracking-normal text-court-fg-muted/80">
           Solon, OH &middot; Est. 2026
