@@ -31,6 +31,12 @@ export type OpenComposerInput = {
   templates: ActiveTemplateSummary[];
   mergeContext: MailMergeContext;
   modalTitle?: string;
+  // Triggers smart context resolution (Phase 5A.2). The composer
+  // fetches /api/mail/candidate-context/[candidateRef] on mount and
+  // populates {{job.*}} / {{client.*}} merge fields from the
+  // candidate's active applied jobs. Path segment may be cuid or
+  // legacy numeric rfId — the API resolves both.
+  candidateRef?: string;
   // Called after a successful send. The composer auto-closes on send,
   // so this is for parent-side bookkeeping (e.g., refreshing a list).
   onSent?: () => void;
@@ -73,6 +79,7 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           threadId={s.threadId}
           templates={s.templates}
           mergeContext={s.mergeContext}
+          candidateRef={s.candidateRef}
           onClose={() => close(s.id)}
           onSent={() => {
             s.onSent?.();

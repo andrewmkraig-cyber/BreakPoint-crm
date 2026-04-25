@@ -138,6 +138,10 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
               <EmailPopupLauncher
                 email={saved.email}
                 className="text-brand-dark hover:underline"
+                // RF-imported page: candidateId here is the legacy
+                // numeric rfId. Smart-context API accepts either rfId
+                // or cuid as the path segment.
+                candidateRef={String(candidateId)}
                 context={{
                   candidate: {
                     firstName: saved.first_name,

@@ -66,6 +66,13 @@ type Props = {
   defaultSubject: string;
   templates?: ActiveTemplateSummary[];
   mergeContext?: MailMergeContext;
+  // Phase 5A.2: smart context resolution. When set, the composer
+  // fetches the candidate's active applied jobs on mount and
+  // populates {{job.*}} / {{client.*}} fields based on how many
+  // active jobs there are: 1 → auto-load, 2+ → render the
+  // "Which job is this email about?" dropdown, 0 → leave job/client
+  // fields literal.
+  candidateRef?: string;
   // When true, render as a full-screen modal overlay (click-to-email
   // popup case). When false/absent, render inline (Mail Tab Reply).
   asModal?: boolean;
@@ -87,6 +94,7 @@ export function MailComposer({
   defaultSubject,
   templates = [],
   mergeContext = {},
+  candidateRef,
   asModal = false,
   modalTitle = "New email",
   onClose,
@@ -137,6 +145,76 @@ export function MailComposer({
   const resizeRef = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+
+  // Phase 5A.2 smart context. activeJobs is populated by an on-mount
+  // fetch when candidateRef is set; selectedJobId picks one (auto-set
+  // when there's exactly 1, user-set via dropdown when 2+, null when 0).
+  type ActiveJob = {
+    jobId: string;
+    jobTitle: string;
+    jobDescription: string;
+    jobCity: string;
+    jobState: string;
+    clientId: string;
+    clientName: string;
+    primaryContactFirstName: string;
+  };
+  const [activeJobs, setActiveJobs] = useState<ActiveJob[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [contextLoaded, setContextLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!candidateRef) {
+      setContextLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/mail/candidate-context/${encodeURIComponent(candidateRef)}`)
+      .then(async (res) => {
+        if (cancelled) return;
+        if (!res.ok) {
+          setContextLoaded(true);
+          return;
+        }
+        const body = (await res.json()) as { activeJobs: ActiveJob[] };
+        setActiveJobs(body.activeJobs ?? []);
+        // Auto-select when exactly one — saves the user a click.
+        if ((body.activeJobs ?? []).length === 1) {
+          setSelectedJobId(body.activeJobs[0].jobId);
+        }
+        setContextLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) setContextLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [candidateRef]);
+
+  // Effective merge context = caller-provided base, with job/client
+  // overlaid from the selected active job (if any). Recomputed on
+  // every render — cheap; the resolver only runs at send time + on
+  // demand for the unresolved-fields banner.
+  const selectedJob = activeJobs.find((j) => j.jobId === selectedJobId) ?? null;
+  const effectiveContext: MailMergeContext = {
+    ...mergeContext,
+    job: selectedJob
+      ? {
+          title: selectedJob.jobTitle,
+          clientName: selectedJob.clientName,
+          city: selectedJob.jobCity,
+          state: selectedJob.jobState,
+          description: selectedJob.jobDescription,
+        }
+      : mergeContext.job,
+    client: selectedJob
+      ? {
+          name: selectedJob.clientName,
+          primaryContactFirstName: selectedJob.primaryContactFirstName,
+        }
+      : mergeContext.client,
+  };
 
   // Center the modal on first mount (in modal mode only). max-w-3xl
   // ≈ 720px; default 600 tall fits a typical 800px viewport with
@@ -475,23 +553,13 @@ export function MailComposer({
       return;
     }
 
-    // Resolve merge tags against the composer's context. Unresolved
-    // tags (missing context branch OR empty context value) get
-    // surfaced in a confirm() so the recruiter doesn't accidentally
-    // ship `{{candidate.first_name}}` to the actual candidate.
-    const bodyMerge = applyMailMergeFields(bodyHtml, mergeContext);
-    const subjectMerge = applyMailMergeFields(subjectOut, mergeContext);
-    const allUnresolved = Array.from(
-      new Set([...bodyMerge.unresolved, ...subjectMerge.unresolved]),
-    );
-    if (allUnresolved.length > 0) {
-      const confirmed = confirm(
-        `These merge fields couldn't be resolved and will send literally:\n\n${allUnresolved.join(
-          ", ",
-        )}\n\nSend anyway?`,
-      );
-      if (!confirmed) return;
-    }
+    // Phase 5A.2: resolve merge tags against the effective context
+    // (smart-context-aware). Unresolved tags pass through as literal
+    // {{...}} text in the sent email — the visible inline banner
+    // above the footer warns the recruiter before they hit Send.
+    // No confirm() dialog: the user already saw the banner.
+    const bodyMerge = applyMailMergeFields(bodyHtml, effectiveContext);
+    const subjectMerge = applyMailMergeFields(subjectOut, effectiveContext);
     bodyHtml = bodyMerge.output;
     subjectOut = subjectMerge.output;
 
@@ -531,6 +599,23 @@ export function MailComposer({
       setSending(false);
     }
   }
+
+  // Phase 5A.2 derived state for the unresolved-fields banner. Reads
+  // the current draft + subject and runs them through the merge
+  // resolver against the effective context. Cheap to compute every
+  // render — the resolver is regex + string substitution.
+  const draftBodyHtml = editor?.getHTML() ?? "";
+  const draftMerge = applyMailMergeFields(draftBodyHtml, effectiveContext);
+  const draftSubjectMerge = applyMailMergeFields(subject, effectiveContext);
+  const allUnresolved = Array.from(
+    new Set([...draftMerge.unresolved, ...draftSubjectMerge.unresolved]),
+  );
+  const unresolvedNote =
+    activeJobs.length === 0 && candidateRef && contextLoaded
+      ? "[No active job]"
+      : activeJobs.length >= 2 && !selectedJobId
+      ? "[Pick job above]"
+      : "";
 
   const composerBody = (
     <div
@@ -668,6 +753,32 @@ export function MailComposer({
         </div>
       )}
 
+      {/* Smart-context: show "Which job is this email about?" when
+          the candidate has 2+ active applied jobs. The dropdown sits
+          right above the rich-text toolbar so the user can resolve
+          context before they start typing. */}
+      {candidateRef && contextLoaded && activeJobs.length >= 2 && (
+        <div className="border-b border-court-border bg-court-surface-subtle/40 px-5 py-2">
+          <label className="flex items-center gap-2 text-sm">
+            <span className="shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
+              Which job is this email about?
+            </span>
+            <select
+              value={selectedJobId ?? ""}
+              onChange={(e) => setSelectedJobId(e.target.value || null)}
+              className="flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="">— Pick a job —</option>
+              {activeJobs.map((j) => (
+                <option key={j.jobId} value={j.jobId}>
+                  {j.jobTitle} at {j.clientName}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+
       <Toolbar editor={editor} />
 
       <div
@@ -718,6 +829,33 @@ export function MailComposer({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Phase 5A.2: unresolved merge-field banner. Replaces the old
+          "Send anyway?" confirm() dialog. Shows the user the literal
+          tags that will go through unsubstituted, plus a hint about
+          why ([No active job] / [Pick job above]) when smart context
+          is in play. Court Mode tokens only. */}
+      {allUnresolved.length > 0 && (
+        <div
+          className={cn(
+            "mx-5 mt-2 rounded-lg border border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg",
+            asModal && "shrink-0",
+          )}
+        >
+          <span className="font-medium text-court-fg-muted">
+            {unresolvedNote ? `${unresolvedNote} — ` : ""}
+            These fields will send literally:
+          </span>{" "}
+          {allUnresolved.map((tag, i) => (
+            <span key={tag}>
+              <code className="rounded bg-court-surface px-1 py-0.5 font-mono text-[10px] text-court-fg">
+                {tag}
+              </code>
+              {i < allUnresolved.length - 1 ? " " : ""}
+            </span>
+          ))}
+        </div>
       )}
 
       {error && (

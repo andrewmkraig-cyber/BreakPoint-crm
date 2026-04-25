@@ -42,6 +42,7 @@ export function EmailPopupLauncher({
   children,
   className,
   context,
+  candidateRef,
   defaultSubject = "",
   onSent,
 }: {
@@ -52,6 +53,12 @@ export function EmailPopupLauncher({
   // the init fetch; everything else (candidate / job / client) is the
   // caller's responsibility since it's surface-specific.
   context?: Omit<MailMergeContext, "user">;
+  // Set on candidate-profile launchers so the composer can fetch the
+  // candidate's active applied jobs and either auto-load context (1
+  // active job) or render the "Which job is this email about?"
+  // dropdown (2+). Accepts cuid or legacy rfId — the smart-context
+  // API resolves both. Phase 5A.2.
+  candidateRef?: string;
   defaultSubject?: string;
   onSent?: () => void;
 }) {
@@ -77,6 +84,7 @@ export function EmailPopupLauncher({
             fullName: init.user.fullName,
           },
         },
+        candidateRef,
         onSent,
       });
     } catch (err) {

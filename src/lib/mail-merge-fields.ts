@@ -51,6 +51,59 @@ export const MAIL_MERGE_FIELDS = [
 
 export type MailMergeTag = (typeof MAIL_MERGE_FIELDS)[number]["tag"];
 
+// Phase 5A.2 — dual-format parser. Templates imported from RecruiterFlow
+// use [Square Bracket Format] tokens; Ace's canonical form is
+// {{double.curly}}. The Insert Field picker only inserts {{}}, but the
+// resolver accepts both so old RF templates keep working without
+// hand-rewrites. Bracket tokens are normalized to their {{}} canonical
+// form BEFORE resolution; the rest of the pipeline only ever sees {{}}.
+//
+// Composite brackets (those that have no single canonical {{}} form)
+// expand to a string literal containing multiple tags. [Job Location]
+// is the only one today: "{{job.city}}, {{job.state}}".
+
+const COMPOSITE_BRACKETS: ReadonlyArray<readonly [string, string]> = [
+  ["[Job Location]", "{{job.city}}, {{job.state}}"],
+];
+
+const BRACKET_TO_TAG: ReadonlyArray<readonly [string, string]> = [
+  ["[Candidate First Name]", "{{candidate.first_name}}"],
+  ["[Candidate Last Name]", "{{candidate.last_name}}"],
+  ["[Candidate Full Name]", "{{candidate.full_name}}"],
+  ["[Candidate Email]", "{{candidate.email}}"],
+  ["[Candidate Current Title]", "{{candidate.current_title}}"],
+  ["[Candidate Current Company]", "{{candidate.current_company}}"],
+  ["[Candidate Current Employer]", "{{candidate.current_company}}"], // RF alias
+  ["[Job Title]", "{{job.title}}"],
+  ["[Job Description]", "{{job.description}}"],
+  ["[Client Name]", "{{client.name}}"],
+  ["[Client Company Name]", "{{client.name}}"], // RF alias
+  ["[Client Primary Contact First Name]", "{{client.primary_contact_first_name}}"],
+  ["[User First Name]", "{{user.first_name}}"],
+  ["[User Full Name]", "{{user.full_name}}"],
+];
+
+// Walks the input swapping every recognized bracket token for its
+// canonical {{}} equivalent. Composites first (so [Job Location]
+// resolves before the per-field aliases). Case-sensitive — RF
+// templates write the tokens in title case consistently, and a
+// case-insensitive match would risk matching arbitrary bracketed text
+// in a body.
+function normalizeBrackets(input: string): string {
+  let out = input;
+  for (const [bracket, expansion] of COMPOSITE_BRACKETS) {
+    out = out.split(bracket).join(expansion);
+  }
+  for (const [bracket, tag] of BRACKET_TO_TAG) {
+    out = out.split(bracket).join(tag);
+  }
+  return out;
+}
+
+// Exposed for tests and for the composer's "are there unresolved fields"
+// banner — it can run normalize once, then extract.
+export { normalizeBrackets };
+
 function trimOr(v: string | null | undefined): string | undefined {
   const s = (v ?? "").trim();
   return s.length > 0 ? s : undefined;
@@ -106,7 +159,10 @@ function resolveOne(tag: string, ctx: MailMergeContext): string | undefined {
 const TAG_REGEX = /\{\{\s*[a-z_.]+\s*\}\}/gi;
 
 export function extractMailMergeTags(text: string): string[] {
-  const matches = text.match(TAG_REGEX) ?? [];
+  // Normalize bracket form first so callers that count "unresolved"
+  // tags see the canonical {{}} names regardless of source syntax.
+  const canonical = normalizeBrackets(text);
+  const matches = canonical.match(TAG_REGEX) ?? [];
   const normalized = matches.map((m) => m.replace(/\s+/g, ""));
   return Array.from(new Set(normalized));
 }
@@ -114,13 +170,18 @@ export function extractMailMergeTags(text: string): string[] {
 // Replace every known tag with its resolved value. Unknown tags OR
 // known-but-empty tags stay literal. Returns { output, unresolved }
 // so the composer can show a "fields couldn't be resolved" warning.
+// Accepts both {{double.curly}} and [Bracket Format] tokens — bracket
+// tokens are normalized to canonical curly form first.
 export function applyMailMergeFields(
   input: string,
   ctx: MailMergeContext,
 ): { output: string; unresolved: string[] } {
-  const tags = extractMailMergeTags(input);
+  // Step 1: rewrite bracket tokens to canonical {{}} form.
+  const canonical = normalizeBrackets(input);
+  // Step 2: resolve all tags against context.
+  const tags = extractMailMergeTags(canonical);
   const unresolved: string[] = [];
-  let out = input;
+  let out = canonical;
   for (const tag of tags) {
     const value = resolveOne(tag, ctx);
     if (value === undefined) {

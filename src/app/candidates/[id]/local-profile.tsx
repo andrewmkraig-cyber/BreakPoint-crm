@@ -379,6 +379,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
                     <EmailPopupLauncher
                       email={candidate.email}
                       className="hover:underline"
+                      candidateRef={candidate.id}
                       context={{
                         candidate: {
                           firstName: candidate.firstName,
