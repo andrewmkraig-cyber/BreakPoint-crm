@@ -28,6 +28,7 @@ import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/ed
 import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
 import { EditableResume, type ResumeState } from "@/app/candidates/[id]/editable-resume";
 import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
+import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { CallLogs } from "@/components/call-logs";
@@ -517,6 +518,7 @@ export default async function CandidateProfilePage({
                 {t}
               </span>
             ))}
+            <AddToListButton candidateId={candidate.id} candidateName={name} />
           </div>
         }
       />

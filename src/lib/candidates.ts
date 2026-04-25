@@ -26,8 +26,16 @@ function composeName(first: string | null | undefined, last: string | null | und
 // Build the shared WHERE clause for both the unpaginated and paginated
 // list helpers. Tokenizes the query on whitespace and ANDs each token's
 // OR-of-fields so multi-word names like "andrew kraig" match across
-// firstName / lastName boundaries.
-function buildCandidateWhere(orgId: string, query?: string): Prisma.CandidateWhereInput {
+// firstName / lastName boundaries. Phase 5A.4.b: also accepts a list
+// filter — when listId is set, restricts the result to candidates with
+// a CandidateListMembership pointing at that list. The list itself is
+// scoped by org via the relation, so a forged listId from another
+// tenant returns zero rows rather than escaping the boundary.
+function buildCandidateWhere(
+  orgId: string,
+  query?: string,
+  listId?: string,
+): Prisma.CandidateWhereInput {
   const q = query?.trim() ?? "";
   const where: Prisma.CandidateWhereInput = { organizationId: orgId };
   if (q) {
@@ -42,6 +50,11 @@ function buildCandidateWhere(orgId: string, query?: string): Prisma.CandidateWhe
         { location: { contains: t, mode: "insensitive" } },
       ],
     }));
+  }
+  if (listId) {
+    where.listMemberships = {
+      some: { listId, list: { organizationId: orgId } },
+    };
   }
   return where;
 }
@@ -75,9 +88,9 @@ function rowFromDb(r: {
   };
 }
 
-export async function getCandidatesForOrg(params: { query?: string } = {}): Promise<CandidateListRow[]> {
+export async function getCandidatesForOrg(params: { query?: string; listId?: string } = {}): Promise<CandidateListRow[]> {
   const org = await getCurrentOrg();
-  const where = buildCandidateWhere(org.id, params.query);
+  const where = buildCandidateWhere(org.id, params.query, params.listId);
   const rows = await prisma.candidate.findMany({
     where,
     select: CANDIDATE_LIST_SELECT,
@@ -97,11 +110,12 @@ export type CandidatesPageResult = {
 
 export async function getCandidatesPageForOrg(params: {
   query?: string;
+  listId?: string;
   page: number;
   pageSize: number;
 }): Promise<CandidatesPageResult> {
   const org = await getCurrentOrg();
-  const where = buildCandidateWhere(org.id, params.query);
+  const where = buildCandidateWhere(org.id, params.query, params.listId);
   // Clamp page to >= 1; the caller already validated input but be
   // defensive — Prisma's skip can't go negative.
   const safePage = Math.max(1, Math.floor(params.page));

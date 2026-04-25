@@ -14,6 +14,7 @@ import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { DocxPreview } from "@/components/docx-preview";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { BrandResumeButton } from "@/components/resume/BrandResumeButton";
+import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -288,6 +289,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
             ? `${candidate.currentDesignation ?? ""}${candidate.currentDesignation && candidate.currentOrganization ? " · " : ""}${candidate.currentOrganization ?? ""}`
             : "Saved to Ace — not yet synced to RecruiterFlow."
         }
+        actions={<AddToListButton candidateId={candidate.id} candidateName={fullName} />}
       />
 
       <LocalCandidateActions

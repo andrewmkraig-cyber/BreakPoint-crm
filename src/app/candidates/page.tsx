@@ -3,6 +3,10 @@ import { UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { CandidatesView } from "@/app/candidates/candidates-view";
 import { getCandidatesPageForOrg, type CandidateListRow } from "@/lib/candidates";
+import {
+  listCandidateLists,
+  type CandidateListSummary,
+} from "@/app/candidates/lists-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -18,19 +22,30 @@ function parsePage(raw: string | undefined): number {
 export default async function CandidatesPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; page?: string };
+  searchParams?: { q?: string; page?: string; list?: string };
 }) {
   const query = searchParams?.q ?? "";
+  const listId = searchParams?.list ?? "";
   const page = parsePage(searchParams?.page);
 
   let candidates: CandidateListRow[] = [];
   let total = 0;
   let error: string | null = null;
+  let lists: CandidateListSummary[] = [];
 
   try {
-    const result = await getCandidatesPageForOrg({ query, page, pageSize: PAGE_SIZE });
+    const [result, allLists] = await Promise.all([
+      getCandidatesPageForOrg({
+        query,
+        listId: listId || undefined,
+        page,
+        pageSize: PAGE_SIZE,
+      }),
+      listCandidateLists(),
+    ]);
     candidates = result.rows;
     total = result.total;
+    lists = allLists;
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch candidates";
   }
@@ -57,6 +72,8 @@ export default async function CandidatesPage({
         page={page}
         pageSize={PAGE_SIZE}
         error={error}
+        lists={lists}
+        selectedListId={listId}
       />
     </div>
   );

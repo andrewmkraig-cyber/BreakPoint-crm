@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Search, Loader2 } from "lucide-react";
+import { Search, Loader2, Settings } from "lucide-react";
 import { Pagination } from "@/components/pagination/pagination";
+import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 
 type Candidate = {
   id: string;
@@ -33,6 +34,8 @@ export function CandidatesView({
   page,
   pageSize,
   error,
+  lists,
+  selectedListId,
 }: {
   initialQuery: string;
   candidates: Candidate[];
@@ -40,6 +43,8 @@ export function CandidatesView({
   page: number;
   pageSize: number;
   error: string | null;
+  lists: CandidateListSummary[];
+  selectedListId: string;
 }) {
   const router = useRouter();
   const [q, setQ] = useState(initialQuery);
@@ -47,24 +52,36 @@ export function CandidatesView({
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPushedQuery = useRef(initialQuery);
 
+  // Build a URL with ?q=, ?list=, ?page= as appropriate. Page param
+  // is dropped when 1 (default) so the URL stays clean. Used by
+  // search-debounce push, list-filter change, and pagination.
+  function buildUrl(opts: { q: string; listId: string; page: number }): string {
+    const params = new URLSearchParams();
+    if (opts.q.trim()) params.set("q", opts.q.trim());
+    if (opts.listId) params.set("list", opts.listId);
+    if (opts.page > 1) params.set("page", String(opts.page));
+    const qs = params.toString();
+    return qs ? `/candidates?${qs}` : "/candidates";
+  }
+
   // When the user types, push the new query to the URL after the
   // debounce. Always reset to page 1 on a search change — keeping the
   // user on page 5 of the old result set after they typed a new query
-  // would land them on a confusing slice.
+  // would land them on a confusing slice. Preserves the active list
+  // filter so search composes with list selection.
   useEffect(() => {
     if (q === lastPushedQuery.current) return;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
       lastPushedQuery.current = q;
-      const params = new URLSearchParams();
-      if (q.trim()) params.set("q", q.trim());
-      const url = params.toString() ? `/candidates?${params.toString()}` : "/candidates";
+      const url = buildUrl({ q, listId: selectedListId, page: 1 });
       startTransition(() => router.replace(url));
     }, DEBOUNCE_MS);
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-  }, [q, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, router, selectedListId]);
 
   // Also push the URL if initialQuery changes (e.g., user hit back/
   // forward and the server prop updated). Sync local q to the new
@@ -77,10 +94,7 @@ export function CandidatesView({
   }, [initialQuery]);
 
   function goToPage(target: number) {
-    const params = new URLSearchParams();
-    if (q.trim()) params.set("q", q.trim());
-    if (target > 1) params.set("page", String(target));
-    const url = params.toString() ? `/candidates?${params.toString()}` : "/candidates";
+    const url = buildUrl({ q, listId: selectedListId, page: target });
     startTransition(() => {
       router.push(url);
       // Bring the table into view on page change so the user sees the
@@ -89,6 +103,12 @@ export function CandidatesView({
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     });
+  }
+
+  function goToList(nextListId: string) {
+    // Reset to page 1 on list change — same logic as search.
+    const url = buildUrl({ q, listId: nextListId, page: 1 });
+    startTransition(() => router.push(url));
   }
 
   return (
@@ -106,6 +126,28 @@ export function CandidatesView({
           {isPending && (
             <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-court-fg-muted" />
           )}
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            value={selectedListId}
+            onChange={(e) => goToList(e.target.value)}
+            disabled={isPending}
+            aria-label="Filter by list"
+            className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-court-accent focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+          >
+            <option value="">All candidates</option>
+            {lists.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name} ({l.memberCount})
+              </option>
+            ))}
+          </select>
+          <Link
+            href="/candidates/lists"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-[11px] font-medium text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
+          >
+            <Settings className="h-3 w-3" /> Manage lists
+          </Link>
         </div>
       </div>
 
