@@ -65,6 +65,9 @@ model User {
   ownedOrganizations Organization[]           @relation("OrganizationOwner")
   memberships        OrganizationMembership[]
   profile            UserProfile?
+  // Phase 5A.4: lists the user has created. Inverse of
+  // CandidateList.createdBy.
+  createdCandidateLists CandidateList[]      @relation("CandidateListCreatedBy")
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -374,6 +377,10 @@ model Candidate {
   placements          Placement[]
   interviews          Interview[]
   resume              CandidateResume?
+  // Phase 5A.4: candidate-list memberships. Cascade-delete on the
+  // membership side so removing a candidate cleans up their list
+  // memberships without affecting the lists themselves.
+  listMemberships     CandidateListMembership[]
 
   @@index([email])
   @@index([createdById, createdAt])
@@ -714,6 +721,51 @@ model Organization {
   jobOverrides        JobOverride[]
   actionLogs          ActionLog[]
   activityLogs        ActivityLog[]
+  // Phase 5A.4: per-org candidate lists. Cascade-delete on the list
+  // side so deleting an org tears down its lists too.
+  candidateLists      CandidateList[]
+}
+
+// Phase 5A.4: per-org candidate lists. Recruiter-curated buckets of
+// candidates ("Top Tax Candidates", "Q4 follow-ups", etc.) used to
+// filter the /candidates page and pivot candidate views. The list
+// itself is org-scoped; memberships inherit org scoping through the
+// list.list.organizationId path. (organizationId, name) is unique so
+// two orgs can have a list with the same name without collision.
+model CandidateList {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User                      @relation("CandidateListCreatedBy", fields: [createdById], references: [id])
+  memberships  CandidateListMembership[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId])
+}
+
+// Join row between CandidateList and Candidate. Cascade-deletes from
+// either side: removing a list drops every membership row (but leaves
+// the candidates intact); removing a candidate drops its list
+// memberships (but leaves the lists intact). (listId, candidateId)
+// is unique so the same candidate can't be added to the same list
+// twice.
+model CandidateListMembership {
+  id          String   @id @default(cuid())
+  listId      String
+  candidateId String
+  addedAt     DateTime @default(now())
+
+  list      CandidateList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  candidate Candidate     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, candidateId])
+  @@index([listId])
+  @@index([candidateId])
 }
 
 // Phase 4c: ActivityLog is the canonical, tenant-scoped audit feed for
