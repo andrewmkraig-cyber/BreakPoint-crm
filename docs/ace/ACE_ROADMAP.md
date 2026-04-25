@@ -13,10 +13,8 @@ Picks up the 13 backlog items from Ace 17.0 plus the Interview Scheduling Overha
 4. Dual-format merge field parser. Both [Bracket Format] and {{double.curly}} syntaxes resolve to the same data. Existing field map covers both forms. Insert Field dropdown defaults to inserting {{}} but parser handles both for backward compatibility with RF-imported templates.
 5. Smart context resolution. When popup opens from a candidate profile: if candidate has 1 active applied job, auto-load that job + its client as context. If 2+, show a small "Which job is this email about?" dropdown above the composer body. User picks, context loads, all merge fields resolve.
 
-#### Prompt 5A.3 - Candidate page pagination + Clay Court dark mode polish
-1. /candidates page paginates at 25 candidates per page. Add page controls (prev/next/jump-to-page) at the bottom. Default sort preserved. Search and filter still work across full dataset, paginate the results.
-2. Fix Generate with Claude button visibility on Clay Court dark mode. Currently invisible / blends into background. Use Court Mode token that has correct contrast on dark theme.
-3. (Reserved for one related UI polish item to be defined when 5A.3 ships.)
+#### Prompt 5A.3 - Candidate page pagination
+1. /candidates page paginates at 25 candidates per page. Add page controls (prev/next/jump-to-page) at the bottom of the candidate table. Default sort preserved. Search and filter operate across the full dataset; pagination applies to the result set.
 
 #### Prompt 5A.4 - Lists feature
 1. New Neon tables: candidate_list (id, organizationId, name, createdAt, createdBy) and candidate_list_membership (id, listId, candidateId, addedAt). Both scoped by organizationId.
@@ -179,3 +177,4 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 - Remote shipping from mobile (voice/text → background Claude Code agent)
 - Market Insights tab
 - Client Strategy tab (Claude chat workspace per client)
+- Cosmetic polish batch: Generate with Claude button visibility on Clay Court dark mode (currently invisible), plus any other visual polish surfaced during 18.0 testing. Bundle with Week 4 UX Polish Batch.
