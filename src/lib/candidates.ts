@@ -28,14 +28,22 @@ export async function getCandidatesForOrg(params: { query?: string } = {}): Prom
   const q = params.query?.trim() ?? "";
   const where: Prisma.CandidateWhereInput = { organizationId: org.id };
   if (q) {
-    where.OR = [
-      { firstName: { contains: q, mode: "insensitive" } },
-      { lastName: { contains: q, mode: "insensitive" } },
-      { email: { contains: q, mode: "insensitive" } },
-      { currentDesignation: { contains: q, mode: "insensitive" } },
-      { currentOrganization: { contains: q, mode: "insensitive" } },
-      { location: { contains: q, mode: "insensitive" } },
-    ];
+    // Phase 5A.2-fix: tokenize on whitespace and AND each token's
+    // OR-of-fields. Lets multi-word queries like "andrew kraig" match
+    // a candidate where one token hits firstName and the other hits
+    // lastName (the previous single-string contains failed because
+    // neither column contains "andrew kraig" as a substring).
+    const tokens = q.split(/\s+/).filter(Boolean);
+    where.AND = tokens.map((t) => ({
+      OR: [
+        { firstName: { contains: t, mode: "insensitive" } },
+        { lastName: { contains: t, mode: "insensitive" } },
+        { email: { contains: t, mode: "insensitive" } },
+        { currentDesignation: { contains: t, mode: "insensitive" } },
+        { currentOrganization: { contains: t, mode: "insensitive" } },
+        { location: { contains: t, mode: "insensitive" } },
+      ],
+    }));
   }
   const rows = await prisma.candidate.findMany({
     where,

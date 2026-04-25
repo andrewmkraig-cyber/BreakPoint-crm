@@ -1,5 +1,6 @@
 "use server";
 
+import { Prisma } from "@prisma/client";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { getCandidatesForOrg, type CandidateListRow } from "@/lib/candidates";
@@ -119,42 +120,60 @@ export async function quickSearchGlobal(query: string): Promise<QuickGlobalSearc
     // Candidates via the shared helper (same ILIKE pattern as the full
     // candidates page + Phase 5 tenant-scope extension on top).
     const candidateRowsRaw = await getCandidatesForOrg({ query: trimmed });
-    // Clients direct — no existing helper carries a query filter, and
-    // the client search is narrower than the candidate one (name only
-    // — domain / industry / etc. aren't what you search by typing two
-    // characters in the header).
+    // Phase 5A.2-fix: tokenize on whitespace and AND each token. Same
+    // multi-word-name fix as the candidate search — "andrew kraig"
+    // splits into ["andrew", "kraig"] and each token must match the
+    // searchable haystack so a Contact whose firstName is "Andrew" and
+    // lastName is "Kraig" surfaces under either single-word or full-
+    // name queries.
+    const tokens = trimmed.split(/\s+/).filter(Boolean);
     const clientRowsRaw = await prisma.client.findMany({
       where: {
         organizationId: org.id,
-        name: { contains: trimmed, mode: "insensitive" },
+        AND: tokens.map((t) => ({
+          name: { contains: t, mode: "insensitive" },
+        })),
       },
       select: { id: true, legacyRfId: true, name: true, location: true },
       orderBy: { name: "asc" },
       take: QUICK_LIMIT,
     });
-    // Contacts: firstName / lastName / legacy `name` ILIKE, plus a
-    // substring check into the `emails: String[]` array. Prisma has no
-    // ILIKE operator for array elements, so this path goes through
-    // $queryRaw — org scope is asserted explicitly in the WHERE since
-    // $queryRaw bypasses the tenant-scope extension.
-    const pattern = `%${trimmed}%`;
-    const contactRowsRaw = await prisma.$queryRaw<ContactRaw[]>`
-      SELECT c.id, c."firstName", c."lastName", c.name,
-             c."clientId",
-             cl.name         AS "clientName",
-             cl."legacyRfId" AS "clientLegacyRfId"
-      FROM "Contact" c
-      LEFT JOIN "Client" cl ON cl.id = c."clientId"
-      WHERE c."organizationId" = ${org.id}
-        AND (
-          c."firstName" ILIKE ${pattern}
-          OR c."lastName" ILIKE ${pattern}
-          OR c.name ILIKE ${pattern}
-          OR EXISTS (SELECT 1 FROM unnest(c.emails) e WHERE e ILIKE ${pattern})
-        )
-      ORDER BY COALESCE(c."lastName", c.name, '') ASC
-      LIMIT ${QUICK_LIMIT}
-    `;
+    // Contacts: ILIKE across firstName / lastName / legacy `name` /
+    // emails[]. Prisma has no ILIKE operator for array elements, so
+    // this path goes through $queryRaw. Tokens are AND-joined against a
+    // concatenated haystack so multi-word queries (e.g. "andrew kraig")
+    // match contacts whose first/last names span tokens. Org scope is
+    // asserted explicitly in the WHERE since $queryRaw bypasses the
+    // tenant-scope extension.
+    let contactRowsRaw: ContactRaw[] = [];
+    if (tokens.length > 0) {
+      // Build "AND haystack ILIKE %t%" clauses one per token. We use
+      // Prisma.sql template tagging so each pattern is parameterized
+      // safely; Prisma.join with " AND " concatenates the per-token
+      // conditions into the final WHERE.
+      const haystack = Prisma.sql`(
+        COALESCE(c."firstName", '') || ' ' ||
+        COALESCE(c."lastName", '')  || ' ' ||
+        COALESCE(c.name, '')        || ' ' ||
+        COALESCE(array_to_string(c.emails, ' '), '')
+      )`;
+      const tokenClauses = Prisma.join(
+        tokens.map((t) => Prisma.sql`${haystack} ILIKE ${`%${t}%`}`),
+        " AND ",
+      );
+      contactRowsRaw = await prisma.$queryRaw<ContactRaw[]>(Prisma.sql`
+        SELECT c.id, c."firstName", c."lastName", c.name,
+               c."clientId",
+               cl.name         AS "clientName",
+               cl."legacyRfId" AS "clientLegacyRfId"
+        FROM "Contact" c
+        LEFT JOIN "Client" cl ON cl.id = c."clientId"
+        WHERE c."organizationId" = ${org.id}
+          AND (${tokenClauses})
+        ORDER BY COALESCE(c."lastName", c.name, '') ASC
+        LIMIT ${QUICK_LIMIT}
+      `);
+    }
 
     // Round-robin allocation across three pools. One pass takes one
     // from each non-empty pool until the budget is spent; short pools

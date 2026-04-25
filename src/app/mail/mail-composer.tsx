@@ -163,6 +163,19 @@ export function MailComposer({
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [contextLoaded, setContextLoaded] = useState(false);
 
+  // Phase 5A.2-fix: keep the un-substituted source body on hand so we
+  // can re-resolve merge tags when the user picks (or re-picks) a job
+  // from the smart-context dropdown. Set when a template is applied
+  // or when Claude generates a draft. Cleared when the user types
+  // manually so we don't blow away their edits on the next context
+  // change. Substituted result lives in the tiptap editor; the source
+  // here is the canonical pre-substitution string with raw {{...}} tags.
+  const templateSource = useRef<string | null>(null);
+  // Internal flag so the editor's onUpdate handler can tell the
+  // difference between the user typing and our own programmatic
+  // setContent calls.
+  const isProgrammaticEdit = useRef(false);
+
   useEffect(() => {
     if (!candidateRef) {
       setContextLoaded(true);
@@ -215,6 +228,9 @@ export function MailComposer({
         }
       : mergeContext.client,
   };
+
+  // (Substitution-on-context-change effect is declared after the
+  // tiptap editor is set up — see below the useEditor() call.)
 
   // Center the modal on first mount (in modal mode only). max-w-3xl
   // ≈ 720px; default 600 tall fits a typical 800px viewport with
@@ -391,6 +407,17 @@ export function MailComposer({
       Image.configure({ inline: true, allowBase64: true }),
     ],
     content: "",
+    onUpdate: () => {
+      // User-typed updates invalidate the saved template source so the
+      // next context change doesn't overwrite their edits. Programmatic
+      // setContent calls (via the substitution effect) skip this branch
+      // — see the isProgrammaticEdit ref above.
+      if (isProgrammaticEdit.current) {
+        isProgrammaticEdit.current = false;
+        return;
+      }
+      templateSource.current = null;
+    },
     editorProps: {
       attributes: {
         class:
@@ -430,6 +457,23 @@ export function MailComposer({
     };
   }, [editor]);
 
+  // Phase 5A.2-fix: re-substitute the saved templateSource whenever
+  // smart-context selection changes (auto-load hits 1 active job, or
+  // user picks/re-picks from the dropdown). Skipped when
+  // templateSource is null — that means the user typed manually and
+  // we shouldn't blow away their edits. setContent is marked
+  // programmatic so the editor's onUpdate handler doesn't clear the
+  // template source as a result of our own write.
+  useEffect(() => {
+    if (!editor) return;
+    if (!templateSource.current) return;
+    const { output } = applyMailMergeFields(templateSource.current, effectiveContext);
+    if (editor.getHTML() === output) return;
+    isProgrammaticEdit.current = true;
+    editor.commands.setContent(output, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJobId, editor]);
+
   async function addFiles(files: FileList | File[]) {
     const arr = Array.from(files);
     for (const f of arr) {
@@ -467,7 +511,14 @@ export function MailComposer({
     // wrap in a <p>. Either way tiptap normalizes on insert.
     const looksHtml = /<[a-z][^>]*>/i.test(template.body);
     const html = looksHtml ? template.body : `<p>${escapeHtml(template.body).replace(/\n/g, "<br/>")}</p>`;
-    editor?.commands.setContent(html, true);
+    // Phase 5A.2-fix: stash the un-substituted source so we can re-
+    // resolve when the user picks a different job from the smart-
+    // context dropdown. The first substitution happens here against
+    // the current effectiveContext.
+    templateSource.current = html;
+    const { output } = applyMailMergeFields(html, effectiveContext);
+    isProgrammaticEdit.current = true;
+    editor?.commands.setContent(output, false);
     setOpenTemplateMenu(false);
   }
 
@@ -521,7 +572,13 @@ export function MailComposer({
       }
       const html = body?.bodyHtml ?? "";
       if (html) {
-        editor?.commands.setContent(html, true);
+        // Same pattern as pickTemplate — stash the un-substituted
+        // source so a subsequent dropdown pick re-resolves merge tags
+        // in Claude's draft.
+        templateSource.current = html;
+        const { output } = applyMailMergeFields(html, effectiveContext);
+        isProgrammaticEdit.current = true;
+        editor?.commands.setContent(output, false);
         toast.success("Draft generated");
         setAiPrompt("");
         setOpenAiPanel(false);
@@ -769,11 +826,17 @@ export function MailComposer({
               className="flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             >
               <option value="">— Pick a job —</option>
-              {activeJobs.map((j) => (
-                <option key={j.jobId} value={j.jobId}>
-                  {j.jobTitle} at {j.clientName}
-                </option>
-              ))}
+              {activeJobs.map((j) => {
+                const loc = [j.jobCity, j.jobState].filter(Boolean).join(", ");
+                const label = loc
+                  ? `${j.jobTitle} - ${loc} at ${j.clientName}`
+                  : `${j.jobTitle} at ${j.clientName}`;
+                return (
+                  <option key={j.jobId} value={j.jobId}>
+                    {label}
+                  </option>
+                );
+              })}
             </select>
           </label>
         </div>

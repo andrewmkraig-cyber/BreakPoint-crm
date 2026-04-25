@@ -4,11 +4,12 @@ When you click an email link on a candidate profile, the popup composer now figu
 
 ## How it decides
 
-On open, the composer hits `/api/mail/candidate-context/[idOrRfId]` for the launching candidate. The API returns every Placement in an **active** stage:
+On open, the composer hits `/api/mail/candidate-context/[idOrRfId]` for the launching candidate. The API returns every Placement whose `stage` is NOT in the terminal set:
 
-- `sourced`, `applied`, `kept`, `submitted`, `interviewing`, `offer`, `pending_start`
+- **Excluded (terminal):** `hired`, `rejected`, `cancelled`
+- **Included (any non-terminal stage):** `sourced`, `applied`, `kept`, `submitted`, `interviewing`, `offer`, `pending_start` — and any future non-terminal stage we add (the filter is a blacklist of terminal stages, not a whitelist of active ones, so new stages count automatically without a code change).
 
-It excludes terminal states (`hired`, `rejected`, `cancelled`).
+Sorted by Placement.updatedAt descending so the most recently active job sits at the top of the dropdown when there are multiple.
 
 The composer branches on the number of active jobs:
 
@@ -33,6 +34,12 @@ The note prefix tells you why:
 - **(no prefix)** — the candidate has no smart context (e.g. composer was opened from a client contact or pipeline row, not a candidate profile). Self-evident which fields are unresolved.
 
 The banner is just informational. Send still goes through. The literal `{{...}}` text appears in the sent email — same behavior as before, just without the modal interrupt.
+
+## Body re-resolves on pick
+
+Phase 5A.2-fix: when you pick a job from the dropdown, the composer body actually changes — `{{job.title}}`, `{{job.description}}`, `{{client.name}}`, etc. swap to the picked job's real values right in the editor. Switch the dropdown to a different job and the body re-resolves to the new job's data.
+
+Mechanic: the composer holds the un-substituted source body in memory the moment a template is applied (or Claude generates a draft). Each context change re-runs the resolver against that source. Manual typing in the editor invalidates the saved source — at that point a context change won't overwrite your edits, but the dropdown still resolves merge fields at send time and clears them from the unresolved-fields banner.
 
 ## Surfaces that trigger smart context
 

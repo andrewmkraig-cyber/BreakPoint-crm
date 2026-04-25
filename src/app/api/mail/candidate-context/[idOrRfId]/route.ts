@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { getPlacementsForOrg, type PlacementStage } from "@/lib/placements";
+import type { PlacementStage } from "@/lib/placements";
 
 export const dynamic = "force-dynamic";
 
@@ -20,15 +20,13 @@ export const dynamic = "force-dynamic";
 // Tenant isolation: every query is scoped by organizationId via the
 // getCurrentOrg() resolver + the existing getPlacementsForOrg helper.
 
-const ACTIVE_STAGES: PlacementStage[] = [
-  "sourced",
-  "applied",
-  "kept",
-  "submitted",
-  "interviewing",
-  "offer",
-  "pending_start",
-];
+// Phase 5A.2-fix: switched from a whitelist of "active" stages to a
+// blacklist of terminal stages. Any Placement.stage that is NOT in
+// the terminal set counts as a live association — covers sourced,
+// applied, screening, submitted, interviewing, offer, pending_start
+// and any future non-terminal stages we add (e.g. interview-completed,
+// offer-extended, reference-check) without touching this list again.
+const TERMINAL_STAGES: PlacementStage[] = ["hired", "rejected", "cancelled"];
 
 // Job.locations is a String[] of "City, State" entries. Split the
 // first entry by comma to surface city + state for merge fields.
@@ -102,14 +100,20 @@ export async function GET(
 
   const org = await getCurrentOrg();
 
-  // getPlacementsForOrg filters by Placement.candidateId (cuid) +
-  // organizationId. RF-imported placements that never got a cuid
-  // backfill won't surface here — that's an acceptable gap for the
-  // smart-context UX (those candidates fall through to the "0 active
-  // jobs" branch and the user picks templates accordingly).
-  const placements = await getPlacementsForOrg({
-    candidateId: candidate.id,
-    stages: ACTIVE_STAGES,
+  // Direct query (rather than via getPlacementsForOrg) so we can use
+  // the notIn terminal-stage filter, which the helper doesn't expose.
+  // Org scope is asserted explicitly. RF-imported placements that
+  // never got a cuid backfill on Placement.candidateId still won't
+  // surface here — those candidates fall through to "0 active jobs"
+  // and the user picks templates manually.
+  const placements = await prisma.placement.findMany({
+    where: {
+      organizationId: org.id,
+      candidateId: candidate.id,
+      stage: { notIn: TERMINAL_STAGES },
+    },
+    select: { jobId: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
   });
 
   // Collect unique job cuids across the candidate's active placements.
@@ -144,24 +148,31 @@ export async function GET(
         },
       },
     });
-    activeJobs = jobs.map((j) => {
-      const { city, state } = splitFirstLocation(j.locations);
-      const contact = j.client?.contacts?.[0] ?? null;
-      const primaryContactFirstName =
-        contact?.firstName?.trim() ||
-        contact?.name?.trim().split(/\s+/)[0] ||
-        "";
-      return {
-        jobId: j.id,
-        jobTitle: j.title ?? "",
-        jobDescription: j.description ?? "",
-        jobCity: city,
-        jobState: state,
-        clientId: j.client?.id ?? "",
-        clientName: j.client?.name ?? "",
-        primaryContactFirstName,
-      };
-    });
+    const jobMap = new Map(jobs.map((j) => [j.id, j]));
+    // Re-order the active job list so it matches the jobIds order (which
+    // came from the placements query sorted by updatedAt desc) — most
+    // recent activity first, per spec.
+    activeJobs = jobIds
+      .map((id) => jobMap.get(id))
+      .filter((j): j is NonNullable<typeof j> => Boolean(j))
+      .map((j) => {
+        const { city, state } = splitFirstLocation(j.locations);
+        const contact = j.client?.contacts?.[0] ?? null;
+        const primaryContactFirstName =
+          contact?.firstName?.trim() ||
+          contact?.name?.trim().split(/\s+/)[0] ||
+          "";
+        return {
+          jobId: j.id,
+          jobTitle: j.title ?? "",
+          jobDescription: j.description ?? "",
+          jobCity: city,
+          jobState: state,
+          clientId: j.client?.id ?? "",
+          clientName: j.client?.name ?? "",
+          primaryContactFirstName,
+        };
+      });
   }
 
   const response: CandidateContextResponse = {
