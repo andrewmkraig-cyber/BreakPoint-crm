@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
@@ -377,14 +378,23 @@ export function MailComposer({
         <div className="flex gap-2 text-[11px] text-court-fg-muted">
           <button
             type="button"
-            onClick={() => setShowCc((v) => !v)}
+            onClick={() => {
+              // Collapsing the CC field clears anything the recruiter
+              // typed there — matches the user expectation that the
+              // "− CC" button removes the field cleanly. Same for BCC.
+              if (showCc) setCc("");
+              setShowCc(!showCc);
+            }}
             className="hover:text-court-fg"
           >
             {showCc ? "− CC" : "+ CC"}
           </button>
           <button
             type="button"
-            onClick={() => setShowBcc((v) => !v)}
+            onClick={() => {
+              if (showBcc) setBcc("");
+              setShowBcc(!showBcc);
+            }}
             className="hover:text-court-fg"
           >
             {showBcc ? "− BCC" : "+ BCC"}
@@ -546,20 +556,36 @@ export function MailComposer({
   );
 
   if (asModal) {
-    return (
+    // Portal to document.body so the modal escapes whatever stacking
+    // context the host page set up (transformed parents, fixed-position
+    // headers, etc). Without the portal, clicks were bleeding through
+    // to the underlying page on candidate / client profiles because
+    // the host's CSS context kept the modal pinned beneath the page
+    // content's pointer-events layer.
+    if (typeof document === "undefined") return null;
+    return createPortal(
       <div
         role="dialog"
         aria-modal="true"
-        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8"
+        className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 sm:p-8"
       >
-        <div
-          // Backdrop click closes; inner clicks stay inside.
+        {/* Full-screen backdrop blocks clicks to the underlying page. */}
+        <button
+          type="button"
           onClick={onClose}
-          aria-hidden="true"
-          className="absolute inset-0"
+          aria-label="Close composer (click outside)"
+          className="fixed inset-0 z-0 cursor-default bg-black/40"
         />
-        <div className="relative w-full max-w-3xl">{composerBody}</div>
-      </div>
+        {/* Card sits above the backdrop. stopPropagation on the wrapper
+            keeps inner clicks from bubbling to the backdrop's onClick. */}
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="relative z-10 w-full max-w-3xl"
+        >
+          {composerBody}
+        </div>
+      </div>,
+      document.body,
     );
   }
   return composerBody;

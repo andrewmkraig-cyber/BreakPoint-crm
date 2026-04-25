@@ -56,7 +56,11 @@ Click-to-email surfaces + the merge context they pass:
 | Pipeline placement row (billing contact) | `candidate.first_name`, `client.name`, `client.primary_contact_first_name`, `job.title` |
 | Anywhere else the email renders | `user.*` always; other tags stay literal + warn on send |
 
-The popup closes on the X button, the Cancel-adjacent close, or a click outside the composer panel.
+The popup is a true modal — the dimmed backdrop blocks clicks to the page underneath, so you won't accidentally trigger something on the candidate / client / pipeline page while you're typing. Closes via:
+
+- The **X** button in the upper-right of the composer.
+- The **Cancel** button if you've started a Generate-with-Claude prompt.
+- Clicking the dimmed backdrop area outside the composer card.
 - **Sidebar nav entry** — **Mail** item in the left sidebar routes to `/mail`.
 
 ## When to use it
