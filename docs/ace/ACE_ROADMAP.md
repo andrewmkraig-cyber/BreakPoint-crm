@@ -6,22 +6,26 @@ Picks up the 13 backlog items from Ace 17.0 plus the Interview Scheduling Overha
 
 ### Order of Execution (prompts numbered)
 
-#### Prompt 5A - Composer UX overhaul (resumes Ace 17.0 work)
-1. Stop closing modal on backdrop click. Only X button closes.
-2. Drag and resize popup composer (Gmail-style). User can drag the title bar to reposition, drag corners to resize.
-3. Minimize button + bottom-of-screen tray. Minimized drafts show as small horizontal pills at the bottom of the Ace viewport. Click to restore. Multiple drafts can be minimized simultaneously.
-4. Dual-format merge field parser. Both [Bracket Format] and {{double.curly}} syntaxes resolve to the same data. Existing field map covers both forms. Insert Field dropdown defaults to inserting {{}} but parser handles both for backward compatibility with RF-imported templates.
-5. Smart context resolution. When popup opens from a candidate profile: if candidate has 1 active applied job, auto-load that job + its client as context. If 2+, show a small "Which job is this email about?" dropdown above the composer body. User picks, context loads, all merge fields resolve.
+#### Prompt 5A - Composer UX overhaul (resumes Ace 17.0 work) [SHIPPED in 5A.1, 5A.1-fix, 5A.2, 5A.2-fix]
+1. Stop closing modal on backdrop click. Only X button closes. [SHIPPED 5A.1]
+2. Drag and resize popup composer (Gmail-style). User can drag the title bar to reposition, drag corners to resize. [SHIPPED 5A.1]
+3. Minimize button + bottom-of-screen tray. Minimized drafts show as small horizontal pills at the bottom of the Ace viewport. Click to restore. Multiple drafts can be minimized simultaneously. [SHIPPED 5A.1]
+4. Dual-format merge field parser. Both [Bracket Format] and {{double.curly}} syntaxes resolve to the same data. Existing field map covers both forms. Insert Field dropdown defaults to inserting {{}} but parser handles both for backward compatibility with RF-imported templates. [SHIPPED 5A.2]
+5. Smart context resolution. When popup opens from a candidate profile: if candidate has 1 active applied job, auto-load that job + its client as context. If 2+, show a small "Which job is this email about?" dropdown above the composer body. User picks, context loads, all merge fields resolve. [SHIPPED 5A.2 + 5A.2-fix — broadened to ANY non-terminal job association, body now visibly re-resolves on dropdown pick]
+- Bonus shipped 5A.1-fix: Send button always visible at minimum composer size; sticky sidebar across long pages with Settings always reachable.
+- Bonus shipped 5A.2-fix: multi-word full-name search ("andrew kraig" now finds candidate AND contact across header + /candidates page).
 
-#### Prompt 5A.3 - Candidate page pagination
-1. /candidates page paginates at 25 candidates per page. Add page controls (prev/next/jump-to-page) at the bottom of the candidate table. Default sort preserved. Search and filter operate across the full dataset; pagination applies to the result set.
+#### Prompt 5A.3 - Candidate page pagination [SHIPPED]
+1. /candidates page paginates at 25 candidates per page. Add page controls (prev/next/jump-to-page) at the bottom of the candidate table. Default sort preserved. Search and filter operate across the full dataset; pagination applies to the result set. [SHIPPED]
 
-#### Prompt 5A.4 - Lists feature
-1. New Neon tables: candidate_list (id, organizationId, name, createdAt, createdBy) and candidate_list_membership (id, listId, candidateId, addedAt). Both scoped by organizationId.
-2. Add "Add to List" button on candidate profile. Click opens popup composer with two options: "Create new list" (text input + Save) or "Add to existing list" (dropdown of lists for current user's org). Multi-select allowed - candidate can be on multiple lists at once.
-3. /candidates page top search bar gets a "Lists" filter dropdown alongside existing search. Pick a list, candidates filter to only members of that list. "All candidates" option clears the filter. Lists dropdown sorted alphabetically.
-4. Lists management: small page at /candidates/lists for renaming, deleting lists. Deleting a list removes the membership rows but does NOT delete the candidates.
-5. All queries scope by organizationId (Rule 8).
+#### Prompt 5A.4.a - Lists feature: schema migration [SHIPPED]
+1. New Neon tables: CandidateList (id, organizationId, name, createdById, createdAt, updatedAt) and CandidateListMembership (id, listId, candidateId, addedAt). Both scoped by organizationId. Composite uniques on (organizationId, name) and (listId, candidateId). Cascade delete from list/candidate sides; RESTRICT on createdById to preserve attribution. [SHIPPED via npx prisma db push — see docs/help/lists-schema.md]
+
+#### Prompt 5A.4.b - Lists feature: UI [NEXT]
+1. Add "Add to List" button on candidate profile. Click opens popup composer with two options: "Create new list" (text input + Save) or "Add to existing list" (dropdown of lists for current user's org). Multi-select allowed - candidate can be on multiple lists at once.
+2. /candidates page top search bar gets a "Lists" filter dropdown alongside existing search. Pick a list, candidates filter to only members of that list. "All candidates" option clears the filter. Lists dropdown sorted alphabetically.
+3. Lists management: small page at /candidates/lists for renaming, deleting lists. Deleting a list removes the membership rows but does NOT delete the candidates.
+4. All queries scope by organizationId (Rule 8).
 
 #### Prompt 5B - Rebuild 3 core templates in {{}} format
 1. Submittal Confirmation to Candidate ("Great News - You've Been Submitted!")
@@ -30,10 +34,10 @@ Picks up the 13 backlog items from Ace 17.0 plus the Interview Scheduling Overha
 
 Each template tagged with side (candidate-facing vs client-facing) and stage (which pipeline stage this fires from).
 
-#### Prompt 6 - CC/BCC autocomplete + Sticky sidebar
+#### Prompt 6 - CC/BCC autocomplete
 1. CC dropdown autocompletes with other contacts at the same client org as the To recipient
 2. BCC dropdown autocompletes with teammates from Andrew's org (Austin Barnard for now)
-3. Sticky sidebar across all routes - sidebar position fixed, Settings tab always visible regardless of page scroll length
+- (Sticky sidebar previously bundled with this prompt has already shipped via 5A.1-fix.)
 
 #### Prompt 7 - Mail Tab polish + bidirectional read sync
 1. Fix logo + signature contact icons rendering inside Ace's /mail thread view (currently shows broken image boxes - works fine in real Gmail received messages)

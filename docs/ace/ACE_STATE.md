@@ -1,6 +1,6 @@
 # Ace State
 
-## Current version: Ace 18.0
+## Current version: Ace 18.0 (in progress, session 1 of N)
 
 ## Last session: Ace 17.0 - shipped
 
@@ -40,15 +40,26 @@ These got identified in 17.0 testing but are queued for 18.0 or later:
 12. ENOENT for logo on serverless was fixed once but came back intermittently when sending from popup. Worth a re-audit to confirm all signature render paths use the base64 import, not file reads.
 13. Auto-tagging emails to candidate/client profiles by sender/recipient address - threads should surface on the candidate or client they relate to. Not yet built.
 
-## Current task: Ace 18.0 - Composer UX overhaul + Template system fix + Mail Tab polish + Interview Scheduling Overhaul
+## Current task: Ace 18.0 - Composer UX overhaul (mostly complete) + Lists feature (in progress)
 
-Ace 18.0 picks up the 13 backlog items above and the Interview Scheduling Overhaul (see ACE_ROADMAP.md). Order of execution defined in ACE_ROADMAP.md.
+Composer UX overhaul mostly shipped. Lists feature schema landed, UI next session.
 
-## Last successful Vercel deploy: 990f2c5 (Phase 6.5 - popup click-through fix + signature icons)
+### Ace 18.0 Session 1 Completed Ships (2026-04-25)
+
+- 5A.1 - Composer UX: backdrop click ignored, drag and resize, minimize button + bottom-of-screen tray
+- 5A.1-fix - Send button always visible at min composer size, sticky sidebar with Settings always reachable on long pages
+- 5A.2 - Dual-format merge field parser ({{}} and []), smart context resolution with "Which job is this email about?" dropdown for 2+ associations, removed annoying "Send anyway?" dialog
+- 5A.2-fix - Multi-word full-name search (was missing candidate when typing "andrew kraig"), context resolution uses any non-terminal job association not just "applied", picking a job from dropdown re-resolves merge fields in body
+- 5A.3 - /candidates page paginates at 25 per page with prev/next/jump-to-page, search resets to page 1 with filtered count, URL-based page state
+- 5A.4.a - Lists feature schema migration: candidate_list and candidate_list_membership tables in Neon with org scoping and cascade deletes
+- Doc commits: ACE_RULES grep category framework (A/B/C/D), tightened 5A.3 scope, added 5A.4 to roadmap
+
+## Last successful Vercel deploy: 638f261 (5A.4.a Lists schema migration)
 
 ## Architecture state
 - All 13 architecture non-negotiables holding
-- Grep baseline: recruiterflow 2, RecruiterFlow 17, RfId 1053
+- Grep baseline: recruiterflow 2, RecruiterFlow 18, RfId 1072
+- RecruiterFlow drifted from 17 to 18 and RfId from 1070 to 1072 across the session, all Category A/B/C (no D violations). Per the new grep framework rule (ACE_RULES rule 5), this is allowed.
 - RF fully removed since Phase 5
 - Neon Postgres sole source of truth for all writes
 - All Gmail OAuth scopes granted: gmail.readonly, gmail.modify, gmail.send
