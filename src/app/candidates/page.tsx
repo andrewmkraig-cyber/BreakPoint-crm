@@ -2,21 +2,35 @@ import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { CandidatesView } from "@/app/candidates/candidates-view";
-import { getCandidatesForOrg, type CandidateListRow } from "@/lib/candidates";
+import { getCandidatesPageForOrg, type CandidateListRow } from "@/lib/candidates";
 
 export const dynamic = "force-dynamic";
+
+const PAGE_SIZE = 25;
+
+function parsePage(raw: string | undefined): number {
+  if (!raw) return 1;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.floor(n);
+}
 
 export default async function CandidatesPage({
   searchParams,
 }: {
-  searchParams?: { q?: string };
+  searchParams?: { q?: string; page?: string };
 }) {
   const query = searchParams?.q ?? "";
+  const page = parsePage(searchParams?.page);
+
   let candidates: CandidateListRow[] = [];
+  let total = 0;
   let error: string | null = null;
 
   try {
-    candidates = await getCandidatesForOrg({ query });
+    const result = await getCandidatesPageForOrg({ query, page, pageSize: PAGE_SIZE });
+    candidates = result.rows;
+    total = result.total;
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch candidates";
   }
@@ -36,7 +50,14 @@ export default async function CandidatesPage({
           </Link>
         }
       />
-      <CandidatesView initialQuery={query} candidates={candidates} error={error} />
+      <CandidatesView
+        initialQuery={query}
+        candidates={candidates}
+        total={total}
+        page={page}
+        pageSize={PAGE_SIZE}
+        error={error}
+      />
     </div>
   );
 }

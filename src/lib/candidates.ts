@@ -23,16 +23,14 @@ function composeName(first: string | null | undefined, last: string | null | und
 // List candidates for the signed-in tenant. `query` does a case-insensitive
 // substring match across the name/email/title/employer/location columns —
 // matches the RF search semantics the previous /candidates page relied on.
-export async function getCandidatesForOrg(params: { query?: string } = {}): Promise<CandidateListRow[]> {
-  const org = await getCurrentOrg();
-  const q = params.query?.trim() ?? "";
-  const where: Prisma.CandidateWhereInput = { organizationId: org.id };
+// Build the shared WHERE clause for both the unpaginated and paginated
+// list helpers. Tokenizes the query on whitespace and ANDs each token's
+// OR-of-fields so multi-word names like "andrew kraig" match across
+// firstName / lastName boundaries.
+function buildCandidateWhere(orgId: string, query?: string): Prisma.CandidateWhereInput {
+  const q = query?.trim() ?? "";
+  const where: Prisma.CandidateWhereInput = { organizationId: orgId };
   if (q) {
-    // Phase 5A.2-fix: tokenize on whitespace and AND each token's
-    // OR-of-fields. Lets multi-word queries like "andrew kraig" match
-    // a candidate where one token hits firstName and the other hits
-    // lastName (the previous single-string contains failed because
-    // neither column contains "andrew kraig" as a substring).
     const tokens = q.split(/\s+/).filter(Boolean);
     where.AND = tokens.map((t) => ({
       OR: [
@@ -45,27 +43,80 @@ export async function getCandidatesForOrg(params: { query?: string } = {}): Prom
       ],
     }));
   }
-  const rows = await prisma.candidate.findMany({
-    where,
-    select: {
-      id: true,
-      firstName: true,
-      lastName: true,
-      currentDesignation: true,
-      currentOrganization: true,
-      location: true,
-      updatedAt: true,
-    },
-    orderBy: { updatedAt: "desc" },
-  });
-  return rows.map((r) => ({
+  return where;
+}
+
+const CANDIDATE_LIST_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  currentDesignation: true,
+  currentOrganization: true,
+  location: true,
+  updatedAt: true,
+} as const;
+
+function rowFromDb(r: {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  currentDesignation: string | null;
+  currentOrganization: string | null;
+  location: string | null;
+  updatedAt: Date;
+}): CandidateListRow {
+  return {
     id: r.id,
     name: composeName(r.firstName, r.lastName),
     title: r.currentDesignation ?? "",
     employer: r.currentOrganization ?? "",
     location: r.location ?? "",
     updatedAt: r.updatedAt.toISOString(),
-  }));
+  };
+}
+
+export async function getCandidatesForOrg(params: { query?: string } = {}): Promise<CandidateListRow[]> {
+  const org = await getCurrentOrg();
+  const where = buildCandidateWhere(org.id, params.query);
+  const rows = await prisma.candidate.findMany({
+    where,
+    select: CANDIDATE_LIST_SELECT,
+    orderBy: { updatedAt: "desc" },
+  });
+  return rows.map(rowFromDb);
+}
+
+// Phase 5A.3: paginated list helper for the /candidates page. Returns
+// the requested page slice + total count so the UI can render
+// "Page X of Y" and the prev/next state. Same tokenized search WHERE
+// as the unpaginated version. Org scope enforced via getCurrentOrg.
+export type CandidatesPageResult = {
+  rows: CandidateListRow[];
+  total: number;
+};
+
+export async function getCandidatesPageForOrg(params: {
+  query?: string;
+  page: number;
+  pageSize: number;
+}): Promise<CandidatesPageResult> {
+  const org = await getCurrentOrg();
+  const where = buildCandidateWhere(org.id, params.query);
+  // Clamp page to >= 1; the caller already validated input but be
+  // defensive — Prisma's skip can't go negative.
+  const safePage = Math.max(1, Math.floor(params.page));
+  const safeSize = Math.max(1, Math.floor(params.pageSize));
+  const [rows, total] = await Promise.all([
+    prisma.candidate.findMany({
+      where,
+      select: CANDIDATE_LIST_SELECT,
+      orderBy: { updatedAt: "desc" },
+      skip: (safePage - 1) * safeSize,
+      take: safeSize,
+    }),
+    prisma.candidate.count({ where }),
+  ]);
+  return { rows: rows.map(rowFromDb), total };
 }
 
 // Resolves a `/candidates/[id]` URL segment to a Candidate row. Accepts

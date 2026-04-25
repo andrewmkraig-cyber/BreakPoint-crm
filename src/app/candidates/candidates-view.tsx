@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { Search, Loader2 } from "lucide-react";
-import { searchCandidates } from "@/app/candidates/actions";
+import { Pagination } from "@/components/pagination/pagination";
 
 type Candidate = {
   id: string;
@@ -15,71 +15,84 @@ type Candidate = {
   updatedAt: string | null;
 };
 
-// Phase 5.1: debounced, in-place candidate search. The initial SSR
-// load seeds `rows`; typing kicks off a 300ms-debounced server action
-// that swaps the row list without navigating. URL is left alone —
-// no ?q= on the address bar, no router.push, no page flash.
+// Phase 5A.3: URL-driven candidates list. Search query AND page number
+// both live in the URL (?q=…&page=…) so refresh / back / direct-link
+// behavior is correct. The component pushes URL changes through
+// router.replace inside startTransition so React shows the existing
+// rows while the new page renders server-side. No flicker, no
+// debounced server action.
+//
+// Search debounces 300ms before pushing to the URL — typing fast
+// doesn't fire one navigation per keystroke.
 const DEBOUNCE_MS = 300;
 
 export function CandidatesView({
   initialQuery,
   candidates,
+  total,
+  page,
+  pageSize,
   error,
 }: {
   initialQuery: string;
   candidates: Candidate[];
+  total: number;
+  page: number;
+  pageSize: number;
   error: string | null;
 }) {
   const router = useRouter();
   const [q, setQ] = useState(initialQuery);
-  const [rows, setRows] = useState<Candidate[]>(candidates);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
-  // Track the latest search token so out-of-order responses don't
-  // overwrite a newer result with a staler one (e.g. slow "foo" lands
-  // after fast "fooba").
-  const reqToken = useRef(0);
+  const [isPending, startTransition] = useTransition();
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPushedQuery = useRef(initialQuery);
 
-  const runSearch = useCallback(async (query: string) => {
-    const myToken = ++reqToken.current;
-    setIsSearching(true);
-    setSearchError(null);
-    const res = await searchCandidates(query);
-    if (myToken !== reqToken.current) return; // superseded by a newer keystroke
-    setIsSearching(false);
-    if (!res.ok) {
-      setSearchError(res.error);
-      return;
-    }
-    setRows(res.candidates);
-  }, []);
-
+  // When the user types, push the new query to the URL after the
+  // debounce. Always reset to page 1 on a search change — keeping the
+  // user on page 5 of the old result set after they typed a new query
+  // would land them on a confusing slice.
   useEffect(() => {
-    // Skip the effect on initial mount when q matches the SSR seed —
-    // the server already returned those rows; re-running would be a
-    // wasted round-trip.
-    if (q === initialQuery && rows === candidates) return;
+    if (q === lastPushedQuery.current) return;
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
     debounceTimer.current = setTimeout(() => {
-      void runSearch(q);
+      lastPushedQuery.current = q;
+      const params = new URLSearchParams();
+      if (q.trim()) params.set("q", q.trim());
+      const url = params.toString() ? `/candidates?${params.toString()}` : "/candidates";
+      startTransition(() => router.replace(url));
     }, DEBOUNCE_MS);
     return () => {
       if (debounceTimer.current) clearTimeout(debounceTimer.current);
     };
-    // Intentional: rows/initialQuery/candidates are only read on
-    // first mount to bypass the initial search. The identity check
-    // above handles re-renders. Only q should drive this effect.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, runSearch]);
+  }, [q, router]);
 
-  const countLabel = rows.length === 0
-    ? "No candidates"
-    : `${rows.length.toLocaleString()} candidate${rows.length === 1 ? "" : "s"}${q ? ` matching "${q}"` : ""}`;
+  // Also push the URL if initialQuery changes (e.g., user hit back/
+  // forward and the server prop updated). Sync local q to the new
+  // initial so we don't immediately re-push.
+  useEffect(() => {
+    if (initialQuery !== lastPushedQuery.current) {
+      lastPushedQuery.current = initialQuery;
+      setQ(initialQuery);
+    }
+  }, [initialQuery]);
+
+  function goToPage(target: number) {
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (target > 1) params.set("page", String(target));
+    const url = params.toString() ? `/candidates?${params.toString()}` : "/candidates";
+    startTransition(() => {
+      router.push(url);
+      // Bring the table into view on page change so the user sees the
+      // new rows without scrolling back up.
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  }
 
   return (
     <div className="space-y-4">
-      <div className="text-xs text-court-fg-muted">{countLabel}</div>
       <div className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface p-3 shadow-sm md:flex-row md:items-center">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
@@ -88,26 +101,27 @@ export function CandidatesView({
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search by name, email, employer, or title"
             aria-label="Search candidates"
-            // Focus state lifts the input background from surface-subtle to
-            // surface — Hard: bg-muted → bg-white; Clay / Grass: a subtle
-            // step from the slightly-lighter surface-subtle down to the
-            // deeper surface.
             className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-10 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-court-surface focus:outline-none"
           />
-          {isSearching && (
+          {isPending && (
             <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-court-fg-muted" />
           )}
         </div>
       </div>
 
-      {(error || searchError) && (
+      {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <div className="font-semibold">Couldn&apos;t load candidates.</div>
-          <div className="mt-1 font-mono text-xs">{error ?? searchError}</div>
+          <div className="mt-1 font-mono text-xs">{error}</div>
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div
+        className={
+          "overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm transition " +
+          (isPending ? "opacity-60" : "")
+        }
+      >
         <table className="w-full text-left text-sm">
           <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <tr>
@@ -119,14 +133,14 @@ export function CandidatesView({
             </tr>
           </thead>
           <tbody className="divide-y divide-court-border">
-            {rows.length === 0 && !error && !searchError && (
+            {candidates.length === 0 && !error && (
               <tr>
                 <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
                   {q ? "No candidates match your search" : "No candidates"}
                 </td>
               </tr>
             )}
-            {rows.map((c) => (
+            {candidates.map((c) => (
               <tr
                 key={c.id}
                 className="cursor-pointer transition hover:bg-court-accent-tint/40"
@@ -152,6 +166,17 @@ export function CandidatesView({
           </tbody>
         </table>
       </div>
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={goToPage}
+          isLoading={isPending}
+          itemLabel="candidates"
+        />
+      )}
     </div>
   );
 }
