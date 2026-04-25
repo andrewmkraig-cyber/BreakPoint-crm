@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -22,6 +22,8 @@ import {
   Sparkles,
   Variable,
   ChevronDown,
+  Minus,
+  GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -31,6 +33,7 @@ import {
   applyMailMergeFields,
   type MailMergeContext,
 } from "@/lib/mail-merge-fields";
+import { useMinimizedDrafts } from "@/lib/minimized-drafts-context";
 
 // Inline reply composer for the Mail Tab. Hangs off a thread, sends
 // through /api/mail/threads/[id]/reply, then lets the parent refresh
@@ -116,6 +119,183 @@ export function MailComposer({
   // the caret. Subject is a plain <input>, so we splice via selection
   // indices on the DOM element.
   const lastFocused = useRef<LastFocused>("body");
+
+  // Modal-mode draggable / resizable state. Position is the top-left
+  // corner of the card in viewport pixels; size is its width/height.
+  // Initialize lazily in a useEffect so SSR doesn't read window. Once
+  // mounted, drag/resize updates via document-level mouse listeners.
+  const draftId = useId();
+  // Pull stable callbacks out of the context so the effects below
+  // don't re-run every time `drafts` changes (the whole context
+  // object changes identity on each upsert otherwise, which would
+  // trigger the unmount cleanup mid-life and orphan the pill).
+  const { upsert: upsertDraft, remove: removeDraft, drafts: minimizedDrafts } = useMinimizedDrafts();
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [size, setSize] = useState<{ w: number; h: number }>({ w: 720, h: 600 });
+  const [isMinimized, setIsMinimized] = useState(false);
+  const dragRef = useRef<{ offX: number; offY: number } | null>(null);
+  const resizeRef = useRef<{ startX: number; startY: number; startW: number; startH: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+
+  // Center the modal on first mount (in modal mode only). max-w-3xl
+  // ≈ 720px; default 600 tall fits a typical 800px viewport with
+  // padding. Subsequent open/close cycles re-center because the
+  // composer is unmounted on close.
+  useEffect(() => {
+    if (!asModal || pos !== null) return;
+    if (typeof window === "undefined") return;
+    const w = Math.min(720, window.innerWidth - 40);
+    const h = Math.min(600, window.innerHeight - 40);
+    setSize({ w, h });
+    setPos({
+      x: Math.max(20, (window.innerWidth - w) / 2),
+      y: Math.max(20, (window.innerHeight - h) / 2),
+    });
+  }, [asModal, pos]);
+
+  const clampPos = useCallback((x: number, y: number, w: number, h: number) => {
+    if (typeof window === "undefined") return { x, y };
+    const maxX = Math.max(0, window.innerWidth - w);
+    const maxY = Math.max(0, window.innerHeight - h);
+    return {
+      x: Math.min(Math.max(0, x), maxX),
+      y: Math.min(Math.max(0, y), maxY),
+    };
+  }, []);
+
+  // Document-level mouse handlers attach only while a drag or resize is
+  // active. This avoids a global listener spinning when the modal is
+  // closed/minimized.
+  useEffect(() => {
+    if (!isDragging) return;
+    function onMove(e: MouseEvent) {
+      if (!dragRef.current || !pos) return;
+      const next = clampPos(
+        e.clientX - dragRef.current.offX,
+        e.clientY - dragRef.current.offY,
+        size.w,
+        size.h,
+      );
+      setPos(next);
+    }
+    function onUp() {
+      setIsDragging(false);
+      dragRef.current = null;
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    // Disable text selection during drag so the title bar text doesn't
+    // get highlighted as the user drags.
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [isDragging, pos, size.w, size.h, clampPos]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+    function onMove(e: MouseEvent) {
+      if (!resizeRef.current || !pos) return;
+      const dx = e.clientX - resizeRef.current.startX;
+      const dy = e.clientY - resizeRef.current.startY;
+      const maxW = window.innerWidth - 40 - pos.x;
+      const maxH = window.innerHeight - 40 - pos.y;
+      const w = Math.max(480, Math.min(maxW, resizeRef.current.startW + dx));
+      const h = Math.max(400, Math.min(maxH, resizeRef.current.startH + dy));
+      setSize({ w, h });
+    }
+    function onUp() {
+      setIsResizing(false);
+      resizeRef.current = null;
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [isResizing, pos]);
+
+  function onTitleBarMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (!asModal || !pos) return;
+    // Ignore drags initiated from interactive children (the X / minimize
+    // buttons live in the title bar; clicking them shouldn't kick off a
+    // drag).
+    const target = e.target as HTMLElement;
+    if (target.closest("button")) return;
+    dragRef.current = { offX: e.clientX - pos.x, offY: e.clientY - pos.y };
+    setIsDragging(true);
+  }
+
+  function onResizeMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (!asModal) return;
+    e.stopPropagation();
+    resizeRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: size.w,
+      startH: size.h,
+    };
+    setIsResizing(true);
+  }
+
+  // Minimize collapses the modal to a pill in the global tray. The
+  // composer keeps all its state because we toggle isMinimized rather
+  // than unmounting; restore just flips the flag.
+  function onMinimize() {
+    if (!asModal) return;
+    setIsMinimized(true);
+    upsertDraft({
+      id: draftId,
+      subject: subject || "New Email",
+      onRestore: () => {
+        setIsMinimized(false);
+        removeDraft(draftId);
+      },
+      onDiscard: () => {
+        removeDraft(draftId);
+        onClose();
+      },
+    });
+  }
+
+  // Keep the tray pill's subject in sync as the user edits the subject
+  // while the composer is restored. Only fires when the draft is
+  // currently registered.
+  useEffect(() => {
+    if (!asModal) return;
+    if (!minimizedDrafts.some((d) => d.id === draftId)) return;
+    upsertDraft({
+      id: draftId,
+      subject: subject || "New Email",
+      onRestore: () => {
+        setIsMinimized(false);
+        removeDraft(draftId);
+      },
+      onDiscard: () => {
+        removeDraft(draftId);
+        onClose();
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subject]);
+
+  // Drop the registry entry on unmount so the tray doesn't keep a stale
+  // pill when the composer hard-closes. removeDraft is stable
+  // (useCallback in the provider) so this effect runs exactly once.
+  useEffect(() => {
+    const id = draftId;
+    return () => {
+      removeDraft(id);
+    };
+  }, [draftId, removeDraft]);
 
   const editor = useEditor({
     extensions: [
@@ -356,22 +536,46 @@ export function MailComposer({
     <div
       className={
         asModal
-          ? "flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+          ? "flex h-full w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
           : "border-t border-court-border bg-court-surface-subtle/30"
       }
     >
-      <div className="flex items-center justify-between border-b border-court-border px-5 py-2">
-        <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
-          {asModal ? modalTitle : "Reply"}
+      <div
+        onMouseDown={onTitleBarMouseDown}
+        className={cn(
+          "flex items-center justify-between border-b border-court-border px-5 py-2",
+          asModal && "select-none",
+          asModal && (isDragging ? "cursor-grabbing" : "cursor-grab"),
+        )}
+      >
+        <div className="flex items-center gap-2">
+          {asModal && <GripVertical className="h-3.5 w-3.5 text-court-fg-muted" />}
+          <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+            {asModal ? modalTitle : "Reply"}
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-          aria-label="Close composer"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {asModal && (
+            <button
+              type="button"
+              onClick={onMinimize}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              aria-label="Minimize composer"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            aria-label="Close composer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
       <div className="space-y-2 px-5 py-3">
         <AddressRow label="To" value={to} onChange={setTo} />
@@ -558,31 +762,47 @@ export function MailComposer({
   if (asModal) {
     // Portal to document.body so the modal escapes whatever stacking
     // context the host page set up (transformed parents, fixed-position
-    // headers, etc). Without the portal, clicks were bleeding through
-    // to the underlying page on candidate / client profiles because
-    // the host's CSS context kept the modal pinned beneath the page
-    // content's pointer-events layer.
+    // headers, etc).
     if (typeof document === "undefined") return null;
+    // While minimized, the modal renders nothing — the tray is the
+    // visible affordance. We DON'T unmount the composer; that would
+    // discard tiptap state, attachments, generated drafts, etc.
+    if (isMinimized) return null;
+    // Until pos is computed (first paint after mount), keep the
+    // modal hidden so it doesn't flash at (0, 0).
+    if (!pos) return null;
     return createPortal(
-      <div
-        role="dialog"
-        aria-modal="true"
-        className="fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto p-4 sm:p-8"
-      >
-        {/* Full-screen backdrop blocks clicks to the underlying page. */}
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close composer (click outside)"
-          className="fixed inset-0 z-0 cursor-default bg-black/40"
-        />
-        {/* Card sits above the backdrop. stopPropagation on the wrapper
-            keeps inner clicks from bubbling to the backdrop's onClick. */}
+      <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100]">
+        {/* Backdrop blocks clicks from bleeding through to the page
+            underneath. Click events on the backdrop itself are no-ops:
+            no close, no animation. The X button in the header is the
+            only way to dismiss. */}
+        <div className="absolute inset-0 bg-black/40" />
+        {/* Composer card — positioned absolutely with state-driven
+            top/left/width/height so the user can drag and resize it. */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className="relative z-10 w-full max-w-3xl"
+          style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
+          className="absolute"
         >
           {composerBody}
+          {/* Resize handle in the bottom-right corner. The handle is a
+              small square with a diagonal pattern that tells the user
+              it's draggable. */}
+          <div
+            onMouseDown={onResizeMouseDown}
+            aria-label="Resize composer"
+            className={cn(
+              "absolute bottom-1 right-1 h-4 w-4 rounded-sm",
+              isResizing ? "cursor-nwse-resize bg-court-fg/10" : "cursor-nwse-resize hover:bg-court-fg/5",
+            )}
+            style={{
+              backgroundImage:
+                "linear-gradient(135deg, transparent 0 35%, currentColor 35% 45%, transparent 45% 65%, currentColor 65% 75%, transparent 75%)",
+              color: "var(--court-fg-muted, #888)",
+              opacity: 0.6,
+            }}
+          />
         </div>
       </div>,
       document.body,
