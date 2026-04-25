@@ -6,7 +6,7 @@
 2. Ace-native parity mandatory. Every workflow must work end-to-end for fresh Ace-native records. Imported-only equals broken.
 3. Primary key is Neon cuid always. No numeric IDs, no RF IDs, no hybrid lookups, no fallback chains.
 4. Banned vocabulary in all new code: RF overlay, RF enrichment, optional RF sync, supplemental RF, fall back to RF, RF as cache, hybrid lookup.
-5. Mandatory Step 0 on every Claude Code prompt touching candidate/job/client/placement/pipeline: grep src/ for recruiterflow, RecruiterFlow, RfId, listAllCandidates, listAllClients, listAllJobs, fromRf, pipelineRowsFromRf, flattenPipeline, localByCandidate. Report counts before acting. Post-Phase-5 expected baseline: recruiterflow 2, RecruiterFlow 17, RfId 1053. New code must not increase these counts.
+5. Mandatory Step 0 on every Claude Code prompt touching candidate/job/client/placement/pipeline: grep src/ for recruiterflow, RecruiterFlow, RfId, listAllCandidates, listAllClients, listAllJobs, fromRf, pipelineRowsFromRf, flattenPipeline, localByCandidate. Report counts before acting. Post-Phase-5 baseline: recruiterflow 2, RecruiterFlow 17, RfId 1070. The RfId baseline is approximate and may rise legitimately when new code reads schema columns (Placement composite key, Client.legacyRfId, Job.legacyRfId) for URL slugs, display, or historical reference. What is banned: any new active query, filter, branch, or API call that uses RfId values as live business logic. If a prompt's grep increase is purely Category A (schema column reads) or Category B (URL slug back-compat / display), the prompt is clean. If any line of the increase is Category D (active query/filter/branch on RfId values), abort and flag.
 6. Ace-native verification is PRIMARY. Imported-record verification is regression check only.
 7. No partial migrations. Every feature is atomic - works end-to-end or does not ship.
 8. Every server action, query, and route touching tenant data MUST scope by organizationId. No exceptions. Prisma middleware is belt-and-suspenders - explicit scoping still required in every query.
@@ -26,6 +26,16 @@ At start of every session: identify stale rules, superseded plans, completed ite
 - Before sending any prompt, state Rules I checked against this prompt with at least 4 rules listed. Fewer than 4 means rewrite.
 - Max 3 items per prompt.
 - Step 0 grep required on every prompt touching candidate/job/client/placement/pipeline.
+
+### Grep Categories
+
+A. Schema-derived: Prisma column access on existing tables (Placement.candidateRfId/jobRfId/clientRfId, Client.legacyRfId, Job.legacyRfId). Required by current schema. Allowed.
+B. Slug / display back-compat: legacyRfId as URL slug, idOrRfId param naming, historical-tattoo reads for display. Allowed.
+C. Comments and JSDoc: documentation references. Allowed.
+D. Active rule violations: new query filters, branching logic, joins, or RF API calls keyed on RfId values. BANNED in new code.
+
+When reporting Step 0 results: state the count, the delta from baseline, and which categories the delta falls into. Only Category D triggers an abort.
+
 - Browser-verify before commit. State the URL tested. Report what was seen, not just done.
 - Single terminal only. Never parallel Claude Code sessions.
 - After every feature ships, stop and tell Andrew exactly what to test and how. Do not queue or suggest the next prompt until Andrew confirms the feature works or flags bugs.
