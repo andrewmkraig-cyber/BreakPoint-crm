@@ -1,6 +1,25 @@
 # Ace State
 
-## Current version: Ace 18.0 (in progress, session 1 of N)
+## Current version: Ace 20.0 (session 1 shipped 2026-04-26)
+
+## Last session: Ace 19.0 - shipped (5A.5.b deployed but uncommitted; closed out by Ace 20.0)
+
+### Ace 20.0 Session 1 Completed Ships (2026-04-26)
+
+Phase 5A.5.b commit + cleanup pass — single commit `de7d5a6`:
+
+- Bug A — resume upload 500 fix. CandidateResume.candidateRfId widened to `Int?` in schema. Replaced the `-Date.now()` synthetic placeholder (which overflowed PostgreSQL Int4 by ~827×) with `null` in three call sites: chunked upload route, candidate create mirror, page-load lazy-backfill. Migration applied via `npx prisma db push`.
+- Bug B — Brand and Redact persist as separate rows. Each operation creates its own `CandidateResume` row. Variant column records `branded` / `redacted` / `branded-redacted`. Dropped the legacy `redactedAt` companion synthesis whose shared `resumeId` caused multi-version delete to wipe the original row alongside the redacted one.
+- Bug C — unified Edit Resume modal. Tab switcher gone. Single canvas hosts logo placement (drag/resize, size slider, apply-to-all-pages, Add/Remove logo) AND redaction drawing (click-drag, Undo last, Clear page). One Save version button. Server applies redactions then logo stamps via pdf-lib in one pass. Variant chosen by what was applied. `resume-brander.tsx` and `resume-redactor.tsx` deleted as orphans.
+- Per-version delete fixed. `deleteCandidateResume(resumeId)` deletes one specific row. When the deleted row is the candidate's last remaining `CandidateResume`, the action also nulls the legacy `Candidate.resume{Filename,MimeType,Size,Data,UploadedAt}` columns so `local-profile.tsx`'s lazy-backfill can't resurrect the resume on the next page load.
+- DOCX support fixed. Filename extension is preserved end-to-end (display label uses mime-derived extension, download Content-Disposition matches). New "Convert to PDF" button (visible only when the selected version is DOC/DOCX) runs `mammoth.extractRawText` → `pdf-lib` text-only PDF rendering. Result lands as `variant="converted"` row, eligible for the unified Edit flow.
+- Dropdown labels swapped from generic kind names ("Original" / "Branded" / "Redacted") to `${filename} (${date})`. Filename strip drops `.pdf` / `.docx` / `.doc` / `.txt` for compactness.
+- Request References removed entirely. Button gone from Ace-native (`local-candidate-actions.tsx`) and RF-imported (`placement-flows.tsx`) candidate pages. Modals (`ReferenceModal`, `ReferenceCheckCompose`) deleted; orphan imports (`UserCheck`, `sendLocalReferenceRequest`, `sendEmailAction`) cleaned up. The unused `sendLocalReferenceRequest` server action and `reference_check_request` template-trigger constant remain — unrelated cleanup.
+- ACE_RULES.md addition: GitHub is the primary source of truth for cross-chat handoff. The four `ACE_*.md` files are the handoff vehicle. Slack canvases and printed PDFs are secondary references for Andrew only.
+
+Schema state: `CandidateResume.candidateRfId Int?` (was `Int`), new `variant String?` column (free-form). No data loss in either change.
+
+Grep state at session close: recruiterflow 2 / RecruiterFlow 18 / RfId 1082. RecruiterFlow drift +1 (Cat C comment in brand action), RfId drift +12 (Cat A schema reads in unified editor + DOCX conversion). No Cat D violations.
 
 ## Last session: Ace 17.0 - shipped
 
