@@ -1,6 +1,6 @@
 const BASE = 'https://app.krispcall.com/api/v3/platform/pipedream'
-const KEY = process.env.KRISPCALL_API_KEY!
-export const FROM = process.env.KRISPCALL_FROM_NUMBER!
+const KEY = process.env.QUO_API_KEY!
+export const FROM = process.env.QUO_FROM_NUMBER!
 
 function headers() {
   return {
