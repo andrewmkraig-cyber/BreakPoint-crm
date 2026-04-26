@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Archive, Loader2, Mail as MailIcon, Reply } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Archive, FolderInput, Loader2, Mail as MailIcon, Reply } from "lucide-react";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -32,6 +32,31 @@ export function MailView({
   const [error, setError] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [archiving, setArchiving] = useState<string | null>(null);
+  const [moving, setMoving] = useState<string | null>(null);
+  // Session-cached Gmail user labels for the Move To dropdown. null =
+  // not yet loaded; [] = loaded and empty. Fetched once on mount and
+  // never refetched — labels rarely change mid-session and the dropdown
+  // tolerates eventual consistency.
+  const [labels, setLabels] = useState<Array<{ id: string; name: string }> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/mail/labels", { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json().catch(() => null)) as
+          | { labels?: Array<{ id: string; name: string }> }
+          | null;
+        if (!cancelled && body?.labels) setLabels(body.labels);
+      } catch {
+        // Silent: Move To button stays disabled if labels never load.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadThread = useCallback(async (id: string, signal?: AbortSignal) => {
     setLoading(true);
@@ -49,6 +74,22 @@ export function MailView({
         return;
       }
       setDetail(body as MailThreadDetail);
+      // Ace 22.0: mirror the in-Ace open event back to Gmail by
+      // dropping the UNREAD label. Fire-and-forget — a failure here
+      // must NOT block thread rendering or surface to the user. The
+      // local list flip (unread → false) is independent of the
+      // network call so the bold-row UI clears immediately.
+      setThreads((prev) =>
+        prev.map((t) => (t.id === id && t.unread ? { ...t, unread: false } : t)),
+      );
+      void fetch(`/api/mail/threads/${encodeURIComponent(id)}/read`, {
+        method: "POST",
+        signal,
+      }).catch((err: unknown) => {
+        if ((err as { name?: string })?.name === "AbortError") return;
+        // eslint-disable-next-line no-console
+        console.warn("[mail] markThreadRead failed", err);
+      });
     } catch (e) {
       if ((e as { name?: string }).name === "AbortError") return;
       setError(e instanceof Error ? e.message : "Thread fetch failed");
@@ -68,6 +109,36 @@ export function MailView({
     setComposerOpen(false);
     return () => ac.abort();
   }, [selected, loadThread]);
+
+  async function moveThread(id: string, labelId: string, labelName: string) {
+    setMoving(id);
+    try {
+      const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ labelId }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error("Failed to move thread", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      setThreads((prev) => prev.filter((t) => t.id !== id));
+      if (selected === id) {
+        setSelected(null);
+        setDetail(null);
+      }
+      toast.success(`Moved to ${labelName}`);
+    } catch (e) {
+      toast.error("Failed to move thread", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setMoving(null);
+    }
+  }
 
   async function archiveThread(id: string) {
     setArchiving(id);
@@ -145,11 +216,14 @@ export function MailView({
             selectedThread={selectedThread}
             composerOpen={composerOpen}
             archiving={archiving === detail.id}
+            moving={moving === detail.id}
+            labels={labels}
             currentUserEmail={currentUserEmail}
             currentUserFirstName={currentUserFirstName}
             currentUserFullName={currentUserFullName}
             templates={templates}
             onArchive={() => archiveThread(detail.id)}
+            onMove={(labelId, labelName) => moveThread(detail.id, labelId, labelName)}
             onReply={() => setComposerOpen(true)}
             onComposerClose={() => setComposerOpen(false)}
             onComposerSent={() => {
@@ -243,11 +317,14 @@ function ThreadDetail({
   selectedThread,
   composerOpen,
   archiving,
+  moving,
+  labels,
   currentUserEmail,
   currentUserFirstName,
   currentUserFullName,
   templates,
   onArchive,
+  onMove,
   onReply,
   onComposerClose,
   onComposerSent,
@@ -256,15 +333,28 @@ function ThreadDetail({
   selectedThread: MailListThread | null;
   composerOpen: boolean;
   archiving: boolean;
+  moving: boolean;
+  labels: Array<{ id: string; name: string }> | null;
   currentUserEmail: string;
   currentUserFirstName: string;
   currentUserFullName: string;
   templates: ActiveTemplateSummary[];
   onArchive: () => void;
+  onMove: (labelId: string, labelName: string) => void;
   onReply: () => void;
   onComposerClose: () => void;
   onComposerSent: () => void;
 }) {
+  const [moveOpen, setMoveOpen] = useState(false);
+  const moveRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!moveOpen) return;
+    function onDocClick(e: MouseEvent) {
+      if (!moveRef.current?.contains(e.target as Node)) setMoveOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [moveOpen]);
   // Newest-first: show most recent message at the top of the pane so
   // opening a long thread lands directly on "what just happened."
   const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
@@ -313,6 +403,45 @@ function ThreadDetail({
             {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
             Archive
           </button>
+          <div className="relative" ref={moveRef}>
+            <button
+              type="button"
+              onClick={() => setMoveOpen((v) => !v)}
+              disabled={moving || !labels || labels.length === 0}
+              title={
+                !labels
+                  ? "Loading labels…"
+                  : labels.length === 0
+                    ? "No user labels in Gmail"
+                    : "Move to a Gmail label"
+              }
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              {moving ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <FolderInput className="h-3 w-3" />
+              )}
+              Move To
+            </button>
+            {moveOpen && labels && labels.length > 0 && (
+              <div className="absolute right-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-md border border-court-border bg-court-surface py-1 shadow-lg">
+                {labels.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => {
+                      setMoveOpen(false);
+                      onMove(l.id, l.name);
+                    }}
+                    className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
+                  >
+                    {l.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">

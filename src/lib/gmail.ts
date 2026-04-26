@@ -587,6 +587,113 @@ export async function archiveGmailThread(userId: string, threadId: string): Prom
   }
 }
 
+// Returns the count of unread INBOX threads for the signed-in user.
+// Used by the sidebar nav badge. Defensively swallows every failure
+// (token expiry, scope mismatch, transient 5xx) and returns 0 — the
+// badge is decorative and must never block layout rendering.
+//
+// Gmail returns `resultSizeEstimate` even when `maxResults=1`, so we
+// don't pay for hauling 1000 thread previews back. Estimate may be
+// approximate on large mailboxes; that's acceptable per spec.
+export async function getUnreadMailCount(userId: string): Promise<number> {
+  try {
+    const accessToken = await getFreshAccessToken(userId);
+    const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/threads");
+    url.searchParams.set("q", "in:inbox is:unread");
+    url.searchParams.set("maxResults", "1");
+    const res = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    if (!res.ok) return 0;
+    const body = (await res.json()) as { resultSizeEstimate?: number };
+    return typeof body.resultSizeEstimate === "number" ? body.resultSizeEstimate : 0;
+  } catch {
+    return 0;
+  }
+}
+
+// ---- Mail Tab labels (Phase 6.x: Move To dropdown) ----
+// Lists the signed-in user's Gmail labels, filtered to user-created
+// labels only. System labels (INBOX, SENT, TRASH, SPAM, UNREAD,
+// STARRED, IMPORTANT, CATEGORY_*) are excluded — they're returned by
+// Gmail with type === "system" and have no place in a "file this
+// somewhere" UX. Sorted alphabetically by name for a stable dropdown.
+export type GmailUserLabel = { id: string; name: string };
+
+type GmailLabelsResponse = {
+  labels?: Array<{ id: string; name: string; type?: "system" | "user" }>;
+};
+
+export async function listGmailUserLabels(userId: string): Promise<GmailUserLabel[]> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail labels.list failed (${res.status}): ${text || "no body"}`);
+  }
+  const j = (await res.json()) as GmailLabelsResponse;
+  return (j.labels ?? [])
+    .filter((l) => l.type === "user")
+    .map((l) => ({ id: l.id, name: l.name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+// "Move to label" = single atomic modify that adds the chosen user
+// label and drops INBOX in one call. Mirrors how Gmail's native "Move
+// to" item behaves in the web UI.
+export async function moveGmailThread(
+  userId: string,
+  threadId: string,
+  labelId: string,
+): Promise<void> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ addLabelIds: [labelId], removeLabelIds: ["INBOX"] }),
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail thread.move failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
+// Removes the UNREAD label from a thread — Gmail's native "mark read".
+// Idempotent: removing a label that isn't on the thread returns 200.
+// Same gmail.modify scope as archive. Used by the Mail Tab to mirror
+// in-Ace open-thread events back to Gmail so the user's phone /
+// laptop Gmail apps don't keep buzzing on the same message.
+export async function markGmailThreadRead(userId: string, threadId: string): Promise<void> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ removeLabelIds: ["UNREAD"] }),
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail thread.markRead failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
 // ---- Mail Tab reply (Phase 6.1) ----
 // Fetches the Message-ID of the latest message in a thread so outbound
 // replies can set the standard In-Reply-To / References headers. Gmail

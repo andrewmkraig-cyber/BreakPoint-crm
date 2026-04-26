@@ -35,7 +35,7 @@ const NAV = [
 // CRMs (Apollo, HubSpot, Linear).
 const FOOTER_NAV = [{ href: "/settings", label: "Settings", icon: Settings }] as const;
 
-export function Sidebar() {
+export function Sidebar({ unreadMailCount = 0 }: { unreadMailCount?: number }) {
   const pathname = usePathname();
 
   return (
@@ -59,12 +59,17 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
         {NAV.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} />
+          <NavLink
+            key={item.href}
+            item={item}
+            pathname={pathname}
+            badge={item.href === "/mail" ? unreadMailCount : 0}
+          />
         ))}
       </nav>
       <nav className="shrink-0 space-y-0.5 border-t border-court-border p-3">
         {FOOTER_NAV.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} />
+          <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
       </nav>
       <div className="shrink-0 border-t border-court-border p-4 text-[11px] uppercase tracking-wider text-court-fg-muted">
@@ -83,9 +88,21 @@ type NavItem = {
   icon: React.ComponentType<{ className?: string }>;
 };
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+function NavLink({
+  item,
+  pathname,
+  badge = 0,
+}: {
+  item: NavItem;
+  pathname: string;
+  badge?: number;
+}) {
   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
   const Icon = item.icon;
+  // Per design rules: green is a scalpel, not a paint bucket. The
+  // unread badge uses the BreakPoint green token (#5A9642) for a
+  // positive-status chip — one of the four sanctioned green use cases.
+  const showBadge = badge > 0;
   return (
     <Link
       href={item.href}
@@ -102,7 +119,15 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
       )}
     >
       <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {showBadge && (
+        <span
+          aria-label={`${badge} unread`}
+          className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-brand px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+        >
+          {badge > 99 ? "99+" : badge}
+        </span>
+      )}
     </Link>
   );
 }
