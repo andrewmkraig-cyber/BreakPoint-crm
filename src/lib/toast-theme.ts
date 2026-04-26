@@ -3,33 +3,37 @@
 // time so a theme swap takes effect on the very next toast (no
 // reload, no provider remount).
 //
-// Themes are kept as plain hex values rather than Tailwind tokens
-// because two of them (Ohio State, Cleveland Browns) live outside
-// our brand palette entirely — defining them as inline styles keeps
-// them out of the global tailwind theme where they don't belong.
+// Themes are kept as raw hex values rather than Tailwind tokens
+// because three of them (Ohio State, Cleveland Browns, Dark) live
+// outside our brand palette entirely — defining them as inline styles
+// keeps them out of the global tailwind theme where they don't
+// belong.
+//
+// IDs use kebab-case so existing localStorage values from earlier
+// pickers continue to resolve.
 
 export type ToastThemeId =
   | "breakpoint"
-  | "dark"
   | "ohio-state"
   | "cleveland-browns"
-  | "classic";
+  | "dark";
 
 export type ToastThemeSpec = {
   id: ToastThemeId;
   label: string;
+  // Card surface
   bg: string;
+  border: string;
+  // Box-shadow glow color. `null` = no glow (Dark theme).
+  glow: string | null;
+  // 40px circular envelope-icon container on the left
+  iconCircleBorder: string;
+  // Body text
   text: string;
-  // Subdued text used for the subject line. Defaults to the same as
-  // text with a touch of opacity at the call site if not set.
-  subText?: string;
-  border?: string;
-  // Action chips inside the toast (Reply, X). On dark themes these
-  // need to be light so they're legible; on the Classic theme the
-  // text stays dark.
-  actionBg: string;
-  actionText: string;
-  actionBorder: string;
+  subText: string;
+  // Reply / X chips on the right
+  buttonBg: string;
+  buttonBorder: string;
 };
 
 export const TOAST_THEMES: Record<ToastThemeId, ToastThemeSpec> = {
@@ -37,61 +41,57 @@ export const TOAST_THEMES: Record<ToastThemeId, ToastThemeSpec> = {
     id: "breakpoint",
     label: "BreakPoint",
     bg: "#5A9642",
+    border: "#5A9642",
+    glow: "#5A9642",
+    iconCircleBorder: "#EAF4E4",
     text: "#ffffff",
-    subText: "rgba(255,255,255,0.85)",
-    actionBg: "rgba(255,255,255,0.12)",
-    actionText: "#ffffff",
-    actionBorder: "rgba(255,255,255,0.35)",
-  },
-  dark: {
-    id: "dark",
-    label: "Dark",
-    bg: "#1a1a1a",
-    text: "#ffffff",
-    subText: "rgba(255,255,255,0.78)",
-    actionBg: "rgba(255,255,255,0.10)",
-    actionText: "#ffffff",
-    actionBorder: "rgba(255,255,255,0.30)",
+    subText: "#EAF4E4",
+    buttonBg: "#3F7030",
+    buttonBorder: "#EAF4E4",
   },
   "ohio-state": {
     id: "ohio-state",
     label: "Ohio State",
     bg: "#BB0000",
+    border: "#BB0000",
+    glow: "#BB0000",
+    iconCircleBorder: "#ffffff",
     text: "#ffffff",
-    subText: "rgba(255,255,255,0.85)",
-    actionBg: "#666666",
-    actionText: "#ffffff",
-    actionBorder: "#666666",
+    subText: "#ffcccc",
+    buttonBg: "#8B0000",
+    buttonBorder: "#ffffff",
   },
   "cleveland-browns": {
     id: "cleveland-browns",
     label: "Cleveland Browns",
-    bg: "#FF3C00",
+    bg: "#311D00",
+    border: "#FF3C00",
+    glow: "#FF3C00",
+    iconCircleBorder: "#FF3C00",
     text: "#ffffff",
-    subText: "rgba(255,255,255,0.9)",
-    actionBg: "#311D00",
-    actionText: "#ffffff",
-    actionBorder: "#311D00",
+    subText: "#FF3C00",
+    buttonBg: "#311D00",
+    buttonBorder: "#FF3C00",
   },
-  classic: {
-    id: "classic",
-    label: "Classic",
-    bg: "#ffffff",
-    text: "#111111",
-    subText: "rgba(17,17,17,0.65)",
-    border: "1px solid #e5e5e5",
-    actionBg: "#ffffff",
-    actionText: "#111111",
-    actionBorder: "#e5e5e5",
+  dark: {
+    id: "dark",
+    label: "Dark",
+    bg: "#1E1E1E",
+    border: "#2A2A2A",
+    glow: null,
+    iconCircleBorder: "#2A2A2A",
+    text: "#ffffff",
+    subText: "#999999",
+    buttonBg: "#2A2A2A",
+    buttonBorder: "#444444",
   },
 };
 
 export const TOAST_THEME_ORDER: ToastThemeId[] = [
   "breakpoint",
-  "dark",
   "ohio-state",
   "cleveland-browns",
-  "classic",
+  "dark",
 ];
 
 export const MAIL_TOAST_THEME_KEY = "ace_toast_theme";
@@ -102,4 +102,26 @@ export function getStoredToastTheme(): ToastThemeSpec {
   const raw = window.localStorage.getItem(MAIL_TOAST_THEME_KEY);
   if (raw && raw in TOAST_THEMES) return TOAST_THEMES[raw as ToastThemeId];
   return TOAST_THEMES[DEFAULT_TOAST_THEME];
+}
+
+// `0 0 12px 2px <glow @ 30%>` per spec. Returns "none" for themes
+// that opted out of a glow.
+export function toastGlowBoxShadow(theme: ToastThemeSpec): string {
+  if (!theme.glow) return "none";
+  return `0 0 12px 2px ${hexToRgba(theme.glow, 0.3)}`;
+}
+
+function hexToRgba(hex: string, alpha: number): string {
+  const clean = hex.replace("#", "");
+  const full =
+    clean.length === 3
+      ? clean
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : clean;
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }

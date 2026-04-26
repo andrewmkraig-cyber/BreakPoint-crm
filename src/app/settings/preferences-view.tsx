@@ -186,7 +186,7 @@ export function PreferencesView({
                   )}
                   style={{
                     background: theme.bg,
-                    border: theme.border ?? "1px solid transparent",
+                    border: `2px solid ${theme.border}`,
                   }}
                 />
               );

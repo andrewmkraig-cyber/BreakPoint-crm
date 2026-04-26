@@ -1,22 +1,30 @@
 "use client";
 
-import { Reply, X } from "lucide-react";
+import { Mail as MailIcon, Reply, X } from "lucide-react";
 import { toast } from "sonner";
 import { useComposerManager } from "@/lib/composer-manager";
-import { getStoredToastTheme, type ToastThemeSpec } from "@/lib/toast-theme";
+import {
+  getStoredToastTheme,
+  toastGlowBoxShadow,
+  type ToastThemeSpec,
+} from "@/lib/toast-theme";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { UnreadInboxThread } from "@/lib/mail-context";
 
-// In-app new-mail toast. Rendered via sonner's custom slot so it can
-// host the Reply / dismiss buttons inline. Reply boots the global
-// ComposerManager pre-loaded with thread context; dismiss closes the
-// toast without touching Gmail (the thread stays unread).
+// In-app new-mail toast. Layout (per the design mockup):
+//   ┌─────────────────────────────────────────────────────────┐
+//   │ ◯  Sender Name (bold)            [↩ Reply] [✕]          │
+//   │    SUBJECT LINE (uppercase)                             │
+//   └─────────────────────────────────────────────────────────┘
+// 2px themed border, soft glow box-shadow in the theme glow color
+// (Dark opts out), 40px circular envelope-icon container on the
+// left, sender + uppercase subject in the middle, Reply + X chips
+// on the right.
 //
-// Theme is read from localStorage at render-time (not at module load)
-// so the picker in Settings takes effect on the very next toast.
-//
-// Auto-dismiss timing + maximum-visible cap are configured at the
-// Toaster level (Providers).
+// Theme is read from localStorage at render-time so the picker in
+// Settings takes effect on the very next toast — no reload, no
+// remount. Auto-dismiss + max-visible cap come from the Toaster
+// (Providers).
 
 type ComposeInitPayload = {
   templates: ActiveTemplateSummary[];
@@ -83,43 +91,51 @@ function NewMailToast({
 
   return (
     <div
-      className="flex min-w-[320px] gap-3 rounded-lg p-4 shadow-lg"
+      className="flex min-w-[320px] items-center gap-3 rounded-2xl"
       style={{
         background: theme.bg,
         color: theme.text,
-        border: theme.border ?? "1px solid transparent",
+        border: `2px solid ${theme.border}`,
+        boxShadow: toastGlowBoxShadow(theme),
+        padding: "16px 20px",
       }}
     >
+      <div
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
+        style={{ border: `2px solid ${theme.iconCircleBorder}` }}
+      >
+        <MailIcon className="h-4 w-4" style={{ color: theme.text }} />
+      </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-semibold" style={{ color: theme.text }}>
+        <div className="truncate text-base font-bold" style={{ color: theme.text }}>
           {thread.fromName || thread.fromEmail || "(unknown sender)"}
         </div>
         <div
-          className="mt-0.5 truncate text-sm"
-          style={{ color: theme.subText ?? theme.text }}
+          className="mt-0.5 truncate text-sm uppercase tracking-wide"
+          style={{ color: theme.subText }}
         >
           {thread.subject || "(no subject)"}
         </div>
       </div>
-      <div className="flex shrink-0 items-start gap-1">
-        <ActionButton theme={theme} onClick={onReply} ariaLabel="Reply">
-          <Reply className="h-3 w-3" />
+      <div className="flex shrink-0 items-center gap-2">
+        <ChipButton theme={theme} onClick={onReply} ariaLabel="Reply">
+          <Reply className="h-4 w-4" />
           <span>Reply</span>
-        </ActionButton>
-        <ActionButton
+        </ChipButton>
+        <ChipButton
           theme={theme}
           onClick={() => toast.dismiss(toastId)}
           ariaLabel="Dismiss"
           iconOnly
         >
-          <X className="h-3 w-3" />
-        </ActionButton>
+          <X className="h-4 w-4" />
+        </ChipButton>
       </div>
     </div>
   );
 }
 
-function ActionButton({
+function ChipButton({
   theme,
   onClick,
   ariaLabel,
@@ -138,13 +154,13 @@ function ActionButton({
       onClick={onClick}
       aria-label={ariaLabel}
       className={
-        "inline-flex items-center gap-1 rounded-md text-[11px] font-medium shadow-sm transition " +
-        (iconOnly ? "p-1" : "px-2 py-1")
+        "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition " +
+        (iconOnly ? "w-9" : "px-3")
       }
       style={{
-        background: theme.actionBg,
-        color: theme.actionText,
-        border: `1px solid ${theme.actionBorder}`,
+        background: theme.buttonBg,
+        color: theme.text,
+        border: `1px solid ${theme.buttonBorder}`,
       }}
     >
       {children}
