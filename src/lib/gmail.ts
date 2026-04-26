@@ -528,26 +528,37 @@ export async function getGmailThread(userId: string, threadId: string): Promise<
     throw new Error(`Gmail thread.get failed (${r.status}): ${text || "no body"}`);
   }
   const j = (await r.json()) as GmailThreadResponse;
-  const messages = (j.messages ?? []).map<MailThreadMessage>((m) => {
-    const headers = m.payload?.headers;
-    const from = parseAddress(headerValue(headers, "From"));
-    const body = pickBestBody(m.payload);
-    const bodyHtml = body
-      ? body.mimeType === "text/html"
-        ? body.data
-        : `<pre class="whitespace-pre-wrap font-sans text-sm text-court-fg">${escapeHtml(body.data)}</pre>`
-      : `<p class="text-xs text-court-fg-muted">(no body content)</p>`;
-    return {
-      id: m.id,
-      fromName: from.name || from.email,
-      fromEmail: from.email,
-      to: headerValue(headers, "To"),
-      cc: headerValue(headers, "Cc"),
-      dateIso: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : null,
-      subject: headerValue(headers, "Subject"),
-      bodyHtml,
-    };
-  });
+  const messages = await Promise.all(
+    (j.messages ?? []).map<Promise<MailThreadMessage>>(async (m) => {
+      const headers = m.payload?.headers;
+      const from = parseAddress(headerValue(headers, "From"));
+      const body = pickBestBody(m.payload);
+      let bodyHtml = body
+        ? body.mimeType === "text/html"
+          ? body.data
+          : `<pre class="whitespace-pre-wrap font-sans text-sm text-court-fg">${escapeHtml(body.data)}</pre>`
+        : `<p class="text-xs text-court-fg-muted">(no body content)</p>`;
+      // Inline `<img src="cid:...">` references (Gmail's MIME-internal
+      // image refs) by rewriting them to data: URIs sourced from the
+      // matching attachment part. Without this rewrite, the browser
+      // can't resolve cid: and renders broken-image boxes — the
+      // exact symptom we hit on the BreakPoint logo + signature
+      // contact icons. No-op when the body has no cid: refs.
+      if (body?.mimeType === "text/html") {
+        bodyHtml = await inlineCidImages(accessToken, m.id, bodyHtml, m.payload);
+      }
+      return {
+        id: m.id,
+        fromName: from.name || from.email,
+        fromEmail: from.email,
+        to: headerValue(headers, "To"),
+        cc: headerValue(headers, "Cc"),
+        dateIso: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : null,
+        subject: headerValue(headers, "Subject"),
+        bodyHtml,
+      };
+    }),
+  );
   // The top-level subject is the subject of the first message (usually the
   // originating send before anyone hit Reply).
   const subject = messages[0]?.subject ?? "(no subject)";
@@ -561,6 +572,99 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// ---- cid: → data: image inlining ----
+// Gmail's API hands back inline images as separate MIME parts with a
+// Content-ID header, and the HTML body references them via
+// `<img src="cid:foo">`. The browser has no concept of cid: outside
+// an email client, so without this rewrite those images render as
+// broken-image boxes inside Ace's thread view.
+//
+// Approach: walk the message MIME tree, collect every part that
+// carries a Content-ID, fetch its body bytes (either inline in
+// body.data or via the attachments endpoint when only attachmentId is
+// returned), and string-replace each cid: src with a data: URI.
+
+type InlinePart = {
+  contentId: string;
+  mimeType: string;
+  attachmentId?: string;
+  data?: string;
+};
+
+function collectInlineParts(
+  payload: GmailMessagePart | undefined,
+  out: InlinePart[] = [],
+): InlinePart[] {
+  if (!payload) return out;
+  const cid = payload.headers?.find((h) => h.name.toLowerCase() === "content-id")?.value;
+  if (cid && payload.body) {
+    out.push({
+      contentId: cid.replace(/^[\s<]+|[\s>]+$/g, ""),
+      mimeType: payload.mimeType ?? "application/octet-stream",
+      attachmentId: payload.body.attachmentId ?? undefined,
+      data: payload.body.data ?? undefined,
+    });
+  }
+  if (payload.parts) for (const p of payload.parts) collectInlineParts(p, out);
+  return out;
+}
+
+async function fetchAttachmentBase64(
+  accessToken: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<string | null> {
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(
+    messageId,
+  )}/attachments/${encodeURIComponent(attachmentId)}`;
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!r.ok) return null;
+  const j = (await r.json()) as { data?: string };
+  return j.data ?? null;
+}
+
+// Gmail returns base64URL (- and _) but data: URIs need standard base64
+// (+ and /). Quick swap before splicing into the src attribute.
+function base64UrlToStandard(b64: string): string {
+  return b64.replace(/-/g, "+").replace(/_/g, "/");
+}
+
+async function inlineCidImages(
+  accessToken: string,
+  messageId: string,
+  bodyHtml: string,
+  payload: GmailMessagePart | undefined,
+): Promise<string> {
+  // Cheap escape hatch: most messages have no cid: refs, so skip the
+  // MIME walk + attachment fetches entirely.
+  if (!bodyHtml.includes("cid:")) return bodyHtml;
+  const parts = collectInlineParts(payload);
+  if (parts.length === 0) return bodyHtml;
+
+  // Resolve each part to actual bytes — small parts have body.data
+  // inline; larger ones need a follow-up attachments.get call.
+  const resolved = await Promise.all(
+    parts.map(async (p) => {
+      let data = p.data;
+      if (!data && p.attachmentId) {
+        data = (await fetchAttachmentBase64(accessToken, messageId, p.attachmentId)) ?? undefined;
+      }
+      return { ...p, data };
+    }),
+  );
+
+  return bodyHtml.replace(/src=(["'])cid:([^"'>\s]+)\1/gi, (match, quote: string, rawId: string) => {
+    const id = rawId.trim();
+    const part = resolved.find((p) => p.contentId === id);
+    if (!part?.data) return match;
+    const dataUri = `data:${part.mimeType};base64,${base64UrlToStandard(part.data)}`;
+    return `src=${quote}${dataUri}${quote}`;
+  });
 }
 
 // ---- Mail Tab archive (Phase 6.1) ----
