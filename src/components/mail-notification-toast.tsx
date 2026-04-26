@@ -3,6 +3,7 @@
 import { Reply, X } from "lucide-react";
 import { toast } from "sonner";
 import { useComposerManager } from "@/lib/composer-manager";
+import { getStoredToastTheme, type ToastThemeSpec } from "@/lib/toast-theme";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { UnreadInboxThread } from "@/lib/mail-context";
 
@@ -10,6 +11,9 @@ import type { UnreadInboxThread } from "@/lib/mail-context";
 // host the Reply / dismiss buttons inline. Reply boots the global
 // ComposerManager pre-loaded with thread context; dismiss closes the
 // toast without touching Gmail (the thread stays unread).
+//
+// Theme is read from localStorage at render-time (not at module load)
+// so the picker in Settings takes effect on the very next toast.
 //
 // Auto-dismiss timing + maximum-visible cap are configured at the
 // Toaster level (Providers).
@@ -48,6 +52,7 @@ function NewMailToast({
   toastId: string | number;
 }) {
   const composer = useComposerManager();
+  const theme = getStoredToastTheme();
 
   async function onReply() {
     try {
@@ -77,34 +82,72 @@ function NewMailToast({
   }
 
   return (
-    <div className="flex w-[360px] gap-3 rounded-lg border border-court-border bg-court-surface p-3 shadow-lg">
+    <div
+      className="flex min-w-[320px] gap-3 rounded-lg p-4 shadow-lg"
+      style={{
+        background: theme.bg,
+        color: theme.text,
+        border: theme.border ?? "1px solid transparent",
+      }}
+    >
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-court-fg">
+        <div className="truncate text-base font-semibold" style={{ color: theme.text }}>
           {thread.fromName || thread.fromEmail || "(unknown sender)"}
         </div>
-        <div className="mt-0.5 truncate text-xs text-court-fg-muted">
+        <div
+          className="mt-0.5 truncate text-sm"
+          style={{ color: theme.subText ?? theme.text }}
+        >
           {thread.subject || "(no subject)"}
         </div>
       </div>
       <div className="flex shrink-0 items-start gap-1">
-        <button
-          type="button"
-          onClick={onReply}
-          aria-label="Reply"
-          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-        >
+        <ActionButton theme={theme} onClick={onReply} ariaLabel="Reply">
           <Reply className="h-3 w-3" />
-          Reply
-        </button>
-        <button
-          type="button"
+          <span>Reply</span>
+        </ActionButton>
+        <ActionButton
+          theme={theme}
           onClick={() => toast.dismiss(toastId)}
-          aria-label="Dismiss"
-          className="inline-flex items-center rounded-md border border-court-border bg-court-surface p-1 text-court-fg-muted shadow-sm transition hover:text-court-fg"
+          ariaLabel="Dismiss"
+          iconOnly
         >
           <X className="h-3 w-3" />
-        </button>
+        </ActionButton>
       </div>
     </div>
+  );
+}
+
+function ActionButton({
+  theme,
+  onClick,
+  ariaLabel,
+  iconOnly,
+  children,
+}: {
+  theme: ToastThemeSpec;
+  onClick: () => void;
+  ariaLabel: string;
+  iconOnly?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      className={
+        "inline-flex items-center gap-1 rounded-md text-[11px] font-medium shadow-sm transition " +
+        (iconOnly ? "p-1" : "px-2 py-1")
+      }
+      style={{
+        background: theme.actionBg,
+        color: theme.actionText,
+        border: `1px solid ${theme.actionBorder}`,
+      }}
+    >
+      {children}
+    </button>
   );
 }

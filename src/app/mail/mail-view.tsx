@@ -208,29 +208,28 @@ export function MailView({
     }
   }
 
-  // Bulk versions of archive / move. Sequential per the spec — one
-  // request at a time, swallowing per-id failures so a single 5xx
-  // doesn't abort the rest. We track succeeded IDs so the list /
-  // selection cleanup only drops the ones that actually landed; any
-  // failed IDs stay selected so the user can retry.
+  // Bulk versions of archive / move. Sequential with a 150ms gap
+  // between Gmail calls — large bulk runs (8+ threads) were silently
+  // dropping under the previous tight loop, almost certainly tripping
+  // Gmail's per-user rate limit on threads.modify. The pause keeps us
+  // comfortably under the per-second quota without making small bulks
+  // feel sluggish.
+  //
+  // List + selection are pruned per success (not batched at the end)
+  // so threads visibly disappear one-by-one as they land — gives the
+  // user immediate feedback on which ids made it through if a later
+  // call fails.
   async function bulkArchive() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     setBulkBusy(true);
-    const succeeded: string[] = [];
-    const failed: string[] = [];
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/archive`, {
-          method: "POST",
-        });
-        if (res.ok) succeeded.push(id);
-        else failed.push(id);
-      } catch {
-        failed.push(id);
-      }
-    }
-    applyBulkResult({ succeeded, failed, verb: "Archived" });
+    const result = await runBulk(ids, async (id) => {
+      const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/archive`, {
+        method: "POST",
+      });
+      return res.ok;
+    });
+    summarizeBulkResult(result, "Archived");
     setBulkBusy(false);
   }
 
@@ -238,49 +237,66 @@ export function MailView({
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     setBulkBusy(true);
-    const succeeded: string[] = [];
-    const failed: string[] = [];
-    for (const id of ids) {
-      try {
-        const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/move`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ labelId }),
-        });
-        if (res.ok) succeeded.push(id);
-        else failed.push(id);
-      } catch {
-        failed.push(id);
-      }
-    }
-    applyBulkResult({ succeeded, failed, verb: "Moved", labelName });
+    const result = await runBulk(ids, async (id) => {
+      const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/move`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ labelId }),
+      });
+      return res.ok;
+    });
+    summarizeBulkResult(result, "Moved", labelName);
     setBulkBusy(false);
   }
 
-  function applyBulkResult({
-    succeeded,
-    failed,
-    verb,
-    labelName,
-  }: {
-    succeeded: string[];
-    failed: string[];
-    verb: "Archived" | "Moved";
-    labelName?: string;
-  }) {
-    if (succeeded.length > 0) {
-      const ok = new Set(succeeded);
-      setThreads((prev) => prev.filter((t) => !ok.has(t.id)));
-      if (selected && ok.has(selected)) {
-        setSelected(null);
-        setDetail(null);
+  async function runBulk(
+    ids: string[],
+    callOne: (id: string) => Promise<boolean>,
+  ): Promise<{ succeeded: string[]; failed: string[] }> {
+    const succeeded: string[] = [];
+    const failed: string[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i];
+      let ok = false;
+      try {
+        ok = await callOne(id);
+      } catch {
+        ok = false;
       }
-      setSelectedIds((prev) => {
-        const next = new Set(prev);
-        for (const id of succeeded) next.delete(id);
-        return next;
-      });
+      if (ok) {
+        succeeded.push(id);
+        // Per-success pruning so the list visibly shrinks as the bulk
+        // run progresses. If selected thread was in the bulk, drop
+        // the right-pane state too.
+        setThreads((prev) => prev.filter((t) => t.id !== id));
+        setSelectedIds((prev) => {
+          if (!prev.has(id)) return prev;
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        if (selected === id) {
+          setSelected(null);
+          setDetail(null);
+        }
+      } else {
+        failed.push(id);
+      }
+      // Don't sleep after the final call — the user already has the
+      // toast in flight at that point.
+      if (i < ids.length - 1) {
+        await new Promise((r) => setTimeout(r, 150));
+      }
     }
+    return { succeeded, failed };
+  }
+
+  function summarizeBulkResult(
+    result: { succeeded: string[]; failed: string[] },
+    verb: "Archived" | "Moved",
+    labelName?: string,
+  ) {
+    const { succeeded, failed } = result;
     const noun = (n: number) => `${n} ${n === 1 ? "thread" : "threads"}`;
     const total = succeeded.length + failed.length;
     const target = labelName ? ` to ${labelName}` : "";

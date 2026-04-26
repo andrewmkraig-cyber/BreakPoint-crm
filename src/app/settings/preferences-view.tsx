@@ -7,6 +7,13 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { setAutoSendCandidateConfirmation, setMyEmailSignature, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
 import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
+import {
+  DEFAULT_TOAST_THEME,
+  MAIL_TOAST_THEME_KEY,
+  TOAST_THEMES,
+  TOAST_THEME_ORDER,
+  type ToastThemeId,
+} from "@/lib/toast-theme";
 
 export function PreferencesView({
   autoSend,
@@ -31,14 +38,25 @@ export function PreferencesView({
   // poll tick so flipping it takes effect on the next 30s window
   // without requiring a refresh. Default OFF per spec.
   const [mailNotifs, setMailNotifs] = useState(false);
+  const [toastTheme, setToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
   useEffect(() => {
     if (typeof window === "undefined") return;
     setMailNotifs(window.localStorage.getItem(MAIL_NOTIFICATIONS_PREF_KEY) === "true");
+    const storedTheme = window.localStorage.getItem(MAIL_TOAST_THEME_KEY);
+    if (storedTheme && storedTheme in TOAST_THEMES) {
+      setToastTheme(storedTheme as ToastThemeId);
+    }
   }, []);
   function onToggleMailNotifs(next: boolean) {
     setMailNotifs(next);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(MAIL_NOTIFICATIONS_PREF_KEY, next ? "true" : "false");
+    }
+  }
+  function onPickToastTheme(next: ToastThemeId) {
+    setToastTheme(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MAIL_TOAST_THEME_KEY, next);
     }
   }
 
@@ -144,6 +162,40 @@ export function PreferencesView({
             />
           </button>
         </label>
+        <div className="mt-4 border-t border-court-border pt-4">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Notification style
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {TOAST_THEME_ORDER.map((id) => {
+              const theme = TOAST_THEMES[id];
+              const active = toastTheme === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onPickToastTheme(id)}
+                  aria-label={`Use ${theme.label} toast theme`}
+                  aria-pressed={active}
+                  title={theme.label}
+                  className={cn(
+                    "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition",
+                    active
+                      ? "ring-2 ring-court-accent ring-offset-2 ring-offset-court-surface"
+                      : "ring-1 ring-court-border hover:ring-court-fg/40",
+                  )}
+                  style={{
+                    background: theme.bg,
+                    border: theme.border ?? "1px solid transparent",
+                  }}
+                />
+              );
+            })}
+            <span className="ml-2 text-xs text-court-fg-muted">
+              {TOAST_THEMES[toastTheme].label}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
