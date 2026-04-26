@@ -915,3 +915,65 @@ export async function getThreadReplyHeaders(
   const references = [prior, messageId].filter(Boolean).join(" ").trim() || null;
   return { messageId, references };
 }
+
+// Pulls every email-shaped token out of a raw RFC 5322 To/Cc/Bcc header.
+// Tolerates "Display Name <addr@host>", bare addresses, and comma-
+// separated lists. Returns lowercased, trimmed, deduped strings.
+export function extractEmailsFromHeader(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const matches = raw.match(/[\w!#$%&'*+/=?^`{|}~.-]+@[\w.-]+\.[a-zA-Z]{2,}/g);
+  if (!matches) return [];
+  return Array.from(new Set(matches.map((s) => s.toLowerCase().trim())));
+}
+
+// Auto-tags a Gmail thread to candidate/client profiles by matching the
+// thread's participant addresses against Candidate.email and
+// Contact.emails inside the current org. Idempotent — safe to call on
+// every thread open and on every send. Failures should be caught by
+// callers; a tagging hiccup must not break the underlying mail flow.
+export async function tagThreadByAddresses({
+  threadId,
+  addresses,
+  organizationId,
+}: {
+  threadId: string;
+  addresses: string[];
+  organizationId: string;
+}) {
+  const emails = Array.from(
+    new Set(addresses.map((a) => a.toLowerCase().trim()).filter(Boolean)),
+  );
+  if (!emails.length) return;
+
+  const [candidates, contacts] = await Promise.all([
+    prisma.candidate.findMany({
+      where: { email: { in: emails }, organizationId },
+      select: { id: true },
+    }),
+    prisma.contact.findMany({
+      where: { emails: { hasSome: emails }, organizationId },
+      select: { id: true, clientId: true },
+    }),
+  ]);
+
+  const upserts = [
+    ...candidates.map((c) =>
+      prisma.gmailThreadTag.upsert({
+        where: { threadId_candidateId: { threadId, candidateId: c.id } },
+        create: { threadId, candidateId: c.id, organizationId },
+        update: {},
+      }),
+    ),
+    ...contacts
+      .filter((c) => c.clientId)
+      .map((c) =>
+        prisma.gmailThreadTag.upsert({
+          where: { threadId_clientId: { threadId, clientId: c.clientId! } },
+          create: { threadId, clientId: c.clientId!, organizationId },
+          update: {},
+        }),
+      ),
+  ];
+
+  await Promise.all(upserts);
+}

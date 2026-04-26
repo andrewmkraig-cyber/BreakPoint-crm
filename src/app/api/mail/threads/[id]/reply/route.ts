@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { getThreadReplyHeaders, sendGmail, type GmailAttachment } from "@/lib/gmail";
+import {
+  getThreadReplyHeaders,
+  sendGmail,
+  tagThreadByAddresses,
+  type GmailAttachment,
+} from "@/lib/gmail";
 
 export const dynamic = "force-dynamic";
 // Inbound reply payloads can include attachments (PDF, DOCX, images)
@@ -101,6 +107,20 @@ export async function POST(
       references: references ?? undefined,
       attachments,
     });
+    // Auto-tag the thread to any candidate/client whose address
+    // appears in To/CC. Idempotent; a failure here must not 502 a
+    // successful reply.
+    try {
+      const org = await getCurrentOrg();
+      await tagThreadByAddresses({
+        threadId: sent.threadId,
+        addresses: [...payload.to, ...(payload.cc ?? [])],
+        organizationId: org.id,
+      });
+    } catch (tagErr) {
+      console.warn("[mail/reply] auto-tag failed", tagErr);
+    }
+
     return NextResponse.json({ ok: true, messageId: sent.id, threadId: sent.threadId });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Send failed";

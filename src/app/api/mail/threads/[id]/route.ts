@@ -2,8 +2,14 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import sanitizeHtml from "sanitize-html";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { getGmailThread, type MailThreadDetail } from "@/lib/gmail";
+import {
+  extractEmailsFromHeader,
+  getGmailThread,
+  tagThreadByAddresses,
+  type MailThreadDetail,
+} from "@/lib/gmail";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +41,26 @@ export async function GET(
 
   try {
     const detail = await getGmailThread(user.id, params.id);
+
+    // Auto-tag the thread to candidate/client profiles whose address
+    // appears in any sender/recipient header. Idempotent upserts; failure
+    // here must not break the read path.
+    try {
+      const org = await getCurrentOrg();
+      const addresses = detail.messages.flatMap((m) => [
+        m.fromEmail,
+        ...extractEmailsFromHeader(m.to),
+        ...extractEmailsFromHeader(m.cc),
+      ]);
+      await tagThreadByAddresses({
+        threadId: detail.id,
+        addresses,
+        organizationId: org.id,
+      });
+    } catch (tagErr) {
+      console.warn("[mail/threads GET] auto-tag failed", tagErr);
+    }
+
     const safe: MailThreadDetail = {
       ...detail,
       messages: detail.messages.map((m) => ({
