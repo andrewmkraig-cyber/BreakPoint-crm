@@ -3340,7 +3340,7 @@ export function InlineContactMultiInput({
     // Early-return when typed is empty so blur events don't replay
     // an empty commit and wipe chips committed by a concurrent
     // dropdown toggle.
-    const raw = typed.trim();
+    const raw = typedRef.current.trim();
     if (!raw) return;
     const next = new Set(parseEmailCsv(latestValueRef.current));
     for (const p of parseEmailCsv(raw)) next.add(p);
@@ -3353,8 +3353,34 @@ export function InlineContactMultiInput({
     commit(next);
   }
 
+  // Outside-click guard: a document-level mousedown listener gated by
+  // `open` and scoped to this picker's container. Earlier code rendered
+  // a `fixed inset-0 z-[60]` overlay to catch outside clicks, but that
+  // overlay sat ON TOP of the surrounding email composer and ate every
+  // click on the body editor, toolbar buttons, and the X close — leaving
+  // the composer "frozen" until refresh after a chip was added. Using a
+  // document listener instead lets clicks reach their real targets
+  // while still dismissing the picker when the click lands outside.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const typedRef = useRef(typed);
+  typedRef.current = typed;
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const node = containerRef.current;
+      if (node && node.contains(e.target as Node)) return;
+      // Commit whatever's typed before dismissing, so clicking outside
+      // chips a partial entry — same intent as the prior overlay.
+      addTyped();
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   return (
-    <div className="relative mt-1">
+    <div ref={containerRef} className="relative mt-1">
       <div
         className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-lg border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
         onClick={() => setOpen(true)}
@@ -3401,32 +3427,13 @@ export function InlineContactMultiInput({
       </div>
       {open && (
         <>
-          {/* THE bug fix: this dropdown lives inside the Schedule
-              Interview modal (z-50 backdrop with onClick={onClose}).
-              Old z-30 overlay sat BEHIND the modal backdrop, so a
-              click "outside the dropdown" hit the backdrop first,
-              fired onClose, unmounted the whole ScheduleInterview
-              Dialog, and bccCsv (the chip state living in that
-              component's useState) was destroyed along with it.
-              Reopening showed no chip — not because state was wiped,
-              because the component was rebuilt fresh. z-[60] puts
-              the overlay ABOVE the backdrop so the dismiss click
-              hits this overlay → setOpen(false) → bubbling stops at
-              the modal panel's stopPropagation. Modal stays open,
-              chip persists. */}
-          <div
-            className="fixed inset-0 z-[60]"
-            onClick={() => {
-              // Commit whatever's typed before dismissing, so clicking
-              // anywhere outside the input (including on the modal
-              // backdrop / other form fields) chips the partial entry.
-              // Mouse clicks on non-focusable elements don't always
-              // trigger the input's blur, so relying on onBlur alone
-              // missed this case.
-              addTyped();
-              setOpen(false);
-            }}
-          />
+          {/* Outside-click handled by the document mousedown listener
+              above. Earlier code rendered a fixed-inset overlay here
+              to catch the dismiss click; that overlay sat on top of
+              the entire viewport and ate clicks on the surrounding
+              email composer (body editor, toolbar buttons, X close),
+              leaving the composer frozen until page refresh after a
+              chip was added. */}
           <div className="absolute left-0 top-full z-[70] mt-1 w-full overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="max-h-56 overflow-y-auto py-1">
               {pinnedList.length > 0 && (
