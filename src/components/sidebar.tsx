@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
+import { useMailContext } from "@/lib/mail-context";
 
 // Main nav in the recruiter's workflow order: Dashboard → Mail (daily
 // inbox check) → Pipeline → Applicants (active work) → Candidates →
@@ -35,8 +36,9 @@ const NAV = [
 // CRMs (Apollo, HubSpot, Linear).
 const FOOTER_NAV = [{ href: "/settings", label: "Settings", icon: Settings }] as const;
 
-export function Sidebar({ unreadMailCount = 0 }: { unreadMailCount?: number }) {
+export function Sidebar() {
   const pathname = usePathname();
+  const { unreadCount } = useMailContext();
 
   return (
     // Sidebar background is mode-aware: Hard = white (unchanged from
@@ -63,7 +65,7 @@ export function Sidebar({ unreadMailCount = 0 }: { unreadMailCount?: number }) {
             key={item.href}
             item={item}
             pathname={pathname}
-            badge={item.href === "/mail" ? unreadMailCount : 0}
+            badge={item.href === "/mail" ? unreadCount : 0}
           />
         ))}
       </nav>

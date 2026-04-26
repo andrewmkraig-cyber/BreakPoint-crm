@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { setAutoSendCandidateConfirmation, setMyEmailSignature, setMyRecruiterPhone } from "@/app/settings/preferences-actions";
+import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
 
 export function PreferencesView({
   autoSend,
@@ -25,6 +26,21 @@ export function PreferencesView({
   const [isTogglePending, startToggle] = useTransition();
   const [isPhonePending, startPhone] = useTransition();
   const [isSigPending, startSig] = useTransition();
+  // Mail notifications toggle is local-only — no server roundtrip.
+  // Stored in localStorage as the same key MailContext reads on each
+  // poll tick so flipping it takes effect on the next 30s window
+  // without requiring a refresh. Default OFF per spec.
+  const [mailNotifs, setMailNotifs] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setMailNotifs(window.localStorage.getItem(MAIL_NOTIFICATIONS_PREF_KEY) === "true");
+  }, []);
+  function onToggleMailNotifs(next: boolean) {
+    setMailNotifs(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MAIL_NOTIFICATIONS_PREF_KEY, next ? "true" : "false");
+    }
+  }
 
   function onToggle(next: boolean) {
     setEnabled(next);
@@ -96,6 +112,34 @@ export function PreferencesView({
               className={cn(
                 "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
                 enabled ? "translate-x-5" : "translate-x-0.5",
+              )}
+            />
+          </button>
+        </label>
+      </div>
+
+      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+        <label className="flex items-start justify-between gap-4">
+          <div>
+            <div className="text-sm font-semibold text-court-fg">In-app notifications</div>
+            <div className="mt-1 text-xs text-court-fg-muted">
+              Show a popup when new mail arrives.
+            </div>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={mailNotifs}
+            onClick={() => onToggleMailNotifs(!mailNotifs)}
+            className={cn(
+              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+              mailNotifs ? "bg-brand" : "bg-court-fg-muted/40",
+            )}
+          >
+            <span
+              className={cn(
+                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+                mailNotifs ? "translate-x-5" : "translate-x-0.5",
               )}
             />
           </button>

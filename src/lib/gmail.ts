@@ -691,6 +691,90 @@ export async function archiveGmailThread(userId: string, threadId: string): Prom
   }
 }
 
+// ---- Mail Tab live polling (Phase 6.x: notification context) ----
+// Returns the unread INBOX count plus a small slice of the newest
+// unread thread summaries — enough to drive both the sidebar badge and
+// the in-app new-mail toast. Bundled in one Gmail call (threads.list
+// with the same q=in:inbox is:unread filter as the count-only path)
+// so the polling interval pays for one quota unit + N metadata gets
+// per tick instead of two list calls.
+
+export type UnreadInboxThread = {
+  id: string;
+  fromName: string;
+  fromEmail: string;
+  subject: string;
+  timestampIso: string | null;
+};
+
+export type UnreadInboxSummary = {
+  count: number;
+  latest: UnreadInboxThread[];
+};
+
+export async function getUnreadInboxSummary(
+  userId: string,
+  opts: { maxResults?: number } = {},
+): Promise<UnreadInboxSummary> {
+  try {
+    const accessToken = await getFreshAccessToken(userId);
+    const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/threads");
+    url.searchParams.set("q", "in:inbox is:unread");
+    url.searchParams.set("maxResults", String(opts.maxResults ?? 5));
+    const listRes = await fetch(url, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    });
+    if (!listRes.ok) return { count: 0, latest: [] };
+    const listJson = (await listRes.json()) as GmailListThreadsResponse & {
+      resultSizeEstimate?: number;
+    };
+    const ids = (listJson.threads ?? []).map((t) => t.id);
+    const count =
+      typeof listJson.resultSizeEstimate === "number" ? listJson.resultSizeEstimate : ids.length;
+    if (ids.length === 0) return { count, latest: [] };
+    const latest = await Promise.all(
+      ids.map(async (id) => {
+        const tUrl = new URL(
+          `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(id)}`,
+        );
+        tUrl.searchParams.set("format", "metadata");
+        for (const h of ["From", "Subject", "Date"]) {
+          tUrl.searchParams.append("metadataHeaders", h);
+        }
+        const r = await fetch(tUrl.toString(), {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        if (!r.ok) return null;
+        const j = (await r.json()) as GmailThreadResponse;
+        const messages = j.messages ?? [];
+        if (messages.length === 0) return null;
+        const last = messages[messages.length - 1];
+        const from = parseAddress(headerValue(last.payload?.headers, "From"));
+        const subject = headerValue(last.payload?.headers, "Subject");
+        return {
+          id: j.id,
+          fromName: from.name || from.email,
+          fromEmail: from.email,
+          subject: subject || "(no subject)",
+          timestampIso: last.internalDate
+            ? new Date(Number(last.internalDate)).toISOString()
+            : null,
+        } satisfies UnreadInboxThread;
+      }),
+    );
+    return {
+      count,
+      latest: latest
+        .filter((x): x is UnreadInboxThread => x !== null)
+        .sort((a, b) => (b.timestampIso ?? "").localeCompare(a.timestampIso ?? "")),
+    };
+  } catch {
+    return { count: 0, latest: [] };
+  }
+}
+
 // Returns the count of unread INBOX threads for the signed-in user.
 // Used by the sidebar nav badge. Defensively swallows every failure
 // (token expiry, scope mismatch, transient 5xx) and returns 0 — the

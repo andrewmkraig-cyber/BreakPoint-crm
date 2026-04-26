@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { MailTabTitleSync } from "@/components/mail-tab-title-sync";
+import { MailProvider } from "@/lib/mail-context";
 
 const UNAUTH_PATHS = ["/sign-in"];
 
@@ -28,14 +29,20 @@ export function AppShell({
     return <main className="min-h-screen bg-court-surface-subtle">{children}</main>;
   }
 
+  // MailProvider polls /api/mail/unread every 30s; the SSR count seeds
+  // its initial value so the badge has a number to show before the
+  // first poll lands. Sidebar + tab title both read from the context
+  // so they stay in lockstep without any prop drilling.
   return (
-    <div className="flex min-h-screen bg-court-surface-subtle">
-      <MailTabTitleSync count={unreadMailCount} />
-      <Sidebar unreadMailCount={unreadMailCount} />
-      <div className="flex flex-1 flex-col">
-        <TopBar />
-        <main className="flex-1 p-6 md:p-8">{children}</main>
+    <MailProvider initialUnreadCount={unreadMailCount}>
+      <div className="flex min-h-screen bg-court-surface-subtle">
+        <MailTabTitleSync />
+        <Sidebar />
+        <div className="flex flex-1 flex-col">
+          <TopBar />
+          <main className="flex-1 p-6 md:p-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </MailProvider>
   );
 }

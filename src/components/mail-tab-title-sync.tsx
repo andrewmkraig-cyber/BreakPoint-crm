@@ -1,19 +1,19 @@
 "use client";
 
 import { useEffect } from "react";
+import { useMailContext } from "@/lib/mail-context";
 
 // Mirrors Gmail's tab-title behavior: shows "(N) Ace · BreakPoint Talent"
 // when the user has unread inbox threads, plain "Ace · BreakPoint Talent"
-// otherwise. Reuses the count already fetched server-side in the root
-// layout for the sidebar badge — no second Gmail API call.
-//
-// On every navigation the root layout re-runs server-side and supplies
-// a fresh count via prop, which retriggers this useEffect.
+// otherwise. Reads the unread count from MailContext so it updates on
+// the same 30s polling cadence as the sidebar badge — no second Gmail
+// API call.
 const BASE_TITLE = "Ace · BreakPoint Talent";
 
-export function MailTabTitleSync({ count }: { count: number }) {
+export function MailTabTitleSync() {
+  const { unreadCount } = useMailContext();
   useEffect(() => {
-    document.title = count > 0 ? `(${count}) ${BASE_TITLE}` : BASE_TITLE;
-  }, [count]);
+    document.title = unreadCount > 0 ? `(${unreadCount}) ${BASE_TITLE}` : BASE_TITLE;
+  }, [unreadCount]);
   return null;
 }
