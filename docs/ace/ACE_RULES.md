@@ -50,19 +50,22 @@ When reporting Step 0 results: state the count, the delta from baseline, and whi
 
 When any task requires Andrew to do something outside Claude Code (Google Cloud Console, Vercel, GitHub settings, Stripe, DocuSign, Mac system settings, etc.), Claude must always provide the exact clickable URL. Never describe a navigation path without the link. Andrew is not a developer - every external step needs a direct URL plus step-by-step instructions written in plain English.
 
-## Session Opening Protocol (17.0+) - UPDATED
+## Session Opening Protocol (22.0+)
 
-Fetch these three files at the start of every session before any other work:
-https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_RULES.md
-https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_STATE.md
-https://raw.githubusercontent.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/ACE_ROADMAP.md
+Use the GitHub MCP integration to read these four files from the andrewmkraig-cyber/BreakPoint-crm repo, main branch, at the start of every session before any other work:
+- docs/ace/ACE_RULES.md
+- docs/ace/ACE_STATE.md
+- docs/ace/ACE_ROADMAP.md
+- docs/ace/ACE_DESIGN.md
 
 After fetching, in order:
-1. Apply doc hygiene rule - identify stale rules, superseded plans, completed items in active lists. Clean in one pass.
-2. Recite all architecture non-negotiables plus prompt rules and communication rules.
-3. Confirm the next task from ACE_STATE.md.
-4. Give the first Claude Code prompt paste-ready.
-5. Give a Session Brief: what we are accomplishing in this session (list of atomic ships) and a realistic time estimate in minutes for Andrew's side (browser testing, pasting prompts, reporting back). Do not estimate Claude Code's compute time.
+1. Apply doc hygiene rule
+2. Recite all architecture non-negotiables plus prompt rules and communication rules
+3. Confirm next task from ACE_STATE.md
+4. Give the first Claude Code prompt paste-ready
+5. Give a Session Brief: ships planned this session + realistic time estimate for Andrew's side only
+
+Note: raw.githubusercontent.com is blocked in Claude chat. GitHub MCP reads private repos directly - no public URL needed.
 
 ## Session Transition Protocol
 
