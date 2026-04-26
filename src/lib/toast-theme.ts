@@ -16,7 +16,9 @@ export type ToastThemeId =
   | "breakpoint"
   | "ohio-state"
   | "cleveland-browns"
-  | "dark";
+  | "dark"
+  | "yellow"
+  | "white";
 
 export type ToastThemeSpec = {
   id: ToastThemeId;
@@ -85,6 +87,30 @@ export const TOAST_THEMES: Record<ToastThemeId, ToastThemeSpec> = {
     buttonBg: "#2A2A2A",
     buttonBorder: "#444444",
   },
+  yellow: {
+    id: "yellow",
+    label: "Yellow",
+    bg: "#FFD400",
+    border: "#B8860B",
+    glow: "#FFD400",
+    iconCircleBorder: "#1A1A1A",
+    text: "#1A1A1A",
+    subText: "#5C4400",
+    buttonBg: "#FFFFFF",
+    buttonBorder: "#1A1A1A",
+  },
+  white: {
+    id: "white",
+    label: "White",
+    bg: "#FFFFFF",
+    border: "#E5E5E5",
+    glow: null,
+    iconCircleBorder: "#1A1A1A",
+    text: "#1A1A1A",
+    subText: "#6B7280",
+    buttonBg: "#F4F4F5",
+    buttonBorder: "#1A1A1A",
+  },
 };
 
 export const TOAST_THEME_ORDER: ToastThemeId[] = [
@@ -92,14 +118,25 @@ export const TOAST_THEME_ORDER: ToastThemeId[] = [
   "ohio-state",
   "cleveland-browns",
   "dark",
+  "yellow",
+  "white",
 ];
 
 export const MAIL_TOAST_THEME_KEY = "ace_toast_theme";
+export const TEXT_TOAST_THEME_KEY = "ace_text_toast_theme";
 export const DEFAULT_TOAST_THEME: ToastThemeId = "breakpoint";
 
 export function getStoredToastTheme(): ToastThemeSpec {
+  return readThemeKey(MAIL_TOAST_THEME_KEY);
+}
+
+export function getStoredTextToastTheme(): ToastThemeSpec {
+  return readThemeKey(TEXT_TOAST_THEME_KEY);
+}
+
+function readThemeKey(key: string): ToastThemeSpec {
   if (typeof window === "undefined") return TOAST_THEMES[DEFAULT_TOAST_THEME];
-  const raw = window.localStorage.getItem(MAIL_TOAST_THEME_KEY);
+  const raw = window.localStorage.getItem(key);
   if (raw && raw in TOAST_THEMES) return TOAST_THEMES[raw as ToastThemeId];
   return TOAST_THEMES[DEFAULT_TOAST_THEME];
 }

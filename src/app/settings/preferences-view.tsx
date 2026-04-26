@@ -10,6 +10,7 @@ import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
 import {
   DEFAULT_TOAST_THEME,
   MAIL_TOAST_THEME_KEY,
+  TEXT_TOAST_THEME_KEY,
   TOAST_THEMES,
   TOAST_THEME_ORDER,
   type ToastThemeId,
@@ -39,12 +40,17 @@ export function PreferencesView({
   // without requiring a refresh. Default OFF per spec.
   const [mailNotifs, setMailNotifs] = useState(false);
   const [toastTheme, setToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
+  const [textToastTheme, setTextToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
   useEffect(() => {
     if (typeof window === "undefined") return;
     setMailNotifs(window.localStorage.getItem(MAIL_NOTIFICATIONS_PREF_KEY) === "true");
-    const storedTheme = window.localStorage.getItem(MAIL_TOAST_THEME_KEY);
-    if (storedTheme && storedTheme in TOAST_THEMES) {
-      setToastTheme(storedTheme as ToastThemeId);
+    const storedMailTheme = window.localStorage.getItem(MAIL_TOAST_THEME_KEY);
+    if (storedMailTheme && storedMailTheme in TOAST_THEMES) {
+      setToastTheme(storedMailTheme as ToastThemeId);
+    }
+    const storedTextTheme = window.localStorage.getItem(TEXT_TOAST_THEME_KEY);
+    if (storedTextTheme && storedTextTheme in TOAST_THEMES) {
+      setTextToastTheme(storedTextTheme as ToastThemeId);
     }
   }, []);
   function onToggleMailNotifs(next: boolean) {
@@ -57,6 +63,12 @@ export function PreferencesView({
     setToastTheme(next);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(MAIL_TOAST_THEME_KEY, next);
+    }
+  }
+  function onPickTextToastTheme(next: ToastThemeId) {
+    setTextToastTheme(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(TEXT_TOAST_THEME_KEY, next);
     }
   }
 
@@ -164,37 +176,26 @@ export function PreferencesView({
         </label>
         <div className="mt-4 border-t border-court-border pt-4">
           <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-            Notification style
+            Email notification style
           </div>
-          <div className="mt-2 flex items-center gap-2">
-            {TOAST_THEME_ORDER.map((id) => {
-              const theme = TOAST_THEMES[id];
-              const active = toastTheme === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => onPickToastTheme(id)}
-                  aria-label={`Use ${theme.label} toast theme`}
-                  aria-pressed={active}
-                  title={theme.label}
-                  className={cn(
-                    "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition",
-                    active
-                      ? "ring-2 ring-court-accent ring-offset-2 ring-offset-court-surface"
-                      : "ring-1 ring-court-border hover:ring-court-fg/40",
-                  )}
-                  style={{
-                    background: theme.bg,
-                    border: `2px solid ${theme.border}`,
-                  }}
-                />
-              );
-            })}
-            <span className="ml-2 text-xs text-court-fg-muted">
-              {TOAST_THEMES[toastTheme].label}
-            </span>
+          <ThemeSwatchRow
+            value={toastTheme}
+            onPick={onPickToastTheme}
+            ariaPrefix="email"
+          />
+        </div>
+        <div className="mt-4 border-t border-court-border pt-4">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Text notification style
           </div>
+          <div className="mt-1 text-[11px] text-court-fg-muted">
+            Applies once Quo text notifications are wired up.
+          </div>
+          <ThemeSwatchRow
+            value={textToastTheme}
+            onPick={onPickTextToastTheme}
+            ariaPrefix="text"
+          />
         </div>
       </div>
 
@@ -248,6 +249,46 @@ export function PreferencesView({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ThemeSwatchRow({
+  value,
+  onPick,
+  ariaPrefix,
+}: {
+  value: ToastThemeId;
+  onPick: (next: ToastThemeId) => void;
+  ariaPrefix: string;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {TOAST_THEME_ORDER.map((id) => {
+        const theme = TOAST_THEMES[id];
+        const active = value === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            onClick={() => onPick(id)}
+            aria-label={`Use ${theme.label} ${ariaPrefix} toast theme`}
+            aria-pressed={active}
+            title={theme.label}
+            className={cn(
+              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition",
+              active
+                ? "ring-2 ring-court-accent ring-offset-2 ring-offset-court-surface"
+                : "ring-1 ring-court-border hover:ring-court-fg/40",
+            )}
+            style={{
+              background: theme.bg,
+              border: `2px solid ${theme.border}`,
+            }}
+          />
+        );
+      })}
+      <span className="ml-2 text-xs text-court-fg-muted">{TOAST_THEMES[value].label}</span>
     </div>
   );
 }
