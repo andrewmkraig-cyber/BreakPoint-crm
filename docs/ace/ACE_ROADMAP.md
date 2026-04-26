@@ -1,5 +1,15 @@
 # Ace Roadmap
 
+## Ace 23.0 - Mail Tab remaining items + activity logging
+
+### Order of execution
+
+1. Auto-tagging emails to candidate/client profiles - on send and on receive, match email addresses to Neon candidate/client/contact records, surface matched threads on candidate profile, client profile, and contact cards. VERY IMPORTANT.
+2. BCC Austin auto-populate - Settings toggle: "Always BCC Austin Barnard." When on, austin@breakpointtalent.com auto-populates in BCC on every new compose and reply. User can remove manually per email.
+3. Click-to-add dropdown bug - suggestions dropdown on To/CC/BCC stays visible after clicking a suggestion instead of auto-dismissing. Fix dismiss behavior.
+4. Mail tab sent view - Sent tab/filter in /mail showing sent messages from Gmail sent folder, same thread UI as inbox.
+5. Sent emails composed from Ace appearing in candidate/client activity - when email sent from popup composer, log it as activity event on the candidate or client profile it was sent from.
+
 ## Ace 18.0 - Composer UX + Templates + Mail Tab Polish + Interview Scheduling Overhaul
 
 Picks up the 13 backlog items from Ace 17.0 plus the Interview Scheduling Overhaul. Estimated 8-10 atomic prompts.
@@ -40,16 +50,19 @@ Each template tagged with side (candidate-facing vs client-facing) and stage (wh
 - (Sticky sidebar previously bundled with this prompt has already shipped via 5A.1-fix.)
 
 #### Prompt 7 - Mail Tab polish + bidirectional read sync
-1. Fix logo + signature contact icons rendering inside Ace's /mail thread view (currently shows broken image boxes - works fine in real Gmail received messages)
-2. Open thread in Ace marks read in Gmail via gmail.modify removeLabel: UNREAD.
-3. Unread count badge on Mail sidebar item, real-time.
-4. Browser notifications top-of-screen Gmail-style with permission prompt.
-5. Move To label dropdown replacing Archive button. Reads user Gmail labels via API, applies label + removes INBOX. Andrew's spec: Archive removes email from view forever, Move To files it under a label for future reference by client folder.
-6. Logo + signature contact icons render fix in /mail thread view (broken image boxes in Ace HTML rendering).
-7. Auto-tagging emails to candidate/client profiles by sender/recipient address. Poll Gmail every N min. Match addresses to Neon candidate/client/contact records. Surface on candidate profile, client profile, and contact cards. **VERY IMPORTANT per Andrew.**
-8. BCC autocomplete with teammates (Austin Barnard). CC autocomplete already works, BCC does not.
-9. BUG: Click-to-add on To/CC/BCC dropdown suggestions stays visible after click instead of auto-dismissing. Fix.
-10. Re-audit ENOENT for logo on serverless to confirm all signature render paths use base64 import.
+
+SHIPPED 22.0:
+- Open thread marks read in Gmail (removeLabel UNREAD)
+- Unread count badge on Mail sidebar
+- Browser tab title with unread count (live via MailContext)
+- Move To label dropdown (Archive kept, Move To additive)
+- Logo + signature contact icons CID render fix
+- Favicon (pulled forward from Week 4)
+
+REMAINING for 23.0:
+- BCC Austin auto-populate
+- Click-to-add dropdown bug fix
+- Re-audit ENOENT logo on serverless (low priority)
 
 #### Prompt 8 - Auto-tagging emails to candidate/client profiles
 1. On email send and on email receive (poll Gmail every N minutes), match email addresses to candidates and clients in Neon
@@ -198,7 +211,7 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 ### Week 4
 
 - Night Court mode (4th theme).
-- BP circle icon + Ace logo + favicon + footer cleanup.
+- BP circle icon + Ace logo + favicon + footer cleanup. **(favicon SHIPPED 22.0; Ace logo + footer cleanup remain.)**
 - YouTube floating player.
 - DocuSign auto-import.
 - Invoicing workflow with Slack-to-Austin trigger on confirmed start.
@@ -235,6 +248,14 @@ Stage tag, side tag (candidate-facing vs client-facing), bracket+merge syntax, a
 - Background job queue (Job table + Vercel Cron) for any operation over 60 seconds.
 - Postgres tsvector + GIN indexes for fast Boolean search as DB grows.
 - ZDR (Anthropic Zero Data Retention) request on Andrew's API key.
+
+### BD Sequencing
+
+- Scheduled email send - Gmail API supports send-at timestamp. Build as prerequisite to BD sequence engine. User picks date/time in composer, Gmail holds and sends at that time.
+
+### Communications / Webhooks
+
+- Ringover/Quo in-app notifications - webhook on incoming call and SMS. Same sonner toast style as email notifications. Caller name/number for calls, message preview for texts. Build alongside call transcription webhook work already on roadmap.
 
 ### Phase 5 Carry List
 

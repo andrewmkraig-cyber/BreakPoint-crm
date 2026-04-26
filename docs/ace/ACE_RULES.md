@@ -45,6 +45,9 @@ When reporting Step 0 results: state the count, the delta from baseline, and whi
 - Always give Claude Code prompts and answers as exact paste-ready blocks with plain English explanation before them.
 - No developer jargon. Explain every step as if Andrew has never coded.
 - Never mix answers and explanations - context first, then the exact text to paste in a clean block.
+- HYPERLINKS: Always format URLs as clickable markdown links using [text](url) format. Never plain text URLs. No exceptions. chrome:// URLs cannot be hyperlinked in Claude's interface - tell Andrew to copy/paste those manually.
+- After every feature ships, Claude (this chat) explains what happened in plain English before summarizing Code's output. Never pass through Code's technical diagnosis raw. Translate it.
+- All Claude Code prompts must end with: "Commit and push to prod first, then hand testing back to Andrew." Never hold commits pending browser verify - push to prod, Andrew tests on the live site.
 
 ## External Step Links (permanent)
 
@@ -82,7 +85,6 @@ When drifting or tasks complete: update ACE_STATE.md and ACE_ROADMAP.md as part 
 
 ## Compaction Recovery + Hyperlink Rules (added 2026-04-25)
 
-- HYPERLINKS: Always format URLs as clickable markdown links, never plain text. No exceptions.
 - After ANY compaction event in Code (when "Compacting conversation" appears), the next prompt MUST explicitly restate the in-progress task and reference any uncommitted local files. Do not assume Code remembers what it was working on.
 - Never run background /loop tasks during active feature work.
 - /clear in Code between every two feature ships. Do not chain features in one Code session.
