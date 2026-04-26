@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { MERGE_FIELDS, applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import type { RichTextBodyEditorHandle } from "@/components/rich-text-body-editor";
+import { EditWithClaudeMenu, type EditType } from "@/components/edit-with-claude-menu";
 
 // Lazy-load the Tiptap editor — pulls in ProseMirror and pdfjs-sized helpers,
 // so we keep it out of the initial bundle for every composer. Only composers
@@ -45,6 +46,12 @@ export type EmailComposerProps = {
   helperText?: string;
   generateLabel?: string;
   onGenerate?: (current: EmailDraft) => Promise<string>;
+  // When true, the toolbar shows an "Edit with Claude" dropdown next to
+  // Generate. Disabled until the body has content. The dropdown's 5
+  // options POST the current body + editType to /api/email/edit-with-
+  // claude and replace the body with the response. Native Cmd+Z undo
+  // works on the textarea path because we apply via execCommand.
+  enableEditWithClaude?: boolean;
   footerExtras?: ReactNode;
   // When enabled, the composer loads active templates and renders a
   // "Use Template" dropdown. Selecting one replaces subject + body with the
@@ -132,6 +139,7 @@ export function EmailComposer({
   helperText,
   generateLabel = "Generate with Claude",
   onGenerate,
+  enableEditWithClaude = false,
   footerExtras,
   showTemplatePicker = false,
   resolveTemplate,
@@ -175,6 +183,7 @@ export function EmailComposer({
   const [err, setErr] = useState<string | null>(null);
   const [isSending, startSend] = useTransition();
   const [isGenerating, startGenerate] = useTransition();
+  const [isEditing, startEdit] = useTransition();
 
   // Mirror every keystroke into localStorage when a draftKey is set.
   // Cheap (string write) and synchronous so we never race a wipe.
@@ -356,6 +365,69 @@ export function EmailComposer({
       body,
       ...(richTextBody ? { bodyHtml: body } : {}),
     };
+  }
+
+  // Replace the textarea contents while routing through execCommand so
+  // the change lands in the browser's native undo stack. Falls back to
+  // setBody if execCommand is unsupported (some embedded WebViews) — in
+  // that fallback path Cmd+Z won't restore, but the edit still applies.
+  function applyEditedBodyToTextarea(newBody: string) {
+    const el = bodyRef.current;
+    if (!el) {
+      setBody(newBody);
+      return;
+    }
+    el.focus();
+    el.select();
+    const ok = document.execCommand("insertText", false, newBody);
+    if (!ok) {
+      setBody(newBody);
+    }
+  }
+
+  function onEditClick(editType: EditType) {
+    if (!body.trim()) return;
+    setErr(null);
+    startEdit(async () => {
+      try {
+        const res = await fetch("/api/email/edit-with-claude", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            body,
+            editType,
+            format: richTextBody ? "html" : "text",
+          }),
+          cache: "no-store",
+        });
+        const json = (await res.json().catch(() => null)) as
+          | { body?: string; error?: string }
+          | null;
+        if (!res.ok) {
+          const msg = json?.error ?? `Edit failed (${res.status})`;
+          throw new Error(msg);
+        }
+        const next = (json?.body ?? "").trim();
+        if (!next) throw new Error("Claude returned an empty edit.");
+        if (richTextBody) {
+          // Route through the Tiptap chain so the swap is recorded to
+          // ProseMirror's history — Cmd+Z then undoes the AI edit and
+          // restores the user's original draft.
+          if (richTextRef.current) {
+            richTextRef.current.replaceWithUndo(next);
+          } else {
+            setBody(next);
+          }
+        } else {
+          applyEditedBodyToTextarea(next);
+        }
+        toast.success("Draft revised", { description: "Cmd+Z to restore your original." });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Failed to edit draft.";
+        setErr(msg);
+        toast.error("Couldn't edit draft", { description: msg });
+      }
+    });
   }
 
   function onGenerateClick() {
@@ -714,12 +786,19 @@ export function EmailComposer({
               <button
                 type="button"
                 onClick={onGenerateClick}
-                disabled={isGenerating || isSending}
+                disabled={isGenerating || isSending || isEditing}
                 className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
               >
                 {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
                 {generateLabel}
               </button>
+            )}
+            {enableEditWithClaude && (
+              <EditWithClaudeMenu
+                isEditing={isEditing}
+                disabled={!body.trim() || isGenerating || isSending}
+                onPick={onEditClick}
+              />
             )}
             {footerExtras}
           </div>

@@ -10,6 +10,7 @@ import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
+import { formatLocation } from "@/lib/utils";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 // 5A.5.b parity: Ace-native candidates now share the same resume
 // management UI as RF-imported (multi-version dropdown, inline rename,
@@ -526,7 +527,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
                 }
               />
               <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
-              <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={candidate.location} />
+              <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={formatLocation(candidate.location) || null} />
               <Row icon={<Link2 className="h-3.5 w-3.5" />} label="LinkedIn" value={candidate.linkedinProfile} href={candidate.linkedinProfile} />
             </dl>
           </section>

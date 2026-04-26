@@ -8,7 +8,7 @@ import { SectionCard, LabeledField } from "@/app/candidates/[id]/editable-helper
 import { updateCandidate } from "@/app/candidates/[id]/actions";
 import { formatPhone, telHref, normalizeToE164 } from "@/lib/rf-payload-shapes";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
-import { cn } from "@/lib/utils";
+import { cn, formatLocation } from "@/lib/utils";
 
 export type ContactState = {
   first_name: string;
@@ -180,7 +180,7 @@ export function EditableContact({ candidateId, initial }: { candidateId: number;
             )}
           </Row>
           <Row label="Location" icon={<MapPin className="h-3 w-3" />}>
-            <span>{saved.location || "—"}</span>
+            <span>{formatLocation(saved.location) || "—"}</span>
           </Row>
         </dl>
       )}

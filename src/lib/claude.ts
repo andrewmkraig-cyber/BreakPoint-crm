@@ -123,9 +123,12 @@ export function stripMarkdownToPlain(text: string): string {
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-// Opus 4.7 per skill default. Sampling params (temperature/top_p/top_k) and
-// budget_tokens are removed on 4.7 — do not re-add them.
-export const CLAUDE_MODEL = "claude-opus-4-7";
+// Sonnet 4.6 — single shared model across every Claude caller in Ace
+// (lib/claude generators, /api/mail/ai-compose, /api/email/edit-with-
+// claude, /api/calls/summary, /api/ai-workspace, clients/new actions).
+// Sampling params (temperature/top_p/top_k) and budget_tokens are
+// removed on 4.x — do not re-add them.
+export const CLAUDE_MODEL = "claude-sonnet-4-6";
 
 let cached: Anthropic | null = null;
 

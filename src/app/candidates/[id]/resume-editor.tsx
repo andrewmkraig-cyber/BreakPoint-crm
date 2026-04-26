@@ -54,7 +54,10 @@ export function ResumeEditor({
   baseResumeUrl: string;
   baseResumeFilename: string;
   onClose: () => void;
-  onSaved: () => void;
+  // Saving creates a new CandidateResume row; we pass its id back so
+  // the parent dropdown can auto-select the freshly saved version
+  // instead of staying on whatever was selected when the modal opened.
+  onSaved: (newResumeId: string) => void;
 }) {
   const router = useRouter();
   const [loadingDoc, setLoadingDoc] = useState(true);
@@ -302,7 +305,7 @@ export function ResumeEditor({
       }
       toast.success("Version saved", { id: toastId });
       router.refresh();
-      onSaved();
+      onSaved(res.value.resumeId);
     } catch (e) {
       toast.error("Couldn't save version", {
         id: toastId,

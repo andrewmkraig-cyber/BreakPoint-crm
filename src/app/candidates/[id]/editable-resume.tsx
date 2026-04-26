@@ -151,13 +151,30 @@ export function EditableResume({
   // renders the server-side payload).
   const defaultKey = useMemo(() => pickDefault(versions), [versions]);
   const [selectedKey, setSelectedKey] = useState<string | null>(defaultKey);
+  // After a save flow that creates a new row (upload / brand / redact /
+  // convert), we capture the new resumeId here so the dropdown can
+  // auto-switch to it once router.refresh's payload arrives. Cleared
+  // after the matching version surfaces. Without this, the dropdown
+  // sticks on the previously-selected version even though the user
+  // clearly wants to see what they just saved.
+  const [pendingSelectId, setPendingSelectId] = useState<string | null>(null);
   useEffect(() => {
-    // If our previously-selected version disappeared (deleted, etc.)
-    // or we never had one, snap back to the default.
+    if (!pendingSelectId) return;
+    const match = versions.find((v) => v.resumeId === pendingSelectId);
+    if (match) {
+      setSelectedKey(match.key);
+      setPendingSelectId(null);
+    }
+  }, [versions, pendingSelectId]);
+  useEffect(() => {
+    // While a pendingSelectId is in flight, hold off on the default-
+    // fallback reset — otherwise the snapback to defaultKey clobbers
+    // the auto-select before the new version arrives.
+    if (pendingSelectId) return;
     if (!selectedKey || !versions.some((v) => v.key === selectedKey)) {
       setSelectedKey(defaultKey);
     }
-  }, [versions, selectedKey, defaultKey]);
+  }, [versions, selectedKey, defaultKey, pendingSelectId]);
 
   const selected = versions.find((v) => v.key === selectedKey) ?? null;
 
@@ -189,7 +206,7 @@ export function EditableResume({
         candidateRfId != null
           ? ({ candidateRfId } as const)
           : ({ candidateId } as const);
-      await uploadFileInChunks(
+      const upload = await uploadFileInChunks(
         file,
         "/api/uploads/candidate-resume",
         uploadExtra,
@@ -200,6 +217,7 @@ export function EditableResume({
         },
       );
       toast.success(`Uploaded ${file.name}`, { id: toastId });
+      if (upload?.id) setPendingSelectId(upload.id);
       router.refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed.";
@@ -235,6 +253,7 @@ export function EditableResume({
         return;
       }
       toast.success("Converted to PDF — you can now brand this version", { id: toastId });
+      setPendingSelectId(result.value.resumeId);
       router.refresh();
     });
   }
@@ -469,8 +488,9 @@ export function EditableResume({
           baseResumeUrl={previewUrl}
           baseResumeFilename={selected.filename}
           onClose={() => setEditorOpen(false)}
-          onSaved={() => {
+          onSaved={(newResumeId) => {
             setEditorOpen(false);
+            setPendingSelectId(newResumeId);
             router.refresh();
           }}
         />

@@ -2493,6 +2493,7 @@ function SubmittalEmailCompose({
       sendingLabel="Sending…"
       helperText="Pick a client contact, then Generate with Claude. Cmd+B / Cmd+U toggle bold and underline in the editor — Gmail renders them as real bold / underline."
       showTemplatePicker
+      enableEditWithClaude
       richTextBody
       toEditorHtml={submittalMarkdownToEditorHtml}
       templateFilter={(t) => t.audience !== "candidate"}

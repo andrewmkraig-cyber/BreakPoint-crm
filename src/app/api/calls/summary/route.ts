@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
   const record = await prisma.callTranscript.findUnique({ where: { callLogId } })
   if (!record) return NextResponse.json({ error: 'No transcript found' }, { status: 404 })
   const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
+    model: 'claude-sonnet-4-6',
     max_tokens: 500,
     messages: [{
       role: 'user',

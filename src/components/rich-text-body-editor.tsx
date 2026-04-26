@@ -27,6 +27,11 @@ export type RichTextBodyEditorHandle = {
   // Replaces the entire editor content with HTML. Used after Claude generation
   // and template application, which produce full-body HTML.
   setHtml: (html: string) => void;
+  // Replaces the entire content via a select-all + insertContent chain, so the
+  // swap lands in ProseMirror's history stack and the user can Cmd+Z back to
+  // their previous draft. Use this for "Edit with Claude" — setHtml is a
+  // history-clearing reset and won't survive an undo.
+  replaceWithUndo: (html: string) => void;
   // Pulls the current HTML snapshot. The parent already receives HTML via
   // onChange on every keystroke; this is a pull-model fallback if needed.
   getHtml: () => string;
@@ -101,6 +106,13 @@ export const RichTextBodyEditor = forwardRef<RichTextBodyEditorHandle, Props>(
         },
         setHtml(html: string) {
           editor?.commands.setContent(html, true);
+        },
+        replaceWithUndo(html: string) {
+          // chain().focus().selectAll().insertContent(...) routes through
+          // a single ProseMirror transaction that's pushed onto the history
+          // stack; Cmd+Z then restores the prior doc. Plain setContent is
+          // a state replacement that wipes history.
+          editor?.chain().focus().selectAll().insertContent(html).run();
         },
         getHtml() {
           return editor?.getHTML() ?? "";

@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import type { RFCandidate, RFClient, RFContact, RFJob } from "@/lib/rf-payload-shapes";
+import { formatLocation } from "@/lib/utils";
 
 // Row shape used by the /candidates list table.
 export type CandidateListRow = {
@@ -83,7 +84,12 @@ function rowFromDb(r: {
     name: composeName(r.firstName, r.lastName),
     title: r.currentDesignation ?? "",
     employer: r.currentOrganization ?? "",
-    location: r.location ?? "",
+    // formatLocation strips trailing country segments and abbreviates
+    // full state names ("Boston, Massachusetts, United States" →
+    // "Boston, MA"). Stored data may still hold the long form for
+    // pre-cleanup rows; this defensive format keeps the list cell
+    // tidy even before the one-off DB cleanup script runs.
+    location: formatLocation(r.location) || "",
     updatedAt: r.updatedAt.toISOString(),
   };
 }

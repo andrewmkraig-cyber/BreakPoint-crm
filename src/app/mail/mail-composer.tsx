@@ -28,6 +28,7 @@ import {
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
+import { EditWithClaudeMenu, type EditType } from "@/components/edit-with-claude-menu";
 import {
   MAIL_MERGE_FIELDS,
   applyMailMergeFields,
@@ -121,6 +122,7 @@ export function MailComposer({
   const [openAiPanel, setOpenAiPanel] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiBusy, setAiBusy] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
 
   // Insert Field splices at the caret position of whichever control was
   // last focused. Body is the default — tiptap's insertContent handles
@@ -594,6 +596,57 @@ export function MailComposer({
     }
   }
 
+  // Edit with Claude: revises the user's existing draft instead of
+  // writing one from scratch. The edited HTML is pushed back through
+  // the editor's chain() so the swap lands in ProseMirror's history —
+  // Cmd+Z restores the pre-edit body. Disabled when the body is empty.
+  async function onEditWithClaude(editType: EditType) {
+    if (!editor) return;
+    const currentHtml = editor.getHTML();
+    if (!stripHtml(currentHtml).trim()) {
+      toast.error("Type something in the body first.");
+      return;
+    }
+    setEditBusy(true);
+    try {
+      const res = await fetch("/api/email/edit-with-claude", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body: currentHtml,
+          editType,
+          format: "html",
+        }),
+        cache: "no-store",
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { body?: string; error?: string }
+        | null;
+      if (!res.ok) {
+        const msg = json?.error ?? `Edit failed (${res.status})`;
+        toast.error("Couldn't edit draft", { description: msg });
+        return;
+      }
+      const next = (json?.body ?? "").trim();
+      if (!next) {
+        toast.error("Claude returned an empty edit.");
+        return;
+      }
+      // chain().focus().selectAll().insertContent(...) records the swap
+      // as a single ProseMirror transaction so Cmd+Z restores the prior
+      // draft. Plain editor.commands.setContent would clear history.
+      isProgrammaticEdit.current = true;
+      editor.chain().focus().selectAll().insertContent(next).run();
+      toast.success("Draft revised", { description: "Cmd+Z to restore your original." });
+    } catch (e) {
+      toast.error("Couldn't edit draft", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   async function onSend() {
     setError(null);
     const toArr = splitAddresses(to);
@@ -772,6 +825,9 @@ export function MailComposer({
         onInsertField={insertMergeTag}
         openAi={openAiPanel}
         setOpenAi={setOpenAiPanel}
+        editBusy={editBusy}
+        editDisabled={!stripHtml(editor?.getHTML() ?? "").trim()}
+        onEditWithClaude={onEditWithClaude}
       />
       {openAiPanel && (
         <div className="space-y-2 border-b border-court-border bg-court-surface px-5 py-3">
@@ -1133,6 +1189,9 @@ function ComposerAddonToolbar({
   onInsertField,
   openAi,
   setOpenAi,
+  editBusy,
+  editDisabled,
+  onEditWithClaude,
 }: {
   templates: ActiveTemplateSummary[];
   openTemplate: boolean;
@@ -1143,6 +1202,9 @@ function ComposerAddonToolbar({
   onInsertField: (tag: string) => void;
   openAi: boolean;
   setOpenAi: (v: boolean) => void;
+  editBusy: boolean;
+  editDisabled: boolean;
+  onEditWithClaude: (editType: EditType) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-5 py-2">
@@ -1230,6 +1292,15 @@ function ComposerAddonToolbar({
       >
         <Sparkles className="h-3 w-3" /> Generate with Claude
       </button>
+
+      {/* Edit with Claude — separate from Generate. Revises the
+          existing draft instead of writing one from scratch. */}
+      <EditWithClaudeMenu
+        isEditing={editBusy}
+        disabled={editDisabled}
+        onPick={onEditWithClaude}
+        variant="tinted"
+      />
     </div>
   );
 }
