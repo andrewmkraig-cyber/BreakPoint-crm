@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, FileDown, Link2, Mail, MapPin, Phone } from "lucide-react";
+import { ArrowLeft, Link2, Mail, MapPin, Phone } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
@@ -10,11 +10,11 @@ import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
-import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
-import { DocxPreview } from "@/components/docx-preview";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
-// BrandResumeButton removed in 5A.5.a — branding moves into the
-// Edit Resume modal in 5A.5.b. The component itself still exists.
+// 5A.5.b parity: Ace-native candidates now share the same resume
+// management UI as RF-imported (multi-version dropdown, inline rename,
+// redact, brand). The inline single-resume preview was retired.
+import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editable-resume";
 import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -31,6 +31,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
       where: { id },
       select: {
         id: true,
+        rfId: true,
         firstName: true,
         lastName: true,
         email: true,
@@ -43,11 +44,19 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         notes: true,
         experience: true,
         education: true,
+        // Inline single-resume columns are still read so we can lazy-
+        // backfill the multi-version table for Ace-native candidates
+        // created before 5A.5.b. Once a CandidateResume row exists for
+        // this candidate, these columns are no longer the source of
+        // truth — EditableResume reads from CandidateResume.
         resumeFilename: true,
         resumeMimeType: true,
         resumeSize: true,
         resumeUploadedAt: true,
+        resumeData: true,
+        organizationId: true,
         createdAt: true,
+        createdById: true,
       },
     }),
     // Phase 4a: Placement / Interview reads routed through the
@@ -102,6 +111,159 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
   });
 
   if (!candidate) notFound();
+
+  // Phase 5A.5.b — Ace-native parity. EditableResume reads from
+  // CandidateResume rows; older Ace-native candidates may still hold
+  // their resume only on Candidate.resumeData (the legacy inline
+  // columns). When that's the case and there are no CandidateResume
+  // rows yet, materialize one so the multi-version dropdown / rename /
+  // redact / brand all work without a manual migration step. This is a
+  // one-time cost per candidate — subsequent loads see the row and
+  // skip the backfill. We intentionally don't clear the inline columns:
+  // leaving them in place keeps the legacy /api/local-candidate-resumes
+  // route working for any URL still hardcoded to it.
+  let candidateResumeRows = await prisma.candidateResume.findMany({
+    where: { candidateId: candidate.id, uploadComplete: true },
+    orderBy: { uploadedAt: "desc" },
+    select: {
+      id: true,
+      filename: true,
+      displayName: true,
+      mimeType: true,
+      size: true,
+      uploadedAt: true,
+      redactedAt: true,
+      variant: true,
+      uploadedBy: { select: { name: true, email: true } },
+    },
+  });
+  if (
+    candidateResumeRows.length === 0 &&
+    candidate.resumeData &&
+    candidate.resumeMimeType &&
+    candidate.resumeFilename
+  ) {
+    try {
+      // Copy the inline bytes into a fresh ArrayBuffer-backed Uint8Array
+      // so the Prisma Bytes typing doesn't trip on Buffer's widened
+      // ArrayBufferLike generic.
+      const bytes = candidate.resumeData;
+      const ab = new ArrayBuffer(bytes.byteLength);
+      const data = new Uint8Array(ab);
+      data.set(bytes);
+      await prisma.candidateResume.create({
+        data: {
+          candidateId: candidate.id,
+          // Ace-native rows have no RF id — column is nullable as of
+          // Ace 20.0. The previous -Date.now() synthetic placeholder
+          // overflowed PostgreSQL Int4 and 500'd the backfill insert.
+          candidateRfId: candidate.rfId,
+          organizationId: candidate.organizationId,
+          filename: candidate.resumeFilename,
+          mimeType: candidate.resumeMimeType,
+          size: candidate.resumeSize ?? bytes.byteLength,
+          data,
+          uploadComplete: true,
+          uploadedById: candidate.createdById,
+          uploadedAt: candidate.resumeUploadedAt ?? candidate.createdAt,
+        },
+      });
+      candidateResumeRows = await prisma.candidateResume.findMany({
+        where: { candidateId: candidate.id, uploadComplete: true },
+        orderBy: { uploadedAt: "desc" },
+        select: {
+          id: true,
+          filename: true,
+          displayName: true,
+          mimeType: true,
+          size: true,
+          uploadedAt: true,
+          redactedAt: true,
+          variant: true,
+          uploadedBy: { select: { name: true, email: true } },
+        },
+      });
+    } catch (err) {
+      // Best-effort backfill — if it fails (e.g., a transient DB error),
+      // log and fall through. The page still renders without the resume
+      // section rather than 500ing.
+      // eslint-disable-next-line no-console
+      console.warn("[local-profile] CandidateResume backfill failed:", err);
+    }
+  }
+  const resumeVersions: ResumeVersion[] = [];
+  for (const r of candidateResumeRows) {
+    // Phase 5A.5.b (Ace 20.0): DOCX → PDF conversions land as their
+    // own row. Surface as kind="converted" so the dropdown labels them
+    // distinctly from raw originals.
+    if (r.variant === "converted") {
+      resumeVersions.push({
+        key: r.id,
+        resumeId: r.id,
+        kind: "converted",
+        filename: r.filename,
+        displayName: r.displayName,
+        mimeType: r.mimeType,
+        sizeBytes: r.size,
+        uploadedAt: r.uploadedAt.toISOString(),
+        uploadedByName: r.uploadedBy?.name ?? r.uploadedBy?.email ?? null,
+      });
+      continue;
+    }
+    // Phase 5A.5.b (Bug C): the unified editor produces "branded",
+    // "redacted", or "branded-redacted" rows. The first two get their
+    // own dropdown kind; "branded-redacted" surfaces under the
+    // "Branded" label since the visible artifact has the logo on it.
+    if (r.variant === "branded" || r.variant === "branded-redacted") {
+      resumeVersions.push({
+        key: r.id,
+        resumeId: r.id,
+        kind: "branded",
+        filename: r.filename,
+        displayName: r.displayName,
+        mimeType: r.mimeType,
+        sizeBytes: r.size,
+        uploadedAt: r.uploadedAt.toISOString(),
+        uploadedByName: r.uploadedBy?.name ?? r.uploadedBy?.email ?? null,
+      });
+      continue;
+    }
+    // Phase 5A.5.b (Ace 20.0 / Bug B): redacted rows now live as their
+    // own CandidateResume row (variant="redacted", bytes in `data`).
+    // Surface as a distinct dropdown entry, parallel to branded.
+    if (r.variant === "redacted") {
+      resumeVersions.push({
+        key: r.id,
+        resumeId: r.id,
+        kind: "redacted",
+        filename: r.filename,
+        displayName: r.displayName,
+        mimeType: r.mimeType,
+        sizeBytes: r.size,
+        uploadedAt: r.uploadedAt.toISOString(),
+        uploadedByName: r.uploadedBy?.name ?? r.uploadedBy?.email ?? null,
+      });
+      continue;
+    }
+    resumeVersions.push({
+      key: r.id,
+      resumeId: r.id,
+      kind: "original",
+      filename: r.filename,
+      displayName: r.displayName,
+      mimeType: r.mimeType,
+      sizeBytes: r.size,
+      uploadedAt: r.uploadedAt.toISOString(),
+      uploadedByName: r.uploadedBy?.name ?? r.uploadedBy?.email ?? null,
+    });
+    // Legacy redacted-companion synthesis was removed in Ace 20.0.
+    // Pre-Bug-B data with redactedAt set on the original row no longer
+    // surfaces a paired "Redacted" entry here — every redaction now
+    // lives as its own variant="redacted" row, and the companion
+    // synthesis caused a dropdown delete to clobber the original
+    // because both entries shared the same resumeId.
+  }
+  resumeVersions.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
   const experience = (candidate.experience as unknown as Exp[] | null) ?? [];
@@ -318,54 +480,18 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
 
       {/* Resume-first layout: same split as the RF candidate page —
           ~70% resume / ~30% sidebar on lg+, so the recruiter opens the
-          profile and lands directly on the document they came to read. */}
+          profile and lands directly on the document they came to read.
+          5A.5.b: Ace-native uses the same EditableResume component as
+          RF-imported, with full multi-version + rename + redact + brand
+          parity. candidateRfId is null here; the component routes upload
+          + delete by candidateId instead. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        <section className="rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
-          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-court-border px-5 py-3">
-            <div className="min-w-0">
-              <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
-              {candidate.resumeFilename && (
-                <p className="truncate text-xs text-court-fg-muted">
-                  {candidate.resumeFilename}
-                  {candidate.resumeSize ? ` · ${(candidate.resumeSize / 1024).toFixed(0)} KB` : ""}
-                  {candidate.resumeUploadedAt ? ` · uploaded ${candidate.resumeUploadedAt.toLocaleDateString()}` : ""}
-                </p>
-              )}
-            </div>
-            {candidate.resumeFilename && (
-              <div className="flex items-center gap-2">
-                <a
-                  href={`/api/local-candidate-resumes/${candidate.id}`}
-                  className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
-                >
-                  <FileDown className="h-3 w-3" /> Download
-                </a>
-              </div>
-            )}
-          </div>
-          {candidate.resumeFilename && candidate.resumeMimeType === "application/pdf" ? (
-            // Rendered via our own pdfjs-canvas viewer so we control the
-            // zoom instead of relying on Chrome's iframe PDF viewer, which
-            // ignores #zoom= fragments and lands on ~44% fit-width.
-            <PdfCanvasViewer
-              src={`/api/local-candidate-resumes/${candidate.id}`}
-              className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
-            />
-          ) : candidate.resumeFilename &&
-            (candidate.resumeMimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-              candidate.resumeMimeType === "application/msword" ||
-              /\.(docx?|DOCX?)$/.test(candidate.resumeFilename)) ? (
-            <DocxPreview
-              idOrRfId={candidate.id}
-              className="min-h-[900px] w-full overflow-auto rounded-b-xl [height:calc(100vh-200px)]"
-            />
-          ) : candidate.resumeFilename ? (
-            <p className="px-5 py-8 text-center text-xs text-court-fg-muted">
-              Preview not available for this file type — use Download to open.
-            </p>
-          ) : (
-            <p className="px-5 py-8 text-center text-xs text-court-fg-muted">No resume on file.</p>
-          )}
+        <section className="lg:col-span-7">
+          <EditableResume
+            candidateRfId={null}
+            candidateId={candidate.id}
+            versions={resumeVersions}
+          />
         </section>
 
         <aside className="space-y-6 lg:col-span-3">

@@ -17,7 +17,6 @@ import {
   Sparkles,
   Trash2,
   UploadCloud,
-  UserCheck,
   UserX,
   Video,
   X,
@@ -60,7 +59,6 @@ import { createClientContact } from "@/app/candidates/[id]/contact-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
-import { sendEmailAction } from "@/app/email/actions";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 
 export type ClientContactRef = {
@@ -237,7 +235,6 @@ export function PlacementActions({
   const [submitOpen, setSubmitOpen] = useState(false);
   const [submitInitialJobRfId, setSubmitInitialJobRfId] = useState<number | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
-  const [referenceOpen, setReferenceOpen] = useState(false);
 
   // Deep-link from /applicants and /jobs/[id] pipeline rows. The
   // expected query is ?compose=submittal&jobId=NN — when both are
@@ -298,15 +295,6 @@ export function PlacementActions({
     router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router, jobs]);
 
-  function onRequestReferences() {
-    if (!candidateEmail) {
-      toast.error("No candidate email on file", {
-        description: "Add an email to the candidate profile first.",
-      });
-      return;
-    }
-    setReferenceOpen(true);
-  }
 
   return (
     <>
@@ -315,14 +303,6 @@ export function PlacementActions({
           Jobs ({jobs.length})
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onRequestReferences}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
-          >
-            <UserCheck className="h-3.5 w-3.5" />
-            Request References
-          </button>
           <button
             type="button"
             onClick={() => setApplyOpen(true)}
@@ -508,72 +488,7 @@ export function PlacementActions({
           onClose={() => setApplyOpen(false)}
         />
       )}
-      {referenceOpen && (
-        <ReferenceCheckCompose
-          candidateFirstName={candidateFirstName}
-          candidateLastName={candidateLastName}
-          candidateEmail={candidateEmail}
-          onClose={() => setReferenceOpen(false)}
-        />
-      )}
     </>
-  );
-}
-
-function ReferenceCheckCompose({
-  candidateFirstName,
-  candidateLastName,
-  candidateEmail,
-  onClose,
-}: {
-  candidateFirstName: string;
-  candidateLastName: string;
-  candidateEmail: string;
-  onClose: () => void;
-}) {
-  const fullName = [candidateFirstName, candidateLastName].filter(Boolean).join(" ");
-  return (
-    <EmailComposer
-      title="Reference check request"
-      subtitle={fullName ? `${fullName} · ${candidateEmail}` : candidateEmail}
-      initial={{
-        to: candidateEmail ? [candidateEmail] : [],
-        cc: [],
-        bcc: [],
-        subject: "",
-        body: "",
-      }}
-      showTemplatePicker
-      templateFilter={(t) => t.trigger === "reference_check_request" || t.audience === "candidate"}
-      resolveTemplate={(t) => {
-        const values = {
-          candidateFirstName,
-          candidateLastName,
-          candidateFullName: fullName,
-          candidateEmail,
-        };
-        return {
-          subject: applyMergeFieldsClient(t.subject, values),
-          body: applyMergeFieldsClient(t.body, values),
-        };
-      }}
-      onClose={onClose}
-      sendLabel="Send Reference Request"
-      sendingLabel="Sending…"
-      helperText="Pick the Reference Check Request template from Use Template (or any candidate-facing template)."
-      onSend={async (draft: EmailDraft) => {
-        const result = await sendEmailAction({
-          to: draft.to,
-          cc: draft.cc,
-          bcc: draft.bcc,
-          subject: draft.subject,
-          bodyText: draft.body,
-        });
-        if (!result.ok) throw new Error(result.error);
-        toast.success("Reference request sent", { description: `Sent to ${draft.to.join(", ")}.` });
-        onClose();
-      }}
-    />
   );
 }
 

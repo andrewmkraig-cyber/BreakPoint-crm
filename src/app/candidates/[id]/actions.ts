@@ -157,20 +157,207 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
   }
 }
 
-export async function deleteCandidateResume(candidateIdOrRfId: number | string): Promise<ActionResult> {
+// Phase 5A.5.b (Ace 20.0): per-version delete. Earlier versions of this
+// action took a candidateId/rfId and wiped EVERY CandidateResume row
+// for that candidate — fine when there was only one row per candidate,
+// disastrous after 5A.5.a let recruiters hold multiple versions. The
+// signature now takes a specific row's resumeId, scoped by org.
+//
+// Implementation note: deleteMany is used so the action is idempotent
+// against transient races (e.g. a stale tab firing after the row was
+// already removed) and so a tenant-scope mismatch returns a clean
+// "not found" error rather than a thrown Prisma exception.
+export async function deleteCandidateResume(resumeId: string): Promise<ActionResult> {
   if (!(await requireSession())) return { ok: false, error: "Not signed in." };
-  if (candidateIdOrRfId == null) return { ok: false, error: "Missing candidate id." };
+  if (!resumeId) return { ok: false, error: "Missing resume id." };
 
   try {
-    const candidate = await resolveCandidate(candidateIdOrRfId);
-    if (!candidate) return { ok: false, error: "Candidate not found." };
+    const org = await getCurrentOrg();
+    const target = await prisma.candidateResume.findFirst({
+      where: { id: resumeId, organizationId: org.id },
+      select: { candidateId: true, candidateRfId: true },
+    });
+    const result = await prisma.candidateResume.deleteMany({
+      where: { id: resumeId, organizationId: org.id },
+    });
+    if (result.count === 0) {
+      return { ok: false, error: "Resume version not found." };
+    }
 
-    await prisma.candidateResume.deleteMany({ where: { candidateId: candidate.id } });
-    revalidatePath(`/candidates/${candidate.id}`);
-    if (candidate.rfId != null) revalidatePath(`/candidates/${candidate.rfId}`);
+    // When the deleted row was the candidate's LAST CandidateResume row,
+    // null out the legacy inline Candidate.resume* columns. Otherwise
+    // the lazy-backfill in local-profile.tsx (which mirrors the inline
+    // columns into a fresh CandidateResume row whenever it sees zero
+    // rows) immediately resurrects the resume on the next page load.
+    // The inline columns were the source-of-truth before 5A.5.a; the
+    // backfill is the only remaining reader, so nulling them is safe.
+    if (target?.candidateId) {
+      const remaining = await prisma.candidateResume.count({
+        where: { candidateId: target.candidateId },
+      });
+      if (remaining === 0) {
+        await prisma.candidate.update({
+          where: { id: target.candidateId },
+          data: {
+            resumeFilename: null,
+            resumeMimeType: null,
+            resumeSize: null,
+            resumeData: null,
+            resumeUploadedAt: null,
+          },
+        });
+      }
+      revalidatePath(`/candidates/${target.candidateId}`);
+    }
+    if (target?.candidateRfId != null && target.candidateRfId > 0) {
+      revalidatePath(`/candidates/${target.candidateRfId}`);
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to delete resume." };
+  }
+}
+
+// Phase 5A.5.b (Ace 20.0): convert a DOCX CandidateResume row into a
+// new PDF row. mammoth pulls the raw text out of the .docx; pdf-lib
+// lays it onto Letter-size pages with word-wrap and pagination. The
+// result is a plain-text PDF (no formatting carry-over) but it's a
+// valid PDF the recruiter can then run through the unified Edit
+// Resume flow. Saved as variant="converted" with a fresh row.
+//
+// Tenant scope: source row + write target both filter by org via
+// getCurrentOrg(). A forged resumeId from another tenant errors out.
+const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const LEGACY_DOC_MIME = "application/msword";
+
+export async function convertDocxResumeToPdf(input: {
+  resumeId: string;
+}): Promise<ActionResult<{ resumeId: string }>> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+  if (!input.resumeId) return { ok: false, error: "Missing resume id." };
+
+  try {
+    const org = await getCurrentOrg();
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    });
+    if (!user) return { ok: false, error: "Not signed in." };
+
+    const source = await prisma.candidateResume.findFirst({
+      where: { id: input.resumeId, organizationId: org.id },
+    });
+    if (!source) return { ok: false, error: "Source resume not found." };
+    if (source.mimeType !== DOCX_MIME && source.mimeType !== LEGACY_DOC_MIME) {
+      return { ok: false, error: "Convert is only available for .doc / .docx resumes." };
+    }
+
+    const mammoth = await import("mammoth");
+    const extract = mammoth.extractRawText ?? mammoth.default?.extractRawText;
+    if (!extract) return { ok: false, error: "DOCX extractor unavailable." };
+    const sourceBuffer = Buffer.from(source.data);
+    const { value: rawText } = await extract({ buffer: sourceBuffer });
+    const text = (rawText ?? "").replace(/\r\n/g, "\n");
+
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+    const pdf = await PDFDocument.create();
+    const font = await pdf.embedFont(StandardFonts.Helvetica);
+    const fontSize = 11;
+    const lineHeight = fontSize * 1.4;
+    const margin = 54; // 0.75 inch
+    const pageWidth = 612;
+    const pageHeight = 792;
+    const usableWidth = pageWidth - margin * 2;
+    const black = rgb(0, 0, 0);
+
+    let page = pdf.addPage([pageWidth, pageHeight]);
+    let y = pageHeight - margin - fontSize;
+
+    const ensureSpace = () => {
+      if (y < margin) {
+        page = pdf.addPage([pageWidth, pageHeight]);
+        y = pageHeight - margin - fontSize;
+      }
+    };
+
+    const drawLine = (line: string) => {
+      ensureSpace();
+      // pdf-lib chokes on characters outside WinAnsi; replace anything
+      // the standard font can't measure with a placeholder so a stray
+      // emoji or smart-quote doesn't 500 the whole conversion.
+      const safe = line.replace(/[^\x00-\x7F]/g, (c) => {
+        try {
+          font.widthOfTextAtSize(c, fontSize);
+          return c;
+        } catch {
+          return "?";
+        }
+      });
+      page.drawText(safe, { x: margin, y, size: fontSize, font, color: black });
+      y -= lineHeight;
+    };
+
+    const paragraphs = text.split(/\n+/);
+    for (const paragraph of paragraphs) {
+      const trimmed = paragraph.trim();
+      if (!trimmed) {
+        y -= lineHeight;
+        continue;
+      }
+      const words = trimmed.split(/\s+/);
+      let line = "";
+      for (const word of words) {
+        const candidate = line ? `${line} ${word}` : word;
+        let width: number;
+        try {
+          width = font.widthOfTextAtSize(candidate, fontSize);
+        } catch {
+          width = candidate.length * fontSize * 0.6;
+        }
+        if (width > usableWidth && line) {
+          drawLine(line);
+          line = word;
+        } else {
+          line = candidate;
+        }
+      }
+      if (line) drawLine(line);
+      y -= lineHeight * 0.3;
+    }
+
+    const outputBytes = await pdf.save();
+    const baseName =
+      (source.displayName?.trim() || source.filename).replace(/\.(pdf|docx?|txt)$/i, "");
+    const filename = `${baseName}.pdf`;
+
+    const ab = new ArrayBuffer(outputBytes.byteLength);
+    const data = new Uint8Array(ab);
+    data.set(outputBytes);
+
+    const created = await prisma.candidateResume.create({
+      data: {
+        candidateId: source.candidateId,
+        candidateRfId: source.candidateRfId,
+        organizationId: org.id,
+        filename,
+        mimeType: "application/pdf",
+        size: data.byteLength,
+        data,
+        variant: "converted",
+        uploadComplete: true,
+        uploadedById: user.id,
+      },
+      select: { id: true },
+    });
+
+    if (source.candidateId) revalidatePath(`/candidates/${source.candidateId}`);
+    if (source.candidateRfId != null && source.candidateRfId > 0) {
+      revalidatePath(`/candidates/${source.candidateRfId}`);
+    }
+    return { ok: true, value: { resumeId: created.id } };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to convert DOCX." };
   }
 }
 
@@ -210,7 +397,7 @@ export async function renameCandidateResume(input: {
     });
 
     if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
-    if (existing.candidateRfId > 0) revalidatePath(`/candidates/${existing.candidateRfId}`);
+    if (existing.candidateRfId != null && existing.candidateRfId > 0) revalidatePath(`/candidates/${existing.candidateRfId}`);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to rename resume." };

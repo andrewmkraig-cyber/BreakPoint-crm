@@ -168,6 +168,10 @@ export default async function CandidateProfilePage({
         size: true,
         uploadedAt: true,
         redactedAt: true,
+        // Phase 5A.5.b: surfaces branded rows so we can label them
+        // "Branded (date)" in the version dropdown. null/"original"
+        // both mean a raw upload.
+        variant: true,
         uploadedBy: { select: { name: true, email: true } },
       },
     }),
@@ -185,12 +189,31 @@ export default async function CandidateProfilePage({
     [c.first_name, c.last_name].filter(Boolean).join(" ") ??
     "(unnamed)";
   const locationLabel = formatLocation(c.location);
-  // Phase 5A.5.a: flatten the N resume rows into the version array
-  // the new EditableResume component renders. Each row becomes one
+  // Phase 5A.5.a/b: flatten the N resume rows into the version array
+  // the EditableResume component renders. Each row becomes one
   // "Original (date)" entry plus optionally a "Redacted (date)" entry
-  // when redactedAt is set. The array is already sorted newest-first.
+  // when redactedAt is set; rows with variant="branded" become a
+  // "Branded (date)" entry instead of an Original. The findMany above
+  // is already sorted by uploadedAt desc, so we then sort the flat
+  // array by uploadedAt to interleave branded variants between
+  // originals correctly (5A.5.b: "newest first alongside Original
+  // and Redacted").
   const resumeVersions: ResumeVersion[] = [];
   for (const r of localResume) {
+    if (r.variant === "branded") {
+      resumeVersions.push({
+        key: r.id,
+        resumeId: r.id,
+        kind: "branded",
+        filename: r.filename,
+        displayName: r.displayName,
+        mimeType: r.mimeType,
+        sizeBytes: r.size,
+        uploadedAt: r.uploadedAt.toISOString(),
+        uploadedByName: r.uploadedBy?.name ?? r.uploadedBy?.email ?? null,
+      });
+      continue;
+    }
     resumeVersions.push({
       key: r.id,
       resumeId: r.id,
@@ -217,6 +240,7 @@ export default async function CandidateProfilePage({
       });
     }
   }
+  resumeVersions.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
   const tagSet = collectTags(c);
   const isKept = tagSet.has("kept") || tagSet.has("keep");
   const displayTags = Array.from(tagSet).filter((t) => t !== "kept" && t !== "keep");
@@ -590,6 +614,7 @@ export default async function CandidateProfilePage({
             <div className="space-y-6 lg:col-span-7">
               <EditableResume
                 candidateRfId={id}
+                candidateId={candidate.id}
                 versions={resumeVersions}
               />
               {/* Collapsible SMS thread. Sits right below the resume so recruiters

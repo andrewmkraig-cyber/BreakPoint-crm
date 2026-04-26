@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import {
   Download,
   Edit3,
+  FileOutput,
   FileText,
   Loader2,
   Trash2,
@@ -20,6 +21,7 @@ import { DocxPreview } from "@/components/docx-preview";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
+  convertDocxResumeToPdf,
   deleteCandidateResume,
   renameCandidateResume,
 } from "@/app/candidates/[id]/actions";
@@ -27,9 +29,11 @@ import {
 const ACCEPT_RESUME_MIME =
   "application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,text/plain,.txt";
 
-// Lazy-load the redaction editor (pdfjs + pdf-lib are ~1.5MB combined).
-const ResumeRedactor = dynamic(
-  () => import("@/app/candidates/[id]/resume-redactor").then((m) => m.ResumeRedactor),
+// Lazy-load the tabbed editor (pdfjs + pdf-lib are ~1.5MB combined).
+// Bundles both Redact and Brand tabs; the user picks which one to use
+// once the modal opens.
+const ResumeEditor = dynamic(
+  () => import("@/app/candidates/[id]/resume-editor").then((m) => m.ResumeEditor),
   { ssr: false },
 );
 
@@ -47,12 +51,17 @@ const ResumeRedactor = dynamic(
 // empty save never shows a blank name in the UI.
 
 export type ResumeVersion = {
-  // Stable React key. Original = resumeId; redacted = "{resumeId}:redacted".
+  // Stable React key. Original = resumeId; redacted = "{resumeId}:redacted";
+  // branded = the branded row's resumeId (its own row).
   key: string;
-  // The CandidateResume row id. Multiple versions can share this when
-  // a single row carries both an original and a redacted variant.
+  // The CandidateResume row id. The "redacted" variant shares the row
+  // with its original (stored in the same row's redacted* columns).
+  // "original" and "branded" each map to their own distinct row.
   resumeId: string;
-  kind: "original" | "redacted"; // future: "branded"
+  // 5A.5.b: branded versions are stored as new CandidateResume rows
+  // with variant="branded" so the dropdown can list multiple of them.
+  // "converted" surfaces DOCX → PDF conversions as their own entry.
+  kind: "original" | "redacted" | "branded" | "converted";
   filename: string;
   displayName: string | null;
   mimeType: string;
@@ -74,6 +83,10 @@ function isDocxResume(v: ResumeVersion): boolean {
 
 function previewUrlFor(v: ResumeVersion): string {
   const base = `/api/candidate-resumes/by-id/${v.resumeId}`;
+  // Branded rows are stored on their own CandidateResume row so the
+  // by-id route serves the branded bytes from `data` without any
+  // variant query param. Only "redacted" lives on the original row's
+  // redactedData column and needs the variant flag.
   return v.kind === "redacted" ? `${base}?variant=redacted` : base;
 }
 
@@ -82,8 +95,18 @@ function downloadUrlFor(v: ResumeVersion): string {
   return v.kind === "redacted" ? `${base}&variant=redacted` : base;
 }
 
+function extensionFor(v: ResumeVersion): string {
+  if (v.mimeType === "application/pdf") return ".pdf";
+  if (v.mimeType === DOCX_MIME) return ".docx";
+  if (v.mimeType === LEGACY_DOC_MIME) return ".doc";
+  if (v.mimeType === "text/plain") return ".txt";
+  const m = v.filename.match(/\.(pdf|docx?|txt)$/i);
+  return m ? m[0].toLowerCase() : ".pdf";
+}
+
 function displayNameFor(v: ResumeVersion): string {
-  return (v.displayName?.trim() || v.filename.replace(/\.(pdf|docx?|txt)$/i, "")) + ".pdf";
+  const stripped = (v.displayName?.trim() || v.filename).replace(/\.(pdf|docx?|txt)$/i, "");
+  return stripped + extensionFor(v);
 }
 
 function dropdownLabelFor(v: ResumeVersion): string {
@@ -92,8 +115,8 @@ function dropdownLabelFor(v: ResumeVersion): string {
     day: "numeric",
     year: "numeric",
   });
-  const kindLabel = v.kind === "redacted" ? "Redacted" : "Original";
-  return `${kindLabel} (${date})`;
+  const stripped = (v.displayName?.trim() || v.filename).replace(/\.(pdf|docx?|txt)$/i, "");
+  return `${stripped} (${date})`;
 }
 
 // Default selection: most recent redacted if any version is redacted,
@@ -107,15 +130,20 @@ function pickDefault(versions: ResumeVersion[]): string | null {
 
 export function EditableResume({
   candidateRfId,
+  candidateId,
   versions,
 }: {
-  candidateRfId: number;
+  // RF-imported candidates pass their numeric rfId for the legacy
+  // upload path; Ace-native candidates pass null and route by
+  // candidateId. Both surfaces share the rest of the component.
+  candidateRfId: number | null;
+  candidateId: string;
   versions: ResumeVersion[];
 }) {
   const router = useRouter();
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
-  const [redactorOpen, setRedactorOpen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Selected version key. Re-syncs to the new default whenever the
@@ -154,10 +182,17 @@ export function EditableResume({
     setIsUploading(true);
     const toastId = toast.loading(`Uploading ${file.name}…`);
     try {
+      // Phase 5A.5.b: route by candidateId when there's no RF id (Ace-
+      // native). The endpoint accepts either; sending the cuid keeps
+      // the row's candidateRfId column clean of negative placeholders.
+      const uploadExtra =
+        candidateRfId != null
+          ? ({ candidateRfId } as const)
+          : ({ candidateId } as const);
       await uploadFileInChunks(
         file,
         "/api/uploads/candidate-resume",
-        { candidateRfId },
+        uploadExtra,
         {
           onProgress: (pct) => {
             toast.loading(`Uploading ${file.name} — ${pct}%`, { id: toastId });
@@ -175,14 +210,31 @@ export function EditableResume({
   }
 
   function onDelete() {
-    if (!confirm("Delete this resume? This can't be undone.")) return;
+    if (!selected) return;
+    if (!confirm("Delete this resume version? This can't be undone.")) return;
     startTransition(async () => {
-      const result = await deleteCandidateResume(candidateRfId);
+      // Phase 5A.5.b (Ace 20.0): per-version delete. Earlier code wiped
+      // ALL versions for the candidate; we now scope to a single row.
+      const result = await deleteCandidateResume(selected.resumeId);
       if (!result.ok) {
         toast.error("Couldn't delete resume", { description: result.error });
         return;
       }
       toast.success("Resume deleted");
+      router.refresh();
+    });
+  }
+
+  function onConvertDocx() {
+    if (!selected) return;
+    const toastId = toast.loading("Converting to PDF…");
+    startTransition(async () => {
+      const result = await convertDocxResumeToPdf({ resumeId: selected.resumeId });
+      if (!result.ok) {
+        toast.error("Couldn't convert to PDF", { id: toastId, description: result.error });
+        return;
+      }
+      toast.success("Converted to PDF — you can now brand this version", { id: toastId });
       router.refresh();
     });
   }
@@ -254,8 +306,11 @@ export function EditableResume({
   const previewUrl = previewUrlFor(selected);
   const downloadUrl = downloadUrlFor(selected);
   const fileBaseLabel = displayNameFor(selected);
-  const canRedact = selected.kind === "original" && selected.mimeType === "application/pdf";
   const docx = isDocxResume(selected);
+  // The unified editor accepts any PDF version as a base — the user may
+  // be looking at a branded or redacted derivative and want to add more
+  // marks on top. DOC/DOCX resumes can't be edited (pdf-lib only).
+  const canEdit = !docx && selected.mimeType === "application/pdf";
 
   return (
     <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
@@ -322,14 +377,25 @@ export function EditableResume({
               ))}
             </select>
           </label>
-          {canRedact && (
+          {canEdit && (
             <button
               type="button"
-              onClick={() => setRedactorOpen(true)}
+              onClick={() => setEditorOpen(true)}
               disabled={isUploading || isPending}
               className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
             >
               <Edit3 className="h-3 w-3" /> Edit Resume
+            </button>
+          )}
+          {docx && (
+            <button
+              type="button"
+              onClick={onConvertDocx}
+              disabled={isUploading || isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
+            >
+              {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileOutput className="h-3 w-3" />}
+              Convert to PDF
             </button>
           )}
           <Link
@@ -382,7 +448,7 @@ export function EditableResume({
           />
         ) : docx ? (
           <DocxPreview
-            idOrRfId={candidateRfId}
+            idOrRfId={candidateRfId ?? candidateId}
             className="min-h-[900px] w-full overflow-auto rounded-b-xl [height:calc(100vh-200px)]"
           />
         ) : (
@@ -396,15 +462,15 @@ export function EditableResume({
         )}
       </div>
 
-      {redactorOpen && canRedact && (
-        <ResumeRedactor
-          candidateRfId={candidateRfId}
-          originalUrl={previewUrlFor({ ...selected, kind: "original" })}
-          originalFilename={selected.filename}
-          onClose={() => setRedactorOpen(false)}
+      {editorOpen && canEdit && (
+        <ResumeEditor
+          candidateId={candidateId}
+          sourceResumeId={selected.resumeId}
+          baseResumeUrl={previewUrl}
+          baseResumeFilename={selected.filename}
+          onClose={() => setEditorOpen(false)}
           onSaved={() => {
-            setRedactorOpen(false);
-            toast.success("Redacted version saved");
+            setEditorOpen(false);
             router.refresh();
           }}
         />

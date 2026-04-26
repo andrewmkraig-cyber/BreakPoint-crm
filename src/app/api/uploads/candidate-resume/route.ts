@@ -53,13 +53,13 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
     // by candidate. The @unique constraints on candidateId / candidateRfId
     // were dropped in the same migration. Each candidate can now carry
     // multiple uploaded versions; the version dropdown on the profile
-    // surfaces them. The candidateRfId fallback to negative synthetic IDs
-    // for Ace-native uploads is kept (column is still required Int) but
-    // is now harmless — no unique collision possible.
+    // surfaces them. Phase 5A.5.b (Ace 20.0): candidateRfId is nullable —
+    // Ace-native rows pass through null. The previous -Date.now() hack
+    // overflowed PostgreSQL Int4 and 500'd every Ace-native upload.
     const row = await prisma.candidateResume.create({
       data: {
         candidateId: extra.candidateId,
-        candidateRfId: extra.candidateRfId ?? -Date.now(),
+        candidateRfId: extra.candidateRfId,
         organizationId: extra.organizationId,
         filename,
         mimeType,
@@ -91,7 +91,7 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
     });
     if (isLast) {
       if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
-      revalidatePath(`/candidates/${existing.candidateRfId}`);
+      if (existing.candidateRfId != null) revalidatePath(`/candidates/${existing.candidateRfId}`);
     }
     return { totalBytesStored: combined.byteLength };
   },

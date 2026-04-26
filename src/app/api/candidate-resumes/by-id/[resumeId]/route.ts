@@ -32,10 +32,21 @@ export async function GET(
   const useRedacted = wantsRedacted && hasRedacted;
   const bytes = useRedacted ? resume.redactedData! : resume.data;
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
-  const labelBase = (resume.displayName?.trim() || resume.filename).replace(/\.pdf$/i, "");
+  // Phase 5A.5.b (Ace 20.0): pick the extension off the actual mime
+  // type rather than hardcoding .pdf — DOCX downloads were landing as
+  // {name}.pdf, which corrupted the file when the recruiter opened it.
+  const extFromMime = (() => {
+    if (mime === "application/pdf") return ".pdf";
+    if (mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") return ".docx";
+    if (mime === "application/msword") return ".doc";
+    if (mime === "text/plain") return ".txt";
+    const m = resume.filename.match(/\.(pdf|docx?|txt)$/i);
+    return m ? m[0].toLowerCase() : ".pdf";
+  })();
+  const labelBase = (resume.displayName?.trim() || resume.filename).replace(/\.(pdf|docx?|txt)$/i, "");
   const baseFilename = useRedacted
     ? `${labelBase}-redacted.pdf`
-    : `${labelBase}.pdf`;
+    : `${labelBase}${extFromMime}`;
   const size = useRedacted ? (resume.redactedSize ?? bytes.byteLength) : resume.size;
 
   const disposition = req.nextUrl.searchParams.get("download") === "1" ? "attachment" : "inline";

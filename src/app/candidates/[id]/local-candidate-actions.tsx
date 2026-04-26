@@ -7,7 +7,6 @@ import {
   Loader2,
   Sparkles,
   Target,
-  UserCheck,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -15,7 +14,6 @@ import { cn } from "@/lib/utils";
 import {
   applyLocalCandidateToJob,
   generateLocalSubmittal,
-  sendLocalReferenceRequest,
   sendLocalSubmittalEmail,
 } from "@/app/candidates/[id]/local-placement-actions";
 import { InlineContactMultiInput, buildCcBccOptions } from "@/app/candidates/[id]/placement-flows";
@@ -62,7 +60,7 @@ export function LocalCandidateActions(props: {
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const router = useRouter();
-  const [modal, setModal] = useState<"apply" | "submit" | "reference" | null>(null);
+  const [modal, setModal] = useState<"apply" | "submit" | null>(null);
   // Pre-seed value for SubmitModal when the user arrives via a deep
   // link. Two URL shapes are accepted so every Submit entry point lands
   // on the same modal:
@@ -113,13 +111,6 @@ export function LocalCandidateActions(props: {
         >
           <Target className="h-3 w-3" /> Apply to Job
         </button>
-        <button
-          type="button"
-          onClick={() => setModal("reference")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
-        >
-          <UserCheck className="h-3 w-3" /> Request References
-        </button>
       </div>
 
       {modal === "apply" && (
@@ -140,15 +131,6 @@ export function LocalCandidateActions(props: {
             setModal(null);
             setSubmitInitialJobRfId(null);
           }}
-        />
-      )}
-      {modal === "reference" && (
-        <ReferenceModal
-          candidateId={props.candidateId}
-          candidateName={props.candidateName}
-          candidateFirstName={props.candidateFirstName}
-          candidateEmail={props.candidateEmail}
-          onClose={() => setModal(null)}
         />
       )}
     </div>
@@ -403,89 +385,6 @@ function SubmitModal(props: {
         >
           {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSignature className="h-3 w-3" />}
           Send Submittal
-        </button>
-      </div>
-    </ModalShell>
-  );
-}
-
-// ---- Reference modal ----
-
-function ReferenceModal(props: {
-  candidateId: string;
-  candidateName: string;
-  candidateFirstName: string;
-  candidateEmail: string | null;
-  onClose: () => void;
-}) {
-  const router = useRouter();
-  const [to, setTo] = useState(props.candidateEmail ?? "");
-  const [cc, setCc] = useState("");
-  const [subject, setSubject] = useState(`Reference request for ${props.candidateName}`);
-  const [body, setBody] = useState(
-    `Hi ${props.candidateFirstName || "there"},\n\n` +
-      `As we move forward, could you please send over 2–3 professional references — ideally a mix of recent managers and peers? ` +
-      `A name, email, phone, and your working relationship for each is perfect.\n\n` +
-      `Thanks!`,
-  );
-  const [isSending, startSend] = useTransition();
-
-  function onSend() {
-    const toList = to.split(",").map((s) => s.trim()).filter(Boolean);
-    const ccList = cc.split(",").map((s) => s.trim()).filter(Boolean);
-    if (toList.length === 0) {
-      toast.error("At least one recipient is required.");
-      return;
-    }
-    const toastId = toast.loading("Sending reference request…");
-    startSend(async () => {
-      const res = await sendLocalReferenceRequest({
-        candidateId: props.candidateId,
-        to: toList,
-        cc: ccList,
-        subject: subject.trim(),
-        bodyText: body.trim(),
-      });
-      if (!res.ok) {
-        toast.error("Send failed", { id: toastId, description: res.error });
-        return;
-      }
-      toast.success("Reference request sent", { id: toastId });
-      router.refresh();
-      props.onClose();
-    });
-  }
-
-  return (
-    <ModalShell title="Request References" onClose={props.onClose}>
-      <Field label="To" value={to} onChange={setTo} placeholder="candidate@example.com" />
-      <Field label="CC" value={cc} onChange={setCc} placeholder="optional, comma-separated" />
-      <Field label="Subject" value={subject} onChange={setSubject} />
-      <label className="block text-sm">
-        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Body</span>
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={10}
-          className="mt-1 w-full resize-vertical rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm leading-relaxed text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-        />
-      </label>
-      <div className="flex justify-end gap-2 pt-2">
-        <button
-          type="button"
-          onClick={props.onClose}
-          className="rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted hover:text-court-fg"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={isSending || !to.trim() || !body.trim() || !subject.trim()}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-50"
-        >
-          {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserCheck className="h-3 w-3" />}
-          Send Reference Request
         </button>
       </div>
     </ModalShell>

@@ -294,6 +294,38 @@ export async function createCandidate(
       currentOrganization: created.currentOrganization,
     });
 
+    // Phase 5A.5.b: write a parallel CandidateResume row whenever the
+    // create flow attaches a resume, so the multi-version dropdown +
+    // rename + redact + brand work on Ace-native candidates without a
+    // first-load backfill. The inline columns on Candidate stay
+    // populated for legacy /api/local-candidate-resumes/[id] callers.
+    if (resumeBytes && resumeMeta) {
+      try {
+        await prisma.candidateResume.create({
+          data: {
+            candidateId: created.id,
+            // Ace-native rows have no RF id — column is nullable as of
+            // Ace 20.0. The previous -Date.now() synthetic placeholder
+            // overflowed PostgreSQL Int4 and 500'd the create.
+            candidateRfId: null,
+            organizationId: org.id,
+            filename: resumeMeta.filename,
+            mimeType: resumeMeta.mimeType,
+            size: resumeMeta.size,
+            data: resumeBytes,
+            uploadComplete: true,
+            uploadedById: userId,
+          },
+        });
+      } catch (writeErr) {
+        // Non-fatal: the inline copy on Candidate is still saved, and
+        // local-profile.tsx lazy-backfills on view if this row is
+        // missing. Log so we can spot a systemic issue if it ever fires.
+        // eslint-disable-next-line no-console
+        console.warn("[createCandidate] CandidateResume mirror failed:", writeErr);
+      }
+    }
+
     if (input.resumeUploadId) {
       await prisma.resumeUpload.deleteMany({ where: { id: input.resumeUploadId } });
     }

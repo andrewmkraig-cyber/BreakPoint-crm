@@ -70,6 +70,7 @@ When drifting or tasks complete: update ACE_STATE.md and ACE_ROADMAP.md as part 
 
 ## Other Rules
 
+- GitHub is the primary source of truth for cross-chat handoff. The four ACE_*.md files (ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, ACE_DESIGN.md) are how each Ace chat hands off to the next. Slack canvases and printed PDFs are secondary references for Andrew only. Every Ace chat must end with a commit updating these docs. If the docs are not updated, the handoff failed and the next chat starts blind.
 - Architectural decisions are made and documented by Claude in plain English with the why explained.
 - Max 3 items per prompt. 7+ items result in incomplete implementation.
 - Force fresh deploy when cache issues arise: npx vercel --prod --yes --force

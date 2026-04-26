@@ -397,9 +397,11 @@ model CandidateResume {
   // Phase 5A.5.a: dropped the @unique on candidateRfId / candidateId
   // so a candidate can carry multiple uploaded versions. Each upload
   // creates its own row; the most-recent-by-uploadedAt is the default
-  // legacy lookup target. The negative-synthetic candidateRfId hack
-  // for Ace-native uploads stays (the column is still required Int).
-  candidateRfId  Int
+  // legacy lookup target. Phase 5A.5.b (Ace 20.0): made nullable —
+  // Ace-native uploads now write null. The previous -Date.now()
+  // synthetic placeholder overflows PostgreSQL Int4 (2.15B max) and
+  // produced a 500 on every Ace-native upload.
+  candidateRfId  Int?
   candidateId    String?
   filename       String
   // Recruiter-set display name overriding the raw upload filename.
@@ -407,6 +409,14 @@ model CandidateResume {
   // Content-Disposition). Falls back to filename when null/empty so
   // the UI never displays a blank.
   displayName    String?
+  // Phase 5A.5.b: marks branded versions so the Version dropdown can
+  // surface them as "Branded (date)" entries. null / "original" both
+  // mean a raw upload; "branded" means the row was produced by the
+  // Brand mode of the Edit Resume modal — the `data` blob is the
+  // source resume with the BreakPoint logo stamped at the saved
+  // coordinates. Kept as a free-form string so future variant kinds
+  // (e.g. "watermarked", "anonymized") slot in without a migration.
+  variant        String?
   mimeType       String
   size           Int
   data           Bytes
