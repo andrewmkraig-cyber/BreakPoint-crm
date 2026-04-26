@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, FolderInput, Loader2, Mail as MailIcon, Reply } from "lucide-react";
+import { Archive, FolderInput, Loader2, Mail as MailIcon, Reply, X } from "lucide-react";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -33,6 +34,47 @@ export function MailView({
   const [composerOpen, setComposerOpen] = useState(false);
   const [archiving, setArchiving] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
+  // Bulk-selection set: thread IDs the user has checkbox-ticked.
+  // Stays a Set so add/remove is cheap and Set identity changes
+  // trigger re-renders only when the contents actually change.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+
+  // If a server refresh swaps the threads list, drop any selected IDs
+  // that are no longer visible — otherwise the toolbar would claim
+  // "3 selected" with phantom IDs.
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(threads.map((t) => t.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [threads]);
+
+  const toggleSelectedId = useCallback((id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+  const clearSelectedIds = useCallback(() => setSelectedIds(new Set()), []);
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) =>
+      prev.size === threads.length && threads.length > 0
+        ? new Set()
+        : new Set(threads.map((t) => t.id)),
+    );
+  }, [threads]);
+  const allSelected = threads.length > 0 && selectedIds.size === threads.length;
+  const someSelected = selectedIds.size > 0 && selectedIds.size < threads.length;
   // Session-cached Gmail user labels for the Move To dropdown. null =
   // not yet loaded; [] = loaded and empty. Fetched once on mount and
   // never refetched — labels rarely change mid-session and the dropdown
@@ -166,6 +208,93 @@ export function MailView({
     }
   }
 
+  // Bulk versions of archive / move. Sequential per the spec — one
+  // request at a time, swallowing per-id failures so a single 5xx
+  // doesn't abort the rest. We track succeeded IDs so the list /
+  // selection cleanup only drops the ones that actually landed; any
+  // failed IDs stay selected so the user can retry.
+  async function bulkArchive() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    const succeeded: string[] = [];
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/archive`, {
+          method: "POST",
+        });
+        if (res.ok) succeeded.push(id);
+        else failed.push(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    applyBulkResult({ succeeded, failed, verb: "Archived" });
+    setBulkBusy(false);
+  }
+
+  async function bulkMove(labelId: string, labelName: string) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    const succeeded: string[] = [];
+    const failed: string[] = [];
+    for (const id of ids) {
+      try {
+        const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/move`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ labelId }),
+        });
+        if (res.ok) succeeded.push(id);
+        else failed.push(id);
+      } catch {
+        failed.push(id);
+      }
+    }
+    applyBulkResult({ succeeded, failed, verb: "Moved", labelName });
+    setBulkBusy(false);
+  }
+
+  function applyBulkResult({
+    succeeded,
+    failed,
+    verb,
+    labelName,
+  }: {
+    succeeded: string[];
+    failed: string[];
+    verb: "Archived" | "Moved";
+    labelName?: string;
+  }) {
+    if (succeeded.length > 0) {
+      const ok = new Set(succeeded);
+      setThreads((prev) => prev.filter((t) => !ok.has(t.id)));
+      if (selected && ok.has(selected)) {
+        setSelected(null);
+        setDetail(null);
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of succeeded) next.delete(id);
+        return next;
+      });
+    }
+    const noun = (n: number) => `${n} ${n === 1 ? "thread" : "threads"}`;
+    const total = succeeded.length + failed.length;
+    const target = labelName ? ` to ${labelName}` : "";
+    if (failed.length === 0) {
+      toast.success(`${verb} ${noun(succeeded.length)}${target}`);
+    } else if (succeeded.length === 0) {
+      toast.error(`Couldn't ${verb.toLowerCase().replace(/d$/, "")} ${noun(failed.length)}`);
+    } else {
+      toast.error(`${verb} ${succeeded.length} of ${total}${target}`, {
+        description: `${failed.length} failed`,
+      });
+    }
+  }
+
   const selectedThread = useMemo(
     () => threads.find((t) => t.id === selected) ?? null,
     [threads, selected],
@@ -174,9 +303,68 @@ export function MailView({
   return (
     <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
       <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-4">
-        <div className="border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
-          {threads.length} {threads.length === 1 ? "thread" : "threads"}
+        <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
+          <input
+            type="checkbox"
+            checked={allSelected}
+            ref={(el) => {
+              if (el) el.indeterminate = someSelected;
+            }}
+            onChange={toggleSelectAll}
+            disabled={threads.length === 0}
+            aria-label="Select all threads"
+            className="h-3.5 w-3.5 cursor-pointer rounded border-court-border accent-brand-dark disabled:cursor-not-allowed"
+          />
+          <span>
+            {threads.length} {threads.length === 1 ? "thread" : "threads"}
+          </span>
         </div>
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-2 border-b border-court-border bg-court-accent-tint/40 px-3 py-2">
+            <span className="text-[11px] font-medium text-court-fg">
+              {selectedIds.size} selected
+            </span>
+            <div className="ml-auto flex items-center gap-1.5">
+              <MoveToMenu
+                labels={labels}
+                busy={bulkBusy}
+                onPick={(labelId, labelName) => bulkMove(labelId, labelName)}
+                buttonContent={
+                  <>
+                    {bulkBusy ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <FolderInput className="h-3 w-3" />
+                    )}
+                    Move To
+                  </>
+                }
+              />
+              <button
+                type="button"
+                onClick={bulkArchive}
+                disabled={bulkBusy}
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                {bulkBusy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Archive className="h-3 w-3" />
+                )}
+                Archive
+              </button>
+              <button
+                type="button"
+                onClick={clearSelectedIds}
+                disabled={bulkBusy}
+                aria-label="Clear selection"
+                className="inline-flex items-center rounded-md border border-court-border bg-court-surface p-1 text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          </div>
+        )}
         {threads.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-court-fg-muted">
             Inbox is empty.
@@ -189,8 +377,11 @@ export function MailView({
                   thread={t}
                   selected={selected === t.id}
                   archiving={archiving === t.id}
+                  checked={selectedIds.has(t.id)}
+                  anySelected={selectedIds.size > 0}
                   onOpen={() => setSelected(t.id)}
                   onArchive={() => archiveThread(t.id)}
+                  onToggle={() => toggleSelectedId(t.id)}
                 />
               </li>
             ))}
@@ -243,15 +434,26 @@ function ThreadRow({
   thread: t,
   selected,
   archiving,
+  checked,
+  anySelected,
   onOpen,
   onArchive,
+  onToggle,
 }: {
   thread: MailListThread;
   selected: boolean;
   archiving: boolean;
+  checked: boolean;
+  anySelected: boolean;
   onOpen: () => void;
   onArchive: () => void;
+  onToggle: () => void;
 }) {
+  // Checkbox visibility: hidden until you hover the row, OR pinned
+  // visible whenever the row is checked / any row is checked. Keeps
+  // the inbox visually clean in zero-selection state but doesn't
+  // hide the controls once bulk mode is "on".
+  const checkboxVisible = checked || anySelected;
   return (
     <div
       className={
@@ -259,10 +461,25 @@ function ThreadRow({
         (selected ? "bg-court-accent-tint/60" : "hover:bg-court-accent-tint/30")
       }
     >
+      <label
+        onClick={(e) => e.stopPropagation()}
+        className={
+          "flex cursor-pointer items-center pl-3 pr-1 transition " +
+          (checkboxVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100")
+        }
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={onToggle}
+          aria-label={`Select thread: ${t.subject}`}
+          className="h-3.5 w-3.5 cursor-pointer rounded border-court-border accent-brand-dark"
+        />
+      </label>
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 px-4 py-3 pr-10 text-left"
+        className="flex min-w-0 flex-1 flex-col items-start gap-0.5 py-3 pl-1 pr-10 text-left"
       >
         <div className="flex w-full items-baseline justify-between gap-3">
           <span
@@ -312,6 +529,71 @@ function EmptyRightPane() {
   );
 }
 
+// Shared "Move To" dropdown — used by the single-thread header and the
+// bulk toolbar. Click-outside closes the menu. The button itself is
+// disabled until labels finish loading and there's at least one user
+// label to pick from.
+function MoveToMenu({
+  labels,
+  busy,
+  buttonContent,
+  onPick,
+}: {
+  labels: Array<{ id: string; name: string }> | null;
+  busy: boolean;
+  buttonContent: ReactNode;
+  onPick: (labelId: string, labelName: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+
+  const noLabels = !labels || labels.length === 0;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={busy || noLabels}
+        title={
+          !labels
+            ? "Loading labels…"
+            : labels.length === 0
+              ? "No user labels in Gmail"
+              : "Move to a Gmail label"
+        }
+        className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+      >
+        {buttonContent}
+      </button>
+      {open && labels && labels.length > 0 && (
+        <div className="absolute right-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-md border border-court-border bg-court-surface py-1 shadow-lg">
+          {labels.map((l) => (
+            <button
+              key={l.id}
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                onPick(l.id, l.name);
+              }}
+              className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
+            >
+              {l.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ThreadDetail({
   detail,
   selectedThread,
@@ -345,16 +627,6 @@ function ThreadDetail({
   onComposerClose: () => void;
   onComposerSent: () => void;
 }) {
-  const [moveOpen, setMoveOpen] = useState(false);
-  const moveRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!moveOpen) return;
-    function onDocClick(e: MouseEvent) {
-      if (!moveRef.current?.contains(e.target as Node)) setMoveOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [moveOpen]);
   // Newest-first: show most recent message at the top of the pane so
   // opening a long thread lands directly on "what just happened."
   const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
@@ -403,45 +675,21 @@ function ThreadDetail({
             {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
             Archive
           </button>
-          <div className="relative" ref={moveRef}>
-            <button
-              type="button"
-              onClick={() => setMoveOpen((v) => !v)}
-              disabled={moving || !labels || labels.length === 0}
-              title={
-                !labels
-                  ? "Loading labels…"
-                  : labels.length === 0
-                    ? "No user labels in Gmail"
-                    : "Move to a Gmail label"
-              }
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-            >
-              {moving ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <FolderInput className="h-3 w-3" />
-              )}
-              Move To
-            </button>
-            {moveOpen && labels && labels.length > 0 && (
-              <div className="absolute right-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-md border border-court-border bg-court-surface py-1 shadow-lg">
-                {labels.map((l) => (
-                  <button
-                    key={l.id}
-                    type="button"
-                    onClick={() => {
-                      setMoveOpen(false);
-                      onMove(l.id, l.name);
-                    }}
-                    className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
-                  >
-                    {l.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <MoveToMenu
+            labels={labels}
+            busy={moving}
+            onPick={onMove}
+            buttonContent={
+              <>
+                {moving ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <FolderInput className="h-3 w-3" />
+                )}
+                Move To
+              </>
+            }
+          />
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
