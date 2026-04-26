@@ -891,7 +891,7 @@ export async function generateSubmittal(input: GenerateSubmittalInput): Promise<
     // so the generator works like every other candidate read-path in Ace.
     const candidates = await getRfCandidatesForOrg();
     const c = candidates.find((x) => x.id === input.candidateRfId);
-    if (!c) return { ok: false, error: "Candidate not found in RecruiterFlow." };
+    if (!c) return { ok: false, error: "Candidate not found." };
     const { firstName, lastName } = extractCandidateFields(c);
 
     const expectedSalary = (c.expected_salary ?? null) as
@@ -1176,7 +1176,7 @@ export async function generateSubmittalEmailBody(args: {
 
   try {
     const c = await getRfCandidateByRfId(args.candidateRfId);
-    if (!c) return { ok: false, error: "Candidate not found in RecruiterFlow." };
+    if (!c) return { ok: false, error: "Candidate not found." };
     const { firstName, lastName } = extractCandidateFields(c);
     const expectedSalary = (c.expected_salary ?? null) as
       | { number?: number | null; currency?: string | null }

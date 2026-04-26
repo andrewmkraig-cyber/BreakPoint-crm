@@ -451,7 +451,7 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         description={
           candidate.currentDesignation || candidate.currentOrganization
             ? `${candidate.currentDesignation ?? ""}${candidate.currentDesignation && candidate.currentOrganization ? " · " : ""}${candidate.currentOrganization ?? ""}`
-            : "Saved to Ace — not yet synced to RecruiterFlow."
+            : "Ace candidate."
         }
         actions={<AddToListButton candidateId={candidate.id} candidateName={fullName} />}
       />

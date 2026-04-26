@@ -183,7 +183,7 @@ function ApplyModal(props: {
   return (
     <ModalShell title="Apply to Job" onClose={props.onClose}>
       <p className="text-xs text-court-fg-muted">
-        Creates a local Applied placement row — no RecruiterFlow push.
+        Creates an Applied placement row in Ace.
       </p>
       <JobPicker openJobs={props.openJobs} value={jobRfId} onChange={setJobRfId} />
       <div className="flex justify-end gap-2 pt-2">
@@ -435,7 +435,7 @@ function JobPicker({
         ))}
       </select>
       {openJobs.length === 0 && (
-        <p className="mt-1 text-[11px] text-court-fg-muted">No open jobs in RecruiterFlow.</p>
+        <p className="mt-1 text-[11px] text-court-fg-muted">No open jobs found.</p>
       )}
     </label>
   );

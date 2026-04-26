@@ -81,8 +81,8 @@ export function EditableJobDescription({
             {usingOverride
               ? "Local Ace override · merge fields use this text"
               : rfDescription
-                ? "From RecruiterFlow · click Edit to author an Ace override"
-                : "Empty in RecruiterFlow · add a description so [Job Description] resolves"}
+                ? "Imported source · click Edit to author an Ace override"
+                : "Empty · add a description so [Job Description] resolves"}
           </p>
         </div>
         {!editing ? (
@@ -134,7 +134,7 @@ export function EditableJobDescription({
           )}
           {rfDescription && (
             <details className="text-[11px] text-court-fg-muted">
-              <summary className="cursor-pointer">Show RecruiterFlow source description</summary>
+              <summary className="cursor-pointer">Show imported source description</summary>
               <div
                 className="prose prose-sm mt-2 max-w-none text-court-fg"
                 dangerouslySetInnerHTML={{ __html: rfDescription }}
