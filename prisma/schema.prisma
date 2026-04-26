@@ -382,6 +382,7 @@ model Candidate {
   // membership side so removing a candidate cleans up their list
   // memberships without affecting the lists themselves.
   listMemberships     CandidateListMembership[]
+  gmailTags           GmailThreadTag[]
 
   @@index([email])
   @@index([createdById, createdAt])
@@ -630,6 +631,7 @@ model Client {
   benefitsFiles ClientBenefitsFile[]
   placements    Placement[]
   interviews    Interview[]
+  gmailTags     GmailThreadTag[]
 
   @@index([name])
   @@index([organizationId])
@@ -845,4 +847,22 @@ model OrganizationMembership {
 
   @@unique([organizationId, userId])
   @@index([userId])
+}
+
+model GmailThreadTag {
+  id          String    @id @default(cuid())
+  threadId    String
+  candidateId String?
+  clientId    String?
+  orgId       String
+  createdAt   DateTime  @default(now())
+
+  candidate   Candidate?  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  client      Client?     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, candidateId])
+  @@unique([threadId, clientId])
+  @@index([candidateId])
+  @@index([clientId])
+  @@index([orgId])
 }
