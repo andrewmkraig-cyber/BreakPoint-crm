@@ -747,6 +747,7 @@ model Organization {
   // Phase 5A.4: per-org candidate lists. Cascade-delete on the list
   // side so deleting an org tears down its lists too.
   candidateLists      CandidateList[]
+  gmailTags           GmailThreadTag[]
 }
 
 // Phase 5A.4: per-org candidate lists. Recruiter-curated buckets of
@@ -850,19 +851,20 @@ model OrganizationMembership {
 }
 
 model GmailThreadTag {
-  id          String    @id @default(cuid())
-  threadId    String
-  candidateId String?
-  clientId    String?
-  orgId       String
-  createdAt   DateTime  @default(now())
+  id             String    @id @default(cuid())
+  threadId       String
+  candidateId    String?
+  clientId       String?
+  organizationId String
+  createdAt      DateTime  @default(now())
 
-  candidate   Candidate?  @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  client      Client?     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  candidate    Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([threadId, candidateId])
   @@unique([threadId, clientId])
   @@index([candidateId])
   @@index([clientId])
-  @@index([orgId])
+  @@index([organizationId])
 }
