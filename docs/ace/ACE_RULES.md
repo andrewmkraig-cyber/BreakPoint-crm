@@ -87,3 +87,8 @@ When drifting or tasks complete: update ACE_STATE.md and ACE_ROADMAP.md as part 
 - GitHub doc updates are additive-only. Deferred items stay verbatim in ACE_ROADMAP.md until Andrew explicitly cancels them.
 - ACE_DESIGN.md is a 4th required fetch at session open alongside ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md.
 - Architecture Non-Negotiable #10 (help docs required for every feature) is RELAXED to nice-to-have. Andrew is not selling Ace as SaaS. Code can write help docs when natural but does not gate-keep on missing help doc.
+
+## Audit + Recovery Rules (added 2026-04-26)
+
+- Cross-chat audits must read every Ace chat in full via conversation_search before pulling items into roadmap. Canvas content lags chat content by hours or days. Items promised in chat get half-recorded in canvas.
+- Audit output must separate items Andrew explicitly requested from items Claude proposed. Anything Claude generated as a suggestion goes in a "Proposed by Claude" bucket, not the active roadmap.

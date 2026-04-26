@@ -1,25 +1,39 @@
 # Ace State
 
-## Current version: Ace 20.0 (session 1 shipped 2026-04-26)
+## Current version: Ace 20.0 - shipped (2026-04-26)
 
-## Last session: Ace 19.0 - shipped (5A.5.b deployed but uncommitted; closed out by Ace 20.0)
+## Next task: Ace 21.0 — Mail Tab batch (see roadmap)
+
+### Already Shipped (from prior sessions, confirmed live in Ace 20.0)
+
+- Email composer Generate-from-prompt input box (Generate with Claude)
+- CC autocomplete with same-org contacts
+- Sticky sidebar with Settings always visible
+- Resume version dropdown with timestamps, upload icon, three-dot menu
+- Stage action buttons row below tabs
+- Bracket [Like This] + merge {{merge.field}} dual syntax support
 
 ### Ace 20.0 Session 1 Completed Ships (2026-04-26)
 
-Phase 5A.5.b commit + cleanup pass — single commit `de7d5a6`:
+Phase 5A.5.b commit + cleanup pass — initial commit `de7d5a6`, doc commit `1811a2f`, contact-picker fix `2cc3731`, follow-on session commit `29d5402`, RF cleanup `64849f0`:
 
 - Bug A — resume upload 500 fix. CandidateResume.candidateRfId widened to `Int?` in schema. Replaced the `-Date.now()` synthetic placeholder (which overflowed PostgreSQL Int4 by ~827×) with `null` in three call sites: chunked upload route, candidate create mirror, page-load lazy-backfill. Migration applied via `npx prisma db push`.
-- Bug B — Brand and Redact persist as separate rows. Each operation creates its own `CandidateResume` row. Variant column records `branded` / `redacted` / `branded-redacted`. Dropped the legacy `redactedAt` companion synthesis whose shared `resumeId` caused multi-version delete to wipe the original row alongside the redacted one.
-- Bug C — unified Edit Resume modal. Tab switcher gone. Single canvas hosts logo placement (drag/resize, size slider, apply-to-all-pages, Add/Remove logo) AND redaction drawing (click-drag, Undo last, Clear page). One Save version button. Server applies redactions then logo stamps via pdf-lib in one pass. Variant chosen by what was applied. `resume-brander.tsx` and `resume-redactor.tsx` deleted as orphans.
-- Per-version delete fixed. `deleteCandidateResume(resumeId)` deletes one specific row. When the deleted row is the candidate's last remaining `CandidateResume`, the action also nulls the legacy `Candidate.resume{Filename,MimeType,Size,Data,UploadedAt}` columns so `local-profile.tsx`'s lazy-backfill can't resurrect the resume on the next page load.
-- DOCX support fixed. Filename extension is preserved end-to-end (display label uses mime-derived extension, download Content-Disposition matches). New "Convert to PDF" button (visible only when the selected version is DOC/DOCX) runs `mammoth.extractRawText` → `pdf-lib` text-only PDF rendering. Result lands as `variant="converted"` row, eligible for the unified Edit flow.
-- Dropdown labels swapped from generic kind names ("Original" / "Branded" / "Redacted") to `${filename} (${date})`. Filename strip drops `.pdf` / `.docx` / `.doc` / `.txt` for compactness.
-- Request References removed entirely. Button gone from Ace-native (`local-candidate-actions.tsx`) and RF-imported (`placement-flows.tsx`) candidate pages. Modals (`ReferenceModal`, `ReferenceCheckCompose`) deleted; orphan imports (`UserCheck`, `sendLocalReferenceRequest`, `sendEmailAction`) cleaned up. The unused `sendLocalReferenceRequest` server action and `reference_check_request` template-trigger constant remain — unrelated cleanup.
-- ACE_RULES.md addition: GitHub is the primary source of truth for cross-chat handoff. The four `ACE_*.md` files are the handoff vehicle. Slack canvases and printed PDFs are secondary references for Andrew only.
+- Bug B — unified brand+redact editor (single canvas, one save). Each Brand/Redact run creates its own `CandidateResume` row. Variant column records `branded` / `redacted` / `branded-redacted`. Dropped the legacy `redactedAt` companion synthesis whose shared `resumeId` caused multi-version delete to wipe the original row alongside the redacted one. Tab switcher gone — one canvas hosts logo placement (drag/resize, size slider, apply-to-all-pages, Add/Remove logo) AND redaction drawing (click-drag, Undo last, Clear page). Server applies redactions then logo stamps via pdf-lib in one pass. `resume-brander.tsx` and `resume-redactor.tsx` deleted as orphans.
+- Bug C — Edit Resume button regression fix. The button was hidden whenever the dropdown defaulted to a non-original variant (which is most candidates after the first save). Restored the broader "any PDF mime" gate the old `canBrand || canRedact` union provided.
+- Resume delete fix. `deleteCandidateResume(resumeId)` deletes one specific row, scoped by org. When the deleted row is the candidate's last remaining `CandidateResume`, the action also nulls the legacy `Candidate.resume{Filename,MimeType,Size,Data,UploadedAt}` columns so `local-profile.tsx`'s lazy-backfill can't resurrect the resume on the next page load. Single-version delete now empties the section cleanly.
+- Dropdown labels show filename + date. Generic "Original" / "Branded" / "Redacted" / "Converted" replaced with `${filename stem} (${Apr 26, 2026})`.
+- Location cleanup. `formatLocation` wired into the candidates list (`rowFromDb`), Ace-native profile sidebar, and editable contact panel. One-off `scripts/clean-candidate-locations.ts` ran against prod Neon — 686 of 703 candidate rows updated. Strips trailing `, United States` / variants and abbreviates full state names to 2-letter codes ("Columbus, Ohio, United States" → "Columbus, OH").
+- Auto-select newest resume after save. `pendingSelectId` state in `editable-resume.tsx` watches incoming versions; when the new row arrives via `router.refresh`, dropdown auto-switches to it. Wired through upload, brand+redact save (via `ResumeEditor.onSaved(newResumeId)`), and DOCX → PDF conversion.
+- Edit with Claude button (5 edit types) in both submittal composer and `/mail` composer. New `/api/email/edit-with-claude` route, shared `EditWithClaudeMenu` component. Native Cmd+Z restores via execCommand on textarea path and Tiptap `chain().focus().selectAll().insertContent()` on rich-text path. New `replaceWithUndo` method on `RichTextBodyEditorHandle` so the swap lands in ProseMirror history.
+- Claude model fix. The 404 from `claude-sonnet-4-20250514` (no longer available) consolidated to `claude-sonnet-4-6` across `CLAUDE_MODEL`, the edit-with-claude route, and the call-summary route. All Claude calls now share one model.
+- Submittal contact-picker click-trap fix (`2cc3731`). Replaced full-viewport `fixed inset-0 z-[60]` overlay with a document-level `mousedown` listener gated by `open` and scoped to a container ref. The overlay had been eating clicks on the body editor, toolbar buttons, and X close after a chip was added.
+- DOCX filename + Convert to PDF. `extensionFor` derives `.pdf` / `.docx` / `.doc` / `.txt` from mime; download Content-Disposition matches. Convert button (visible only on DOC/DOCX rows) runs mammoth → pdf-lib for a text-only conversion. Result is a `variant="converted"` row eligible for the unified editor.
+- Request References removed. Button gone from Ace-native and RF-imported candidate pages; modal components and orphan imports cleaned up.
+- RF code cleanup commit (`64849f0`). 7 user-visible "RecruiterFlow" UI strings replaced with neutral language. `src/lib/recruiterflow/` was already deleted in Phase 5; remaining 10 mentions are all `//` comments (Cat C) preserved per the audit ruleset.
 
-Schema state: `CandidateResume.candidateRfId Int?` (was `Int`), new `variant String?` column (free-form). No data loss in either change.
+Schema state: `CandidateResume.candidateRfId Int?` (was `Int`), `variant String?` column (free-form, values: branded / redacted / branded-redacted / converted).
 
-Grep state at session close: recruiterflow 2 / RecruiterFlow 18 / RfId 1082. RecruiterFlow drift +1 (Cat C comment in brand action), RfId drift +12 (Cat A schema reads in unified editor + DOCX conversion). No Cat D violations.
+Grep state at session close: recruiterflow 2 / RecruiterFlow 10 / RfId 1082. No Cat D violations. RfId baseline drifted +12 since Phase 5 close — all Cat A schema reads in the unified editor + DOCX conversion paths.
 
 ## Last session: Ace 17.0 - shipped
 

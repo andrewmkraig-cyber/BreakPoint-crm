@@ -41,11 +41,15 @@ Each template tagged with side (candidate-facing vs client-facing) and stage (wh
 
 #### Prompt 7 - Mail Tab polish + bidirectional read sync
 1. Fix logo + signature contact icons rendering inside Ace's /mail thread view (currently shows broken image boxes - works fine in real Gmail received messages)
-2. Open thread in Ace → Gmail marks read on Google's side via gmail.modify removeLabel: UNREAD
-3. Unread count badge on Mail sidebar item, updates in real-time
-4. Browser notification when new email arrives (with permission prompt)
-5. Replace Archive button with "Move To" label dropdown. Reads user's Gmail labels via API, presents as searchable dropdown. Click a label → applies label + removes INBOX. Same workflow Andrew uses manually in Gmail today.
-6. Re-audit ENOENT for logo on serverless to confirm all signature render paths use base64 import.
+2. Open thread in Ace marks read in Gmail via gmail.modify removeLabel: UNREAD.
+3. Unread count badge on Mail sidebar item, real-time.
+4. Browser notifications top-of-screen Gmail-style with permission prompt.
+5. Move To label dropdown replacing Archive button. Reads user Gmail labels via API, applies label + removes INBOX. Andrew's spec: Archive removes email from view forever, Move To files it under a label for future reference by client folder.
+6. Logo + signature contact icons render fix in /mail thread view (broken image boxes in Ace HTML rendering).
+7. Auto-tagging emails to candidate/client profiles by sender/recipient address. Poll Gmail every N min. Match addresses to Neon candidate/client/contact records. Surface on candidate profile, client profile, and contact cards. **VERY IMPORTANT per Andrew.**
+8. BCC autocomplete with teammates (Austin Barnard). CC autocomplete already works, BCC does not.
+9. BUG: Click-to-add on To/CC/BCC dropdown suggestions stays visible after click instead of auto-dismissing. Fix.
+10. Re-audit ENOENT for logo on serverless to confirm all signature render paths use base64 import.
 
 #### Prompt 8 - Auto-tagging emails to candidate/client profiles
 1. On email send and on email receive (poll Gmail every N minutes), match email addresses to candidates and clients in Neon
@@ -55,41 +59,23 @@ Each template tagged with side (candidate-facing vs client-facing) and stage (wh
 
 ### Interview Scheduling Overhaul (Prompts 9-13, larger work)
 
-This is the biggest piece of 18.0. Andrew showed Jobot/Jax interface screenshots during 17.0 chat as the visual reference. Detailed spec below replaces the need for those screenshots.
+Replaced spec (2026-04-26):
 
-#### Prompt 9 - Interview Scheduler Form UI
+#### Prompt 9 - Interview Scheduler Form UI (revised)
 
-Replace current basic interview scheduling with a structured form. When user clicks "Schedule Interview" on a candidate-job pairing, open a modal with these fields, in this order:
+- Interview Type: Phone, Video, In-Person only
+- Timezone selector — MANDATORY, currently missing entirely
+- Interviewers multi-select with inline add-new-contact button
+- Calendar Location / Instructions field (required)
+- Smart subject line generation with Settings toggle. Uses template subject if template exists, otherwise generates from context.
+- Rich text editor for client and candidate emails, pre-populated from Interview Confirmation templates, fully editable
+- REWORK existing "Client Sending Invite Directly" button: when clicked opens a form to pick interviewer, date, time. Adds to Andrew's calendar only. No emails sent. For pipeline tracking only.
 
-1. Header: "{{candidate.full_name}} for {{job.title}} at {{client.name}}" - Drag handle and X close button on right
-2. Interview Type (dropdown, required): Phone Interview, Video Interview, On-site Interview, Final Interview, Other
-3. Date and Time row:
-   - Date picker (required)
-   - Start time dropdown (required, 15-min intervals)
-   - End time dropdown (required, 15-min intervals)
-   - Timezone selector (required, default to user's timezone, options: ET, CT, MT, PT)
-4. Interviewers (required):
-   - Multi-select Contact Name dropdown of contacts from the candidate-job's client organization
-   - Plus button to add a new contact inline if not in list
-   - Add CC and Add BCC toggles below the interviewers field for the eventual client email
-5. Attachment row:
-   - Dropdown lists candidate's resumes (most recent first, format: "{{candidate.full_name}} - {{source}}.pdf (X days ago; date)")
-   - Defaults to most recent watermarked resume
-   - Cloud download icon to upload a different file
-   - "Will be attached as: {{candidate.full_name}}-{{source}}.pdf" preview text
-   - Anonymize attachment checkbox - on check, runs the resume through the watermark/branding logic to remove candidate contact info before attaching
-6. Calendar Location / Instructions (text field, required) - examples: "Call Christopher Boyle at (480) 735-9606" or "Zoom link will be sent"
-7. Notes for Client (textarea, optional) - private notes that go in the client email only
-8. Subject for Client (text, required, smart default: "{{interview.type}} - {{candidate.full_name}} - {{job.title}} - (Details Within)")
-9. Email to Client (rich text editor with toolbar B/I/U/lists/link/undo/redo, pre-populated from "Interview Confirmation - Client" template, fully editable, shows word count in bottom right)
-10. "Send the email separate from calendar invite (2 emails) to client" checkbox
-11. Notes for Candidate (textarea, optional) - private notes that go in the candidate email only
-12. Subject for Candidate (text, required, smart default: "{{interview.type}} - {{client.name}} - (Details Within)")
-13. Email to Candidate (rich text editor, pre-populated from "Interview Confirmation - Candidate" template, fully editable, word count)
-14. "Send the email separate from calendar invite (2 emails) to candidate" checkbox
-15. Recruiter selector (dropdown, defaults to current user) - "Split Bot Point With Recruiter" - lets user assign a co-recruiter on this interview for credit splits
-16. "Client will manage emailing candidates" checkbox with helper text: "If checked, Ace will not send emails to client and candidate." Suppresses candidate-side email and calendar invite when checked.
-17. Footer: User signature preview, "Schedule Interview" button (primary, green)
+KILLED items (do not build):
+- Anonymize attachment checkbox
+- Notes for Client / Notes for Candidate fields
+- Send email separate from calendar invite checkboxes
+- Recruiter Selector / Split with Recruiter
 
 #### Prompt 10 - Schedule Interview submission flow
 
@@ -135,23 +121,29 @@ Action buttons render on candidate profile in a horizontal row below the tabs, c
 
 #### Prompt 12 - Candidate Profile Layout Reorganization
 
-Reorganize candidate profile to match the Jobot-style screen layout Andrew referenced:
+Revised scope (2026-04-26):
 
-- Top tabs row: Profile (default), Notes, History, Skills & Answers, Splits for Matching Jobs
-- Header above tabs: "{{candidate.full_name}}" left, current title and "↔" symbol with applied job title right (e.g. "Christopher Boyle ↔ Tax Associate")
-- Applied Jobs table directly under header, columns: checkbox, Client, Job (with location and miles distance from candidate), Compensation, Match % (color-coded: 90%+ green, 70-89% yellow, <70% red), Action buttons inline (Schedule Interview, Reject)
-- Stage action buttons row directly under Applied Jobs: contextual based on current pipeline stage. Examples: Move to Offer Stage (with dropdown caret), Reject (with reason dropdown), Schedule Interview, Keep, Apply to Job, Add Note, Edit PDF Again
-- Resume display row: dropdown showing all uploaded resumes with timestamps ("Christopher Boyle - Jobot.pdf (1 day ago; Apr 24th)"), cloud upload icon for new resume, three-dot menu (Brand, Anonymize, Delete, Download)
-- Main center column (60% width): Resume PDF preview rendered inline
-- Left sidebar (20% width): Candidate name, current title with home icon and city link, email, phone, contact icons row (LinkedIn, profile pic, phone), Text Message input box at bottom of contact section, Expected Compensation, Current Employer, Work Auth, Education with school link, Recruiter Notes section with stage indicator and "Skip Outreach" toggle
-- Right sidebar (20% width): contextual data - current pipeline state, next suggested action, recent activity timeline, related jobs with match scores
+- Match % column on Applied Jobs table, color-coded (90%+ green, 70-89% yellow, <70% red).
+- Three-column layout:
+  - Left sidebar: contact, comp, employer, work auth, education, recruiter notes with stage indicator and skip-outreach toggle.
+  - Center 60% resume preview.
+  - Right sidebar: pipeline state, contextual data.
+
+KILLED:
+- Top tabs (Profile / Notes / History / Skills & Answers / Splits) — keep current layout.
+- Header candidate-job notation ("Christopher Boyle ↔ Tax Associate").
+- Co-recruiter splits.
 
 #### Prompt 13 - Template Library Enhancements
 
-- Templates table gets new columns: stage (string, nullable), side (enum: candidate, client, both), default_attachments (json array of attachment templates)
-- Settings > Templates page: list view shows all templates with stage tag, side tag, last modified
-- Template editor: stage dropdown, side dropdown, attachment defaults section, body editor with merge field picker (uses Insert Field UI from composer)
+Revised scope (2026-04-26):
+
+- Stage tag on each template
+- Default attachments per template as optional setting
 - Templates can reference {{interview.*}} merge fields when associated with interview-related stages: interview.type, interview.date, interview.start_time, interview.end_time, interview.timezone, interview.location, interview.interviewers, interview.meet_link
+
+KILLED:
+- Side tag (candidate-facing vs client-facing)
 
 ### Reference visual context
 Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0 chat as visual reference. Key patterns to replicate:
@@ -257,3 +249,29 @@ Stage tag, side tag (candidate-facing vs client-facing), bracket+merge syntax, a
 - Per-org color theming.
 - Ask Claude in-app support panel.
 - BYOC, CustomerRequest table, Stripe billing, marketing site, trademark, legal review, code escrow, public REST API, MCP server v1, custom fields UI, hierarchical RBAC, demo accounts, external SSO, SOC 2.
+
+## Proprietary Differentiators (approved Ace 16.0)
+
+- **Live placement probability score**: 1-100 score per pipeline candidate, updated real-time based on response time, interview progression, comp alignment, time-in-stage. Color-coded red/yellow/green. Visible on pipeline view and candidate profile.
+- **Counteroffer risk flag**: at offer stage, pulls tenure, comp jump %, employer size, flags high counteroffer risk automatically. Visible on candidate profile and offer-stage pipeline.
+- **Client heat map**: visual showing clients active / going cold / overdue for touchpoint based on last activity. Red/yellow/green. Lives on dashboard or `/clients/heat-map`.
+- **Candidate re-engagement engine**: flags candidates placed or went cold 12-18 months ago who are statistically likely open to a move. Auto-drafts re-engagement email for Andrew's review before send.
+- **Fee tracker with Austin auto-notify**: confirmed-start placement calculates gross fee, Andrew 75% cut, Austin 25%, Slacks Austin (`U0AJB4AM631`) the breakdown when start date confirmed. Triggers off `placement_confirmed` ActivityLog event.
+
+## Practical Differentiators (approved Ace 16.0)
+
+- **One-click interview prep packet**: PDF for candidate with company background, role summary, likely interview questions, Andrew's coaching notes. Separate button after interview scheduled. COEXISTS with standard rich text editor on scheduler.
+- **Submittal tracker with read receipts**: tracks whether client opened submittal email and how many times. Shows "opened 3x, no reply" on candidate profile or pipeline. CRITICAL: read tracking must be invisible to client. If implementation would notify recipient, kill the feature.
+- **BD trigger alerts**: monitors LinkedIn and Indeed for job postings from existing clients. Alerts Andrew when existing client posts a new role he hasn't been engaged on. Catches BD opportunities before competing recruiters.
+
+## Explicitly Killed - Do Not Build
+
+- Stage-Triggered Template Actions System (Claude proposed, Andrew did not request).
+- AI Agent features (auto-suggestions, approve/dismiss, next-best-action).
+- Candidate mood tracker.
+- Help Docs Corpus.
+- Per-org color theming.
+- Demo mode / sandbox toggle.
+- ZDR (Zero Data Retention).
+- MCP Connection (Claude reads/writes Ace database).
+- Co-recruiter splits feature.
