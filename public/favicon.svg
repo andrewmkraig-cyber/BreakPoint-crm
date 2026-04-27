@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <circle cx="32" cy="32" r="30" fill="#5A9642" stroke="#222222" stroke-width="2"/>
-  <path d="M 10 20 Q 20 32 10 44" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/>
-  <path d="M 54 20 Q 44 32 54 44" fill="none" stroke="white" stroke-width="3" stroke-linecap="round"/>
-  <text x="32" y="38" text-anchor="middle" font-family="Arial, sans-serif" font-weight="bold" font-size="20" fill="white">Ace</text>
+  <circle cx="32" cy="32" r="30" fill="#5A9642" stroke="#222222" stroke-width="2.5"/>
+  <path d="M 8 24 Q 22 32 8 42" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M 56 24 Q 42 32 56 42" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round"/>
+  <text x="32" y="37" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="19" fill="white">Ace</text>
 </svg>
