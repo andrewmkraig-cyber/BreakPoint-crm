@@ -1392,7 +1392,7 @@ function ComposerAddonToolbar({
       <button
         type="button"
         onClick={() => setOpenAi(!openAi)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-brand/30 bg-brand-tint/40 px-2 py-1 text-[11px] font-medium text-brand-dark shadow-sm transition hover:bg-brand-tint/60"
+        className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-ink-600 disabled:opacity-60"
       >
         <Sparkles className="h-3 w-3" /> Generate with Claude
       </button>
