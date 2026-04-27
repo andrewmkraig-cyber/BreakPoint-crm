@@ -607,6 +607,9 @@ export function MailView({
                     onToggleCollapse={toggleCollapsed}
                     selectedLabel={selectedLabel}
                     onSelect={setSelectedLabel}
+                    onDropThread={({ threadId, labelId, labelName }) =>
+                      moveThread(threadId, labelId, labelName)
+                    }
                   />
                 ))}
               </ul>
@@ -794,11 +797,23 @@ function ThreadRow({
   // the inbox visually clean in zero-selection state but doesn't
   // hide the controls once bulk mode is "on".
   const checkboxVisible = checked || anySelected;
+  const [dragging, setDragging] = useState(false);
   return (
     <div
+      draggable
+      onDragStart={(e) => {
+        // Custom MIME so this drag source can't be confused with file
+        // drops or other drag origins. dataTransfer.setData stores the
+        // threadId; the drop handler on each label row reads it back.
+        e.dataTransfer.setData("application/x-mail-thread-id", t.id);
+        e.dataTransfer.effectAllowed = "move";
+        setDragging(true);
+      }}
+      onDragEnd={() => setDragging(false)}
       className={
         "group relative flex items-stretch transition " +
-        (selected ? "bg-court-accent-tint/60" : "hover:bg-court-accent-tint/30")
+        (selected ? "bg-court-accent-tint/60" : "hover:bg-court-accent-tint/30") +
+        (dragging ? " opacity-50" : "")
       }
     >
       <label
@@ -1248,6 +1263,7 @@ function LabelTreeNode({
   onToggleCollapse,
   selectedLabel,
   onSelect,
+  onDropThread,
 }: {
   node: LabelNode;
   depth: number;
@@ -1255,14 +1271,48 @@ function LabelTreeNode({
   onToggleCollapse: (path: string) => void;
   selectedLabel: { id: string; name: string } | null;
   onSelect: (next: { id: string; name: string } | null) => void;
+  // Drag-and-drop sink. Called when a thread row is dropped onto a
+  // real (non-synthetic) label. The MIME type the dragger sets is
+  // "application/x-mail-thread-id" — handled inside the drop handler.
+  onDropThread?: (args: { threadId: string; labelId: string; labelName: string }) => void;
 }) {
   const hasChildren = node.children.length > 0;
   const isCollapsed = collapsed.has(node.name);
   const active = node.id !== null && selectedLabel?.id === node.id;
+  const [dragOver, setDragOver] = useState(false);
+  const droppable = node.id !== null && Boolean(onDropThread);
   return (
     <li>
       <div
-        className="flex min-h-9 items-center gap-0.5"
+        onDragOver={(e) => {
+          if (!droppable) return;
+          // preventDefault inside a dragover handler is what tells the
+          // browser this element is a valid drop target — without it,
+          // drop never fires.
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (!dragOver) setDragOver(true);
+        }}
+        onDragLeave={() => {
+          if (!droppable) return;
+          setDragOver(false);
+        }}
+        onDrop={(e) => {
+          if (!droppable || !node.id) return;
+          e.preventDefault();
+          setDragOver(false);
+          const threadId = e.dataTransfer.getData("application/x-mail-thread-id");
+          if (!threadId) return;
+          onDropThread?.({
+            threadId,
+            labelId: node.id,
+            labelName: node.name,
+          });
+        }}
+        className={
+          "flex min-h-9 items-center gap-0.5 rounded-lg " +
+          (dragOver ? "border border-[#5A9642] bg-[#EAF4E4]" : "")
+        }
         style={{ paddingLeft: `${depth * 16}px` }}
       >
         {hasChildren ? (
@@ -1311,6 +1361,7 @@ function LabelTreeNode({
               onToggleCollapse={onToggleCollapse}
               selectedLabel={selectedLabel}
               onSelect={onSelect}
+              onDropThread={onDropThread}
             />
           ))}
         </ul>
