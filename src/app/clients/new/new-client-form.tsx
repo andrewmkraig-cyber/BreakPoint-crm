@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, Globe, Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   checkClientDomain,
   createClient,
@@ -297,8 +298,9 @@ export function NewClientForm() {
                   : "Drop a URL on the left or fill in manually."}
               </p>
             </div>
-            <button
+            <Button
               type="button"
+              size="sm"
               onClick={onSave}
               disabled={isSaving || domainCheckStatus === "duplicate"}
               title={
@@ -306,11 +308,10 @@ export function NewClientForm() {
                   ? "This domain already exists in Ace — pick a different URL."
                   : undefined
               }
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
               Save to Ace
-            </button>
+            </Button>
           </div>
 
           <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">

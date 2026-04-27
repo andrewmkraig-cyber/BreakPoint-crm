@@ -9,6 +9,7 @@ import {
   uploadBrandingLogo,
 } from "@/app/settings/branding-actions";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // Max matches MAX_LOGO_BYTES server-side — double-enforced so a user
 // gets feedback before a 500KB+ file leaves the browser.
@@ -168,15 +169,15 @@ export function BrandingView({ initial }: { initial: BrandingInitial }) {
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={onSave}
           disabled={saving}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
         >
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}
           Save branding
-        </button>
+        </Button>
       </div>
     </div>
   );

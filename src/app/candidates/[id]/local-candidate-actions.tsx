@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   applyLocalCandidateToJob,
   generateLocalSubmittal,
@@ -97,13 +98,13 @@ export function LocalCandidateActions(props: {
   return (
     <div className="rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={() => setModal("submit")}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
         >
           <FileSignature className="h-3 w-3" /> Submit to Job
-        </button>
+        </Button>
         <button
           type="button"
           onClick={() => setModal("apply")}
@@ -194,15 +195,15 @@ function ApplyModal(props: {
         >
           Cancel
         </button>
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={onSubmit}
           disabled={isSubmitting || !jobRfId || selectable.length === 0}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-50"
         >
           {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Target className="h-3 w-3" />}
           Apply
-        </button>
+        </Button>
       </div>
     </ModalShell>
   );
@@ -377,15 +378,15 @@ function SubmitModal(props: {
         >
           Cancel
         </button>
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={onSend}
           disabled={isSending || !jobRfId || !body.trim() || !subject.trim() || !to.trim()}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-50"
         >
           {isSending ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileSignature className="h-3 w-3" />}
           Send Submittal
-        </button>
+        </Button>
       </div>
     </ModalShell>
   );

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { MERGE_FIELDS } from "@/lib/merge-fields";
 import { TRIGGER_OPTIONS, labelForTrigger } from "@/app/settings/template-constants";
 import { deleteEmailTemplate, upsertEmailTemplate, type EmailTemplateInput } from "@/app/settings/templates-actions";
@@ -42,13 +43,13 @@ export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
             ? "No templates yet."
             : `${initial.length} ${initial.length === 1 ? "template" : "templates"} on file`}
         </div>
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={() => setEditing("new")}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
         >
           <Plus className="h-3.5 w-3.5" /> New template
-        </button>
+        </Button>
       </div>
 
       <ul className="space-y-3">

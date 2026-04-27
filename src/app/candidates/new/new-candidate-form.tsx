@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   checkCandidateEmail,
   createCandidate,
@@ -458,8 +459,9 @@ export function NewCandidateForm() {
                     : "Drop a resume on the left or fill these in manually."}
               </p>
             </div>
-            <button
+            <Button
               type="button"
+              size="sm"
               onClick={onSave}
               // Save is gated on four things:
               //   - no pending save or parse
@@ -486,11 +488,10 @@ export function NewCandidateForm() {
                           ? "Email is required"
                           : undefined
               }
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
               {isParsing ? "Waiting for parse…" : "Save to Ace"}
-            </button>
+            </Button>
           </div>
 
           {showFallbackBanner && (

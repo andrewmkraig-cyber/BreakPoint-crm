@@ -6,6 +6,7 @@ import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { Search, Loader2, ExternalLink, ShieldCheck, MapPin, Briefcase } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export type ClientCard = {
   slug: string;
@@ -110,12 +111,9 @@ export function ClientsView({
             className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:bg-court-surface focus:outline-none"
           />
         </div>
-        <button
-          type="submit"
-          className="inline-flex items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
-        >
+        <Button type="submit" size="md">
           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
-        </button>
+        </Button>
       </form>
 
       {error && (

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, Copy, Loader2, Send, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -201,15 +202,15 @@ export function AiWorkspace({ entityType, entityId, title }: AiWorkspaceProps) {
               "disabled:cursor-not-allowed disabled:opacity-60",
             )}
           />
-          <button
+          <Button
             type="button"
+            size="md"
             onClick={() => void onSend()}
             disabled={!input.trim() || sending}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
           >
             {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             Send
-          </button>
+          </Button>
         </div>
         {errorText && (
           <div className="mt-2 text-xs text-red-600">{errorText}</div>

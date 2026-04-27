@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { EditWithClaudeMenu, type EditType } from "@/components/edit-with-claude-menu";
 import {
@@ -1031,15 +1032,15 @@ export function MailComposer({
           </button>
           <span className="text-[11px] text-court-fg-muted">or drag files onto the body.</span>
         </div>
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={onSend}
           disabled={sending}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
         >
           {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
           Send
-        </button>
+        </Button>
       </div>
     </div>
   );

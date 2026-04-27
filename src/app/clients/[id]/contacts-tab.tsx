@@ -7,6 +7,7 @@ import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
 import { addContact, updateContact } from "@/app/clients/[id]/actions";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export type ContactRow = {
   id: string;
@@ -72,18 +73,18 @@ export function ContactsTab({
             ? "No contacts on file yet."
             : `${rows.length} ${rows.length === 1 ? "contact" : "contacts"} on file`}
         </div>
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={() => {
             setOpen((v) => !v);
             setError(null);
             setSuccess(null);
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
         >
           {open ? <X className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
           {open ? "Close" : "Add contact"}
-        </button>
+        </Button>
       </div>
 
       {success && (
@@ -114,14 +115,14 @@ export function ContactsTab({
             >
               Cancel
             </button>
-            <button
+            <Button
               type="submit"
+              size="sm"
               disabled={isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
               Save contact
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -348,14 +349,14 @@ function ContactEditor({
             >
               Cancel
             </button>
-            <button
+            <Button
               type="submit"
+              size="sm"
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {saving && <Loader2 className="h-3 w-3 animate-spin" />}
               Save
-            </button>
+            </Button>
           </div>
         </form>
       </aside>

@@ -13,6 +13,7 @@ import {
 } from "@/app/clients/[id]/actions";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 const UPLOAD_TIMEOUT_MS = 30_000;
 
@@ -290,15 +291,15 @@ function BenefitsTabInner({
                   >
                     <X className="h-3 w-3" /> Cancel
                   </button>
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={onSave}
                     disabled={isSaving}
-                    className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
                   >
                     {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                     Save
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>

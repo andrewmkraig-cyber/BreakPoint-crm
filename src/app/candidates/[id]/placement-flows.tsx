@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
 import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
@@ -310,13 +311,13 @@ export function PlacementActions({
           >
             <Plus className="h-3.5 w-3.5" /> Apply to Job
           </button>
-          <button
+          <Button
             type="button"
+            size="sm"
             onClick={() => setSubmitOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
             <Plus className="h-3.5 w-3.5" /> Submit to Job
-          </button>
+          </Button>
         </div>
       </div>
 
