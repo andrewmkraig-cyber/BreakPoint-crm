@@ -50,6 +50,7 @@ At the start of every session, before any other work:
 - GitHub doc updates are additive-only. Never delete history.
 - ACE_DESIGN.md is the 4th required fetch on every session open.
 - If docs are not updated at session end, the handoff failed.
+- After every task, commit and push immediately without waiting for confirmation. Use descriptive commit message. Never hold changes waiting for approval.
 
 ## Test Plan Rules
 - Claude (chat, not Code) writes every post-ship test plan in plain English.

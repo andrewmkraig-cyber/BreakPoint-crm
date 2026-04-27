@@ -222,3 +222,32 @@ When Claude Code builds any new component or page:
 4. Don't hardcode green outside the approved use cases
 
 After dedicated polish phase ships, Andrew sends updated screenshots for a second-pass tightening (micro-interactions, spacing tuning, alignment, "this still looks off" fixes).
+
+## Button System (added Ace 24.0)
+Shared component: src/components/ui/button.tsx
+Variants:
+- primary: bg-brand text-white hover:bg-brand-dark (green - Submit, Save, Create)
+- secondary: bg-court-surface-subtle border border-court-border (neutral)
+- danger: bg-red-50 text-red-600 border border-red-200 (Reject)
+- apply: bg-amber-50 text-amber-700 border border-amber-200 (Apply)
+- schedule: bg-blue-50 text-blue-700 border border-blue-200 (Schedule Interview)
+- ghost: transparent hover:bg-court-surface-subtle
+All buttons are rounded-full. No rounded-lg on brand buttons anywhere.
+
+## Stage Badge Colors (added Ace 24.0)
+- SOURCED: slate
+- APPLIED: amber (matches Apply button)
+- SUBMITTED: brand green tint
+- KEPT: slate
+- INTERVIEWING: blue (matches Schedule button)
+- OFFER: purple
+- HIRED: green
+- REJECTED: red (matches Reject button)
+
+## Court Mode System (added Ace 24.0)
+6 palettes: 3 surfaces (hard/clay/grass) x 2 themes (light/dark)
+Controlled via data-surface and data-theme attributes on html element
+Storage: localStorage keys ace-court-surface and ace-court-theme
+Selector UI: sun/moon toggle + 3 surface buttons in Settings
+Wimbledon (grass light): sidebar bg-[#1F3A1F] deep forest green
+Grass purple badge: bg-grass-purple (#6B3FA0) on unread counts in grass mode

@@ -235,6 +235,16 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 
 ### Week 2
 
+#### COMPLETED Ace 24.0 (April 27, 2026) - move these to completed:
+- Phone Tab Phase 1 + Phase 2 (see STATE for details)
+- Full brand system + court mode 6-palette overhaul
+- Dashboard premium redesign
+- Button system unified across app
+- Activity tab on candidate + client profiles
+
+#### Remaining Week 2:
+- Phone Tab Phase 3 (incoming toasts, auto-tagging, search, read tracking) - NEXT
+- Visual markup change TBD (Andrew provides spec at Ace 25.0 start)
 - BD Automation Engine (full vision): Daily 6 AM cron. Step 1 (Indeed API): scan last-24hr jobs, filter for public accounting firms by company name (CPA/Associates/Partners/Accounting/Advisory/Group) OR JD signals (audit/tax/public accounting). Discard staffing agencies and corporate in-house. Output 20 companies/day. Step 2 (Apollo API): one best contact per company - Managing Partner, Tax Partner, Controller, CFO, or HR Director. Step 3: Write each prospect to Ace's Prospect table with company, contact, title, email, LinkedIn, triggering job posting. Step 4: Auto-enroll in email sequence using warmed burner domains. All sending and tracking in Ace, not Apollo. BD Settings screen for keywords/titles/limit/sequence. BD feed showing overnight additions and sequence status. Apollo is data source only. Replaces Andrew's manual BD flow.
 - Word of the Day - Vercel Cron 6 AM EST same as Daily Industry Briefing.
 - Market Insights Tab - Tab 6 on client detail. Generate market briefs inline. Save brief history per client. Pick recipients from contacts. Compose/auto-generate email, attach PDF, send from Ace. Same design as the market-brief skill.

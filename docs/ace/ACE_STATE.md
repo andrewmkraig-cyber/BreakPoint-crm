@@ -1,10 +1,32 @@
 # ACE_STATE.md
-Last updated: 2026-04-27 - End of Ace 23.0
+Last updated: 2026-04-27 - End of Ace 24.0
 
 ## Current Status
-Mail Tab: FULLY COMPLETE as of Ace 23.0.
-Phone Tab: NOT STARTED. Quo/Ringover integration exists (CallLog, SmsMessage tables in Neon, webhooks wired) but there is NO /phone page UI. Building the phone tab is the next major feature.
-Next task: Phone Tab Phase 1 - foundation build.
+Current Version: Ace 25.0
+Last Session: Ace 24.0 - April 27, 2026
+Current Status: All Ace 24.0 tasks complete. Ready for Ace 25.0.
+
+## What Shipped in Ace 24.0 (2026-04-27)
+- Phone Tab Phase 1: schema migration (organizationId + clientId on SmsMessage + CallLog), 3-pane page shell at /phone, thread list wired to real data, sidebar nav item, refresh button
+- Phone Tab Phase 2: FAB with phone icon, start conversation popup, new text panel (POST /api/sms), call panel, webhook orgId fix, unread count fix, sidebar badge plumbing
+- Brand system: Playfair Display + Inter fonts, ink/cream palette replacing navy, component token cleanup across 10+ files
+- Shared Button component: src/components/ui/button.tsx with primary/secondary/danger/apply/schedule variants. Pill button sweep across 17 files.
+- Court system: 6-mode palettes (Hard/Clay/Grass x Light/Dark), globals.css full rewrite, sun/moon toggle in Settings, Wimbledon forest green sidebar, Grass purple badge, pre-hydration script
+- Dashboard redesign: Activity Dashboard header, THIS WEEK eyebrow, KPI subtext removed, Billing Tower prominent (BILLING TOWER large bold uppercase with green underline accent, $7.5k compact format, sparkline graphic, pale green card), Upcoming Interviews below Billing Tower, tighter layout
+- Applicants + candidate profile buttons: Submit (green), Keep (slate), Reject (red), Apply (amber), Schedule Interview (blue), Client Sending Invite (grey) - unified across all pages
+- Stage badge colors matching button system across all pages
+- Generate/Edit with Claude buttons: dark background white text unified across all surfaces
+- Activity tab: added to candidate and client profiles next to Game Plan, fetches ActivityLog via GET /api/activity/[entityType]/[entityId]/route.ts
+- Vercel build errors fixed: ESLint prefer-const on jobId in activity API route
+
+## Next Task for Ace 25.0
+1. Visual markup change (Andrew will provide spec at session start - Claude asks for instructions)
+2. Phone Tab Phase 3:
+   - Incoming text toast with inline reply (bottom-right, 8s auto-dismiss, hover pauses, expand to reply, Enter sends, logs to candidate/client)
+   - Incoming call toast (persistent, Answer changes to Connected + timer + End Call, Voicemail sends to voicemail, all logged)
+   - Auto-tagging: every call/text auto-links to candidate or client by phone number, surfaces on their profile activity
+   - Search through text history in /phone
+   - Read tracking: mark SmsMessage as read when thread is opened (add readAt field to schema)
 
 ## What Shipped in Ace 23.0 (2026-04-27)
 - GmailThreadTag schema table - links email threads to candidate/client profiles by address matching
@@ -48,27 +70,6 @@ Next task: Phone Tab Phase 1 - foundation build.
 - Click-to-call exists on candidate profiles
 - Claude transcript summaries exist
 - NONE of this has a dedicated /phone UI page
-
-## Next Task: Phone Tab Phase 1
-Build a dedicated /phone page with full UI similar to the mail tab.
-
-Phase 1 - Foundation:
-- /phone page with left sidebar: All Calls, Missed, Voicemail, SMS Threads
-- Call log view pulling from existing CallLog table
-- SMS thread view pulling from existing SmsMessage table
-- Auto-match calls and texts to candidate/client profiles (same logic as GmailThreadTag)
-- Show call/SMS history on candidate and client profile pages
-
-Phase 2 - Notifications and actions:
-- Inbound call notification with Answer and Send to Voicemail buttons
-- Inbound SMS notification with inline reply box in the toast
-- Click-to-call from anywhere in Ace (already partially exists - verify and expand)
-
-Phase 3 - Full parity:
-- Search across calls and texts
-- Filter by type (missed, inbound, outbound)
-- Full SMS thread conversation view
-- Call recordings and transcripts surfaced on profile pages
 
 ## On the Horizon
 - Multi-recruiter permissions: ownerId on Client and Job, shared candidate pool, manager view
