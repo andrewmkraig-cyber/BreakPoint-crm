@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  ExternalLink,
   Loader2,
   Mic,
   MoreHorizontal,
@@ -559,6 +560,7 @@ function ThreadDetailPane({ detail }: { detail: ThreadDetail }) {
         <div className="flex shrink-0 items-center gap-2">
           <ActionPlaceholder label="Call" icon={<PhoneCall className="h-3 w-3" />} />
           <ActionPlaceholder label="Text" icon={<Send className="h-3 w-3" />} />
+          <OpenInQuoButton phoneNumber={detail.contact.phoneNumber} />
           <ActionPlaceholder label="Open Profile" icon={<UserIcon className="h-3 w-3" />} />
           <ActionPlaceholder label="More" icon={<MoreHorizontal className="h-3 w-3" />} />
         </div>
@@ -650,6 +652,41 @@ function ActionPlaceholder({
     >
       {icon}
       {label}
+    </button>
+  );
+}
+
+// Resolves the Quo conversation deep-link via /api/quo/conversation,
+// then opens it in a new tab. Falls back to the inbox URL if the
+// lookup misses — the API route handles that branch silently.
+function OpenInQuoButton({ phoneNumber }: { phoneNumber: string }) {
+  const [loading, setLoading] = useState(false);
+  const disabled = !phoneNumber || loading;
+
+  async function onClick() {
+    if (disabled) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/quo/conversation?phoneNumber=${encodeURIComponent(phoneNumber)}`,
+      );
+      const json = (await res.json().catch(() => null)) as { url?: string } | null;
+      if (json?.url) window.open(json.url, "_blank", "noopener,noreferrer");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+      title="Open this conversation in Quo"
+    >
+      {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
+      Open in Quo
     </button>
   );
 }
