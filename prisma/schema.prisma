@@ -549,29 +549,46 @@ model JobOverride {
 }
 
 model SmsMessage {
-  id          String   @id @default(cuid())
-  candidateId String
-  direction   String
-  body        String
-  fromNumber  String
-  toNumber    String
-  status      String   @default("sent")
-  krispcallId String?
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  candidateId    String
+  // Phone Tab Phase 1: tenant scope + client linkage. Both nullable to
+  // permit a backfill pass; existing rows get organizationId stamped
+  // from Candidate.organizationId by scripts. clientId stays null
+  // until contact-side phone matching is wired in Phase 2.
+  organizationId String?
+  clientId       String?
+  direction      String
+  body           String
+  fromNumber     String
+  toNumber       String
+  status         String   @default("sent")
+  krispcallId    String?
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId])
+  @@index([candidateId])
+  @@index([organizationId, createdAt])
 }
 
 model CallLog {
-  id           String         @id @default(cuid())
-  candidateId  String
-  direction    String
-  fromNumber   String
-  toNumber     String
-  duration     Int?
-  status       String
-  recordingUrl String?
-  krispcallId  String?
-  createdAt    DateTime       @default(now())
-  transcript   CallTranscript?
+  id             String         @id @default(cuid())
+  candidateId    String
+  // Phone Tab Phase 1: see SmsMessage above for the same nullable
+  // organizationId / clientId rationale.
+  organizationId String?
+  clientId       String?
+  direction      String
+  fromNumber     String
+  toNumber       String
+  duration       Int?
+  status         String
+  recordingUrl   String?
+  krispcallId    String?
+  createdAt      DateTime       @default(now())
+  transcript     CallTranscript?
+
+  @@index([organizationId])
+  @@index([candidateId])
 }
 
 model CallTranscript {

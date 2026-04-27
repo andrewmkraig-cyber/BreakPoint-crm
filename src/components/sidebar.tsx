@@ -11,6 +11,7 @@ import {
   Briefcase,
   Building2,
   Mail,
+  Phone,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,7 @@ import { useMailContext } from "@/lib/mail-context";
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/mail", label: "Mail", icon: Mail },
+  { href: "/phone", label: "Phone", icon: Phone },
   { href: "/pipeline", label: "Pipeline", icon: GitBranch },
   { href: "/applicants", label: "Applicants", icon: User },
   { href: "/candidates", label: "Candidates", icon: Users },
@@ -69,12 +71,12 @@ export function Sidebar() {
           />
         ))}
       </nav>
-      <nav className="shrink-0 space-y-0.5 border-t border-court-border p-3">
+      <nav className="shrink-0 space-y-0.5 border-t border-court-border p-2">
         {FOOTER_NAV.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
       </nav>
-      <div className="shrink-0 border-t border-court-border p-4 text-[11px] uppercase tracking-wider text-court-fg-muted">
+      <div className="shrink-0 border-t border-court-border p-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
         BreakPoint Talent
         <div className="mt-1 text-[10px] normal-case tracking-normal text-court-fg-muted/80">
           Solon, OH &middot; Est. 2026
