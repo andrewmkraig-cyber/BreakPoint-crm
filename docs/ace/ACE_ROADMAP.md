@@ -1,14 +1,52 @@
 # Ace Roadmap
 
-## Ace 23.0 - Mail Tab remaining items + activity logging
+## Ace 24.0 - Phone Tab build
 
-### Order of execution
+### Phase 1 - Foundation
+1. New /phone page in the main nav. Two-pane layout similar to /mail.
+2. Call log pulled from Ringover (formerly Krispcall) - timestamp, direction, candidate/client match, duration, status.
+3. SMS threads from Ringover - one thread per phone number, message history, ordered by most recent activity.
+4. Match every call + SMS thread to a Candidate or Contact by phone number lookup. Unmatched ones surface in an "Unknown" bucket with a quick-link to "Add to candidate" / "Add to client contact."
+5. Read paths only in Phase 1 - no inbound notifications or reply UI yet.
 
-1. Auto-tagging emails to candidate/client profiles - on send and on receive, match email addresses to Neon candidate/client/contact records, surface matched threads on candidate profile, client profile, and contact cards. VERY IMPORTANT.
-2. BCC Austin auto-populate - Settings toggle: "Always BCC Austin Barnard." When on, austin@breakpointtalent.com auto-populates in BCC on every new compose and reply. User can remove manually per email.
-3. Click-to-add dropdown bug - suggestions dropdown on To/CC/BCC stays visible after clicking a suggestion instead of auto-dismissing. Fix dismiss behavior.
-4. Mail tab sent view - Sent tab/filter in /mail showing sent messages from Gmail sent folder, same thread UI as inbox.
-5. Sent emails composed from Ace appearing in candidate/client activity - when email sent from popup composer, log it as activity event on the candidate or client profile it was sent from.
+### Phase 2 - Inbound notifications + click-to-call
+1. Inbound call notification toast (Ringover webhook) - Answer / Voicemail buttons in the toast. Same compact-toast styling as the mail toast (already shipped 23.0).
+2. Inbound SMS notification toast with inline reply - type a quick response straight in the toast, sends back through Ringover.
+3. Click-to-call from any phone-number element across the app (candidate profile, client contact card). Initiates the call via Ringover's API and logs an outbound CallLog row.
+
+### Phase 3 - Search, filters, recordings
+1. Search across calls + SMS by candidate name, phone number, body text.
+2. Filters: direction (inbound/outbound), date range, matched/unmatched, voicemail-only.
+3. Per-thread SMS view - full conversation history in the right pane, send/receive in line.
+4. Call recordings surfaced on candidate/client profile pages - playback inline from the Activity panel, with Claude transcript summary when available.
+
+## Ace 25.0 - Multi-recruiter permissions
+
+Foundation for adding additional recruiters to BreakPoint without exposing every record to every user.
+
+1. Schema additions: ownerId on Client and Job (nullable, FK to User). Existing rows backfilled to Andrew. Permission rules: a recruiter sees clients/jobs they own + any explicitly shared with them.
+2. Shared candidates - many-to-many join (CandidateAccessGrant?) so candidates can be shared across recruiters without duplicating rows. Grant types: read, edit.
+3. Invite flow in /settings - "Invite recruiter" form: email + name + role (admin / recruiter). Sends a magic-link sign-up email; new user lands in BreakPoint Talent org with role=member. Reuses existing OrganizationMembership table.
+4. Settings → "Manage team" page - list of org members, role chips, "Resend invite" / "Revoke access" buttons.
+5. Per-row permission checks on every server action that reads or writes Client / Job / Candidate when ownerId or share grant doesn't match the current user.
+
+## Completed - Ace 23.0 (Mail Tab batch)
+
+All five items from the original 23.0 plan shipped. See docs/ace/ACE_STATE.md for the full list with implementation notes.
+
+1. Auto-tagging emails to candidate/client profiles - SHIPPED (GmailThreadTag table, tagThreadByAddresses on send + read, Email Threads card on Ace-native AND RF-imported candidate paths + Client overview).
+2. BCC Austin auto-populate - SHIPPED (BCC autocomplete dropdown sourced from OrganizationMembership, Austin row inserted directly to Neon).
+3. Click-to-add dropdown bug - SHIPPED (moved pick() from onClick to onMouseDown.preventDefault, single-click selection lands cleanly).
+4. Mail tab sent view - SHIPPED (Sent + Drafts shortcuts in the new sidebar; both feed the same thread refetch with labelIds=SENT or =DRAFT).
+5. Sent emails appearing in candidate/client activity - SHIPPED (auto-tag fires on send/reply too; Email Threads card surfaces them on the relevant profile).
+
+Bonus 23.0 ships not on the original list:
+- Mail sidebar redesign (premium Inbox card, nested labels, search, refresh, drag-and-drop)
+- Pop-out floating thread window (drag, resize, full reply/archive/move support)
+- Tennis ball "Ace" favicon + brand mark
+- Global Compose FAB with non-blocking mode
+- Mail toast auto-dismisses when the user opens the thread
+- Compact uniform notifications with Phone icon for SMS/call
 
 ## Ace 18.0 - Composer UX + Templates + Mail Tab Polish + Interview Scheduling Overhaul
 
@@ -49,7 +87,7 @@ Each template tagged with side (candidate-facing vs client-facing) and stage (wh
 2. BCC dropdown autocompletes with teammates from Andrew's org (Austin Barnard for now)
 - (Sticky sidebar previously bundled with this prompt has already shipped via 5A.1-fix.)
 
-#### Prompt 7 - Mail Tab polish + bidirectional read sync
+#### Prompt 7 - Mail Tab polish + bidirectional read sync [SHIPPED 22.0 + 23.0]
 
 SHIPPED 22.0:
 - Open thread marks read in Gmail (removeLabel UNREAD)
@@ -59,16 +97,21 @@ SHIPPED 22.0:
 - Logo + signature contact icons CID render fix
 - Favicon (pulled forward from Week 4)
 
-REMAINING for 23.0:
-- BCC Austin auto-populate
-- Click-to-add dropdown bug fix
-- Re-audit ENOENT logo on serverless (low priority)
+SHIPPED 23.0:
+- BCC autocomplete with org members (Austin Barnard surfaces on focus)
+- Click-to-add dropdown bug fix (single-click selection now lands cleanly)
+- Mail toast auto-dismisses when the matching thread is opened
 
-#### Prompt 8 - Auto-tagging emails to candidate/client profiles
-1. On email send and on email receive (poll Gmail every N minutes), match email addresses to candidates and clients in Neon
-2. Surface matched threads on the candidate's profile (new tab or activity panel)
-3. Surface matched threads on the client's profile and on each contact card
-4. Bidirectional: emails sent FROM popup composer auto-tag to the profile they were sent from
+REMAINING (low priority):
+- Re-audit ENOENT logo on serverless
+
+#### Prompt 8 - Auto-tagging emails to candidate/client profiles [SHIPPED 23.0]
+
+All four items shipped:
+1. Auto-tag fires on every thread open AND every send/reply via tagThreadByAddresses (src/lib/gmail.ts). Address match is case-insensitive substring against Candidate.email and Contact.emails (orgId-scoped).
+2. Email Threads card on candidate profiles (BOTH Ace-native LocalCandidateProfile AND RF-imported page.tsx).
+3. Email Threads card on client overview tab (separate gmailTags fetch in the page-level Promise.all, scoped by clientId + organizationId).
+4. Bidirectional confirmed - sends from the FAB / Reply / candidate-popup composers all run through the same auto-tag write path.
 
 ### Interview Scheduling Overhaul (Prompts 9-13, larger work)
 
