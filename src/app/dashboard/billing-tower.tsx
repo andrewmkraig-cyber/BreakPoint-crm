@@ -97,7 +97,7 @@ function Metric({
   // secondary instead of two equal-weight numbers.
   const accent = tone === "accent";
   const wrapper = accent
-    ? "relative overflow-hidden rounded-2xl border border-court-accent/20 bg-court-accent-tint p-6"
+    ? "rounded-2xl border border-court-accent/20 bg-court-accent-tint p-6"
     : "rounded-2xl border border-court-border bg-court-surface p-6";
   const labelCls = accent
     ? "text-xs font-semibold tracking-widest uppercase text-court-accent-dark"
@@ -110,33 +110,6 @@ function Metric({
       <div className={labelCls}>{label}</div>
       <div className={valueCls}>{value}</div>
       <p className="mt-3 text-sm text-court-fg-muted">{hint}</p>
-      {accent && <Sparkline />}
     </div>
-  );
-}
-
-// Decorative upward-trending sparkline for the accent card. Pure SVG,
-// no axes/labels — the points trace a generic "going up and to the
-// right" curve. Anchored to the bottom-right of the card via absolute
-// positioning; the parent wrapper is `relative overflow-hidden` so it
-// can't bleed past the rounded corners.
-function Sparkline() {
-  return (
-    <svg
-      width="80"
-      height="40"
-      viewBox="0 0 80 40"
-      fill="none"
-      aria-hidden
-      className="pointer-events-none absolute bottom-3 right-3 text-court-accent/60"
-    >
-      <polyline
-        points="0,32 14,28 26,30 38,22 50,18 62,12 78,4"
-        stroke="currentColor"
-        strokeWidth="1.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   );
 }
