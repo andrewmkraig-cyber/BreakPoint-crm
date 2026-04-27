@@ -24,11 +24,12 @@ import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
 import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
 import AiWorkspace from "@/components/AiWorkspace";
+import { ActivityFeed } from "@/components/activity-feed";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan";
+type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan" | "activity";
 
 type LocationJson = {
   street_address_1?: string | null;
@@ -55,7 +56,8 @@ export default async function ClientDetailPage({
     searchParams?.tab === "contacts" ||
     searchParams?.tab === "agreements" ||
     searchParams?.tab === "benefits" ||
-    searchParams?.tab === "game-plan"
+    searchParams?.tab === "game-plan" ||
+    searchParams?.tab === "activity"
       ? searchParams.tab
       : "overview";
 
@@ -402,6 +404,8 @@ export default async function ClientDetailPage({
         />
       ) : tab === "game-plan" && legacyRfId != null ? (
         <AiWorkspace entityType="client" entityId={String(legacyRfId)} />
+      ) : tab === "activity" ? (
+        <ActivityFeed entityType="client" entityId={client.id} />
       ) : (
         <div className="rounded-xl border border-court-border bg-court-surface p-6 text-sm text-court-fg-muted">
           This tab isn&apos;t available yet for Ace-native clients.
@@ -439,6 +443,7 @@ function Tabs({
         active={tab === "benefits"}
       />
       <TabLink label="Game Plan" href={`/clients/${slug}?tab=game-plan`} active={tab === "game-plan"} />
+      <TabLink label="Activity" href={`/clients/${slug}?tab=activity`} active={tab === "activity"} />
     </div>
   );
 }

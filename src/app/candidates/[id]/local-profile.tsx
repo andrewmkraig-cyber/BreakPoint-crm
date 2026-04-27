@@ -10,6 +10,8 @@ import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
+import { ActivityFeed } from "@/components/activity-feed";
+import { cn } from "@/lib/utils";
 import { formatLocation } from "@/lib/utils";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 // 5A.5.b parity: Ace-native candidates now share the same resume
@@ -26,7 +28,10 @@ import { getAppPreferences } from "@/lib/preferences";
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
-export async function LocalCandidateProfile({ id }: { id: string }) {
+type LocalCandidateTab = "profile" | "activity";
+
+export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string; tab?: string }) {
+  const tab: LocalCandidateTab = tabParam === "activity" ? "activity" : "profile";
   const [candidate, placements, interviews, allJobs, allClients, allContacts, jobOverrides, session, prefs] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
@@ -469,6 +474,12 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         openJobs={openJobs}
       />
 
+      <LocalTabs tab={tab} candidateId={candidate.id} />
+
+      {tab === "activity" ? (
+        <ActivityFeed entityType="candidate" entityId={candidate.id} />
+      ) : (
+      <>
       {jobRows.length > 0 && (
         <LocalPlacementRows
           candidateId={candidate.id}
@@ -641,7 +652,32 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
           </ul>
         </section>
       )}
+      </>
+      )}
     </div>
+  );
+}
+
+function LocalTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidateId: string }) {
+  return (
+    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
+      <LocalTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
+      <LocalTabLink label="Activity" href={`/candidates/${candidateId}?tab=activity`} active={tab === "activity"} />
+    </div>
+  );
+}
+
+function LocalTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
+        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
+      )}
+    >
+      <span>{label}</span>
+    </Link>
   );
 }
 

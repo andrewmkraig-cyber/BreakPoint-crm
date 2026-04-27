@@ -47,6 +47,7 @@ import type {
 import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
+import { ActivityFeed } from "@/components/activity-feed";
 import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -57,7 +58,7 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type CandidateTab = "profile" | "game-plan";
+type CandidateTab = "profile" | "game-plan" | "activity";
 
 // Placement.billingContacts is a Json column — Prisma types it loosely as
 // JsonValue. Coerce to our snapshot shape defensively: keep only objects with
@@ -114,7 +115,7 @@ export default async function CandidateProfilePage({
   // Ace-native candidates (never imported from RF) have no rfId and route
   // to the simpler LocalCandidateProfile UI — unchanged from pre-Phase 1.
   if (candidate.rfId == null) {
-    return <LocalCandidateProfile id={candidate.id} />;
+    return <LocalCandidateProfile id={candidate.id} tab={searchParams?.tab} />;
   }
 
   const id = candidate.rfId;
@@ -135,7 +136,12 @@ export default async function CandidateProfilePage({
     skills: candidate.skills,
   };
 
-  const tab: CandidateTab = searchParams?.tab === "game-plan" ? "game-plan" : "profile";
+  const tab: CandidateTab =
+    searchParams?.tab === "game-plan"
+      ? "game-plan"
+      : searchParams?.tab === "activity"
+        ? "activity"
+        : "profile";
 
   // Placement / Interview / CandidateResume are scoped by candidateId
   // (cuid) — candidateRfId is retained only as a historical reference and
@@ -616,6 +622,8 @@ export default async function CandidateProfilePage({
 
       {tab === "game-plan" ? (
         <AiWorkspace entityType="candidate" entityId={String(id)} />
+      ) : tab === "activity" ? (
+        <ActivityFeed entityType="candidate" entityId={candidate.id} />
       ) : (
         <>
           {/* Resume-first layout: the resume PDF is the primary content —
@@ -685,6 +693,7 @@ function Tabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) 
     <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <TabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
       <TabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
+      <TabLink label="Activity" href={`/candidates/${candidateId}?tab=activity`} active={tab === "activity"} />
     </div>
   );
 }
