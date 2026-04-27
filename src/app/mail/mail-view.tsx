@@ -229,15 +229,30 @@ export function MailView({
   // already INBOX-scoped from the server. Aborts in-flight fetches
   // when a new keystroke arrives before the previous one resolves.
   const isFirstSidebarSelection = useRef(true);
+  // Track previous filter values so a refresh-only trigger
+  // (refreshTick bumped) doesn't blow away the currently-open thread.
+  // Selection is cleared only when the label or search actually
+  // changed — otherwise the user clicked Refresh and we should leave
+  // their reading state alone.
+  const prevSelectedLabelRef = useRef<typeof selectedLabel>(selectedLabel);
+  const prevSearchQueryRef = useRef<string>(searchQuery);
   useEffect(() => {
     if (isFirstSidebarSelection.current) {
       isFirstSidebarSelection.current = false;
       return;
     }
+    const filtersChanged =
+      prevSelectedLabelRef.current !== selectedLabel ||
+      prevSearchQueryRef.current !== searchQuery;
+    prevSelectedLabelRef.current = selectedLabel;
+    prevSearchQueryRef.current = searchQuery;
+
     const ac = new AbortController();
     setThreadsLoading(true);
-    setSelected(null);
-    setDetail(null);
+    if (filtersChanged) {
+      setSelected(null);
+      setDetail(null);
+    }
     void (async () => {
       try {
         const params = new URLSearchParams();
