@@ -27,6 +27,9 @@ const dmSans = DM_Sans({
 export const metadata: Metadata = {
   title: "Ace · BreakPoint Talent",
   description: "Ace — BreakPoint Talent's internal recruiting CRM",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default async function RootLayout({
