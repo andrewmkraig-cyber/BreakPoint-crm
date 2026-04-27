@@ -800,7 +800,14 @@ export function MailComposer({
           </button>
         </div>
         {showCc && <AddressRow label="CC" value={cc} onChange={setCc} />}
-        {showBcc && <AddressRow label="BCC" value={bcc} onChange={setBcc} />}
+        {showBcc && (
+          <AddressRow
+            label="BCC"
+            value={bcc}
+            onChange={setBcc}
+            suggestions={ORG_MEMBER_SUGGESTIONS}
+          />
+        )}
         <label className="flex items-center gap-2 text-sm">
           <span className="w-16 shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
             Subject
@@ -1082,26 +1089,97 @@ export function MailComposer({
   return composerBody;
 }
 
+// TODO: Replace with a dynamic fetch from /api/org/members once that
+// endpoint exists. The OrganizationMembership table already carries
+// the rows we need; the API stub just hasn't been written yet. Until
+// then, hardcoding the BreakPoint roster's most-frequent BCC target
+// (Austin) so recruiters can one-click-add him to a thread.
+const ORG_MEMBER_SUGGESTIONS: Array<{ name: string; email: string }> = [
+  { name: "Austin Barnard", email: "austin@breakpointtalent.com" },
+];
+
 function AddressRow({
   label,
   value,
   onChange,
+  suggestions = [],
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  // Optional autocomplete source. When provided + the field is
+  // focused, a dropdown surfaces matching org members. Picking one
+  // appends "Name <email>, " to the field — same string-comma format
+  // the To and CC fields expect.
+  suggestions?: Array<{ name: string; email: string }>;
 }) {
+  const [focused, setFocused] = useState(false);
+
+  // The "current segment" is whatever the user is typing after the
+  // last comma. We filter suggestions against this so the dropdown
+  // narrows as they type "aust…".
+  const lowerValue = value.toLowerCase();
+  const lastCommaIdx = value.lastIndexOf(",");
+  const currentSegment = value.slice(lastCommaIdx + 1).trim().toLowerCase();
+
+  const filtered = focused
+    ? suggestions.filter((s) => {
+        // Skip anyone already present in the field.
+        if (lowerValue.includes(s.email.toLowerCase())) return false;
+        // Empty segment → show every remaining suggestion.
+        if (!currentSegment) return true;
+        return (
+          s.email.toLowerCase().includes(currentSegment) ||
+          s.name.toLowerCase().includes(currentSegment)
+        );
+      })
+    : [];
+
+  function pick(s: { name: string; email: string }) {
+    const addr = `${s.name} <${s.email}>`;
+    // Drop the in-progress segment, replace with the full picked
+    // address, and append a trailing comma+space so the user can keep
+    // typing the next recipient without manual punctuation.
+    const before =
+      lastCommaIdx >= 0 ? value.slice(0, lastCommaIdx + 1) + " " : "";
+    onChange(before + addr + ", ");
+  }
+
   return (
-    <label className="flex items-center gap-2 text-sm">
-      <span className="w-16 shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
-        {label}
-      </span>
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-      />
-    </label>
+    <div className="relative">
+      <label className="flex items-center gap-2 text-sm">
+        <span className="w-16 shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
+          {label}
+        </span>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        />
+      </label>
+      {filtered.length > 0 && (
+        <ul className="absolute left-[72px] right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
+          {filtered.map((s) => (
+            <li key={s.email}>
+              <button
+                type="button"
+                // onMouseDown.preventDefault keeps the input focused so
+                // the blur handler doesn't hide the dropdown before
+                // onClick fires.
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pick(s)}
+                className="block w-full px-3 py-2 text-left text-sm transition hover:bg-court-surface-subtle"
+              >
+                <div className="font-medium text-court-fg">{s.name}</div>
+                <div className="text-[11px] text-court-fg-muted">{s.email}</div>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
