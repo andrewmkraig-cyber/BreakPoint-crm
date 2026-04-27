@@ -45,10 +45,16 @@ function fetchComposeInit(): Promise<ComposeInitPayload> {
   return cachedInit;
 }
 
+// Stable per-thread toast id so the Mail Tab can dismiss the
+// notification when the user opens that thread. sonner accepts a
+// custom id; calls to toast.dismiss(id) for an inactive id are a
+// safe no-op, so loadThread can fire this unconditionally.
+export const mailToastIdForThread = (threadId: string) => `mail-toast-${threadId}`;
+
 export function renderNewMailToast(thread: UnreadInboxThread) {
   toast.custom(
     (id) => <NewMailToast thread={thread} toastId={id} />,
-    { duration: 8_000 },
+    { id: mailToastIdForThread(thread.id), duration: 8_000 },
   );
 }
 

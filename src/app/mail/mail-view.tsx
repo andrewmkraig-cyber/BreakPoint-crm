@@ -21,6 +21,7 @@ import { useMailContext } from "@/lib/mail-context";
 import { useFloatingThread } from "@/lib/floating-thread-context";
 import { useComposerManager } from "@/lib/composer-manager";
 import { MessageBlock } from "@/components/mail/message-block";
+import { mailToastIdForThread } from "@/components/mail-notification-toast";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -300,6 +301,10 @@ export function MailView({
       setThreads((prev) =>
         prev.map((t) => (t.id === id && t.unread ? { ...t, unread: false } : t)),
       );
+      // Dismiss any new-mail toast for this thread now that the user
+      // has opened it. Safe to call even when no toast is active —
+      // sonner's dismiss is a no-op for unknown ids.
+      toast.dismiss(mailToastIdForThread(id));
       void fetch(`/api/mail/threads/${encodeURIComponent(id)}/read`, {
         method: "POST",
         signal,
