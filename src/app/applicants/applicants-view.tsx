@@ -271,7 +271,7 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
               the email. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center gap-1 rounded-md border border-brand bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-brand-tint px-2.5 py-1 text-[11px] font-semibold text-brand-dark shadow-sm transition hover:bg-brand/20"
           >
             Submit
           </Link>
@@ -390,7 +390,7 @@ function KeptRowView({ row }: { row: KeptRow }) {
               the row from the Kept query on next refresh. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center gap-1 rounded-md border border-brand bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-brand-tint px-2.5 py-1 text-[11px] font-semibold text-brand-dark shadow-sm transition hover:bg-brand/20"
           >
             Submit
           </Link>
@@ -446,17 +446,16 @@ function ActionButton({
       disabled={disabled}
       className={cn(
         "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 text-[11px] font-bold shadow-sm transition disabled:opacity-60",
-        // Primary stays brand-green across every mode. Destructive keeps red
-        // border + red text (status semantics) but the card bg tracks the
-        // court surface and the hover tint gates on mode: Hard keeps
-        // bg-red-50 for a light-red hover; Clay + Grass get a translucent
-        // red glow so the hover doesn't surface a light patch on the dark
-        // page. Neutral default routes through court-* tokens.
+        // Primary stays brand-green for the few callers that still
+        // request it. Destructive (Reject) reads as a soft red chip:
+        // light-red bg + red border + red text. Neutral (Keep) gets
+        // a soft slate chip — no hover-color flip, just a slightly
+        // darker grey on hover.
         primary
           ? "bg-brand text-white hover:bg-brand-dark"
           : destructive
-            ? "border border-red-200 bg-court-surface text-red-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30"
-            : "border border-court-border bg-court-surface text-court-fg hover:border-court-accent/40 hover:text-court-accent-dark",
+            ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
+            : "border border-court-border bg-slate-100 text-slate-600 hover:bg-slate-200",
       )}
     >
       {children}

@@ -19,7 +19,6 @@ const PERIODS = [
 // have an invoice-paid signal.
 export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: number }) {
   const [period, setPeriod] = useState<(typeof PERIODS)[number]["value"]>("quarter-current");
-  const activeLabel = PERIODS.find((p) => p.value === period)?.label ?? "";
 
   const billedLabel =
     period === "quarter-current" ? "Q2 Billed Revenue" : "Placement Revenue";
@@ -32,10 +31,7 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
   return (
     <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="text-[11px] uppercase tracking-[0.2em] text-court-accent-dark">Billing Tower</div>
-          <h2 className="mt-1 font-serif text-xl font-semibold text-court-fg">{activeLabel}</h2>
-        </div>
+        <div className="text-[11px] uppercase tracking-[0.2em] text-court-accent-dark">Billing Tower</div>
         <div className="relative">
           <select
             value={period}

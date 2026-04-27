@@ -19,7 +19,7 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
     <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
         <div>
-          <h2 className="font-serif text-base font-semibold text-court-fg">Upcoming interviews</h2>
+          <h2 className="font-sans text-base font-semibold text-court-fg">Upcoming interviews</h2>
           <p className="text-xs text-court-fg-muted">Scheduled in the next 7 days.</p>
         </div>
         <div className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2.5 py-0.5 text-[11px] font-semibold text-court-fg-muted">
