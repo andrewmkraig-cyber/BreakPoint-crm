@@ -22,10 +22,12 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unknown user" }, { status: 401 });
 
   const labelIds = req.nextUrl.searchParams.getAll("labelIds");
+  const q = req.nextUrl.searchParams.get("q") ?? undefined;
   try {
     const threads = await listGmailThreads(user.id, {
       maxResults: 50,
       labelIds: labelIds.length > 0 ? labelIds : undefined,
+      q,
     });
     return NextResponse.json({ threads });
   } catch (e) {

@@ -8,6 +8,7 @@ import { ComposerManagerProvider } from "@/lib/composer-manager";
 import { FloatingThreadProvider } from "@/lib/floating-thread-context";
 import { MinimizedTray } from "@/components/composer/minimized-tray";
 import { FloatingThreadWindow } from "@/components/mail/floating-thread-window";
+import { ComposeFAB } from "@/components/mail/compose-fab";
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -18,6 +19,7 @@ export function Providers({ children }: { children: ReactNode }) {
             {children}
             <MinimizedTray />
             <FloatingThreadWindow />
+            <ComposeFAB />
             <Toaster
               position="bottom-right"
               richColors

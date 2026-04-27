@@ -388,13 +388,18 @@ function parseAddress(raw: string): { name: string; email: string } {
 
 export async function listGmailThreads(
   userId: string,
-  opts: { maxResults?: number; labelIds?: string[] } = {},
+  opts: { maxResults?: number; labelIds?: string[]; q?: string } = {},
 ): Promise<MailListThread[]> {
   const accessToken = await getFreshAccessToken(userId);
   const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/threads");
   url.searchParams.set("maxResults", String(opts.maxResults ?? 50));
   for (const id of opts.labelIds ?? ["INBOX"]) {
     url.searchParams.append("labelIds", id);
+  }
+  // Gmail's full search syntax — from:/to:/subject:/has:attachment/etc.
+  // Pass through whatever the user typed; the API handles parsing.
+  if (opts.q && opts.q.trim()) {
+    url.searchParams.set("q", opts.q.trim());
   }
   const listRes = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${accessToken}` },

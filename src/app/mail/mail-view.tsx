@@ -13,6 +13,7 @@ import {
   Maximize2,
   Pencil,
   Reply,
+  Search,
   Send,
   X,
 } from "lucide-react";
@@ -109,6 +110,16 @@ export function MailView({
   // to that label.
   const [selectedLabel, setSelectedLabel] = useState<{ id: string; name: string } | null>(null);
   const [threadsLoading, setThreadsLoading] = useState(false);
+
+  // Search box: `searchInput` mirrors what the user is typing;
+  // `searchQuery` is the debounced value the refetch effect actually
+  // uses. 300ms timer per the spec.
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQuery(searchInput.trim()), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
   // Set of user-label full-path names (e.g. "Done Deals") whose child
   // tree the user has collapsed. Default empty = all parents expanded.
   // Persisted to localStorage so the recruiter's preferred collapsed
@@ -211,10 +222,10 @@ export function MailView({
     });
   }, []);
 
-  // Refetch the thread list when the sidebar selection changes. First
-  // render is skipped — initialThreads is already INBOX-scoped from the
-  // server. Aborts in-flight fetches when the user clicks again before
-  // the previous one resolves.
+  // Refetch the thread list when the sidebar selection or search
+  // query changes. First render is skipped — initialThreads is
+  // already INBOX-scoped from the server. Aborts in-flight fetches
+  // when a new keystroke arrives before the previous one resolves.
   const isFirstSidebarSelection = useRef(true);
   useEffect(() => {
     if (isFirstSidebarSelection.current) {
@@ -229,6 +240,7 @@ export function MailView({
       try {
         const params = new URLSearchParams();
         params.set("labelIds", selectedLabel ? selectedLabel.id : "INBOX");
+        if (searchQuery) params.set("q", searchQuery);
         const res = await fetch(`/api/mail/threads?${params.toString()}`, {
           cache: "no-store",
           signal: ac.signal,
@@ -253,7 +265,7 @@ export function MailView({
       }
     })();
     return () => ac.abort();
-  }, [selectedLabel]);
+  }, [selectedLabel, searchQuery]);
 
   const loadThread = useCallback(async (id: string, signal?: AbortSignal) => {
     setLoading(true);
@@ -595,6 +607,29 @@ export function MailView({
       </aside>
 
       <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
+        <div className="border-b border-court-border bg-court-surface-subtle/60 px-3 py-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+            <input
+              type="search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search mail (try from:foo@bar.com)"
+              aria-label="Search mail"
+              className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-8 pr-8 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => setSearchInput("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
         <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
           <input
             type="checkbox"
@@ -663,7 +698,11 @@ export function MailView({
           </div>
         ) : threads.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-court-fg-muted">
-            {selectedLabel ? `No threads in "${selectedLabel.name}".` : "Inbox is empty."}
+            {searchQuery
+              ? `No results for "${searchQuery}".`
+              : selectedLabel
+                ? `No threads in "${selectedLabel.name}".`
+                : "Inbox is empty."}
           </div>
         ) : (
           <ul className="max-h-[calc(100vh-240px)] divide-y divide-court-border overflow-y-auto">
