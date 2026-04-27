@@ -556,56 +556,24 @@ export default async function CandidateProfilePage({
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
 
-      {/* Section 1: Header. Avatar + name + inline contact glance,
-          actions on the right. No bottom border — spacing carries the
-          separation. */}
-      <header className="flex flex-col gap-4 pt-2 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
-            {initials || "?"}
-          </div>
-          <div className="min-w-0">
-            {c.current_organization && (
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-                Currently at {c.current_organization}
-              </div>
-            )}
-            <h1 className="font-serif text-3xl font-bold text-court-fg">{name}</h1>
-            {(c.current_designation || locationLabel) && (
-              <div className="mt-0.5 text-sm text-court-fg-muted">
-                {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
-              </div>
-            )}
-          </div>
+      {/* Section 1: Header. Avatar + name only — action buttons moved
+          to a toolbar above the resume column below. */}
+      <header className="flex items-start gap-4 pt-2">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
+          {initials || "?"}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          {isKept && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
-              <Bookmark className="h-3 w-3" /> Kept
-            </span>
+        <div className="min-w-0">
+          {c.current_organization && (
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+              Currently at {c.current_organization}
+            </div>
           )}
-          {displayTags.slice(0, 3).map((t) => (
-            <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
-              {t}
-            </span>
-          ))}
-          <AddToListButton candidateId={candidate.id} candidateName={name} />
-          {/* Apply / Submit URL deep-links into PlacementActions —
-              ?openApply=1 / ?openSubmit=1 trigger the existing modals
-              with no pre-selected job. Per-row PipelineRowActions
-              buttons remain the per-job entry. */}
-          <Link
-            href={`/candidates/${id}?openApply=1`}
-            className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
-          >
-            Apply to Job
-          </Link>
-          <Link
-            href={`/candidates/${id}?openSubmit=1`}
-            className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
-          >
-            Submit to Job
-          </Link>
+          <h1 className="font-serif text-3xl font-bold text-court-fg">{name}</h1>
+          {(c.current_designation || locationLabel) && (
+            <div className="mt-0.5 text-sm text-court-fg-muted">
+              {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
+            </div>
+          )}
         </div>
       </header>
 
@@ -647,6 +615,39 @@ export default async function CandidateProfilePage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-4 lg:col-span-7">
           <UnderlineTabs tab={tab} candidateId={id} />
+          {/* Toolbar above the resume column. Status chips on the
+              left, primary actions right-aligned. Sits between the
+              underline tabs and the tab content. ?openApply=1 /
+              ?openSubmit=1 deep-link into PlacementActions modals. */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {isKept && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+                  <Bookmark className="h-3 w-3" /> Kept
+                </span>
+              )}
+              {displayTags.slice(0, 3).map((t) => (
+                <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
+                  {t}
+                </span>
+              ))}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <AddToListButton candidateId={candidate.id} candidateName={name} />
+              <Link
+                href={`/candidates/${id}?openApply=1`}
+                className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
+              >
+                Apply to Job
+              </Link>
+              <Link
+                href={`/candidates/${id}?openSubmit=1`}
+                className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+              >
+                Submit to Job
+              </Link>
+            </div>
+          </div>
           {tab === "game-plan" ? (
             <AiWorkspace entityType="candidate" entityId={String(id)} />
           ) : (

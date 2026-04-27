@@ -12,8 +12,6 @@ import {
   Loader2,
   Trash2,
   Upload,
-  Pencil,
-  Check,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
@@ -23,7 +21,6 @@ import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
   convertDocxResumeToPdf,
   deleteCandidateResume,
-  renameCandidateResume,
 } from "@/app/candidates/[id]/actions";
 
 const ACCEPT_RESUME_MIME =
@@ -95,20 +92,6 @@ function downloadUrlFor(v: ResumeVersion): string {
   return v.kind === "redacted" ? `${base}&variant=redacted` : base;
 }
 
-function extensionFor(v: ResumeVersion): string {
-  if (v.mimeType === "application/pdf") return ".pdf";
-  if (v.mimeType === DOCX_MIME) return ".docx";
-  if (v.mimeType === LEGACY_DOC_MIME) return ".doc";
-  if (v.mimeType === "text/plain") return ".txt";
-  const m = v.filename.match(/\.(pdf|docx?|txt)$/i);
-  return m ? m[0].toLowerCase() : ".pdf";
-}
-
-function displayNameFor(v: ResumeVersion): string {
-  const stripped = (v.displayName?.trim() || v.filename).replace(/\.(pdf|docx?|txt)$/i, "");
-  return stripped + extensionFor(v);
-}
-
 function dropdownLabelFor(v: ResumeVersion): string {
   const date = new Date(v.uploadedAt).toLocaleDateString(undefined, {
     month: "short",
@@ -178,21 +161,6 @@ export function EditableResume({
 
   const selected = versions.find((v) => v.key === selectedKey) ?? null;
 
-  // Rename state — bound to the currently-selected version. Switching
-  // versions resets the rename UI.
-  const [renaming, setRenaming] = useState(false);
-  const [renameDraft, setRenameDraft] = useState("");
-  useEffect(() => {
-    setRenaming(false);
-    if (selected) {
-      const stripped = (selected.displayName?.trim() ?? selected.filename).replace(
-        /\.(pdf|docx?|txt)$/i,
-        "",
-      );
-      setRenameDraft(stripped);
-    }
-  }, [selectedKey, selected]);
-
   async function onFiles(files: File[]) {
     const file = files[0];
     if (!file) return;
@@ -258,32 +226,15 @@ export function EditableResume({
     });
   }
 
-  function commitRename() {
-    if (!selected) return;
-    const trimmed = renameDraft.trim();
-    setRenaming(false);
-    // No-op when unchanged from the current display name (or fallback).
-    const currentDisplay = selected.displayName?.trim() ?? "";
-    if (trimmed === currentDisplay) return;
-    startTransition(async () => {
-      const res = await renameCandidateResume({
-        resumeId: selected.resumeId,
-        displayName: trimmed,
-      });
-      if (!res.ok) {
-        toast.error("Couldn't rename", { description: res.error });
-        return;
-      }
-      toast.success("Renamed");
-      router.refresh();
-    });
-  }
+  // commitRename() helper removed alongside the click-to-rename
+  // filename UI. The renameCandidateResume server action remains
+  // available for future re-wiring (e.g. dropdown context menu).
 
   if (versions.length === 0) {
     return (
       <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
-        <div className="flex items-center justify-between border-b border-court-border px-4 py-2">
-          <h2 className="font-serif text-sm font-semibold text-court-fg">Resume</h2>
+        <div className="flex items-center justify-between border-b border-court-border px-3 py-1.5">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">Resume</h2>
         </div>
         <div className="p-5">
           <DocumentDropzone
@@ -324,7 +275,6 @@ export function EditableResume({
   if (!selected) return null;
   const previewUrl = previewUrlFor(selected);
   const downloadUrl = downloadUrlFor(selected);
-  const fileBaseLabel = displayNameFor(selected);
   const docx = isDocxResume(selected);
   // The unified editor accepts any PDF version as a base — the user may
   // be looking at a branded or redacted derivative and want to add more
@@ -333,51 +283,12 @@ export function EditableResume({
 
   return (
     <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-court-border px-4 py-2">
-        <div className="min-w-0 flex-1">
-          <h2 className="font-serif text-sm font-semibold text-court-fg">Resume</h2>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-court-fg-muted">
-            {/* Inline rename — click filename to edit, Enter saves,
-                Escape cancels. The .pdf extension is preserved by the
-                server action; the input shows the stem only. */}
-            {renaming ? (
-              <span className="inline-flex items-center gap-1">
-                <input
-                  autoFocus
-                  value={renameDraft}
-                  onChange={(e) => setRenameDraft(e.target.value)}
-                  onBlur={commitRename}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") commitRename();
-                    if (e.key === "Escape") {
-                      setRenameDraft(
-                        (selected.displayName?.trim() ?? selected.filename).replace(/\.(pdf|docx?|txt)$/i, ""),
-                      );
-                      setRenaming(false);
-                    }
-                  }}
-                  maxLength={200}
-                  className="min-w-[260px] rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                />
-                <span className="text-court-fg-muted">.pdf</span>
-                <Check className="h-3 w-3 text-court-fg-muted" />
-              </span>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setRenaming(true)}
-                className="group inline-flex max-w-[420px] items-center gap-1 truncate text-left transition hover:text-court-fg"
-                title="Click to rename"
-              >
-                <span className="truncate font-medium text-court-fg">{fileBaseLabel}</span>
-                <Pencil className="h-3 w-3 shrink-0 text-court-fg-muted opacity-0 group-hover:opacity-100" />
-              </button>
-            )}
-            {selected.sizeBytes > 0 && <span>· {formatBytes(selected.sizeBytes)}</span>}
-            <span>· uploaded {new Date(selected.uploadedAt).toLocaleDateString()}</span>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
+      {/* No-wrap row so the toolbar stays one line at any width. When
+          the column is narrow, the action group on the right scrolls
+          horizontally rather than wrapping to a second row. */}
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-court-border px-3 py-1.5">
+        <h2 className="shrink-0 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">Resume</h2>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           {/* Version dropdown — Court Mode tokens. Architecture: any
               ResumeVersion entry slots in here without component
               changes (originals + redacted today; branded next prompt). */}
@@ -497,11 +408,5 @@ export function EditableResume({
       )}
     </div>
   );
-}
-
-function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
 }
 

@@ -436,44 +436,24 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
 
-      {/* Section 1: Header — identical shape to the RF-imported page. */}
-      <header className="flex flex-col gap-4 pt-2 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 items-start gap-4">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
-            {initials || "?"}
-          </div>
-          <div className="min-w-0">
-            {candidate.currentOrganization && (
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-                Currently at {candidate.currentOrganization}
-              </div>
-            )}
-            <h1 className="font-serif text-3xl font-bold text-court-fg">{fullName}</h1>
-            {(candidate.currentDesignation || locationLabel) && (
-              <div className="mt-0.5 text-sm text-court-fg-muted">
-                {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
-              </div>
-            )}
-          </div>
+      {/* Section 1: Header — avatar + name only. Action buttons moved
+          to a toolbar above the resume column. */}
+      <header className="flex items-start gap-4 pt-2">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
+          {initials || "?"}
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <AddToListButton candidateId={candidate.id} candidateName={fullName} />
-          {/* Apply / Submit open the existing modals via URL deep-link
-              (?openApply=1 / ?openSubmit=1) — LocalCandidateActions
-              still mounts below to host those modals, just with its
-              own button row hidden via hideButtons. */}
-          <Link
-            href={`/candidates/${candidate.id}?openApply=1`}
-            className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
-          >
-            Apply to Job
-          </Link>
-          <Link
-            href={`/candidates/${candidate.id}?openSubmit=1`}
-            className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
-          >
-            Submit to Job
-          </Link>
+        <div className="min-w-0">
+          {candidate.currentOrganization && (
+            <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+              Currently at {candidate.currentOrganization}
+            </div>
+          )}
+          <h1 className="font-serif text-3xl font-bold text-court-fg">{fullName}</h1>
+          {(candidate.currentDesignation || locationLabel) && (
+            <div className="mt-0.5 text-sm text-court-fg-muted">
+              {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
+            </div>
+          )}
         </div>
       </header>
 
@@ -514,6 +494,24 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-4 lg:col-span-7">
           <UnderlineTabs tab={tab} candidateId={candidate.id} />
+          {/* Toolbar above the resume column — Add to List + Apply +
+              Submit. ?openApply=1 / ?openSubmit=1 deep-link into the
+              LocalCandidateActions modals (mounted with hideButtons). */}
+          <div className="flex items-center justify-end gap-2">
+            <AddToListButton candidateId={candidate.id} candidateName={fullName} />
+            <Link
+              href={`/candidates/${candidate.id}?openApply=1`}
+              className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
+            >
+              Apply to Job
+            </Link>
+            <Link
+              href={`/candidates/${candidate.id}?openSubmit=1`}
+              className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            >
+              Submit to Job
+            </Link>
+          </div>
           {tab === "game-plan" ? (
             <AiWorkspace entityType="candidate" entityId={candidate.id} />
           ) : (
