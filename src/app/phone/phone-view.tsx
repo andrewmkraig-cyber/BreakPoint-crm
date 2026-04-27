@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { usePhonePanels, type PhoneContact } from "@/lib/phone-panels-context";
+import { usePhoneContext } from "@/lib/phone-context";
 
 // Phase 1 Phone Tab. Layout mirrors /mail exactly:
 //   sidebar (col-span-2) · thread list (col-span-3) · detail (col-span-7)
@@ -118,6 +119,10 @@ export function PhoneView() {
   // Cross-component panels (NewText + Call) are mounted at the bottom
   // of this view; the FAB elsewhere triggers them via this context.
   const phonePanels = usePhonePanels();
+  // Sidebar unread badge polling. Triggering refreshUnread() inside
+  // loadThreads keeps the sidebar in lockstep with the threads list
+  // when the user clicks Refresh.
+  const phoneCtx = usePhoneContext();
 
   // Centralized fetch so the initial load, the Refresh button, and
   // post-send "reload threads" all flow through the same path.
@@ -140,7 +145,10 @@ export function PhoneView() {
     } finally {
       setListLoading(false);
     }
-  }, []);
+    // Fire the sidebar refresh in parallel — fast, idempotent, and
+    // makes the badge update the moment the user clicks Refresh.
+    void phoneCtx.refreshUnread();
+  }, [phoneCtx]);
 
   useEffect(() => {
     void loadThreads();
@@ -503,9 +511,7 @@ function ThreadRow({
             <PhoneMissed className="h-3 w-3 shrink-0 text-red-600" />
           )}
           <span className="truncate text-xs text-court-fg-muted">{preview}</span>
-          {thread.hasUnread && (
-            <span className="ml-auto inline-block h-2 w-2 shrink-0 rounded-full bg-[#5A9642]" />
-          )}
+          {/* TODO: Phase 3: show unread dot when s.readAt === null && s.direction === inbound */}
         </div>
       </div>
     </button>

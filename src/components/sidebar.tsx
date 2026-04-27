@@ -17,6 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
 import { useMailContext } from "@/lib/mail-context";
+import { usePhoneContext } from "@/lib/phone-context";
 
 // Main nav in the recruiter's workflow order: Dashboard → Mail (daily
 // inbox check) → Pipeline → Applicants (active work) → Candidates →
@@ -41,6 +42,7 @@ const FOOTER_NAV = [{ href: "/settings", label: "Settings", icon: Settings }] as
 export function Sidebar() {
   const pathname = usePathname();
   const { unreadCount } = useMailContext();
+  const { unreadCount: phoneUnreadCount } = usePhoneContext();
 
   return (
     // Sidebar background is mode-aware: Hard = white (unchanged from
@@ -67,7 +69,13 @@ export function Sidebar() {
             key={item.href}
             item={item}
             pathname={pathname}
-            badge={item.href === "/mail" ? unreadCount : 0}
+            badge={
+              item.href === "/mail"
+                ? unreadCount
+                : item.href === "/phone"
+                  ? phoneUnreadCount
+                  : 0
+            }
           />
         ))}
       </nav>

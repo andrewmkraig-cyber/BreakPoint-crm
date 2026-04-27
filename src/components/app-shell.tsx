@@ -6,6 +6,7 @@ import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
 import { MailTabTitleSync } from "@/components/mail-tab-title-sync";
 import { MailProvider } from "@/lib/mail-context";
+import { PhoneProvider } from "@/lib/phone-context";
 import { TextingProvider } from "@/lib/texting-context";
 
 const UNAUTH_PATHS = ["/sign-in"];
@@ -36,16 +37,18 @@ export function AppShell({
   // so they stay in lockstep without any prop drilling.
   return (
     <MailProvider initialUnreadCount={unreadMailCount}>
-      <TextingProvider>
-        <div className="flex min-h-screen bg-court-surface-subtle">
-          <MailTabTitleSync />
-          <Sidebar />
-          <div className="flex flex-1 flex-col">
-            <TopBar />
-            <main className="flex-1 p-6 md:p-8">{children}</main>
+      <PhoneProvider>
+        <TextingProvider>
+          <div className="flex min-h-screen bg-court-surface-subtle">
+            <MailTabTitleSync />
+            <Sidebar />
+            <div className="flex flex-1 flex-col">
+              <TopBar />
+              <main className="flex-1 p-6 md:p-8">{children}</main>
+            </div>
           </div>
-        </div>
-      </TextingProvider>
+        </TextingProvider>
+      </PhoneProvider>
     </MailProvider>
   );
 }

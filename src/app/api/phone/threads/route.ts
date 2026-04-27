@@ -151,7 +151,12 @@ export async function GET(req: NextRequest) {
         direction: s.direction,
       };
     }
-    if (s.direction === "inbound") t.hasUnread = true;
+    // SmsMessage doesn't carry a read/unread field yet, so we cannot
+    // distinguish "new" inbound texts from ones the user has already
+    // seen. Treat every existing row as read until that field exists
+    // and gets stamped on thread open. This keeps the green dot off
+    // every thread and the sidebar badge at zero. When read tracking
+    // ships, set hasUnread = (s.direction === 'inbound' && !s.readAt).
   }
   for (const c of callRows) {
     const t = ensureThread(c.candidateId);
@@ -177,27 +182,33 @@ export async function GET(req: NextRequest) {
   });
   const threads = limit ? allThreads.slice(0, limit) : allThreads;
 
-  // Bucket counts feed the left-rail badges. Computed on the FULL
-  // thread set (allThreads) so badges always reflect totals, even
-  // when the caller has asked for a sliced response via ?limit.
-  // needsReply = the latest entry on the thread is inbound (no
-  // outbound after it).
+  // Bucket counts feed the left-rail badges. Per spec, badges show
+  // UNREAD-only counts — not totals. Until SmsMessage carries an
+  // explicit read/unread field, every bucket count is 0 and the
+  // client hides the badge entirely (BucketItem renders nothing
+  // when count <= 0). When read tracking ships, swap each bucket's
+  // value for the count of threads in that bucket whose latest
+  // inbound SMS has readAt === null. Calls deliberately do NOT
+  // contribute — only unread inbound texts count toward the badge.
+  // The bucket FILTERING in PhoneView still works on the threads
+  // array directly, so swapping these counts to unread-only doesn't
+  // break clicking through to "Texts" / "Calls" / etc.
   const buckets: BucketCounts = {
-    all: allThreads.length,
-    texts: allThreads.filter((t) => t.counts.sms > 0).length,
-    calls: allThreads.filter((t) => t.counts.calls > 0).length,
-    missed: allThreads.filter((t) => t.counts.missedCalls > 0).length,
-    // No voicemail concept in CallLog yet — leave at 0 until the
-    // webhook starts writing voicemail-status rows.
+    all: 0,
+    texts: 0,
+    calls: 0,
+    missed: 0,
     voicemails: 0,
-    candidates: allThreads.length,
-    // Phase 1 — client matching not yet wired.
+    candidates: 0,
     clients: 0,
     unknown: 0,
-    needsReply: allThreads.filter(
-      (t) => t.lastActivity?.kind === "sms" && t.lastActivity.direction === "inbound",
-    ).length,
+    needsReply: 0,
   };
 
-  return NextResponse.json({ threads, bucketCounts: buckets });
+  // unreadCount is the source the sidebar Phone-tab badge reads. Held
+  // at 0 until SmsMessage carries an explicit read/unread field —
+  // calls do NOT count toward unread per the Phone-tab spec.
+  const unreadCount = 0;
+
+  return NextResponse.json({ threads, bucketCounts: buckets, unreadCount });
 }
