@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { MessageSquare, Phone, X } from "lucide-react";
+import { Phone, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   getStoredTextToastTheme,
@@ -62,11 +62,14 @@ function QuoToast(props: QuoToastProps) {
   const candidateId = props.event.candidateId;
   const candidateName = props.event.candidateName || props.event.fromNumber;
 
-  const Icon = props.mode === "text" ? MessageSquare : Phone;
+  // Phone icon for both inbound text and inbound call — per the
+  // notification redesign, SMS and calls share the same telephony
+  // surface, so they share an icon.
+  const Icon = Phone;
   const subtitle =
     props.mode === "text"
-      ? truncate(props.event.body || "(no message)", 80).toUpperCase()
-      : callSubtitle(props.event);
+      ? truncate(props.event.body || "(no message)", 60).toUpperCase()
+      : truncate(callSubtitle(props.event), 60);
 
   function onView() {
     if (candidateId) router.push(`/candidates/${candidateId}`);
@@ -75,13 +78,13 @@ function QuoToast(props: QuoToastProps) {
 
   return (
     <div
-      className="flex min-w-[320px] items-center gap-3 rounded-2xl"
+      className="flex min-w-[280px] items-center gap-3 rounded-2xl"
       style={{
         background: theme.bg,
         color: theme.text,
-        border: `2px solid ${theme.border}`,
+        border: "2px solid #000000",
         boxShadow: toastGlowBoxShadow(theme),
-        padding: "16px 20px",
+        padding: "12px 16px",
       }}
     >
       <div

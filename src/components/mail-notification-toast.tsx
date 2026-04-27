@@ -91,13 +91,13 @@ function NewMailToast({
 
   return (
     <div
-      className="flex min-w-[320px] items-center gap-3 rounded-2xl"
+      className="flex min-w-[280px] items-center gap-3 rounded-2xl"
       style={{
         background: theme.bg,
         color: theme.text,
-        border: `2px solid ${theme.border}`,
+        border: "2px solid #000000",
         boxShadow: toastGlowBoxShadow(theme),
-        padding: "16px 20px",
+        padding: "12px 16px",
       }}
     >
       <div
@@ -114,7 +114,7 @@ function NewMailToast({
           className="mt-0.5 truncate text-sm uppercase tracking-wide"
           style={{ color: theme.subText }}
         >
-          {thread.subject || "(no subject)"}
+          {truncate(thread.subject || "(no subject)", 60)}
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-2">
@@ -166,4 +166,8 @@ function ChipButton({
       {children}
     </button>
   );
+}
+
+function truncate(s: string, n: number): string {
+  return s.length <= n ? s : s.slice(0, n - 1) + "…";
 }
