@@ -10,11 +10,14 @@ import {
   FolderInput,
   Loader2,
   Mail as MailIcon,
+  Maximize2,
   Reply,
   Send,
   X,
 } from "lucide-react";
 import { useMailContext } from "@/lib/mail-context";
+import { useFloatingThread } from "@/lib/floating-thread-context";
+import { MessageBlock } from "@/components/mail/message-block";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -894,6 +897,7 @@ function ThreadDetail({
   // opening a long thread lands directly on "what just happened."
   const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
   const latest = orderedMessages[0];
+  const floatingThread = useFloatingThread();
 
   // Reply-recipient logic: the "other party" on the latest message.
   // - If I sent the last message, reply to whoever I sent it to.
@@ -953,6 +957,14 @@ function ThreadDetail({
               </>
             }
           />
+          <button
+            type="button"
+            onClick={() => floatingThread.open(detail.id)}
+            aria-label="Pop out thread into a floating window"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+          >
+            <Maximize2 className="h-3 w-3" /> Pop out
+          </button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -981,36 +993,6 @@ function ThreadDetail({
   );
 }
 
-function MessageBlock({ msg, isFirst }: { msg: MailThreadMessage; isFirst: boolean }) {
-  return (
-    <article
-      className={
-        "px-5 py-4 " + (isFirst ? "" : "border-t border-court-border")
-      }
-    >
-      <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <div>
-          <div className="text-sm font-medium text-court-fg">
-            {msg.fromName || msg.fromEmail || "(unknown sender)"}
-          </div>
-          {msg.to && (
-            <div className="text-[11px] text-court-fg-muted">
-              to {msg.to}
-              {msg.cc ? ` · cc ${msg.cc}` : ""}
-            </div>
-          )}
-        </div>
-        <div className="text-[11px] text-court-fg-muted">
-          {msg.dateIso ? new Date(msg.dateIso).toLocaleString() : ""}
-        </div>
-      </header>
-      <div
-        className="prose prose-sm max-w-none text-court-fg prose-a:text-brand-dark"
-        dangerouslySetInnerHTML={{ __html: msg.bodyHtml }}
-      />
-    </article>
-  );
-}
 
 // Works out who the reply should go to.
 // - If the most recent message was sent BY the current user, the "other
