@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Bookmark,
-  Mail,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
@@ -145,7 +144,7 @@ export default async function CandidateProfilePage({
   // Placement / Interview / CandidateResume are scoped by candidateId
   // (cuid) — candidateRfId is retained only as a historical reference and
   // must not be used in application queries.
-  const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs, gmailTags] = await Promise.all([
+  const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
     getRfClientsForOrg(),
     getRfShapedContactsForOrg(),
     // Phase 2: jobs come from Neon via the broadened shim (includes
@@ -184,18 +183,8 @@ export default async function CandidateProfilePage({
     prisma.jobOverride.findMany({ select: { jobRfId: true, description: true } }),
     getServerSession(authOptions),
     getAppPreferences(),
-    // Auto-tagged Gmail threads scoped to this candidate. Same query
-    // shape as the Ace-native LocalCandidateProfile so the UI is
-    // identical across both candidate paths.
-    prisma.gmailThreadTag.findMany({
-      where: {
-        candidateId: candidate.id,
-        organizationId: candidate.organizationId,
-      },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: { threadId: true },
-    }),
+    // gmailThreadTag fetch removed — the raw thread-id list rendered
+    // poorly. Re-add once auto-tagging surfaces subject + preview.
   ]);
   const aceTeam = await listAceTeam();
   const overrideByJob = new Map<number, string | null>();
@@ -619,70 +608,44 @@ export default async function CandidateProfilePage({
 
       <Tabs tab={tab} candidateId={id} />
 
+      {/* Resume — always visible across all tabs. Recruiters open the
+          profile to read the resume; gating it behind the Profile tab
+          forced an extra click for every other view. The tab content
+          panel below this section swaps based on the selected tab. */}
+      <EditableResume
+        candidateRfId={id}
+        candidateId={candidate.id}
+        versions={resumeVersions}
+      />
+
       {tab === "game-plan" ? (
         <AiWorkspace entityType="candidate" entityId={String(id)} />
       ) : tab === "activity" ? (
-        <ActivityFeed entityType="candidate" entityId={candidate.id} />
-      ) : (
         <>
-          {/* Resume-first layout: the resume PDF is the primary content —
-              ~70% viewport on lg+, the remaining ~30% is a scannable right
-              sidebar with everything else. The 10-col grid is picked so the
-              split lands at ~70/30, which is visibly resume-dominant
-              instead of the old ~60/40 that still felt symmetric. */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-            <div className="space-y-6 lg:col-span-7">
-              <EditableResume
-                candidateRfId={id}
-                candidateId={candidate.id}
-                versions={resumeVersions}
-              />
-              {/* Collapsible SMS thread. Sits right below the resume so recruiters
-                  can glance at prior texts without scrolling to Activity.
-                  Uses candidate.id (cuid) — SmsMessage.candidateId is a cuid
-                  FK, and the inbound Quo webhook writes rows with the cuid,
-                  so the outbound + inbound paths must match on the same id. */}
-              <TextingExchanges candidateId={candidate.id} />
-              {/* Call-log accordion. Click-to-call on the sidebar phone number
-                  seeds this with an "initiated" row; the Krispcall webhook
-                  back-fills duration + recording + final status later. */}
-              <CallLogs candidateId={String(id)} />
-            </div>
-
-            <aside className="space-y-6 lg:col-span-3">
-              <EditableContact candidateId={id} initial={contactInitial} />
-              {/* SMS composer slots in directly below the phone-number card so
-                  the input sits next to the number it'll be texting. Pass the
-                  normalized candidate phone from EditableContact's source. */}
-              <SmsComposer candidateId={candidate.id} toNumber={normalizePhone(c.phone_number) || null} />
-              <EditableEmployment candidateId={id} initial={employmentInitial} />
-              <EditableSkills candidateId={id} initial={skillsInitial} />
-              <EditableExperience candidateId={id} initial={experienceInitial} />
-              <EditableEducation candidateId={id} initial={educationInitial} />
-              <EditableNotes candidateId={id} initial={notesInitial} />
-            </aside>
-          </div>
-
-          {gmailTags.length > 0 && (
-            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-court-fg">Email Threads</h2>
-              <ul className="mt-3 space-y-2 text-sm">
-                {gmailTags.map((t) => (
-                  <li key={t.threadId}>
-                    <Link
-                      href={`/mail?thread=${encodeURIComponent(t.threadId)}`}
-                      className="inline-flex items-center gap-1.5 text-brand-dark hover:underline"
-                    >
-                      <Mail className="h-3.5 w-3.5" />
-                      <span className="font-mono text-xs">{t.threadId}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+          <ActivityFeed entityType="candidate" entityId={candidate.id} />
+          {/* Texts + calls now live only on Activity. Inbound Quo writes
+              SmsMessage.candidateId as a cuid (matches candidate.id);
+              outbound POST /api/sms keys on the same. */}
+          <TextingExchanges candidateId={candidate.id} />
+          <CallLogs candidateId={String(id)} />
         </>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <EditableContact candidateId={id} initial={contactInitial} />
+          {/* SMS composer is the quick-action input on Profile; the
+              thread history view (TextingExchanges) lives on Activity. */}
+          <SmsComposer candidateId={candidate.id} toNumber={normalizePhone(c.phone_number) || null} />
+          <EditableEmployment candidateId={id} initial={employmentInitial} />
+          <EditableSkills candidateId={id} initial={skillsInitial} />
+          <EditableExperience candidateId={id} initial={experienceInitial} />
+          <EditableEducation candidateId={id} initial={educationInitial} />
+          <EditableNotes candidateId={id} initial={notesInitial} />
+        </div>
       )}
+
+      {/* TODO: render matched email threads with subject + preview after
+          auto-tagging ships. Raw thread-id list was removed because the
+          GmailThreadTag fetch only returns ids; useless without subject. */}
     </div>
     </CandidateProfileBoundary>
   );

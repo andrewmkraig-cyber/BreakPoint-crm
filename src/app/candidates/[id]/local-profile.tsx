@@ -10,6 +10,8 @@ import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityFeed } from "@/components/activity-feed";
+import { TextingExchanges } from "@/components/texting-exchanges";
+import { CallLogs } from "@/components/call-logs";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 import { formatLocation } from "@/lib/utils";
@@ -64,11 +66,8 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         organizationId: true,
         createdAt: true,
         createdById: true,
-        gmailTags: {
-          select: { threadId: true },
-          orderBy: { createdAt: "desc" },
-          take: 20,
-        },
+        // gmailTags select removed — raw thread-id list rendered poorly.
+        // Re-add once auto-tagging surfaces subject + preview.
       },
     }),
     // Phase 4a: Placement / Interview reads routed through the
@@ -452,14 +451,8 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         openJobs={openJobs}
       />
 
-      <LocalTabs tab={tab} candidateId={candidate.id} />
-
-      {tab === "activity" ? (
-        <ActivityFeed entityType="candidate" entityId={candidate.id} />
-      ) : tab === "game-plan" ? (
-        <AiWorkspace entityType="candidate" entityId={candidate.id} />
-      ) : (
-      <>
+      {/* Applied Jobs — always visible above the tab bar so recruiters
+          can act on placements regardless of which tab they're on. */}
       {jobRows.length > 0 && (
         <LocalPlacementRows
           candidateId={candidate.id}
@@ -475,23 +468,27 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         />
       )}
 
-      {/* Resume-first layout: same split as the RF candidate page —
-          ~70% resume / ~30% sidebar on lg+, so the recruiter opens the
-          profile and lands directly on the document they came to read.
-          5A.5.b: Ace-native uses the same EditableResume component as
-          RF-imported, with full multi-version + rename + redact + brand
-          parity. candidateRfId is null here; the component routes upload
-          + delete by candidateId instead. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        <section className="lg:col-span-7">
-          <EditableResume
-            candidateRfId={null}
-            candidateId={candidate.id}
-            versions={resumeVersions}
-          />
-        </section>
+      <LocalTabs tab={tab} candidateId={candidate.id} />
 
-        <aside className="space-y-6 lg:col-span-3">
+      {/* Resume — always visible across all tabs. Same component as the
+          RF-imported path. candidateRfId is null here; uploads route by
+          candidateId. The tab content panel below swaps per tab. */}
+      <EditableResume
+        candidateRfId={null}
+        candidateId={candidate.id}
+        versions={resumeVersions}
+      />
+
+      {tab === "activity" ? (
+        <>
+          <ActivityFeed entityType="candidate" entityId={candidate.id} />
+          <TextingExchanges candidateId={candidate.id} />
+          <CallLogs candidateId={candidate.id} />
+        </>
+      ) : tab === "game-plan" ? (
+        <AiWorkspace entityType="candidate" entityId={candidate.id} />
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
@@ -609,29 +606,12 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
               </div>
             </dl>
           </section>
-        </aside>
-      </div>
+        </div>
+      )}
 
-      {candidate.gmailTags.length > 0 && (
-        <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-          <h2 className="font-serif text-base font-semibold text-court-fg">Email Threads</h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            {candidate.gmailTags.map((t) => (
-              <li key={t.threadId}>
-                <Link
-                  href={`/mail?thread=${encodeURIComponent(t.threadId)}`}
-                  className="inline-flex items-center gap-1.5 text-brand-dark hover:underline"
-                >
-                  <Mail className="h-3.5 w-3.5" />
-                  <span className="font-mono text-xs">{t.threadId}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      </>
-      )}
+      {/* TODO: render matched email threads with subject + preview after
+          auto-tagging ships. Raw thread-id list was removed because the
+          GmailThreadTag fetch only returns ids; useless without subject. */}
     </div>
   );
 }
