@@ -75,11 +75,17 @@ export function MailView({
   }, [threads]);
   const allSelected = threads.length > 0 && selectedIds.size === threads.length;
   const someSelected = selectedIds.size > 0 && selectedIds.size < threads.length;
-  // Session-cached Gmail user labels for the Move To dropdown. null =
-  // not yet loaded; [] = loaded and empty. Fetched once on mount and
-  // never refetched — labels rarely change mid-session and the dropdown
-  // tolerates eventual consistency.
+  // Session-cached Gmail user labels for the Move To dropdown AND the
+  // sidebar nav. null = not yet loaded; [] = loaded and empty. Fetched
+  // once on mount and never refetched — labels rarely change mid-session
+  // and both consumers tolerate eventual consistency.
   const [labels, setLabels] = useState<Array<{ id: string; name: string }> | null>(null);
+
+  // Currently selected sidebar item. null = Inbox (default). Setting
+  // this to a user label triggers a refetch of the thread list scoped
+  // to that label.
+  const [selectedLabel, setSelectedLabel] = useState<{ id: string; name: string } | null>(null);
+  const [threadsLoading, setThreadsLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -99,6 +105,50 @@ export function MailView({
       cancelled = true;
     };
   }, []);
+
+  // Refetch the thread list when the sidebar selection changes. First
+  // render is skipped — initialThreads is already INBOX-scoped from the
+  // server. Aborts in-flight fetches when the user clicks again before
+  // the previous one resolves.
+  const isFirstSidebarSelection = useRef(true);
+  useEffect(() => {
+    if (isFirstSidebarSelection.current) {
+      isFirstSidebarSelection.current = false;
+      return;
+    }
+    const ac = new AbortController();
+    setThreadsLoading(true);
+    setSelected(null);
+    setDetail(null);
+    void (async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("labelIds", selectedLabel ? selectedLabel.id : "INBOX");
+        const res = await fetch(`/api/mail/threads?${params.toString()}`, {
+          cache: "no-store",
+          signal: ac.signal,
+        });
+        if (!res.ok) {
+          toast.error("Couldn't load threads", {
+            description: `HTTP ${res.status}`,
+          });
+          return;
+        }
+        const body = (await res.json().catch(() => null)) as
+          | { threads?: MailListThread[] }
+          | null;
+        if (body?.threads) setThreads(body.threads);
+      } catch (e) {
+        if ((e as { name?: string }).name === "AbortError") return;
+        toast.error("Couldn't load threads", {
+          description: e instanceof Error ? e.message : "unknown error",
+        });
+      } finally {
+        setThreadsLoading(false);
+      }
+    })();
+    return () => ac.abort();
+  }, [selectedLabel]);
 
   const loadThread = useCallback(async (id: string, signal?: AbortSignal) => {
     setLoading(true);
@@ -318,7 +368,50 @@ export function MailView({
 
   return (
     <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-4">
+      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
+        <nav className="p-2 text-sm">
+          <button
+            type="button"
+            onClick={() => setSelectedLabel(null)}
+            className={
+              "block w-full rounded-md px-3 py-1.5 text-left font-medium transition " +
+              (selectedLabel === null
+                ? "bg-brand-tint text-brand-dark"
+                : "text-court-fg hover:bg-court-surface-subtle")
+            }
+          >
+            Inbox
+          </button>
+          {labels && labels.length > 0 && (
+            <>
+              <div className="mt-3 px-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
+                Labels
+              </div>
+              <ul className="mt-1 space-y-0.5">
+                {labels.map((l) => (
+                  <li key={l.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLabel(l)}
+                      className={
+                        "block w-full truncate rounded-md px-3 py-1.5 text-left transition " +
+                        (selectedLabel?.id === l.id
+                          ? "bg-brand-tint text-brand-dark"
+                          : "text-court-fg hover:bg-court-surface-subtle")
+                      }
+                      title={l.name}
+                    >
+                      {l.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </nav>
+      </aside>
+
+      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
         <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
           <input
             type="checkbox"
@@ -381,9 +474,13 @@ export function MailView({
             </div>
           </div>
         )}
-        {threads.length === 0 ? (
+        {threadsLoading ? (
+          <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-court-fg-muted">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading threads…
+          </div>
+        ) : threads.length === 0 ? (
           <div className="px-4 py-12 text-center text-sm text-court-fg-muted">
-            Inbox is empty.
+            {selectedLabel ? `No threads in "${selectedLabel.name}".` : "Inbox is empty."}
           </div>
         ) : (
           <ul className="max-h-[calc(100vh-240px)] divide-y divide-court-border overflow-y-auto">
@@ -405,7 +502,7 @@ export function MailView({
         )}
       </aside>
 
-      <section className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-8">
+      <section className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
