@@ -103,7 +103,44 @@ export function MailView({
   const [threadsLoading, setThreadsLoading] = useState(false);
   // Set of user-label full-path names (e.g. "Done Deals") whose child
   // tree the user has collapsed. Default empty = all parents expanded.
+  // Persisted to localStorage so the recruiter's preferred collapsed
+  // state survives navigation away from /mail and back.
   const [collapsedLabels, setCollapsedLabels] = useState<Set<string>>(() => new Set());
+  const isFirstCollapsedLoad = useRef(true);
+  useEffect(() => {
+    // First commit: hydrate from localStorage and bail without writing.
+    // The hydrate's setCollapsedLabels triggers a re-render that re-runs
+    // this effect with isFirstCollapsedLoad already false, which then
+    // performs the no-op write of the same value back to storage. Doing
+    // both jobs in one effect avoids the two-effect race where a
+    // separate persist effect would clobber the saved state with the
+    // initial empty Set before the hydrate's queued update lands.
+    if (isFirstCollapsedLoad.current) {
+      isFirstCollapsedLoad.current = false;
+      try {
+        const raw = window.localStorage.getItem("ace-mail-collapsed-labels");
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setCollapsedLabels(
+              new Set(parsed.filter((s): s is string => typeof s === "string")),
+            );
+          }
+        }
+      } catch {
+        // Corrupt or unreadable storage — leave the Set empty.
+      }
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        "ace-mail-collapsed-labels",
+        JSON.stringify(Array.from(collapsedLabels)),
+      );
+    } catch {
+      // Quota / private-mode errors are non-fatal here.
+    }
+  }, [collapsedLabels]);
 
   // Move To dropdown only wants user labels — system labels (INBOX,
   // CATEGORY_*, etc.) have no business as move targets. Sidebar feeds
