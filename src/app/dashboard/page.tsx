@@ -204,7 +204,7 @@ export default async function DashboardPage() {
   });
 
   return (
-    <div>
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-8">
       <PageHeader eyebrow="This week" title="Activity Dashboard" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -216,13 +216,9 @@ export default async function DashboardPage() {
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
 
-      <div className="mt-8">
-        <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
-      </div>
+      <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
 
-      <div className="mt-8">
-        <UpcomingInterviews rows={upcoming} />
-      </div>
+      <UpcomingInterviews rows={upcoming} />
     </div>
   );
 }

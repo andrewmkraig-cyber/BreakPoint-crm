@@ -29,10 +29,13 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       : "Fees earned on placements that hit start date.";
 
   return (
-    <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-md">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="text-xs font-semibold uppercase tracking-widest text-court-accent-dark">
-          Billing Tower
+    <section className="rounded-2xl border border-court-border bg-court-surface p-8 shadow-md">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <div className="text-2xl font-black uppercase tracking-tight text-court-fg">
+            Billing Tower
+          </div>
+          <div className="mt-1 h-0.5 w-12 rounded-full bg-court-accent" />
         </div>
         <div className="relative">
           <select
@@ -51,11 +54,12 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Metric label={billedLabel} value={billedValue} hint={billedHint} />
+        <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
         <Metric
           label="Cash Collected"
           value="$0"
           hint="Client payments received, regardless of placement date. Stays at $0 until invoices are paid."
+          tone="neutral"
         />
       </div>
     </section>
@@ -70,19 +74,38 @@ function formatUsd(amount: number): string {
   }).format(amount);
 }
 
-function Metric({ label, value, hint }: { label: string; value: string; hint: string }) {
+function Metric({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+  tone: "accent" | "neutral";
+}) {
+  // Accent card carries the headline metric (Q2 Billed Revenue) — court-tint
+  // background + court-accent-dark text pulls the eye to it. Neutral card
+  // (Cash Collected) sits in surface tone so the pair reads as primary +
+  // secondary instead of two equal-weight numbers.
+  const accent = tone === "accent";
+  const wrapper = accent
+    ? "rounded-2xl border border-court-accent/20 bg-court-accent-tint p-6"
+    : "rounded-2xl border border-court-border bg-court-surface p-6";
+  const labelCls = accent
+    ? "text-xs font-semibold tracking-widest uppercase text-court-accent-dark"
+    : "text-xs font-semibold tracking-widest uppercase text-court-fg-muted";
+  const valueCls = accent
+    ? "font-stat text-5xl font-bold leading-none text-court-accent-dark"
+    : "font-stat text-5xl font-bold leading-none text-court-fg";
   return (
-    // Sub-card sits inside the BillingTower's bg-court-surface section — using
-    // `bg-court-surface-subtle` here lifts it a step against the parent
-    // (mirrors the Hard palette's `bg-muted/50` visual rhythm in Clay + Grass).
-    <div className="rounded-xl border border-court-border bg-court-surface-subtle px-4 py-3">
+    <div className={wrapper}>
       <div className="flex items-baseline justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
-          {label}
-        </div>
-        <div className="font-stat text-4xl font-bold leading-none text-court-fg">{value}</div>
+        <div className={labelCls}>{label}</div>
+        <div className={valueCls}>{value}</div>
       </div>
-      <p className="mt-2 text-[11px] text-court-fg-muted">{hint}</p>
+      <p className="mt-2 text-sm text-court-fg-muted">{hint}</p>
     </div>
   );
 }
