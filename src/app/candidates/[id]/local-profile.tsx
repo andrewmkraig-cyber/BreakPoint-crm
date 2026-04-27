@@ -9,7 +9,6 @@ import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
-import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { ActivityFeed } from "@/components/activity-feed";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
@@ -428,29 +427,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
     return { firstName, fullName, email, phone };
   })();
 
-  // Flatten interviews into ActivityPanel rows. Job titles come from the
-  // jobRows we already built so the history shows "Tax Manager" not a
-  // bare timestamp.
-  const titleByJob = new Map<number, string>();
-  for (const j of jobRows) titleByJob.set(j.jobRfId, j.jobTitle);
-  const activityInterviews: ActivityInterview[] = interviews.map((iv) => {
-    const attendees = Array.isArray(iv.clientAttendees)
-      ? (iv.clientAttendees as { name?: string; email?: string }[])
-          .map((a) => ({ name: a.name ?? "", email: a.email ?? "" }))
-          .filter((a) => a.name || a.email)
-      : [];
-    return {
-      id: iv.id,
-      scheduledAt: iv.scheduledAt.toISOString(),
-      durationMin: iv.durationMin,
-      type: iv.type as ActivityInterview["type"],
-      status: iv.status as ActivityInterview["status"],
-      source: iv.source as ActivityInterview["source"],
-      jobTitle: iv.jobRfId != null ? titleByJob.get(iv.jobRfId) ?? "Interview" : "Interview",
-      attendees,
-    };
-  });
-
   return (
     <div className="space-y-6">
       <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
@@ -635,8 +611,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
           </section>
         </aside>
       </div>
-
-      <ActivityPanel interviews={activityInterviews} />
 
       {candidate.gmailTags.length > 0 && (
         <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">

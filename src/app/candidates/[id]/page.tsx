@@ -46,7 +46,6 @@ import type {
 } from "@/app/candidates/[id]/placement-flows";
 import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
-import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { ActivityFeed } from "@/components/activity-feed";
 import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
@@ -664,8 +663,6 @@ export default async function CandidateProfilePage({
             </aside>
           </div>
 
-          <ActivityPanel interviews={buildActivityInterviews(interviews, placementJobs)} />
-
           {gmailTags.length > 0 && (
             <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
               <h2 className="font-serif text-base font-semibold text-court-fg">Email Threads</h2>
@@ -826,35 +823,4 @@ function toInterviewSummary(iv: InterviewRow): InterviewSummary {
     candidatePhone: iv.candidatePhone,
     notes: iv.notes,
   };
-}
-
-// Flatten all interviews on a candidate into the shape ActivityPanel
-// renders. We map jobRfId → jobTitle from the placement context so the
-// history rows show "Interview · Tax Manager" instead of a bare
-// timestamp. Defensive: if the job isn't in placementJobs (rare —
-// happens for orphaned interviews from a deleted placement) we fall
-// back to "Interview" so the row still renders.
-function buildActivityInterviews(
-  interviews: Awaited<ReturnType<typeof prisma.interview.findMany>>,
-  placementJobs: PlacementContextJob[],
-): ActivityInterview[] {
-  const titleByJob = new Map<number, string>();
-  for (const j of placementJobs) titleByJob.set(j.jobRfId, j.jobTitle);
-  return interviews.map((iv) => {
-    const attendees = Array.isArray(iv.clientAttendees)
-      ? (iv.clientAttendees as { name?: string; email?: string }[])
-          .map((a) => ({ name: a.name ?? "", email: a.email ?? "" }))
-          .filter((a) => a.name || a.email)
-      : [];
-    return {
-      id: iv.id,
-      scheduledAt: iv.scheduledAt.toISOString(),
-      durationMin: iv.durationMin,
-      type: iv.type as ActivityInterview["type"],
-      status: iv.status as ActivityInterview["status"],
-      source: iv.source as ActivityInterview["source"],
-      jobTitle: iv.jobRfId != null ? titleByJob.get(iv.jobRfId) ?? "Interview" : "Interview",
-      attendees,
-    };
-  });
 }
