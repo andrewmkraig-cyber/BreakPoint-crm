@@ -5,19 +5,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Briefcase,
   ChevronDown,
-  Clock,
   Edit3,
   Loader2,
-  MapPin,
-  PhoneCall,
   Plus,
   RotateCcw,
   Save,
   Sparkles,
-  Trash2,
   UploadCloud,
   UserX,
-  Video,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -49,7 +44,6 @@ import {
   type SubmittalResumeVariant,
 } from "@/app/candidates/[id]/placement-actions";
 import {
-  cancelInterview,
   rescheduleInterview,
   scheduleInterview,
   sendInterviewInvite,
@@ -274,6 +268,23 @@ export function PlacementActions({
     // missing compose/jobId handles that cleanly.
   }, [searchParams, pathname, router, openJobs]);
 
+  // ?openApply=1 / ?openSubmit=1 — header-button entry points from
+  // page.tsx now that the standalone in-island Apply/Submit row was
+  // removed. Open the corresponding modal with no pre-selected job
+  // (the per-row PipelineRowActions buttons cover the per-job case).
+  useEffect(() => {
+    const openApply = searchParams?.get("openApply");
+    const openSubmit = searchParams?.get("openSubmit");
+    if (!openApply && !openSubmit) return;
+    if (openApply) setApplyOpen(true);
+    if (openSubmit) setSubmitOpen(true);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("openApply");
+    next.delete("openSubmit");
+    const queryString = next.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router]);
+
   // Deep-link for the Pipeline page's Edit Placement button. Format is
   // ?edit=placement&jobId=NN — we find the matching job in `jobs` (which
   // unlike openJobs includes pending_start / hired rows) and open the
@@ -298,28 +309,6 @@ export function PlacementActions({
 
   return (
     <>
-      <div className="flex items-center justify-between gap-3">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-          Jobs ({jobs.length})
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setApplyOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
-          >
-            <Plus className="h-3.5 w-3.5" /> Apply to Job
-          </button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => setSubmitOpen(true)}
-          >
-            <Plus className="h-3.5 w-3.5" /> Submit to Job
-          </Button>
-        </div>
-      </div>
-
       {jobs.length === 0 && (
         <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/40 px-5 py-4 text-xs text-court-fg-muted">
           No jobs linked to this candidate yet — click <span className="font-semibold">Submit to Job</span> to add one.
@@ -340,7 +329,6 @@ export function PlacementActions({
             onClientInvite={() => setClientInviteFor(j)}
             onReject={() => setRejectFor(j)}
             onCancel={() => setCancelFor(j)}
-            onReschedule={(iv) => setRescheduleFor(iv)}
           />
         ))}
       </div>
@@ -502,7 +490,6 @@ function JobActionRow({
   onSchedule,
   onReject,
   onCancel,
-  onReschedule,
 }: {
   job: PlacementContextJob;
   candidateRfId: number;
@@ -514,7 +501,6 @@ function JobActionRow({
   onClientInvite: () => void;
   onReject: () => void;
   onCancel: () => void;
-  onReschedule: (iv: InterviewSummary) => void;
 }) {
   // Local Neon Placement.stage is the single source of truth for which
   // action buttons render. If there's no local Placement yet, treat the
@@ -528,6 +514,12 @@ function JobActionRow({
   const effective: Bucket = ((job.placement?.stage ?? "sourced").trim().toLowerCase()) as Bucket;
   const isCancelled = effective === "cancelled";
   const isRejected = !isCancelled && effective === "rejected";
+  // Inline next-upcoming interview. Past scheduled rows are
+  // intentionally hidden — the stage chip already says
+  // "Interviewing" / "Hired" / "Disqualified".
+  const nextInterview = job.interviews
+    .filter((iv) => iv.status === "scheduled" && new Date(iv.scheduledAt).getTime() > Date.now())
+    .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
 
   return (
     <div>
@@ -542,6 +534,9 @@ function JobActionRow({
             bucket={effective}
             label={isCancelled || isRejected ? null : job.rfStageName ?? null}
           />
+          {nextInterview && (
+            <span className="truncate text-xs text-court-fg-muted">{formatNextInterview(nextInterview)}</span>
+          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
@@ -580,18 +575,20 @@ function JobActionRow({
         </div>
       )}
 
-      {job.interviews.length > 0 && (
-        <div className="px-3 pb-2">
-          <InterviewList
-            interviews={job.interviews}
-            candidateName={candidateName}
-            jobTitle={job.jobTitle}
-            onReschedule={onReschedule}
-          />
-        </div>
-      )}
     </div>
   );
+}
+
+// Inline "· Apr 19 · 8:59 AM · Video" formatter — the next-upcoming
+// interview surfaces on the row title line. Cancelled / past rows are
+// hidden upstream; this only renders for an iv we already know is in
+// the future and still scheduled.
+function formatNextInterview(iv: InterviewSummary): string {
+  const d = new Date(iv.scheduledAt);
+  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  const type = iv.type === "phone_screen" ? "Phone" : iv.type === "video" ? "Video" : "In-Person";
+  return `· ${date} · ${time} · ${type}`;
 }
 
 const CANCEL_REASON_LABELS: Record<string, string> = {
@@ -1753,127 +1750,11 @@ function RescheduleDialog({
   );
 }
 
-function InterviewList({
-  interviews,
-  candidateName,
-  jobTitle,
-  onReschedule,
-}: {
-  interviews: InterviewSummary[];
-  candidateName: string;
-  jobTitle: string;
-  onReschedule: (iv: InterviewSummary) => void;
-}) {
-  // Show only ACTIVE interviews on the linked-job row. Anything cancelled,
-  // completed, or marked rescheduled is visual noise here — it's surfaced
-  // in the Activity panel below the resume instead. If nothing's active,
-  // suppress the header + container entirely (no "Interviews (0)" text).
-  const active = interviews.filter((iv) => iv.status === "scheduled");
-  if (active.length === 0) return null;
-  const sorted = [...active].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime());
-  return (
-    <div className="mt-2 space-y-1.5 border-t border-court-border pt-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-        Interviews ({sorted.length})
-      </div>
-      <ul className="space-y-1.5">
-        {sorted.map((iv) => (
-          <InterviewRow key={iv.id} iv={iv} candidateName={candidateName} jobTitle={jobTitle} onReschedule={onReschedule} />
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-function InterviewRow({
-  iv,
-  onReschedule,
-}: {
-  iv: InterviewSummary;
-  candidateName: string;
-  jobTitle: string;
-  onReschedule: (iv: InterviewSummary) => void;
-}) {
-  const router = useRouter();
-  const [isCancelling, startCancel] = useTransition();
-  const when = new Date(iv.scheduledAt);
-  const isPast = when.getTime() < Date.now();
-  const isCancelled = iv.status === "cancelled";
-  const kindIcon =
-    iv.type === "phone_screen" ? PhoneCall : iv.type === "video" ? Video : MapPin;
-  const Icon = kindIcon;
-
-  function onCancel() {
-    if (!confirm("Cancel this interview? The calendar event will be removed.")) return;
-    startCancel(async () => {
-      const result = await cancelInterview(iv.id);
-      if (!result.ok) {
-        toast.error("Couldn't cancel", { description: result.error });
-        return;
-      }
-      toast.success("Interview cancelled");
-      router.refresh();
-    });
-  }
-
-  return (
-    <li
-      className={cn(
-        "flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-xs",
-        isCancelled
-          ? "border-court-border bg-court-surface-subtle/40 text-court-fg-muted line-through"
-          : isPast
-            ? "border-court-border bg-court-surface-subtle/40 text-court-fg-muted"
-            : "border-court-border bg-court-surface-subtle/20 text-court-fg",
-      )}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
-        <Icon className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
-        <div className="min-w-0">
-          <div className="truncate font-medium">
-            {formatInterviewWhen(when)} · {iv.durationMin}m · {formatInterviewType(iv.type)}
-          </div>
-          <div className="truncate text-[11px] text-court-fg-muted">
-            {iv.source === "client_scheduled" ? "Client-scheduled" : "Ace-scheduled"}
-            {iv.attendees.length > 0 ? ` · with ${iv.attendees.map((a) => a.name).join(", ")}` : ""}
-            {iv.meetLink ? ` · Meet` : ""}
-          </div>
-        </div>
-      </div>
-      {!isCancelled && !isPast && (
-        <div className="flex items-center gap-1">
-          {iv.meetLink && (
-            <a
-              href={iv.meetLink}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-md border border-court-border bg-court-surface px-2 py-1 font-semibold text-court-fg hover:border-brand/40 hover:text-brand-dark"
-            >
-              Open Meet
-            </a>
-          )}
-          <button
-            type="button"
-            onClick={() => onReschedule(iv)}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 font-semibold text-court-fg hover:border-brand/40 hover:text-brand-dark"
-          >
-            <Clock className="h-3 w-3" /> Reschedule
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isCancelling}
-            className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-court-surface px-2 py-1 font-semibold text-red-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30 disabled:opacity-60"
-          >
-            {isCancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
-            Cancel
-          </button>
-        </div>
-      )}
-    </li>
-  );
-}
-
+// InterviewList + InterviewRow removed — past interviews no longer
+// render on the row; the inline `formatNextInterview` text on the row
+// title carries the next-upcoming interview only. Reschedule UX moved
+// off the per-row strip; recruiters reschedule via Schedule again or
+// the Quo / calendar surfaces.
 function formatInterviewType(t: InterviewType): string {
   if (t === "phone_screen") return "Phone Screen";
   if (t === "video") return "Video";

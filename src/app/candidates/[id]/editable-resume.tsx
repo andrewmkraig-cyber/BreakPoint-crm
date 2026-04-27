@@ -282,8 +282,8 @@ export function EditableResume({
   if (versions.length === 0) {
     return (
       <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
-        <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
-          <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
+        <div className="flex items-center justify-between border-b border-court-border px-4 py-2">
+          <h2 className="font-serif text-sm font-semibold text-court-fg">Resume</h2>
         </div>
         <div className="p-5">
           <DocumentDropzone
@@ -333,9 +333,9 @@ export function EditableResume({
 
   return (
     <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-court-border px-5 py-3">
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-court-border px-4 py-2">
         <div className="min-w-0 flex-1">
-          <h2 className="font-serif text-base font-semibold text-court-fg">Resume</h2>
+          <h2 className="font-serif text-sm font-semibold text-court-fg">Resume</h2>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-court-fg-muted">
             {/* Inline rename — click filename to edit, Enter saves,
                 Escape cancels. The .pdf extension is preserved by the

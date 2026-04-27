@@ -590,22 +590,22 @@ export default async function CandidateProfilePage({
             </span>
           ))}
           <AddToListButton candidateId={candidate.id} candidateName={name} />
-          {/* Apply + Submit scroll to the Pipeline section anchor —
-              picking which job to apply/submit to lives on the per-row
-              PipelineRowActions buttons. A header-level modal would
-              need a separate job-picker flow that doesn't exist yet. */}
-          <a
-            href="#pipeline"
+          {/* Apply / Submit URL deep-links into PlacementActions —
+              ?openApply=1 / ?openSubmit=1 trigger the existing modals
+              with no pre-selected job. Per-row PipelineRowActions
+              buttons remain the per-job entry. */}
+          <Link
+            href={`/candidates/${id}?openApply=1`}
             className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
           >
             Apply to Job
-          </a>
-          <a
-            href="#pipeline"
+          </Link>
+          <Link
+            href={`/candidates/${id}?openSubmit=1`}
             className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
             Submit to Job
-          </a>
+          </Link>
         </div>
       </header>
 
