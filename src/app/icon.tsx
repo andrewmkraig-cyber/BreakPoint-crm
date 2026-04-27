@@ -1,10 +1,12 @@
 import { ImageResponse } from "next/og";
 
 // Next.js App Router auto-detects /app/icon.{tsx,ts,js} and injects a
-// <link rel="icon"> pointing at the generated PNG. Mirrors the
-// public/favicon.svg tennis-ball design so older browsers without SVG
-// favicon support still get the brand visual; modern browsers prefer
-// the SVG version referenced via metadata.icons in app/layout.tsx.
+// <link rel="icon"> pointing at the generated PNG. Satori (the
+// renderer behind next/og) does not support SVG <text> elements, so
+// the PNG version is intentionally simpler than public/favicon.svg:
+// solid green circle with a dark border and white "Ace" text. Modern
+// browsers prefer the SVG (referenced via metadata.icons in
+// app/layout.tsx) which carries the full tennis-ball seams.
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
 
@@ -18,44 +20,19 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "transparent",
+          background: "#5A9642",
+          borderRadius: "50%",
+          borderColor: "#222222",
+          borderWidth: 2,
+          borderStyle: "solid",
+          color: "white",
+          fontFamily: "Arial, sans-serif",
+          fontWeight: 900,
+          fontSize: 11,
+          lineHeight: 1,
         }}
       >
-        <svg width="32" height="32" viewBox="0 0 64 64">
-          <circle
-            cx="32"
-            cy="32"
-            r="30"
-            fill="#5A9642"
-            stroke="#222222"
-            strokeWidth="2.5"
-          />
-          <path
-            d="M 8 24 Q 22 32 8 42"
-            fill="none"
-            stroke="white"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-          />
-          <path
-            d="M 56 24 Q 42 32 56 42"
-            fill="none"
-            stroke="white"
-            strokeWidth="3.5"
-            strokeLinecap="round"
-          />
-          <text
-            x="32"
-            y="37"
-            textAnchor="middle"
-            fontFamily="Arial Black, Arial, sans-serif"
-            fontWeight="900"
-            fontSize="19"
-            fill="white"
-          >
-            Ace
-          </text>
-        </svg>
+        Ace
       </div>
     ),
     { ...size },
