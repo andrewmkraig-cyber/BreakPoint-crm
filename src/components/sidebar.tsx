@@ -4,10 +4,10 @@ import type React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard,
+  LayoutGrid,
+  User,
   Users,
   GitBranch,
-  Inbox,
   Briefcase,
   Building2,
   Mail,
@@ -21,10 +21,10 @@ import { useMailContext } from "@/lib/mail-context";
 // inbox check) → Pipeline → Applicants (active work) → Candidates →
 // Clients → Jobs (reference surfaces).
 const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/mail", label: "Mail", icon: Mail },
   { href: "/pipeline", label: "Pipeline", icon: GitBranch },
-  { href: "/applicants", label: "Applicants", icon: Inbox },
+  { href: "/applicants", label: "Applicants", icon: User },
   { href: "/candidates", label: "Candidates", icon: Users },
   { href: "/clients", label: "Clients", icon: Building2 },
   { href: "/jobs", label: "Jobs", icon: Briefcase },
@@ -109,18 +109,13 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+        "flex h-12 items-center gap-3 rounded-xl border px-4 text-sm font-medium transition-colors",
         active
-          ? "bg-court-accent-tint text-court-accent-dark"
-          // Hover uses fg-at-low-opacity so it reads as "subtle lift"
-          // in all three modes — darker-than-bg in Hard (fg is
-          // near-black), lighter-than-bg in Clay / Grass (fg is
-          // near-white). A court-surface-subtle hover would collide
-          // with the sidebar bg in Clay/Grass.
-          : "text-court-fg-muted hover:bg-court-fg/5 hover:text-court-fg",
+          ? "border-[#5A9642]/40 bg-[#EAF4E4] text-[#3F7030] shadow-sm"
+          : "border-transparent bg-white text-slate-600 hover:bg-slate-50",
       )}
     >
-      <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />
+      <Icon className={cn("h-4 w-4", active ? "text-[#3F7030]" : "text-slate-600")} />
       <span className="flex-1">{item.label}</span>
       {showBadge && (
         <span

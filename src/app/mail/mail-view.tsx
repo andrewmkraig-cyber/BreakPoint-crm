@@ -6,12 +6,15 @@ import {
   Archive,
   ChevronDown,
   ChevronRight,
+  FileText,
   FolderInput,
   Loader2,
   Mail as MailIcon,
   Reply,
+  Send,
   X,
 } from "lucide-react";
+import { useMailContext } from "@/lib/mail-context";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -115,6 +118,24 @@ export function MailView({
     [labels],
   );
   const labelTree = useMemo(() => (labels ? buildLabelTree(labels) : []), [labels]);
+  // Flat list of every parent (has-children) node path, for the
+  // Collapse all / Expand all toggle below the Inbox card.
+  const parentLabelPaths = useMemo(() => {
+    const out: string[] = [];
+    const walk = (n: LabelNode) => {
+      if (n.children.length > 0) out.push(n.name);
+      n.children.forEach(walk);
+    };
+    labelTree.forEach(walk);
+    return out;
+  }, [labelTree]);
+  const allLabelsCollapsed =
+    parentLabelPaths.length > 0 && parentLabelPaths.every((p) => collapsedLabels.has(p));
+
+  // Unread inbox count drives the white pill on the premium Inbox card.
+  // Same source as the main sidebar's Mail badge — kept in lockstep via
+  // the shared MailContext provider in AppShell.
+  const { unreadCount } = useMailContext();
 
   useEffect(() => {
     let cancelled = false;
@@ -408,21 +429,81 @@ export function MailView({
     <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
       <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
         <nav className="p-2 text-sm">
+          {/* Premium Inbox card — the visual anchor of the sidebar.
+              Uses literal hex colors per the redesign spec; matches the
+              brand-tint / brand / brand-dark token palette but is locked
+              to the Hard Court palette in all three Court Modes. */}
           <button
             type="button"
             onClick={() => setSelectedLabel(null)}
-            className={
-              "block w-full rounded-md px-3 py-1.5 text-left font-medium transition " +
-              (selectedLabel === null
-                ? "bg-brand-tint text-brand-dark"
-                : "text-court-fg hover:bg-court-surface-subtle")
-            }
+            className="group flex w-full items-center gap-3 rounded-2xl border-2 border-[#5A9642] bg-[#EAF4E4] px-5 py-4 text-left shadow-sm transition hover:border-[#3F7030]"
           >
-            Inbox
+            <MailIcon className="h-6 w-6 shrink-0 text-[#5A9642]" />
+            <span className="flex-1 font-bold text-[#3F7030]">Inbox</span>
+            {unreadCount > 0 && (
+              <span className="inline-flex min-w-[28px] items-center justify-center rounded-full bg-white px-2 py-0.5 text-xs font-bold text-[#3F7030]">
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
           </button>
+
+          {parentLabelPaths.length > 0 && (
+            <button
+              type="button"
+              onClick={() =>
+                setCollapsedLabels(allLabelsCollapsed ? new Set() : new Set(parentLabelPaths))
+              }
+              className="mt-2 inline-flex items-center gap-1 rounded-md px-3 py-1 text-[11px] font-medium text-court-fg-muted transition hover:bg-slate-50 hover:text-court-fg"
+            >
+              {allLabelsCollapsed ? (
+                <ChevronRight className="h-3 w-3" />
+              ) : (
+                <ChevronDown className="h-3 w-3" />
+              )}
+              {allLabelsCollapsed ? "Expand all" : "Collapse all"}
+            </button>
+          )}
+
+          {/* Sent + Drafts shortcuts to Gmail's system labels. Same
+              selection plumbing as user labels — Gmail accepts "SENT"
+              and "DRAFT" as labelIds. */}
+          <ul className="mt-2 space-y-0.5">
+            <li>
+              <button
+                type="button"
+                onClick={() => setSelectedLabel({ id: "SENT", name: "Sent" })}
+                className={
+                  "flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition " +
+                  (selectedLabel?.id === "SENT"
+                    ? "bg-[#EAF4E4] text-[#3F7030]"
+                    : "text-court-fg hover:bg-slate-50")
+                }
+              >
+                <Send className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate">Sent</span>
+              </button>
+            </li>
+            <li>
+              <button
+                type="button"
+                onClick={() => setSelectedLabel({ id: "DRAFT", name: "Drafts" })}
+                className={
+                  "flex min-h-9 w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left transition " +
+                  (selectedLabel?.id === "DRAFT"
+                    ? "bg-[#EAF4E4] text-[#3F7030]"
+                    : "text-court-fg hover:bg-slate-50")
+                }
+              >
+                <FileText className="h-4 w-4 shrink-0" />
+                <span className="flex-1 truncate">Drafts</span>
+              </button>
+            </li>
+          </ul>
+
           {labelTree.length > 0 && (
             <>
-              <div className="mt-3 px-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
+              <div className="my-3 border-t border-court-border" />
+              <div className="px-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
                 Labels
               </div>
               <ul className="mt-1 space-y-0.5">
@@ -1054,14 +1135,14 @@ function LabelTreeNode({
   return (
     <li>
       <div
-        className="flex items-center gap-0.5"
+        className="flex min-h-9 items-center gap-0.5"
         style={{ paddingLeft: `${depth * 16}px` }}
       >
         {hasChildren ? (
           <button
             type="button"
             onClick={() => onToggleCollapse(node.name)}
-            className="flex-shrink-0 rounded p-0.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            className="flex-shrink-0 rounded p-0.5 text-court-fg-muted transition hover:bg-slate-50 hover:text-court-fg"
             aria-label={isCollapsed ? "Expand" : "Collapse"}
           >
             {isCollapsed ? (
@@ -1080,12 +1161,12 @@ function LabelTreeNode({
           }}
           disabled={node.id === null}
           className={
-            "flex-1 truncate rounded-md px-2 py-1 text-left transition " +
+            "flex h-9 flex-1 items-center truncate rounded-lg px-3 text-left transition " +
             (active
-              ? "bg-brand-tint text-brand-dark"
+              ? "bg-[#EAF4E4] text-[#3F7030]"
               : node.id === null
                 ? "cursor-default text-court-fg-muted"
-                : "text-court-fg hover:bg-court-surface-subtle")
+                : "text-court-fg hover:bg-slate-50")
           }
           title={node.name}
         >
