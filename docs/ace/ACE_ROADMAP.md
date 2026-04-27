@@ -1,28 +1,49 @@
 # Ace Roadmap
 
-## Ace 24.0 - Phone Tab build
+## Ace 26.0 — Next up: Phone Tab Phase 3
 
-### Phase 1 - Foundation
-1. New /phone page in the main nav. Two-pane layout similar to /mail.
-2. Call log pulled from Ringover (formerly Krispcall) - timestamp, direction, candidate/client match, duration, status.
-3. SMS threads from Ringover - one thread per phone number, message history, ordered by most recent activity.
-4. Match every call + SMS thread to a Candidate or Contact by phone number lookup. Unmatched ones surface in an "Unknown" bucket with a quick-link to "Add to candidate" / "Add to client contact."
-5. Read paths only in Phase 1 - no inbound notifications or reply UI yet.
+Auto-tagging, read tracking, incoming toasts, search. The thread list and per-thread detail UI shipped in Phase 1+2 (Ace 24.0); Phase 3 adds the live behaviors that turn it into a full recruiting comms surface.
 
-### Phase 2 - Inbound notifications + click-to-call
-1. Inbound call notification toast (Ringover webhook) - Answer / Voicemail buttons in the toast. Same compact-toast styling as the mail toast (already shipped 23.0).
-2. Inbound SMS notification toast with inline reply - type a quick response straight in the toast, sends back through Ringover.
-3. Click-to-call from any phone-number element across the app (candidate profile, client contact card). Initiates the call via Ringover's API and logs an outbound CallLog row.
+1. **Auto-tagging.** Every inbound/outbound call and text auto-links to candidate (Candidate.phone substring match on last 10 digits) or client contact (Contact.phoneNumbers JSON array lookup). Stamps SmsMessage.candidateId / CallLog.candidateId on the write path so the Activity card on the matched profile picks it up automatically.
+2. **Read tracking.** Add readAt field to SmsMessage. Mark inbound rows as read when the thread is opened in the candidate Activity card sub-tab OR in the /phone right-pane detail. Sidebar Mail-style unread badge + thread-list "Needs reply" count both read this field.
+3. **Incoming text toast.** Bottom-right, 8s auto-dismiss with hover-to-pause, click to expand inline reply, Enter sends, all logs to candidate/client thread automatically. Same compact toast chrome as the mail toast.
+4. **Incoming call toast.** Persistent until dismissed. Answer turns the toast into a "Connected" card with running timer + End Call. Voicemail forwards to VM. Every action logs to CallLog.
+5. **Search.** Top-of-list search box on /phone (debounced) — server-side LIKE on body / phone number / candidate name, returning matched threads.
 
-### Phase 3 - Search, filters, recordings
-1. Search across calls + SMS by candidate name, phone number, body text.
-2. Filters: direction (inbound/outbound), date range, matched/unmatched, voicemail-only.
-3. Per-thread SMS view - full conversation history in the right pane, send/receive in line.
-4. Call recordings surfaced on candidate/client profile pages - playback inline from the Activity panel, with Claude transcript summary when available.
+## Completed - Ace 25.0 (Candidate profile redesign + Quo SMS fixes)
 
-## Ace 25.0 - Multi-recruiter permissions
+All shipped 2026-04-27. See docs/ace/ACE_STATE.md for the full per-item log.
 
-Foundation for adding additional recruiters to BreakPoint without exposing every record to every user.
+- Quo SMS: dead krispcall.ts deleted, webhook moved to /api/quo/webhook (provider URL must be updated), error message updated, SmsMessage candidateId fix + 2-row backfill
+- Quo deep link: GET /api/quo/conversation route + "Quo" button on SMS composer and Phone tab thread header
+- Candidate profile full redesign across both RF and Ace-native paths: avatar header with three actions (Add to List + Apply + Submit), two-column main (resume left + Contact/Activity/Employment sidebar), Profile + Game Plan underline tabs, Skills/Experience/Education/Notes accordions, sidebar Activity card with Email/Call/Text sub-tabs replacing the old Activity top-level tab
+- Pipeline rows: compact divide-y list inside a single rounded card, briefcase + title + · company + StageBadge on the left, actions on the right, ~36px row height
+- Stage chip colors unified across /pipeline + candidate profile + Ace local rows via stage-badge.tsx single source of truth (Submitted=emerald, Interviewing=blue, Applied=amber, Sourced=neutral, Offer/PendingStart=purple, Hired=darker emerald, Rejected/Cancelled=red, Kept=amber-100)
+- Header Apply/Submit on Ace wired via ?openApply=1 / ?openSubmit=1 URL deep-links into LocalCandidateActions (new hideButtons prop suppresses the legacy standalone button row while modals stay mounted)
+- TextingExchanges: 256px scroll cap with auto-scroll to latest
+- Email Threads raw-id list removed (TODO until auto-tagging surfaces subject + preview)
+
+## Ace 24.0 — Phone Tab build (Phase 1 + 2 SHIPPED)
+
+### Phase 1 - Foundation [SHIPPED]
+1. New /phone page in the main nav. Two-pane layout similar to /mail. — SHIPPED
+2. Call log pulled from Quo (formerly Krispcall) - timestamp, direction, candidate/client match, duration, status. — SHIPPED
+3. SMS threads from Quo - one thread per phone number, message history, ordered by most recent activity. — SHIPPED
+4. Match every call + SMS thread to a Candidate or Contact by phone number lookup. Unmatched ones surface in an "Unknown" bucket. — Partial; auto-tagging full sweep is Phase 3.
+5. Read paths only in Phase 1 - no inbound notifications or reply UI yet. — SHIPPED
+
+### Phase 2 - Inbound notifications + click-to-call [SHIPPED]
+1. New Text + Call panels triggered from FAB; POST /api/sms wired through. — SHIPPED
+2. Schema migration adding organizationId + clientId to SmsMessage / CallLog. — SHIPPED
+3. Click-to-call entry points exist on candidate profile + Phone tab. Outbound call API wiring is Phase 3 (current placeCall toasts a "coming soon" placeholder).
+
+### Phase 3 - Search, filters, recordings [NEXT — Ace 26.0, see top]
+
+Detailed Phase 3 plan now lives at the top of this file under "Ace 26.0".
+
+## Future — Multi-recruiter permissions
+
+Originally slotted as Ace 25.0 but deferred — 25.0 absorbed the candidate profile redesign + Quo SMS work instead. Carry these items forward.
 
 1. Schema additions: ownerId on Client and Job (nullable, FK to User). Existing rows backfilled to Andrew. Permission rules: a recruiter sees clients/jobs they own + any explicitly shared with them.
 2. Shared candidates - many-to-many join (CandidateAccessGrant?) so candidates can be shared across recruiters without duplicating rows. Grant types: read, edit.

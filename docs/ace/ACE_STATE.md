@@ -1,10 +1,25 @@
 # ACE_STATE.md
-Last updated: 2026-04-27 - End of Ace 24.0
+Last updated: 2026-04-27 - End of Ace 25.0
 
 ## Current Status
-Current Version: Ace 25.0
-Last Session: Ace 24.0 - April 27, 2026
-Current Status: All Ace 24.0 tasks complete. Ready for Ace 25.0.
+Current Version: Ace 26.0
+Last Session: Ace 25.0 - April 27, 2026
+Current Status: All Ace 25.0 tasks complete. Ready for Ace 26.0.
+
+## What Shipped in Ace 25.0 (2026-04-27)
+- Quo SMS fix: krispcall.ts dead code deleted, /api/krispcall/webhook moved to /api/quo/webhook (OpenPhone webhook URL must be updated in provider settings), error message in SmsComposer points at Quo env vars
+- SmsMessage candidateId consistency fix: candidate profile (RF page) was passing the numeric RF id stringified to SmsComposer/TextingExchanges; both inbound webhook writes and outbound POST /api/sms now key on the Neon cuid. One-shot UPDATE backfilled 2 orphaned rows
+- Quo deep link: GET /api/quo/conversation?phoneNumber=... resolves an OpenPhone conversationId and returns my.quo.com/inbox/{phoneNumberId}/c/{id}; falls back to inbox URL on miss. "Quo" button on candidate SMS composer + Phone tab thread header opens the deep link in a new tab
+- Activity tab moved into a sidebar Activity card on candidate profiles. Email/Call/Text underline sub-tabs, default Text. TextingExchanges + CallLogs got a defaultOpen prop so they auto-expand inline. ActivityFeed left intact at /api/activity for future reuse
+- Candidate profile full redesign: 48px avatar+initials header (no email/phone duplication below name), header has exactly Add to List + Apply to Job + Submit to Job. Two-column main: 70% resume column with Profile/Game Plan underline tabs + Skills/Experience/Education/Notes accordions; 30% sidebar in order Contact → Activity → Employment
+- Pipeline section: single "Pipeline · N" label in text-xs uppercase muted, no duplicate "JOBS (N)" or "Linked jobs (N)" headers
+- Compact pipeline rows (RF placement-flows.tsx + Ace local-placement-rows.tsx): card wrapper per row removed, parent uses divide-y inside one rounded-xl border. Single flex row per job, py-1.5 px-3, briefcase + title + · company + StageBadge all left-aligned, action buttons right-aligned only. Per-row Hired chip removed (StageBadge already shows it)
+- Universal stage chip colors via stage-badge.tsx BUCKET_CLASS map (single source of truth). New mapping: Submitted=emerald, Interviewing=blue, Applied=amber, Sourced=neutral surface-subtle, Offer/PendingStart=purple, Hired=darker emerald (100/800/300), Rejected/Cancelled=red, Kept=amber-100/800/300. Pill base shrunk to px-2 py-0.5 text-[10px] font-semibold (was h-6 min-w px-3 text-[11px] font-bold). Applied to /pipeline + candidate profile + Ace local rows automatically since all consume StageBadge
+- Header Apply/Submit on Ace path wired via URL deep-links: ?openApply=1 / ?openSubmit=1 trigger the existing modals inside LocalCandidateActions, which now accepts a hideButtons prop so its standalone button row can be suppressed while modals stay mounted. RF path uses href="#pipeline" anchor scroll (per-row buttons remain the actual modal entry points; modal extraction from placement-flows.tsx is deferred)
+- TextingExchanges: max-h-64 overflow-y-auto scroll-smooth on the bubble list + auto-scroll-to-bottom useEffect on mount and on every messages update
+- BillingTower (dashboard): sparkline removed; Q2 card uses left-aligned label/value/hint stack
+- Email Threads sections removed from candidate profiles (raw thread-id list was useless without subject/preview); TODO comment in place. gmailThreadTag fetch dropped from page.tsx Promise.all and from local-profile.tsx candidate select
+- Vercel build fixes shipped through the day: prefer-const on jobId in activity API; unused-vars cleanup after removing Hired chip and badgeSuffixFor helper
 
 ## What Shipped in Ace 24.0 (2026-04-27)
 - Phone Tab Phase 1: schema migration (organizationId + clientId on SmsMessage + CallLog), 3-pane page shell at /phone, thread list wired to real data, sidebar nav item, refresh button
@@ -19,14 +34,12 @@ Current Status: All Ace 24.0 tasks complete. Ready for Ace 25.0.
 - Activity tab: added to candidate and client profiles next to Game Plan, fetches ActivityLog via GET /api/activity/[entityType]/[entityId]/route.ts
 - Vercel build errors fixed: ESLint prefer-const on jobId in activity API route
 
-## Next Task for Ace 25.0
-1. Visual markup change (Andrew will provide spec at session start - Claude asks for instructions)
-2. Phone Tab Phase 3:
-   - Incoming text toast with inline reply (bottom-right, 8s auto-dismiss, hover pauses, expand to reply, Enter sends, logs to candidate/client)
-   - Incoming call toast (persistent, Answer changes to Connected + timer + End Call, Voicemail sends to voicemail, all logged)
-   - Auto-tagging: every call/text auto-links to candidate or client by phone number, surfaces on their profile activity
-   - Search through text history in /phone
-   - Read tracking: mark SmsMessage as read when thread is opened (add readAt field to schema)
+## Next Task for Ace 26.0 — Phone Tab Phase 3
+- Auto-tagging: every inbound/outbound call and text auto-links to candidate (by phone number lookup) or client contact (by phone match against Contact.phoneNumbers JSON). Surfaces on their profile Activity card automatically
+- Read tracking: add readAt field to SmsMessage. Mark inbound rows as read when the thread is opened in the candidate Activity card sub-tab or in the /phone right-pane detail. Sidebar unread badge + thread-list "Needs reply" count both read this field
+- Incoming text toast: bottom-right, 8s auto-dismiss with hover-to-pause, click to expand inline reply, Enter sends, all logs to candidate/client thread automatically
+- Incoming call toast: persistent until dismissed. Answer turns the toast into a "Connected" card with running timer + End Call. Voicemail forwards to VM. Every action logs to CallLog
+- Search through text + call history in /phone (top of thread list, debounced, server-side LIKE on body / phone number / candidate name)
 
 ## What Shipped in Ace 23.0 (2026-04-27)
 - GmailThreadTag schema table - links email threads to candidate/client profiles by address matching
