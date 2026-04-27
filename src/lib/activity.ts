@@ -20,7 +20,7 @@ import { prisma } from "@/lib/prisma";
 // Action types fired today: see docs/operations/activity-log.md for
 // the complete wire-map. call_logged is deferred — the real call
 // audit table is CallLog (written by the Krispcall/Quo webhook at
-// src/app/api/krispcall/webhook/route.ts). Wire logActivity into
+// src/app/api/quo/webhook/route.ts). Wire logActivity into
 // that webhook when the activity panel surfaces call rows.
 
 export type LogActivityInput = {
