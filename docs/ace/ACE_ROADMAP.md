@@ -2,13 +2,12 @@
 
 ## Ace 26.0 — Next up: Phone Tab Phase 3
 
-Auto-tagging, read tracking, incoming toasts, search. The thread list and per-thread detail UI shipped in Phase 1+2 (Ace 24.0); Phase 3 adds the live behaviors that turn it into a full recruiting comms surface.
+Four items, ship in this order. The thread list and per-thread detail UI shipped in Phase 1+2 (Ace 24.0); Phase 3 adds the live behaviors that turn it into a full recruiting comms surface.
 
-1. **Auto-tagging.** Every inbound/outbound call and text auto-links to candidate (Candidate.phone substring match on last 10 digits) or client contact (Contact.phoneNumbers JSON array lookup). Stamps SmsMessage.candidateId / CallLog.candidateId on the write path so the Activity card on the matched profile picks it up automatically.
-2. **Read tracking.** Add readAt field to SmsMessage. Mark inbound rows as read when the thread is opened in the candidate Activity card sub-tab OR in the /phone right-pane detail. Sidebar Mail-style unread badge + thread-list "Needs reply" count both read this field.
-3. **Incoming text toast.** Bottom-right, 8s auto-dismiss with hover-to-pause, click to expand inline reply, Enter sends, all logs to candidate/client thread automatically. Same compact toast chrome as the mail toast.
-4. **Incoming call toast.** Persistent until dismissed. Answer turns the toast into a "Connected" card with running timer + End Call. Voicemail forwards to VM. Every action logs to CallLog.
-5. **Search.** Top-of-list search box on /phone (debounced) — server-side LIKE on body / phone number / candidate name, returning matched threads.
+1. **Auto-tagging.** Every inbound/outbound call and text auto-links to a Candidate (Candidate.phone substring match on last 10 digits) or a client Contact (Contact.phoneNumbers JSON array lookup). Stamps SmsMessage.candidateId / CallLog.candidateId / clientId on the write path so the Activity card on the matched profile picks it up automatically. Wire the "Open Profile" button on the /phone thread header to navigate to the matched candidate / client.
+2. **Read tracking + unread badge.** Add readAt field to SmsMessage. Mark inbound rows as read when the thread is opened in the candidate Activity card sub-tab OR in the /phone right-pane detail. Sidebar Mail-style unread badge + thread-list "Needs reply" count both read this field.
+3. **Incoming toasts.** New inbound SMS → bottom-right toast with hover-to-pause, click to expand inline reply, Enter sends, logs to thread automatically. New inbound call → persistent toast with Answer (turns into "Connected" card + running timer + End Call) and Voicemail. Every action logs to CallLog.
+4. **Search.** Top-of-list search box on /phone (debounced) — server-side LIKE on body / phone number / candidate name / email, returning matched threads.
 
 ## Completed - Ace 25.0 (Candidate profile redesign + Quo SMS fixes)
 
@@ -337,6 +336,7 @@ Stage tag, side tag (candidate-facing vs client-facing), bracket+merge syntax, a
 - Compound-unique widening (3 Placement compound uniques don't include organizationId).
 - SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping.
 - Manual Andrew actions: delete RECRUITERFLOW_API_KEY from .env.local and GitHub Actions secrets, delete src/lib/recruiterflow/ entirely.
+- RF stage chip leak (Ace 25.0 known bug): RF-imported candidate profile renders the RF payload's stage_name in the StageBadge label instead of Neon Placement.stage. Bucket color is right; visible text leaks RF state. Fix: drop `label={job.rfStageName ?? null}` on the RF JobActionRow StageBadge call (or derive label from Placement.stage instead).
 
 ### Removed From Roadmap (productization deferred indefinitely)
 
