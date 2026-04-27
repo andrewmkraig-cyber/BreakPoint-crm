@@ -206,7 +206,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
             title="Open submittal composer"
           />
-          <ActionButton icon={Plus} label="Apply" onClick={onApply} />
+          <ActionButton icon={Plus} label="Apply" tone="apply" onClick={onApply} />
           <ActionButton icon={Bookmark} label="Keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
@@ -265,6 +265,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             icon={CalendarClock}
             label="Schedule"
             title="Schedule Interview"
+            tone="schedule"
             onClick={props.onSchedule}
             href={profileHref}
           />
@@ -285,6 +286,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             icon={CalendarClock}
             label="Schedule"
             title="Schedule another interview"
+            tone="schedule"
             onClick={props.onSchedule}
             href={profileHref}
           />
@@ -378,12 +380,14 @@ function ActionRow({ children, disabled }: { children: React.ReactNode; disabled
   );
 }
 
-type Tone = "default" | "primary" | "danger";
+type Tone = "default" | "primary" | "danger" | "schedule" | "apply";
 
 const TONE_CLASS: Record<Tone, string> = {
-  default: "border-court-border bg-court-surface text-court-fg-muted hover:border-brand/40 hover:text-court-fg",
+  default: "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200",
   primary: "border-brand bg-brand text-white hover:bg-brand-dark",
-  danger: "border-red-200 bg-court-surface text-red-700 hover:border-red-300 hover:bg-red-50 dark:hover:bg-red-900/30 grass:hover:bg-red-900/30",
+  danger: "border-red-200 bg-red-50 text-red-600 hover:bg-red-100",
+  schedule: "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
+  apply: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
 };
 
 function ActionButton({

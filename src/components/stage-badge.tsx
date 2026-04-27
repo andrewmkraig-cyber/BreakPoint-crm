@@ -1,23 +1,27 @@
 import { cn } from "@/lib/utils";
 import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-payload-shapes";
 
-// Active pipeline stages share one green shade so side-by-side rows read
-// consistently. Inactive buckets (applied/sourced/other) stay muted; rejected
-// stays red.
+// Stage colors mapped to the same semantic palette as the row action
+// buttons so a candidate's stage chip and the buttons that move them
+// to the next stage share visual language. Rendered with `border` for
+// pixel parity with the button system; the bucket-specific tint goes
+// on bg + text + border edge.
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
-  applied: "bg-court-surface-subtle text-court-fg-muted ring-1 ring-inset ring-court-border",
-  sourced: "bg-court-surface-subtle text-court-fg-muted ring-1 ring-inset ring-court-border",
-  // Kept renders amber so it pops out of the muted-pile-of-applicants
-  // background — recruiter wants to spot pulled-back candidates fast.
-  kept: "bg-amber-50 text-amber-800 ring-1 ring-inset ring-amber-200",
-  submitted: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
-  interviewing: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
-  offer: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
-  pending_start: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
-  hired: "bg-brand-tint text-brand-dark ring-1 ring-inset ring-brand/40",
-  rejected: "bg-red-50 text-red-700 ring-1 ring-inset ring-red-200",
-  cancelled: "bg-red-100 text-red-800 ring-1 ring-inset ring-red-300",
-  other: "bg-court-surface-subtle text-court-fg-muted ring-1 ring-inset ring-court-border",
+  sourced: "bg-slate-100 text-slate-600 border border-slate-200",
+  applied: "bg-amber-50 text-amber-700 border border-amber-200",
+  kept: "bg-slate-100 text-slate-600 border border-slate-200",
+  submitted: "bg-brand-tint text-brand-dark border border-brand/20",
+  interviewing: "bg-blue-50 text-blue-700 border border-blue-200",
+  offer: "bg-purple-50 text-purple-700 border border-purple-200",
+  // pending_start sits between offer and hired — keep brand-tint so
+  // it reads as a positive interim stage.
+  pending_start: "bg-brand-tint text-brand-dark border border-brand/20",
+  hired: "bg-green-100 text-green-800 border border-green-300",
+  rejected: "bg-red-50 text-red-600 border border-red-200",
+  // cancelled is a darker, more terminal red so it doesn't read as
+  // "just rejected" — the placement actually started and stopped.
+  cancelled: "bg-red-100 text-red-800 border border-red-300",
+  other: "bg-slate-100 text-slate-600 border border-slate-200",
 };
 
 const BUCKET_LABEL: Record<PipelineBucket, string> = {
