@@ -9,9 +9,8 @@ import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
-import { ActivityFeed } from "@/components/activity-feed";
-import { TextingExchanges } from "@/components/texting-exchanges";
-import { CallLogs } from "@/components/call-logs";
+import { ActivityTabContent } from "@/components/activity-tab-content";
+import { SmsComposer } from "@/components/sms-composer";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 import { formatLocation } from "@/lib/utils";
@@ -443,52 +442,19 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         actions={<AddToListButton candidateId={candidate.id} candidateName={fullName} />}
       />
 
-      <LocalCandidateActions
-        candidateId={candidate.id}
-        candidateName={fullName}
-        candidateFirstName={candidate.firstName}
-        candidateEmail={candidate.email}
-        openJobs={openJobs}
-      />
-
-      {/* Applied Jobs — always visible above the tab bar so recruiters
-          can act on placements regardless of which tab they're on. */}
-      {jobRows.length > 0 && (
-        <LocalPlacementRows
-          candidateId={candidate.id}
-          candidateName={fullName}
-          candidateEmail={candidate.email}
-          candidatePhone={candidate.phone}
-          candidateLocation={candidate.location}
-          candidateCurrentTitle={candidate.currentDesignation}
-          candidateCurrentEmployer={candidate.currentOrganization}
-          recruiter={recruiter}
-          jobs={jobRows}
-          aceTeam={aceTeam}
-        />
-      )}
-
-      <LocalTabs tab={tab} candidateId={candidate.id} />
-
-      {/* Resume — always visible across all tabs. Same component as the
-          RF-imported path. candidateRfId is null here; uploads route by
-          candidateId. The tab content panel below swaps per tab. */}
-      <EditableResume
-        candidateRfId={null}
-        candidateId={candidate.id}
-        versions={resumeVersions}
-      />
-
-      {tab === "activity" ? (
-        <>
-          <ActivityFeed entityType="candidate" entityId={candidate.id} />
-          <TextingExchanges candidateId={candidate.id} />
-          <CallLogs candidateId={candidate.id} />
-        </>
-      ) : tab === "game-plan" ? (
-        <AiWorkspace entityType="candidate" entityId={candidate.id} />
-      ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+      {/* Section 2: two-column. Resume left (60%), Contact + Employment +
+          SmsComposer right (40%). Identical structure to the RF-imported
+          page; the right-column cards differ in shape (plain display
+          here, editable forms on the RF path). */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          <EditableResume
+            candidateRfId={null}
+            candidateId={candidate.id}
+            versions={resumeVersions}
+          />
+        </div>
+        <aside className="space-y-6 lg:col-span-2">
           <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
@@ -531,23 +497,67 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             initialOrganization={candidate.currentOrganization}
           />
 
+          <SmsComposer candidateId={candidate.id} toNumber={candidate.phone || null} />
+        </aside>
+      </div>
+
+      {/* Section 3: Jobs. LocalCandidateActions provides Apply/Submit
+          buttons; LocalPlacementRows renders the row table with stage
+          chips + per-row actions + inline interview accordions. */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-serif text-lg font-semibold text-court-fg">
+            Jobs <span className="text-court-fg-muted">({jobRows.length})</span>
+          </h2>
+        </div>
+        <LocalCandidateActions
+          candidateId={candidate.id}
+          candidateName={fullName}
+          candidateFirstName={candidate.firstName}
+          candidateEmail={candidate.email}
+          openJobs={openJobs}
+        />
+        {jobRows.length > 0 && (
+          <LocalPlacementRows
+            candidateId={candidate.id}
+            candidateName={fullName}
+            candidateEmail={candidate.email}
+            candidatePhone={candidate.phone}
+            candidateLocation={candidate.location}
+            candidateCurrentTitle={candidate.currentDesignation}
+            candidateCurrentEmployer={candidate.currentOrganization}
+            recruiter={recruiter}
+            jobs={jobRows}
+            aceTeam={aceTeam}
+          />
+        )}
+      </section>
+
+      {/* Section 4: Tabs. Profile/Game Plan/Activity. Profile shows
+          Skills/Experience/Education/Notes as collapsible accordions
+          — Contact + Employment already live in the sidebar above. */}
+      <LocalTabs tab={tab} candidateId={candidate.id} />
+
+      {tab === "activity" ? (
+        <ActivityTabContent candidateId={candidate.id} />
+      ) : tab === "game-plan" ? (
+        <AiWorkspace entityType="candidate" entityId={candidate.id} />
+      ) : (
+        <div className="space-y-3">
           {candidate.skills.length > 0 && (
-            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-court-fg">Skills</h2>
-              <div className="mt-3 flex flex-wrap gap-1.5">
+            <ProfileAccordion title="Skills">
+              <div className="flex flex-wrap gap-1.5">
                 {candidate.skills.map((s) => (
                   <span key={s} className="rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-xs text-court-fg">
                     {s}
                   </span>
                 ))}
               </div>
-            </section>
+            </ProfileAccordion>
           )}
-
           {experience.length > 0 && (
-            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-court-fg">Experience</h2>
-              <ul className="mt-3 space-y-3 text-sm">
+            <ProfileAccordion title="Experience">
+              <ul className="space-y-3 text-sm">
                 {experience.map((r, i) => (
                   <li key={`exp-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
                     <div className="font-medium text-court-fg">
@@ -561,13 +571,11 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
                   </li>
                 ))}
               </ul>
-            </section>
+            </ProfileAccordion>
           )}
-
           {education.length > 0 && (
-            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-court-fg">Education</h2>
-              <ul className="mt-3 space-y-3 text-sm">
+            <ProfileAccordion title="Education">
+              <ul className="space-y-3 text-sm">
                 {education.map((r, i) => (
                   <li key={`edu-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
                     <div className="font-medium text-court-fg">
@@ -580,32 +588,13 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
                   </li>
                 ))}
               </ul>
-            </section>
+            </ProfileAccordion>
           )}
-
           {candidate.notes && (
-            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-              <h2 className="font-serif text-base font-semibold text-court-fg">Notes</h2>
-              <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-court-fg">{candidate.notes}</p>
-            </section>
+            <ProfileAccordion title="Notes">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-court-fg">{candidate.notes}</p>
+            </ProfileAccordion>
           )}
-
-          <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-            <h2 className="font-serif text-base font-semibold text-court-fg">About this record</h2>
-            <dl className="mt-3 space-y-1 text-xs text-court-fg-muted">
-              <div>
-                <span className="font-medium text-court-fg">ID:</span>{" "}
-                <span className="font-mono">{candidate.id}</span>
-              </div>
-              <div>
-                <span className="font-medium text-court-fg">Created:</span>{" "}
-                {candidate.createdAt.toLocaleString()}
-              </div>
-              <div>
-                <span className="font-medium text-court-fg">Source:</span> Ace (local)
-              </div>
-            </dl>
-          </section>
         </div>
       )}
 
@@ -613,6 +602,20 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
           auto-tagging ships. Raw thread-id list was removed because the
           GmailThreadTag fetch only returns ids; useless without subject. */}
     </div>
+  );
+}
+
+// Native <details> gives free open/close + keyboard a11y. Mirror of the
+// RF-imported page's accordion so both paths use the same shell.
+function ProfileAccordion({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="group rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3">
+        <span className="font-serif text-base font-semibold text-court-fg">{title}</span>
+        <span className="text-xs text-court-fg-muted transition-transform group-open:rotate-180">▾</span>
+      </summary>
+      <div className="border-t border-court-border p-5">{children}</div>
+    </details>
   );
 }
 

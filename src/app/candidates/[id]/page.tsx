@@ -31,8 +31,7 @@ import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editab
 // Edit Resume modal in 5A.5.b. The component itself still exists.
 import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { SmsComposer } from "@/components/sms-composer";
-import { TextingExchanges } from "@/components/texting-exchanges";
-import { CallLogs } from "@/components/call-logs";
+import { ActivityTabContent } from "@/components/activity-tab-content";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -45,7 +44,6 @@ import type {
 } from "@/app/candidates/[id]/placement-flows";
 import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
-import { ActivityFeed } from "@/components/activity-feed";
 import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -583,63 +581,81 @@ export default async function CandidateProfilePage({
         }
       />
 
-      <PlacementActionsIsland
-        candidateRfId={id}
-        candidateFirstName={extractedName.firstName}
-        candidateLastName={extractedName.lastName}
-        candidateEmail={extractedName.email}
-        candidatePhone={normalizePhone(c.phone_number)}
-        candidateLocation={locationLabel ?? ""}
-        candidateCurrentTitle={c.current_designation ?? ""}
-        candidateCurrentEmployer={c.current_organization ?? ""}
-        recruiter={(() => {
-          const email = session?.user?.email ?? "";
-          const fullName = session?.user?.name ?? "";
-          const firstName = fullName.split(/\s+/)[0] ?? "";
-          const phone = email
-            ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
-            : "";
-          return { firstName, fullName, email, phone };
-        })()}
-        jobs={placementJobs}
-        openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
-        aceTeam={aceTeam}
-      />
+      {/* Section 2: two-column. Resume left (60%), Contact + Employment +
+          SmsComposer right (40%). On lg+ the 5-col grid lands a clean
+          3/2 split; below lg both columns stack full-width. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
+        <div className="lg:col-span-3">
+          <EditableResume
+            candidateRfId={id}
+            candidateId={candidate.id}
+            versions={resumeVersions}
+          />
+        </div>
+        <aside className="space-y-6 lg:col-span-2">
+          <EditableContact candidateId={id} initial={contactInitial} />
+          <EditableEmployment candidateId={id} initial={employmentInitial} />
+          <SmsComposer candidateId={candidate.id} toNumber={normalizePhone(c.phone_number) || null} />
+        </aside>
+      </div>
 
+      {/* Section 3: Jobs. Compact reference surface. The Apply/Submit/
+          Schedule action buttons live inside the lazy-loaded island;
+          the wrapper here just supplies the `Jobs (N)` header. */}
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-serif text-lg font-semibold text-court-fg">
+            Jobs <span className="text-court-fg-muted">({placementJobs.length})</span>
+          </h2>
+        </div>
+        <PlacementActionsIsland
+          candidateRfId={id}
+          candidateFirstName={extractedName.firstName}
+          candidateLastName={extractedName.lastName}
+          candidateEmail={extractedName.email}
+          candidatePhone={normalizePhone(c.phone_number)}
+          candidateLocation={locationLabel ?? ""}
+          candidateCurrentTitle={c.current_designation ?? ""}
+          candidateCurrentEmployer={c.current_organization ?? ""}
+          recruiter={(() => {
+            const email = session?.user?.email ?? "";
+            const fullName = session?.user?.name ?? "";
+            const firstName = fullName.split(/\s+/)[0] ?? "";
+            const phone = email
+              ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+              : "";
+            return { firstName, fullName, email, phone };
+          })()}
+          jobs={placementJobs}
+          openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
+          aceTeam={aceTeam}
+        />
+      </section>
+
+      {/* Section 4: Tabs. Now lives at the bottom — was at top of the
+          page in the prior layout. Profile renders Skills/Experience/
+          Education/Notes as collapsible accordions; resume + contact
+          already live above and don't repeat here. */}
       <Tabs tab={tab} candidateId={id} />
-
-      {/* Resume — always visible across all tabs. Recruiters open the
-          profile to read the resume; gating it behind the Profile tab
-          forced an extra click for every other view. The tab content
-          panel below this section swaps based on the selected tab. */}
-      <EditableResume
-        candidateRfId={id}
-        candidateId={candidate.id}
-        versions={resumeVersions}
-      />
 
       {tab === "game-plan" ? (
         <AiWorkspace entityType="candidate" entityId={String(id)} />
       ) : tab === "activity" ? (
-        <>
-          <ActivityFeed entityType="candidate" entityId={candidate.id} />
-          {/* Texts + calls now live only on Activity. Inbound Quo writes
-              SmsMessage.candidateId as a cuid (matches candidate.id);
-              outbound POST /api/sms keys on the same. */}
-          <TextingExchanges candidateId={candidate.id} />
-          <CallLogs candidateId={String(id)} />
-        </>
+        <ActivityTabContent candidateId={candidate.id} />
       ) : (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <EditableContact candidateId={id} initial={contactInitial} />
-          {/* SMS composer is the quick-action input on Profile; the
-              thread history view (TextingExchanges) lives on Activity. */}
-          <SmsComposer candidateId={candidate.id} toNumber={normalizePhone(c.phone_number) || null} />
-          <EditableEmployment candidateId={id} initial={employmentInitial} />
-          <EditableSkills candidateId={id} initial={skillsInitial} />
-          <EditableExperience candidateId={id} initial={experienceInitial} />
-          <EditableEducation candidateId={id} initial={educationInitial} />
-          <EditableNotes candidateId={id} initial={notesInitial} />
+        <div className="space-y-3">
+          <ProfileAccordion title="Skills">
+            <EditableSkills candidateId={id} initial={skillsInitial} />
+          </ProfileAccordion>
+          <ProfileAccordion title="Experience">
+            <EditableExperience candidateId={id} initial={experienceInitial} />
+          </ProfileAccordion>
+          <ProfileAccordion title="Education">
+            <EditableEducation candidateId={id} initial={educationInitial} />
+          </ProfileAccordion>
+          <ProfileAccordion title="Notes">
+            <EditableNotes candidateId={id} initial={notesInitial} />
+          </ProfileAccordion>
         </div>
       )}
 
@@ -648,6 +664,21 @@ export default async function CandidateProfilePage({
           GmailThreadTag fetch only returns ids; useless without subject. */}
     </div>
     </CandidateProfileBoundary>
+  );
+}
+
+// Native <details> gives free open/close + keyboard a11y. Wrapping each
+// existing Editable* card in this accordion keeps the edit semantics
+// intact — clicking the summary just shows/hides the form below.
+function ProfileAccordion({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <details className="group rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3">
+        <span className="font-serif text-base font-semibold text-court-fg">{title}</span>
+        <span className="text-xs text-court-fg-muted transition-transform group-open:rotate-180">▾</span>
+      </summary>
+      <div className="border-t border-court-border p-5">{children}</div>
+    </details>
   );
 }
 
