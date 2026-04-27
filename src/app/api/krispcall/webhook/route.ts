@@ -41,10 +41,12 @@ export async function POST(req: NextRequest) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: fromNumber.replace(/\D/g, '').slice(-10) } },
       })
+      const orgId = candidate?.organizationId ?? null
       if (candidate) {
         await prisma.smsMessage.create({
           data: {
             candidateId: candidate.id,
+            organizationId: orgId,
             direction: 'inbound',
             body: content ?? '',
             fromNumber,
@@ -71,6 +73,7 @@ export async function POST(req: NextRequest) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: phoneToMatch } },
       })
+      const orgId = candidate?.organizationId ?? null
       if (candidate) {
         const existing = quoId
           ? await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
@@ -78,12 +81,13 @@ export async function POST(req: NextRequest) {
         if (existing) {
           await prisma.callLog.update({
             where: { id: existing.id },
-            data: { duration, status: 'completed', recordingUrl },
+            data: { duration, status: 'completed', recordingUrl, organizationId: orgId },
           })
         } else {
           await prisma.callLog.create({
             data: {
               candidateId: candidate.id,
+              organizationId: orgId,
               direction,
               fromNumber: fromNumber ?? '',
               toNumber: toNumber ?? '',

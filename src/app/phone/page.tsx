@@ -30,7 +30,7 @@ export default async function PhonePage() {
       <PageHeader
         eyebrow="Phone"
         title="Calls & Texts"
-        description="Your Quo (Ringover/OpenPhone) inbox — calls and SMS in one feed."
+        description="Your Quo texts and calls."
       />
       <PhoneView />
     </div>

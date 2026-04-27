@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -54,12 +54,17 @@ type BucketCounts = {
   needsReply: number;
 };
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const org = await getCurrentOrg();
+  // Optional cap on threads returned. Used by the FAB popup's "last
+  // N contacts" surface so the popover doesn't try to render the
+  // entire org's history.
+  const limitParam = req.nextUrl.searchParams.get("limit");
+  const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10) || 0)) : null;
 
   const [smsRows, callRows] = await Promise.all([
     prisma.smsMessage.findMany({
@@ -165,27 +170,31 @@ export async function GET() {
     }
   }
 
-  const threads = Array.from(threadMap.values()).sort((a, b) => {
+  const allThreads = Array.from(threadMap.values()).sort((a, b) => {
     const at = a.lastActivity?.at ?? "";
     const bt = b.lastActivity?.at ?? "";
     return bt.localeCompare(at);
   });
+  const threads = limit ? allThreads.slice(0, limit) : allThreads;
 
-  // Bucket counts feed the left-rail badges. needsReply = the latest
-  // entry on the thread is inbound (no outbound after it).
+  // Bucket counts feed the left-rail badges. Computed on the FULL
+  // thread set (allThreads) so badges always reflect totals, even
+  // when the caller has asked for a sliced response via ?limit.
+  // needsReply = the latest entry on the thread is inbound (no
+  // outbound after it).
   const buckets: BucketCounts = {
-    all: threads.length,
-    texts: threads.filter((t) => t.counts.sms > 0).length,
-    calls: threads.filter((t) => t.counts.calls > 0).length,
-    missed: threads.filter((t) => t.counts.missedCalls > 0).length,
+    all: allThreads.length,
+    texts: allThreads.filter((t) => t.counts.sms > 0).length,
+    calls: allThreads.filter((t) => t.counts.calls > 0).length,
+    missed: allThreads.filter((t) => t.counts.missedCalls > 0).length,
     // No voicemail concept in CallLog yet — leave at 0 until the
     // webhook starts writing voicemail-status rows.
     voicemails: 0,
-    candidates: threads.length,
+    candidates: allThreads.length,
     // Phase 1 — client matching not yet wired.
     clients: 0,
     unknown: 0,
-    needsReply: threads.filter(
+    needsReply: allThreads.filter(
       (t) => t.lastActivity?.kind === "sms" && t.lastActivity.direction === "inbound",
     ).length,
   };

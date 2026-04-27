@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Loader2,
@@ -9,12 +9,15 @@ import {
   Phone,
   PhoneCall,
   PhoneMissed,
+  RefreshCw,
   Send,
   User as UserIcon,
   Users as UsersIcon,
   Voicemail,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { usePhonePanels, type PhoneContact } from "@/lib/phone-panels-context";
 
 // Phase 1 Phone Tab. Layout mirrors /mail exactly:
 //   sidebar (col-span-2) · thread list (col-span-3) · detail (col-span-7)
@@ -112,36 +115,36 @@ export function PhoneView() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  // Initial load + manual refresh hook (Phase 2 will add a refresh
-  // button mirroring the mail tab).
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      setListLoading(true);
-      setListError(null);
-      try {
-        const res = await fetch("/api/phone/threads", { cache: "no-store" });
-        if (!res.ok) {
-          setListError(`Couldn’t load threads (HTTP ${res.status})`);
-          return;
-        }
-        const body = (await res.json().catch(() => null)) as
-          | { threads?: PhoneThread[]; bucketCounts?: BucketCounts }
-          | null;
-        if (cancelled) return;
-        if (body?.threads) setThreads(body.threads);
-        if (body?.bucketCounts) setBucketCounts(body.bucketCounts);
-      } catch (e) {
-        if (cancelled) return;
-        setListError(e instanceof Error ? e.message : "Failed to load threads");
-      } finally {
-        if (!cancelled) setListLoading(false);
+  // Cross-component panels (NewText + Call) are mounted at the bottom
+  // of this view; the FAB elsewhere triggers them via this context.
+  const phonePanels = usePhonePanels();
+
+  // Centralized fetch so the initial load, the Refresh button, and
+  // post-send "reload threads" all flow through the same path.
+  const loadThreads = useCallback(async () => {
+    setListLoading(true);
+    setListError(null);
+    try {
+      const res = await fetch("/api/phone/threads", { cache: "no-store" });
+      if (!res.ok) {
+        setListError(`Couldn’t load threads (HTTP ${res.status})`);
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+      const body = (await res.json().catch(() => null)) as
+        | { threads?: PhoneThread[]; bucketCounts?: BucketCounts }
+        | null;
+      if (body?.threads) setThreads(body.threads);
+      if (body?.bucketCounts) setBucketCounts(body.bucketCounts);
+    } catch (e) {
+      setListError(e instanceof Error ? e.message : "Failed to load threads");
+    } finally {
+      setListLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadThreads();
+  }, [loadThreads]);
 
   // Per-thread fetch on selection. Aborts in-flight fetches when the
   // user clicks another row before the previous one resolves.
@@ -296,6 +299,17 @@ export function PhoneView() {
             {filteredThreads.length}{" "}
             {filteredThreads.length === 1 ? "thread" : "threads"}
           </span>
+          <button
+            type="button"
+            onClick={() => void loadThreads()}
+            disabled={listLoading}
+            aria-label="Refresh thread list"
+            className="ml-auto rounded p-1 text-court-fg-muted transition hover:bg-court-fg/5 hover:text-court-fg disabled:opacity-50"
+          >
+            <RefreshCw
+              className={"h-4 w-4 " + (listLoading ? "animate-spin" : "")}
+            />
+          </button>
         </div>
         {listLoading ? (
           <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-court-fg-muted">
@@ -341,6 +355,26 @@ export function PhoneView() {
           <EmptyDetail />
         )}
       </section>
+
+      {/* Phase 2 surface: New Text + Call panels. The FAB triggers
+          their open via PhonePanelsContext; we render them only here
+          so they unmount cleanly when the user navigates away from
+          /phone. */}
+      {phonePanels.textOpen && (
+        <NewTextPanel
+          contact={phonePanels.contact}
+          onClose={phonePanels.closeText}
+          onSwitchToCall={phonePanels.switchToCall}
+          onSent={() => void loadThreads()}
+        />
+      )}
+      {phonePanels.callOpen && (
+        <CallPanel
+          contact={phonePanels.contact}
+          onClose={phonePanels.closeCall}
+          onSwitchToText={phonePanels.switchToText}
+        />
+      )}
     </div>
   );
 }
@@ -651,4 +685,305 @@ function formatRelative(iso: string | null): string {
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 7) return `${diffDay}d`;
   return date.toLocaleDateString();
+}
+
+// ---- New Text panel ----
+//
+// Bottom-right floating panel anchored at the same corner as the FAB
+// but sitting just above it. POSTs to the existing /api/sms endpoint
+// (used by the candidate-sidebar SMS composer too) so the outbound
+// row + Quo dispatch follow the same path. Phase 1 limits the To
+// field to a single contact picked from the FAB popover; broader
+// candidate/client search is a Phase 2 enhancement.
+
+const TEXT_BODY_MAX = 1000;
+
+function NewTextPanel({
+  contact,
+  onClose,
+  onSwitchToCall,
+  onSent,
+}: {
+  contact: PhoneContact | null;
+  onClose: () => void;
+  onSwitchToCall: () => void;
+  onSent: () => void;
+}) {
+  const [recipient, setRecipient] = useState<PhoneContact | null>(contact);
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Sync incoming contact prop on open / contact change.
+  useEffect(() => {
+    setRecipient(contact);
+  }, [contact]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // Autofocus the body textarea once a recipient is locked in.
+  useEffect(() => {
+    if (recipient) {
+      const t = setTimeout(() => bodyRef.current?.focus(), 30);
+      return () => clearTimeout(t);
+    }
+  }, [recipient]);
+
+  const sendDisabled =
+    sending ||
+    success ||
+    !recipient ||
+    !recipient.candidateId ||
+    !recipient.phoneNumber ||
+    body.trim().length === 0;
+
+  async function onSend() {
+    if (sendDisabled || !recipient || !recipient.candidateId) return;
+    setSending(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: recipient.candidateId,
+          toNumber: recipient.phoneNumber,
+          body: body.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(`Send failed (${res.status})`);
+        return;
+      }
+      if (json?.status === "failed") {
+        setError("Saved, but Quo reported send failed.");
+        return;
+      }
+      setSuccess(true);
+      onSent();
+      setTimeout(() => onClose(), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Send failed.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-label="New text"
+      className="fixed right-6 bottom-24 z-[1001] flex w-96 flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+    >
+      <div className="flex items-center justify-between border-b border-court-border px-4 py-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+          New text
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="space-y-3 px-4 py-3">
+        <div>
+          <div className="mb-1 text-[11px] uppercase tracking-wider text-court-fg-muted">
+            To
+          </div>
+          {recipient ? (
+            <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-court-border bg-court-surface-subtle px-2 py-1">
+              <span className="truncate text-sm text-court-fg">
+                {recipient.name}
+              </span>
+              <span className="truncate text-[11px] text-court-fg-muted">
+                {recipient.phoneNumber}
+              </span>
+              <button
+                type="button"
+                onClick={() => setRecipient(null)}
+                aria-label="Clear recipient"
+                className="rounded-full p-0.5 text-court-fg-muted transition hover:bg-court-fg/10 hover:text-court-fg"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed border-court-border bg-court-surface-subtle/50 px-3 py-2 text-xs text-court-fg-muted">
+              Pick a contact from the FAB. Free-form To search ships in
+              Phase 2.
+            </div>
+          )}
+        </div>
+
+        <div className="relative">
+          <textarea
+            ref={bodyRef}
+            value={body}
+            onChange={(e) =>
+              setBody(e.target.value.slice(0, TEXT_BODY_MAX))
+            }
+            placeholder="Type a message..."
+            rows={5}
+            className="w-full resize-none rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+          />
+          <div className="absolute right-2 bottom-2 text-[10px] text-court-fg-muted">
+            {body.length}/{TEXT_BODY_MAX}
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[11px] text-emerald-800">
+            Sent
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-court-border px-4 py-2">
+        <button
+          type="button"
+          onClick={onSwitchToCall}
+          className="text-[11px] font-medium text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
+        >
+          Call instead
+        </button>
+        <button
+          type="button"
+          onClick={onSend}
+          disabled={sendDisabled}
+          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#5A9642] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {sending ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Send className="h-3.5 w-3.5" />
+          )}
+          Send text
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---- Call panel ----
+//
+// Smaller floating panel; click "Call now" toasts a Phase-2 message
+// because there's no /api/krispcall/call outbound endpoint yet.
+
+function CallPanel({
+  contact,
+  onClose,
+  onSwitchToText,
+}: {
+  contact: PhoneContact | null;
+  onClose: () => void;
+  onSwitchToText: () => void;
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const initials = (contact?.name ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]!.toUpperCase())
+    .join("");
+
+  // TODO: Phase 2 — POST /api/krispcall/call with { to: phoneNumber }
+  // and reflect the call status in the UI. The Quo outbound API is
+  // not wired up yet; click-to-call from candidate profiles
+  // currently goes through Quo's hosted dialer. Replace this toast
+  // when the outbound API arrives.
+  function placeCall() {
+    toast.info("Call feature coming soon");
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-label="Call"
+      className="fixed right-6 bottom-24 z-[1001] flex w-72 flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+    >
+      <div className="flex items-center justify-between border-b border-court-border px-4 py-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+          Call
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="space-y-3 px-4 py-4 text-center">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-court-surface-subtle text-sm font-semibold text-court-fg-muted">
+          {initials || <UserIcon className="h-5 w-5" />}
+        </div>
+        <div>
+          <div className="text-sm font-medium text-court-fg">
+            {contact?.name ?? "(no contact)"}
+          </div>
+          {contact?.phoneNumber && (
+            <div className="text-[11px] text-court-fg-muted">
+              {contact.phoneNumber}
+            </div>
+          )}
+          {contact?.tag && (
+            <div className="mt-1 inline-block rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
+              {contact.tag}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={placeCall}
+          disabled={!contact}
+          className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <PhoneCall className="h-4 w-4" />
+          Call now
+        </button>
+        <div className="flex items-center justify-between text-[11px]">
+          <button
+            type="button"
+            onClick={onSwitchToText}
+            className="font-medium text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
+          >
+            Text instead
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-court-fg-muted transition hover:text-court-fg"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
