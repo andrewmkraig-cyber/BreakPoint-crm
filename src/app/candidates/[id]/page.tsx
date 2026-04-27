@@ -590,6 +590,16 @@ export default async function CandidateProfilePage({
             </span>
           ))}
           <AddToListButton candidateId={candidate.id} candidateName={name} />
+          {/* Apply + Submit scroll to the Pipeline section anchor —
+              picking which job to apply/submit to lives on the per-row
+              PipelineRowActions buttons. A header-level modal would
+              need a separate job-picker flow that doesn't exist yet. */}
+          <a
+            href="#pipeline"
+            className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
+          >
+            Apply to Job
+          </a>
           <a
             href="#pipeline"
             className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
@@ -663,9 +673,9 @@ export default async function CandidateProfilePage({
         </div>
 
         <aside className="space-y-4 lg:col-span-3">
+          <EditableContact candidateId={id} initial={contactInitial} />
           <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
           <EditableEmployment candidateId={id} initial={employmentInitial} />
-          <EditableContact candidateId={id} initial={contactInitial} />
         </aside>
       </div>
     </div>

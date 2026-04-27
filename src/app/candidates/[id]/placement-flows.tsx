@@ -326,7 +326,7 @@ export function PlacementActions({
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
         {jobs.map((j) => (
           <JobActionRow
             key={j.jobRfId}
@@ -530,41 +530,28 @@ function JobActionRow({
   const isRejected = !isCancelled && effective === "rejected";
 
   return (
-    <div className="space-y-2 rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-sm font-semibold text-court-fg">
-              <Briefcase className="h-3.5 w-3.5 text-court-fg-muted" />
-              <span className="truncate">{job.jobTitle}</span>
-            </div>
-            {job.clientName && (
-              <div className="mt-0.5 pl-[1.375rem] text-xs text-court-fg-muted">{job.clientName}</div>
-            )}
-            {isCancelled && job.placement?.cancellationReason && (
-              <div className="mt-0.5 pl-[1.375rem] text-[11px] text-red-700">
-                Reason: {CANCEL_REASON_LABELS[job.placement.cancellationReason] ?? job.placement.cancellationReason}
-                {job.placement.cancellationDetail ? ` — ${job.placement.cancellationDetail}` : ""}
-              </div>
-            )}
-          </div>
-          <div className="shrink-0">
-            <StageBadge
-              bucket={effective}
-              label={isCancelled || isRejected ? null : job.rfStageName ?? null}
-            />
-          </div>
+    <div>
+      <div className="flex items-center justify-between gap-3 px-3 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Briefcase className="h-3 w-3 shrink-0 text-court-fg-muted" />
+          <span className="truncate text-sm font-medium text-court-fg">{job.jobTitle}</span>
+          {job.clientName && (
+            <span className="truncate text-xs text-court-fg-muted">· {job.clientName}</span>
+          )}
+          <StageBadge
+            bucket={effective}
+            label={isCancelled || isRejected ? null : job.rfStageName ?? null}
+          />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {/* Action set parity with the Job-page Pipeline rows. The
               dialog-heavy actions (Schedule / Offer / Placement /
               Confirm / Cancel) hand back to the existing profile-side
               dialog state via the inline callbacks; the lighter ones
               (Apply / Submit / Keep / Reject / Un-reject) call the
               same server actions PipelineRowActions uses on the Job
-              page. The standalone Hired chip on the right was removed
-              — the StageBadge on the left already reads Hired. */}
+              page. */}
           <PipelineRowActions
             candidateRfId={candidateRfId}
             candidateName={candidateName}
@@ -586,13 +573,22 @@ function JobActionRow({
         </div>
       </div>
 
+      {isCancelled && job.placement?.cancellationReason && (
+        <div className="px-3 pb-1.5 text-[11px] text-red-700">
+          Reason: {CANCEL_REASON_LABELS[job.placement.cancellationReason] ?? job.placement.cancellationReason}
+          {job.placement.cancellationDetail ? ` — ${job.placement.cancellationDetail}` : ""}
+        </div>
+      )}
+
       {job.interviews.length > 0 && (
-        <InterviewList
-          interviews={job.interviews}
-          candidateName={candidateName}
-          jobTitle={job.jobTitle}
-          onReschedule={onReschedule}
-        />
+        <div className="px-3 pb-2">
+          <InterviewList
+            interviews={job.interviews}
+            candidateName={candidateName}
+            jobTitle={job.jobTitle}
+            onReschedule={onReschedule}
+          />
+        </div>
       )}
     </div>
   );

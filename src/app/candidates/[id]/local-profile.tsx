@@ -458,27 +458,42 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <AddToListButton candidateId={candidate.id} candidateName={fullName} />
-          <a
-            href="#pipeline"
+          {/* Apply / Submit open the existing modals via URL deep-link
+              (?openApply=1 / ?openSubmit=1) — LocalCandidateActions
+              still mounts below to host those modals, just with its
+              own button row hidden via hideButtons. */}
+          <Link
+            href={`/candidates/${candidate.id}?openApply=1`}
+            className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
+          >
+            Apply to Job
+          </Link>
+          <Link
+            href={`/candidates/${candidate.id}?openSubmit=1`}
             className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
             Submit to Job
-          </a>
+          </Link>
         </div>
       </header>
 
-      {/* Section 2: Pipeline. Same wrapper pattern as the RF page. */}
+      {/* Section 2: Pipeline. LocalCandidateActions is rendered with
+          hideButtons so its modals stay mounted (so per-row Submit
+          deep-links and the header-button URL triggers still work)
+          but its standalone Apply/Submit row doesn't render — header
+          owns those entry points now. */}
+      <LocalCandidateActions
+        candidateId={candidate.id}
+        candidateName={fullName}
+        candidateFirstName={candidate.firstName}
+        candidateEmail={candidate.email}
+        openJobs={openJobs}
+        hideButtons
+      />
       <section id="pipeline" className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           Pipeline · {jobRows.length}
         </h2>
-        <LocalCandidateActions
-          candidateId={candidate.id}
-          candidateName={fullName}
-          candidateFirstName={candidate.firstName}
-          candidateEmail={candidate.email}
-          openJobs={openJobs}
-        />
         {jobRows.length > 0 && (
           <LocalPlacementRows
             candidateId={candidate.id}
@@ -564,12 +579,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         </div>
 
         <aside className="space-y-4 lg:col-span-3">
-          <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
-          <LocalEmployment
-            candidateId={candidate.id}
-            initialDesignation={candidate.currentDesignation}
-            initialOrganization={candidate.currentOrganization}
-          />
           <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
@@ -605,6 +614,12 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
               <Row icon={<Link2 className="h-3.5 w-3.5" />} label="LinkedIn" value={candidate.linkedinProfile} href={candidate.linkedinProfile} />
             </dl>
           </section>
+          <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
+          <LocalEmployment
+            candidateId={candidate.id}
+            initialDesignation={candidate.currentDesignation}
+            initialOrganization={candidate.currentOrganization}
+          />
         </aside>
       </div>
     </div>

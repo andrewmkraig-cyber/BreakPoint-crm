@@ -57,6 +57,11 @@ export function LocalCandidateActions(props: {
   candidateFirstName: string;
   candidateEmail: string | null;
   openJobs: LocalOpenJob[];
+  // When true, render only the modals; the standalone Apply/Submit
+  // button row is suppressed. Used by the candidate profile page so
+  // the buttons live in the page header instead, while modals still
+  // mount here and respond to the URL deep-link triggers below.
+  hideButtons?: boolean;
 }) {
   const searchParams = useSearchParams();
   const pathname = usePathname();
@@ -75,20 +80,34 @@ export function LocalCandidateActions(props: {
     const submitParam = searchParams?.get("submit");
     const composeParam = searchParams?.get("compose");
     const jobIdParam = searchParams?.get("jobId");
+    // ?openApply=1 / ?openSubmit=1 — header-button entry points that
+    // open the modal without a pre-selected job. The numeric ?submit=
+    // path stays the per-row deep link.
+    const openApply = searchParams?.get("openApply");
+    const openSubmit = searchParams?.get("openSubmit");
     let jobId: number | null = null;
+    let nextModal: "apply" | "submit" | null = null;
     const paramsToStrip: string[] = [];
-    if (submitParam) {
+    if (openApply) {
+      nextModal = "apply";
+      paramsToStrip.push("openApply");
+    } else if (openSubmit) {
+      nextModal = "submit";
+      paramsToStrip.push("openSubmit");
+    } else if (submitParam) {
       const n = Number(submitParam);
       if (Number.isFinite(n)) jobId = n;
+      nextModal = "submit";
       paramsToStrip.push("submit");
     } else if (composeParam === "submittal" && jobIdParam) {
       const n = Number(jobIdParam);
       if (Number.isFinite(n)) jobId = n;
+      nextModal = "submit";
       paramsToStrip.push("compose", "jobId");
     }
-    if (jobId == null) return;
-    setSubmitInitialJobRfId(jobId);
-    setModal("submit");
+    if (!nextModal) return;
+    if (jobId != null) setSubmitInitialJobRfId(jobId);
+    setModal(nextModal);
     const next = new URLSearchParams(searchParams?.toString() ?? "");
     for (const key of paramsToStrip) next.delete(key);
     const qs = next.toString();
@@ -96,23 +115,25 @@ export function LocalCandidateActions(props: {
   }, [searchParams, pathname, router]);
 
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={() => setModal("submit")}
-        >
-          <FileSignature className="h-3 w-3" /> Submit to Job
-        </Button>
-        <button
-          type="button"
-          onClick={() => setModal("apply")}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
-        >
-          <Target className="h-3 w-3" /> Apply to Job
-        </button>
-      </div>
+    <div className={props.hideButtons ? "contents" : "rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm"}>
+      {!props.hideButtons && (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => setModal("submit")}
+          >
+            <FileSignature className="h-3 w-3" /> Submit to Job
+          </Button>
+          <button
+            type="button"
+            onClick={() => setModal("apply")}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+          >
+            <Target className="h-3 w-3" /> Apply to Job
+          </button>
+        </div>
+      )}
 
       {modal === "apply" && (
         <ApplyModal

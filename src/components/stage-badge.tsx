@@ -9,19 +9,15 @@ import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-p
 // meaning is unambiguous regardless of theme.
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
   sourced: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
-  applied: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
-  kept: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
-  submitted: "bg-blue-50 text-blue-700 border border-blue-200",
-  interviewing: "bg-amber-50 text-amber-700 border border-amber-200",
+  applied: "bg-amber-50 text-amber-700 border border-amber-200",
+  kept: "bg-amber-100 text-amber-800 border border-amber-300",
+  submitted: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  interviewing: "bg-blue-50 text-blue-700 border border-blue-200",
   offer: "bg-purple-50 text-purple-700 border border-purple-200",
-  // pending_start sits between offer and hired — emerald like Hired
-  // so it reads as a positive interim stage.
-  pending_start: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  hired: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  pending_start: "bg-purple-50 text-purple-700 border border-purple-200",
+  hired: "bg-emerald-100 text-emerald-800 border border-emerald-300",
   rejected: "bg-red-50 text-red-700 border border-red-200",
-  // cancelled is a darker, more terminal red so it doesn't read as
-  // "just rejected" — the placement actually started and stopped.
-  cancelled: "bg-red-100 text-red-800 border border-red-300",
+  cancelled: "bg-red-50 text-red-700 border border-red-200",
   other: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
 };
 
@@ -77,7 +73,7 @@ export function StageBadge({
       onClick={onClick}
       title={title}
       className={cn(
-        "inline-flex h-6 min-w-[6.5rem] items-center justify-center whitespace-nowrap rounded-full px-3 text-center text-[11px] font-bold uppercase leading-none tracking-wide",
+        "inline-flex items-center justify-center whitespace-nowrap rounded-full px-2 py-0.5 text-center text-[10px] font-semibold uppercase tracking-wide",
         BUCKET_CLASS[bucket],
         interactive && "cursor-pointer transition hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-brand/40",
         className,

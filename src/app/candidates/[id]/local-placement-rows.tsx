@@ -118,11 +118,8 @@ export function LocalPlacementRows({
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
 
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm">
-      <div className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-        Linked jobs ({jobs.length})
-      </div>
-      <div className="space-y-2">
+    <>
+      <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
         {jobs.map((j) => (
           <LocalJobActionRow
             key={j.placementId}
@@ -203,7 +200,7 @@ export function LocalPlacementRows({
           }}
         />
       )}
-    </div>
+    </>
   );
 }
 
@@ -234,31 +231,26 @@ function LocalJobActionRow({
     normalizedStage === "applied" ||
     normalizedStage === "kept";
 
+  const active = job.interviews.filter((iv) => iv.status === "scheduled");
   return (
-    <div className="space-y-2 rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 text-sm font-semibold text-court-fg">
-              <Briefcase className="h-3.5 w-3.5 text-court-fg-muted" />
-              <span className="truncate">{job.jobTitle}</span>
-            </div>
-            {job.clientName && (
-              <div className="mt-0.5 pl-[1.375rem] text-xs text-court-fg-muted">{job.clientName}</div>
-            )}
-          </div>
-          <div className="shrink-0">
-            <StageBadge bucket={normalizedStage as PipelineBucket} />
-          </div>
+    <div>
+      <div className="flex items-center justify-between gap-3 px-3 py-1.5">
+        <div className="flex min-w-0 items-center gap-2">
+          <Briefcase className="h-3 w-3 shrink-0 text-court-fg-muted" />
+          <span className="truncate text-sm font-medium text-court-fg">{job.jobTitle}</span>
+          {job.clientName && (
+            <span className="truncate text-xs text-court-fg-muted">· {job.clientName}</span>
+          )}
+          <StageBadge bucket={normalizedStage as PipelineBucket} />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {canSubmit && (
             <Link
               href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
-              className="inline-flex items-center justify-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+              className="inline-flex items-center justify-center gap-1.5 rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
               title="Open submittal composer"
             >
-              <Send className="h-3.5 w-3.5" /> Submit
+              <Send className="h-3 w-3" /> Submit
             </Link>
           )}
           {canSchedule && (
@@ -269,43 +261,35 @@ function LocalJobActionRow({
                 variant="schedule"
                 onClick={onSchedule}
               >
-                <CalendarClock className="h-3.5 w-3.5" /> Schedule Interview
+                <CalendarClock className="h-3 w-3" /> Schedule
               </Button>
               <button
                 type="button"
                 onClick={onClientInvite}
-                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500 shadow-sm transition hover:bg-slate-200"
+                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
                 title="Log an interview the client is scheduling themselves — adds to your calendar only"
               >
-                <CalendarPlus className="h-3.5 w-3.5" /> Client Sending Invite
+                <CalendarPlus className="h-3 w-3" /> Client Invite
               </button>
             </>
           )}
         </div>
       </div>
 
-      {(() => {
-        // Only ACTIVE interviews render on the linked-job row. Cancelled /
-        // completed / rescheduled go in the Activity section below the
-        // resume so the row stays a thin actionable strip. If nothing's
-        // active, the whole section disappears (no empty header).
-        const active = job.interviews.filter((iv) => iv.status === "scheduled");
-        if (active.length === 0) return null;
-        return (
-          <div className="mt-1 space-y-1.5 border-t border-court-border pt-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-              Interviews ({active.length})
-            </div>
-            <ul className="space-y-1.5">
-              {[...active]
-                .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
-                .map((iv) => (
-                  <InterviewRow key={iv.id} iv={iv} onReschedule={onReschedule} />
-                ))}
-            </ul>
+      {active.length > 0 && (
+        <div className="px-3 pb-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+            Interviews ({active.length})
           </div>
-        );
-      })()}
+          <ul className="mt-1 space-y-1.5">
+            {[...active]
+              .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())
+              .map((iv) => (
+                <InterviewRow key={iv.id} iv={iv} onReschedule={onReschedule} />
+              ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
