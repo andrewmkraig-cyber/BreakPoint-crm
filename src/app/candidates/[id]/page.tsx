@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Bookmark,
+  Mail,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
@@ -139,7 +140,7 @@ export default async function CandidateProfilePage({
   // Placement / Interview / CandidateResume are scoped by candidateId
   // (cuid) — candidateRfId is retained only as a historical reference and
   // must not be used in application queries.
-  const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs] = await Promise.all([
+  const [clients, contacts, allJobs, placements, interviews, localResume, jobOverrides, session, prefs, gmailTags] = await Promise.all([
     getRfClientsForOrg(),
     getRfShapedContactsForOrg(),
     // Phase 2: jobs come from Neon via the broadened shim (includes
@@ -178,6 +179,18 @@ export default async function CandidateProfilePage({
     prisma.jobOverride.findMany({ select: { jobRfId: true, description: true } }),
     getServerSession(authOptions),
     getAppPreferences(),
+    // Auto-tagged Gmail threads scoped to this candidate. Same query
+    // shape as the Ace-native LocalCandidateProfile so the UI is
+    // identical across both candidate paths.
+    prisma.gmailThreadTag.findMany({
+      where: {
+        candidateId: candidate.id,
+        organizationId: candidate.organizationId,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { threadId: true },
+    }),
   ]);
   const aceTeam = await listAceTeam();
   const overrideByJob = new Map<number, string | null>();
@@ -641,6 +654,25 @@ export default async function CandidateProfilePage({
           </div>
 
           <ActivityPanel interviews={buildActivityInterviews(interviews, placementJobs)} />
+
+          {gmailTags.length > 0 && (
+            <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+              <h2 className="font-serif text-base font-semibold text-court-fg">Email Threads</h2>
+              <ul className="mt-3 space-y-2 text-sm">
+                {gmailTags.map((t) => (
+                  <li key={t.threadId}>
+                    <Link
+                      href={`/mail?thread=${encodeURIComponent(t.threadId)}`}
+                      className="inline-flex items-center gap-1.5 text-brand-dark hover:underline"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      <span className="font-mono text-xs">{t.threadId}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </>
       )}
     </div>
