@@ -58,6 +58,11 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
         organizationId: true,
         createdAt: true,
         createdById: true,
+        gmailTags: {
+          select: { threadId: true },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+        },
       },
     }),
     // Phase 4a: Placement / Interview reads routed through the
@@ -617,6 +622,25 @@ export async function LocalCandidateProfile({ id }: { id: string }) {
       </div>
 
       <ActivityPanel interviews={activityInterviews} />
+
+      {candidate.gmailTags.length > 0 && (
+        <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+          <h2 className="font-serif text-base font-semibold text-court-fg">Email Threads</h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            {candidate.gmailTags.map((t) => (
+              <li key={t.threadId}>
+                <Link
+                  href={`/mail?thread=${encodeURIComponent(t.threadId)}`}
+                  className="inline-flex items-center gap-1.5 text-brand-dark hover:underline"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  <span className="font-mono text-xs">{t.threadId}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

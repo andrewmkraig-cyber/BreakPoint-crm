@@ -6,6 +6,7 @@ import {
   FileText,
   ShieldCheck,
   Briefcase,
+  Mail,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -64,7 +65,7 @@ export default async function ClientDetailPage({
   // Agreements / benefits are keyed by the legacy numeric id (Phase 5
   // drop). Ace-native Clients without a legacyRfId have no agreements
   // or benefits yet; skip the query rather than fetching with a sentinel.
-  const [candidates, contacts, agreements, benefits, benefitsFiles] = await Promise.all([
+  const [candidates, contacts, agreements, benefits, benefitsFiles, gmailTags] = await Promise.all([
     getRfCandidatesForOrg(),
     legacyRfId != null
       ? prisma.contact.findMany({
@@ -141,6 +142,12 @@ export default async function ClientDetailPage({
           },
         })
       : Promise.resolve([] as Array<never>),
+    prisma.gmailThreadTag.findMany({
+      where: { clientId: client.id, organizationId: client.organizationId },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: { threadId: true },
+    }),
   ]);
 
   const location = (client.location as LocationJson) ?? null;
@@ -318,6 +325,27 @@ export default async function ClientDetailPage({
               </div>
             )}
           </div>
+
+          {gmailTags.length > 0 && (
+            <div className="rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
+              <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
+                <h2 className="font-serif text-lg font-semibold text-court-fg">Email Threads</h2>
+              </div>
+              <ul className="divide-y divide-court-border">
+                {gmailTags.map((t) => (
+                  <li key={t.threadId} className="px-5 py-2.5">
+                    <Link
+                      href={`/mail?thread=${encodeURIComponent(t.threadId)}`}
+                      className="inline-flex items-center gap-1.5 text-brand-dark hover:underline"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      <span className="font-mono text-xs">{t.threadId}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       ) : tab === "contacts" ? (
         <ContactsTab
