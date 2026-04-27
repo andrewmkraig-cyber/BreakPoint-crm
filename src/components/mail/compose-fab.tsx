@@ -94,6 +94,10 @@ export function ComposeFAB() {
         defaultSubject: "",
         templates: init.templates,
         candidateRef: contextRef || undefined,
+        // FAB launches the composer in non-blocking mode so the user
+        // can navigate the app, drop emails on labels, click around the
+        // sidebar, etc. while their draft stays open and editable.
+        nonBlocking: true,
         mergeContext: {
           user: {
             firstName: init.user.firstName,

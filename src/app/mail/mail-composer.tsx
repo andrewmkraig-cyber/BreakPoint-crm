@@ -79,6 +79,12 @@ type Props = {
   asModal?: boolean;
   // Header text shown in modal mode.
   modalTitle?: string;
+  // When true (modal mode only), skip the dark backdrop and let pointer
+  // events pass through the outer dialog wrapper so the user can keep
+  // interacting with the rest of the app while the composer is open.
+  // The composer card itself stays clickable. Used by the global
+  // ComposeFAB so navigation, sidebar clicks, etc. aren't blocked.
+  nonBlocking?: boolean;
   onClose: () => void;
   onSent: () => void;
 };
@@ -98,6 +104,7 @@ export function MailComposer({
   candidateRef,
   asModal = false,
   modalTitle = "New email",
+  nonBlocking = false,
   onClose,
   onSent,
 }: Props) {
@@ -1050,18 +1057,30 @@ export function MailComposer({
     // modal hidden so it doesn't flash at (0, 0).
     if (!pos) return null;
     return createPortal(
-      <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100]">
-        {/* Backdrop blocks clicks from bleeding through to the page
-            underneath. Click events on the backdrop itself are no-ops:
-            no close, no animation. The X button in the header is the
-            only way to dismiss. */}
-        <div className="absolute inset-0 bg-black/40" />
+      <div
+        role="dialog"
+        aria-modal={nonBlocking ? "false" : "true"}
+        className={cn(
+          "fixed inset-0 z-[100]",
+          // In non-blocking mode the wrapper itself must let pointer
+          // events through so clicks on the page underneath aren't
+          // intercepted. The composer card below re-enables pointer
+          // events for itself via pointer-events-auto.
+          nonBlocking && "pointer-events-none",
+        )}
+      >
+        {/* Backdrop: only rendered in normal modal mode. Blocks clicks
+            from bleeding through to the page underneath. The X button
+            in the header is the only way to dismiss. Skipped entirely
+            when nonBlocking is true so the user can keep interacting
+            with the rest of the app. */}
+        {!nonBlocking && <div className="absolute inset-0 bg-black/40" />}
         {/* Composer card — positioned absolutely with state-driven
             top/left/width/height so the user can drag and resize it. */}
         <div
           onClick={(e) => e.stopPropagation()}
           style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
-          className="absolute"
+          className={cn("absolute", nonBlocking && "pointer-events-auto")}
         >
           {composerBody}
           {/* Resize handle in the bottom-right corner. The handle is a

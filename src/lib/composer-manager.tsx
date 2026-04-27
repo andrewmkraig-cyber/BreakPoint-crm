@@ -37,6 +37,11 @@ export type OpenComposerInput = {
   // candidate's active applied jobs. Path segment may be cuid or
   // legacy numeric rfId — the API resolves both.
   candidateRef?: string;
+  // When true, the modal renders without a backdrop and the wrapper
+  // lets pointer events pass through, so the user can keep navigating
+  // and interacting with the app while the composer is open. Used by
+  // the global ComposeFAB. Defaults to false (full modal blocking).
+  nonBlocking?: boolean;
   // Called after a successful send. The composer auto-closes on send,
   // so this is for parent-side bookkeeping (e.g., refreshing a list).
   onSent?: () => void;
@@ -73,6 +78,7 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           key={s.id}
           asModal
           modalTitle={s.modalTitle ?? "New email"}
+          nonBlocking={s.nonBlocking}
           defaultTo={s.defaultTo}
           defaultCc={s.defaultCc}
           defaultSubject={s.defaultSubject ?? ""}
