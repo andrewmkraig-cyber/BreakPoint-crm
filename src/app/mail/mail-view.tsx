@@ -11,12 +11,14 @@ import {
   Loader2,
   Mail as MailIcon,
   Maximize2,
+  Pencil,
   Reply,
   Send,
   X,
 } from "lucide-react";
 import { useMailContext } from "@/lib/mail-context";
 import { useFloatingThread } from "@/lib/floating-thread-context";
+import { useComposerManager } from "@/lib/composer-manager";
 import { MessageBlock } from "@/components/mail/message-block";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
@@ -179,6 +181,7 @@ export function MailView({
   // Same source as the main sidebar's Mail badge — kept in lockstep via
   // the shared MailContext provider in AppShell.
   const { unreadCount } = useMailContext();
+  const composer = useComposerManager();
 
   useEffect(() => {
     let cancelled = false;
@@ -470,6 +473,32 @@ export function MailView({
     <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
       <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
         <nav className="p-2 text-sm">
+          {/* Compose button — opens a blank new-email composer via the
+              shared ComposerManager so the draft survives navigation
+              and the existing minimize-tray plumbing works. Templates +
+              user merge context come from MailView's already-resolved
+              props; no extra /api/mail/compose-init round-trip needed. */}
+          <button
+            type="button"
+            onClick={() =>
+              composer.open({
+                defaultTo: "",
+                defaultSubject: "",
+                templates,
+                mergeContext: {
+                  user: {
+                    firstName: currentUserFirstName,
+                    fullName: currentUserFullName,
+                  },
+                },
+              })
+            }
+            className="mb-2 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#5A9642] font-semibold text-white shadow-sm transition hover:bg-[#3F7030]"
+          >
+            <Pencil className="h-4 w-4" />
+            Compose
+          </button>
+
           {/* Premium Inbox card — the visual anchor of the sidebar.
               Uses literal hex colors per the redesign spec; matches the
               brand-tint / brand / brand-dark token palette but is locked
