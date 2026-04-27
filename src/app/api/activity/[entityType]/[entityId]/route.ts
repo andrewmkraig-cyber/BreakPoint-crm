@@ -159,7 +159,7 @@ function resolveIds(
   // top so the field matching the row's primary subject is always
   // populated even when metadata omitted it.
   let candidateId = readString(meta, "candidateId");
-  let jobId = readString(meta, "jobId");
+  const jobId = readString(meta, "jobId");
   let clientId = readString(meta, "clientId");
 
   if (targetType === "candidate") {
