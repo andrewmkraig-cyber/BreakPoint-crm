@@ -639,8 +639,11 @@ export default async function CandidateProfilePage({
                 versions={resumeVersions}
               />
               {/* Collapsible SMS thread. Sits right below the resume so recruiters
-                  can glance at prior texts without scrolling to Activity. */}
-              <TextingExchanges candidateId={String(id)} />
+                  can glance at prior texts without scrolling to Activity.
+                  Uses candidate.id (cuid) — SmsMessage.candidateId is a cuid
+                  FK, and the inbound Quo webhook writes rows with the cuid,
+                  so the outbound + inbound paths must match on the same id. */}
+              <TextingExchanges candidateId={candidate.id} />
               {/* Call-log accordion. Click-to-call on the sidebar phone number
                   seeds this with an "initiated" row; the Krispcall webhook
                   back-fills duration + recording + final status later. */}
@@ -652,7 +655,7 @@ export default async function CandidateProfilePage({
               {/* SMS composer slots in directly below the phone-number card so
                   the input sits next to the number it'll be texting. Pass the
                   normalized candidate phone from EditableContact's source. */}
-              <SmsComposer candidateId={String(id)} toNumber={normalizePhone(c.phone_number) || null} />
+              <SmsComposer candidateId={candidate.id} toNumber={normalizePhone(c.phone_number) || null} />
               <EditableEmployment candidateId={id} initial={employmentInitial} />
               <EditableSkills candidateId={id} initial={skillsInitial} />
               <EditableExperience candidateId={id} initial={experienceInitial} />
