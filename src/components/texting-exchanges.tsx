@@ -28,6 +28,7 @@ export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: st
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastFetchKey = useRef<string>("");
+  const listRef = useRef<HTMLUListElement | null>(null);
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -63,6 +64,17 @@ export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: st
     return () => clearInterval(interval);
   }, [open, fetchMessages]);
 
+  // Pin the scroll to the newest message every time the list mounts,
+  // opens, or grows. Without this, the cap clips the latest bubble at
+  // the bottom and the recruiter has to scroll down to see what they
+  // just sent. The CSS `scroll-smooth` on the same element animates
+  // the jump.
+  useEffect(() => {
+    if (!open) return;
+    const el = listRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [messages, open]);
+
   return (
     <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       <button
@@ -95,7 +107,7 @@ export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: st
           ) : messages.length === 0 ? (
             <div className="py-6 text-center text-sm text-court-fg-muted">No messages yet</div>
           ) : (
-            <ul className="space-y-3">
+            <ul ref={listRef} className="max-h-64 space-y-3 overflow-y-auto scroll-smooth">
               {messages.map((m) => {
                 const outbound = m.direction === "outbound";
                 return (
