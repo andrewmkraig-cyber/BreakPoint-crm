@@ -40,8 +40,8 @@ type CallRow = {
 // recording link when present. No polling — call rows land via the Krispcall
 // webhook after the call completes; a quick close/reopen of the accordion is
 // the recruiter's refresh affordance.
-export function CallLogs({ candidateId }: { candidateId: string }) {
-  const [open, setOpen] = useState(false);
+export function CallLogs({ candidateId, defaultOpen }: { candidateId: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
   const [logs, setLogs] = useState<CallRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);

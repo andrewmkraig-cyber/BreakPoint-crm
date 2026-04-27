@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Link2, Mail, MapPin, Phone } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
@@ -9,8 +8,7 @@ import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
-import { ActivityTabContent } from "@/components/activity-tab-content";
-import { SmsComposer } from "@/components/sms-composer";
+import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 import { formatLocation } from "@/lib/utils";
@@ -29,11 +27,10 @@ import { getAppPreferences } from "@/lib/preferences";
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
-type LocalCandidateTab = "profile" | "game-plan" | "activity";
+type LocalCandidateTab = "profile" | "game-plan";
 
 export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string; tab?: string }) {
-  const tab: LocalCandidateTab =
-    tabParam === "activity" ? "activity" : tabParam === "game-plan" ? "game-plan" : "profile";
+  const tab: LocalCandidateTab = tabParam === "game-plan" ? "game-plan" : "profile";
   const [candidate, placements, interviews, allJobs, allClients, allContacts, jobOverrides, session, prefs] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
@@ -425,37 +422,169 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
     return { firstName, fullName, email, phone };
   })();
 
+  const initials = fullName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase() ?? "")
+    .join("");
+  const locationLabel = formatLocation(candidate.location);
+
   return (
     <div className="space-y-6">
       <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
 
-      <PageHeader
-        eyebrow="Ace candidate"
-        title={fullName}
-        description={
-          candidate.currentDesignation || candidate.currentOrganization
-            ? `${candidate.currentDesignation ?? ""}${candidate.currentDesignation && candidate.currentOrganization ? " · " : ""}${candidate.currentOrganization ?? ""}`
-            : "Ace candidate."
-        }
-        actions={<AddToListButton candidateId={candidate.id} candidateName={fullName} />}
-      />
-
-      {/* Section 2: two-column. Resume left (60%), Contact + Employment +
-          SmsComposer right (40%). Identical structure to the RF-imported
-          page; the right-column cards differ in shape (plain display
-          here, editable forms on the RF path). */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <EditableResume
-            candidateRfId={null}
-            candidateId={candidate.id}
-            versions={resumeVersions}
-          />
+      {/* Section 1: Header — identical shape to the RF-imported page. */}
+      <header className="flex flex-col gap-4 pt-2 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
+            {initials || "?"}
+          </div>
+          <div className="min-w-0">
+            {candidate.currentOrganization && (
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+                Currently at {candidate.currentOrganization}
+              </div>
+            )}
+            <h1 className="font-serif text-3xl font-bold text-court-fg">{fullName}</h1>
+            {(candidate.currentDesignation || locationLabel) && (
+              <div className="mt-0.5 text-sm text-court-fg-muted">
+                {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-court-fg-muted">
+              {candidate.email && (
+                <span className="inline-flex items-center gap-1">
+                  <Mail className="h-3 w-3" /> {candidate.email}
+                </span>
+              )}
+              {candidate.phone && (
+                <a href={`tel:${candidate.phone}`} className="inline-flex items-center gap-1 hover:text-court-fg">
+                  <Phone className="h-3 w-3" /> {candidate.phone}
+                </a>
+              )}
+            </div>
+          </div>
         </div>
-        <aside className="space-y-6 lg:col-span-2">
-          <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <AddToListButton candidateId={candidate.id} candidateName={fullName} />
+          <a
+            href="#pipeline"
+            className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+          >
+            Submit to Job
+          </a>
+        </div>
+      </header>
+
+      {/* Section 2: Pipeline. Same wrapper pattern as the RF page. */}
+      <section id="pipeline" className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-court-fg">
+            Pipeline <span className="text-court-fg-muted">· {jobRows.length}</span>
+          </h2>
+        </div>
+        <LocalCandidateActions
+          candidateId={candidate.id}
+          candidateName={fullName}
+          candidateFirstName={candidate.firstName}
+          candidateEmail={candidate.email}
+          openJobs={openJobs}
+        />
+        {jobRows.length > 0 && (
+          <LocalPlacementRows
+            candidateId={candidate.id}
+            candidateName={fullName}
+            candidateEmail={candidate.email}
+            candidatePhone={candidate.phone}
+            candidateLocation={candidate.location}
+            candidateCurrentTitle={candidate.currentDesignation}
+            candidateCurrentEmployer={candidate.currentOrganization}
+            recruiter={recruiter}
+            jobs={jobRows}
+            aceTeam={aceTeam}
+          />
+        )}
+      </section>
+
+      {/* Section 3: Two-column main. Same shape as the RF page. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <div className="space-y-4 lg:col-span-7">
+          <UnderlineTabs tab={tab} candidateId={candidate.id} />
+          {tab === "game-plan" ? (
+            <AiWorkspace entityType="candidate" entityId={candidate.id} />
+          ) : (
+            <div className="space-y-4">
+              <EditableResume
+                candidateRfId={null}
+                candidateId={candidate.id}
+                versions={resumeVersions}
+              />
+              {candidate.skills.length > 0 && (
+                <ProfileAccordion title="Skills">
+                  <div className="flex flex-wrap gap-1.5">
+                    {candidate.skills.map((s) => (
+                      <span key={s} className="rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-xs text-court-fg">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                </ProfileAccordion>
+              )}
+              {experience.length > 0 && (
+                <ProfileAccordion title="Experience">
+                  <ul className="space-y-3 text-sm">
+                    {experience.map((r, i) => (
+                      <li key={`exp-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
+                        <div className="font-medium text-court-fg">
+                          {r.designation || "(role)"}{" "}
+                          <span className="font-normal text-court-fg-muted">· {r.organization || "(employer)"}</span>
+                        </div>
+                        <div className="text-[11px] text-court-fg-muted">
+                          {[r.from_year, r.to_year ?? "present"].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
+                        </div>
+                        {r.description && <p className="mt-1 text-xs text-court-fg-muted">{r.description}</p>}
+                      </li>
+                    ))}
+                  </ul>
+                </ProfileAccordion>
+              )}
+              {education.length > 0 && (
+                <ProfileAccordion title="Education">
+                  <ul className="space-y-3 text-sm">
+                    {education.map((r, i) => (
+                      <li key={`edu-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
+                        <div className="font-medium text-court-fg">
+                          {r.degree || "(degree)"}{" "}
+                          <span className="font-normal text-court-fg-muted">· {r.school || "(school)"}</span>
+                        </div>
+                        <div className="text-[11px] text-court-fg-muted">
+                          {[r.from_year, r.to_year].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </ProfileAccordion>
+              )}
+              {candidate.notes && (
+                <ProfileAccordion title="Notes">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-court-fg">{candidate.notes}</p>
+                </ProfileAccordion>
+              )}
+            </div>
+          )}
+        </div>
+
+        <aside className="space-y-4 lg:col-span-3">
+          <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
+          <LocalEmployment
+            candidateId={candidate.id}
+            initialDesignation={candidate.currentDesignation}
+            initialOrganization={candidate.currentOrganization}
+          />
+          <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
             <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
               <Row
@@ -486,121 +615,12 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
                 }
               />
               <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
-              <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={formatLocation(candidate.location) || null} />
+              <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={locationLabel || null} />
               <Row icon={<Link2 className="h-3.5 w-3.5" />} label="LinkedIn" value={candidate.linkedinProfile} href={candidate.linkedinProfile} />
             </dl>
           </section>
-
-          <LocalEmployment
-            candidateId={candidate.id}
-            initialDesignation={candidate.currentDesignation}
-            initialOrganization={candidate.currentOrganization}
-          />
-
-          <SmsComposer candidateId={candidate.id} toNumber={candidate.phone || null} />
         </aside>
       </div>
-
-      {/* Section 3: Jobs. LocalCandidateActions provides Apply/Submit
-          buttons; LocalPlacementRows renders the row table with stage
-          chips + per-row actions + inline interview accordions. */}
-      <section className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="font-serif text-lg font-semibold text-court-fg">
-            Jobs <span className="text-court-fg-muted">({jobRows.length})</span>
-          </h2>
-        </div>
-        <LocalCandidateActions
-          candidateId={candidate.id}
-          candidateName={fullName}
-          candidateFirstName={candidate.firstName}
-          candidateEmail={candidate.email}
-          openJobs={openJobs}
-        />
-        {jobRows.length > 0 && (
-          <LocalPlacementRows
-            candidateId={candidate.id}
-            candidateName={fullName}
-            candidateEmail={candidate.email}
-            candidatePhone={candidate.phone}
-            candidateLocation={candidate.location}
-            candidateCurrentTitle={candidate.currentDesignation}
-            candidateCurrentEmployer={candidate.currentOrganization}
-            recruiter={recruiter}
-            jobs={jobRows}
-            aceTeam={aceTeam}
-          />
-        )}
-      </section>
-
-      {/* Section 4: Tabs. Profile/Game Plan/Activity. Profile shows
-          Skills/Experience/Education/Notes as collapsible accordions
-          — Contact + Employment already live in the sidebar above. */}
-      <LocalTabs tab={tab} candidateId={candidate.id} />
-
-      {tab === "activity" ? (
-        <ActivityTabContent candidateId={candidate.id} />
-      ) : tab === "game-plan" ? (
-        <AiWorkspace entityType="candidate" entityId={candidate.id} />
-      ) : (
-        <div className="space-y-3">
-          {candidate.skills.length > 0 && (
-            <ProfileAccordion title="Skills">
-              <div className="flex flex-wrap gap-1.5">
-                {candidate.skills.map((s) => (
-                  <span key={s} className="rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-xs text-court-fg">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </ProfileAccordion>
-          )}
-          {experience.length > 0 && (
-            <ProfileAccordion title="Experience">
-              <ul className="space-y-3 text-sm">
-                {experience.map((r, i) => (
-                  <li key={`exp-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
-                    <div className="font-medium text-court-fg">
-                      {r.designation || "(role)"}{" "}
-                      <span className="font-normal text-court-fg-muted">· {r.organization || "(employer)"}</span>
-                    </div>
-                    <div className="text-[11px] text-court-fg-muted">
-                      {[r.from_year, r.to_year ?? "present"].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
-                    </div>
-                    {r.description && <p className="mt-1 text-xs text-court-fg-muted">{r.description}</p>}
-                  </li>
-                ))}
-              </ul>
-            </ProfileAccordion>
-          )}
-          {education.length > 0 && (
-            <ProfileAccordion title="Education">
-              <ul className="space-y-3 text-sm">
-                {education.map((r, i) => (
-                  <li key={`edu-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
-                    <div className="font-medium text-court-fg">
-                      {r.degree || "(degree)"}{" "}
-                      <span className="font-normal text-court-fg-muted">· {r.school || "(school)"}</span>
-                    </div>
-                    <div className="text-[11px] text-court-fg-muted">
-                      {[r.from_year, r.to_year].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </ProfileAccordion>
-          )}
-          {candidate.notes && (
-            <ProfileAccordion title="Notes">
-              <p className="whitespace-pre-wrap text-sm leading-relaxed text-court-fg">{candidate.notes}</p>
-            </ProfileAccordion>
-          )}
-        </div>
-      )}
-
-      {/* TODO: render matched email threads with subject + preview after
-          auto-tagging ships. Raw thread-id list was removed because the
-          GmailThreadTag fetch only returns ids; useless without subject. */}
     </div>
   );
 }
@@ -619,26 +639,27 @@ function ProfileAccordion({ title, children }: { title: string; children: React.
   );
 }
 
-function LocalTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidateId: string }) {
+function UnderlineTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidateId: string }) {
   return (
-    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      <LocalTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
-      <LocalTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
-      <LocalTabLink label="Activity" href={`/candidates/${candidateId}?tab=activity`} active={tab === "activity"} />
+    <div className="flex gap-6 border-b border-court-border">
+      <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
+      <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
     </div>
   );
 }
 
-function LocalTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
+function UnderlineTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
   return (
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
+        "-mb-px border-b-2 pb-2 text-sm font-medium transition-colors",
+        active
+          ? "border-court-accent text-court-accent-dark"
+          : "border-transparent text-court-fg-muted hover:text-court-fg",
       )}
     >
-      <span>{label}</span>
+      {label}
     </Link>
   );
 }

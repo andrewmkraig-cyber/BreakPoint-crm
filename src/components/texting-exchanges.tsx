@@ -22,8 +22,8 @@ type SmsRow = {
 // layout is a standard SMS chat: outbound right (green), inbound left (gray).
 // Polling only continues while the accordion is open — no point burning a
 // network round-trip every 30 s for a section the recruiter isn't looking at.
-export function TextingExchanges({ candidateId }: { candidateId: string }) {
-  const [open, setOpen] = useState(false);
+export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: string; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen ?? false);
   const [messages, setMessages] = useState<SmsRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);

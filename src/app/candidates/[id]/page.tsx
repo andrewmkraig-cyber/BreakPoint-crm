@@ -3,8 +3,9 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   Bookmark,
+  Mail,
+  Phone,
 } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
@@ -30,8 +31,7 @@ import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editab
 // BrandResumeButton import removed in 5A.5.a — branding moves into the
 // Edit Resume modal in 5A.5.b. The component itself still exists.
 import { AddToListButton } from "@/components/lists/add-to-list-button";
-import { SmsComposer } from "@/components/sms-composer";
-import { ActivityTabContent } from "@/components/activity-tab-content";
+import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -54,7 +54,7 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type CandidateTab = "profile" | "game-plan" | "activity";
+type CandidateTab = "profile" | "game-plan";
 
 // Placement.billingContacts is a Json column — Prisma types it loosely as
 // JsonValue. Coerce to our snapshot shape defensively: keep only objects with
@@ -132,12 +132,7 @@ export default async function CandidateProfilePage({
     skills: candidate.skills,
   };
 
-  const tab: CandidateTab =
-    searchParams?.tab === "game-plan"
-      ? "game-plan"
-      : searchParams?.tab === "activity"
-        ? "activity"
-        : "profile";
+  const tab: CandidateTab = searchParams?.tab === "game-plan" ? "game-plan" : "profile";
 
   // Placement / Interview / CandidateResume are scoped by candidateId
   // (cuid) — candidateRfId is retained only as a historical reference and
@@ -553,6 +548,10 @@ export default async function CandidateProfilePage({
     });
   placementJobs.push(...localOnlyJobs);
 
+  const emailValue = normalizeEmail(c.email);
+  const phoneValue = normalizePhone(c.phone_number);
+  const initials = initialsFromName(name);
+
   return (
     <CandidateProfileBoundary>
     <div className="space-y-6">
@@ -560,52 +559,69 @@ export default async function CandidateProfilePage({
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
 
-      <PageHeader
-        eyebrow={c.current_organization ? `Currently at ${c.current_organization}` : "Candidate"}
-        title={name}
-        description={[c.current_designation, locationLabel].filter(Boolean).join(" · ") || undefined}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            {isKept && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
-                <Bookmark className="h-3 w-3" /> Kept
-              </span>
-            )}
-            {displayTags.slice(0, 3).map((t) => (
-              <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
-                {t}
-              </span>
-            ))}
-            <AddToListButton candidateId={candidate.id} candidateName={name} />
+      {/* Section 1: Header. Avatar + name + inline contact glance,
+          actions on the right. No bottom border — spacing carries the
+          separation. */}
+      <header className="flex flex-col gap-4 pt-2 md:flex-row md:items-start md:justify-between">
+        <div className="flex min-w-0 items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
+            {initials || "?"}
           </div>
-        }
-      />
-
-      {/* Section 2: two-column. Resume left (60%), Contact + Employment +
-          SmsComposer right (40%). On lg+ the 5-col grid lands a clean
-          3/2 split; below lg both columns stack full-width. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
-        <div className="lg:col-span-3">
-          <EditableResume
-            candidateRfId={id}
-            candidateId={candidate.id}
-            versions={resumeVersions}
-          />
+          <div className="min-w-0">
+            {c.current_organization && (
+              <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+                Currently at {c.current_organization}
+              </div>
+            )}
+            <h1 className="font-serif text-3xl font-bold text-court-fg">{name}</h1>
+            {(c.current_designation || locationLabel) && (
+              <div className="mt-0.5 text-sm text-court-fg-muted">
+                {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-court-fg-muted">
+              {emailValue && (
+                <span className="inline-flex items-center gap-1">
+                  <Mail className="h-3 w-3" /> {emailValue}
+                </span>
+              )}
+              {phoneValue && (
+                <a href={`tel:${phoneValue}`} className="inline-flex items-center gap-1 hover:text-court-fg">
+                  <Phone className="h-3 w-3" /> {phoneValue}
+                </a>
+              )}
+            </div>
+          </div>
         </div>
-        <aside className="space-y-6 lg:col-span-2">
-          <EditableContact candidateId={id} initial={contactInitial} />
-          <EditableEmployment candidateId={id} initial={employmentInitial} />
-          <SmsComposer candidateId={candidate.id} toNumber={normalizePhone(c.phone_number) || null} />
-        </aside>
-      </div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          {isKept && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+              <Bookmark className="h-3 w-3" /> Kept
+            </span>
+          )}
+          {displayTags.slice(0, 3).map((t) => (
+            <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
+              {t}
+            </span>
+          ))}
+          <AddToListButton candidateId={candidate.id} candidateName={name} />
+          <a
+            href="#pipeline"
+            className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+          >
+            Submit to Job
+          </a>
+        </div>
+      </header>
 
-      {/* Section 3: Jobs. Compact reference surface. The Apply/Submit/
-          Schedule action buttons live inside the lazy-loaded island;
-          the wrapper here just supplies the `Jobs (N)` header. */}
-      <section className="space-y-3">
+      {/* Section 2: Pipeline. The existing PlacementActionsIsland holds
+          the row table + Submit/Apply/Schedule/Offer/Reject modals;
+          rebuilding it as a 32px-row component is deferred. Wrapper
+          gives the section the new "Pipeline · N" header. */}
+      <section id="pipeline" className="space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="font-serif text-lg font-semibold text-court-fg">
-            Jobs <span className="text-court-fg-muted">({placementJobs.length})</span>
+          <h2 className="text-sm font-semibold text-court-fg">
+            Pipeline <span className="text-court-fg-muted">· {placementJobs.length}</span>
           </h2>
         </div>
         <PlacementActionsIsland
@@ -613,7 +629,7 @@ export default async function CandidateProfilePage({
           candidateFirstName={extractedName.firstName}
           candidateLastName={extractedName.lastName}
           candidateEmail={extractedName.email}
-          candidatePhone={normalizePhone(c.phone_number)}
+          candidatePhone={phoneValue}
           candidateLocation={locationLabel ?? ""}
           candidateCurrentTitle={c.current_designation ?? ""}
           candidateCurrentEmployer={c.current_organization ?? ""}
@@ -632,39 +648,55 @@ export default async function CandidateProfilePage({
         />
       </section>
 
-      {/* Section 4: Tabs. Now lives at the bottom — was at top of the
-          page in the prior layout. Profile renders Skills/Experience/
-          Education/Notes as collapsible accordions; resume + contact
-          already live above and don't repeat here. */}
-      <Tabs tab={tab} candidateId={id} />
-
-      {tab === "game-plan" ? (
-        <AiWorkspace entityType="candidate" entityId={String(id)} />
-      ) : tab === "activity" ? (
-        <ActivityTabContent candidateId={candidate.id} />
-      ) : (
-        <div className="space-y-3">
-          <ProfileAccordion title="Skills">
-            <EditableSkills candidateId={id} initial={skillsInitial} />
-          </ProfileAccordion>
-          <ProfileAccordion title="Experience">
-            <EditableExperience candidateId={id} initial={experienceInitial} />
-          </ProfileAccordion>
-          <ProfileAccordion title="Education">
-            <EditableEducation candidateId={id} initial={educationInitial} />
-          </ProfileAccordion>
-          <ProfileAccordion title="Notes">
-            <EditableNotes candidateId={id} initial={notesInitial} />
-          </ProfileAccordion>
+      {/* Section 3: Two-column main. Left (70%) carries Profile/Game
+          Plan tabs + content. Right (30%) sidebar stacks Activity card
+          + Employment + Contact. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <div className="space-y-4 lg:col-span-7">
+          <UnderlineTabs tab={tab} candidateId={id} />
+          {tab === "game-plan" ? (
+            <AiWorkspace entityType="candidate" entityId={String(id)} />
+          ) : (
+            <div className="space-y-4">
+              <EditableResume
+                candidateRfId={id}
+                candidateId={candidate.id}
+                versions={resumeVersions}
+              />
+              <ProfileAccordion title="Skills">
+                <EditableSkills candidateId={id} initial={skillsInitial} />
+              </ProfileAccordion>
+              <ProfileAccordion title="Experience">
+                <EditableExperience candidateId={id} initial={experienceInitial} />
+              </ProfileAccordion>
+              <ProfileAccordion title="Education">
+                <EditableEducation candidateId={id} initial={educationInitial} />
+              </ProfileAccordion>
+              <ProfileAccordion title="Notes">
+                <EditableNotes candidateId={id} initial={notesInitial} />
+              </ProfileAccordion>
+            </div>
+          )}
         </div>
-      )}
 
-      {/* TODO: render matched email threads with subject + preview after
-          auto-tagging ships. Raw thread-id list was removed because the
-          GmailThreadTag fetch only returns ids; useless without subject. */}
+        <aside className="space-y-4 lg:col-span-3">
+          <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
+          <EditableEmployment candidateId={id} initial={employmentInitial} />
+          <EditableContact candidateId={id} initial={contactInitial} />
+        </aside>
+      </div>
     </div>
     </CandidateProfileBoundary>
   );
+}
+
+function initialsFromName(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((s) => s[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
 // Native <details> gives free open/close + keyboard a11y. Wrapping each
@@ -682,26 +714,27 @@ function ProfileAccordion({ title, children }: { title: string; children: React.
   );
 }
 
-function Tabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
+function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
   return (
-    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      <TabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
-      <TabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
-      <TabLink label="Activity" href={`/candidates/${candidateId}?tab=activity`} active={tab === "activity"} />
+    <div className="flex gap-6 border-b border-court-border">
+      <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
+      <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
     </div>
   );
 }
 
-function TabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
+function UnderlineTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
   return (
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
+        "-mb-px border-b-2 pb-2 text-sm font-medium transition-colors",
+        active
+          ? "border-court-accent text-court-accent-dark"
+          : "border-transparent text-court-fg-muted hover:text-court-fg",
       )}
     >
-      <span>{label}</span>
+      {label}
     </Link>
   );
 }
