@@ -273,7 +273,7 @@ function TemplateEditor({ initial, onClose }: { initial: TemplateRow; onClose: (
     // Modal backdrop is navy-tinted on every mode — reads as "darker than
     // whatever's behind me" regardless of theme, which is what a dialog
     // overlay wants.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
       <div
         className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}

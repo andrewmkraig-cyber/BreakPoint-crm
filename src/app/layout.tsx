@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond, DM_Sans } from "next/font/google";
+import { Playfair_Display, Inter } from "next/font/google";
 import { getServerSession } from "next-auth";
 import "./globals.css";
 import { Providers } from "@/components/providers";
@@ -12,16 +12,16 @@ import {
   CourtModeProvider,
 } from "@/lib/court-mode";
 
-const cormorant = Cormorant_Garamond({
+const playfair = Playfair_Display({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-cormorant",
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-playfair",
 });
 
-const dmSans = DM_Sans({
+const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
-  variable: "--font-dm-sans",
+  variable: "--font-inter",
 });
 
 export const metadata: Metadata = {
@@ -54,7 +54,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={`${cormorant.variable} ${dmSans.variable}`}>
+    <html lang="en" className={`${playfair.variable} ${inter.variable}`}>
       <body className="font-sans">
         {/* Runs before React hydrates and stamps `.dark` or `.grass` onto
             <html> based on the persisted courtMode. Without this, the first

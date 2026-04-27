@@ -395,7 +395,7 @@ function SubmitModal(props: {
 
 function ModalShell({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
       <div className="w-full max-w-2xl space-y-3 rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
         <div className="flex items-center justify-between">
           <h3 className="font-serif text-lg font-semibold text-court-fg">{title}</h3>

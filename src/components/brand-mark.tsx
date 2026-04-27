@@ -56,7 +56,7 @@ export function BrandMark({
         </text>
       </svg>
       <div className="leading-tight">
-        <div className="text-[16px] font-semibold text-[#111827]">Ace</div>
+        <div className="text-[16px] font-semibold text-court-fg">Ace</div>
         {withTag && (
           <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#6B7280]">
             BreakPoint Talent

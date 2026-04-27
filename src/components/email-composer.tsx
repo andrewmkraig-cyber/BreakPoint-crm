@@ -531,7 +531,7 @@ export function EmailComposer({
     // target is the common ancestor of mousedown + mouseup). Closing on that
     // path destroyed half-written submittal drafts with no undo. Dismissal is
     // explicit only: the header X button or the footer Cancel button.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4">
       <div className="flex w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
 
         <div className="flex items-start justify-between border-b border-court-border px-5 py-3">

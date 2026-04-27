@@ -731,7 +731,7 @@ function ModalShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
       <div
         className="w-full max-w-lg overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl"
         onClick={(e) => e.stopPropagation()}

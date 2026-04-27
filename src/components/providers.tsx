@@ -28,7 +28,7 @@ export function Providers({ children }: { children: ReactNode }) {
                 closeButton
                 toastOptions={{
                   style: {
-                    fontFamily: "var(--font-dm-sans), system-ui, sans-serif",
+                    fontFamily: "var(--font-inter), system-ui, sans-serif",
                   },
                 }}
               />

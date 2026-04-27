@@ -364,7 +364,7 @@ export function NewCandidateForm() {
       <div className="space-y-6 lg:col-span-2">
         <div className="rounded-xl border border-border bg-white shadow-sm">
           <div className="border-b border-border px-5 py-3">
-            <h2 className="font-serif text-base font-semibold text-navy">Resume</h2>
+            <h2 className="font-serif text-base font-semibold text-ink">Resume</h2>
             <p className="text-xs text-muted-foreground">
               Drop a PDF and we&apos;ll parse it automatically. If Claude is unavailable, a basic extractor fills in name / email / phone. Re-parse manually after editing the LinkedIn fields below.
             </p>
@@ -379,7 +379,7 @@ export function NewCandidateForm() {
             />
             {resume && (
               <div className="mt-3 flex items-center justify-between rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs">
-                <span className="truncate text-navy">
+                <span className="truncate text-ink">
                   {resume.name}
                   {isParsing && <span className="ml-2 text-muted-foreground">· parsing…</span>}
                   {!isParsing && !parseSource && <span className="ml-2 text-muted-foreground">· ready to parse</span>}
@@ -389,7 +389,7 @@ export function NewCandidateForm() {
                 <button
                   type="button"
                   onClick={() => setResume(null)}
-                  className="text-muted-foreground hover:text-navy"
+                  className="text-muted-foreground hover:text-ink"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -400,7 +400,7 @@ export function NewCandidateForm() {
 
         <div className="rounded-xl border border-border bg-white shadow-sm">
           <div className="border-b border-border px-5 py-3">
-            <h2 className="font-serif text-base font-semibold text-navy">LinkedIn</h2>
+            <h2 className="font-serif text-base font-semibold text-ink">LinkedIn</h2>
             <p className="text-xs text-muted-foreground">
               URL is saved on the record. For full enrichment, paste the profile text below and re-parse from the resume dropzone (LinkedIn blocks automated URL fetches).
             </p>
@@ -415,7 +415,7 @@ export function NewCandidateForm() {
                 rows={6}
                 placeholder="Paste the LinkedIn About / Experience section here — included in the next parse."
                 className={cn(
-                  "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-navy",
+                  "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 font-sans text-sm leading-relaxed text-ink",
                   "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
                 )}
               />
@@ -424,7 +424,7 @@ export function NewCandidateForm() {
               type="button"
               onClick={() => runParse()}
               disabled={isParsing || (!resume && !pastedText.trim() && !linkedinUrl.trim())}
-              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-navy px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-ink-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               {parseSource ? "Re-parse with Claude" : "Parse with Claude"}
@@ -436,7 +436,7 @@ export function NewCandidateForm() {
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-navy-400 shadow-sm transition hover:text-navy"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-white px-3 py-2 text-xs font-medium text-ink-400 shadow-sm transition hover:text-ink"
           >
             Clear and start over
           </button>
@@ -449,7 +449,7 @@ export function NewCandidateForm() {
         <div className="rounded-xl border border-border bg-white shadow-sm">
           <div className="flex items-center justify-between border-b border-border px-5 py-3">
             <div>
-              <h2 className="font-serif text-base font-semibold text-navy">Candidate fields</h2>
+              <h2 className="font-serif text-base font-semibold text-ink">Candidate fields</h2>
               <p className="text-xs text-muted-foreground">
                 {parseSource === "claude"
                   ? "Pre-filled by Claude — review and edit before saving."
@@ -574,7 +574,7 @@ export function NewCandidateForm() {
                 rows={5}
                 placeholder="Short summary of the candidate's background, or internal recruiter notes."
                 className={cn(
-                  "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-navy",
+                  "mt-1 w-full resize-vertical rounded-lg border border-border bg-white px-3 py-2 text-sm leading-relaxed text-ink",
                   "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
                 )}
               />
@@ -590,7 +590,7 @@ export function NewCandidateForm() {
                   <ul className="mt-2 space-y-2 text-sm">
                     {form.experience.map((r, i) => (
                       <li key={`exp-${i}`} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                        <div className="font-medium text-navy">{r.designation || "(role)"} <span className="font-normal text-muted-foreground">· {r.organization || "(employer)"}</span></div>
+                        <div className="font-medium text-ink">{r.designation || "(role)"} <span className="font-normal text-muted-foreground">· {r.organization || "(employer)"}</span></div>
                         <div className="text-[11px] text-muted-foreground">
                           {[r.from_year, r.to_year ?? "present"].filter(Boolean).join(" – ") || "—"}
                         </div>
@@ -607,7 +607,7 @@ export function NewCandidateForm() {
                   <ul className="mt-2 space-y-2 text-sm">
                     {form.education.map((r, i) => (
                       <li key={`edu-${i}`} className="rounded-lg border border-border bg-muted/30 px-3 py-2">
-                        <div className="font-medium text-navy">{r.degree || "(degree)"} <span className="font-normal text-muted-foreground">· {r.school || "(school)"}</span></div>
+                        <div className="font-medium text-ink">{r.degree || "(degree)"} <span className="font-normal text-muted-foreground">· {r.school || "(school)"}</span></div>
                         <div className="text-[11px] text-muted-foreground">
                           {[r.from_year, r.to_year].filter(Boolean).join(" – ") || "—"}
                         </div>
@@ -675,7 +675,7 @@ function Field({
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         onBlur={onBlur}
-        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-navy placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        className="mt-1 w-full rounded-lg border border-border bg-white px-3 py-2 text-sm text-ink placeholder:text-muted-foreground/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
       />
     </label>
   );

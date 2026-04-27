@@ -28,7 +28,7 @@ export function submittalToHtml(body: string): string {
   const escaped = escapeHtml(body);
   const bolded = escaped.replace(BOLD_RE, "<strong>$1</strong>");
   const underlined = bolded.replace(UNDERLINE_RE, "<u>$1</u>");
-  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #0f1b2d; white-space: pre-wrap;">${underlined}</div>`;
+  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111; white-space: pre-wrap;">${underlined}</div>`;
 }
 
 // Strips the bold / underline markers for the text/plain alternative so clients
@@ -83,5 +83,5 @@ export function submittalEditorHtmlToPlainText(html: string): string {
 // submittalToHtml uses, so recipients see identical type styling whether the
 // body came from the markdown or the Tiptap path.
 export function wrapEditorHtmlForGmail(html: string): string {
-  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #0f1b2d;">${html}</div>`;
+  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111;">${html}</div>`;
 }

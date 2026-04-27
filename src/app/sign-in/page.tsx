@@ -10,7 +10,7 @@ export default function SignInPage() {
         <div className="mb-8 flex flex-col items-center gap-4">
           <BrandMark withTag />
           <div className="text-center">
-            <h1 className="font-serif text-2xl font-semibold text-navy">Welcome back</h1>
+            <h1 className="font-serif text-2xl font-semibold text-ink">Welcome back</h1>
             <p className="mt-1 text-sm text-muted-foreground">
               Sign in with your BreakPoint Talent Google account.
             </p>
@@ -18,7 +18,7 @@ export default function SignInPage() {
         </div>
         <button
           onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
-          className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+          className="flex w-full items-center justify-center gap-2 rounded-full bg-brand px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
         >
           <svg className="h-4 w-4" viewBox="0 0 48 48" aria-hidden>
             <path fill="#fff" d="M24 9.5c3.5 0 6.6 1.2 9 3.5l6.7-6.7C35.4 2.4 30 0 24 0 14.6 0 6.5 5.4 2.6 13.3l7.8 6c1.9-5.6 7-9.8 13.6-9.8z" />

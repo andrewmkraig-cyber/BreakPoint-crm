@@ -235,7 +235,7 @@ async function buildFirstPageHeader(): Promise<{ header: Header; logoStamped: bo
     children: [
       new TableCell({
         width: { size: 1800, type: WidthType.DXA },
-        shading: { fill: "0F1B2D" },
+        shading: { fill: "111111" },
         children: [
           new Paragraph({
             alignment: AlignmentType.CENTER,

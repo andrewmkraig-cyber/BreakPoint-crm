@@ -195,7 +195,7 @@ function AgreementItem({
             onClick={() => void onSummarize()}
             disabled={isPending || !isPdf}
             title={!isPdf ? "Only PDF agreements can be summarized right now." : undefined}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-navy px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-navy-600 disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-ink-600 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
             {isPending ? "Summarizing…" : summary ? "Re-summarize" : "Summarize Terms"}

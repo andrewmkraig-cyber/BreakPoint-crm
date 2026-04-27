@@ -80,7 +80,7 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
     <div className="rounded-xl border border-court-border bg-court-surface-subtle px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
-        <div className="font-serif text-4xl font-extrabold leading-none tracking-tight text-court-fg">{value}</div>
+        <div className="font-stat text-4xl leading-none text-court-fg">{value}</div>
       </div>
       <p className="mt-2 text-[11px] text-court-fg-muted">{hint}</p>
     </div>

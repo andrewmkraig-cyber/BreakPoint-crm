@@ -338,7 +338,7 @@ export function ResumeEditor({
   void baseResumeFilename;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/70 p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/70 p-4">
       <div className="flex h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
           <div>
@@ -491,7 +491,7 @@ export function ResumeEditor({
                     {pageRects.map((r, idx) => (
                       <div
                         key={`r-${p.pageNumber}-${idx}`}
-                        className="pointer-events-none absolute border border-navy/40 bg-white"
+                        className="pointer-events-none absolute border border-ink/40 bg-white"
                         style={{
                           left: `${r.x * 100}%`,
                           top: `${r.y * 100}%`,
@@ -502,7 +502,7 @@ export function ResumeEditor({
                     ))}
                     {liveRect && liveRect.page === p.pageNumber && (
                       <div
-                        className="pointer-events-none absolute border-2 border-dashed border-navy bg-white/60"
+                        className="pointer-events-none absolute border-2 border-dashed border-ink bg-white/60"
                         style={{
                           left: `${liveRect.x * 100}%`,
                           top: `${liveRect.y * 100}%`,

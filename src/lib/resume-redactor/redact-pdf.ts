@@ -397,7 +397,7 @@ async function drawVectorWordmark(
   const helvBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
   const helv = await pdfDoc.embedFont(StandardFonts.Helvetica);
   // Navy background behind the wordmark so it reads on any page color.
-  // Colors from tailwind.config.ts: navy #0F1B2D, brand green #5A9642.
+  // Colors from tailwind.config.ts: navy #111111, brand green #5A9642.
   const navy = rgb(0x0f / 255, 0x1b / 255, 0x2d / 255);
   const green = rgb(0x5a / 255, 0x96 / 255, 0x42 / 255);
   page.drawRectangle({ x, y, width: w, height: h, color: navy });

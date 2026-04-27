@@ -18,7 +18,7 @@ export function KpiTile({
       </div>
       <div className="min-w-0 flex-1">
         <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
-        <div className="font-serif text-4xl font-extrabold leading-tight tracking-tight text-court-fg">{value}</div>
+        <div className="font-stat text-4xl leading-tight text-court-fg">{value}</div>
         {hint && <div className="text-[11px] text-court-fg-muted">{hint}</div>}
       </div>
     </div>

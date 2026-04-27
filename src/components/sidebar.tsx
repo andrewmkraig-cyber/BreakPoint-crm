@@ -59,7 +59,7 @@ export function Sidebar() {
     // main-nav block gets its own internal scroll so the Settings
     // footer + brand blurb stay pinned at the bottom of the sidebar
     // even on viewports too short to fit every nav item.
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 self-start border-r border-court-border bg-white dark:bg-[#1e293b] grass:bg-[#2d4a2d] md:flex md:flex-col">
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 self-start border-r border-court-border bg-court-surface md:flex md:flex-col">
       <div className="flex h-16 shrink-0 items-center border-b border-court-border px-5">
         <BrandMark withTag />
       </div>
@@ -121,11 +121,11 @@ function NavLink({
       className={cn(
         "flex h-12 items-center gap-3 rounded-xl border px-4 text-sm font-medium transition-colors",
         active
-          ? "border-[#5A9642]/40 bg-[#EAF4E4] text-[#3F7030] shadow-sm"
-          : "border-transparent bg-white text-slate-600 hover:bg-slate-50",
+          ? "border-court-accent/40 bg-court-accent-tint text-court-accent-dark shadow-sm"
+          : "border-transparent bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle",
       )}
     >
-      <Icon className={cn("h-4 w-4", active ? "text-[#3F7030]" : "text-slate-600")} />
+      <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />
       <span className="flex-1">{item.label}</span>
       {showBadge && (
         <span

@@ -222,7 +222,7 @@ export function plainToHtml(text: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
-  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #0f1b2d; white-space: pre-wrap;">${esc}</div>`;
+  return `<div style="font-family: Arial, Helvetica, sans-serif; font-size: 14px; line-height: 1.55; color: #111111; white-space: pre-wrap;">${esc}</div>`;
 }
 
 // Attach the user's stored signature to the body exactly once. If the body

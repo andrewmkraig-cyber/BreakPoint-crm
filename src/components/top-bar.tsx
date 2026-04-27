@@ -14,7 +14,7 @@ export function TopBar() {
     // #2d4a2d. All text/border colors route through court-* tokens so
     // they track each mode's palette without per-class dark:/grass:
     // overrides.
-    <header className="flex h-16 items-center justify-between gap-4 border-b border-court-border bg-white dark:bg-[#1e293b] grass:bg-[#2d4a2d] px-6">
+    <header className="flex h-16 items-center justify-between gap-4 border-b border-court-border bg-court-surface px-6">
       <div className="hidden text-xs uppercase tracking-[0.18em] text-court-fg-muted md:block">
         Internal Ops &middot; {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </div>
@@ -41,7 +41,7 @@ export function TopBar() {
         )}
         <button
           onClick={() => signOut({ callbackUrl: "/sign-in" })}
-          className="flex h-9 w-9 items-center justify-center rounded-lg border border-court-border text-court-fg-muted transition hover:border-court-accent hover:text-court-accent-dark"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-ink/10 text-court-fg-muted transition hover:border-court-accent hover:text-court-accent-dark"
           title="Sign out"
         >
           <LogOut className="h-4 w-4" />

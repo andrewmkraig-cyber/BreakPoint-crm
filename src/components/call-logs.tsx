@@ -310,7 +310,7 @@ function TranscriptModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-navy/40 p-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" role="dialog" aria-modal="true">
       <div className="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-xl">
         <div className="flex items-start justify-between border-b border-court-border px-5 py-3">
           <div>
