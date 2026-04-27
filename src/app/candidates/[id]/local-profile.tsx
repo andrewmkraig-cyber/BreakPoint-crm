@@ -11,6 +11,7 @@ import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { ActivityPanel, type ActivityInterview } from "@/app/candidates/[id]/activity-panel";
 import { ActivityFeed } from "@/components/activity-feed";
+import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 import { formatLocation } from "@/lib/utils";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
@@ -28,10 +29,11 @@ import { getAppPreferences } from "@/lib/preferences";
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
-type LocalCandidateTab = "profile" | "activity";
+type LocalCandidateTab = "profile" | "game-plan" | "activity";
 
 export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string; tab?: string }) {
-  const tab: LocalCandidateTab = tabParam === "activity" ? "activity" : "profile";
+  const tab: LocalCandidateTab =
+    tabParam === "activity" ? "activity" : tabParam === "game-plan" ? "game-plan" : "profile";
   const [candidate, placements, interviews, allJobs, allClients, allContacts, jobOverrides, session, prefs] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
@@ -478,6 +480,8 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
 
       {tab === "activity" ? (
         <ActivityFeed entityType="candidate" entityId={candidate.id} />
+      ) : tab === "game-plan" ? (
+        <AiWorkspace entityType="candidate" entityId={candidate.id} />
       ) : (
       <>
       {jobRows.length > 0 && (
@@ -662,6 +666,7 @@ function LocalTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidateId: 
   return (
     <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <LocalTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
+      <LocalTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
       <LocalTabLink label="Activity" href={`/candidates/${candidateId}?tab=activity`} active={tab === "activity"} />
     </div>
   );
