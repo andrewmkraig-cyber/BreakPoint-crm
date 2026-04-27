@@ -1165,11 +1165,17 @@ function AddressRow({
             <li key={s.email}>
               <button
                 type="button"
-                // onMouseDown.preventDefault keeps the input focused so
-                // the blur handler doesn't hide the dropdown before
-                // onClick fires.
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => pick(s)}
+                // Run pick() on mousedown — earlier in the event
+                // sequence than click — and call preventDefault to
+                // block the focus shift away from the input. This
+                // sidesteps the classic blur-before-click race that
+                // dismisses the dropdown without registering the
+                // selection. Single mouse press lands the address.
+                onMouseDown={(e) => {
+                  if (e.button !== 0) return;
+                  e.preventDefault();
+                  pick(s);
+                }}
                 className="block w-full px-3 py-2 text-left text-sm transition hover:bg-court-surface-subtle"
               >
                 <div className="font-medium text-court-fg">{s.name}</div>
