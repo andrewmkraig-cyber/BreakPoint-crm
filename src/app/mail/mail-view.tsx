@@ -46,7 +46,10 @@ export function MailView({
   const [detail, setDetail] = useState<MailThreadDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [composerOpen, setComposerOpen] = useState(false);
+  // composerOpen state used to live here. Phase 8 refactor: moved
+  // INSIDE ThreadDetail so the same component can host its own
+  // reply composer whether rendered inline in /mail or inside the
+  // popped-out FloatingThreadWindow.
   const [archiving, setArchiving] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   // Bulk-selection set: thread IDs the user has checkbox-ticked.
@@ -292,12 +295,10 @@ export function MailView({
   useEffect(() => {
     if (!selected) {
       setDetail(null);
-      setComposerOpen(false);
       return;
     }
     const ac = new AbortController();
     void loadThread(selected, ac.signal);
-    setComposerOpen(false);
     return () => ac.abort();
   }, [selected, loadThread]);
 
@@ -671,7 +672,6 @@ export function MailView({
           <ThreadDetail
             detail={detail}
             selectedThread={selectedThread}
-            composerOpen={composerOpen}
             archiving={archiving === detail.id}
             moving={moving === detail.id}
             labels={userLabels}
@@ -681,10 +681,7 @@ export function MailView({
             templates={templates}
             onArchive={() => archiveThread(detail.id)}
             onMove={(labelId, labelName) => moveThread(detail.id, labelId, labelName)}
-            onReply={() => setComposerOpen(true)}
-            onComposerClose={() => setComposerOpen(false)}
-            onComposerSent={() => {
-              setComposerOpen(false);
+            onSent={() => {
               if (selected) void loadThread(selected);
             }}
           />
@@ -860,26 +857,14 @@ function MoveToMenu({
   );
 }
 
-function ThreadDetail({
-  detail,
-  selectedThread,
-  composerOpen,
-  archiving,
-  moving,
-  labels,
-  currentUserEmail,
-  currentUserFirstName,
-  currentUserFullName,
-  templates,
-  onArchive,
-  onMove,
-  onReply,
-  onComposerClose,
-  onComposerSent,
-}: {
+// Shared interface so ThreadDetail can be rendered both inline in
+// MailView and inside the popped-out FloatingThreadWindow with the
+// same props. composerOpen / onReply / onComposerClose /
+// onComposerSent used to live here too — they were folded into
+// internal state so each render owns its own composer lifecycle.
+export type ThreadDetailProps = {
   detail: MailThreadDetail;
   selectedThread: MailListThread | null;
-  composerOpen: boolean;
   archiving: boolean;
   moving: boolean;
   labels: Array<{ id: string; name: string }> | null;
@@ -889,15 +874,38 @@ function ThreadDetail({
   templates: ActiveTemplateSummary[];
   onArchive: () => void;
   onMove: (labelId: string, labelName: string) => void;
-  onReply: () => void;
-  onComposerClose: () => void;
-  onComposerSent: () => void;
-}) {
+  // Called after a reply send completes so the parent can refetch the
+  // thread to show the just-sent message.
+  onSent?: () => void;
+  // True when this ThreadDetail is rendered inside the floating
+  // window. Hides the redundant subject/message-count header (the
+  // floating window's outer header already shows the subject) and
+  // hides the Pop-out button. Also drops the inline-only viewport
+  // height calc so the component fills the floating frame.
+  isFloating?: boolean;
+};
+
+export function ThreadDetail({
+  detail,
+  selectedThread,
+  archiving,
+  moving,
+  labels,
+  currentUserEmail,
+  currentUserFirstName,
+  currentUserFullName,
+  templates,
+  onArchive,
+  onMove,
+  onSent,
+  isFloating = false,
+}: ThreadDetailProps) {
   // Newest-first: show most recent message at the top of the pane so
   // opening a long thread lands directly on "what just happened."
   const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
   const latest = orderedMessages[0];
   const floatingThread = useFloatingThread();
+  const [composerOpen, setComposerOpen] = useState(false);
 
   // Reply-recipient logic: the "other party" on the latest message.
   // - If I sent the last message, reply to whoever I sent it to.
@@ -913,21 +921,31 @@ function ThreadDetail({
     : `Re: ${detail.subject}`;
 
   return (
-    <div className="flex h-[calc(100vh-240px)] flex-col">
+    <div
+      className={
+        "flex flex-col " + (isFloating ? "h-full" : "h-[calc(100vh-240px)]")
+      }
+    >
       <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
-        <div className="min-w-0">
-          <h2 className="truncate font-serif text-base font-semibold text-court-fg">
-            {detail.subject}
-          </h2>
-          <p className="mt-0.5 text-xs text-court-fg-muted">
-            {detail.messages.length}{" "}
-            {detail.messages.length === 1 ? "message" : "messages"}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
+        {!isFloating && (
+          <div className="min-w-0">
+            <h2 className="truncate font-serif text-base font-semibold text-court-fg">
+              {detail.subject}
+            </h2>
+            <p className="mt-0.5 text-xs text-court-fg-muted">
+              {detail.messages.length}{" "}
+              {detail.messages.length === 1 ? "message" : "messages"}
+            </p>
+          </div>
+        )}
+        <div
+          className={
+            "flex shrink-0 items-center gap-2 " + (isFloating ? "ml-auto" : "")
+          }
+        >
           <button
             type="button"
-            onClick={onReply}
+            onClick={() => setComposerOpen(true)}
             disabled={composerOpen}
             className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
@@ -957,14 +975,24 @@ function ThreadDetail({
               </>
             }
           />
-          <button
-            type="button"
-            onClick={() => floatingThread.open(detail.id)}
-            aria-label="Pop out thread into a floating window"
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-          >
-            <Maximize2 className="h-3 w-3" /> Pop out
-          </button>
+          {!isFloating && (
+            <button
+              type="button"
+              onClick={() =>
+                floatingThread.open(detail.id, {
+                  labels,
+                  templates,
+                  currentUserEmail,
+                  currentUserFirstName,
+                  currentUserFullName,
+                })
+              }
+              aria-label="Pop out thread into a floating window"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+            >
+              <Maximize2 className="h-3 w-3" /> Pop out
+            </button>
+          )}
         </div>
       </div>
       <div className="flex-1 overflow-y-auto">
@@ -985,8 +1013,11 @@ function ThreadDetail({
               fullName: currentUserFullName,
             },
           }}
-          onClose={onComposerClose}
-          onSent={onComposerSent}
+          onClose={() => setComposerOpen(false)}
+          onSent={() => {
+            setComposerOpen(false);
+            onSent?.();
+          }}
         />
       )}
     </div>

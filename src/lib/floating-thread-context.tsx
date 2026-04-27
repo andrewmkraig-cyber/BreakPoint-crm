@@ -7,14 +7,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { ActiveTemplateSummary } from "@/app/email/actions";
 
 // Hoists a single popped-out email thread up to the application shell
 // so it survives navigation away from /mail. Mirrors the
 // ComposerManager pattern: state lives at the Providers level, the
 // FloatingThreadWindow component reads from this context and renders
-// via React portal at the document body. Only one floating window is
-// supported at a time — opening a new thread replaces the current
-// floating window's threadId.
+// via React portal at the document body.
+//
+// The toolkit bundle is the data ThreadDetail needs to render fully
+// (labels, templates, current user identity). MailView populates it
+// at open() time so the floating window can keep working after the
+// user navigates away from /mail.
 
 const DEFAULT_W = 680;
 const DEFAULT_H = 520;
@@ -24,14 +28,25 @@ const MIN_H = 400;
 export type FloatingPosition = { x: number; y: number };
 export type FloatingSize = { w: number; h: number };
 
+export type FloatingThreadToolkit = {
+  labels: Array<{ id: string; name: string }> | null;
+  templates: ActiveTemplateSummary[];
+  currentUserEmail: string;
+  currentUserFirstName: string;
+  currentUserFullName: string;
+};
+
 type FloatingThreadCtx = {
   threadId: string | null;
+  toolkit: FloatingThreadToolkit | null;
   position: FloatingPosition | null;
   size: FloatingSize;
-  open: (threadId: string) => void;
+  minimized: boolean;
+  open: (threadId: string, toolkit: FloatingThreadToolkit) => void;
   close: () => void;
   setPosition: (next: FloatingPosition) => void;
   setSize: (next: FloatingSize) => void;
+  setMinimized: (next: boolean) => void;
 };
 
 const Context = createContext<FloatingThreadCtx | null>(null);
@@ -41,17 +56,16 @@ export const FLOATING_THREAD_MIN_H = MIN_H;
 
 export function FloatingThreadProvider({ children }: { children: ReactNode }) {
   const [threadId, setThreadId] = useState<string | null>(null);
+  const [toolkit, setToolkit] = useState<FloatingThreadToolkit | null>(null);
   const [position, setPositionState] = useState<FloatingPosition | null>(null);
   const [size, setSizeState] = useState<FloatingSize>({
     w: DEFAULT_W,
     h: DEFAULT_H,
   });
+  const [minimized, setMinimizedState] = useState(false);
 
-  const open = useCallback((id: string) => {
+  const open = useCallback((id: string, kit: FloatingThreadToolkit) => {
     if (typeof window !== "undefined") {
-      // Center on first open. If a window is already open and the user
-      // pops out a new thread, keep the existing position so they don't
-      // lose their layout.
       setPositionState((prev) => {
         if (prev) return prev;
         const cx = Math.max(0, (window.innerWidth - DEFAULT_W) / 2);
@@ -59,11 +73,14 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
         return { x: cx, y: cy };
       });
     }
+    setToolkit(kit);
     setThreadId(id);
+    setMinimizedState(false);
   }, []);
 
   const close = useCallback(() => {
     setThreadId(null);
+    setMinimizedState(false);
   }, []);
 
   const setPosition = useCallback((next: FloatingPosition) => {
@@ -77,9 +94,24 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const setMinimized = useCallback((next: boolean) => {
+    setMinimizedState(next);
+  }, []);
+
   return (
     <Context.Provider
-      value={{ threadId, position, size, open, close, setPosition, setSize }}
+      value={{
+        threadId,
+        toolkit,
+        position,
+        size,
+        minimized,
+        open,
+        close,
+        setPosition,
+        setSize,
+        setMinimized,
+      }}
     >
       {children}
     </Context.Provider>
