@@ -14,16 +14,16 @@ export function MinimizedTray() {
       {drafts.map((d) => (
         <div
           key={d.id}
-          className="pointer-events-auto flex items-center gap-1 rounded-full border border-court-border bg-court-surface pl-3 pr-1 py-1 text-xs text-court-fg shadow-md transition hover:border-brand/40 hover:bg-court-surface-subtle"
+          className="pointer-events-auto flex h-12 items-center gap-2 rounded-full border border-court-border bg-court-surface pl-4 pr-2 text-sm text-court-fg shadow-md transition hover:border-brand/40 hover:bg-court-surface-subtle"
         >
           <button
             type="button"
             onClick={d.onRestore}
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-2"
             aria-label={`Restore draft: ${d.subject || "(no subject)"}`}
           >
-            <Mail className="h-3 w-3 text-court-fg-muted" />
-            <span className="max-w-[200px] truncate">
+            <Mail className="h-4 w-4 text-court-fg-muted" />
+            <span className="max-w-[260px] truncate font-medium">
               {truncate(d.subject || "New Email", 30)}
             </span>
           </button>
@@ -31,9 +31,9 @@ export function MinimizedTray() {
             type="button"
             onClick={d.onDiscard}
             aria-label={`Discard draft: ${d.subject || "(no subject)"}`}
-            className="rounded-full p-1 text-court-fg-muted transition hover:bg-court-fg/5 hover:text-court-fg"
+            className="rounded-full p-2 text-court-fg-muted transition hover:bg-court-fg/5 hover:text-court-fg"
           >
-            <X className="h-3 w-3" />
+            <X className="h-4 w-4" />
           </button>
         </div>
       ))}
