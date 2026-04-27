@@ -16,7 +16,7 @@ export function TopBar() {
     // overrides.
     <header className="flex h-16 items-center justify-between gap-4 border-b border-court-border bg-court-surface px-6">
       <div className="hidden text-xs uppercase tracking-[0.18em] text-court-fg-muted md:block">
-        Internal Ops &middot; {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
+        {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </div>
       <div className="flex-1 md:flex-none md:w-80">
         <TopBarSearch />

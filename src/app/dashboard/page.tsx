@@ -34,11 +34,12 @@ export const dynamic = "force-dynamic";
 // transitions we stamp on the row (offerReceivedAt / placedAt).
 // Interview completions read Interview directly since we want every
 // non-cancelled past interview regardless of when it was booked.
-const ACTIVITY_SUBTEXT = "this week's activity";
 
 export default async function DashboardPage() {
-  const session = await getServerSession(authOptions);
-  const firstName = session?.user?.name?.split(" ")[0] ?? "there";
+  // Session resolved here for auth-gating elsewhere; the dashboard
+  // header is no longer personalized so the first name isn't pulled
+  // out anymore.
+  await getServerSession(authOptions);
 
   const now = new Date();
   // Week bounds snap to Monday 00:00 ET through next Monday 00:00 ET
@@ -204,27 +205,23 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <PageHeader
-        eyebrow="This week"
-        title={`Welcome back, ${firstName}.`}
-        description="A quick look at the desk this week. Everything here is live activity — no targets, just actuals."
-      />
+      <PageHeader eyebrow="This week" title="Activity Dashboard" />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiTile label="New Applicants" value={applyLogCount} icon={Users} hint={ACTIVITY_SUBTEXT} />
-        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} hint={ACTIVITY_SUBTEXT} />
-        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} hint={ACTIVITY_SUBTEXT} />
-        <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} hint={ACTIVITY_SUBTEXT} />
-        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} hint={ACTIVITY_SUBTEXT} />
-        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} hint={ACTIVITY_SUBTEXT} />
-      </div>
-
-      <div className="mt-8">
-        <UpcomingInterviews rows={upcoming} />
+        <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
+        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
+        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
+        <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
+        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
+        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
 
       <div className="mt-8">
         <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
+      </div>
+
+      <div className="mt-8">
+        <UpcomingInterviews rows={upcoming} />
       </div>
     </div>
   );

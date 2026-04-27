@@ -29,9 +29,9 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       : "Fees earned on placements that hit start date.";
 
   return (
-    <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm">
+    <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-md">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="text-xs font-semibold uppercase tracking-widest text-court-fg-muted">
+        <div className="text-xs font-semibold uppercase tracking-widest text-court-accent-dark">
           Billing Tower
         </div>
         <div className="relative">
@@ -80,7 +80,7 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
         <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           {label}
         </div>
-        <div className="font-stat text-3xl leading-none text-court-fg">{value}</div>
+        <div className="font-stat text-4xl font-bold leading-none text-court-fg">{value}</div>
       </div>
       <p className="mt-2 text-[11px] text-court-fg-muted">{hint}</p>
     </div>
