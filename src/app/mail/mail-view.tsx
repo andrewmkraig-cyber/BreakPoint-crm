@@ -2,7 +2,16 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, FolderInput, Loader2, Mail as MailIcon, Reply, X } from "lucide-react";
+import {
+  Archive,
+  ChevronDown,
+  ChevronRight,
+  FolderInput,
+  Loader2,
+  Mail as MailIcon,
+  Reply,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -75,17 +84,37 @@ export function MailView({
   }, [threads]);
   const allSelected = threads.length > 0 && selectedIds.size === threads.length;
   const someSelected = selectedIds.size > 0 && selectedIds.size < threads.length;
-  // Session-cached Gmail user labels for the Move To dropdown AND the
-  // sidebar nav. null = not yet loaded; [] = loaded and empty. Fetched
-  // once on mount and never refetched — labels rarely change mid-session
-  // and both consumers tolerate eventual consistency.
-  const [labels, setLabels] = useState<Array<{ id: string; name: string }> | null>(null);
+  // Session-cached Gmail labels (system + user) for the Move To
+  // dropdown AND the sidebar tree. null = not yet loaded; [] = loaded
+  // and empty. Fetched once on mount and never refetched — labels
+  // rarely change mid-session and both consumers tolerate eventual
+  // consistency.
+  const [labels, setLabels] = useState<
+    Array<{ id: string; name: string; type?: string; messagesTotal?: number }> | null
+  >(null);
 
   // Currently selected sidebar item. null = Inbox (default). Setting
   // this to a user label triggers a refetch of the thread list scoped
   // to that label.
   const [selectedLabel, setSelectedLabel] = useState<{ id: string; name: string } | null>(null);
   const [threadsLoading, setThreadsLoading] = useState(false);
+  // Set of user-label full-path names (e.g. "Done Deals") whose child
+  // tree the user has collapsed. Default empty = all parents expanded.
+  const [collapsedLabels, setCollapsedLabels] = useState<Set<string>>(() => new Set());
+
+  // Move To dropdown only wants user labels — system labels (INBOX,
+  // CATEGORY_*, etc.) have no business as move targets. Sidebar feeds
+  // off the same source but builds a tree internally.
+  const userLabels = useMemo(
+    () =>
+      labels === null
+        ? null
+        : labels
+            .filter((l) => l.type === undefined || l.type === "user")
+            .map((l) => ({ id: l.id, name: l.name })),
+    [labels],
+  );
+  const labelTree = useMemo(() => (labels ? buildLabelTree(labels) : []), [labels]);
 
   useEffect(() => {
     let cancelled = false;
@@ -94,7 +123,7 @@ export function MailView({
         const res = await fetch("/api/mail/labels", { cache: "no-store" });
         if (!res.ok) return;
         const body = (await res.json().catch(() => null)) as
-          | { labels?: Array<{ id: string; name: string }> }
+          | { labels?: Array<{ id: string; name: string; type?: string; messagesTotal?: number }> }
           | null;
         if (!cancelled && body?.labels) setLabels(body.labels);
       } catch {
@@ -104,6 +133,15 @@ export function MailView({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const toggleCollapsed = useCallback((path: string) => {
+    setCollapsedLabels((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
   }, []);
 
   // Refetch the thread list when the sidebar selection changes. First
@@ -382,28 +420,22 @@ export function MailView({
           >
             Inbox
           </button>
-          {labels && labels.length > 0 && (
+          {labelTree.length > 0 && (
             <>
               <div className="mt-3 px-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
                 Labels
               </div>
               <ul className="mt-1 space-y-0.5">
-                {labels.map((l) => (
-                  <li key={l.id}>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedLabel(l)}
-                      className={
-                        "block w-full truncate rounded-md px-3 py-1.5 text-left transition " +
-                        (selectedLabel?.id === l.id
-                          ? "bg-brand-tint text-brand-dark"
-                          : "text-court-fg hover:bg-court-surface-subtle")
-                      }
-                      title={l.name}
-                    >
-                      {l.name}
-                    </button>
-                  </li>
+                {labelTree.map((node) => (
+                  <LabelTreeNode
+                    key={node.name}
+                    node={node}
+                    depth={0}
+                    collapsed={collapsedLabels}
+                    onToggleCollapse={toggleCollapsed}
+                    selectedLabel={selectedLabel}
+                    onSelect={setSelectedLabel}
+                  />
                 ))}
               </ul>
             </>
@@ -435,7 +467,7 @@ export function MailView({
             </span>
             <div className="ml-auto flex items-center gap-1.5">
               <MoveToMenu
-                labels={labels}
+                labels={userLabels}
                 busy={bulkBusy}
                 onPick={(labelId, labelName) => bulkMove(labelId, labelName)}
                 buttonContent={
@@ -521,7 +553,7 @@ export function MailView({
             composerOpen={composerOpen}
             archiving={archiving === detail.id}
             moving={moving === detail.id}
-            labels={labels}
+            labels={userLabels}
             currentUserEmail={currentUserEmail}
             currentUserFirstName={currentUserFirstName}
             currentUserFullName={currentUserFullName}
@@ -933,4 +965,148 @@ function formatRelative(iso: string | null): string {
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 7) return `${diffDay}d`;
   return date.toLocaleDateString();
+}
+
+// ---- Label hierarchy ----
+// Gmail represents nested labels as flat strings joined by "/" — a
+// label literally named "Done Deals/TSAAdvet" is shown in the Gmail UI
+// as "TSAAdvet" nested under "Done Deals". We build a real tree from
+// that flat list and render it with indentation + chevron toggles.
+//
+// Notes:
+//  - System labels (INBOX, CATEGORY_*, etc.) are filtered out — they
+//    never use the "/" separator and don't belong in the user-facing
+//    "Labels" section.
+//  - Gmail's UI normally creates a real label for every parent path
+//    segment, but a user can manually delete an intermediate parent
+//    while keeping its children. We surface those orphaned parents as
+//    synthetic, non-clickable nodes so the tree stays connected.
+
+type LabelNode = {
+  // null for synthetic parents (path segment exists in a child's name
+  // but isn't itself a real Gmail label). Real labels carry their cuid.
+  id: string | null;
+  // Full Gmail path, e.g. "Done Deals/TSAAdvet". Stable key for the
+  // collapsed-set + React list keys.
+  name: string;
+  // Last "/"-separated segment for display, e.g. "TSAAdvet".
+  shortName: string;
+  children: LabelNode[];
+};
+
+function buildLabelTree(
+  labels: Array<{ id: string; name: string; type?: string }>,
+): LabelNode[] {
+  const userLabels = labels.filter((l) => l.type === undefined || l.type === "user");
+  const nodes = new Map<string, LabelNode>();
+
+  for (const l of userLabels) {
+    const segments = l.name.split("/");
+    for (let i = 0; i < segments.length; i++) {
+      const path = segments.slice(0, i + 1).join("/");
+      let node = nodes.get(path);
+      if (!node) {
+        node = { id: null, name: path, shortName: segments[i], children: [] };
+        nodes.set(path, node);
+      }
+      if (i === segments.length - 1) node.id = l.id;
+    }
+  }
+
+  nodes.forEach((node, path) => {
+    const slash = path.lastIndexOf("/");
+    if (slash < 0) return;
+    const parent = nodes.get(path.slice(0, slash));
+    if (parent) parent.children.push(node);
+  });
+
+  const sortRecursive = (list: LabelNode[]) => {
+    list.sort((a, b) => a.shortName.localeCompare(b.shortName));
+    list.forEach((n) => sortRecursive(n.children));
+  };
+
+  const roots: LabelNode[] = [];
+  nodes.forEach((node, path) => {
+    if (!path.includes("/")) roots.push(node);
+  });
+  sortRecursive(roots);
+  return roots;
+}
+
+function LabelTreeNode({
+  node,
+  depth,
+  collapsed,
+  onToggleCollapse,
+  selectedLabel,
+  onSelect,
+}: {
+  node: LabelNode;
+  depth: number;
+  collapsed: Set<string>;
+  onToggleCollapse: (path: string) => void;
+  selectedLabel: { id: string; name: string } | null;
+  onSelect: (next: { id: string; name: string } | null) => void;
+}) {
+  const hasChildren = node.children.length > 0;
+  const isCollapsed = collapsed.has(node.name);
+  const active = node.id !== null && selectedLabel?.id === node.id;
+  return (
+    <li>
+      <div
+        className="flex items-center gap-0.5"
+        style={{ paddingLeft: `${depth * 16}px` }}
+      >
+        {hasChildren ? (
+          <button
+            type="button"
+            onClick={() => onToggleCollapse(node.name)}
+            className="flex-shrink-0 rounded p-0.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            aria-label={isCollapsed ? "Expand" : "Collapse"}
+          >
+            {isCollapsed ? (
+              <ChevronRight className="h-3 w-3" />
+            ) : (
+              <ChevronDown className="h-3 w-3" />
+            )}
+          </button>
+        ) : (
+          <span className="inline-block w-[18px] flex-shrink-0" />
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            if (node.id) onSelect({ id: node.id, name: node.name });
+          }}
+          disabled={node.id === null}
+          className={
+            "flex-1 truncate rounded-md px-2 py-1 text-left transition " +
+            (active
+              ? "bg-brand-tint text-brand-dark"
+              : node.id === null
+                ? "cursor-default text-court-fg-muted"
+                : "text-court-fg hover:bg-court-surface-subtle")
+          }
+          title={node.name}
+        >
+          {node.shortName}
+        </button>
+      </div>
+      {hasChildren && !isCollapsed && (
+        <ul className="space-y-0.5">
+          {node.children.map((child) => (
+            <LabelTreeNode
+              key={child.name}
+              node={child}
+              depth={depth + 1}
+              collapsed={collapsed}
+              onToggleCollapse={onToggleCollapse}
+              selectedLabel={selectedLabel}
+              onSelect={onSelect}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
 }

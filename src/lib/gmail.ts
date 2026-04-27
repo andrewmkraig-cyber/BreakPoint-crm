@@ -830,6 +830,59 @@ export async function listGmailUserLabels(userId: string): Promise<GmailUserLabe
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Returns every Gmail label (system + user) with messagesTotal. Used by
+// the Mail Tab sidebar so the client can build the user-label hierarchy
+// tree (Gmail uses "/" as the path separator on user labels) and still
+// have the system labels available if/when we surface system folders.
+//
+// labels.list does not return counts — Gmail only exposes messagesTotal
+// via labels.get on a single label. We fan out one labels.get call per
+// label in parallel; ~30-50 labels is well within Gmail's per-user
+// rate budget. messagesTotal defaults to 0 if a labels.get sub-fetch
+// fails so a single hiccup doesn't blank the entire sidebar.
+export type GmailLabel = {
+  id: string;
+  name: string;
+  type: "system" | "user";
+  messagesTotal: number;
+};
+
+export async function listGmailAllLabels(userId: string): Promise<GmailLabel[]> {
+  const accessToken = await getFreshAccessToken(userId);
+  const listRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!listRes.ok) {
+    const text = await listRes.text().catch(() => "");
+    throw new Error(`Gmail labels.list failed (${listRes.status}): ${text || "no body"}`);
+  }
+  const j = (await listRes.json()) as GmailLabelsResponse;
+  const list = j.labels ?? [];
+  const detailed = await Promise.all(
+    list.map(async (l): Promise<GmailLabel> => {
+      const fallback: GmailLabel = {
+        id: l.id,
+        name: l.name,
+        type: l.type ?? "user",
+        messagesTotal: 0,
+      };
+      try {
+        const dRes = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/labels/${encodeURIComponent(l.id)}`,
+          { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" },
+        );
+        if (!dRes.ok) return fallback;
+        const dj = (await dRes.json()) as { messagesTotal?: number };
+        return { ...fallback, messagesTotal: dj.messagesTotal ?? 0 };
+      } catch {
+        return fallback;
+      }
+    }),
+  );
+  return detailed.sort((a, b) => a.name.localeCompare(b.name));
+}
+
 // "Move to label" = single atomic modify that adds the chosen user
 // label and drops INBOX in one call. Mirrors how Gmail's native "Move
 // to" item behaves in the web UI.
