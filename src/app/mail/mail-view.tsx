@@ -239,7 +239,16 @@ export function MailView({
     void (async () => {
       try {
         const params = new URLSearchParams();
-        params.set("labelIds", selectedLabel ? selectedLabel.id : "INBOX");
+        // When searching from the default Inbox view, omit labelIds
+        // entirely so Gmail searches across all mail (Sent, Archive,
+        // labels, etc.) — not just the inbox. When the user has
+        // selected a specific label, keep scoping the search to it.
+        // When not searching, default to the active label or Inbox.
+        if (searchQuery && selectedLabel === null) {
+          // no labelIds — search all mail
+        } else {
+          params.set("labelIds", selectedLabel ? selectedLabel.id : "INBOX");
+        }
         if (searchQuery) params.set("q", searchQuery);
         const res = await fetch(`/api/mail/threads?${params.toString()}`, {
           cache: "no-store",

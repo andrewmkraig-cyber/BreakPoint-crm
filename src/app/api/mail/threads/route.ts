@@ -23,10 +23,19 @@ export async function GET(req: NextRequest) {
 
   const labelIds = req.nextUrl.searchParams.getAll("labelIds");
   const q = req.nextUrl.searchParams.get("q") ?? undefined;
+
+  // listGmailThreads defaults missing labelIds to ["INBOX"] for the
+  // no-search case. When the caller explicitly omits labelIds while
+  // passing a search query, that's the "search all mail" intent — we
+  // pass an empty array so the helper's INBOX default doesn't kick in
+  // and silently re-scope the search.
+  const labelIdsForCall =
+    labelIds.length > 0 ? labelIds : q ? [] : undefined;
+
   try {
     const threads = await listGmailThreads(user.id, {
       maxResults: 50,
-      labelIds: labelIds.length > 0 ? labelIds : undefined,
+      labelIds: labelIdsForCall,
       q,
     });
     return NextResponse.json({ threads });
