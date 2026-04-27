@@ -22,7 +22,7 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
 
   const billedLabel =
     period === "quarter-current" ? "Q2 Billed Revenue" : "Placement Revenue";
-  const billedValue = period === "quarter-current" ? formatUsd(q2BilledRevenueUsd) : "$0";
+  const billedValue = period === "quarter-current" ? formatCompactUsd(q2BilledRevenueUsd) : "$0";
   const billedHint =
     period === "quarter-current"
       ? "Sum of fees on placements with a start date in Apr 1 – Jun 30 2026 (Pending Start + Hired)."
@@ -66,12 +66,18 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
   );
 }
 
-function formatUsd(amount: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(amount);
+// Compact USD: $7.5k for thousands, $1.2M for millions, $750 for sub-1k
+// values. Stripping trailing ".0" so $7000 reads "$7k" instead of "$7.0k".
+function formatCompactUsd(amount: number): string {
+  if (amount === 0) return "$0";
+  const abs = Math.abs(amount);
+  if (abs >= 1_000_000) {
+    return `$${(amount / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+  }
+  if (abs >= 1_000) {
+    return `$${(amount / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+  }
+  return `$${amount}`;
 }
 
 function Metric({
@@ -91,21 +97,46 @@ function Metric({
   // secondary instead of two equal-weight numbers.
   const accent = tone === "accent";
   const wrapper = accent
-    ? "rounded-2xl border border-court-accent/20 bg-court-accent-tint p-6"
+    ? "relative overflow-hidden rounded-2xl border border-court-accent/20 bg-court-accent-tint p-6"
     : "rounded-2xl border border-court-border bg-court-surface p-6";
   const labelCls = accent
     ? "text-xs font-semibold tracking-widest uppercase text-court-accent-dark"
     : "text-xs font-semibold tracking-widest uppercase text-court-fg-muted";
   const valueCls = accent
-    ? "font-stat text-5xl font-bold leading-none text-court-accent-dark"
-    : "font-stat text-5xl font-bold leading-none text-court-fg";
+    ? "mt-2 font-stat text-5xl font-bold leading-none text-court-accent-dark"
+    : "mt-2 font-stat text-5xl font-bold leading-none text-court-fg";
   return (
     <div className={wrapper}>
-      <div className="flex items-baseline justify-between gap-3">
-        <div className={labelCls}>{label}</div>
-        <div className={valueCls}>{value}</div>
-      </div>
-      <p className="mt-2 text-sm text-court-fg-muted">{hint}</p>
+      <div className={labelCls}>{label}</div>
+      <div className={valueCls}>{value}</div>
+      <p className="mt-3 text-sm text-court-fg-muted">{hint}</p>
+      {accent && <Sparkline />}
     </div>
+  );
+}
+
+// Decorative upward-trending sparkline for the accent card. Pure SVG,
+// no axes/labels — the points trace a generic "going up and to the
+// right" curve. Anchored to the bottom-right of the card via absolute
+// positioning; the parent wrapper is `relative overflow-hidden` so it
+// can't bleed past the rounded corners.
+function Sparkline() {
+  return (
+    <svg
+      width="80"
+      height="40"
+      viewBox="0 0 80 40"
+      fill="none"
+      aria-hidden
+      className="pointer-events-none absolute bottom-3 right-3 text-court-accent/60"
+    >
+      <polyline
+        points="0,32 14,28 26,30 38,22 50,18 62,12 78,4"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
