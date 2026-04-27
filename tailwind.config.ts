@@ -6,7 +6,7 @@ const config: Config = {
   // we map Clay Court to that class. A parallel custom variant (see plugins
   // below) adds a `grass:` utility that targets `.grass` on <html> for the
   // Grass Court palette. Hard Court is the bare default (no class).
-  darkMode: ["class"],
+  darkMode: ["selector", "[data-theme='dark']"],
   content: [
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -33,6 +33,7 @@ const config: Config = {
           DEFAULT: "#FAF8F3",
           dark: "#F2EEE4",
         },
+        "grass-purple": "#6B3FA0",
         background: "#FFFFFF",
         foreground: "#111111",
         muted: {
@@ -73,7 +74,9 @@ const config: Config = {
     // element itself (via `&.grass`), mirroring how Tailwind's built-in
     // `dark:` variant resolves against `.dark`.
     plugin(({ addVariant }) => {
-      addVariant("grass", [".grass &", "&.grass"]);
+      addVariant("clay", ["[data-surface='clay'] &", "&[data-surface='clay']"]);
+      addVariant("grass", ["[data-surface='grass'] &", "&[data-surface='grass']"]);
+      addVariant("hard", ["[data-surface='hard'] &", "&[data-surface='hard']"]);
     }),
   ],
 };

@@ -9,117 +9,173 @@ import {
   type ReactNode,
 } from "react";
 
-// Three surfaces: "hard" = default / light, "clay" = dark, "grass" = BreakPoint
-// green. The selector value persists to localStorage and is mirrored onto
-// <html> as a class that Tailwind's dark: and grass: variants key off of.
+// Court Mode is now two orthogonal axes:
+//   surface: "hard" | "clay" | "grass"   ← which palette family
+//   theme:   "light" | "dark"            ← which intensity
 //
-// Class map:
-//   hard  → no extra class on <html> (bare default palette)
-//   clay  → `.dark`  — reuses Tailwind's built-in `darkMode: "class"` setup
-//   grass → `.grass` — custom variant registered in tailwind.config.ts
+// Both axes mirror onto <html> as data attributes:
+//   <html data-surface="hard" data-theme="light">
+// CSS in globals.css keys off those attributes for the 6 palette
+// blocks; Tailwind's `dark:`, `clay:`, `grass:`, `hard:` variants
+// are wired to match (see tailwind.config.ts).
 //
-// For infrastructure this file wires the mechanism only — no component in the
-// repo carries dark:/grass: variants yet, so toggling between modes today
-// will flip the <html> class but not visibly change anything. That's
-// deliberate: the theming sweep lands incrementally, one surface at a time.
+// Pre-Ace-25 storage used a single "courtMode" key with values
+// "hard" | "clay" | "grass" where clay meant dark-slate and grass
+// meant dark-green. We migrate that one-shot on load to the two-key
+// scheme then drop the legacy key.
 
-export type CourtMode = "hard" | "clay" | "grass";
+export type CourtSurface = "hard" | "clay" | "grass";
+export type CourtTheme = "light" | "dark";
 
-const COURT_MODES: readonly CourtMode[] = ["hard", "clay", "grass"] as const;
-const STORAGE_KEY = "courtMode";
-const MANAGED_CLASSES = ["dark", "grass"] as const;
+const SURFACES: readonly CourtSurface[] = ["hard", "clay", "grass"] as const;
+const THEMES: readonly CourtTheme[] = ["light", "dark"] as const;
+
+const SURFACE_KEY = "ace-court-surface";
+const THEME_KEY = "ace-court-theme";
+const LEGACY_KEY = "courtMode";
 
 type CourtModeContextShape = {
-  mode: CourtMode;
-  setMode: (next: CourtMode) => void;
+  surface: CourtSurface;
+  theme: CourtTheme;
+  setSurface: (next: CourtSurface) => void;
+  setTheme: (next: CourtTheme) => void;
+  toggleTheme: () => void;
 };
 
 const CourtModeContext = createContext<CourtModeContextShape | null>(null);
 
-// Read the stored value defensively: localStorage might be unavailable
-// (SSR / private browsing) and the stored string might not be a valid
-// CourtMode if a user hand-edited it or a future version changed the
-// vocab. Fall back to "hard" in either case.
-function readStoredMode(): CourtMode {
-  if (typeof window === "undefined") return "hard";
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (raw && (COURT_MODES as readonly string[]).includes(raw)) {
-      return raw as CourtMode;
-    }
-  } catch {
-    // Storage disabled — accept default.
-  }
-  return "hard";
+function isSurface(v: string | null): v is CourtSurface {
+  return v !== null && (SURFACES as readonly string[]).includes(v);
+}
+function isTheme(v: string | null): v is CourtTheme {
+  return v !== null && (THEMES as readonly string[]).includes(v);
 }
 
-// Swap the managed classes on <html>. Also stamps a `data-court-mode`
-// attribute so DevTools inspection is unambiguous: a Clay-mode <html> reads
-// `<html class="… dark" data-court-mode="clay">` — no guessing whether
-// some other `.dark` class elsewhere is responsible.
-function applyModeToHtml(mode: CourtMode) {
+// Migration: legacy "courtMode" key carried surface AND theme jammed
+// into one slot — clay/grass meant dark, hard meant light. Pull what
+// we can and write the new keys, then delete the old one so this
+// runs at most once per browser.
+function migrateLegacyStorage(): { surface: CourtSurface; theme: CourtTheme } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const legacy = window.localStorage.getItem(LEGACY_KEY);
+    if (!legacy) return null;
+    let surface: CourtSurface = "hard";
+    let theme: CourtTheme = "light";
+    if (legacy === "clay") {
+      // Old "clay" was dark-slate; closest match in the new vocab is
+      // hard-dark (US Open blue). Keep clay-as-clay but flip theme.
+      surface = "clay";
+      theme = "dark";
+    } else if (legacy === "grass") {
+      surface = "grass";
+      theme = "dark";
+    } else if (legacy === "hard") {
+      surface = "hard";
+      theme = "light";
+    }
+    window.localStorage.setItem(SURFACE_KEY, surface);
+    window.localStorage.setItem(THEME_KEY, theme);
+    window.localStorage.removeItem(LEGACY_KEY);
+    return { surface, theme };
+  } catch {
+    return null;
+  }
+}
+
+function readStored(): { surface: CourtSurface; theme: CourtTheme } {
+  if (typeof window === "undefined") return { surface: "hard", theme: "light" };
+  try {
+    const migrated = migrateLegacyStorage();
+    if (migrated) return migrated;
+    const s = window.localStorage.getItem(SURFACE_KEY);
+    const t = window.localStorage.getItem(THEME_KEY);
+    return {
+      surface: isSurface(s) ? s : "hard",
+      theme: isTheme(t) ? t : "light",
+    };
+  } catch {
+    return { surface: "hard", theme: "light" };
+  }
+}
+
+function applyToHtml(surface: CourtSurface, theme: CourtTheme) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  for (const cls of MANAGED_CLASSES) root.classList.remove(cls);
-  if (mode === "clay") root.classList.add("dark");
-  else if (mode === "grass") root.classList.add("grass");
-  root.setAttribute("data-court-mode", mode);
+  root.setAttribute("data-surface", surface);
+  root.setAttribute("data-theme", theme);
+  // Strip legacy classes so old `.dark` / `.grass` selectors can't
+  // collide with the new attribute-driven CSS.
+  root.classList.remove("dark", "grass");
+  root.removeAttribute("data-court-mode");
 }
 
 export function CourtModeProvider({ children }: { children: ReactNode }) {
-  // Seed with "hard" so the server-rendered HTML matches the first client
-  // render (no hydration mismatch). The real stored value lands via the
-  // hydration effect below, which then drives the DOM-sync effect.
-  const [mode, setModeState] = useState<CourtMode>("hard");
-  // Gate on hydration so the first render doesn't clobber the class that
-  // the pre-hydration script already stamped onto <html>. Without this, the
-  // mount-time "hard" state would briefly reset .dark / .grass before
-  // useEffect could read localStorage and put it back — a visible flash.
+  // Seed defaults so the SSR HTML matches the first client render —
+  // the pre-hydration script in layout.tsx has already stamped the
+  // real values onto <html> by the time this provider mounts.
+  const [surface, setSurfaceState] = useState<CourtSurface>("hard");
+  const [theme, setThemeState] = useState<CourtTheme>("light");
   const [hydrated, setHydrated] = useState(false);
 
-  // Mount-only: pull the persisted mode and hand control to the sync
-  // effect below.
   useEffect(() => {
-    setModeState(readStoredMode());
+    const stored = readStored();
+    setSurfaceState(stored.surface);
+    setThemeState(stored.theme);
     setHydrated(true);
   }, []);
 
-  // Reconciliation effect: runs whenever state changes post-hydration. The
-  // click handler also mutates the DOM directly (see setMode below), so this
-  // is defense-in-depth — ensures the DOM stays in sync even if effects are
-  // ever skipped or batched oddly.
+  // Reconciliation: keep <html> + storage in sync whenever state
+  // changes post-hydration. The setters below also mutate directly
+  // for click-time responsiveness; this effect is defense-in-depth.
   useEffect(() => {
     if (!hydrated) return;
-    applyModeToHtml(mode);
+    applyToHtml(surface, theme);
     try {
-      window.localStorage.setItem(STORAGE_KEY, mode);
+      window.localStorage.setItem(SURFACE_KEY, surface);
+      window.localStorage.setItem(THEME_KEY, theme);
     } catch {
       // Storage disabled — in-memory state is still correct for this session.
     }
-  }, [hydrated, mode]);
+  }, [hydrated, surface, theme]);
 
-  // Click handler: mutate state AND mutate the DOM + storage synchronously.
-  // Earlier this function only called setModeState, relying on the effect
-  // above to reflect it to the DOM. That's correct in principle, but it
-  // routes a click-time side-effect through React's scheduler, and any
-  // weirdness there (Strict Mode double-invoke, batched state updates that
-  // fire effects out of order, an early-returning effect that missed a
-  // prior render) silently swallows the visual change. Doing the DOM mutate
-  // here as well is idempotent — the reconciliation effect will no-op on
-  // re-apply — and makes clicks unconditionally produce a <html> class
-  // change, which is what the Court Mode selector is meant to do.
-  const setMode = useCallback((next: CourtMode) => {
-    setModeState(next);
-    applyModeToHtml(next);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, next);
-    } catch {
-      // Storage disabled — in-memory state is still correct for this session.
+  const setSurface = useCallback((next: CourtSurface) => {
+    setSurfaceState(next);
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-surface", next);
     }
+    try {
+      window.localStorage.setItem(SURFACE_KEY, next);
+    } catch {}
+  }, []);
+
+  const setTheme = useCallback((next: CourtTheme) => {
+    setThemeState(next);
+    if (typeof document !== "undefined") {
+      document.documentElement.setAttribute("data-theme", next);
+    }
+    try {
+      window.localStorage.setItem(THEME_KEY, next);
+    } catch {}
+  }, []);
+
+  const toggleTheme = useCallback(() => {
+    setThemeState((prev) => {
+      const next: CourtTheme = prev === "light" ? "dark" : "light";
+      if (typeof document !== "undefined") {
+        document.documentElement.setAttribute("data-theme", next);
+      }
+      try {
+        window.localStorage.setItem(THEME_KEY, next);
+      } catch {}
+      return next;
+    });
   }, []);
 
   return (
-    <CourtModeContext.Provider value={{ mode, setMode }}>
+    <CourtModeContext.Provider
+      value={{ surface, theme, setSurface, setTheme, toggleTheme }}
+    >
       {children}
     </CourtModeContext.Provider>
   );
@@ -133,10 +189,11 @@ export function useCourtMode(): CourtModeContextShape {
   return ctx;
 }
 
-// Small inline script body that picks up the stored mode before React
-// hydrates and stamps the right class on <html>, preventing a flash of
-// unthemed content. Exported as a string so layout.tsx can drop it into
-// a <script dangerouslySetInnerHTML> right at the top of <body>.
+// Pre-hydration inline-script body. Reads localStorage and stamps
+// data-surface + data-theme onto <html> before React hydrates so the
+// first paint matches the persisted palette — no flash. Also handles
+// the legacy "courtMode" migration inline so the very first render
+// after the upgrade reads correctly.
 export const COURT_MODE_PRE_HYDRATION_SCRIPT = `
-(function(){try{var m=localStorage.getItem(${JSON.stringify(STORAGE_KEY)});var r=document.documentElement;if(m==="clay"){r.classList.add("dark");r.setAttribute("data-court-mode","clay");}else if(m==="grass"){r.classList.add("grass");r.setAttribute("data-court-mode","grass");}else{r.setAttribute("data-court-mode","hard");}}catch(e){}})();
+(function(){try{var ls=window.localStorage;var legacy=ls.getItem('courtMode');var s,t;if(legacy){s=legacy==='clay'?'clay':legacy==='grass'?'grass':'hard';t=(legacy==='clay'||legacy==='grass')?'dark':'light';ls.setItem('ace-court-surface',s);ls.setItem('ace-court-theme',t);ls.removeItem('courtMode');}else{s=ls.getItem('ace-court-surface')||'hard';t=ls.getItem('ace-court-theme')||'light';}document.documentElement.setAttribute('data-surface',s);document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 `.trim();

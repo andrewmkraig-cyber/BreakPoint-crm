@@ -56,10 +56,12 @@ export default async function RootLayout({
   return (
     <html lang="en" className={`${playfair.variable} ${inter.variable}`}>
       <body className="font-sans">
-        {/* Runs before React hydrates and stamps `.dark` or `.grass` onto
-            <html> based on the persisted courtMode. Without this, the first
-            paint is always Hard Court and flashes to the stored mode when
-            the provider's useEffect fires a tick later. */}
+        {/* Runs before React hydrates and stamps data-surface +
+            data-theme onto <html> based on the persisted court mode.
+            Also one-shot migrates the legacy single-key "courtMode"
+            value to the new two-key scheme. Without this, the first
+            paint is always default Hard/Light and flashes to the
+            stored palette when the provider's useEffect fires later. */}
         <script
           dangerouslySetInnerHTML={{ __html: COURT_MODE_PRE_HYDRATION_SCRIPT }}
         />

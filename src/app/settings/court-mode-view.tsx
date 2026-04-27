@@ -1,93 +1,121 @@
 "use client";
 
-import { useCourtMode, type CourtMode } from "@/lib/court-mode";
+import { Moon, Sun } from "lucide-react";
+import { useCourtMode, type CourtSurface, type CourtTheme } from "@/lib/court-mode";
 import { cn } from "@/lib/utils";
 
-type Option = {
-  value: CourtMode;
-  label: string;
-  description: string;
-  swatch: string;
-};
+// Two-axis Court Mode picker:
+//   Top row  — Light / Dark theme (sun + moon).
+//   Bottom row — Hard / Clay / Grass surface (with a tennis-court
+//   color swatch dot per option).
+// Each axis writes independently to localStorage via useCourtMode and
+// flips the matching data-attribute on <html> instantly.
 
-// Three fixed options — the vocabulary is deliberately tennis-themed; the
-// internal names (hard/clay/grass) are the storage values the provider
-// already knows about. Swatch colors here are cosmetic only (rendered dots
-// in the radio card) — the actual palette lives in tailwind.config and
-// component-level dark:/grass: variants that will land surface-by-surface.
-const OPTIONS: Option[] = [
-  {
-    value: "hard",
-    label: "Hard Court",
-    description: "Default palette — white backgrounds, navy text.",
-    swatch: "#FFFFFF",
-  },
-  {
-    value: "clay",
-    label: "Clay Court",
-    description: "Dark mode — slate backgrounds, light text.",
-    swatch: "#1E293B",
-  },
-  {
-    value: "grass",
-    label: "Grass Court",
-    description: "Green palette — BreakPoint greens everywhere.",
-    swatch: "#1A2E1A",
-  },
+const SURFACE_OPTIONS: Array<{
+  value: CourtSurface;
+  label: string;
+  swatchClass: string;
+}> = [
+  { value: "hard", label: "Hard Court", swatchClass: "bg-[#5A9642]" },
+  { value: "clay", label: "Clay Court", swatchClass: "bg-[#C66B3D]" },
+  { value: "grass", label: "Grass Court", swatchClass: "bg-[#1F6131]" },
 ];
 
 export function CourtModeView() {
-  const { mode, setMode } = useCourtMode();
+  const { surface, theme, setSurface, setTheme } = useCourtMode();
 
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {OPTIONS.map((opt) => {
-        const active = mode === opt.value;
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => setMode(opt.value)}
-            aria-pressed={active}
-            // Both active and inactive carry `border-2` so selecting a card
-            // doesn't shift the grid by 1px as the border widens; the
-            // difference is color + background tint, not thickness.
-            className={cn(
-              "flex flex-col items-start gap-2 rounded-xl border-2 px-4 py-3 text-left shadow-sm transition",
-              active
-                ? "border-court-accent bg-court-accent-tint"
-                : "border-court-border bg-court-surface hover:border-court-accent/40",
-            )}
-          >
-            <div className="flex w-full items-center justify-between">
-              <span className="font-serif text-sm font-semibold text-court-fg">{opt.label}</span>
-              {/* Swatch color is a fixed preview of the three modes, so it
-                  intentionally stays on inline hex regardless of the active
-                  theme — that's the whole point of a preview tile. */}
-              <span
-                aria-hidden="true"
-                className="inline-block h-4 w-4 rounded-full border border-court-border/70 shadow-inner"
-                style={{ backgroundColor: opt.swatch }}
-              />
-            </div>
-            <p className="text-xs text-court-fg-muted">{opt.description}</p>
-            <span
+    <div className="space-y-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+        Court Mode
+      </div>
+
+      {/* Light / Dark toggle */}
+      <div className="flex flex-wrap items-center gap-2">
+        <ThemeButton
+          active={theme === "light"}
+          onClick={() => setTheme("light")}
+          ariaLabel="Light theme"
+        >
+          <Sun className="h-4 w-4" />
+          Light
+        </ThemeButton>
+        <ThemeButton
+          active={theme === "dark"}
+          onClick={() => setTheme("dark")}
+          ariaLabel="Dark theme"
+        >
+          <Moon className="h-4 w-4" />
+          Dark
+        </ThemeButton>
+      </div>
+
+      {/* Surface selector */}
+      <div className="flex flex-wrap items-center gap-2">
+        {SURFACE_OPTIONS.map((opt) => {
+          const active = surface === opt.value;
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => setSurface(opt.value)}
+              aria-pressed={active}
               className={cn(
-                "mt-1 text-[10px] uppercase tracking-wider",
-                // ACTIVE goes bold + mode-aware accent green. In Hard that
-                // renders as the brand-dark (#3F7030); Clay lifts to
-                // #8BC069; Grass lifts further to #B7D6A0 so it stays
-                // readable on the dark-green tint background.
+                "inline-flex h-9 items-center gap-2 rounded-full border px-4 text-sm font-medium transition",
                 active
-                  ? "font-bold text-court-accent-dark"
-                  : "font-semibold text-court-fg-muted",
+                  ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+                  : "border-court-border bg-court-surface-subtle text-court-fg-muted hover:text-court-fg",
               )}
             >
-              {active ? "ACTIVE" : "Select"}
-            </span>
-          </button>
-        );
-      })}
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "inline-block h-3 w-3 shrink-0 rounded-full",
+                  opt.swatchClass,
+                )}
+              />
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Preserve a hint of where state lives — debugging aid only. */}
+      <p className="text-[11px] text-court-fg-muted">
+        Persists per browser. Surface + theme combine into 6 palettes.
+      </p>
     </div>
   );
 }
+
+function ThemeButton({
+  active,
+  onClick,
+  ariaLabel,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  ariaLabel: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={ariaLabel}
+      className={cn(
+        "inline-flex h-9 items-center gap-2 rounded-full border px-4 text-sm font-medium transition",
+        active
+          ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+          : "border-court-border bg-court-surface-subtle text-court-fg-muted hover:text-court-fg",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// Re-export the type for any settings page bits that reach in for it.
+export type { CourtTheme };

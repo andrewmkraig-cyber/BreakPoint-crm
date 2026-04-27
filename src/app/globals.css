@@ -3,95 +3,87 @@
 @tailwind utilities;
 
 /*
-  Court Mode tokens. Each block scopes CSS variables that Tailwind's
-  `bg-court-*` / `text-court-*` utilities (see tailwind.config.ts) pull from,
-  so flipping the class on <html> reskins every themed element in lockstep —
-  no component-level dark:/grass: overrides needed on surfaces that already
-  consume the court-* tokens.
-  Values are stored as `R G B` triples so Tailwind's <alpha-value> placeholder
-  still resolves for opacity utilities like `ring-court-accent/30`.
-  Scope is deliberately narrow right now: only Settings (/settings) uses
-  court-* utilities; adding dark/grass/hard variants to a new surface means
-  rewriting just that surface's color classes to court-*, then these tokens
-  flip for free.
+  Court Mode tokens — 3 surfaces x 2 themes = 6 palettes.
+  Selectors target <html data-surface="..." data-theme="...">.
+  Tailwind bg-court-* utilities pull from these CSS variables.
+  Values stored as R G B so Tailwind alpha-value placeholder resolves.
 */
-:root {
-  /* Hard Court — default white/navy palette, matches the existing theme. */
+
+/* HARD COURT - LIGHT (default) */
+:root,
+html[data-surface='hard'][data-theme='light'] {
   --court-surface:        255 255 255;
-  --court-surface-subtle: 244 246 248;
-  --court-fg:              15  27  45;
-  --court-fg-muted:        91 100 118;
-  --court-border:         229 232 237;
+  --court-surface-subtle: 250 248 243;
+  --court-fg:              17  17  17;
+  --court-fg-muted:       102 102 102;
+  --court-border:         236 233 224;
   --court-accent:          90 150  66;
   --court-accent-dark:     63 112  48;
   --court-accent-tint:    234 244 228;
 }
 
-/* Selectors are tightened to `html.dark` / `html.grass` so it's
-   unambiguous that these variables are scoped to the root element. Plain
-   `.dark` / `.grass` would match any element with that class — which in
-   practice is only the html element today, but the explicit form is
-   safer against future stray class use and makes DevTools inspection
-   obvious: `<html class="dark ...">` lights up these rules. */
-html.dark {
-  /* Clay Court — dark slate surfaces, light text. accent-dark lightens to
-     stay readable on dark backgrounds. */
-  --court-surface:         15  23  42;
-  --court-surface-subtle:  30  41  59;
-  --court-fg:             241 245 249;
-  --court-fg-muted:       148 163 184;
-  --court-border:          51  65  85;
+/* HARD COURT - DARK (US Open blue) */
+html[data-surface='hard'][data-theme='dark'] {
+  --court-surface:         20  58 102;
+  --court-surface-subtle:  14  43  79;
+  --court-fg:             232 238 247;
+  --court-fg-muted:       143 165 196;
+  --court-border:          31  74 128;
   --court-accent:          90 150  66;
-  --court-accent-dark:    139 192 105;
-  --court-accent-tint:     45  58  79;
+  --court-accent-dark:    156 214 143;
+  --court-accent-tint:     27  66 117;
 }
 
-html.grass {
-  /* Grass Court — BreakPoint greens end-to-end. accent-dark lifts to cream-
-     green for legibility on the dark grass surface. Border bumped to
-     #3d6b3d (61 107 61) per the Dashboard palette spec — slightly brighter
-     green so card edges read against the lighter surface-subtle wrapper. */
-  --court-surface:         26  46  26;
-  --court-surface-subtle:  45  74  45;
-  --court-fg:             234 244 228;
-  --court-fg-muted:       152 179 144;
-  --court-border:          61 107  61;
-  --court-accent:          90 150  66;
-  --court-accent-dark:    183 214 160;
-  --court-accent-tint:     45  74  45;
+/* CLAY COURT - LIGHT (Roland-Garros) */
+html[data-surface='clay'][data-theme='light'] {
+  --court-surface:        251 244 236;
+  --court-surface-subtle: 245 230 216;
+  --court-fg:              42  24  16;
+  --court-fg-muted:       138 111  88;
+  --court-border:         220 190 160;
+  --court-accent:         198 107  61;
+  --court-accent-dark:    160  74  30;
+  --court-accent-tint:    249 232 218;
 }
 
-@layer base {
-  /* Hard Court body stays on the legacy Tailwind tokens (bg-background = white,
-     text-foreground = navy). Clay + Grass ride higher-specificity html.*
-     selectors so they override the @apply'd values whenever the court mode
-     class is on <html>. Using hex literals here (rather than var()) keeps
-     these rules standalone — they keep working even on pages that never
-     load the Tailwind theme, and they match the exact palette in the spec. */
-  html,
-  body {
-    @apply bg-background text-foreground antialiased;
-  }
-  html.dark body {
-    background-color: #0f172a;
-    color: #f1f5f9;
-  }
-  html.grass body {
-    background-color: #1a2e1a;
-    color: #EAF4E4;
-  }
+/* CLAY COURT - DARK (Roasted Clay) */
+html[data-surface='clay'][data-theme='dark'] {
+  --court-surface:         42  26  18;
+  --court-surface-subtle:  33  19  12;
+  --court-fg:             240 220 200;
+  --court-fg-muted:       170 130 100;
+  --court-border:          80  48  30;
+  --court-accent:         215 122  79;
+  --court-accent-dark:    240 160 110;
+  --court-accent-tint:     70  38  22;
+}
 
-  h1,
-  h2,
-  h3 {
-    @apply font-serif tracking-tight;
-  }
+/* GRASS COURT - LIGHT (Wimbledon) */
+html[data-surface='grass'][data-theme='light'] {
+  --court-surface:        244 241 232;
+  --court-surface-subtle: 241 243 234;
+  --court-fg:              17  17  17;
+  --court-fg-muted:        80  90  70;
+  --court-border:         210 215 195;
+  --court-accent:          31  97  49;
+  --court-accent-dark:     20  70  33;
+  --court-accent-tint:    210 230 210;
+}
+
+/* GRASS COURT - DARK (Wimbledon Midnight) */
+html[data-surface='grass'][data-theme='dark'] {
+  --court-surface:         18  38  25;
+  --court-surface-subtle:  12  28  18;
+  --court-fg:             220 235 220;
+  --court-fg-muted:       120 155 120;
+  --court-border:          35  65  40;
+  --court-accent:         107 175  80;
+  --court-accent-dark:    160 210 140;
+  --court-accent-tint:     28  58  32;
 }
 
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
+  .text-balance { text-wrap: balance; }
 
   .font-stat {
     font-family: var(--font-inter), system-ui, sans-serif;
