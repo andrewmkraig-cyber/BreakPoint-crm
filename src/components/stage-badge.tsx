@@ -1,27 +1,28 @@
 import { cn } from "@/lib/utils";
 import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-payload-shapes";
 
-// Stage colors mapped to the same semantic palette as the row action
-// buttons so a candidate's stage chip and the buttons that move them
-// to the next stage share visual language. Rendered with `border` for
-// pixel parity with the button system; the bucket-specific tint goes
-// on bg + text + border edge.
+// Stage colors. Uniform pill treatment across every row regardless of
+// where it renders — the candidate-profile pipeline, the Pipeline page,
+// and any future surface read this map. Court tokens for neutral
+// stages so the palette tracks Hard/Clay/Grass mode; Tailwind palette
+// tokens for the typed stages (red/blue/amber/emerald) so the semantic
+// meaning is unambiguous regardless of theme.
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
-  sourced: "bg-slate-100 text-slate-600 border border-slate-200",
-  applied: "bg-amber-50 text-amber-700 border border-amber-200",
-  kept: "bg-slate-100 text-slate-600 border border-slate-200",
-  submitted: "bg-brand-tint text-brand-dark border border-brand/20",
-  interviewing: "bg-blue-50 text-blue-700 border border-blue-200",
+  sourced: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
+  applied: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
+  kept: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
+  submitted: "bg-blue-50 text-blue-700 border border-blue-200",
+  interviewing: "bg-amber-50 text-amber-700 border border-amber-200",
   offer: "bg-purple-50 text-purple-700 border border-purple-200",
-  // pending_start sits between offer and hired — keep brand-tint so
-  // it reads as a positive interim stage.
-  pending_start: "bg-brand-tint text-brand-dark border border-brand/20",
-  hired: "bg-green-100 text-green-800 border border-green-300",
-  rejected: "bg-red-50 text-red-600 border border-red-200",
+  // pending_start sits between offer and hired — emerald like Hired
+  // so it reads as a positive interim stage.
+  pending_start: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  hired: "bg-emerald-50 text-emerald-700 border border-emerald-200",
+  rejected: "bg-red-50 text-red-700 border border-red-200",
   // cancelled is a darker, more terminal red so it doesn't read as
   // "just rejected" — the placement actually started and stopped.
   cancelled: "bg-red-100 text-red-800 border border-red-300",
-  other: "bg-slate-100 text-slate-600 border border-slate-200",
+  other: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
 };
 
 const BUCKET_LABEL: Record<PipelineBucket, string> = {

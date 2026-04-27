@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useTransition, type ChangeEvent, type Drag
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Briefcase,
-  CheckCircle2,
   ChevronDown,
   Clock,
   Edit3,
@@ -528,10 +527,7 @@ function JobActionRow({
   // to the default "View-only" case and hide the Submit button.
   const effective: Bucket = ((job.placement?.stage ?? "sourced").trim().toLowerCase()) as Bucket;
   const isCancelled = effective === "cancelled";
-  const isHired = !isCancelled && effective === "hired";
   const isRejected = !isCancelled && effective === "rejected";
-
-  const badgeSuffix = badgeSuffixFor(effective, job);
 
   return (
     <div className="space-y-2 rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
@@ -556,7 +552,6 @@ function JobActionRow({
             <StageBadge
               bucket={effective}
               label={isCancelled || isRejected ? null : job.rfStageName ?? null}
-              suffix={badgeSuffix}
             />
           </div>
         </div>
@@ -568,9 +563,8 @@ function JobActionRow({
               dialog state via the inline callbacks; the lighter ones
               (Apply / Submit / Keep / Reject / Un-reject) call the
               same server actions PipelineRowActions uses on the Job
-              page. Hired and Cancelled keep their bespoke chrome
-              underneath since the Pipeline component doesn't model
-              the post-Hired flow yet. */}
+              page. The standalone Hired chip on the right was removed
+              — the StageBadge on the left already reads Hired. */}
           <PipelineRowActions
             candidateRfId={candidateRfId}
             candidateName={candidateName}
@@ -586,12 +580,6 @@ function JobActionRow({
             onCancelPlacement={onCancel}
             onRejectDialog={onReject}
           />
-          {isHired && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-3 py-1.5 text-[11px] font-semibold text-emerald-700">
-              <CheckCircle2 className="h-3 w-3" /> Hired
-              {job.placement?.startConfirmedAt ? ` · ${formatDate(job.placement.startConfirmedAt)}` : ""}
-            </span>
-          )}
           {isCancelled && job.placement && (
             <CancelledRowActions placementId={job.placement.id} />
           )}
@@ -717,26 +705,6 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
       )}
     </div>
   );
-}
-
-function badgeSuffixFor(effective: Bucket, job: PlacementContextJob): string | null {
-  if (effective === "cancelled") {
-    const d = job.placement?.cancelledAt ?? null;
-    return d ? formatDate(d) : null;
-  }
-  if (effective === "rejected") {
-    const d = job.placement?.rejectedAt ?? job.rfStageMovedAt ?? null;
-    return d ? formatDate(d) : null;
-  }
-  if (effective === "pending_start") {
-    const d = job.placement?.expectedStartDate ?? null;
-    return d ? formatDate(d) : null;
-  }
-  if (effective === "hired") {
-    const d = job.placement?.startConfirmedAt ?? null;
-    return d ? formatDate(d) : null;
-  }
-  return null;
 }
 
 // ---------------- Offer dialog ----------------

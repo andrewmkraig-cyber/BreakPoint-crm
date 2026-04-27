@@ -37,6 +37,8 @@ import {
   type AceTeamContact,
 } from "@/app/candidates/[id]/placement-flows";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
+import { StageBadge } from "@/components/stage-badge";
+import type { PipelineBucket } from "@/lib/rf-payload-shapes";
 
 export type LocalInterview = {
   id: string;
@@ -245,8 +247,8 @@ function LocalJobActionRow({
               <div className="mt-0.5 pl-[1.375rem] text-xs text-court-fg-muted">{job.clientName}</div>
             )}
           </div>
-          <div className="shrink-0 rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-            {job.stage}
+          <div className="shrink-0">
+            <StageBadge bucket={normalizedStage as PipelineBucket} />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">

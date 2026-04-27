@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, Loader2, Send } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Single-line SMS composer that hangs off the candidate sidebar, right under
@@ -113,11 +113,10 @@ export function SmsComposer({
             type="button"
             onClick={onOpenInQuo}
             disabled={openInQuoDisabled}
-            className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-w-[48px] items-center justify-center whitespace-nowrap rounded-lg border border-court-border bg-court-surface px-3 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
             title="Open this conversation in Quo"
           >
-            {openingQuo ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
-            Open in Quo
+            {openingQuo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Quo"}
           </button>
         </div>
         {error && (

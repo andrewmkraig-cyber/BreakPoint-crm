@@ -454,18 +454,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
                 {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
               </div>
             )}
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-court-fg-muted">
-              {candidate.email && (
-                <span className="inline-flex items-center gap-1">
-                  <Mail className="h-3 w-3" /> {candidate.email}
-                </span>
-              )}
-              {candidate.phone && (
-                <a href={`tel:${candidate.phone}`} className="inline-flex items-center gap-1 hover:text-court-fg">
-                  <Phone className="h-3 w-3" /> {candidate.phone}
-                </a>
-              )}
-            </div>
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -480,12 +468,10 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
       </header>
 
       {/* Section 2: Pipeline. Same wrapper pattern as the RF page. */}
-      <section id="pipeline" className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-court-fg">
-            Pipeline <span className="text-court-fg-muted">· {jobRows.length}</span>
-          </h2>
-        </div>
+      <section id="pipeline" className="space-y-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+          Pipeline · {jobRows.length}
+        </h2>
         <LocalCandidateActions
           candidateId={candidate.id}
           candidateName={fullName}
