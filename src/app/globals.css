@@ -60,8 +60,8 @@ html[data-surface='clay'][data-theme='dark'] {
 
 /* GRASS COURT - LIGHT (Wimbledon) */
 html[data-surface='grass'][data-theme='light'] {
-  --court-surface:        244 241 232;
-  --court-surface-subtle: 241 243 234;
+  --court-surface:        248 247 240;
+  --court-surface-subtle: 244 241 232;
   --court-fg:              17  17  17;
   --court-fg-muted:        80  90  70;
   --court-border:         210 215 195;

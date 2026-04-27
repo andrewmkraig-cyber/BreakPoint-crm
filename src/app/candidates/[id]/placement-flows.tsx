@@ -2775,6 +2775,11 @@ function ModalFooter({
     : lowered === "reactivate"
       ? RotateCcw
       : Save;
+  // Variant chooses by intent so "Apply" → amber chip, "Reject" →
+  // red chip, everything else → primary green. Keeps the hierarchy
+  // consistent across every modal that uses this footer.
+  const variant: "primary" | "apply" | "danger" =
+    lowered === "apply" ? "apply" : lowered === "reject" ? "danger" : "primary";
   return (
     <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
       <button
@@ -2785,15 +2790,16 @@ function ModalFooter({
       >
         <X className="h-3 w-3" /> Cancel
       </button>
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant={variant}
         onClick={onSave}
         disabled={saving}
-        className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
       >
         {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <SaveIcon className="h-3 w-3" />}
         {saveLabel}
-      </button>
+      </Button>
     </div>
   );
 }

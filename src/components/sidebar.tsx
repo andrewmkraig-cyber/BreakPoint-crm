@@ -59,7 +59,7 @@ export function Sidebar() {
     // main-nav block gets its own internal scroll so the Settings
     // footer + brand blurb stay pinned at the bottom of the sidebar
     // even on viewports too short to fit every nav item.
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 self-start border-r border-court-border bg-court-surface md:flex md:flex-col">
+    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 self-start border-r border-court-border bg-court-surface grass:bg-[#1F3A1F] md:flex md:flex-col">
       <div className="flex h-16 shrink-0 items-center border-b border-court-border px-5">
         <BrandMark withTag />
       </div>
@@ -122,7 +122,7 @@ function NavLink({
         "flex h-12 items-center gap-3 rounded-xl border px-4 text-sm font-medium transition-colors",
         active
           ? "border-court-accent/40 bg-court-accent-tint text-court-accent-dark shadow-sm"
-          : "border-transparent bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle",
+          : "border-transparent bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle grass:bg-transparent grass:text-[#C8D8C0] grass:hover:bg-[#2A4A2A]",
       )}
     >
       <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />

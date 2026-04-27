@@ -31,7 +31,9 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
   return (
     <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div className="text-[11px] uppercase tracking-[0.2em] text-court-accent-dark">Billing Tower</div>
+        <div className="text-xs font-semibold uppercase tracking-widest text-court-fg-muted">
+          Billing Tower
+        </div>
         <div className="relative">
           <select
             value={period}
@@ -75,8 +77,10 @@ function Metric({ label, value, hint }: { label: string; value: string; hint: st
     // (mirrors the Hard palette's `bg-muted/50` visual rhythm in Clay + Grass).
     <div className="rounded-xl border border-court-border bg-court-surface-subtle px-4 py-3">
       <div className="flex items-baseline justify-between gap-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
-        <div className="font-stat text-4xl leading-none text-court-fg">{value}</div>
+        <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+          {label}
+        </div>
+        <div className="font-stat text-3xl leading-none text-court-fg">{value}</div>
       </div>
       <p className="mt-2 text-[11px] text-court-fg-muted">{hint}</p>
     </div>

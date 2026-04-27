@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import {
   keepCandidateForJob,
   keepLocalCandidateForJob,
@@ -271,7 +272,7 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
               the email. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-brand-tint px-2.5 py-1 text-[11px] font-semibold text-brand-dark shadow-sm transition hover:bg-brand/20"
+            className="inline-flex items-center justify-center gap-1 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
             Submit
           </Link>
@@ -390,7 +391,7 @@ function KeptRowView({ row }: { row: KeptRow }) {
               the row from the Kept query on next refresh. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center gap-1 rounded-md border border-brand/30 bg-brand-tint px-2.5 py-1 text-[11px] font-semibold text-brand-dark shadow-sm transition hover:bg-brand/20"
+            className="inline-flex items-center justify-center gap-1 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
           >
             Submit
           </Link>
@@ -439,6 +440,39 @@ function ActionButton({
   primary?: boolean;
   destructive?: boolean;
 }) {
+  // Primary (rare here) and Destructive route through the shared
+  // Button primitive so the visual hierarchy stays in lockstep with
+  // the rest of the app. Neutral (Keep) keeps a slate chip — there's
+  // no slate variant on Button by design, so this stays a raw button
+  // with the same shape (rounded-full, h-7, font-bold, text-[11px]).
+  if (primary) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="primary"
+        onClick={onClick}
+        disabled={disabled}
+        className="h-7 text-[11px] font-bold"
+      >
+        {children}
+      </Button>
+    );
+  }
+  if (destructive) {
+    return (
+      <Button
+        type="button"
+        size="sm"
+        variant="danger"
+        onClick={onClick}
+        disabled={disabled}
+        className="h-7 text-[11px] font-bold"
+      >
+        {children}
+      </Button>
+    );
+  }
   return (
     <button
       type="button"
@@ -446,16 +480,7 @@ function ActionButton({
       disabled={disabled}
       className={cn(
         "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 text-[11px] font-bold shadow-sm transition disabled:opacity-60",
-        // Primary stays brand-green for the few callers that still
-        // request it. Destructive (Reject) reads as a soft red chip:
-        // light-red bg + red border + red text. Neutral (Keep) gets
-        // a soft slate chip — no hover-color flip, just a slightly
-        // darker grey on hover.
-        primary
-          ? "bg-brand text-white hover:bg-brand-dark"
-          : destructive
-            ? "border border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
-            : "border border-court-border bg-slate-100 text-slate-600 hover:bg-slate-200",
+        "border border-court-border bg-slate-100 text-slate-600 hover:bg-slate-200",
       )}
     >
       {children}

@@ -198,6 +198,7 @@ function ApplyModal(props: {
         <Button
           type="button"
           size="sm"
+          variant="apply"
           onClick={onSubmit}
           disabled={isSubmitting || !jobRfId || selectable.length === 0}
         >
