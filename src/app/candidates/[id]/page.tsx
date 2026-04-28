@@ -457,7 +457,6 @@ export default async function CandidateProfilePage({
       clientLinkedIn: client?.linkedIn ?? "",
       clientFeePct: client?.feePct ?? null,
       rfStageBucket: canonicalStage(j.stage_name),
-      rfStageName: j.stage_name ?? null,
       rfStageMovedAt: j.stage_moved ?? null,
       clientContacts,
       placement: snapshot,
@@ -510,7 +509,6 @@ export default async function CandidateProfilePage({
         clientLinkedIn: client?.linkedIn ?? "",
         clientFeePct: client?.feePct ?? null,
         rfStageBucket: "sourced" as PipelineBucket,
-        rfStageName: null,
         rfStageMovedAt: null,
         clientContacts,
         placement: {

@@ -93,7 +93,6 @@ export type PlacementContextJob = {
   clientLinkedIn: string;
   clientFeePct: number | null;
   rfStageBucket: PipelineBucket;
-  rfStageName: string | null;
   rfStageMovedAt: string | null;
   clientContacts: ClientContactRef[];
   placement: PlacementSnapshot | null;
@@ -513,7 +512,6 @@ function JobActionRow({
   // to the default "View-only" case and hide the Submit button.
   const effective: Bucket = ((job.placement?.stage ?? "sourced").trim().toLowerCase()) as Bucket;
   const isCancelled = effective === "cancelled";
-  const isRejected = !isCancelled && effective === "rejected";
   // Inline next-upcoming interview. Past scheduled rows are
   // intentionally hidden — the stage chip already says
   // "Interviewing" / "Hired" / "Disqualified".
@@ -530,10 +528,10 @@ function JobActionRow({
           {job.clientName && (
             <span className="truncate text-xs text-court-fg-muted">· {job.clientName}</span>
           )}
-          <StageBadge
-            bucket={effective}
-            label={isCancelled || isRejected ? null : job.rfStageName ?? null}
-          />
+          {/* No label prop — StageBadge falls back to its canonical
+              bucket label so an Ace-side stage move shows immediately
+              without waiting for RF's stage_name to catch up. */}
+          <StageBadge bucket={effective} />
           {nextInterview && (
             <span className="truncate text-xs text-court-fg-muted">{formatNextInterview(nextInterview)}</span>
           )}

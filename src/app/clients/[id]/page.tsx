@@ -10,8 +10,8 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
-  buildClientCounts,
   buildJobCounts,
+  canonicalStage,
   emptyJobCounts,
   type RFClient,
 } from "@/lib/rf-payload-shapes";
@@ -172,10 +172,45 @@ export default async function ClientDetailPage({
   const feePct =
     typeof feePctRaw === "number" ? feePctRaw : typeof feePctRaw === "string" ? parseFloat(feePctRaw) || null : null;
 
-  const counts =
-    legacyRfId != null
-      ? buildClientCounts(candidates).get(legacyRfId) ?? emptyJobCounts()
-      : emptyJobCounts();
+  // Stat strip counts come from Neon Placement.stage (the canonical
+  // source of truth post-Phase-5), not from RF payload stage_name.
+  // The previous buildClientCounts(candidates) read RFCandidate.jobs[]
+  // which lagged whenever an Ace stage move hadn't synced back to RF —
+  // Sheehan Brothers showed Interviewing=0 for that reason. Prisma
+  // groupBy here filters by Neon clientId cuid + organizationId (Rule 8).
+  const placementGroups = await prisma.placement.groupBy({
+    by: ["stage"],
+    where: { clientId: client.id, organizationId: client.organizationId },
+    _count: { _all: true },
+  });
+  const counts = emptyJobCounts();
+  for (const g of placementGroups) {
+    const bucket = canonicalStage(g.stage);
+    const n = g._count._all;
+    switch (bucket) {
+      case "submitted":
+        counts.submitted += n;
+        counts.totalActive += n;
+        break;
+      case "interviewing":
+        counts.interviewing += n;
+        counts.totalActive += n;
+        break;
+      case "offer":
+        counts.offer += n;
+        counts.totalActive += n;
+        break;
+      case "pending_start":
+        counts.pendingStart += n;
+        counts.totalActive += n;
+        break;
+      case "hired":
+        counts.hired += n;
+        break;
+      default:
+        break;
+    }
+  }
   const jobCountsById = buildJobCounts(candidates);
 
   const openJobs = Array.isArray(raw?.open_jobs) ? raw!.open_jobs! : [];
