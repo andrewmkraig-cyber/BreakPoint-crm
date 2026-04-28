@@ -45,8 +45,21 @@ export function MessageBlock({
       </header>
       <div
         className={[
-          "max-w-none text-sm leading-relaxed text-court-fg",
-          // Block-level rhythm.
+          // whitespace-pre-line preserves source newlines as line
+          // breaks. The API sanitizer strips inline style attributes
+          // (security), which removes the `white-space: pre-wrap`
+          // Gmail relies on to render its <div>-with-newlines body
+          // format. Without this, Gmail-shaped emails collapsed into
+          // one continuous flow paragraph in Ace even though they
+          // read with proper line breaks in Gmail itself.
+          "max-w-none whitespace-pre-line text-sm leading-relaxed text-court-fg",
+          // Top-level direct-child <div> spacing — Gmail ships emails
+          // as a stack of sibling <div> blocks (one per paragraph)
+          // rather than <p> tags. Adding margin between direct
+          // children gives those stacks the visual paragraph rhythm
+          // the body needs to read like Gmail's canonical view.
+          "[&>div+div]:mt-2",
+          // Block-level rhythm for proper <p> based emails too.
           "[&_p]:my-2 [&_p]:leading-relaxed",
           "[&_h1]:mb-2 [&_h1]:mt-4 [&_h1]:font-serif [&_h1]:text-lg [&_h1]:font-semibold",
           "[&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:font-serif [&_h2]:text-base [&_h2]:font-semibold",

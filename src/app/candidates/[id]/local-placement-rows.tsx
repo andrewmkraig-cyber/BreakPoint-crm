@@ -314,7 +314,7 @@ function LocalJobActionRow({
                 className="inline-flex items-center justify-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
                 title="Log an interview the client is scheduling themselves — adds to your calendar only"
               >
-                <CalendarPlus className="h-3 w-3" /> Client Invite
+                <CalendarPlus className="h-3 w-3" /> Client Sending Invite
               </button>
             </>
           )}
