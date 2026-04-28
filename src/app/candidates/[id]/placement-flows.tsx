@@ -73,6 +73,12 @@ export type OpenJobOption = {
   jobCuid: string | null;
   clientCuid: string | null;
   jobTitle: string;
+  // Pre-formatted single-line location (city, state) and compensation
+  // ($60–80k) for the Apply-to-Job dropdown. Empty strings when the
+  // RF payload didn't carry them — option renderer just drops the
+  // separator. Computed off normalizeJob's location + compensation.
+  jobLocation: string;
+  jobCompensation: string;
   clientRfId: number;
   clientName: string;
   alreadyLinked: boolean;
@@ -2089,6 +2095,29 @@ function CancelPlacementDialog({
   );
 }
 
+// One-line "Client — Title · Location · Salary (already linked)" label
+// for the Apply / Submit dialog dropdowns. Each segment is dropped when
+// the underlying field is empty so the line stays tight on Ace-native
+// jobs that haven't filled in location or comp. Used by both this file's
+// ApplyToJobDialog and SubmitToJobDialog so the visual stays in sync.
+export function formatOpenJobOption(j: {
+  jobTitle: string;
+  jobLocation?: string | null;
+  jobCompensation?: string | null;
+  clientName: string;
+  alreadyLinked: boolean;
+  linkedStage?: string | null;
+}): string {
+  const head = j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle;
+  const tail: string[] = [];
+  if (j.jobLocation) tail.push(j.jobLocation);
+  if (j.jobCompensation) tail.push(j.jobCompensation);
+  const line = tail.length > 0 ? `${head} · ${tail.join(" · ")}` : head;
+  if (!j.alreadyLinked) return line;
+  const stageHint = j.linkedStage ? `already ${j.linkedStage.toLowerCase()}` : "already linked";
+  return `${line} (${stageHint})`;
+}
+
 // ---------------- Apply to Job flow ----------------
 //
 // Simpler than Submit: no email composer, just pick an open job and we push
@@ -2163,8 +2192,7 @@ function ApplyToJobDialog({
           <option value="">Select a job…</option>
           {openJobs.map((j) => (
             <option key={j.jobRfId} value={String(j.jobRfId)} disabled={j.alreadyLinked}>
-              {j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle}
-              {j.alreadyLinked ? " (already linked)" : ""}
+              {formatOpenJobOption(j)}
             </option>
           ))}
         </select>
@@ -2262,8 +2290,7 @@ function SubmitToJobDialog({
           <option value="">Select a job…</option>
           {openJobs.map((j) => (
             <option key={j.jobRfId} value={String(j.jobRfId)}>
-              {j.clientName ? `${j.clientName} — ${j.jobTitle}` : j.jobTitle}
-              {j.alreadyLinked ? " (already linked)" : ""}
+              {formatOpenJobOption(j)}
             </option>
           ))}
         </select>

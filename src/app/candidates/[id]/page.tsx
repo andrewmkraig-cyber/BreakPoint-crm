@@ -639,7 +639,11 @@ export default async function CandidateProfilePage({
               <AddToListButton candidateId={candidate.id} candidateName={name} />
               <Link
                 href={`/candidates/${id}?openApply=1`}
-                className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                // Amber background to match the APPLIED stage chip
+                // (amber-100 / amber-800 / amber-300) — keeps the
+                // visual story "this button puts the candidate in the
+                // Applied stage" obvious at a glance.
+                className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
               >
                 Apply to Job
               </Link>
@@ -799,6 +803,8 @@ function buildOpenJobOptions({
         jobCuid,
         clientCuid,
         jobTitle: j.title,
+        jobLocation: j.location,
+        jobCompensation: j.compensation,
         clientRfId: j.companyId ?? 0,
         clientName: client ? normalizeClient(client).name : j.company,
         alreadyLinked: linkedJobIds.has(j.id),

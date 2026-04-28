@@ -332,6 +332,8 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         jobRfId: j.id,
         jobCuid: aceJobId,
         jobTitle: j.title,
+        jobLocation: j.location,
+        jobCompensation: j.compensation,
         clientRfId: j.companyId ?? 0,
         clientCuid: aceClientId,
         clientName: client ? normalizeClient(client).name : j.company,
@@ -506,7 +508,10 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             <AddToListButton candidateId={candidate.id} candidateName={fullName} />
             <Link
               href={`/candidates/${candidate.id}?openApply=1`}
-              className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
+              // Amber to match the APPLIED stage chip — same as the
+              // RF-imported path. Recolored together so the visual
+              // language stays consistent across both candidate types.
+              className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
             >
               Apply to Job
             </Link>

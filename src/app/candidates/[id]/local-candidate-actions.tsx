@@ -17,7 +17,11 @@ import {
   generateLocalSubmittal,
   sendLocalSubmittalEmail,
 } from "@/app/candidates/[id]/local-placement-actions";
-import { InlineContactMultiInput, buildCcBccOptions } from "@/app/candidates/[id]/placement-flows";
+import {
+  InlineContactMultiInput,
+  buildCcBccOptions,
+  formatOpenJobOption,
+} from "@/app/candidates/[id]/placement-flows";
 
 // Contact shape the Submit modal's To/Cc pickers draw from. Same tuple
 // layout placement-flows / local-placement-rows already use for the
@@ -38,6 +42,12 @@ export type LocalOpenJob = {
   jobRfId: number;
   jobCuid?: string | null;
   jobTitle: string;
+  // Pre-formatted location + compensation strings for the Apply-to-Job
+  // dropdown. Empty strings when the job payload didn't carry them; the
+  // option renderer just omits the separator. Populated off normalizeJob
+  // in local-profile.tsx.
+  jobLocation?: string;
+  jobCompensation?: string;
   clientRfId: number;
   clientCuid?: string | null;
   clientName: string;
@@ -452,8 +462,7 @@ function JobPicker({
         <option value="">— pick a job —</option>
         {openJobs.map((j) => (
           <option key={j.jobRfId} value={j.jobRfId} disabled={j.alreadyLinked}>
-            {j.clientName ? `${j.clientName} — ` : ""}{j.jobTitle}
-            {j.alreadyLinked ? ` (already ${j.linkedStage ?? "linked"})` : ""}
+            {formatOpenJobOption(j)}
           </option>
         ))}
       </select>
