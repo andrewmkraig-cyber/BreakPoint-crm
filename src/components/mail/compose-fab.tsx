@@ -66,6 +66,13 @@ type RecentThread = {
   contactName: string;
   phoneNumber: string;
   kind: "candidate";
+  // Per-channel counts so the FAB can show text-only contacts when
+  // phoneMode is "text" and call-only contacts when phoneMode is
+  // "call". A thread with sms=0/calls>0 is a call-only contact and
+  // doesn't belong in the New Text picker — Andrew explicitly asked
+  // for "the three most recent people i've texted" not "the three
+  // most recent contacts of any channel."
+  counts: { sms: number; calls: number };
 };
 
 type ProfileHit = {
@@ -189,7 +196,10 @@ export function ComposeFAB() {
     setRecentLoading(true);
     void (async () => {
       try {
-        const res = await fetch("/api/phone/threads?limit=5", {
+        // No `limit` query param — we want enough threads to support
+        // search across the full recent history. Display-side
+        // filtering trims the list to 3 when no search is active.
+        const res = await fetch("/api/phone/threads", {
           cache: "no-store",
         });
         if (!res.ok) return;
@@ -217,15 +227,30 @@ export function ComposeFAB() {
     }
   }, [open, view]);
 
+  // Channel-scoped recents:
+  //   - Text mode shows contacts who have at least one SMS exchange
+  //     (counts.sms > 0). Call-only contacts don't belong in the New
+  //     Text picker — Andrew asked for "the three most recent people
+  //     i've texted."
+  //   - Call mode mirrors the rule the other way (counts.calls > 0).
+  // When the search box is empty we slice to the top 3 most recent
+  // (the API already returns threads sorted newest-first). When the
+  // recruiter starts searching we expand to the full channel-scoped
+  // list so a name or number further down the recents history is
+  // still findable. Search query matches either contact name or
+  // phone digits.
   const filteredRecents = useMemo(() => {
+    const channelScoped = recentThreads.filter((t) =>
+      phoneMode === "text" ? t.counts.sms > 0 : t.counts.calls > 0,
+    );
     const q = phoneSearch.trim().toLowerCase();
-    if (!q) return recentThreads;
-    return recentThreads.filter(
+    if (!q) return channelScoped.slice(0, 3);
+    return channelScoped.filter(
       (t) =>
         t.contactName.toLowerCase().includes(q) ||
         t.phoneNumber.includes(q),
     );
-  }, [phoneSearch, recentThreads]);
+  }, [phoneSearch, recentThreads, phoneMode]);
 
   // Recognize a free-typed phone number that doesn't have a matching
   // saved contact yet, so the recruiter can text/call a brand-new
