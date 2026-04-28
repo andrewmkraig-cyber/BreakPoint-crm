@@ -1,6 +1,3 @@
-import Link from "next/link";
-import { Plus } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { ClientsView, type ClientCard } from "@/app/clients/clients-view";
 import { canonicalStage, emptyJobCounts, type JobPipelineCounts } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
@@ -10,18 +7,16 @@ import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-const PAGE_SIZE = 25;
 const PLACEMENT_WINDOW_MS = 1000 * 60 * 60 * 24 * 30 * 6; // ~6 months
 
 export default async function ClientsPage({
   searchParams,
 }: {
-  searchParams?: { q?: string; page?: string; tab?: "active" | "inactive" };
+  searchParams?: { view?: string };
 }) {
-  const q = (searchParams?.q ?? "").trim();
-  const tab: "active" | "inactive" = searchParams?.tab === "inactive" ? "inactive" : "active";
-  const pageParam = parseInt(searchParams?.page ?? "1", 10);
-  const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
+  // Tab + search are now client-side state inside ClientsView. Only the
+  // grid/list view persists across navigations via ?view=list.
+  const initialView: "grid" | "list" = searchParams?.view === "list" ? "list" : "grid";
 
   let all: ClientCard[] = [];
   let error: string | null = null;
@@ -114,64 +109,25 @@ export default async function ClientsPage({
     error = e instanceof Error ? e.message : "Failed to fetch clients";
   }
 
-  const activeCount = all.filter((c) => c.isActive).length;
-  const inactiveCount = all.length - activeCount;
-
-  let cards = all.filter((c) => (tab === "active" ? c.isActive : !c.isActive));
-
-  if (q) {
-    const needle = q.toLowerCase();
-    cards = cards.filter(
-      (c) =>
-        c.name.toLowerCase().includes(needle) ||
-        (c.industry ?? "").toLowerCase().includes(needle) ||
-        (c.location ?? "").toLowerCase().includes(needle),
-    );
-  }
-
-  cards.sort((a, b) => {
+  const sortFn = (a: ClientCard, b: ClientCard) => {
     if (!a.name && b.name) return 1;
     if (a.name && !b.name) return -1;
     if (a.isVerified !== b.isVerified) return a.isVerified ? -1 : 1;
     if (b.openJobsCount !== a.openJobsCount) return b.openJobsCount - a.openJobsCount;
     return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
-  });
-
-  const total = cards.length;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const pageCards = cards.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const verifiedCount = cards.filter((c) => c.isVerified).length;
+  };
+  const activeCards = all.filter((c) => c.isActive).sort(sortFn);
+  const inactiveCards = all.filter((c) => !c.isActive).sort(sortFn);
+  const verifiedCount = all.filter((c) => c.isVerified).length;
 
   return (
-    <div>
-      <PageHeader
-        eyebrow="Accounts"
-        title="Clients"
-        description="Active = an open job or a placement in the last 6 months. Verified badge means a signed fee agreement is on file."
-        actions={
-          <Link
-            href="/clients/new"
-            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
-          >
-            <Plus className="h-3 w-3" /> New Client
-          </Link>
-        }
-      />
-      <ClientsView
-        cards={pageCards}
-        total={total}
-        page={safePage}
-        totalPages={totalPages}
-        pageSize={PAGE_SIZE}
-        q={q}
-        tab={tab}
-        activeCount={activeCount}
-        inactiveCount={inactiveCount}
-        verifiedCount={verifiedCount}
-        error={error}
-      />
-    </div>
+    <ClientsView
+      activeCards={activeCards}
+      inactiveCards={inactiveCards}
+      initialView={initialView}
+      verifiedCount={verifiedCount}
+      error={error}
+    />
   );
 }
 
