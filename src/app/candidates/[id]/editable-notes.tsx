@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { SectionCard } from "@/app/candidates/[id]/editable-helpers";
@@ -22,11 +22,33 @@ export function EditableNotes({
   initial: NoteRow[];
 }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [notes, setNotes] = useState<NoteRow[]>(initial);
   const [newNote, setNewNote] = useState("");
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [isPending, startSave] = useTransition();
+
+  // Pull a `?draftNote=` query param dropped here by the global FAB's
+  // Notes popup. Pre-fills the new-note input once on mount, then
+  // strips the param so refresh / back-nav don't re-apply it. The
+  // recruiter wrote the note in the FAB and picked this profile —
+  // their text shouldn't be lost en route.
+  const consumedDraftRef = useRef(false);
+  useEffect(() => {
+    if (consumedDraftRef.current) return;
+    const draft = searchParams?.get("draftNote");
+    if (!draft) return;
+    consumedDraftRef.current = true;
+    setNewNote((prev) => (prev ? prev : draft));
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("draftNote");
+    const queryString = next.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, {
+      scroll: false,
+    });
+  }, [searchParams, pathname, router]);
 
   function persist(next: NoteRow[]) {
     const snapshot = notes;

@@ -1,15 +1,26 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Settings card wrapper that adds a collapse/expand chevron in the
-// header. State is local — preference is reset on a hard reload, on
-// purpose. (Persisting expand/collapse per-section across reloads
-// would be more clutter than benefit; the recruiter scrolls between
-// sections rarely enough that the default-open state is the right
-// place to land.)
+// header. Persists open/closed state per-card in localStorage so a
+// recruiter who minimizes Notification Preferences (or any other
+// section) and navigates away comes back to the same minimized state.
+// Falls back to defaultOpen when there's no stored value.
+
+const LS_PREFIX = "ace-settings-collapsed:";
+
+function persistKeyFor(title: ReactNode): string | null {
+  // Stable string keys only — falling back to JSON.stringify for
+  // ReactNode titles risks an unstable hash (e.g. function children),
+  // so non-string titles opt out of persistence and the section
+  // behaves the way it always did.
+  if (typeof title === "string") return LS_PREFIX + title;
+  if (typeof title === "number") return LS_PREFIX + String(title);
+  return null;
+}
 
 export function CollapsibleSection({
   title,
@@ -28,7 +39,34 @@ export function CollapsibleSection({
   // counters, action chips). Sits next to the chevron.
   headerExtra?: ReactNode;
 }) {
+  // Hydrate from localStorage on mount. Initial render uses defaultOpen
+  // so SSR + the very first client paint match — flip to the stored
+  // value in an effect to avoid hydration mismatch.
   const [open, setOpen] = useState(defaultOpen);
+  useEffect(() => {
+    const key = persistKeyFor(title);
+    if (!key) return;
+    try {
+      const stored = window.localStorage.getItem(key);
+      if (stored === "open") setOpen(true);
+      else if (stored === "closed") setOpen(false);
+    } catch {
+      // localStorage can throw in strict-privacy modes — fall through
+      // to the defaultOpen state.
+    }
+  }, [title]);
+
+  // Persist every flip. Skipped when the title isn't a string-able
+  // value (no stable key).
+  useEffect(() => {
+    const key = persistKeyFor(title);
+    if (!key) return;
+    try {
+      window.localStorage.setItem(key, open ? "open" : "closed");
+    } catch {
+      // Same swallow as above.
+    }
+  }, [title, open]);
   return (
     <section
       className={cn(
