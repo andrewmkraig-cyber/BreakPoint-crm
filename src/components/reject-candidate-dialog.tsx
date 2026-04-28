@@ -120,7 +120,7 @@ export function RejectCandidateDialog({
             ) : (
               <UserX className="h-3 w-3" />
             )}
-            {sendEmail ? "Reject + send email" : "Reject"}
+            {sendEmail ? "Send Rejection Email" : "Reject"}
           </button>
         </div>
       </div>
