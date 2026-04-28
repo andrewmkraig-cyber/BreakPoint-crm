@@ -36,13 +36,21 @@ export function BrandMark({
         <circle cx="46" cy="30" r="4.5" fill="#7BB85B" />
       </svg>
       <div className="leading-tight">
-        <div className="font-serif text-[22px] font-bold tracking-tight text-court-fg">
+        {/* Grass mode forces the sidebar bg to a dark green
+            (#1F3A1F) regardless of the light/dark theme — see
+            sidebar.tsx. The default court-fg / court-fg-muted /
+            court-accent-dark tokens are dark colors in grass-LIGHT
+            mode, which made the wordmark and "by BreakPoint Talent"
+            line bleed into the sidebar. The grass: variants below
+            lift both to readable on-dark colors that match the
+            NavLink palette already in use on that surface. */}
+        <div className="font-serif text-[22px] font-bold tracking-tight text-court-fg grass:text-[#E8F4E2]">
           Ace
         </div>
         {withTag && (
-          <div className="mt-0.5 font-serif text-[12px] italic text-court-fg-muted">
+          <div className="mt-0.5 font-serif text-[12px] italic text-court-fg-muted grass:text-[#C8D8C0]">
             by{" "}
-            <span className="font-semibold text-court-accent-dark">
+            <span className="font-semibold text-court-accent-dark grass:text-[#A0C898]">
               BreakPoint Talent
             </span>
           </div>

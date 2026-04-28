@@ -145,12 +145,6 @@ export function Sidebar({ width }: { width?: number } = {}) {
           <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
       </nav>
-      <div className="shrink-0 border-t border-court-border p-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
-        BreakPoint Talent
-        <div className="mt-1 text-[10px] normal-case tracking-normal text-court-fg-muted/80">
-          Solon, OH &middot; Est. 2026
-        </div>
-      </div>
     </aside>
   );
 }

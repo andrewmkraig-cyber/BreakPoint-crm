@@ -1342,6 +1342,108 @@ function MoveToMenu({
   );
 }
 
+// Reply-target picker — toolbar dropdown that lets the recruiter
+// pick WHICH message in a multi-message thread the Reply / Reply
+// All / Forward buttons should act on. Defaults to the latest
+// (label reads "Reply to: latest"); selecting an older message
+// switches the label to that sender + timestamp so the recruiter
+// can verify the target before clicking Reply.
+function ReplyTargetMenu({
+  messages,
+  targetId,
+  latestId,
+  disabled,
+  onPick,
+}: {
+  messages: MailThreadMessage[];
+  targetId: string | null;
+  latestId: string | null;
+  disabled: boolean;
+  onPick: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, [open]);
+  const target = messages.find((m) => m.id === targetId) ?? messages[0];
+  const isLatest = (target?.id ?? null) === latestId;
+  const buttonLabel = isLatest
+    ? "Reply to: latest"
+    : `Reply to: ${target?.fromName || target?.fromEmail || "(unknown)"}`;
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        title="Pick which message in this thread to reply to"
+        className={
+          "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium shadow-sm transition disabled:opacity-60 " +
+          (isLatest
+            ? "border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg"
+            : "border-court-accent bg-court-accent-tint text-court-accent-dark")
+        }
+      >
+        <span className="max-w-[160px] truncate">{buttonLabel}</span>
+        <ChevronDown className="h-3 w-3" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg">
+          <div className="border-b border-court-border bg-court-surface-subtle/60 px-3 py-1.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
+            {messages.length} messages — pick one to reply to
+          </div>
+          <ul className="max-h-72 overflow-y-auto py-1">
+            {messages.map((m, i) => {
+              const active = (target?.id ?? null) === m.id;
+              const sender = m.fromName || m.fromEmail || "(unknown)";
+              const when = m.dateIso
+                ? new Date(m.dateIso).toLocaleString()
+                : "";
+              return (
+                <li key={m.id}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onPick(m.id);
+                      setOpen(false);
+                    }}
+                    className={
+                      "block w-full px-3 py-1.5 text-left transition " +
+                      (active
+                        ? "bg-court-accent-tint text-court-accent-dark"
+                        : "text-court-fg hover:bg-court-surface-subtle")
+                    }
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-xs font-medium">
+                        {sender}
+                      </span>
+                      {i === 0 && (
+                        <span className="shrink-0 rounded-sm bg-court-fg/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-court-fg-muted">
+                          Latest
+                        </span>
+                      )}
+                    </div>
+                    <div className="truncate text-[10px] text-court-fg-muted">
+                      {when}
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Shared interface so ThreadDetail can be rendered both inline in
 // MailView and inside the popped-out FloatingThreadWindow with the
 // same props. composerOpen / onReply / onComposerClose /
@@ -1405,16 +1507,22 @@ export function ThreadDetail({
   const composerOpen = composerMode !== null;
 
   // Which specific message the recruiter is replying to. Defaults to
-  // the latest, so the top-level Reply / Reply All / Forward buttons
-  // behave as before. The per-message action buttons inside each
-  // MessageBlock header set this to point at that exact message so
-  // recipients + quoted body get computed against the right one. Reset
-  // to null when composer closes so the next top-level click goes
-  // back to the latest.
+  // the latest. Both the toolbar's "Reply to: <sender> ▾" dropdown
+  // AND the per-message action buttons inside each MessageBlock
+  // header write to this state — picking a target updates the
+  // recipient + quoted-body computations below so the toolbar's
+  // Reply / Reply All / Forward buttons act on the chosen message.
   const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
+  // Defensive reset when switching threads: composerMode + replyTargetId
+  // are local component state and ThreadDetail's identity is stable
+  // across thread selections (no key prop on the parent). Without this
+  // effect, opening thread A → clicking Reply → switching to thread B
+  // leaves composerMode stuck on "reply", which hides the per-message
+  // action buttons and shows a stale composer over the new thread.
   useEffect(() => {
-    if (!composerOpen) setReplyTargetId(null);
-  }, [composerOpen]);
+    setReplyTargetId(null);
+    setComposerMode(null);
+  }, [detail.id]);
   const replyTarget = useMemo(() => {
     if (!replyTargetId) return latest;
     return orderedMessages.find((m) => m.id === replyTargetId) ?? latest;
@@ -1520,6 +1628,21 @@ export function ThreadDetail({
             "flex shrink-0 items-center gap-2 " + (isFloating ? "ml-auto" : "")
           }
         >
+          {/* Reply-target picker. Only renders for multi-message
+              threads — there's no point in a "pick which message"
+              picker when there's only one. Defaults to the latest;
+              picking an older message routes the toolbar's Reply /
+              Reply All / Forward through that one's recipients +
+              quoted body. */}
+          {orderedMessages.length > 1 && (
+            <ReplyTargetMenu
+              messages={orderedMessages}
+              targetId={replyTargetId ?? latest?.id ?? null}
+              latestId={latest?.id ?? null}
+              disabled={composerOpen}
+              onPick={(id) => setReplyTargetId(id)}
+            />
+          )}
           <button
             type="button"
             onClick={() => setComposerMode("reply")}
