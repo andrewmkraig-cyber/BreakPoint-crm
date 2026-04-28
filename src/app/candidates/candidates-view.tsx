@@ -2,10 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
-import { Search, Loader2, Settings } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type ChangeEvent,
+} from "react";
+import { Search, Loader2, Settings, X, ListPlus, Send } from "lucide-react";
+import { toast } from "sonner";
 import { Pagination } from "@/components/pagination/pagination";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
+import {
+  bulkApplyCandidatesToJob,
+  bulkAddCandidatesToList,
+  bulkAddCandidatesToNewList,
+  type BulkPickerJob,
+} from "@/app/candidates/bulk-actions";
+import { setCandidateNavList } from "@/lib/candidate-nav";
 
 type Candidate = {
   id: string;
@@ -23,8 +38,11 @@ type Candidate = {
 // rows while the new page renders server-side. No flicker, no
 // debounced server action.
 //
-// Search debounces 300ms before pushing to the URL — typing fast
-// doesn't fire one navigation per keystroke.
+// Bulk multi-select: per-row checkbox + select-all checkbox in the
+// header. When 1+ are selected a sticky toolbar surfaces with bulk
+// Apply-to-Job and Add-to-List buttons. Selection is page-scoped —
+// switching pages clears it because the unseen rows would otherwise
+// silently leak into the action.
 const DEBOUNCE_MS = 300;
 
 export function CandidatesView({
@@ -36,6 +54,7 @@ export function CandidatesView({
   error,
   lists,
   selectedListId,
+  bulkJobs,
 }: {
   initialQuery: string;
   candidates: Candidate[];
@@ -45,12 +64,75 @@ export function CandidatesView({
   error: string | null;
   lists: CandidateListSummary[];
   selectedListId: string;
+  bulkJobs: BulkPickerJob[];
 }) {
   const router = useRouter();
   const [q, setQ] = useState(initialQuery);
   const [isPending, startTransition] = useTransition();
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastPushedQuery = useRef(initialQuery);
+
+  // Bulk-select state. Uses a Set so add/remove is O(1) and identity
+  // changes only when the contents change. Clears whenever the
+  // visible candidates set shifts — searching, paging, or list-filter
+  // changes all reset the toolbar so the recruiter never acts on
+  // selections from a different list.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const visible = new Set(candidates.map((c) => c.id));
+      let changed = false;
+      const next = new Set<string>();
+      prev.forEach((id) => {
+        if (visible.has(id)) next.add(id);
+        else changed = true;
+      });
+      return changed ? next : prev;
+    });
+  }, [candidates]);
+
+  function toggleId(id: string, checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+  function toggleAll(checked: boolean) {
+    if (checked) setSelectedIds(new Set(candidates.map((c) => c.id)));
+    else setSelectedIds(new Set());
+  }
+
+  const allChecked =
+    candidates.length > 0 && selectedIds.size === candidates.length;
+  const someChecked = selectedIds.size > 0 && !allChecked;
+  const selectedCount = selectedIds.size;
+  const selectedCandidateIds = useMemo(
+    () => Array.from(selectedIds),
+    [selectedIds],
+  );
+
+  // Stash the ordered candidate-id list every time the visible page
+  // shifts so the candidate profile's Prev/Next nav picks up the
+  // current filter + page slice. Reads are session-local and cleared
+  // when the recruiter closes the tab.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams();
+    if (q.trim()) params.set("q", q.trim());
+    if (selectedListId) params.set("list", selectedListId);
+    if (page > 1) params.set("page", String(page));
+    const qs = params.toString();
+    setCandidateNavList({
+      source: "candidates",
+      backHref: qs ? `/candidates?${qs}` : "/candidates",
+      ids: candidates.map((c) => c.id),
+    });
+  }, [candidates, q, selectedListId, page]);
+
+  const [bulkOpen, setBulkOpen] = useState<null | "apply" | "list">(null);
 
   // Build a URL with ?q=, ?list=, ?page= as appropriate. Page param
   // is dropped when 1 (default) so the URL stays clean. Used by
@@ -151,6 +233,40 @@ export function CandidatesView({
         </div>
       </div>
 
+      {selectedCount > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-court-accent/40 bg-court-accent-tint px-3 py-2 shadow-sm">
+          <div className="flex items-center gap-3 text-xs font-medium text-court-accent-dark">
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              aria-label="Clear selection"
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-court-accent-dark transition hover:bg-court-surface/50"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+            <span>
+              {selectedCount} selected
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setBulkOpen("apply")}
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
+            >
+              <Send className="h-3 w-3" /> Apply to Job
+            </button>
+            <button
+              type="button"
+              onClick={() => setBulkOpen("list")}
+              className="inline-flex items-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            >
+              <ListPlus className="h-3 w-3" /> Add to List
+            </button>
+          </div>
+        </div>
+      )}
+
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <div className="font-semibold">Couldn&apos;t load candidates.</div>
@@ -167,6 +283,20 @@ export function CandidatesView({
         <table className="w-full text-left text-sm">
           <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <tr>
+              <th className="w-10 px-3 py-3">
+                <input
+                  type="checkbox"
+                  aria-label="Select all candidates on this page"
+                  checked={allChecked}
+                  ref={(el) => {
+                    if (el) el.indeterminate = someChecked;
+                  }}
+                  onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                    toggleAll(e.target.checked)
+                  }
+                  className="h-4 w-4 cursor-pointer accent-brand"
+                />
+              </th>
               <th className="px-5 py-3 font-medium">Name</th>
               <th className="px-5 py-3 font-medium">Current Title</th>
               <th className="px-5 py-3 font-medium">Employer</th>
@@ -177,34 +307,54 @@ export function CandidatesView({
           <tbody className="divide-y divide-court-border">
             {candidates.length === 0 && !error && (
               <tr>
-                <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
+                <td colSpan={6} className="px-5 py-12 text-center text-sm text-court-fg-muted">
                   {q ? "No candidates match your search" : "No candidates"}
                 </td>
               </tr>
             )}
-            {candidates.map((c) => (
-              <tr
-                key={c.id}
-                className="cursor-pointer transition hover:bg-court-accent-tint/40"
-                onClick={() => router.push(`/candidates/${c.id}`)}
-              >
-                <td className="px-5 py-3 font-medium text-court-fg">
-                  <Link
-                    href={`/candidates/${c.id}`}
-                    className="hover:text-court-accent-dark"
+            {candidates.map((c) => {
+              const checked = selectedIds.has(c.id);
+              return (
+                <tr
+                  key={c.id}
+                  className={
+                    "cursor-pointer transition " +
+                    (checked
+                      ? "bg-court-accent-tint/60"
+                      : "hover:bg-court-accent-tint/40")
+                  }
+                  onClick={() => router.push(`/candidates/${c.id}`)}
+                >
+                  <td
+                    className="w-10 px-3 py-3"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {c.name}
-                  </Link>
-                </td>
-                <td className="px-5 py-3 text-court-fg-muted">{c.title || "—"}</td>
-                <td className="px-5 py-3 text-court-fg-muted">{c.employer || "—"}</td>
-                <td className="px-5 py-3 text-court-fg-muted">{c.location || "—"}</td>
-                <td className="px-5 py-3 text-court-fg-muted">
-                  {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "—"}
-                </td>
-              </tr>
-            ))}
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${c.name}`}
+                      checked={checked}
+                      onChange={(e) => toggleId(c.id, e.target.checked)}
+                      className="h-4 w-4 cursor-pointer accent-brand"
+                    />
+                  </td>
+                  <td className="px-5 py-3 font-medium text-court-fg">
+                    <Link
+                      href={`/candidates/${c.id}`}
+                      className="hover:text-court-accent-dark"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {c.name}
+                    </Link>
+                  </td>
+                  <td className="px-5 py-3 text-court-fg-muted">{c.title || "—"}</td>
+                  <td className="px-5 py-3 text-court-fg-muted">{c.employer || "—"}</td>
+                  <td className="px-5 py-3 text-court-fg-muted">{c.location || "—"}</td>
+                  <td className="px-5 py-3 text-court-fg-muted">
+                    {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "—"}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -219,6 +369,283 @@ export function CandidatesView({
           itemLabel="candidates"
         />
       )}
+
+      {bulkOpen === "apply" && (
+        <BulkApplyDialog
+          candidateIds={selectedCandidateIds}
+          jobs={bulkJobs}
+          onClose={() => setBulkOpen(null)}
+          onDone={() => {
+            setBulkOpen(null);
+            setSelectedIds(new Set());
+            router.refresh();
+          }}
+        />
+      )}
+      {bulkOpen === "list" && (
+        <BulkAddToListDialog
+          candidateIds={selectedCandidateIds}
+          lists={lists}
+          onClose={() => setBulkOpen(null)}
+          onDone={() => {
+            setBulkOpen(null);
+            setSelectedIds(new Set());
+            router.refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function BulkApplyDialog({
+  candidateIds,
+  jobs,
+  onClose,
+  onDone,
+}: {
+  candidateIds: string[];
+  jobs: BulkPickerJob[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [pickKey, setPickKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const picked = jobs.find((j) => j.key === pickKey) ?? null;
+
+  async function onApply() {
+    if (!picked) return;
+    setBusy(true);
+    try {
+      const res = await bulkApplyCandidatesToJob({
+        candidateIds,
+        jobCuid: picked.jobCuid,
+        jobRfId: picked.jobRfId,
+        clientCuid: picked.clientCuid,
+        clientRfId: picked.clientRfId,
+      });
+      if (!res.ok && res.applied === 0) {
+        toast.error("Couldn't apply candidates", {
+          description: res.errors[0] ?? "Unknown error",
+        });
+        return;
+      }
+      const desc = [
+        res.applied > 0 ? `${res.applied} applied` : null,
+        res.skipped > 0 ? `${res.skipped} already linked` : null,
+        res.errors.length > 0 ? `${res.errors.length} errors` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      toast.success(`Bulk apply complete${desc ? ` — ${desc}` : ""}`);
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BulkModal title={`Apply ${candidateIds.length} candidate${candidateIds.length === 1 ? "" : "s"} to a job`} onClose={onClose}>
+      <p className="mb-2 text-xs text-court-fg-muted">
+        Already-linked candidates are skipped automatically.
+      </p>
+      <select
+        value={pickKey}
+        onChange={(e) => setPickKey(e.target.value)}
+        disabled={busy}
+        className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+      >
+        <option value="">— pick a job —</option>
+        {jobs.map((j) => (
+          <option key={j.key} value={j.key}>
+            {j.label}
+          </option>
+        ))}
+      </select>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={busy || !picked}
+          className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200 disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+          Apply
+        </button>
+      </div>
+    </BulkModal>
+  );
+}
+
+function BulkAddToListDialog({
+  candidateIds,
+  lists,
+  onClose,
+  onDone,
+}: {
+  candidateIds: string[];
+  lists: CandidateListSummary[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<"existing" | "new">(
+    lists.length > 0 ? "existing" : "new",
+  );
+  const [listId, setListId] = useState<string>(lists[0]?.id ?? "");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function onSave() {
+    setBusy(true);
+    try {
+      if (mode === "existing") {
+        if (!listId) {
+          toast.error("Pick a list");
+          return;
+        }
+        const res = await bulkAddCandidatesToList({ candidateIds, listId });
+        if (!res.ok) {
+          toast.error("Couldn't add to list", { description: res.error });
+          return;
+        }
+        toast.success(`Added ${res.added} to list`);
+      } else {
+        const res = await bulkAddCandidatesToNewList({ candidateIds, name });
+        if (!res.ok) {
+          toast.error("Couldn't create list", { description: res.error });
+          return;
+        }
+        toast.success(`Created list and added ${res.added} candidates`);
+      }
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BulkModal title={`Add ${candidateIds.length} candidate${candidateIds.length === 1 ? "" : "s"} to a list`} onClose={onClose}>
+      <div className="mb-3 flex gap-2 text-xs">
+        <button
+          type="button"
+          onClick={() => setMode("existing")}
+          disabled={lists.length === 0}
+          className={
+            "rounded-md border px-2 py-1 font-medium transition " +
+            (mode === "existing"
+              ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+              : "border-court-border text-court-fg-muted hover:text-court-fg")
+          }
+        >
+          Existing list
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("new")}
+          className={
+            "rounded-md border px-2 py-1 font-medium transition " +
+            (mode === "new"
+              ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+              : "border-court-border text-court-fg-muted hover:text-court-fg")
+          }
+        >
+          New list
+        </button>
+      </div>
+      {mode === "existing" ? (
+        <select
+          value={listId}
+          onChange={(e) => setListId(e.target.value)}
+          disabled={busy}
+          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+        >
+          <option value="">— pick a list —</option>
+          {lists.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name} ({l.memberCount})
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="New list name"
+          maxLength={80}
+          disabled={busy}
+          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+        />
+      )}
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={
+            busy ||
+            (mode === "existing" ? !listId : name.trim().length === 0)
+          }
+          className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+          {mode === "existing" ? "Add" : "Create + add"}
+        </button>
+      </div>
+    </BulkModal>
+  );
+}
+
+function BulkModal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-label={title}
+      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-xl border border-court-border bg-court-surface p-5 shadow-2xl"
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <h2 className="font-serif text-base font-semibold text-court-fg">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {children}
+      </div>
     </div>
   );
 }

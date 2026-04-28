@@ -7,6 +7,10 @@ import {
   listCandidateLists,
   type CandidateListSummary,
 } from "@/app/candidates/lists-actions";
+import {
+  getOpenJobsForBulkPicker,
+  type BulkPickerJob,
+} from "@/app/candidates/bulk-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -32,9 +36,10 @@ export default async function CandidatesPage({
   let total = 0;
   let error: string | null = null;
   let lists: CandidateListSummary[] = [];
+  let bulkJobs: BulkPickerJob[] = [];
 
   try {
-    const [result, allLists] = await Promise.all([
+    const [result, allLists, openJobs] = await Promise.all([
       getCandidatesPageForOrg({
         query,
         listId: listId || undefined,
@@ -42,10 +47,12 @@ export default async function CandidatesPage({
         pageSize: PAGE_SIZE,
       }),
       listCandidateLists(),
+      getOpenJobsForBulkPicker(),
     ]);
     candidates = result.rows;
     total = result.total;
     lists = allLists;
+    bulkJobs = openJobs;
   } catch (e) {
     error = e instanceof Error ? e.message : "Failed to fetch candidates";
   }
@@ -74,6 +81,7 @@ export default async function CandidatesPage({
         error={error}
         lists={lists}
         selectedListId={listId}
+        bulkJobs={bulkJobs}
       />
     </div>
   );

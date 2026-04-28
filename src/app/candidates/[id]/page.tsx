@@ -1,9 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  ArrowLeft,
-  Bookmark,
-} from "lucide-react";
+import { Bookmark } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
@@ -30,6 +27,7 @@ import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editab
 // Edit Resume modal in 5A.5.b. The component itself still exists.
 import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
+import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -555,9 +553,7 @@ export default async function CandidateProfilePage({
   return (
     <CandidateProfileBoundary>
     <div className="space-y-6">
-      <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
-        <ArrowLeft className="h-3 w-3" /> Back to candidates
-      </Link>
+      <CandidateProfileNav currentId={candidate.id} />
 
       {/* Section 1: Header. Avatar + name only — action buttons moved
           to a toolbar above the resume column below. */}

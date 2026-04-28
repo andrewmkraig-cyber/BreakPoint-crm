@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Link2, Mail, MapPin, Phone } from "lucide-react";
+import { Link2, Mail, MapPin, Phone } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
@@ -9,6 +9,7 @@ import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
+import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 import { formatLocation } from "@/lib/utils";
@@ -439,9 +440,7 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
 
   return (
     <div className="space-y-6">
-      <Link href="/candidates" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
-        <ArrowLeft className="h-3 w-3" /> Back to candidates
-      </Link>
+      <CandidateProfileNav currentId={candidate.id} />
 
       {/* Section 1: Header — avatar + name only. Action buttons moved
           to a toolbar above the resume column. */}

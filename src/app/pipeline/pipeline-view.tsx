@@ -12,6 +12,7 @@ import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
+import { setCandidateNavList } from "@/lib/candidate-nav";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 
@@ -83,6 +84,22 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
   useEffect(() => {
     setQuery(q);
   }, [q]);
+
+  // Stash the visible row ids so the candidate profile's Prev/Next
+  // nav can walk through this exact stage's slice in the user's
+  // current sort/filter order. Re-runs whenever the rendered rows
+  // change (page, stage, search). String() coerces both numeric
+  // RF ids and cuids into the routing form /candidates/[id] expects.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params2 = new URLSearchParams(params?.toString() ?? "");
+    const qs = params2.toString();
+    setCandidateNavList({
+      source: "pipeline",
+      backHref: qs ? `/pipeline?${qs}` : "/pipeline",
+      ids: rows.map((r) => String(r.candidateId)),
+    });
+  }, [rows, params]);
 
   const buildHref = (overrides: Record<string, string | number | undefined>): string => {
     const next = new URLSearchParams(params?.toString() ?? "");
