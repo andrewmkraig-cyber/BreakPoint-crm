@@ -1,6 +1,6 @@
 "use client";
 
-import { Mail as MailIcon, Reply, X } from "lucide-react";
+import { Mail as MailIcon, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import { useComposerManager } from "@/lib/composer-manager";
 import {
@@ -66,7 +66,6 @@ function NewMailToast({
   toastId: string | number;
 }) {
   const composer = useComposerManager();
-  const theme = getStoredToastTheme();
 
   async function onReply() {
     try {
@@ -95,99 +94,129 @@ function NewMailToast({
     }
   }
 
+  const theme = getStoredToastTheme();
   return (
     <div
-      className="relative flex min-w-[280px] items-center gap-3 overflow-hidden rounded-[14px]"
       style={{
-        background: theme.bg,
-        color: theme.text,
-        border: `1px solid ${theme.border}`,
-        boxShadow: toastBoxShadow(),
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        minWidth: "360px",
+        maxWidth: "420px",
         padding: "12px 14px",
+        borderRadius: "14px",
+        border: `1px solid ${theme.border}`,
+        background: theme.bg,
+        boxShadow: toastBoxShadow(),
+        overflow: "hidden",
       }}
     >
       {theme.leftStrip && (
         <span
           aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-[3px]"
-          style={{ background: theme.accent }}
+          style={{
+            position: "absolute",
+            inset: "0 auto 0 0",
+            width: "3px",
+            background: theme.accent,
+          }}
         />
       )}
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]"
-        style={{ background: theme.iconBg, color: theme.iconFg }}
+        style={{
+          flexShrink: 0,
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          background: theme.iconBg,
+          color: theme.iconFg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
       >
-        <MailIcon className="h-[17px] w-[17px]" />
+        <MailIcon size={17} />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span
-            className="truncate text-[13.5px] font-semibold"
-            style={{ color: theme.text }}
-          >
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: theme.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {thread.fromName || thread.fromEmail || "(unknown sender)"}
           </span>
-          <span
-            className="shrink-0 text-[11px]"
-            style={{ color: theme.subText }}
-          >
-            · Email
-          </span>
+          <span style={{ fontSize: 11, color: theme.fgMuted, flexShrink: 0 }}>· Email</span>
         </div>
-        <div
-          className="mt-0.5 truncate text-[12.5px]"
-          style={{ color: theme.subText }}
-        >
+        <div style={{ fontSize: 12.5, color: theme.fgMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
           {truncate(thread.subject || "(no subject)", 60)}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
-        <ChipButton theme={theme} onClick={onReply} ariaLabel="Reply">
-          <Reply className="h-3 w-3" />
-          <span>Reply</span>
-        </ChipButton>
-        <ChipButton
-          theme={theme}
-          onClick={() => toast.dismiss(toastId)}
-          ariaLabel="Dismiss"
-          iconOnly
-        >
-          <X className="h-3 w-3" />
-        </ChipButton>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 12 }}>
+        <ActionChip theme={theme} onClick={onReply} label="View" icon={<Eye size={12} />} />
+        <DismissBtn theme={theme} onClick={() => toast.dismiss(toastId)} />
       </div>
     </div>
   );
 }
 
-function ChipButton({
+function ActionChip({
   theme,
   onClick,
-  ariaLabel,
-  iconOnly,
-  children,
+  label,
+  icon,
+  primary,
 }: {
   theme: ToastThemeSpec;
   onClick: () => void;
-  ariaLabel: string;
-  iconOnly?: boolean;
-  children: React.ReactNode;
+  label: string;
+  icon?: React.ReactNode;
+  primary?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={ariaLabel}
-      className={
-        "inline-flex items-center justify-center gap-1 rounded-[8px] text-[12px] font-semibold transition " +
-        (iconOnly ? "h-7 w-7 p-0" : "h-7 px-2.5")
-      }
       style={{
-        background: theme.buttonBg,
-        color: theme.buttonText,
-        border: `1px solid ${theme.buttonBorder}`,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        height: 28,
+        padding: "0 10px",
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: 600,
+        fontFamily: "Inter, sans-serif",
+        cursor: "pointer",
+        border: primary ? "none" : `1px solid ${theme.actionBorder}`,
+        background: primary ? theme.primaryBg : theme.actionBg,
+        color: primary ? theme.primaryFg : theme.actionFg,
       }}
     >
-      {children}
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function DismissBtn({ theme, onClick }: { theme: ToastThemeSpec; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Dismiss"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        border: `1px solid ${theme.actionBorder}`,
+        background: theme.actionBg,
+        color: theme.actionFg,
+        cursor: "pointer",
+        opacity: 0.75,
+      }}
+    >
+      <X size={12} />
     </button>
   );
 }

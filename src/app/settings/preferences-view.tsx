@@ -15,6 +15,8 @@ import {
   TOAST_THEME_ORDER,
   type ToastThemeId,
 } from "@/lib/toast-theme";
+import { renderNewMailToast } from "@/components/mail-notification-toast";
+import { renderNewTextToast, renderNewCallToast } from "@/components/text-notification-toast";
 
 export function PreferencesView({
   autoSend,
@@ -178,11 +180,7 @@ export function PreferencesView({
           <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
             Email notification style
           </div>
-          <ThemeCardRow
-            value={toastTheme}
-            onPick={onPickToastTheme}
-            ariaPrefix="email"
-          />
+          <NotifStylePicker value={toastTheme} onPick={onPickToastTheme} kind="email" />
         </div>
         <div className="mt-4 border-t border-court-border pt-4">
           <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
@@ -191,11 +189,33 @@ export function PreferencesView({
           <div className="mt-1 text-[11px] text-court-fg-muted">
             Applies once Quo text notifications are wired up.
           </div>
-          <ThemeCardRow
-            value={textToastTheme}
-            onPick={onPickTextToastTheme}
-            ariaPrefix="text"
-          />
+          <NotifStylePicker value={textToastTheme} onPick={onPickTextToastTheme} kind="text" />
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-court-border pt-4">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Try it:
+          </span>
+          <button
+            type="button"
+            onClick={fireSampleEmailToast}
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+          >
+            Email
+          </button>
+          <button
+            type="button"
+            onClick={fireSampleTextToast}
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+          >
+            Text
+          </button>
+          <button
+            type="button"
+            onClick={fireSampleCallToast}
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+          >
+            Call
+          </button>
         </div>
       </div>
 
@@ -253,57 +273,167 @@ export function PreferencesView({
   );
 }
 
-function ThemeCardRow({
+function NotifStyleCard({
+  id,
+  active,
+  onPick,
+  kind,
+}: {
+  id: ToastThemeId;
+  active: boolean;
+  onPick: (id: ToastThemeId) => void;
+  kind: "email" | "text";
+}) {
+  const theme = TOAST_THEMES[id];
+  const previewName = kind === "email" ? "New email" : "New text";
+  const previewSub = kind === "email" ? "Meeting request" : "Reply needed";
+
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(id)}
+      aria-pressed={active}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 8,
+        padding: 12,
+        borderRadius: 12,
+        border: active ? "1.5px solid var(--court-accent)" : "1px solid var(--court-border)",
+        boxShadow: active ? "0 0 0 3px var(--court-accent-tint)" : "none",
+        background: "var(--court-surface)",
+        cursor: "pointer",
+        textAlign: "left",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+      }}
+    >
+      {/* Mini toast preview */}
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "8px 10px",
+          borderRadius: 8,
+          border: `1px solid ${theme.border}`,
+          background: theme.bg,
+          overflow: "hidden",
+          minHeight: 44,
+        }}
+      >
+        {theme.leftStrip && (
+          <span
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              inset: "0 auto 0 0",
+              width: 2,
+              background: theme.accent,
+            }}
+          />
+        )}
+        <span
+          style={{
+            flexShrink: 0,
+            width: 22,
+            height: 22,
+            borderRadius: 5,
+            background: theme.iconBg,
+            color: theme.iconFg,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="2" y="5" width="20" height="14" rx="2.5" />
+            <path d="m3 7 9 6 9-6" />
+          </svg>
+        </span>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{ display: "block", fontSize: 9.5, fontWeight: 600, color: theme.fg, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {previewName}
+          </span>
+          <span style={{ display: "block", fontSize: 8.5, color: theme.fgMuted, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {previewSub}
+          </span>
+        </span>
+      </div>
+
+      {/* Radio + label */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: "50%",
+            border: active ? "none" : "1.5px solid var(--court-border)",
+            background: active ? "var(--court-accent)" : "transparent",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {active && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#fff" }} />}
+        </span>
+        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--court-fg)" }}>{theme.label}</span>
+      </div>
+      <span style={{ fontSize: 11.5, color: "var(--court-fg-muted)", lineHeight: 1.4 }}>{theme.desc}</span>
+    </button>
+  );
+}
+
+function NotifStylePicker({
   value,
   onPick,
-  ariaPrefix,
+  kind,
 }: {
   value: ToastThemeId;
-  onPick: (next: ToastThemeId) => void;
-  ariaPrefix: string;
+  onPick: (id: ToastThemeId) => void;
+  kind: "email" | "text";
 }) {
   return (
-    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-      {TOAST_THEME_ORDER.map((id) => {
-        const theme = TOAST_THEMES[id];
-        const active = value === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onPick(id)}
-            aria-label={`Use ${theme.label} ${ariaPrefix} notification style`}
-            aria-pressed={active}
-            className={cn(
-              "flex flex-col gap-1.5 rounded-lg border p-2.5 text-left transition",
-              active
-                ? "border-court-accent shadow-[0_0_0_2px_var(--court-accent-tint)]"
-                : "border-court-border hover:border-court-fg/40",
-            )}
-          >
-            <div className="flex items-center gap-1.5">
-              <span
-                aria-hidden="true"
-                className="h-6 w-6 shrink-0 rounded"
-                style={{
-                  background: theme.bg,
-                  border: `1px solid ${theme.border}`,
-                }}
-              />
-              <span
-                className={cn(
-                  "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
-                  active ? "border-court-accent bg-court-accent" : "border-court-border",
-                )}
-              >
-                {active && <span className="h-1 w-1 rounded-full bg-white" />}
-              </span>
-              <span className="text-[13px] font-semibold text-court-fg">{theme.label}</span>
-            </div>
-            <span className="text-[11.5px] leading-snug text-court-fg-muted">{theme.desc}</span>
-          </button>
-        );
-      })}
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        {TOAST_THEME_ORDER.map((id) => (
+          <NotifStyleCard key={id} id={id} active={value === id} onPick={onPick} kind={kind} />
+        ))}
+      </div>
     </div>
   );
+}
+
+function fireSampleEmailToast() {
+  renderNewMailToast({
+    id: `sample-${Date.now()}`,
+    fromName: "Austin Barnard",
+    fromEmail: "austin@breakpointtalent.com",
+    subject: "Meeting request",
+    timestampIso: new Date().toISOString(),
+  });
+}
+
+function fireSampleTextToast() {
+  renderNewTextToast({
+    id: `sample-${Date.now()}`,
+    candidateId: "",
+    candidateName: "Austin Barnard",
+    fromNumber: "+12164885565",
+    body: "Reply needed on the offer",
+    createdAtIso: new Date().toISOString(),
+  });
+}
+
+function fireSampleCallToast() {
+  renderNewCallToast({
+    id: `sample-${Date.now()}`,
+    candidateId: "",
+    candidateName: "Austin Barnard",
+    fromNumber: "+12164885565",
+    duration: null,
+    status: "missed",
+    createdAtIso: new Date().toISOString(),
+  });
 }

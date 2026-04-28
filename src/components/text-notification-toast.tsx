@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { MessageSquare, Phone, Reply, X } from "lucide-react";
+import { MessageSquare, Phone, Reply, Eye, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   getStoredTextToastTheme,
@@ -58,14 +58,9 @@ type QuoToastProps =
 
 function QuoToast(props: QuoToastProps) {
   const router = useRouter();
-  const theme = getStoredTextToastTheme();
   const candidateId = props.event.candidateId;
   const candidateName = props.event.candidateName || props.event.fromNumber;
 
-  // Phone icon for both inbound text and inbound call — per the
-  // notification redesign, SMS and calls share the same telephony
-  // surface, so they share an icon.
-  const Icon = props.mode === "text" ? MessageSquare : Phone;
   const subtitle =
     props.mode === "text"
       ? truncate(props.event.body || "(no message)", 60).toUpperCase()
@@ -76,107 +71,135 @@ function QuoToast(props: QuoToastProps) {
     toast.dismiss(props.toastId);
   }
 
+  const theme = getStoredTextToastTheme();
+  const Icon = props.mode === "text" ? MessageSquare : Phone;
   return (
     <div
-      className="relative flex min-w-[280px] items-center gap-3 overflow-hidden rounded-[14px]"
       style={{
-        background: theme.bg,
-        color: theme.text,
-        border: `1px solid ${theme.border}`,
-        boxShadow: toastBoxShadow(),
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        minWidth: "360px",
+        maxWidth: "420px",
         padding: "12px 14px",
+        borderRadius: "14px",
+        border: `1px solid ${theme.border}`,
+        background: theme.bg,
+        boxShadow: toastBoxShadow(),
+        overflow: "hidden",
       }}
     >
       {theme.leftStrip && (
         <span
           aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-[3px]"
-          style={{ background: theme.accent }}
+          style={{
+            position: "absolute",
+            inset: "0 auto 0 0",
+            width: "3px",
+            background: theme.accent,
+          }}
         />
       )}
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]"
-        style={{ background: theme.iconBg, color: theme.iconFg }}
+        style={{
+          flexShrink: 0,
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          background: theme.iconBg,
+          color: theme.iconFg,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
       >
-        <Icon className="h-[17px] w-[17px]" />
+        <Icon size={17} />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-1.5">
-          <span
-            className="truncate text-[13.5px] font-semibold"
-            style={{ color: theme.text }}
-          >
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span style={{ fontSize: 13.5, fontWeight: 600, color: theme.fg, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {candidateName}
           </span>
-          <span
-            className="shrink-0 text-[11px]"
-            style={{ color: theme.subText }}
-          >
+          <span style={{ fontSize: 11, color: theme.fgMuted, flexShrink: 0 }}>
             · {props.mode === "text" ? "Text" : "Call"}
           </span>
         </div>
-        <div
-          className="mt-0.5 truncate text-[12.5px]"
-          style={{ color: theme.subText }}
-        >
+        <div style={{ fontSize: 12.5, color: theme.fgMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: 2 }}>
           {subtitle}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 12 }}>
         {props.mode === "text" && (
-          <ChipButton theme={theme} variant="primary" onClick={onView} ariaLabel="Reply">
-            <Reply className="h-3 w-3" />
-            <span>Reply</span>
-          </ChipButton>
+          <ActionChip theme={theme} onClick={onView} label="Reply" icon={<Reply size={12} />} primary />
         )}
-        <ChipButton theme={theme} onClick={onView} ariaLabel="View candidate">
-          <span>View</span>
-        </ChipButton>
-        <ChipButton
-          theme={theme}
-          onClick={() => toast.dismiss(props.toastId)}
-          ariaLabel="Dismiss"
-          iconOnly
-        >
-          <X className="h-3 w-3" />
-        </ChipButton>
+        <ActionChip theme={theme} onClick={onView} label="View" icon={<Eye size={12} />} />
+        <DismissBtn theme={theme} onClick={() => toast.dismiss(props.toastId)} />
       </div>
     </div>
   );
 }
 
-function ChipButton({
+function ActionChip({
   theme,
   onClick,
-  ariaLabel,
-  iconOnly,
-  variant,
-  children,
+  label,
+  icon,
+  primary,
 }: {
   theme: ToastThemeSpec;
   onClick: () => void;
-  ariaLabel: string;
-  iconOnly?: boolean;
-  variant?: "primary";
-  children: React.ReactNode;
+  label: string;
+  icon?: React.ReactNode;
+  primary?: boolean;
 }) {
-  const isPrimary = variant === "primary";
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={ariaLabel}
-      className={
-        "inline-flex items-center justify-center gap-1 rounded-[8px] text-[12px] font-semibold transition " +
-        (iconOnly ? "h-7 w-7 p-0" : "h-7 px-2.5")
-      }
       style={{
-        background: isPrimary ? theme.primaryBg : theme.buttonBg,
-        color: isPrimary ? theme.primaryText : theme.buttonText,
-        border: `1px solid ${isPrimary ? "transparent" : theme.buttonBorder}`,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        height: 28,
+        padding: "0 10px",
+        borderRadius: 8,
+        fontSize: 12,
+        fontWeight: 600,
+        fontFamily: "Inter, sans-serif",
+        cursor: "pointer",
+        border: primary ? "none" : `1px solid ${theme.actionBorder}`,
+        background: primary ? theme.primaryBg : theme.actionBg,
+        color: primary ? theme.primaryFg : theme.actionFg,
       }}
     >
-      {children}
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function DismissBtn({ theme, onClick }: { theme: ToastThemeSpec; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Dismiss"
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        border: `1px solid ${theme.actionBorder}`,
+        background: theme.actionBg,
+        color: theme.actionFg,
+        cursor: "pointer",
+        opacity: 0.75,
+      }}
+    >
+      <X size={12} />
     </button>
   );
 }
