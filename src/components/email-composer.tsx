@@ -159,9 +159,17 @@ export function EmailComposer({
   toEditorHtml,
 }: EmailComposerProps) {
   // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
-  // win over the legacy combined ccBccOptions.
+  // win over the legacy combined ccBccOptions. The BCC pool is always
+  // unioned with Andrew's hardcoded teammate roster (Austin) so the
+  // recruiter can BCC him on any email from any composer entry point
+  // — submittal, interview invite, ad-hoc — without depending on the
+  // caller wiring teammates through manually.
   const effectiveCcOptions = ccOptions ?? ccBccOptions;
-  const effectiveBccOptions = bccOptions ?? ccBccOptions;
+  const baseBccOptions = bccOptions ?? ccBccOptions ?? [];
+  const effectiveBccOptions = mergeContactOptionsByEmail(
+    baseBccOptions,
+    BCC_TEAMMATE_OPTIONS,
+  );
   // Read any saved draft for this draftKey BEFORE seeding state so the
   // restored values render on first paint — no flash of the seed body
   // and no race between the state setter and the localStorage read.
@@ -1287,4 +1295,38 @@ function clearDraft(key: string | undefined): void {
   } catch {
     // ignore
   }
+}
+
+// Hardcoded BCC teammate roster. Surfaced on every BCC field so the
+// recruiter can pick Austin (or any future teammate added here) from
+// the BCC dropdown regardless of which composer surfaced — submittal,
+// interview invite, ad-hoc reply, etc. Mirrors ORG_MEMBER_SUGGESTIONS
+// in mail-composer.tsx; centralize when the roster grows past
+// "Andrew + Austin."
+const BCC_TEAMMATE_OPTIONS: ContactOption[] = [
+  {
+    id: "teammate-austin",
+    name: "Austin Barnard",
+    email: "austin@breakpointtalent.com",
+  },
+];
+
+// Union two ContactOption lists by email (case-insensitive). Used to
+// stitch the static teammate roster onto whatever per-call BCC
+// options the caller passed without producing duplicates when a
+// teammate happens to also be a client contact.
+function mergeContactOptionsByEmail(
+  base: ContactOption[],
+  extra: ContactOption[],
+): ContactOption[] {
+  const seen = new Set<string>();
+  const out: ContactOption[] = [];
+  for (const o of [...base, ...extra]) {
+    const key = (o.email ?? "").trim().toLowerCase();
+    if (!key) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(o);
+  }
+  return out;
 }

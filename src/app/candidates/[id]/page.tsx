@@ -647,7 +647,7 @@ export default async function CandidateProfilePage({
                 href={`/candidates/${id}?openSubmit=1`}
                 className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
               >
-                Submit to Job
+                Submit to different job
               </Link>
             </div>
           </div>

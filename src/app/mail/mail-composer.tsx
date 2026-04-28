@@ -934,7 +934,15 @@ export function MailComposer({
             label="BCC"
             value={bcc}
             onChange={setBcc}
+            // Both wirings on BCC: typeahead surfaces Austin when the
+            // recruiter starts typing his name OR clicks the focused
+            // empty field; the picker button surfaces him as an
+            // explicit one-click add. Belt + suspenders so "BCC
+            // Austin" always works regardless of how the recruiter
+            // approaches the field.
             suggestions={ORG_MEMBER_SUGGESTIONS}
+            pickerOptions={ORG_MEMBER_SUGGESTIONS}
+            pickerLabel="BCC a teammate"
           />
         )}
         <label className="flex items-center gap-2 text-sm">
@@ -1387,7 +1395,9 @@ function AddressRow({
         <ul className="absolute left-[72px] right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
           {pickerVisible.length === 0 ? (
             <li className="px-3 py-2 text-xs text-court-fg-muted">
-              No other contacts at this company.
+              {pickerOptions.length === 0
+                ? "No suggestions yet."
+                : "Everyone in the list is already added."}
             </li>
           ) : (
             pickerVisible.map((s) => (

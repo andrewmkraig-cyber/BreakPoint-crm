@@ -62,7 +62,11 @@ export async function POST(req: NextRequest) {
     if (!target) {
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     }
-    const next = target.notes ? `${stamped}\n${target.notes}` : stamped;
+    // Blank line between entries so notes don't bunch up. The
+    // EditableNotes / Notes-tab renderer uses <pre>-style whitespace
+    // preservation, so the gap reads as visual separation between
+    // each timestamped entry.
+    const next = target.notes ? `${stamped}\n\n${target.notes}` : stamped;
     await prisma.candidate.update({
       where: { id: target.id },
       data: { notes: next },
