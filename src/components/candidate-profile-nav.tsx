@@ -52,13 +52,13 @@ export function CandidateProfileNav({ currentId }: { currentId: string }) {
           href={prevId ? `/candidates/${prevId}` : null}
           disabled={!prevId}
           ariaLabel="Previous candidate"
-          icon={<ChevronLeft className="h-4 w-4" />}
+          icon={<ChevronLeft className="h-5 w-5" strokeWidth={2.5} />}
         />
         <PrevNextButton
           href={nextId ? `/candidates/${nextId}` : null}
           disabled={!nextId}
           ariaLabel="Next candidate"
-          icon={<ChevronRight className="h-4 w-4" />}
+          icon={<ChevronRight className="h-5 w-5" strokeWidth={2.5} />}
         />
       </div>
     </div>
@@ -84,7 +84,7 @@ function PrevNextButton({
       <span
         aria-label={ariaLabel}
         aria-disabled="true"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-transparent text-court-fg-muted/40"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-transparent text-court-fg-muted/40"
       >
         {icon}
       </span>
@@ -95,7 +95,7 @@ function PrevNextButton({
       href={href}
       aria-label={ariaLabel}
       title={ariaLabel}
-      className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-accent-dark"
+      className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-accent-dark"
     >
       {icon}
     </Link>
