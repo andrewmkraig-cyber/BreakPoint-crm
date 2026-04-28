@@ -263,7 +263,7 @@ function ThemeCardRow({
   ariaPrefix: string;
 }) {
   return (
-    <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+    <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
       {TOAST_THEME_ORDER.map((id) => {
         const theme = TOAST_THEMES[id];
         const active = value === id;
@@ -275,51 +275,21 @@ function ThemeCardRow({
             aria-label={`Use ${theme.label} ${ariaPrefix} notification style`}
             aria-pressed={active}
             className={cn(
-              "flex flex-col gap-2 rounded-xl border p-3 text-left transition",
+              "flex flex-col gap-1.5 rounded-lg border p-2.5 text-left transition",
               active
-                ? "border-court-accent shadow-[0_0_0_3px_var(--court-accent-tint)]"
+                ? "border-court-accent shadow-[0_0_0_2px_var(--court-accent-tint)]"
                 : "border-court-border hover:border-court-fg/40",
             )}
           >
-            <div
-              className="relative flex min-h-[44px] items-center gap-2 overflow-hidden rounded-md px-2.5 py-2"
-              style={{
-                background: theme.bg,
-                border: `1px solid ${theme.border}`,
-              }}
-            >
-              {theme.leftStrip && (
-                <span
-                  aria-hidden="true"
-                  className="absolute inset-y-0 left-0 w-[2px]"
-                  style={{ background: theme.accent }}
-                />
-              )}
+            <div className="flex items-center gap-1.5">
               <span
-                className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded"
-                style={{ background: theme.iconBg, color: theme.iconFg }}
-              >
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="2" y="5" width="20" height="14" rx="2.5" />
-                  <path d="m3 7 9 6 9-6" />
-                </svg>
-              </span>
-              <span className="min-w-0 flex-1">
-                <span
-                  className="block truncate text-[9.5px] font-semibold leading-tight"
-                  style={{ color: theme.text }}
-                >
-                  Austin Barnard
-                </span>
-                <span
-                  className="block truncate text-[8.5px] leading-tight"
-                  style={{ color: theme.subText }}
-                >
-                  Meeting request
-                </span>
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
+                aria-hidden="true"
+                className="h-6 w-6 shrink-0 rounded"
+                style={{
+                  background: theme.bg,
+                  border: `1px solid ${theme.border}`,
+                }}
+              />
               <span
                 className={cn(
                   "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
