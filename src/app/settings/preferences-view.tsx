@@ -269,8 +269,12 @@ function NotifStyleCard({
       aria-pressed={selected}
       className={cn(
         "flex flex-col gap-3 rounded-xl border p-3 text-left transition",
+        // Tailwind arbitrary values pass through verbatim, so the
+        // var() must already resolve to a color string. Globals.css
+        // stores court vars as RGB triplets; wrap in rgb() so the
+        // browser parses it as a real color.
         selected
-          ? "border-court-accent shadow-[0_0_0_3px_var(--court-accent-tint)]"
+          ? "border-court-accent shadow-[0_0_0_3px_rgb(var(--court-accent-tint))]"
           : "border-court-border hover:border-court-fg/40",
       )}
     >
@@ -330,13 +334,20 @@ function NotifStyleCard({
         </span>
       </div>
 
-      {/* Bottom: radio circle, label, desc on its own line */}
+      {/* Bottom: radio circle, label, desc on its own line. Spec:
+          14×14 radio (border court-accent + filled when selected;
+          otherwise court-border outline), label 13/600 in
+          text-court-fg, desc 11.5px in text-court-fg-muted on a new
+          line. Selected keeps the accent border AND the accent fill
+          so the ring stays visible against light backgrounds. */}
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full",
-              selected ? "border-0 bg-court-accent" : "border-[1.5px] border-court-border bg-transparent",
+              "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border-[1.5px]",
+              selected
+                ? "border-court-accent bg-court-accent"
+                : "border-court-border bg-transparent",
             )}
           >
             {selected && <span className="h-1 w-1 rounded-full bg-white" />}

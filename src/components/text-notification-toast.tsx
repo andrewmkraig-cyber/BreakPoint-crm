@@ -1,13 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { MessageSquare, Phone, Reply, Eye, X } from "lucide-react";
+import { MessageSquare, Phone, Reply, Eye } from "lucide-react";
 import { toast } from "sonner";
-import {
-  getStoredTextToastTheme,
-  toastBoxShadow,
-  type ToastThemeSpec,
-} from "@/lib/toast-theme";
+import { getStoredTextToastTheme, toastBoxShadow } from "@/lib/toast-theme";
+import { ActionChip, DismissBtn } from "@/components/_toast-chrome";
 
 // In-app inbound text + inbound call toast. Shares the design
 // language of the email toast (rounded-2xl card, glow ring, themed
@@ -91,6 +88,7 @@ function QuoToast(props: QuoToastProps) {
         borderRadius: "14px",
         border: `1px solid ${theme.border}`,
         background: theme.bg,
+        color: theme.fg,
         boxShadow: toastBoxShadow(),
         overflow: "hidden",
       }}
@@ -142,70 +140,6 @@ function QuoToast(props: QuoToastProps) {
         <DismissBtn theme={theme} onClick={() => toast.dismiss(props.toastId)} />
       </div>
     </div>
-  );
-}
-
-function ActionChip({
-  theme,
-  onClick,
-  label,
-  icon,
-  primary,
-}: {
-  theme: ToastThemeSpec;
-  onClick: () => void;
-  label: string;
-  icon?: React.ReactNode;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        height: 28,
-        padding: "0 10px",
-        borderRadius: 8,
-        fontSize: 12,
-        fontWeight: 600,
-        fontFamily: "Inter, sans-serif",
-        cursor: "pointer",
-        border: primary ? "none" : `1px solid ${theme.actionBorder}`,
-        background: primary ? theme.primaryBg : theme.actionBg,
-        color: primary ? theme.primaryFg : theme.actionFg,
-      }}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function DismissBtn({ theme, onClick }: { theme: ToastThemeSpec; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label="Dismiss"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 28,
-        height: 28,
-        borderRadius: 8,
-        border: `1px solid ${theme.actionBorder}`,
-        background: theme.actionBg,
-        color: theme.actionFg,
-        cursor: "pointer",
-        opacity: 0.75,
-      }}
-    >
-      <X size={12} />
-    </button>
   );
 }
 
