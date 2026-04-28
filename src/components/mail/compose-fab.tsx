@@ -195,9 +195,11 @@ export function ComposeFAB() {
   }, [phoneSearch, recentThreads]);
 
   // Notes popup state: free-text body + profile-search query + the
-  // current set of hits split into candidates / clients. Hits refresh
-  // on each query change with a small debounce so we don't hammer the
-  // search endpoint on every keystroke.
+  // current set of hits split into candidates / clients. Picking a
+  // result selects the target (highlight only) — the actual write
+  // happens on Add-to-profile click. This two-step is deliberate:
+  // the recruiter often refines the search to verify they have the
+  // right person before committing.
   const [noteText, setNoteText] = useState("");
   const [noteSearch, setNoteSearch] = useState("");
   const [noteResults, setNoteResults] = useState<{
@@ -205,6 +207,8 @@ export function ComposeFAB() {
     clients: ProfileHit[];
   }>({ candidates: [], clients: [] });
   const [noteSearching, setNoteSearching] = useState(false);
+  const [noteTarget, setNoteTarget] = useState<ProfileHit | null>(null);
+  const [noteSubmitting, setNoteSubmitting] = useState(false);
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   useEffect(() => {
     if (open && view === "notes") {
@@ -283,6 +287,8 @@ export function ComposeFAB() {
     setNoteText("");
     setNoteSearch("");
     setNoteResults({ candidates: [], clients: [] });
+    setNoteTarget(null);
+    setNoteSubmitting(false);
   }
 
   async function pickEmail() {
@@ -341,21 +347,55 @@ export function ComposeFAB() {
     closeAll();
   }
 
-  function pickProfileForNote(hit: ProfileHit) {
-    // Encode the note text as a query param so the destination
-    // profile can pick it up and pre-fill its note input. We do not
-    // persist server-side from the FAB — the user lands on the
-    // profile and clicks Save there. This avoids storing a half-
-    // written thought against the wrong record.
+  function selectProfileForNote(hit: ProfileHit) {
+    // Highlight-only: actual persistence happens when the user
+    // clicks Add to profile. Lets the recruiter type → search →
+    // verify → commit instead of clobbering on the first list click.
+    setNoteTarget(hit);
+  }
+
+  async function commitNote() {
+    if (!noteTarget) return;
     const trimmed = noteText.trim();
-    const draft = trimmed ? `&draftNote=${encodeURIComponent(trimmed)}` : "";
-    const sep = hit.href.includes("?") ? "&" : "?";
-    const target =
-      hit.kind === "candidate"
-        ? `${hit.href}${sep}tab=game-plan${draft}`
-        : `${hit.href}${sep}tab=overview${draft}`;
-    closeAll();
-    router.push(target);
+    if (!trimmed) return;
+    setNoteSubmitting(true);
+    try {
+      const res = await fetch("/api/notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entityType: noteTarget.kind,
+          entityId: noteTarget.id,
+          note: trimmed,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = body?.error ?? `HTTP ${res.status}`;
+        // Fail loud — the toast layer is mounted at Providers; we use
+        // dynamic import only because sonner's toast is a side-effect
+        // import this file otherwise wouldn't carry.
+        const { toast } = await import("sonner");
+        toast.error("Couldn't save note", { description: msg });
+        return;
+      }
+      const { toast } = await import("sonner");
+      toast.success(`Note added to ${noteTarget.label}`);
+      const sep = noteTarget.href.includes("?") ? "&" : "?";
+      const target =
+        noteTarget.kind === "candidate"
+          ? `${noteTarget.href}${sep}tab=notes`
+          : `${noteTarget.href}${sep}tab=notes`;
+      closeAll();
+      router.push(target);
+    } catch (e) {
+      const { toast } = await import("sonner");
+      toast.error("Couldn't save note", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setNoteSubmitting(false);
+    }
   }
 
   return (
@@ -372,7 +412,12 @@ export function ComposeFAB() {
         aria-label="New email, text, call, or note"
         aria-expanded={open}
         title="New…"
-        className="group fixed left-6 bottom-6 z-[1000] flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-[#438631] active:bg-[#39762A] focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(79,154,58,0.35)]"
+        // Header-sized round button (h-9 to match avatar / sign-out
+        // chips next to it) so it lives cleanly inline with the
+        // user-info cluster instead of overlapping the bottom-right
+        // BreakPoint footer block. No fixed positioning — the parent
+        // (TopBar) handles placement.
+        className="group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-[#438631] active:bg-[#39762A] focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(79,154,58,0.35)]"
         style={{
           background: "#4F9A3A",
           transform: open ? "rotate(45deg)" : undefined,
@@ -381,12 +426,12 @@ export function ComposeFAB() {
       >
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute left-full ml-3 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          className="pointer-events-none absolute right-full mr-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
           style={{ transform: open ? "rotate(-45deg)" : undefined }}
         >
           New…
         </span>
-        <Plus className="h-7 w-7" strokeWidth={2.5} />
+        <Plus className="h-5 w-5" strokeWidth={2.5} />
       </button>
 
       {open && (
@@ -394,7 +439,10 @@ export function ComposeFAB() {
           ref={popoverRef}
           role="dialog"
           aria-label="Quick action"
-          className="fixed left-6 bottom-24 z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-2xl"
+          // Anchored to the top-right under the header (h-16 = top-16)
+          // since the trigger now sits in the user-info cluster on the
+          // right side of the TopBar.
+          className="fixed right-6 top-[68px] z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-2xl"
         >
           {view === "menu" && (
             <div className="p-2">
@@ -581,7 +629,7 @@ export function ComposeFAB() {
                 value={noteText}
                 onChange={(e) => setNoteText(e.target.value)}
                 rows={4}
-                placeholder="Type your note. We'll pre-fill it on the profile you pick below."
+                placeholder="Type your note, then pick a profile and click Add to profile."
                 className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
               />
               <div className="relative mt-2">
@@ -595,7 +643,7 @@ export function ComposeFAB() {
                   className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-8 pr-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
               </div>
-              <div className="mt-2 max-h-56 overflow-y-auto">
+              <div className="mt-2 max-h-48 overflow-y-auto">
                 {noteSearch.trim() === "" ? (
                   <div className="px-2 py-3 text-xs text-court-fg-muted">
                     Start typing to search candidates and clients.
@@ -621,7 +669,11 @@ export function ComposeFAB() {
                             <ProfileResultRow
                               key={`cand-${c.id}`}
                               hit={c}
-                              onPick={() => pickProfileForNote(c)}
+                              selected={
+                                noteTarget?.kind === c.kind &&
+                                noteTarget?.id === c.id
+                              }
+                              onPick={() => selectProfileForNote(c)}
                             />
                           ))}
                         </ul>
@@ -637,7 +689,11 @@ export function ComposeFAB() {
                             <ProfileResultRow
                               key={`cli-${c.id}`}
                               hit={c}
-                              onPick={() => pickProfileForNote(c)}
+                              selected={
+                                noteTarget?.kind === c.kind &&
+                                noteTarget?.id === c.id
+                              }
+                              onPick={() => selectProfileForNote(c)}
                             />
                           ))}
                         </ul>
@@ -645,6 +701,25 @@ export function ComposeFAB() {
                     )}
                   </>
                 )}
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-court-border pt-3">
+                <span className="min-w-0 truncate text-[11px] text-court-fg-muted">
+                  {noteTarget
+                    ? `Adding to ${noteTarget.label}`
+                    : "Pick a profile to attach this note."}
+                </span>
+                <button
+                  type="button"
+                  onClick={commitNote}
+                  disabled={
+                    noteSubmitting ||
+                    !noteTarget ||
+                    !noteText.trim()
+                  }
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#5A9642] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {noteSubmitting ? "Adding…" : "Add to profile"}
+                </button>
               </div>
             </div>
           )}
@@ -689,16 +764,24 @@ function ActionRow({
 function ProfileResultRow({
   hit,
   onPick,
+  selected,
 }: {
   hit: ProfileHit;
   onPick: () => void;
+  selected?: boolean;
 }) {
   return (
     <li>
       <button
         type="button"
         onClick={onPick}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-court-fg transition hover:bg-court-surface-subtle"
+        aria-pressed={selected}
+        className={
+          "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition " +
+          (selected
+            ? "bg-[#EAF4E4] text-[#3F7030]"
+            : "text-court-fg hover:bg-court-surface-subtle")
+        }
       >
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm">{hit.label}</span>
@@ -708,7 +791,14 @@ function ProfileResultRow({
             </span>
           )}
         </span>
-        <span className="shrink-0 rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
+        <span
+          className={
+            "shrink-0 rounded-sm px-1 py-0.5 text-[10px] uppercase tracking-wider " +
+            (selected
+              ? "bg-[#5A9642]/20 text-[#3F7030]"
+              : "bg-court-surface-subtle text-court-fg-muted")
+          }
+        >
           {hit.kind === "candidate" ? "Candidate" : "Client"}
         </span>
       </button>

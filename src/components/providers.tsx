@@ -9,7 +9,11 @@ import { FloatingThreadProvider } from "@/lib/floating-thread-context";
 import { PhonePanelsProvider } from "@/lib/phone-panels-context";
 import { MinimizedTray } from "@/components/composer/minimized-tray";
 import { FloatingThreadWindow } from "@/components/mail/floating-thread-window";
-import { ComposeFAB } from "@/components/mail/compose-fab";
+
+// ComposeFAB used to mount here as a portal-style fixed FAB. It now
+// lives inside TopBar (left of the user info cluster) so it can't
+// overlap the page footer block + so its tooltip / popover have room
+// against the right edge.
 
 export function Providers({ children }: { children: ReactNode }) {
   return (
@@ -21,7 +25,6 @@ export function Providers({ children }: { children: ReactNode }) {
               {children}
               <MinimizedTray />
               <FloatingThreadWindow />
-              <ComposeFAB />
               <Toaster
                 position="bottom-right"
                 richColors

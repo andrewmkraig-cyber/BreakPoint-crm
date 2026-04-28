@@ -27,7 +27,7 @@ import { ActivityFeed } from "@/components/activity-feed";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan" | "activity";
+type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan" | "notes" | "activity";
 
 type LocationJson = {
   street_address_1?: string | null;
@@ -55,6 +55,7 @@ export default async function ClientDetailPage({
     searchParams?.tab === "agreements" ||
     searchParams?.tab === "benefits" ||
     searchParams?.tab === "game-plan" ||
+    searchParams?.tab === "notes" ||
     searchParams?.tab === "activity"
       ? searchParams.tab
       : "overview";
@@ -487,6 +488,27 @@ export default async function ClientDetailPage({
         />
       ) : tab === "game-plan" && legacyRfId != null ? (
         <AiWorkspace entityType="client" entityId={String(legacyRfId)} />
+      ) : tab === "notes" ? (
+        <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+          <header className="border-b border-court-border px-5 py-3">
+            <h2 className="font-serif text-base font-semibold text-court-fg">Notes</h2>
+            <p className="mt-0.5 text-xs text-court-fg-muted">
+              Recruiter notes attached to this client. Newest at the top.
+              Use the green + button in the top bar to add a new note.
+            </p>
+          </header>
+          <div className="p-5">
+            {client.notes ? (
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
+                {client.notes}
+              </pre>
+            ) : (
+              <p className="text-sm text-court-fg-muted">
+                No notes yet for this client.
+              </p>
+            )}
+          </div>
+        </section>
       ) : tab === "activity" ? (
         <ActivityFeed entityType="client" entityId={client.id} />
       ) : (
@@ -526,6 +548,7 @@ function Tabs({
         active={tab === "benefits"}
       />
       <TabLink label="Game Plan" href={`/clients/${slug}?tab=game-plan`} active={tab === "game-plan"} />
+      <TabLink label="Notes" href={`/clients/${slug}?tab=notes`} active={tab === "notes"} />
       <TabLink label="Activity" href={`/clients/${slug}?tab=activity`} active={tab === "activity"} />
     </div>
   );

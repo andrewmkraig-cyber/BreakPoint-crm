@@ -52,7 +52,7 @@ import { cn } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type CandidateTab = "profile" | "game-plan";
+type CandidateTab = "profile" | "game-plan" | "notes";
 
 // Placement.billingContacts is a Json column — Prisma types it loosely as
 // JsonValue. Coerce to our snapshot shape defensively: keep only objects with
@@ -130,7 +130,12 @@ export default async function CandidateProfilePage({
     skills: candidate.skills,
   };
 
-  const tab: CandidateTab = searchParams?.tab === "game-plan" ? "game-plan" : "profile";
+  const tab: CandidateTab =
+    searchParams?.tab === "game-plan"
+      ? "game-plan"
+      : searchParams?.tab === "notes"
+        ? "notes"
+        : "profile";
 
   // Placement / Interview / CandidateResume are scoped by candidateId
   // (cuid) — candidateRfId is retained only as a historical reference and
@@ -648,6 +653,21 @@ export default async function CandidateProfilePage({
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace entityType="candidate" entityId={String(id)} />
+          ) : tab === "notes" ? (
+            <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+              <header className="border-b border-court-border px-5 py-3">
+                <h2 className="font-serif text-base font-semibold text-court-fg">
+                  Notes
+                </h2>
+                <p className="mt-0.5 text-xs text-court-fg-muted">
+                  Recruiter notes attached to this candidate. Pinned at the
+                  top so the latest is always in view.
+                </p>
+              </header>
+              <div className="p-5">
+                <EditableNotes candidateId={id} initial={notesInitial} />
+              </div>
+            </section>
           ) : (
             <div className="space-y-4">
               <EditableResume
@@ -663,9 +683,6 @@ export default async function CandidateProfilePage({
               </ProfileAccordion>
               <ProfileAccordion title="Education">
                 <EditableEducation candidateId={id} initial={educationInitial} />
-              </ProfileAccordion>
-              <ProfileAccordion title="Notes">
-                <EditableNotes candidateId={id} initial={notesInitial} />
               </ProfileAccordion>
             </div>
           )}
@@ -711,6 +728,7 @@ function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: n
     <div className="flex gap-6 border-b border-court-border">
       <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
       <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
+      <UnderlineTabLink label="Notes" href={`/candidates/${candidateId}?tab=notes`} active={tab === "notes"} />
     </div>
   );
 }

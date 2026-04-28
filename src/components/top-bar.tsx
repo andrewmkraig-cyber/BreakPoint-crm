@@ -4,6 +4,7 @@ import Image from "next/image";
 import { signOut, useSession } from "next-auth/react";
 import { LogOut } from "lucide-react";
 import { TopBarSearch } from "@/components/top-bar-search";
+import { ComposeFAB } from "@/components/mail/compose-fab";
 
 export function TopBar() {
   const { data: session } = useSession();
@@ -22,6 +23,11 @@ export function TopBar() {
         <TopBarSearch />
       </div>
       <div className="flex items-center gap-3">
+        {/* Compose FAB sits to the left of the user-info cluster.
+            Was a giant fixed bottom-left button before — moved up
+            here so it stops overlapping the BreakPoint footer block
+            and so its tooltip + popover have room against any edge. */}
+        <ComposeFAB />
         <div className="text-right">
           <div className="text-sm font-medium text-court-fg">{user?.name ?? "—"}</div>
           <div className="text-xs text-court-fg-muted">{user?.email ?? ""}</div>

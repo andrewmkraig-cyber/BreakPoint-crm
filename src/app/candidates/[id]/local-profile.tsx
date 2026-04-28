@@ -27,10 +27,15 @@ import { getAppPreferences } from "@/lib/preferences";
 type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
 type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
-type LocalCandidateTab = "profile" | "game-plan";
+type LocalCandidateTab = "profile" | "game-plan" | "notes";
 
 export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string; tab?: string }) {
-  const tab: LocalCandidateTab = tabParam === "game-plan" ? "game-plan" : "profile";
+  const tab: LocalCandidateTab =
+    tabParam === "game-plan"
+      ? "game-plan"
+      : tabParam === "notes"
+        ? "notes"
+        : "profile";
   const [candidate, placements, interviews, allJobs, allClients, allContacts, jobOverrides, session, prefs] = await Promise.all([
     prisma.candidate.findUnique({
       where: { id },
@@ -514,6 +519,11 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace entityType="candidate" entityId={candidate.id} />
+          ) : tab === "notes" ? (
+            <LocalNotesTab
+              candidateId={candidate.id}
+              initialNotes={candidate.notes}
+            />
           ) : (
             <div className="space-y-4">
               <EditableResume
@@ -565,11 +575,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
                       </li>
                     ))}
                   </ul>
-                </ProfileAccordion>
-              )}
-              {candidate.notes && (
-                <ProfileAccordion title="Notes">
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-court-fg">{candidate.notes}</p>
                 </ProfileAccordion>
               )}
             </div>
@@ -638,11 +643,50 @@ function ProfileAccordion({ title, children }: { title: string; children: React.
   );
 }
 
+function LocalNotesTab({
+  candidateId,
+  initialNotes,
+}: {
+  candidateId: string;
+  initialNotes: string | null;
+}) {
+  return (
+    <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <header className="border-b border-court-border px-5 py-3">
+        <h2 className="font-serif text-base font-semibold text-court-fg">
+          Notes
+        </h2>
+        <p className="mt-0.5 text-xs text-court-fg-muted">
+          Recruiter notes attached to this candidate. Newest at the top.
+        </p>
+      </header>
+      <div className="p-5">
+        {initialNotes ? (
+          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
+            {initialNotes}
+          </pre>
+        ) : (
+          <p className="text-sm text-court-fg-muted">
+            No notes yet. Use the green + button in the top bar to add one.
+          </p>
+        )}
+        {/* Note: this read-only view is intentional for Ace-native
+            candidates today — the RF EditableNotes component still
+            relies on the legacy numeric-id update path. New notes
+            should land via the FAB Notes popup which writes through
+            POST /api/notes (cuid-aware). */}
+        <input type="hidden" data-candidate-id={candidateId} />
+      </div>
+    </section>
+  );
+}
+
 function UnderlineTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidateId: string }) {
   return (
     <div className="flex gap-6 border-b border-court-border">
       <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
       <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
+      <UnderlineTabLink label="Notes" href={`/candidates/${candidateId}?tab=notes`} active={tab === "notes"} />
     </div>
   );
 }
