@@ -632,7 +632,7 @@ function JobCountPill({
   const pillCls = cn("inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold", cls);
   if (href) {
     return (
-      <Link href={href} className={cn(pillCls, "transition hover:brightness-110")} onClick={(e) => e.stopPropagation()}>
+      <Link href={href} className={cn(pillCls, "transition hover:brightness-110")}>
         {value}
       </Link>
     );
