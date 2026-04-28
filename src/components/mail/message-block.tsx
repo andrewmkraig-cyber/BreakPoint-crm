@@ -135,6 +135,16 @@ export function MessageBlock({
           // border-collapse + a vertical-align default so multi-row
           // tables track the original geometry.
           "[&_table]:border-collapse [&_td]:align-top [&_th]:align-top",
+          // Inside table cells (signatures), kill the body's
+          // default 8px paragraph/div top+bottom margin. Andrew's
+          // BreakPoint signature stacks each contact line as its
+          // own <p> inside a cell — that 8+8 collapsed margin per
+          // row was what pushed his email/phone/web rows so far
+          // apart. Same fix for the empty-block-as-spacer divs
+          // some templates use. Tighter line-height on the table
+          // itself rounds out the compact vertical rhythm Gmail
+          // shows natively for signatures.
+          "[&_table]:leading-snug [&_table_p]:!my-0 [&_table_div]:!my-0",
         ].join(" ")}
         dangerouslySetInnerHTML={{ __html: msg.bodyHtml }}
       />

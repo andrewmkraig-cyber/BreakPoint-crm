@@ -145,7 +145,13 @@ export function AppShell({
                 (Post New Job, Search, etc.) off the right edge. */}
             <div className="flex min-w-0 flex-1 flex-col">
               <TopBar />
-              <main className="min-w-0 flex-1 p-6 md:p-8">{children}</main>
+              {/* Left padding intentionally tighter than the other
+                  sides — the resize handle already provides visual
+                  separation from the sidebar, so a full p-8 gutter
+                  on the left wasted ~16px of horizontal real estate
+                  before the page content even started. Right / top /
+                  bottom keep their original p-6/md:p-8 generosity. */}
+              <main className="min-w-0 flex-1 p-6 pl-3 md:p-8 md:pl-4">{children}</main>
             </div>
           </div>
         </TextingProvider>
