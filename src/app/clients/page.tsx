@@ -85,6 +85,7 @@ export default async function ClientsPage({
       const hasOpenJob = c.openJobsCount > 0;
       const website = c.domain ? (c.domain.startsWith("http") ? c.domain : `https://${c.domain}`) : null;
       return {
+        id: c.id,
         slug: c.slug,
         legacyRfId: c.legacyRfId,
         name: c.name,

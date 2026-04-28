@@ -7,8 +7,15 @@ import { Search, Loader2, ExternalLink, ShieldCheck, MapPin, Briefcase } from "l
 import { Pagination } from "@/components/pagination";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ClientLogo } from "@/components/clients/client-logo";
+import { PipelinePill } from "@/components/clients/pipeline-pill";
 
 export type ClientCard = {
+  // Neon Client.id (cuid) — required for the pipeline filter href.
+  // `slug` is the human URL segment (legacyRfId-string for RF-imported,
+  // cuid for Ace-native). Both are kept so card navigation can use slug
+  // and pipeline filters can use the cuid.
+  id: string;
   slug: string;
   legacyRfId: number | null;
   name: string;
@@ -193,17 +200,31 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
 }
 
 function Card({ card }: { card: ClientCard }) {
+  // Only render pills for stages with non-zero count so the row stays
+  // tight on narrow cards. Each non-zero pill links into the pipeline
+  // pre-filtered to (clientId, stage). The pill itself stops click
+  // propagation so the parent card-Link doesn't also fire.
+  const stageEntries: Array<{ stage: string; count: number }> = [
+    { stage: "submitted", count: card.submittedCount },
+    { stage: "interviewing", count: card.interviewingCount },
+    { stage: "offer", count: card.offerCount },
+    { stage: "pending_start", count: card.pendingStartCount },
+    { stage: "hired", count: card.hiredCount },
+  ];
+  const activeStages = stageEntries.filter((e) => e.count > 0);
+
   return (
     <Link
       href={`/clients/${card.slug}`}
-      className="group flex flex-col rounded-xl border border-court-border bg-court-surface p-5 shadow-sm transition hover:border-brand/40 hover:shadow-md"
+      className="group flex flex-col gap-3 rounded-xl border border-court-border bg-court-surface p-5 shadow-sm transition hover:border-brand/40 hover:shadow-md"
     >
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
+        <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={40} />
         <div className="min-w-0 flex-1">
           <h3 className="break-words font-serif text-lg font-semibold leading-tight text-court-fg group-hover:text-brand-dark">
             {card.name || "(unnamed)"}
           </h3>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-court-fg-muted">
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-court-fg-muted">
             {card.industry && <span>{card.industry}</span>}
             {card.industry && card.location && <span>·</span>}
             {card.location && (
@@ -229,26 +250,27 @@ function Card({ card }: { card: ClientCard }) {
       </div>
 
       {card.isVerified && (
-        <div className="mt-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
-            <ShieldCheck className="h-3 w-3" /> Verified · signed agreement
-          </span>
-        </div>
+        <span className="inline-flex w-fit items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
+          <ShieldCheck className="h-3 w-3" /> Verified · signed agreement
+        </span>
       )}
 
-      <div className="mt-4 grid grid-cols-5 gap-2 rounded-lg bg-court-surface-subtle/60 p-3 text-center">
-        {/* Labels are abbreviated so the strip never overlaps even at
-            MacBook-narrow widths (cards reflow to 3 cols at xl, ~400px
-            each). `title` on each cell carries the full label for
-            hover. */}
-        <Stat label="Sub" full="Submitted" value={card.submittedCount} tone="brand" />
-        <Stat label="Int" full="Interviewing" value={card.interviewingCount} tone="blue" />
-        <Stat label="Offer" full="Offer" value={card.offerCount} tone="purple" />
-        <Stat label="Pend" full="Pending Start" value={card.pendingStartCount} tone="amber" />
-        <Stat label="Hired" full="Hired" value={card.hiredCount} tone="emerald" />
-      </div>
+      {activeStages.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {activeStages.map(({ stage, count }) => (
+            <PipelinePill
+              key={stage}
+              stage={stage}
+              count={count}
+              href={`/pipeline?clientId=${card.id}&stage=${stage}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="text-[11px] text-court-fg-muted">No active pipeline.</div>
+      )}
 
-      <div className="mt-3 flex items-center justify-between text-[11px] text-court-fg-muted">
+      <div className="flex items-center justify-between text-[11px] text-court-fg-muted">
         <span className="inline-flex items-center gap-1">
           <Briefcase className="h-3 w-3" />
           {card.openJobsCount} open · {card.closedJobsCount} closed
@@ -256,32 +278,5 @@ function Card({ card }: { card: ClientCard }) {
         {card.feePct != null && <span>Fee {card.feePct}%</span>}
       </div>
     </Link>
-  );
-}
-
-function Stat({
-  label,
-  full,
-  value,
-  tone,
-}: {
-  label: string;
-  // Hover tooltip — full stage name when the visible label is abbreviated.
-  full?: string;
-  value: number;
-  tone: "brand" | "blue" | "purple" | "amber" | "emerald";
-}) {
-  const cls = {
-    brand: "text-brand-dark",
-    blue: "text-blue-700",
-    purple: "text-purple-700",
-    amber: "text-amber-700",
-    emerald: "text-emerald-700",
-  }[tone];
-  return (
-    <div className="min-w-0" title={full ?? label}>
-      <div className={cn("font-serif text-xl font-semibold", value > 0 ? cls : "text-court-fg-muted/60")}>{value}</div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted leading-tight">{label}</div>
-    </div>
   );
 }
