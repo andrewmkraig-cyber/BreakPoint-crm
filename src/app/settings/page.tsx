@@ -81,25 +81,19 @@ export default async function SettingsPage() {
         description="Preferences and reusable email templates for submittals and candidate notifications."
       />
 
-      {/* Top row — Court Mode and Notification Preferences sit side by
-          side on lg+; stack on smaller screens. Both surfaces are
-          self-contained client components, so the grid only handles
-          layout. */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <CollapsibleSection
-          title="Court Mode"
-          description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly — no reload needed."
-        >
-          <CourtModeView />
-        </CollapsibleSection>
+      <CollapsibleSection
+        title="Court Mode"
+        description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly — no reload needed."
+      >
+        <CourtModeView />
+      </CollapsibleSection>
 
-        <CollapsibleSection
-          title="Notification Preferences"
-          description="In-app popups for new mail, calls, and texts. Style picker recolors with Court Mode automatically (Ink stays dark)."
-        >
-          <NotificationPreferencesView />
-        </CollapsibleSection>
-      </div>
+      <CollapsibleSection
+        title="Notification Preferences"
+        description="In-app popups for new mail, calls, and texts. Style picker recolors with Court Mode automatically (Ink stays dark)."
+      >
+        <NotificationPreferencesView />
+      </CollapsibleSection>
 
       <CollapsibleSection
         title="Email Preferences"

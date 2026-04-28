@@ -19,19 +19,47 @@ import { BrandMark } from "@/components/brand-mark";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
-// Main nav in the recruiter's workflow order: Dashboard → Mail (daily
-// inbox check) → Pipeline → Applicants (active work) → Candidates →
-// Clients → Jobs (reference surfaces).
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
-  { href: "/mail", label: "Mail", icon: Mail },
-  { href: "/phone", label: "Phone", icon: Phone },
-  { href: "/pipeline", label: "Pipeline", icon: GitBranch },
-  { href: "/applicants", label: "Applicants", icon: User },
-  { href: "/candidates", label: "Candidates", icon: Users },
-  { href: "/clients", label: "Clients", icon: Building2 },
-  { href: "/jobs", label: "Jobs", icon: Briefcase },
-] as const;
+// Main nav grouped into recruiter workflow sections:
+//   Dashboard (ungrouped overview at top)
+//   ATS — Pipeline → Applicants → Candidates (active recruiting work)
+//   CRM — Clients → Jobs (reference surfaces)
+//   Communications — Mail → Phone (inbox check, sits just above Settings)
+// The communications block lives toward the bottom because the
+// recruiter spends most of the day in ATS/CRM and only dips into
+// comms when an alert pulls them there.
+type NavGroup = {
+  title: string | null;
+  items: ReadonlyArray<{ href: string; label: string; icon: NavItem["icon"] }>;
+};
+
+const NAV_GROUPS: ReadonlyArray<NavGroup> = [
+  {
+    title: null,
+    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutGrid }],
+  },
+  {
+    title: "ATS",
+    items: [
+      { href: "/pipeline", label: "Pipeline", icon: GitBranch },
+      { href: "/applicants", label: "Applicants", icon: User },
+      { href: "/candidates", label: "Candidates", icon: Users },
+    ],
+  },
+  {
+    title: "CRM",
+    items: [
+      { href: "/clients", label: "Clients", icon: Building2 },
+      { href: "/jobs", label: "Jobs", icon: Briefcase },
+    ],
+  },
+  {
+    title: "Communications",
+    items: [
+      { href: "/mail", label: "Mail", icon: Mail },
+      { href: "/phone", label: "Phone", icon: Phone },
+    ],
+  },
+];
 
 // Settings is pinned to the bottom of the sidebar, visually separated
 // from the main nav by a border and its own padding block. Matches the
@@ -63,20 +91,31 @@ export function Sidebar() {
       <div className="flex h-16 shrink-0 items-center border-b border-court-border px-5">
         <BrandMark withTag />
       </div>
-      <nav className="flex-1 space-y-0.5 overflow-y-auto p-3">
-        {NAV.map((item) => (
-          <NavLink
-            key={item.href}
-            item={item}
-            pathname={pathname}
-            badge={
-              item.href === "/mail"
-                ? unreadCount
-                : item.href === "/phone"
-                  ? phoneUnreadCount
-                  : 0
-            }
-          />
+      <nav className="flex-1 overflow-y-auto p-3">
+        {NAV_GROUPS.map((group, idx) => (
+          <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-4"}>
+            {group.title && (
+              <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted/80 grass:text-[#A0B89E]">
+                {group.title}
+              </div>
+            )}
+            <div className="space-y-0.5">
+              {group.items.map((item) => (
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  pathname={pathname}
+                  badge={
+                    item.href === "/mail"
+                      ? unreadCount
+                      : item.href === "/phone"
+                        ? phoneUnreadCount
+                        : 0
+                  }
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
       <nav className="shrink-0 space-y-0.5 border-t border-court-border p-2">

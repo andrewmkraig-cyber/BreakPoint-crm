@@ -81,42 +81,47 @@ export function SmsComposer({
             No phone on file — add one above to enable texting.
           </div>
         )}
-        <div className="flex items-stretch gap-2">
-          <input
-            type="text"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void onSend();
-              }
-            }}
-            placeholder={toNumber ? "Type a text…" : "No phone on file"}
-            disabled={!toNumber || sending}
-            className="flex-1 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-court-surface-subtle/60"
-          />
+        {/* Input on its own row, buttons on a second row right-aligned.
+            Single-row layout pushed Send off-screen on narrow widths
+            because input flex-1 + Send + Quo can't all fit in <300px
+            of sidebar. Stacking guarantees Send stays visible at any
+            viewport. */}
+        <input
+          type="text"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void onSend();
+            }
+          }}
+          placeholder={toNumber ? "Type a text…" : "No phone on file"}
+          disabled={!toNumber || sending}
+          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:bg-court-surface-subtle/60"
+        />
+        <div className="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onOpenInQuo}
+            disabled={openInQuoDisabled}
+            className="inline-flex h-8 min-w-[48px] items-center justify-center whitespace-nowrap rounded-lg border border-court-border bg-court-surface px-3 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
+            title="Open this conversation in Quo"
+          >
+            {openingQuo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Quo"}
+          </button>
           <button
             type="button"
             onClick={onSend}
             disabled={disabled}
             className={cn(
-              "inline-flex items-center gap-1 rounded-lg px-3 text-xs font-semibold text-white shadow-sm transition",
+              "inline-flex h-8 items-center gap-1 rounded-lg px-3 text-xs font-semibold text-white shadow-sm transition",
               "bg-emerald-600 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50",
             )}
             title="Send SMS"
           >
             {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
             Send
-          </button>
-          <button
-            type="button"
-            onClick={onOpenInQuo}
-            disabled={openInQuoDisabled}
-            className="inline-flex min-w-[48px] items-center justify-center whitespace-nowrap rounded-lg border border-court-border bg-court-surface px-3 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark disabled:cursor-not-allowed disabled:opacity-50"
-            title="Open this conversation in Quo"
-          >
-            {openingQuo ? <Loader2 className="h-3 w-3 animate-spin" /> : "Quo"}
           </button>
         </div>
         {error && (

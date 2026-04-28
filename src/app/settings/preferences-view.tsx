@@ -19,23 +19,17 @@ import {
 import { renderNewMailToast } from "@/components/mail-notification-toast";
 import { renderNewTextToast, renderNewCallToast } from "@/components/text-notification-toast";
 
-// Quiet hours toggle persists to localStorage. Suppression logic
-// (skipping toasts during the chosen window) hasn't shipped yet —
-// today this is just the on/off control. Wired so the persisted
-// value is ready when the suppression code lands.
-const QUIET_HOURS_KEY = "ace_quiet_hours";
-
 // ----------------------------------------------------------------
-// NotificationPreferencesView — in-app notif on/off, email + text
-// toast style pickers, quiet-hours toggle. Sized to live next to
-// Court Mode in a 2-col grid on Settings.
+// NotificationPreferencesView — in-app notif master switch + email
+// and phone toast style pickers. The master switch gates mail, text,
+// and call toasts (per Phone Tab Phase 3 wiring; today only mail
+// auto-fires, but the gate is set up to cover all three).
 // ----------------------------------------------------------------
 
 export function NotificationPreferencesView() {
   const [mailNotifs, setMailNotifs] = useState(false);
   const [toastTheme, setToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
   const [textToastTheme, setTextToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
-  const [quietHours, setQuietHours] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -48,7 +42,6 @@ export function NotificationPreferencesView() {
     if (storedTextTheme && storedTextTheme in TOAST_THEMES) {
       setTextToastTheme(storedTextTheme as ToastThemeId);
     }
-    setQuietHours(window.localStorage.getItem(QUIET_HOURS_KEY) === "true");
   }, []);
 
   function onToggleMailNotifs(next: boolean) {
@@ -69,18 +62,12 @@ export function NotificationPreferencesView() {
       window.localStorage.setItem(TEXT_TOAST_THEME_KEY, next);
     }
   }
-  function onToggleQuietHours(next: boolean) {
-    setQuietHours(next);
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(QUIET_HOURS_KEY, next ? "true" : "false");
-    }
-  }
 
   return (
     <div className="space-y-3">
       <ToggleRow
         label="In-app notifications"
-        description="Show a popup when new mail arrives."
+        description="Show a popup when new mail, texts, or calls arrive. Off silences all three."
         checked={mailNotifs}
         onChange={onToggleMailNotifs}
       />
@@ -98,14 +85,6 @@ export function NotificationPreferencesView() {
           Applies once Quo text notifications are wired up.
         </div>
         <NotifStylePicker value={textToastTheme} onPick={onPickTextToastTheme} kind="text" />
-      </div>
-      <div className="border-t border-court-border pt-3">
-        <ToggleRow
-          label="Quiet hours"
-          description="Suppress non-urgent toasts on a schedule. UI persists; suppression wires up next."
-          checked={quietHours}
-          onChange={onToggleQuietHours}
-        />
       </div>
     </div>
   );
