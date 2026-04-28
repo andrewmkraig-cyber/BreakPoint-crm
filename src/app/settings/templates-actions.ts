@@ -5,13 +5,15 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
+  CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
+  CANDIDATE_HIRED_WELCOME_TRIGGER,
   CANDIDATE_INTERVIEW_PREP_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
-  CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
+  CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
   CLIENT_SUBMITTAL_TRIGGER,
-  INTERVIEW_CONFIRMATION_TRIGGER,
   OFFER_ACCEPTANCE_TRIGGER,
+  OFFER_EXTENDED_TRIGGER,
   REFERENCE_CHECK_REQUEST_TRIGGER,
 } from "@/app/settings/template-constants";
 
@@ -173,23 +175,58 @@ const REFERENCE_CHECK_DEFAULT = {
     "Thanks,",
 } as const;
 
-const INTERVIEW_CONFIRMATION_DEFAULT = {
-  name: "Interview Confirmation (legacy)",
-  subject: "Interview Confirmed - [Job Title] with [Client Company Name]",
-  trigger: INTERVIEW_CONFIRMATION_TRIGGER,
+const CANDIDATE_APPLIED_CONFIRMATION_DEFAULT = {
+  name: "Candidate Applied — Confirmation",
+  subject: "We've got your application — [Job Title] at [Client Company Name]",
+  trigger: CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   audience: "candidate",
-  category: "interview",
+  category: "applied",
   body:
     "Hi [Candidate First Name],\n\n" +
-    "Congratulations - you are confirmed for an interview with [Client Company Name] for the [Job Title] role.\n\n" +
-    "Make sure to review the below information prior to the interview, and come prepared with a few questions to show you looked into them a bit.\n\n" +
-    "[Job Description]",
+    "Thanks for your interest in the [Job Title] role at [Client Company Name]. " +
+    "We've received your application and added you to our pipeline for this role.\n\n" +
+    "Next steps: I'll review your background against what the client is looking for and reach " +
+    "out within a few business days to talk through the role in more detail. If we move forward, " +
+    "I'll submit your profile to the client and keep you posted on their feedback.\n\n" +
+    "If anything changes — availability, comp expectations, locations you'd consider — just reply " +
+    "to this email and I'll update your file.",
 } as const;
 
-const CLIENT_INTERVIEW_CONFIRMATION_DEFAULT = {
-  name: "Client Interview Confirmation",
+const OFFER_EXTENDED_DEFAULT = {
+  name: "Offer Extended",
+  subject: "Offer extended — [Job Title] at [Client Company Name]",
+  trigger: OFFER_EXTENDED_TRIGGER,
+  audience: "candidate",
+  category: "offer",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "Great news — [Client Company Name] has extended an offer for the [Job Title] role.\n\n" +
+    "Take some time to review the details and let me know how you're feeling about it. " +
+    "Happy to walk through anything — comp, start date, benefits, the team, the role itself — " +
+    "before you respond to them.\n\n" +
+    "When you're ready to move forward, reply here and we'll line up next steps together.",
+} as const;
+
+const CANDIDATE_HIRED_WELCOME_DEFAULT = {
+  name: "Hired — Welcome / Next Steps",
+  subject: "Welcome to [Client Company Name] — [Job Title]",
+  trigger: CANDIDATE_HIRED_WELCOME_TRIGGER,
+  audience: "candidate",
+  category: "hired",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "Congratulations on your new role as [Job Title] at [Client Company Name] — start date is locked in.\n\n" +
+    "From here, [Client Company Name] will reach out directly with onboarding paperwork, equipment, " +
+    "first-day logistics, and anything else they need on their end. Keep an eye on your inbox for them.\n\n" +
+    "On my side, I'll check in shortly after you start to make sure things are going well. If anything " +
+    "comes up between now and then — questions about the offer, paperwork, scheduling — just reply here.\n\n" +
+    "Excited for you. Best of luck!",
+} as const;
+
+const CLIENT_INTERVIEW_SCHEDULED_DEFAULT = {
+  name: "Interview Scheduled — Client Confirmation",
   subject: "Interview Confirmed - [Candidate Full Name] for [Job Title]",
-  trigger: CLIENT_INTERVIEW_CONFIRMATION_TRIGGER,
+  trigger: CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
   audience: "client",
   category: "interview",
   body:
@@ -205,7 +242,7 @@ const CLIENT_INTERVIEW_CONFIRMATION_DEFAULT = {
 } as const;
 
 const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
-  name: "Candidate Interview Prep",
+  name: "Interview Scheduled — Candidate Prep",
   subject: "You're confirmed - [Job Title] with [Client Company Name]",
   trigger: CANDIDATE_INTERVIEW_PREP_TRIGGER,
   audience: "candidate",
@@ -227,14 +264,18 @@ const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
 
 export async function ensureDefaultTemplates(): Promise<void> {
   const defaults = [
+    // Pipeline-ordered so a fresh org sees them in funnel order in
+    // Settings → Email Templates.
+    CANDIDATE_APPLIED_CONFIRMATION_DEFAULT,
     CLIENT_SUBMITTAL_DEFAULT,
     CANDIDATE_CONFIRMATION_DEFAULT,
-    OFFER_ACCEPTANCE_DEFAULT,
-    CANDIDATE_REJECTION_DEFAULT,
-    INTERVIEW_CONFIRMATION_DEFAULT,
-    REFERENCE_CHECK_DEFAULT,
-    CLIENT_INTERVIEW_CONFIRMATION_DEFAULT,
+    CLIENT_INTERVIEW_SCHEDULED_DEFAULT,
     CANDIDATE_INTERVIEW_PREP_DEFAULT,
+    OFFER_EXTENDED_DEFAULT,
+    OFFER_ACCEPTANCE_DEFAULT,
+    CANDIDATE_HIRED_WELCOME_DEFAULT,
+    CANDIDATE_REJECTION_DEFAULT,
+    REFERENCE_CHECK_DEFAULT,
   ] as const;
 
   for (const tpl of defaults) {

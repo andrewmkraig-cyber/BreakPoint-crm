@@ -25,10 +25,12 @@ import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
 import {
+  CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
+  CANDIDATE_HIRED_WELCOME_TRIGGER,
   CANDIDATE_REJECTION_TRIGGER,
-  INTERVIEW_CONFIRMATION_TRIGGER,
   OFFER_ACCEPTANCE_TRIGGER,
+  OFFER_EXTENDED_TRIGGER,
   REFERENCE_CHECK_REQUEST_TRIGGER,
 } from "@/app/settings/template-constants";
 
@@ -196,6 +198,49 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
 
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
+
+    // Auto-fire the Offer Extended template to the candidate. Best-
+    // effort — same pattern as the apply path; the Placement row's
+    // already saved at this point so a fire failure can't corrupt
+    // pipeline state.
+    try {
+      const c = await getRfCandidateByRfId(input.candidateRfId);
+      const candidateEmail = c ? normalizeCandidateEmail(c) : "";
+      if (candidateEmail) {
+        const offerAmount = input.salary
+          ? formatCurrencyInline(input.salary, input.currency || "USD")
+          : "";
+        const startDateLabel = input.startDate
+          ? new Date(input.startDate).toLocaleDateString()
+          : "";
+        const outcome = await fireTriggerForCandidateJob({
+          trigger: OFFER_EXTENDED_TRIGGER,
+          candidateRfId: input.candidateRfId,
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          jobTitle: input.title,
+          to: [candidateEmail],
+          offerAmount,
+          startDate: startDateLabel,
+        });
+        await logFire({
+          candidateRfId: input.candidateRfId,
+          actionType: "offer_extended_email",
+          metadata: {
+            jobRfId: input.jobRfId,
+            clientRfId: input.clientRfId,
+            to: candidateEmail,
+            offerAmount,
+            startDate: startDateLabel,
+          },
+          fire: outcome.fire,
+          userId,
+        });
+      }
+    } catch {
+      // Silent — observability, never blocks the offer record.
+    }
+
     return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to record offer." };
@@ -414,6 +459,53 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
 
     revalidatePath(`/candidates/${placement.candidateRfId}`);
     revalidatePath(`/pipeline`);
+
+    // Auto-fire the Hired — Welcome / Next Steps template to the
+    // candidate. Pulls the placement's job + client RF ids back out
+    // of Neon since we only kept candidateRfId on the early select.
+    try {
+      const placementForFire = await prisma.placement.findUnique({
+        where: { id: input.placementId },
+        select: {
+          candidateRfId: true,
+          jobRfId: true,
+          clientRfId: true,
+          expectedStartDate: true,
+        },
+      });
+      const candRfId = placementForFire?.candidateRfId ?? null;
+      if (candRfId != null) {
+        const c = await getRfCandidateByRfId(candRfId);
+        const candidateEmail = c ? normalizeCandidateEmail(c) : "";
+        if (candidateEmail) {
+          const startDateLabel = placementForFire?.expectedStartDate
+            ? placementForFire.expectedStartDate.toLocaleDateString()
+            : "";
+          const outcome = await fireTriggerForCandidateJob({
+            trigger: CANDIDATE_HIRED_WELCOME_TRIGGER,
+            candidateRfId: candRfId,
+            jobRfId: placementForFire?.jobRfId ?? undefined,
+            clientRfId: placementForFire?.clientRfId ?? undefined,
+            to: [candidateEmail],
+            startDate: startDateLabel,
+          });
+          await logFire({
+            candidateRfId: candRfId,
+            actionType: "candidate_hired_welcome_email",
+            metadata: {
+              placementId: input.placementId,
+              to: candidateEmail,
+              startDate: startDateLabel,
+            },
+            fire: outcome.fire,
+            userId,
+          });
+        }
+      }
+    } catch {
+      // Silent — observability, never blocks the start confirmation.
+    }
+
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to confirm start." };
@@ -1146,6 +1238,42 @@ export async function applyCandidateToJob(input: SubmitToJobInput): Promise<Resu
   revalidatePath(`/pipeline`);
   revalidatePath(`/jobs/${input.jobRfId}`);
   revalidatePath(`/applicants`);
+
+  // Auto-fire the Candidate Applied — Confirmation template (if the
+  // recruiter has one active for this trigger). Best-effort: a missing
+  // template / no candidate email / template fire error doesn't fail
+  // the apply itself — the Placement row is already created and the
+  // pipeline state is correct. Same pattern the rejection / offer-
+  // acceptance flows use.
+  try {
+    const c = await getRfCandidateByRfId(input.candidateRfId);
+    const candidateEmail = c ? normalizeCandidateEmail(c) : "";
+    if (candidateEmail) {
+      const outcome = await fireTriggerForCandidateJob({
+        trigger: CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
+        candidateRfId: input.candidateRfId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        jobTitle: input.jobTitle,
+        clientCompanyName: input.clientName,
+        to: [candidateEmail],
+      });
+      await logFire({
+        candidateRfId: input.candidateRfId,
+        actionType: "candidate_applied_confirmation_email",
+        metadata: {
+          jobRfId: input.jobRfId,
+          clientRfId: input.clientRfId,
+          to: candidateEmail,
+        },
+        fire: outcome.fire,
+        userId,
+      });
+    }
+  } catch {
+    // Silent — apply itself succeeded; trigger fire is observability.
+  }
+
   return { ok: true, value: { placementId } };
 }
 
@@ -1931,86 +2059,6 @@ export async function sendOfferAcceptanceEmail(
   }
 }
 
-// ---- Interview Confirmation email ----
-
-export type SendInterviewConfirmationInput = {
-  candidateRfId: number;
-  jobRfId: number;
-  clientRfId: number;
-  jobTitle: string;
-  jobLocation?: string;
-  jobDescription?: string;
-  clientCompanyName: string;
-  scheduledAt: string; // ISO
-};
-
-export async function sendInterviewConfirmationEmail(
-  input: SendInterviewConfirmationInput,
-): Promise<Result<RejectionEmailResult>> {
-  const userId = await requireUserId();
-  if (!userId) return { ok: false, error: "Not signed in." };
-
-  try {
-    const c = await getRfCandidateByRfId(input.candidateRfId);
-    const candidateEmail = c ? normalizeCandidateEmail(c) : "";
-    if (!candidateEmail) {
-      return { ok: true, value: { status: "skipped", reason: "no_recipient" } };
-    }
-    let jobDescription = input.jobDescription?.trim() ? input.jobDescription : "";
-    let jobLocation = input.jobLocation ?? "";
-    if (!jobDescription || !jobLocation) {
-      // Phase 5: job metadata comes from Neon via legacyRfId lookup —
-      // RF fetch retired. description layering: JobOverride > Job.description
-      // > raw.description (mirrors the read order in jobs/[id]/page.tsx).
-      try {
-        const jRow = await prisma.job.findFirst({
-          where: { legacyRfId: input.jobRfId },
-          select: { description: true, locations: true, raw: true },
-        });
-        if (jRow) {
-          if (!jobDescription) {
-            const raw = jRow.raw as { description?: string; job_description?: string } | null;
-            jobDescription = (jRow.description ?? raw?.description ?? raw?.job_description ?? "").toString();
-          }
-          if (!jobLocation) {
-            jobLocation = Array.isArray(jRow.locations) && jRow.locations.length > 0
-              ? jRow.locations.join(", ")
-              : "";
-          }
-        }
-      } catch {
-        // Non-fatal — template renders [Job Description] as empty.
-      }
-    }
-    const outcome = await fireTriggerForCandidateJob({
-      trigger: INTERVIEW_CONFIRMATION_TRIGGER,
-      candidateRfId: input.candidateRfId,
-      jobRfId: input.jobRfId,
-      clientRfId: input.clientRfId,
-      jobTitle: input.jobTitle,
-      jobLocation,
-      jobDescription,
-      clientCompanyName: input.clientCompanyName,
-      to: [candidateEmail],
-    });
-    await logFire({
-      candidateRfId: input.candidateRfId,
-      actionType: "interview_confirmation_email",
-      metadata: {
-        jobRfId: input.jobRfId,
-        clientRfId: input.clientRfId,
-        to: candidateEmail,
-        scheduledAt: input.scheduledAt,
-      },
-      fire: outcome.fire,
-      userId,
-    });
-    return { ok: true, value: toRejectionResult(outcome.fire, candidateEmail) };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Interview confirmation email failed." };
-  }
-}
-
 // ---- Reference Check Request ----
 
 export type RequestReferencesInput = {
@@ -2241,4 +2289,21 @@ export async function moveToApplied(input: StageReversionInput): Promise<Result>
   if (!userId) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
   return flipPlacementStage({ userId, organizationId: org.id, input, toStage: "applied", actionType: "revert_to_applied" });
+}
+
+
+// Server-side currency formatter for trigger fires (the rich
+// formatMoney variants live in client components and can't be
+// imported here). Mirrors the "$120k" condensed form used elsewhere
+// in the app for offer amounts.
+function formatCurrencyInline(amount: number, currency: string): string {
+  if (!Number.isFinite(amount)) return "";
+  const ccy = (currency || "USD").toUpperCase();
+  const symbol = ccy === "USD" ? "$" : `${ccy} `;
+  if (amount >= 1000) {
+    const k = amount / 1000;
+    const fixed = k % 1 === 0 ? k.toFixed(0) : k.toFixed(1);
+    return `${symbol}${fixed}k`;
+  }
+  return `${symbol}${amount}`;
 }

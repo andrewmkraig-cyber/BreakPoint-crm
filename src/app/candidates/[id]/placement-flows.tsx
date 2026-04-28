@@ -35,7 +35,6 @@ import {
   recordPlacement,
   rejectCandidateJob,
   removeCancelledFromJob,
-  sendInterviewConfirmationEmail,
   sendOfferAcceptanceEmail,
   sendRejectionEmail,
   sendSubmittalEmail,
@@ -1498,7 +1497,11 @@ function ScheduleInterviewDialog({
         toast.error("Couldn't schedule interview", { description: result.error });
         return;
       }
-      void sendInterviewConfirmationEmail;
+      // Trigger fires (Client Interview Scheduled + Candidate
+      // Interview Prep) now run inside scheduleInterview itself —
+      // see fireInterviewTriggers in interview-actions.ts. This
+      // call site no longer needs to invoke the legacy single-email
+      // helper, which has been deleted.
       onScheduled({
         interviewId: result.value.interviewId,
         scheduledAtISO: snapped.toISOString(),

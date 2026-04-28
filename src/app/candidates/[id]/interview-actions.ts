@@ -14,6 +14,13 @@ import {
   updateCalendarEvent,
 } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
+import { buildFullMergeValues } from "@/lib/merge-context";
+import { fireTemplatedEmail } from "@/lib/templated-email";
+import { getRfCandidateByRfId } from "@/lib/candidates";
+import {
+  CANDIDATE_INTERVIEW_PREP_TRIGGER,
+  CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
+} from "@/app/settings/template-constants";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
 // Ace-local candidates (candidateId cuid). The Interview model is polymorphic
@@ -312,6 +319,28 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
     });
 
     revalidateForCandidate(ref);
+
+    // Auto-fire the two interview-scheduled templates if the recruiter
+    // has them active. Best-effort: errors here don't fail the schedule
+    // (the Interview row + calendar event are already saved). Skipped
+    // for Ace-native candidates (no rfId) until buildFullMergeValues
+    // grows a cuid path — flagged in the trigger picker description.
+    if (ref.candidateRfId != null) {
+      void fireInterviewTriggers({
+        userId: user.id,
+        userEmail: user.email,
+        userName: user.name,
+        candidateRfId: ref.candidateRfId,
+        jobRfId: input.jobRfId,
+        clientRfId: input.clientRfId,
+        scheduledAtIso: when.toISOString(),
+        durationMin: input.durationMin,
+        type: input.type,
+        location: input.location ?? "",
+        clientAttendees: input.attendees ?? [],
+      });
+    }
+
     return { ok: true, value: { interviewId: interview.id, meetLink, googleEventIdMine } };
   } catch (e) {
     if (googleEventIdMine) {
@@ -764,4 +793,115 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     ok: true,
     value: { googleEventId: created.eventId, meetLink: effectiveMeetLink, meetAccessWarning },
   };
+}
+
+
+// Best-effort fire of the two Schedule-Interview templates. Runs as a
+// fire-and-forget tail off scheduleInterview's success path — the
+// recruiter's interview already saved + the calendar event exists, so
+// a missing template / no recipient / Anthropic timeout can't corrupt
+// pipeline state. Returns nothing; observability lives on
+// ActionLog / ActivityLog (the schedule_interview rows already there).
+async function fireInterviewTriggers(args: {
+  userId: string;
+  userEmail: string;
+  userName: string | null;
+  candidateRfId: number;
+  jobRfId: number;
+  clientRfId: number;
+  scheduledAtIso: string;
+  durationMin: number;
+  type: InterviewType;
+  location: string;
+  clientAttendees: InterviewAttendee[];
+}): Promise<void> {
+  try {
+    const candidate = await getRfCandidateByRfId(args.candidateRfId);
+    const candidateEmail = candidate
+      ? Array.isArray(candidate.email)
+        ? candidate.email[0] ?? ""
+        : candidate.email ?? ""
+      : "";
+
+    // Build merge values once and reuse for both fires. Override the
+    // Interview-scoped fields (date, duration, type, location) since
+    // buildFullMergeValues only knows about candidate/job/client rows.
+    const interviewDateLabel = formatInterviewDateForLabel(args.scheduledAtIso);
+    const interviewDurationLabel = `${args.durationMin} min`;
+    const interviewTypeLabel = formatInterviewTypeLabel(args.type);
+
+    const baseValues = await buildFullMergeValues({
+      candidateRfId: args.candidateRfId,
+      jobRfId: args.jobRfId,
+      clientRfId: args.clientRfId,
+    });
+    const values = {
+      ...baseValues,
+      interviewDateTime: interviewDateLabel,
+      interviewDuration: interviewDurationLabel,
+      interviewType: interviewTypeLabel,
+      interviewLocation: args.location,
+    };
+
+    // Candidate prep: only fires when we have a candidate email.
+    if (candidateEmail) {
+      await fireTemplatedEmail({
+        trigger: CANDIDATE_INTERVIEW_PREP_TRIGGER,
+        userId: args.userId,
+        fromEmail: args.userEmail,
+        fromName: args.userName ?? null,
+        to: [candidateEmail],
+        cc: [],
+        values,
+        mode: "send",
+      });
+    }
+
+    // Client confirmation: fires to whichever client attendees the
+    // recruiter picked at schedule time. We dedupe + skip the
+    // candidate's own address in case it leaked into the attendees
+    // list.
+    const seen = new Set<string>();
+    const clientTo: string[] = [];
+    for (const a of args.clientAttendees) {
+      const email = (a.email ?? "").trim().toLowerCase();
+      if (!email) continue;
+      if (email === candidateEmail.toLowerCase()) continue;
+      if (seen.has(email)) continue;
+      seen.add(email);
+      clientTo.push(a.email);
+    }
+    if (clientTo.length > 0) {
+      await fireTemplatedEmail({
+        trigger: CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
+        userId: args.userId,
+        fromEmail: args.userEmail,
+        fromName: args.userName ?? null,
+        to: clientTo,
+        cc: [],
+        values,
+        mode: "send",
+      });
+    }
+  } catch {
+    // Silent — instrumentation, never blocks the schedule itself.
+  }
+}
+
+function formatInterviewDateForLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function formatInterviewTypeLabel(t: InterviewType): string {
+  if (t === "phone_screen") return "Phone screen";
+  if (t === "video") return "Video";
+  return "On-site";
 }
