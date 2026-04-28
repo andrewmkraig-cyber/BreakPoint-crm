@@ -21,12 +21,18 @@ const PAGE_SIZE = 25;
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams?: { stage?: string; q?: string; page?: string };
+  searchParams?: { stage?: string; q?: string; page?: string; clientId?: string };
 }) {
   const stage: Stage = (STAGES as string[]).includes(searchParams?.stage ?? "")
     ? (searchParams!.stage as Stage)
     : "submitted";
   const q = (searchParams?.q ?? "").trim();
+  // ?clientId=<cuid> filter — emitted by the client detail page's clickable
+  // stat strip. When set, only Placement-rooted rows whose Placement.clientId
+  // matches survive; the RF-flat-pipeline rows are dropped because they
+  // aren't tracked in Neon Placement (consistent with how the client detail
+  // counters compute, so the per-client counts match end-to-end).
+  const clientFilter = searchParams?.clientId?.trim() || null;
   const pageParam = parseInt(searchParams?.page ?? "1", 10);
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
@@ -126,6 +132,9 @@ export default async function PipelinePage({
     for (const p of placements) {
       // Cancelled placements are excluded from the pipeline view entirely.
       if (p.stage === "cancelled") continue;
+      // Per-client filter: drop placements whose clientId doesn't match.
+      // Skipped via early-continue so neither counts nor rows include them.
+      if (clientFilter && p.clientId !== clientFilter) continue;
       const key = placementKey(p);
       seen.add(key);
       const stageName = p.stage as Stage;
@@ -176,6 +185,11 @@ export default async function PipelinePage({
 
     for (const r of flat) {
       if (!isPipelineStage(r.bucket)) continue;
+      // When a clientId filter is active, RF-flat rows are excluded
+      // entirely (they aren't tracked in Neon Placement so we can't
+      // verify their client linkage; counts on the client detail page
+      // come from Placement only, so this keeps the math consistent).
+      if (clientFilter) continue;
       // flat entries are always RF numeric on both sides.
       const key = `rf:${r.candidateId}|rf:${r.jobId}`;
       if (seen.has(key)) continue;

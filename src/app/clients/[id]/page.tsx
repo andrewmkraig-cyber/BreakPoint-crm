@@ -10,12 +10,11 @@ import {
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
-  buildJobCounts,
   canonicalStage,
   emptyJobCounts,
+  type JobPipelineCounts,
   type RFClient,
 } from "@/lib/rf-payload-shapes";
-import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getClientByIdentifier } from "@/lib/clients";
 import { cn } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
@@ -67,8 +66,7 @@ export default async function ClientDetailPage({
   // Agreements / benefits are keyed by the legacy numeric id (Phase 5
   // drop). Ace-native Clients without a legacyRfId have no agreements
   // or benefits yet; skip the query rather than fetching with a sentinel.
-  const [candidates, contacts, agreements, benefits, benefitsFiles, gmailTags] = await Promise.all([
-    getRfCandidatesForOrg(),
+  const [contacts, agreements, benefits, benefitsFiles, gmailTags] = await Promise.all([
     legacyRfId != null
       ? prisma.contact.findMany({
           where: { OR: [{ clientId: client.id }, { client: { legacyRfId } }] },
@@ -211,7 +209,51 @@ export default async function ClientDetailPage({
         break;
     }
   }
-  const jobCountsById = buildJobCounts(candidates);
+  // Per-job row counters: another Prisma groupBy keyed by (jobRfId, stage)
+  // so each job's row in the Jobs table reads from canonical Neon stages
+  // rather than RFCandidate.jobs[]. Same pattern as the strip above.
+  // Ace-native Jobs (jobRfId null) aren't in the openJobs/closedJobs RF
+  // arrays anyway so excluding them here matches the table's data source.
+  const jobPlacementGroups = await prisma.placement.groupBy({
+    by: ["jobRfId", "stage"],
+    where: {
+      clientId: client.id,
+      organizationId: client.organizationId,
+      jobRfId: { not: null },
+    },
+    _count: { _all: true },
+  });
+  const jobCountsById = new Map<number, JobPipelineCounts>();
+  for (const g of jobPlacementGroups) {
+    if (g.jobRfId == null) continue;
+    const bucket = canonicalStage(g.stage);
+    const n = g._count._all;
+    const pc = jobCountsById.get(g.jobRfId) ?? emptyJobCounts();
+    switch (bucket) {
+      case "submitted":
+        pc.submitted += n;
+        pc.totalActive += n;
+        break;
+      case "interviewing":
+        pc.interviewing += n;
+        pc.totalActive += n;
+        break;
+      case "offer":
+        pc.offer += n;
+        pc.totalActive += n;
+        break;
+      case "pending_start":
+        pc.pendingStart += n;
+        pc.totalActive += n;
+        break;
+      case "hired":
+        pc.hired += n;
+        break;
+      default:
+        break;
+    }
+    jobCountsById.set(g.jobRfId, pc);
+  }
 
   const openJobs = Array.isArray(raw?.open_jobs) ? raw!.open_jobs! : [];
   const closedJobs = Array.isArray(raw?.closed_jobs) ? raw!.closed_jobs! : [];
@@ -250,11 +292,12 @@ export default async function ClientDetailPage({
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Stat label="Submitted" value={counts.submitted} tone="brand" />
-        <Stat label="Interviewing" value={counts.interviewing} tone="blue" />
-        <Stat label="Hired" value={counts.hired} tone="emerald" />
-        <Stat label="Open Jobs" value={openJobs.length} tone="muted" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <Stat label="Submitted" value={counts.submitted} tone="brand" href={`/pipeline?clientId=${client.id}&stage=submitted`} />
+        <Stat label="Interviewing" value={counts.interviewing} tone="blue" href={`/pipeline?clientId=${client.id}&stage=interviewing`} />
+        <Stat label="Offer" value={counts.offer} tone="purple" href={`/pipeline?clientId=${client.id}&stage=offer`} />
+        <Stat label="Pending Start" value={counts.pendingStart} tone="amber" href={`/pipeline?clientId=${client.id}&stage=pending_start`} />
+        <Stat label="Hired" value={counts.hired} tone="emerald" href={`/pipeline?clientId=${client.id}&stage=hired`} />
       </div>
 
       <Tabs
@@ -317,6 +360,8 @@ export default async function ClientDetailPage({
                       <th className="px-5 py-2.5 font-medium">Status</th>
                       <th className="px-5 py-2.5 text-right font-medium">Submitted</th>
                       <th className="px-5 py-2.5 text-right font-medium">Interviewing</th>
+                      <th className="px-5 py-2.5 text-right font-medium">Offer</th>
+                      <th className="px-5 py-2.5 text-right font-medium">Pending Start</th>
                       <th className="px-5 py-2.5 text-right font-medium">Hired</th>
                     </tr>
                   </thead>
@@ -350,6 +395,12 @@ export default async function ClientDetailPage({
                           </td>
                           <td className="px-5 py-2.5 text-right">
                             <JobCountPill value={c.interviewing} tone="interviewing" />
+                          </td>
+                          <td className="px-5 py-2.5 text-right">
+                            <JobCountPill value={c.offer} tone="offer" />
+                          </td>
+                          <td className="px-5 py-2.5 text-right">
+                            <JobCountPill value={c.pendingStart} tone="pendingStart" />
                           </td>
                           <td className="px-5 py-2.5 text-right">
                             <JobCountPill value={c.hired} tone="hired" />
@@ -525,28 +576,50 @@ function Detail({ label, icon, children }: { label: string; icon?: React.ReactNo
   );
 }
 
-function Stat({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "brand" | "blue" | "emerald" | "muted" }) {
+function Stat({
+  label,
+  value,
+  tone,
+  href,
+}: {
+  label: string;
+  value: string | number;
+  tone: "brand" | "blue" | "purple" | "amber" | "emerald";
+  href?: string;
+}) {
   const cls = {
-    default: "text-court-fg",
     brand: "text-brand-dark",
     blue: "text-blue-700",
+    purple: "text-purple-700",
+    amber: "text-amber-700",
     emerald: "text-emerald-700",
-    muted: "text-court-fg-muted",
   }[tone];
-  const effective = (typeof value === "number" && value === 0) ? "text-court-fg-muted/60" : cls;
-  return (
-    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm">
+  const effective = typeof value === "number" && value === 0 ? "text-court-fg-muted/60" : cls;
+  const inner = (
+    <>
       <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
       <div className={cn("font-serif text-4xl font-extrabold leading-none tracking-tight", effective)}>{value}</div>
-    </div>
+    </>
   );
+  const wrapperCls =
+    "flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm";
+  if (href) {
+    return (
+      <Link href={href} className={cn(wrapperCls, "transition hover:border-court-accent hover:shadow-md")}>
+        {inner}
+      </Link>
+    );
+  }
+  return <div className={wrapperCls}>{inner}</div>;
 }
 
-function JobCountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "hired" }) {
+function JobCountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "offer" | "pendingStart" | "hired" }) {
   if (!value) return <span className="text-court-fg-muted/60">0</span>;
   const cls = {
     submitted: "bg-brand-tint text-brand-dark",
     interviewing: "bg-blue-50 text-blue-700",
+    offer: "bg-purple-50 text-purple-700",
+    pendingStart: "bg-amber-50 text-amber-700",
     hired: "bg-emerald-50 text-emerald-700",
   }[tone];
   return (

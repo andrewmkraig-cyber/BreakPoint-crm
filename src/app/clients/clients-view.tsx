@@ -26,6 +26,7 @@ export type ClientCard = {
   submittedCount: number;
   interviewingCount: number;
   offerCount: number;
+  pendingStartCount: number;
   hiredCount: number;
 };
 
@@ -235,10 +236,11 @@ function Card({ card }: { card: ClientCard }) {
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-4 gap-2 rounded-lg bg-court-surface-subtle/60 p-3 text-center">
+      <div className="mt-4 grid grid-cols-5 gap-2 rounded-lg bg-court-surface-subtle/60 p-3 text-center">
         <Stat label="Submitted" value={card.submittedCount} tone="brand" />
         <Stat label="Interviewing" value={card.interviewingCount} tone="blue" />
         <Stat label="Offer" value={card.offerCount} tone="purple" />
+        <Stat label="Pending Start" value={card.pendingStartCount} tone="amber" />
         <Stat label="Hired" value={card.hiredCount} tone="emerald" />
       </div>
 
@@ -253,11 +255,12 @@ function Card({ card }: { card: ClientCard }) {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: "brand" | "blue" | "purple" | "emerald" }) {
+function Stat({ label, value, tone }: { label: string; value: number; tone: "brand" | "blue" | "purple" | "amber" | "emerald" }) {
   const cls = {
     brand: "text-brand-dark",
     blue: "text-blue-700",
     purple: "text-purple-700",
+    amber: "text-amber-700",
     emerald: "text-emerald-700",
   }[tone];
   return (
