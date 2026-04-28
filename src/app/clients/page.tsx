@@ -2,9 +2,11 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { ClientsView, type ClientCard } from "@/app/clients/clients-view";
-import { buildClientCounts, emptyJobCounts, canonicalStage } from "@/lib/rf-payload-shapes";
+import { canonicalStage, emptyJobCounts, type JobPipelineCounts } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getClientsForOrg } from "@/lib/clients";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -25,19 +27,60 @@ export default async function ClientsPage({
   let error: string | null = null;
 
   try {
-    const [clients, candidates] = await Promise.all([
+    const [clients, candidates, org] = await Promise.all([
       getClientsForOrg(),
       getRfCandidatesForOrg(),
+      getCurrentOrg(),
     ]);
-    // Pipeline counts are keyed by RF client_company_id. Ace-native
-    // Clients have no legacyRfId yet, so they fall through to zero
-    // counts — the right answer until a Candidate/Placement lands on
-    // them post-Phase-2.
-    const counts = buildClientCounts(candidates);
+    // Pipeline counts read from Neon Placement.stage (canonical post-
+    // Phase-5), one groupBy across the whole tenant rather than walking
+    // every candidate's RF jobs[] array. Filters out null clientId
+    // rows (the orphan-row class fixed by the 2026-04-28 backfill;
+    // safety net here in case any new ones land).
+    const placementGroups = await prisma.placement.groupBy({
+      by: ["clientId", "stage"],
+      where: { organizationId: org.id, clientId: { not: null } },
+      _count: { _all: true },
+    });
+    const counts = new Map<string, JobPipelineCounts>();
+    for (const g of placementGroups) {
+      if (!g.clientId) continue;
+      const bucket = canonicalStage(g.stage);
+      const n = g._count._all;
+      const pc = counts.get(g.clientId) ?? emptyJobCounts();
+      switch (bucket) {
+        case "submitted":
+          pc.submitted += n;
+          pc.totalActive += n;
+          break;
+        case "interviewing":
+          pc.interviewing += n;
+          pc.totalActive += n;
+          break;
+        case "offer":
+          pc.offer += n;
+          pc.totalActive += n;
+          break;
+        case "pending_start":
+          pc.pendingStart += n;
+          pc.totalActive += n;
+          break;
+        case "hired":
+          pc.hired += n;
+          break;
+        default:
+          break;
+      }
+      counts.set(g.clientId, pc);
+    }
+    // recentlyPlacedClientIds still reads from RF payload — same
+    // RF-leak class as the counters were before, queued as a follow-up.
+    // Keying by legacyRfId here keeps the existing Active/Inactive
+    // logic intact while the counters move to Neon.
     const recentPlacementIds = recentlyPlacedClientIds(candidates);
     all = clients.map((c) => {
       const legacyId = c.legacyRfId;
-      const pc = legacyId != null ? counts.get(legacyId) ?? emptyJobCounts() : emptyJobCounts();
+      const pc = counts.get(c.id) ?? emptyJobCounts();
       const hadRecentPlacement = legacyId != null && recentPlacementIds.has(legacyId);
       const hasOpenJob = c.openJobsCount > 0;
       const website = c.domain ? (c.domain.startsWith("http") ? c.domain : `https://${c.domain}`) : null;
