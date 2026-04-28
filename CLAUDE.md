@@ -38,10 +38,11 @@ Report counts before writing any code. If counts increased from baseline, flag i
 ## Code Prompt Rules
 - Max 3 items per prompt. Never queue more.
 - Read every file before editing it. Always.
-- Browser-verify before commit. State the exact URL. Report what you saw on screen.
+- Always commit and push immediately after build succeeds (npm run build exits 0).
+- Never hold changes waiting for browser verification.
+- Browser verification is Andrew's responsibility after deploy, not a gate before push.
 - Single terminal only. No parallel Claude Code sessions.
 - Always end with: git push origin main
-- Never commit untested code.
 - Dual-file awareness: when a feature spans two files, name both explicitly before editing.
 
 ## After Compaction
