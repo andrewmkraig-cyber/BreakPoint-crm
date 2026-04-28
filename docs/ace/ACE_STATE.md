@@ -1,11 +1,56 @@
 # ACE_STATE.md
-Last updated: 2026-04-28 - End of Ace 26.0
+Last updated: 2026-04-28 - End of Ace 27.0
 
 ## Current Status
-Current Version: Ace 26.0
-Last Session: Ace 26.0 - April 28, 2026
+Current Version: Ace 27.0
+Last Session: Ace 27.0 - April 28, 2026
 Live at: ace.breakpointtalent.com
-Current Status: Ace 26.0 ships closed. Phone Tab Phase 3 complete; Clients page redesign complete; notification toast redesign complete; CLAUDE.md root rules file in place. Ready to start Ace 27.0.
+Current Status: Ace 27.0 ships closed. Toast cleanup, full mail revamp, full phone revamp, Night Court mode, brand mark + favicon revamp, candidate / client / job UX sweep, profile contact-card dropdown, design system rebuild all shipped today. All open Ace 26.0 known issues closed. Ready to start Game Plan Phase 1.
+
+## What Shipped in Ace 27.0 (2026-04-28)
+- Toast fixes: MessageSquare icon swap, removed redundant "· Text" trailing label, Reply button contrast lifted across themes
+- Compose FAB hidden on /settings (Settings has no surface that benefits from the launcher)
+- ALL CAPS toast subtitle bug fixed — uppercase rule scoped tighter so it no longer leaks into eyebrow + subtitle slots
+- Settings Appearance section laid out as two-column at desktop widths (Court Mode + Notification Preferences side-by-side)
+- Mail thread HTML rendering fix — sanitizer preserves email-layout style attrs and table cell attrs (cellpadding / align / valign / width / height / rowspan / colspan); allowedStyles whitelists a layout-only subset; signature avatars + Quo-style avatar+body layouts render correctly. MessageBlock attaches img.onerror handlers to collapse failed remote images so a broken CDN banner stops painting an empty rectangle
+- /mail full revamp:
+  - Three-pane layout converted to CSS-grid + drag handles between panes; widths persist (ace-mail-column-widths)
+  - AppShell sidebar drag-resize + persistence (ace-sidebar-width)
+  - Inbox card slimmed to a normal-height nav row (was border-2 / py-4 / h-6 icon)
+  - Sidebar label list spacing + font weight bumped (space-y-1, font-medium / semibold on active)
+  - Synthetic parent labels (Admin / BD / Candidates) now match real labels' color + weight
+  - Sidebar section header "Communications" renamed to "Inbox"
+  - Page-header "Compose new email" button on /mail matching primary-action style on /jobs / /candidates / /clients (routes through useComposerManager)
+  - Sidebar/content gap tightened across the app (main left padding pl-3 / md:pl-4)
+- Multi-message thread dropdown — pick which message in the thread the toolbar's Reply / Reply All / Forward act on. Defaults to latest; selecting an older message routes through that one's recipients + quoted body. Per-message Reply / Reply All / Forward buttons also in each MessageBlock header. Composer state resets on detail.id change (defensive against stale composerMode across thread switches)
+- Gmail label creation from Ace — standalone "+ New label" entry in the labels sidebar (create without applying to a thread) AND "New label…" inside the Move To dropdown (create-and-apply). Both sync to Gmail via /api/mail/labels (gmail.modify scope)
+- CC + BCC fixes in mail composer: + Contact picker button + dropdown removed (was overlaying the CC + Subject rows and eating clicks); typeahead now folds pickerOptions in so both fields accept typed addresses AND dropdown picks
+- /phone full revamp:
+  - Empty state replaced with a working dial pad — clickable 0-9 / * / # buttons, keyboard input, US-formatted display, Call + Text dispatch via usePhonePanels with candidateId=null
+  - FAB phone search now offers an "ad-hoc number" row when the recruiter types ≥7 digits not matching a saved contact (text/call without first creating a contact)
+  - Notes person-search rebuilt: ANDs whitespace-split tokens across firstName / lastName / email / phone (full-name search now works); phone added with digits + raw match. Quick Note placeholder reworded to "Search in Ace"
+- TopBar avatar contact-card dropdown — removed standalone name + email block + sign-out button; click avatar opens compact dropdown with email / work number / LinkedIn, each with a copy button (and ext-link on LinkedIn). Click outside or Escape dismisses
+- Candidate page UX improvements (full sweep)
+- Job page enhancements (additional polish on top of 26.0's salary-range + condensed Apply-to-Job dropdown)
+- Client page FAB prefill fix
+- Experience section auto-summary on candidate profile
+- DOCX resume preview
+- Full design system rebuild
+- Branding + identity refresh
+- Stage tag on templates
+- Merged bracket + double-curly merge field styles in legacy and new templates
+- City / state comma formatting fix across the app
+- Replaced dead Anthropic model id with claude-sonnet-4-6
+- **Night Court mode** — fourth Court Mode (charcoal #141414 body / #1C1C1C surface; brand green #7BB85B as accent only). globals.css token block + court-mode.tsx surface union extension + Settings picker rebuilt as card grid with two-tone swatches; accent dot on the Night swatch telegraphs "green here is accent only"
+- **Favicon + brand mark revamp** — Serve Arc lockup (black ball + green serve trajectory + green ball at end). public/ace-mark.svg, ace-mark-dark.svg, favicon-16/32/180.png, apple-touch-icon.png, multi-res favicon.ico. BrandMark wordmark moved to Playfair 22px with italic "by BreakPoint Talent" subline that recolors per surface; lifted on grass for legibility against the dark-green sidebar
+- Sidebar bottom-left "BreakPoint Talent / Solon, OH · Est. 2026" footer removed
+- Dashboard left padding fixed (dropped legacy -mx-2 / md:-mx-4 negative margins so it inherits the same gutter as every other page)
+
+## Known Issues / Still In Progress (carry into Ace 28.0)
+- (none open — all Ace 26.0 known issues closed in 27.0)
+
+## Next Task for Ace 28.0
+**Game Plan Phase 1** — Add web search tool to src/app/api/ai-workspace/route.ts. Claude auto-searches when the prompt requires it. See ACE_ROADMAP.md "Game Plan phases" under Week 2 for the full Phase 1-6 sequence (web search → Find Matches → external + internal blend → tagged-email context → My Writing Style setting → sidebar Claude panel).
 
 ## What Shipped in Ace 26.0 (2026-04-28)
 - canonicalStage root cause fix: client card counters for pending_start and cancelled now read from Neon Placement.stage (canonical) instead of leaking through the RF stage_name string. The bucket-driven counts on client detail are correct end-to-end now

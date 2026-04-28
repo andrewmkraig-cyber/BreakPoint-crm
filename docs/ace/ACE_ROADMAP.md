@@ -1,24 +1,43 @@
 # Ace Roadmap
 
-## In Progress / Needs Fix (top priority — Ace 27.0 candidate)
+## In Progress / Needs Fix (top priority — Ace 28.0 candidate)
 
-These are known issues from Ace 26.0 that didn't make the close. Pull off the top of this stack before greenfield work.
+All six Ace 26.0 carry-overs (toast icon, "· Text" label, Reply contrast, FAB on Settings, ALL CAPS subtitle, Settings two-column layout) closed in Ace 27.0. Open issues for 28.0:
 
-- Text toast icon showing MessageSquare instead of Phone (regression after the toast chrome refactor — should match the Phone icon used on the Phone sidebar nav).
-- Text toast showing "· Text" trailing label that should be removed (eyebrow already says SMS context, the dot-Text suffix is redundant).
-- Reply button low contrast on some Court Mode themes — needs token rebind so it reads against tinted backgrounds.
-- Compose FAB still visible on /settings page (should be hidden — Settings has no surface that benefits from the launcher).
-- Toast subtitle text rendering in ALL CAPS in some themes — likely a CSS uppercase rule applying too broadly to the eyebrow + subtitle slots.
-- Settings appearance section not yet matching Claude Design two-column layout (Court Mode + Notification Preferences should sit side-by-side at desktop widths).
+- (none open — all 26.0 carry-overs closed in 27.0)
 
-## Ace 27.0 — Next up (pick one)
+## Ace 28.0 — Next up (Game Plan phases — Week 2 active work)
 
-Jobs Page Enhancements are done as of Ace 26.0. Next item is one of:
+Game Plan is the active workstream. Six-phase sequence; ship in order:
 
-1. **Toast fixes (in progress)** — close out the six known issues above so the notification system reads clean across all themes.
-2. **CSV Import/Export** — bulk candidate / contact ingest path that's been on the backlog since Week 2.
+1. **Phase 1** — Add web search tool to `src/app/api/ai-workspace/route.ts`. Claude auto-searches when the prompt requires it.
+2. **Phase 2** — Find Matches button on the job + client Game Plan surfaces. Queries Neon's candidate database; surfaces top fits by title, skills, location, comp.
+3. **Phase 3** — Web search on job + client Game Plan alongside internal matching. Salary benchmarks, company intel, market data.
+4. **Phase 4** — Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context.
+5. **Phase 5** — "My Writing Style" setting. New field in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
+6. **Phase 6** — Sidebar Claude panel — persistent chat inside Ace with web search + full Ace data access.
 
-Andrew confirms priority at session start.
+Phases 1-3 are the immediate next ships. Phases 5 + 6 fold in / replace the older standalone "Ace Assistant Tab" + "Game Plan — Full DB + Web Access" Week 2 entries below.
+
+## Completed - Ace 27.0 (April 28, 2026)
+
+All shipped 2026-04-28. See `docs/ace/ACE_STATE.md` for the full per-item log.
+
+- Toast fixes (MessageSquare → Phone, dropped "· Text" label, Reply button contrast lifted across themes), Compose FAB hidden on /settings, ALL CAPS subtitle leak fixed, Settings Appearance two-column layout — all six 26.0 carry-overs closed.
+- Mail thread HTML rendering fix — sanitizer now preserves email-layout style attrs + table cell attrs; allowedStyles whitelists a layout-only subset; img.onerror handlers collapse failed remote images so broken CDN banners stop reserving empty rectangles.
+- /mail full revamp — three-pane CSS-grid + drag handles + width persistence (ace-mail-column-widths); AppShell sidebar drag-resize + persistence (ace-sidebar-width); Inbox card slimmed; label list spacing + font weight bumped; synthetic parent labels match real labels' weight; "Communications" header renamed to "Inbox"; page-header "Compose new email" button matches /jobs / /candidates / /clients style; sidebar/content gap tightened across the app.
+- Multi-message thread dropdown + per-message Reply / Reply All / Forward buttons. Composer state resets on detail.id change.
+- Gmail label creation from Ace — standalone "+ New label" entry in labels sidebar AND "New label…" inside Move To dropdown. Both sync via /api/mail/labels (gmail.modify scope).
+- CC + BCC fixes — removed the "+ Contact" picker that was overlaying CC + Subject rows and eating clicks; typeahead now folds in pickerOptions.
+- /phone full revamp — dial pad replaces empty state (clickable + keyboard input, US-formatted display, Call + Text dispatch); FAB phone search offers an "ad-hoc number" row when ≥7 typed digits don't match a saved contact; notes person-search rebuilt (multi-token AND across firstName / lastName / email / phone); Quick Note placeholder reworded to "Search in Ace".
+- TopBar avatar contact-card dropdown (email / work number / LinkedIn URL with copy buttons); standalone name + email block + sign-out button removed.
+- Candidate page UX sweep, Job page additional polish, Client page FAB prefill fix, Experience auto-summary, DOCX resume preview.
+- Design system rebuild + branding refresh.
+- Stage tag on templates; merged bracket + double-curly merge field styles; city / state comma formatting fix; dead Anthropic model id replaced with claude-sonnet-4-6.
+- **Night Court mode** — fourth Court Mode; charcoal surface, brand green as accent only; Settings picker rebuilt as card grid with two-tone swatches and accent dot on Night.
+- **Favicon + brand mark revamp** — Serve Arc lockup; full favicon set; Playfair 22px wordmark with italic "by BreakPoint Talent" subline that recolors per surface (lifted on grass for legibility).
+- Sidebar bottom-left "BreakPoint Talent / Solon, OH · Est. 2026" footer removed.
+- Dashboard left padding fixed (dropped legacy -mx-2 / md:-mx-4 so it inherits the same gutter as every other page).
 
 ## Completed - Ace 26.0 (April 28, 2026)
 
@@ -274,6 +293,8 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 - Skip Outreach toggle on candidates with stage indicators
 
 ### Future (post-18.0) backlog
+- **Calendar page** — dedicated /calendar surface (month / week / day views, Google Calendar read-write sync, create-meeting modal). Promoted out of Week 3 into a standalone backlog entry per Ace 27.0 close.
+- **Job page full revamp** — deeper redesign beyond the salary-range column + condensed Apply-to-Job dropdown shipped 26.0 / 27.0. Scope TBD.
 - MPC candidate features
 - Daily industry briefing
 - Closing sheet templates with call transcription auto-fill (Krispcall, Google Meet, Teams)
@@ -291,20 +312,32 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 - Client Strategy tab (Claude chat workspace per client)
 - Cosmetic polish batch: Generate with Claude button visibility on Clay Court dark mode (currently invisible), plus any other visual polish surfaced during 18.0 testing. Bundle with Week 4 UX Polish Batch.
 
-## Recovered Backlog (audit 2026-04-25)
+## Recovered Backlog (audit 2026-04-25, refreshed end of Ace 27.0)
 
-### Week 2 (remaining order — confirmed end of Ace 26.0)
+### Week 2 (remaining order — confirmed end of Ace 27.0)
 
-1. **Toast fixes (in progress)** — see "In Progress / Needs Fix" at top of file.
-2. **CSV Import/Export** — bulk candidate / contact ingest path.
-3. **Candidates Page UX** — multi-select, prev/next, keyboard nav (left/right arrow keys when not focused on an input). Prev/Next respects current list/search filter and sort order. Also applies when navigating from global header search results.
-4. **Settings Fix Generator** — small utility surface inside Settings to repair common data issues without touching the DB by hand.
-5. **Daily Industry Briefing + Word of the Day** — Vercel Cron 6 AM EST. Daily public-accounting industry brief + a vocabulary card delivered in-app.
-6. **Ace Assistant Tab** — sidebar Claude chat panel with read access to the Neon DB. Internal use only. Andrew asks recruiting questions (comp benchmarks, company research, market intel, candidate talking points), Claude answers using both the live DB and web search.
-7. **Game Plan — Full DB + Web Access** — Game Plan workspace gets full DB read access + web search so the "Find Matches" experience covers both internal records (candidates / clients) and external sources (Indeed / ZipRecruiter / SimplyHired / company career pages).
-8. **Market Insights Tab** — Tab 6 on client detail. Generate market briefs inline. Save brief history per client. Pick recipients from contacts. Compose / auto-generate email, attach PDF, send from Ace.
-9. **BD Tab + Prospects Database** — dedicated /bd surface and a Prospect table. Stores company / contact / title / email / LinkedIn / triggering job posting per prospect, sequence status, last touch.
-10. **BD Automation Engine** — Daily 6 AM cron. Step 1 (Indeed API): scan last-24hr jobs, filter for public accounting firms by company name (CPA / Associates / Partners / Accounting / Advisory / Group) OR JD signals (audit / tax / public accounting). Discard staffing agencies and corporate in-house. Output 20 companies/day. Step 2 (Apollo API): one best contact per company — Managing Partner, Tax Partner, Controller, CFO, or HR Director. Step 3: Write each prospect to the Prospect table. Step 4: Auto-enroll in email sequence using warmed burner domains. All sending and tracking in Ace, not Apollo. BD Settings screen for keywords / titles / limit / sequence. BD feed showing overnight additions and sequence status. Apollo is data source only. Replaces Andrew's manual BD flow.
+**Active workstream: Game Plan phases (1-6).** These are the immediate next ships and supersede the older standalone "Ace Assistant Tab" + "Game Plan — Full DB + Web Access" entries below.
+
+1. **Game Plan Phase 1** — Add web search tool to `src/app/api/ai-workspace/route.ts`. Claude auto-searches when the prompt requires it.
+2. **Game Plan Phase 2** — Find Matches button on the job + client Game Plan. Queries the Neon candidate database; surfaces top fits by title, skills, location, comp.
+3. **Game Plan Phase 3** — Web search on the job + client Game Plan alongside internal matching. Salary benchmarks, company intel, market data.
+4. **Game Plan Phase 4** — Feed last 5 tagged emails from the candidate / client into the Game Plan prompt as context.
+5. **Game Plan Phase 5** — "My Writing Style" setting. New field in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
+6. **Game Plan Phase 6** — Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access. Replaces / fulfills the older "Ace Assistant Tab" entry.
+
+**Other Week 2 items (carry forward after Game Plan phases):**
+
+7. **CSV Import/Export** — bulk candidate / contact ingest path.
+8. **Candidates Page UX** — multi-select, prev/next, keyboard nav (left/right arrow keys when not focused on an input). Prev/Next respects current list/search filter and sort order. Also applies when navigating from global header search results. (Partial sweep landed in Ace 27.0; remaining items: full keyboard nav + prev/next from header search.)
+9. **Settings Fix Generator** — small utility surface inside Settings to repair common data issues without touching the DB by hand.
+10. **Daily Industry Briefing + Word of the Day** — Vercel Cron 6 AM EST. Daily public-accounting industry brief + a vocabulary card delivered in-app.
+11. **Market Insights Tab** — Tab 6 on client detail. Generate market briefs inline. Save brief history per client. Pick recipients from contacts. Compose / auto-generate email, attach PDF, send from Ace.
+12. **BD Tab + Prospects Database** — dedicated /bd surface and a Prospect table. Stores company / contact / title / email / LinkedIn / triggering job posting per prospect, sequence status, last touch.
+13. **BD Automation Engine** — Daily 6 AM cron. Step 1 (Indeed API): scan last-24hr jobs, filter for public accounting firms by company name (CPA / Associates / Partners / Accounting / Advisory / Group) OR JD signals (audit / tax / public accounting). Discard staffing agencies and corporate in-house. Output 20 companies/day. Step 2 (Apollo API): one best contact per company — Managing Partner, Tax Partner, Controller, CFO, or HR Director. Step 3: Write each prospect to the Prospect table. Step 4: Auto-enroll in email sequence using warmed burner domains. All sending and tracking in Ace, not Apollo. BD Settings screen for keywords / titles / limit / sequence. BD feed showing overnight additions and sequence status. Apollo is data source only. Replaces Andrew's manual BD flow.
+
+**Replaced / folded into the Game Plan phases above:**
+- ~~Ace Assistant Tab~~ → Game Plan Phase 6 (sidebar Claude panel with web search + full Ace data access).
+- ~~Game Plan — Full DB + Web Access~~ → Game Plan Phases 1-3 + 4 (web search + Find Matches + tagged-email context).
 
 #### Already shipped from earlier Week 2 plan:
 - Phone Tab Phase 1 + 2 (Ace 24.0).
@@ -368,6 +401,9 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 ### Interview Scheduler Redesign
 
 17 fields from Ace 17 chat.
+
+- **Edit interview** — modify date, time, interviewers, and location on an existing scheduled interview. Updates the Neon row, refreshes the Google Calendar event, and re-sends notifications to the client and candidate so they pick up the change.
+- **Cancel / reschedule flow** — Cancel exposes an optional reason field; reschedule opens the scheduler pre-populated with the existing interview's data so Andrew only edits what changed. Both actions push updated notifications to the client and candidate.
 
 ### Template Library Enhancements
 
