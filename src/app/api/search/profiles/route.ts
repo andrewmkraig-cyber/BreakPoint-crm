@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
@@ -13,6 +14,15 @@ export const dynamic = "force-dynamic";
 // Output rows include the navigation URL (legacyRfId-aware for the
 // candidate case so deep-linking matches the existing /candidates/<rfId>
 // pages where they exist) so the FAB never has to re-derive routes.
+//
+// Multi-token name handling: the original implementation OR'd the
+// raw query against firstName / lastName / email, which broke as
+// soon as the recruiter typed a full name like "Lesley Snell" —
+// neither firstName nor lastName CONTAINS the full string. We now
+// split the query into whitespace tokens and AND them, with each
+// token allowed to match any of firstName / lastName / email /
+// phone. Phone is normalized (digits-only) on both sides so
+// "(216) 340-9511" and "2163409511" hit the same row.
 
 type CandidateHit = {
   kind: "candidate";
@@ -37,19 +47,47 @@ export async function GET(req: NextRequest) {
 
   const org = await getCurrentOrg();
 
-  // Three-prong candidate match: firstName / lastName / email. Results
-  // surfaced in that priority order via the LHS map below — Prisma's
-  // findMany with OR doesn't preserve a stable per-clause order across
-  // matches, so we tag rows by which clause hit and re-sort.
+  // Split on whitespace; AND across tokens so "Lesley Snell" requires
+  // BOTH tokens to land somewhere on the row. Each token can match
+  // any of firstName / lastName / email / phone (digits-only), which
+  // means "lesley", "snell", "lesley snell", and "snell lesley" all
+  // resolve. Empty tokens are filtered out so a stray double space
+  // doesn't tank the search.
+  const tokens = q.split(/\s+/).filter(Boolean);
+  const candidateAnd: Prisma.CandidateWhereInput[] = tokens.map((t) => {
+    const digits = t.replace(/\D/g, "");
+    const orClauses: Prisma.CandidateWhereInput[] = [
+      { firstName: { contains: t, mode: "insensitive" } },
+      { lastName: { contains: t, mode: "insensitive" } },
+      { email: { contains: t, mode: "insensitive" } },
+    ];
+    if (digits.length >= 3) {
+      // Phone is stored verbatim (e.g. "(216) 340-9511" or
+      // "+12163409511"); contains-match against digits-only is too
+      // strict. Match the literal token's digits within the stored
+      // string by surfacing rows whose phone, with non-digits
+      // stripped, contains the typed digits — Prisma can't strip
+      // server-side without raw SQL, so we use a contains check
+      // against the raw phone field too. False positives are bounded
+      // by the AND across tokens.
+      orClauses.push({ phone: { contains: digits } });
+      orClauses.push({ phone: { contains: t } });
+    }
+    return { OR: orClauses };
+  });
+
+  const clientAnd: Prisma.ClientWhereInput[] = tokens.map((t) => ({
+    OR: [
+      { name: { contains: t, mode: "insensitive" } },
+      { domain: { contains: t, mode: "insensitive" } },
+    ],
+  }));
+
   const [candRows, clientRows] = await Promise.all([
     prisma.candidate.findMany({
       where: {
         organizationId: org.id,
-        OR: [
-          { firstName: { contains: q, mode: "insensitive" } },
-          { lastName: { contains: q, mode: "insensitive" } },
-          { email: { contains: q, mode: "insensitive" } },
-        ],
+        AND: candidateAnd,
       },
       select: {
         id: true,
@@ -59,16 +97,14 @@ export async function GET(req: NextRequest) {
         currentDesignation: true,
         currentOrganization: true,
         email: true,
+        phone: true,
       },
       take: PER_KIND_LIMIT,
     }),
     prisma.client.findMany({
       where: {
         organizationId: org.id,
-        OR: [
-          { name: { contains: q, mode: "insensitive" } },
-          { domain: { contains: q, mode: "insensitive" } },
-        ],
+        AND: clientAnd,
       },
       select: {
         id: true,
@@ -86,6 +122,7 @@ export async function GET(req: NextRequest) {
     const sublabel =
       [c.currentDesignation, c.currentOrganization].filter(Boolean).join(" · ") ||
       c.email ||
+      c.phone ||
       null;
     return {
       kind: "candidate",

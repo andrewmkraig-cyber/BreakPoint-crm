@@ -227,6 +227,30 @@ export function ComposeFAB() {
     );
   }, [phoneSearch, recentThreads]);
 
+  // Recognize a free-typed phone number that doesn't have a matching
+  // saved contact yet, so the recruiter can text/call a brand-new
+  // number without first creating a candidate row in Ace. We require
+  // ≥7 digits (US local without area code) before offering it as an
+  // ad-hoc target — fewer digits than that is almost always a typo
+  // mid-typing. Strips formatting characters before counting so
+  // "(216) 340-9511" passes the same threshold as raw digits.
+  const adhocPhoneInput = useMemo(() => {
+    const raw = phoneSearch.trim();
+    if (!raw) return null;
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length < 7) return null;
+    return { display: raw, digits };
+  }, [phoneSearch]);
+  // If the typed digits already match a recent thread's number,
+  // suppress the ad-hoc row — picking the saved contact is always
+  // preferable to firing off an unattached message.
+  const adhocAlreadyKnown = useMemo(() => {
+    if (!adhocPhoneInput) return false;
+    return recentThreads.some(
+      (t) => t.phoneNumber.replace(/\D/g, "") === adhocPhoneInput.digits,
+    );
+  }, [adhocPhoneInput, recentThreads]);
+
   // Notes popup state: free-text body + profile-search query + the
   // current set of hits split into candidates / clients. Picking a
   // result selects the target (highlight only) — the actual write
@@ -558,15 +582,55 @@ export function ComposeFAB() {
                 />
               </div>
               <div className="max-h-56 overflow-y-auto">
+                {/* Ad-hoc number entry: surfaces a "Use <number>"
+                    row when the recruiter has typed a phone-shaped
+                    string that doesn't match any saved contact. One
+                    click sets the pending contact with candidateId
+                    null so commitText/commitCall fires off a fresh
+                    conversation against that raw number. */}
+                {adhocPhoneInput && !adhocAlreadyKnown && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPendingContact({
+                        candidateId: null,
+                        name: adhocPhoneInput.display,
+                        phoneNumber: adhocPhoneInput.display,
+                        tag: null,
+                      });
+                    }}
+                    className={
+                      "mb-1 flex w-full items-center gap-2 rounded-md border border-dashed px-2 py-1.5 text-left transition " +
+                      (pendingContact?.candidateId === null &&
+                      pendingContact?.phoneNumber === adhocPhoneInput.display
+                        ? "border-[#5A9642] bg-[#EAF4E4] text-[#3F7030]"
+                        : "border-court-border text-court-fg hover:bg-court-surface-subtle")
+                    }
+                  >
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[10px] font-semibold uppercase text-court-fg-muted">
+                      #
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">
+                        Use {adhocPhoneInput.display}
+                      </span>
+                      <span className="block truncate text-[11px] text-court-fg-muted">
+                        New number — not in Ace
+                      </span>
+                    </span>
+                  </button>
+                )}
                 {recentLoading ? (
                   <div className="px-2 py-3 text-xs text-court-fg-muted">
                     Loading recents…
                   </div>
                 ) : filteredRecents.length === 0 ? (
                   <div className="px-2 py-3 text-xs text-court-fg-muted">
-                    {phoneSearch
-                      ? "No matches in recent contacts."
-                      : "No recent conversations yet."}
+                    {adhocPhoneInput && !adhocAlreadyKnown
+                      ? "No saved contact — pick the number above to start fresh."
+                      : phoneSearch
+                        ? "No matches in recent contacts."
+                        : "No recent conversations yet."}
                   </div>
                 ) : (
                   <ul className="space-y-0.5">

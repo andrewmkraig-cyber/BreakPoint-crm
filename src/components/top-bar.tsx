@@ -1,10 +1,9 @@
 "use client";
 
-import Image from "next/image";
-import { signOut, useSession } from "next-auth/react";
-import { LogOut } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
+import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 
 export function TopBar() {
   const { data: session } = useSession();
@@ -23,35 +22,17 @@ export function TopBar() {
         <TopBarSearch />
       </div>
       <div className="flex items-center gap-3">
-        {/* Compose FAB sits to the left of the user-info cluster.
-            Was a giant fixed bottom-left button before — moved up
-            here so it stops overlapping the BreakPoint footer block
-            and so its tooltip + popover have room against any edge. */}
+        {/* Compose FAB sits to the left of the avatar. The standalone
+            name + email block + sign-out button used to live here too;
+            both folded into the avatar's contact-card dropdown so the
+            top bar stays compact and the recruiter has one-click
+            access to the email/phone/LinkedIn copy actions he uses
+            most often when hand-writing candidate intros. */}
         <ComposeFAB />
-        <div className="text-right">
-          <div className="text-sm font-medium text-court-fg">{user?.name ?? "—"}</div>
-          <div className="text-xs text-court-fg-muted">{user?.email ?? ""}</div>
-        </div>
-        {user?.image ? (
-          <Image
-            src={user.image}
-            alt={user.name ?? "avatar"}
-            width={36}
-            height={36}
-            className="rounded-full border border-court-border"
-          />
-        ) : (
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
-            {user?.name?.[0] ?? "?"}
-          </div>
-        )}
-        <button
-          onClick={() => signOut({ callbackUrl: "/sign-in" })}
-          className="flex h-9 w-9 items-center justify-center rounded-full border border-ink/10 text-court-fg-muted transition hover:border-court-accent hover:text-court-accent-dark"
-          title="Sign out"
-        >
-          <LogOut className="h-4 w-4" />
-        </button>
+        <TopBarProfileCard
+          name={user?.name ?? null}
+          imageUrl={user?.image ?? null}
+        />
       </div>
     </header>
   );

@@ -596,22 +596,171 @@ function ThreadRow({
 
 // ---- Right-pane detail ----
 
+// Dial pad shown when no thread is selected. Replaces the previous
+// "Coming in Phase 2" stub. Recruiter can:
+//   - click 0-9 / * / # buttons with the mouse
+//   - type the same characters on the keyboard while the pad is
+//     focused (or anywhere on the page when no input is focused)
+//   - press Backspace to drop the last digit
+//   - hit Call or Text to dispatch through usePhonePanels with
+//     candidateId=null so the existing new-conversation flow takes
+//     over against the typed number.
 function EmptyDetail() {
+  const phonePanels = usePhonePanels();
+  const [number, setNumber] = useState("");
+
+  const formatted = useMemo(() => formatDialPadNumber(number), [number]);
+
+  const append = useCallback((ch: string) => {
+    setNumber((prev) => (prev.length >= 16 ? prev : prev + ch));
+  }, []);
+  const backspace = useCallback(() => {
+    setNumber((prev) => prev.slice(0, -1));
+  }, []);
+
+  // Keyboard input — listens at the document level so the recruiter
+  // doesn't have to click the pad first. Skips when an input /
+  // textarea / contenteditable is focused so we don't steal keys
+  // from the search box, composer, etc.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        const tag = target.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || target.isContentEditable) {
+          return;
+        }
+      }
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (/^[0-9*#]$/.test(e.key)) {
+        e.preventDefault();
+        append(e.key);
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        backspace();
+      } else if (e.key === "+") {
+        e.preventDefault();
+        append("+");
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [append, backspace]);
+
+  function dispatch(action: "call" | "text") {
+    const trimmed = number.trim();
+    if (!trimmed) return;
+    const digits = trimmed.replace(/\D/g, "");
+    if (digits.length < 7) {
+      toast.error("Enter at least 7 digits");
+      return;
+    }
+    const contact: PhoneContact = {
+      candidateId: null,
+      name: trimmed,
+      phoneNumber: trimmed,
+      tag: null,
+    };
+    if (action === "call") phonePanels.openCall(contact);
+    else phonePanels.openText(contact);
+  }
+
+  const KEYS: Array<{ digit: string; letters: string }> = [
+    { digit: "1", letters: "" },
+    { digit: "2", letters: "ABC" },
+    { digit: "3", letters: "DEF" },
+    { digit: "4", letters: "GHI" },
+    { digit: "5", letters: "JKL" },
+    { digit: "6", letters: "MNO" },
+    { digit: "7", letters: "PQRS" },
+    { digit: "8", letters: "TUV" },
+    { digit: "9", letters: "WXYZ" },
+    { digit: "*", letters: "" },
+    { digit: "0", letters: "+" },
+    { digit: "#", letters: "" },
+  ];
+
   return (
-    <div className="flex h-[calc(100vh-240px)] flex-col items-center justify-center gap-3 px-6 text-center">
-      <Phone className="h-10 w-10 text-court-fg-muted" />
-      <p className="text-sm text-court-fg-muted">
-        Select a conversation to view texts and calls.
+    <div className="flex h-[calc(100vh-240px)] flex-col items-center justify-center gap-4 px-6">
+      <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+        Start a new conversation
+      </div>
+      <div className="flex w-full max-w-[280px] items-center gap-2">
+        <div className="flex-1 rounded-lg border border-court-border bg-court-surface-subtle px-3 py-3 text-center font-mono text-xl tracking-wider text-court-fg">
+          {formatted || (
+            <span className="text-court-fg-muted">Enter number</span>
+          )}
+        </div>
+        {number && (
+          <button
+            type="button"
+            onClick={backspace}
+            aria-label="Delete last digit"
+            className="rounded-md border border-court-border bg-court-surface px-2 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
+      </div>
+      <div className="grid w-full max-w-[280px] grid-cols-3 gap-2">
+        {KEYS.map((k) => (
+          <button
+            key={k.digit}
+            type="button"
+            onClick={() => append(k.digit)}
+            className="flex h-14 flex-col items-center justify-center rounded-lg border border-court-border bg-court-surface text-court-fg shadow-sm transition hover:bg-court-surface-subtle active:bg-[#EAF4E4]"
+          >
+            <span className="text-xl font-semibold leading-none">{k.digit}</span>
+            {k.letters && (
+              <span className="mt-0.5 text-[9px] uppercase tracking-widest text-court-fg-muted">
+                {k.letters}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      <div className="flex w-full max-w-[280px] gap-2">
+        <button
+          type="button"
+          onClick={() => dispatch("text")}
+          disabled={!number.trim()}
+          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface text-sm font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Send className="h-4 w-4" />
+          Text
+        </button>
+        <button
+          type="button"
+          onClick={() => dispatch("call")}
+          disabled={!number.trim()}
+          className="inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <PhoneCall className="h-4 w-4" />
+          Call
+        </button>
+      </div>
+      <p className="max-w-[280px] text-center text-[11px] text-court-fg-muted">
+        Or pick a saved conversation from the list. Type on your
+        keyboard to enter digits without clicking each key.
       </p>
-      <button
-        type="button"
-        onClick={() => toast.info("New conversation flow ships in Phase 2")}
-        className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-      >
-        Or start a new conversation.
-      </button>
     </div>
   );
+}
+
+// US-style formatter: groups 10-digit numbers as (xxx) xxx-xxxx and
+// 11-digit numbers (with a leading 1) as 1 (xxx) xxx-xxxx. For
+// anything shorter / longer / containing * # +, just echo the raw
+// string — the recruiter is mid-typing or entering a special code.
+function formatDialPadNumber(raw: string): string {
+  if (!/^[0-9]+$/.test(raw)) return raw;
+  const d = raw;
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  if (d.length <= 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  if (d.length === 11 && d.startsWith("1")) {
+    return `1 (${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
+  }
+  return d;
 }
 
 function ThreadDetailPane({
