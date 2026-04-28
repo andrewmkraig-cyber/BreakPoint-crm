@@ -12,6 +12,7 @@ import {
   Loader2,
   Mail as MailIcon,
   Maximize2,
+  Plus,
   RefreshCw,
   Reply,
   ReplyAll,
@@ -372,6 +373,62 @@ export function MailView({
       toast.success(`Moved to ${labelName}`);
     } catch (e) {
       toast.error("Failed to move thread", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setMoving(null);
+    }
+  }
+
+  // Create a brand-new Gmail label and immediately apply it to a single
+  // thread. Mirrors moveThread's optimistic list-prune so the thread
+  // disappears from the current view (it just left INBOX), and pushes
+  // the freshly minted label into local state so the dropdown shows it
+  // next time without a full refetch.
+  async function createLabelAndApplyToThread(id: string, name: string) {
+    setMoving(id);
+    try {
+      const createRes = await fetch("/api/mail/labels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const createBody = await createRes.json().catch(() => null);
+      if (!createRes.ok || !createBody?.label?.id) {
+        toast.error("Couldn't create label", {
+          description: createBody?.error ?? `HTTP ${createRes.status}`,
+        });
+        return;
+      }
+      const newLabel = createBody.label as { id: string; name: string };
+      const moveRes = await fetch(
+        `/api/mail/threads/${encodeURIComponent(id)}/move`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ labelId: newLabel.id }),
+        },
+      );
+      const moveBody = await moveRes.json().catch(() => null);
+      if (!moveRes.ok) {
+        toast.error("Label created but couldn't apply it", {
+          description: moveBody?.error ?? `HTTP ${moveRes.status}`,
+        });
+        return;
+      }
+      setLabels((prev) =>
+        prev
+          ? [...prev, { id: newLabel.id, name: newLabel.name, type: "user", messagesTotal: 0 }]
+          : prev,
+      );
+      setThreads((prev) => prev.filter((t) => t.id !== id));
+      if (selected === id) {
+        setSelected(null);
+        setDetail(null);
+      }
+      toast.success("Label created and applied.");
+    } catch (e) {
+      toast.error("Couldn't create label", {
         description: e instanceof Error ? e.message : "unknown error",
       });
     } finally {
@@ -769,6 +826,7 @@ export function MailView({
             templates={templates}
             onArchive={() => archiveThread(detail.id)}
             onMove={(labelId, labelName) => moveThread(detail.id, labelId, labelName)}
+            onCreateAndApplyLabel={(name) => createLabelAndApplyToThread(detail.id, name)}
             onSent={() => {
               if (selected) void loadThread(selected);
             }}
@@ -901,56 +959,138 @@ function MoveToMenu({
   busy,
   buttonContent,
   onPick,
+  onCreateAndApply,
 }: {
   labels: Array<{ id: string; name: string }> | null;
   busy: boolean;
   buttonContent: ReactNode;
   onPick: (labelId: string, labelName: string) => void;
+  // When provided, renders a "New label…" entry at the bottom of the
+  // dropdown that inline-prompts for a name and creates+applies it.
+  // Bulk callers can omit this — bulk create-then-apply isn't a common
+  // recruiting flow.
+  onCreateAndApply?: (name: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!open) return;
     function onDocClick(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+      if (!ref.current?.contains(e.target as Node)) {
+        setOpen(false);
+        setCreating(false);
+        setDraft("");
+      }
     }
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [open]);
 
+  // Auto-focus the inline input the moment it appears so the user can
+  // start typing immediately — mirrors how Gmail's own native "New
+  // label" dropdown behaves.
+  useEffect(() => {
+    if (creating) inputRef.current?.focus();
+  }, [creating]);
+
+  const submitNewLabel = () => {
+    const name = draft.trim();
+    if (!name || !onCreateAndApply) return;
+    setOpen(false);
+    setCreating(false);
+    setDraft("");
+    onCreateAndApply(name);
+  };
+
+  const hasLabels = !!labels && labels.length > 0;
   const noLabels = !labels || labels.length === 0;
+  // The button is enabled whenever the user can EITHER pick an existing
+  // label OR create a new one. Without onCreateAndApply (bulk case), an
+  // empty label set still disables the button.
+  const buttonDisabled = busy || (noLabels && !onCreateAndApply);
   return (
     <div className="relative" ref={ref}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        disabled={busy || noLabels}
+        disabled={buttonDisabled}
         title={
           !labels
             ? "Loading labels…"
             : labels.length === 0
-              ? "No user labels in Gmail"
+              ? onCreateAndApply
+                ? "Create a Gmail label"
+                : "No user labels in Gmail"
               : "Move to a Gmail label"
         }
         className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
       >
         {buttonContent}
       </button>
-      {open && labels && labels.length > 0 && (
-        <div className="absolute right-0 top-full z-20 mt-1 max-h-72 w-56 overflow-y-auto rounded-md border border-court-border bg-court-surface py-1 shadow-lg">
-          {labels.map((l) => (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => {
-                setOpen(false);
-                onPick(l.id, l.name);
-              }}
-              className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
-            >
-              {l.name}
-            </button>
-          ))}
+      {open && (hasLabels || onCreateAndApply) && (
+        <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg">
+          {hasLabels && (
+            <div className="max-h-60 overflow-y-auto py-1">
+              {labels!.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  onClick={() => {
+                    setOpen(false);
+                    onPick(l.id, l.name);
+                  }}
+                  className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
+                >
+                  {l.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {onCreateAndApply && (
+            <div className="border-t border-court-border bg-court-bg/40">
+              {creating ? (
+                <div className="flex items-center gap-1 px-2 py-1.5">
+                  <input
+                    ref={inputRef}
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        submitNewLabel();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        setCreating(false);
+                        setDraft("");
+                      }
+                    }}
+                    placeholder="Label name"
+                    className="min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-court-accent"
+                  />
+                  <button
+                    type="button"
+                    onClick={submitNewLabel}
+                    disabled={!draft.trim()}
+                    className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                  >
+                    Create
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-court-fg-muted hover:bg-court-accent-tint/40 hover:text-court-fg"
+                >
+                  <Plus className="h-3 w-3" />
+                  New label…
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -974,6 +1114,10 @@ export type ThreadDetailProps = {
   templates: ActiveTemplateSummary[];
   onArchive: () => void;
   onMove: (labelId: string, labelName: string) => void;
+  // Optional: when provided, the Move To dropdown shows a "New label…"
+  // option that creates the label in Gmail and applies it to this
+  // thread in one click.
+  onCreateAndApplyLabel?: (name: string) => void;
   // Called after a reply send completes so the parent can refetch the
   // thread to show the just-sent message.
   onSent?: () => void;
@@ -997,6 +1141,7 @@ export function ThreadDetail({
   templates,
   onArchive,
   onMove,
+  onCreateAndApplyLabel,
   onSent,
   isFloating = false,
 }: ThreadDetailProps) {
@@ -1138,6 +1283,7 @@ export function ThreadDetail({
             labels={labels}
             busy={moving}
             onPick={onMove}
+            onCreateAndApply={onCreateAndApplyLabel}
             buttonContent={
               <>
                 {moving ? (

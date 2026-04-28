@@ -888,6 +888,40 @@ export async function listGmailAllLabels(userId: string): Promise<GmailLabel[]> 
   return detailed.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+// Creates a new user label in the signed-in user's mailbox. Returns the
+// freshly minted label id+name so the caller can immediately apply it
+// to a thread (Gmail labels.create returns the same id you'd later see
+// from labels.list). Covered by the gmail.modify scope — no separate
+// gmail.labels grant required.
+export async function createGmailLabel(
+  userId: string,
+  name: string,
+): Promise<{ id: string; name: string }> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/labels", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name,
+      labelListVisibility: "labelShow",
+      messageListVisibility: "show",
+    }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail labels.create failed (${res.status}): ${text || "no body"}`);
+  }
+  const j = (await res.json()) as { id?: string; name?: string };
+  if (!j.id || !j.name) {
+    throw new Error("Gmail labels.create returned an incomplete payload");
+  }
+  return { id: j.id, name: j.name };
+}
+
 // "Move to label" = single atomic modify that adds the chosen user
 // label and drops INBOX in one call. Mirrors how Gmail's native "Move
 // to" item behaves in the web UI.
