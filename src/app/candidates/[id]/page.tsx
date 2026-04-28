@@ -645,7 +645,11 @@ export default async function CandidateProfilePage({
               </Link>
               <Link
                 href={`/candidates/${id}?openSubmit=1`}
-                className="inline-flex items-center gap-1 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+                // Matches the two-tone treatment Apply to Job uses
+                // (amber-100 / 300 / 800) — emerald variant of the
+                // same shape so the pair reads as a coordinated
+                // action set instead of one solid + one tinted.
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-200"
               >
                 Submit to different job
               </Link>
