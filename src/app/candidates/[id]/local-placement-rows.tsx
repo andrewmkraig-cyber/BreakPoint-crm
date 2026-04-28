@@ -9,8 +9,10 @@ import {
   CalendarPlus,
   Loader2,
   Send,
+  UserX,
   X,
 } from "lucide-react";
+import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -207,6 +209,8 @@ function LocalJobActionRow({
   onSchedule: () => void;
   onClientInvite: () => void;
 }) {
+  const router = useRouter();
+  const [isRejecting, startRejecting] = useTransition();
   const normalizedStage = (job.stage ?? "sourced").trim().toLowerCase();
   const canSchedule = normalizedStage !== "hired" && normalizedStage !== "cancelled" && normalizedStage !== "rejected";
   // Submit is the primary action for pre-submittal stages. Candidates
@@ -220,6 +224,28 @@ function LocalJobActionRow({
     normalizedStage === "sourced" ||
     normalizedStage === "applied" ||
     normalizedStage === "kept";
+
+  // Reject available on the active mid-pipeline stages. Hired, cancelled,
+  // and already-rejected rows don't show it. Sourced/applied/kept also
+  // hide it — those rows haven't been formally engaged yet.
+  const canReject =
+    normalizedStage === "submitted" ||
+    normalizedStage === "interviewing" ||
+    normalizedStage === "offer" ||
+    normalizedStage === "pending_start";
+
+  function onReject() {
+    if (!confirm(`Reject ${job.jobTitle}?`)) return;
+    startRejecting(async () => {
+      const res = await rejectLocalPlacement({ placementId: job.placementId });
+      if (!res.ok) {
+        toast.error("Couldn't reject", { description: res.error });
+        return;
+      }
+      toast.success("Rejected");
+      router.refresh();
+    });
+  }
 
   // Inline next-upcoming interview only. Past scheduled rows hide
   // entirely — the stage chip carries the status signal.
@@ -269,6 +295,18 @@ function LocalJobActionRow({
                 <CalendarPlus className="h-3 w-3" /> Client Invite
               </button>
             </>
+          )}
+          {canReject && (
+            <button
+              type="button"
+              onClick={onReject}
+              disabled={isRejecting}
+              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
+              title="Reject this candidate for this job"
+            >
+              {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+              Reject
+            </button>
           )}
         </div>
       </div>

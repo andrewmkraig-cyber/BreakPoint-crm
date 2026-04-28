@@ -441,3 +441,57 @@ export async function sendLocalReferenceRequest(
     return { ok: false, error: e instanceof Error ? e.message : "Send failed." };
   }
 }
+
+
+// Reject a Placement on the Ace-native candidate path. The shared
+// rejectCandidateJob in placement-actions.ts is keyed on the
+// (candidateRfId, jobRfId) compound unique which Ace-native rows
+// dont have, so this thin helper writes the same stage move +
+// ActionLog entry, keyed off the Placement.id cuid that LocalJobRow
+// already carries. Mirrors the RF version's revalidate paths.
+export async function rejectLocalPlacement(input: { placementId: string }): Promise<Result> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
+  try {
+    const placement = await prisma.placement.findFirst({
+      where: { id: input.placementId, organizationId: org.id },
+      select: {
+        id: true,
+        stage: true,
+        candidateId: true,
+        candidateRfId: true,
+        jobId: true,
+        jobRfId: true,
+        clientId: true,
+        clientRfId: true,
+      },
+    });
+    if (!placement) return { ok: false, error: "Placement not found." };
+    const previousStage = placement.stage;
+    await prisma.placement.update({
+      where: { id: input.placementId },
+      data: { stage: "rejected", syncedToRf: false, invoicingFlagged: false },
+    });
+    await createActionLog({
+      userId: user.id,
+      actionType: "reject",
+      subjectType: "candidate",
+      subjectId: placement.candidateId ?? String(placement.candidateRfId ?? ""),
+      metadata: {
+        placementId: input.placementId,
+        jobId: placement.jobId,
+        jobRfId: placement.jobRfId,
+        clientId: placement.clientId,
+        clientRfId: placement.clientRfId,
+        previousStage,
+        local: true,
+      },
+    });
+    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reject candidate." };
+  }
+}

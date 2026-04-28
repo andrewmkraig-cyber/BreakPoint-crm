@@ -236,7 +236,7 @@ function Card({ card }: { card: ClientCard }) {
         </div>
       )}
 
-      <div className="mt-4 flex items-stretch justify-between rounded-lg bg-court-surface-subtle/60 p-3 text-center">
+      <div className="mt-4 grid grid-cols-5 gap-2 rounded-lg bg-court-surface-subtle/60 p-3 text-center">
         <Stat label="Submitted" value={card.submittedCount} tone="brand" />
         <Stat label="Interviewing" value={card.interviewingCount} tone="blue" />
         <Stat label="Offer" value={card.offerCount} tone="purple" />
@@ -263,10 +263,13 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "bra
     amber: "text-amber-700",
     emerald: "text-emerald-700",
   }[tone];
+  // Grid cells size equally; label uses leading-tight so a multi-word
+  // label like "Pending Start" wraps to two lines on narrow cards
+  // instead of overflowing or visually colliding with neighbors.
   return (
-    <div className="min-w-[60px] px-2">
+    <div className="min-w-0">
       <div className={cn("font-serif text-xl font-semibold", value > 0 ? cls : "text-court-fg-muted/60")}>{value}</div>
-      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">{label}</div>
+      <div className="mt-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted leading-tight">{label}</div>
     </div>
   );
 }

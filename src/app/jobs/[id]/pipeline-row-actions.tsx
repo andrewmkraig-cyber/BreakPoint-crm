@@ -341,6 +341,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             onClick={props.onCancelPlacement}
             href={profileHref}
           />
+          <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "hired":
