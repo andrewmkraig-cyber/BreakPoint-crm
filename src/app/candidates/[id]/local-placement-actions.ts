@@ -505,7 +505,14 @@ export async function sendLocalReferenceRequest(
 // dont have, so this thin helper writes the same stage move +
 // ActionLog entry, keyed off the Placement.id cuid that LocalJobRow
 // already carries. Mirrors the RF version's revalidate paths.
-export async function rejectLocalPlacement(input: { placementId: string }): Promise<Result> {
+export async function rejectLocalPlacement(input: {
+  placementId: string;
+  // Recruiter-driven choice in the reject dialog. The trigger is no
+  // longer auto-fired on every reject — the UI prompts and passes
+  // this flag through. Default false so any caller that hasn't been
+  // updated to surface the prompt still rejects silently.
+  sendRejectionEmail?: boolean;
+}): Promise<Result> {
   const user = await requireUser();
   if (!user) return { ok: false, error: "Not signed in." };
   const org = await getCurrentOrg();
@@ -547,17 +554,12 @@ export async function rejectLocalPlacement(input: { placementId: string }): Prom
     if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
     revalidatePath(`/pipeline`);
 
-    // Auto-fire Candidate Rejected. Same best-effort pattern: the
-    // stage flip is already committed, so a fire failure can't
-    // corrupt the pipeline. Only fires when we have a candidateId
-    // (every Ace-native row does); RF rejections still flow through
-    // the older sendRejectionEmail path.
-    if (placement.candidateId) {
-      // Awaited (not void) — on Vercel serverless, a floating promise
-    // gets cut off when the function returns, so the Gmail send
-    // never lands. Worth the ~1s of extra latency to make sure the
-    // candidate actually receives the templated follow-up.
-    await fireTriggerAndLog({
+    // Recruiter-driven send. The Reject dialog surfaces a "Send
+    // rejection email" checkbox; only fire when they ticked it. Stage
+    // flip is already committed, so a fire failure can't corrupt
+    // pipeline state — best-effort.
+    if (input.sendRejectionEmail && placement.candidateId) {
+      await fireTriggerAndLog({
         trigger: CANDIDATE_REJECTION_TRIGGER,
         ref: {
           candidateId: placement.candidateId,

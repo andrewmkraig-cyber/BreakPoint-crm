@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { toast } from "sonner";
+import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
 import {
   rescheduleInterview,
@@ -119,6 +120,7 @@ export function LocalPlacementRows({
           <LocalJobActionRow
             key={j.placementId}
             candidateId={candidateId}
+            candidateName={candidateName}
             job={j}
             onSchedule={() => setScheduleFor(j)}
             onClientInvite={() => setClientInviteFor(j)}
@@ -200,17 +202,20 @@ export function LocalPlacementRows({
 
 function LocalJobActionRow({
   candidateId,
+  candidateName,
   job,
   onSchedule,
   onClientInvite,
 }: {
   candidateId: string;
+  candidateName: string;
   job: LocalJobRow;
   onSchedule: () => void;
   onClientInvite: () => void;
 }) {
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
+  const [rejectOpen, setRejectOpen] = useState(false);
   const normalizedStage = (job.stage ?? "sourced").trim().toLowerCase();
   const canSchedule = normalizedStage !== "hired" && normalizedStage !== "cancelled" && normalizedStage !== "rejected";
   // Submit is the primary action for pre-submittal stages. Candidates
@@ -235,15 +240,32 @@ function LocalJobActionRow({
     normalizedStage === "pending_start";
 
   function onReject() {
-    if (!confirm(`Reject ${job.jobTitle}?`)) return;
-    startRejecting(async () => {
-      const res = await rejectLocalPlacement({ placementId: job.placementId });
-      if (!res.ok) {
-        toast.error("Couldn't reject", { description: res.error });
-        return;
-      }
-      toast.success("Rejected");
-      router.refresh();
+    setRejectOpen(true);
+  }
+
+  async function handleRejectConfirm({
+    sendRejectionEmail,
+  }: {
+    sendRejectionEmail: boolean;
+  }) {
+    await new Promise<void>((resolve) => {
+      startRejecting(async () => {
+        const res = await rejectLocalPlacement({
+          placementId: job.placementId,
+          sendRejectionEmail,
+        });
+        if (!res.ok) {
+          toast.error("Couldn't reject", { description: res.error });
+          resolve();
+          return;
+        }
+        toast.success(
+          sendRejectionEmail ? "Rejected — email sent" : "Rejected",
+        );
+        setRejectOpen(false);
+        router.refresh();
+        resolve();
+      });
     });
   }
 
@@ -311,6 +333,14 @@ function LocalJobActionRow({
         </div>
       </div>
 
+      {rejectOpen && (
+        <RejectCandidateDialog
+          candidateName={candidateName}
+          jobTitle={job.jobTitle}
+          onClose={() => setRejectOpen(false)}
+          onConfirm={handleRejectConfirm}
+        />
+      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
+import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 
@@ -525,32 +526,52 @@ function StageChip({
 function RejectButton({ placementId, candidateName }: { placementId: string; candidateName: string }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  const [open, setOpen] = useState(false);
 
   function onClick(e: React.MouseEvent) {
     e.stopPropagation();
-    if (!confirm(`Reject ${candidateName}?`)) return;
-    startTransition(async () => {
-      const res = await rejectLocalPlacement({ placementId });
-      if (!res.ok) {
-        toast.error("Couldn't reject", { description: res.error });
-        return;
-      }
-      toast.success("Rejected");
-      router.refresh();
+    setOpen(true);
+  }
+
+  async function onConfirm({ sendRejectionEmail }: { sendRejectionEmail: boolean }) {
+    await new Promise<void>((resolve) => {
+      startTransition(async () => {
+        const res = await rejectLocalPlacement({ placementId, sendRejectionEmail });
+        if (!res.ok) {
+          toast.error("Couldn't reject", { description: res.error });
+          resolve();
+          return;
+        }
+        toast.success(sendRejectionEmail ? "Rejected — email sent" : "Rejected");
+        setOpen(false);
+        router.refresh();
+        resolve();
+      });
     });
   }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={isPending}
-      className="inline-flex items-center justify-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
-      title="Reject this candidate for this job"
-    >
-      {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
-      Reject
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={isPending}
+        className="inline-flex items-center justify-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
+        title="Reject this candidate for this job"
+      >
+        {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+        Reject
+      </button>
+      {open && (
+        <RejectCandidateDialog
+          candidateName={candidateName}
+          onClose={() => {
+            if (!isPending) setOpen(false);
+          }}
+          onConfirm={onConfirm}
+        />
+      )}
+    </>
   );
 }
 
