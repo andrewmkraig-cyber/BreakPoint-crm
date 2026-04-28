@@ -43,6 +43,7 @@ Report counts before writing any code. If counts increased from baseline, flag i
 - Browser verification is Andrew's responsibility after deploy, not a gate before push.
 - Single terminal only. No parallel Claude Code sessions.
 - Always end with: git push origin main
+- Every feature ship must end with git push origin main. Never leave commits sitting locally. If the session ends without pushing, the next session must push before starting any new work.
 - Dual-file awareness: when a feature spans two files, name both explicitly before editing.
 
 ## After Compaction

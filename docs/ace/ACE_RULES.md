@@ -44,6 +44,7 @@ At the start of every session, before any other work:
 
 ## Git Rules
 - Always push at the end of every prompt with git push origin main. Do not wait for Andrew to ask.
+- Every feature ship must end with git push origin main. Never leave commits sitting locally. If the session ends without pushing, the next session must push before starting any new work.
 - Git author email: andrew@breakpointtalent.com OR andrewmkraig@gmail.com.
 - GitHub source of truth: https://github.com/andrewmkraig-cyber/BreakPoint-crm/main/docs/ace/
 - Four canonical files: ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, ACE_DESIGN.md.
