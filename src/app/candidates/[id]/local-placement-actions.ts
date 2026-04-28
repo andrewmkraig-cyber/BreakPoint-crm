@@ -148,7 +148,11 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
     // off the apply path; the Placement row + ActivityLog are
     // already saved, so a missing template / inactive template /
     // Anthropic timeout never corrupts pipeline state.
-    void fireTriggerAndLog({
+    // Awaited (not void) — on Vercel serverless, a floating promise
+    // gets cut off when the function returns, so the Gmail send
+    // never lands. Worth the ~1s of extra latency to make sure the
+    // candidate actually receives the templated follow-up.
+    await fireTriggerAndLog({
       trigger: CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
       ref: {
         candidateId: input.candidateId,
@@ -415,7 +419,11 @@ export async function sendLocalSubmittalEmail(
     // Mirrors the RF-side createCandidateConfirmationDraft path so
     // the candidate gets the same "Great News — your profile was
     // submitted" follow-up no matter which candidate type they are.
-    void fireTriggerAndLog({
+    // Awaited (not void) — on Vercel serverless, a floating promise
+    // gets cut off when the function returns, so the Gmail send
+    // never lands. Worth the ~1s of extra latency to make sure the
+    // candidate actually receives the templated follow-up.
+    await fireTriggerAndLog({
       trigger: CANDIDATE_CONFIRMATION_TRIGGER,
       ref: {
         candidateId: input.candidateId,
@@ -545,7 +553,11 @@ export async function rejectLocalPlacement(input: { placementId: string }): Prom
     // (every Ace-native row does); RF rejections still flow through
     // the older sendRejectionEmail path.
     if (placement.candidateId) {
-      void fireTriggerAndLog({
+      // Awaited (not void) — on Vercel serverless, a floating promise
+    // gets cut off when the function returns, so the Gmail send
+    // never lands. Worth the ~1s of extra latency to make sure the
+    // candidate actually receives the templated follow-up.
+    await fireTriggerAndLog({
         trigger: CANDIDATE_REJECTION_TRIGGER,
         ref: {
           candidateId: placement.candidateId,

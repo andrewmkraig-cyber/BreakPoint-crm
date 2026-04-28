@@ -21,6 +21,7 @@ import { applyMergeFields } from "@/lib/merge-fields";
 import { buildFullMergeValues } from "@/lib/merge-context";
 import { getAppPreferences } from "@/lib/preferences";
 import { fireTemplatedEmail, type FireResult } from "@/lib/templated-email";
+import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
@@ -199,47 +200,38 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
     revalidatePath(`/candidates/${input.candidateRfId}`);
     revalidatePath(`/pipeline`);
 
-    // Auto-fire the Offer Extended template to the candidate. Best-
-    // effort — same pattern as the apply path; the Placement row's
-    // already saved at this point so a fire failure can't corrupt
-    // pipeline state.
-    try {
-      const c = await getRfCandidateByRfId(input.candidateRfId);
-      const candidateEmail = c ? normalizeCandidateEmail(c) : "";
-      if (candidateEmail) {
-        const offerAmount = input.salary
-          ? formatCurrencyInline(input.salary, input.currency || "USD")
-          : "";
-        const startDateLabel = input.startDate
-          ? new Date(input.startDate).toLocaleDateString()
-          : "";
-        const outcome = await fireTriggerForCandidateJob({
-          trigger: OFFER_EXTENDED_TRIGGER,
-          candidateRfId: input.candidateRfId,
-          jobRfId: input.jobRfId,
-          clientRfId: input.clientRfId,
-          jobTitle: input.title,
-          to: [candidateEmail],
-          offerAmount,
-          startDate: startDateLabel,
-        });
-        await logFire({
-          candidateRfId: input.candidateRfId,
-          actionType: "offer_extended_email",
-          metadata: {
-            jobRfId: input.jobRfId,
-            clientRfId: input.clientRfId,
-            to: candidateEmail,
-            offerAmount,
-            startDate: startDateLabel,
-          },
-          fire: outcome.fire,
-          userId,
-        });
-      }
-    } catch {
-      // Silent — observability, never blocks the offer record.
-    }
+    // Auto-fire the Offer Extended template to the candidate.
+    // Identity-agnostic: routes through fireTriggerAndLog so a future
+    // Ace-native offer flow that passes jobCuid/clientCuid (and
+    // eventually candidateId) Just Works without re-plumbing.
+    const offerAmount = input.salary
+      ? formatCurrencyInline(input.salary, input.currency || "USD")
+      : "";
+    const startDateLabel = input.startDate
+      ? new Date(input.startDate).toLocaleDateString()
+      : "";
+    await fireTriggerAndLog({
+      trigger: OFFER_EXTENDED_TRIGGER,
+      ref: {
+        candidateRfId: input.candidateRfId,
+        jobRfId: input.jobRfId,
+        jobId: input.jobCuid ?? null,
+        clientRfId: input.clientRfId,
+        clientId: input.clientCuid ?? null,
+      },
+      actionType: "offer_extended_email",
+      organizationId: org.id,
+      overrides: {
+        offerAmount,
+        startDate: startDateLabel,
+        jobTitle: input.title,
+      },
+      metadata: {
+        placementId: row.id,
+        offerAmount,
+        startDate: startDateLabel,
+      },
+    });
 
     return { ok: true, value: { id: row.id, syncedToRf: row.syncedToRf } };
   } catch (e) {
@@ -460,50 +452,45 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
     revalidatePath(`/candidates/${placement.candidateRfId}`);
     revalidatePath(`/pipeline`);
 
-    // Auto-fire the Hired — Welcome / Next Steps template to the
-    // candidate. Pulls the placement's job + client RF ids back out
-    // of Neon since we only kept candidateRfId on the early select.
-    try {
-      const placementForFire = await prisma.placement.findUnique({
-        where: { id: input.placementId },
-        select: {
-          candidateRfId: true,
-          jobRfId: true,
-          clientRfId: true,
-          expectedStartDate: true,
+    // Auto-fire the Hired — Welcome / Next Steps template. Routes
+    // through fireTriggerAndLog so it works for either candidate
+    // type — RF or Ace-native — depending on which id shape the
+    // placement carries. Re-reads the placement to pick up both
+    // identity columns + job/client cuids in one round trip.
+    const placementForFire = await prisma.placement.findUnique({
+      where: { id: input.placementId },
+      select: {
+        candidateRfId: true,
+        candidateId: true,
+        jobRfId: true,
+        jobId: true,
+        clientRfId: true,
+        clientId: true,
+        expectedStartDate: true,
+      },
+    });
+    if (placementForFire) {
+      const startDateLabel = placementForFire.expectedStartDate
+        ? placementForFire.expectedStartDate.toLocaleDateString()
+        : "";
+      await fireTriggerAndLog({
+        trigger: CANDIDATE_HIRED_WELCOME_TRIGGER,
+        ref: {
+          candidateRfId: placementForFire.candidateRfId,
+          candidateId: placementForFire.candidateId,
+          jobRfId: placementForFire.jobRfId,
+          jobId: placementForFire.jobId,
+          clientRfId: placementForFire.clientRfId,
+          clientId: placementForFire.clientId,
+        },
+        actionType: "candidate_hired_welcome_email",
+        organizationId: org.id,
+        overrides: { startDate: startDateLabel },
+        metadata: {
+          placementId: input.placementId,
+          startDate: startDateLabel,
         },
       });
-      const candRfId = placementForFire?.candidateRfId ?? null;
-      if (candRfId != null) {
-        const c = await getRfCandidateByRfId(candRfId);
-        const candidateEmail = c ? normalizeCandidateEmail(c) : "";
-        if (candidateEmail) {
-          const startDateLabel = placementForFire?.expectedStartDate
-            ? placementForFire.expectedStartDate.toLocaleDateString()
-            : "";
-          const outcome = await fireTriggerForCandidateJob({
-            trigger: CANDIDATE_HIRED_WELCOME_TRIGGER,
-            candidateRfId: candRfId,
-            jobRfId: placementForFire?.jobRfId ?? undefined,
-            clientRfId: placementForFire?.clientRfId ?? undefined,
-            to: [candidateEmail],
-            startDate: startDateLabel,
-          });
-          await logFire({
-            candidateRfId: candRfId,
-            actionType: "candidate_hired_welcome_email",
-            metadata: {
-              placementId: input.placementId,
-              to: candidateEmail,
-              startDate: startDateLabel,
-            },
-            fire: outcome.fire,
-            userId,
-          });
-        }
-      }
-    } catch {
-      // Silent — observability, never blocks the start confirmation.
     }
 
     return { ok: true };
