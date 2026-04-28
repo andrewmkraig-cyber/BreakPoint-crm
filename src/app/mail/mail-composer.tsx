@@ -146,6 +146,10 @@ export function MailComposer({
   const [openFieldMenu, setOpenFieldMenu] = useState(false);
   const [openAiPanel, setOpenAiPanel] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
+  // When true, the next Generate call also asks Claude for a subject
+  // line and pipes it back into the Subject input. Off by default —
+  // most generations are replies where the existing subject is right.
+  const [aiIncludeSubject, setAiIncludeSubject] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
 
@@ -602,7 +606,11 @@ export function MailComposer({
       const res = await fetch("/api/mail/ai-compose", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, threadId }),
+        body: JSON.stringify({
+          prompt,
+          threadId,
+          includeSubject: aiIncludeSubject,
+        }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
@@ -611,6 +619,8 @@ export function MailComposer({
         return;
       }
       const html = body?.bodyHtml ?? "";
+      const generatedSubject =
+        typeof body?.subject === "string" ? body.subject.trim() : "";
       if (html) {
         // Same pattern as pickTemplate — stash the un-substituted
         // source so a subsequent dropdown pick re-resolves merge tags
@@ -619,6 +629,16 @@ export function MailComposer({
         const { output } = applyMailMergeFields(html, effectiveContext);
         isProgrammaticEdit.current = true;
         editor?.commands.setContent(output, false);
+        // Apply the AI subject only when the user opted in AND the
+        // server returned one. Substitute through the same merge-field
+        // resolver so {{candidate.first_name}} etc. land filled.
+        if (aiIncludeSubject && generatedSubject) {
+          const { output: subjectOut } = applyMailMergeFields(
+            generatedSubject,
+            effectiveContext,
+          );
+          setSubject(subjectOut);
+        }
         toast.success("Draft generated");
         setAiPrompt("");
         setOpenAiPanel(false);
@@ -911,11 +931,25 @@ export function MailComposer({
               onClick={onGenerate}
               disabled={aiBusy || !aiPrompt.trim()}
               className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+              data-includes-subject={aiIncludeSubject ? "1" : "0"}
             >
               {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               Generate
             </button>
           </div>
+          {/* Opt-in subject-line generation. Sits below the action
+              row so the visual hierarchy is body-first; checking it
+              just adds a subject to the same one Generate click. */}
+          <label className="flex cursor-pointer items-center gap-2 pt-1 text-[11px] text-court-fg-muted">
+            <input
+              type="checkbox"
+              checked={aiIncludeSubject}
+              onChange={(e) => setAiIncludeSubject(e.target.checked)}
+              disabled={aiBusy}
+              className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed"
+            />
+            Generate subject line with Claude too
+          </label>
         </div>
       )}
 
