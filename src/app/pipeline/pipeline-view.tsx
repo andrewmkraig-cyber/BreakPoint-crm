@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, Loader2, Search, UserX } from "lucide-react";
+import { Bookmark, CalendarClock, DollarSign, Loader2, Search, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -266,10 +266,35 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3 align-top text-right">
-                        {(r.bucket === "submitted" || r.bucket === "interviewing") && r.placementId ? (
-                          <RejectButton placementId={r.placementId} candidateName={r.candidateName} />
-                        ) : null}
+                      <td className="px-5 py-3 align-top">
+                        {/* Schedule (submitted) + Offer (interviewing) sit
+                            left of Reject. Both deep-link to the candidate
+                            profile — the full modal flows live there. */}
+                        <div className="flex items-center justify-end gap-1.5">
+                          {r.bucket === "submitted" && (
+                            <Link
+                              href={`/candidates/${r.candidateId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center justify-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100"
+                              title="Schedule interview on candidate profile"
+                            >
+                              <CalendarClock className="h-3 w-3" /> Schedule
+                            </Link>
+                          )}
+                          {r.bucket === "interviewing" && (
+                            <Link
+                              href={`/candidates/${r.candidateId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center justify-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100"
+                              title="Record offer on candidate profile"
+                            >
+                              <DollarSign className="h-3 w-3" /> Offer
+                            </Link>
+                          )}
+                          {(r.bucket === "submitted" || r.bucket === "interviewing") && r.placementId && (
+                            <RejectButton placementId={r.placementId} candidateName={r.candidateName} />
+                          )}
+                        </div>
                       </td>
                     </>
                   )}
