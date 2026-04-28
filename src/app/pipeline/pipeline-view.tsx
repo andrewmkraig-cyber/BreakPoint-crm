@@ -3,13 +3,15 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, Loader2, Search } from "lucide-react";
+import { Bookmark, CalendarClock, Loader2, Search, UserX } from "lucide-react";
+import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 
@@ -49,6 +51,11 @@ export type PipelineRow = {
   lastActionAt: string | null;
   daysInStage: number | null;
   isKept: boolean;
+  // Neon Placement.id — present only for rows derived from a real
+  // Placement row. RF-flat-pipeline rows (RFCandidate.jobs[] entries
+  // with no Neon Placement) leave this null; the Reject button below
+  // hides on those rows since there's no Placement to mutate.
+  placementId: string | null;
   placement: PlacementDetails | null;
   nextInterview: NextInterview | null;
 };
@@ -155,6 +162,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                     <th className="px-5 py-3 text-center font-medium">Stage</th>
                     <th className="px-5 py-3 font-medium">Last Action</th>
                     <th className="px-5 py-3 text-right font-medium">Days in Stage</th>
+                    <th className="px-5 py-3 text-right font-medium">Action</th>
                   </>
                 )}
               </tr>
@@ -162,7 +170,10 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
             <tbody className="divide-y divide-court-border">
               {rows.length === 0 && !error && (
                 <tr>
-                  <td colSpan={stage === "hired" ? 8 : 6} className="px-5 py-12 text-center text-sm text-court-fg-muted">
+                  <td
+                    colSpan={stage === "hired" ? 8 : stage === "pending_start" ? 6 : 7}
+                    className="px-5 py-12 text-center text-sm text-court-fg-muted"
+                  >
                     No candidates in {PIPELINE_LABELS[stage]}
                     {q ? ` matching "${q}"` : ""}.
                   </td>
@@ -254,6 +265,11 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                             {r.daysInStage}d
                           </span>
                         )}
+                      </td>
+                      <td className="px-5 py-3 align-top text-right">
+                        {(r.bucket === "submitted" || r.bucket === "interviewing") && r.placementId ? (
+                          <RejectButton placementId={r.placementId} candidateName={r.candidateName} />
+                        ) : null}
                       </td>
                     </>
                   )}
@@ -458,6 +474,42 @@ function StageChip({
   placement?: PlacementDetails | null;
 }) {
   return <StageBadge bucket={bucket} label={stageName || PIPELINE_LABELS[bucket]} />;
+}
+
+// Inline Reject button for the per-row Action cell. stopPropagation on
+// click so the row's outer onClick (navigate to candidate profile) doesn't
+// also fire. Calls the placementId-keyed action so it works for both
+// RF-imported and Ace-native rows.
+function RejectButton({ placementId, candidateName }: { placementId: string; candidateName: string }) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+
+  function onClick(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!confirm(`Reject ${candidateName}?`)) return;
+    startTransition(async () => {
+      const res = await rejectLocalPlacement({ placementId });
+      if (!res.ok) {
+        toast.error("Couldn't reject", { description: res.error });
+        return;
+      }
+      toast.success("Rejected");
+      router.refresh();
+    });
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={isPending}
+      className="inline-flex items-center justify-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
+      title="Reject this candidate for this job"
+    >
+      {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+      Reject
+    </button>
+  );
 }
 
 function formatInterviewWhen(iso: string): string {

@@ -237,11 +237,15 @@ function Card({ card }: { card: ClientCard }) {
       )}
 
       <div className="mt-4 grid grid-cols-5 gap-2 rounded-lg bg-court-surface-subtle/60 p-3 text-center">
-        <Stat label="Submitted" value={card.submittedCount} tone="brand" />
-        <Stat label="Interviewing" value={card.interviewingCount} tone="blue" />
-        <Stat label="Offer" value={card.offerCount} tone="purple" />
-        <Stat label="Pending Start" value={card.pendingStartCount} tone="amber" />
-        <Stat label="Hired" value={card.hiredCount} tone="emerald" />
+        {/* Labels are abbreviated so the strip never overlaps even at
+            MacBook-narrow widths (cards reflow to 3 cols at xl, ~400px
+            each). `title` on each cell carries the full label for
+            hover. */}
+        <Stat label="Sub" full="Submitted" value={card.submittedCount} tone="brand" />
+        <Stat label="Int" full="Interviewing" value={card.interviewingCount} tone="blue" />
+        <Stat label="Offer" full="Offer" value={card.offerCount} tone="purple" />
+        <Stat label="Pend" full="Pending Start" value={card.pendingStartCount} tone="amber" />
+        <Stat label="Hired" full="Hired" value={card.hiredCount} tone="emerald" />
       </div>
 
       <div className="mt-3 flex items-center justify-between text-[11px] text-court-fg-muted">
@@ -255,7 +259,18 @@ function Card({ card }: { card: ClientCard }) {
   );
 }
 
-function Stat({ label, value, tone }: { label: string; value: number; tone: "brand" | "blue" | "purple" | "amber" | "emerald" }) {
+function Stat({
+  label,
+  full,
+  value,
+  tone,
+}: {
+  label: string;
+  // Hover tooltip — full stage name when the visible label is abbreviated.
+  full?: string;
+  value: number;
+  tone: "brand" | "blue" | "purple" | "amber" | "emerald";
+}) {
   const cls = {
     brand: "text-brand-dark",
     blue: "text-blue-700",
@@ -263,11 +278,8 @@ function Stat({ label, value, tone }: { label: string; value: number; tone: "bra
     amber: "text-amber-700",
     emerald: "text-emerald-700",
   }[tone];
-  // Grid cells size equally; label uses leading-tight so a multi-word
-  // label like "Pending Start" wraps to two lines on narrow cards
-  // instead of overflowing or visually colliding with neighbors.
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" title={full ?? label}>
       <div className={cn("font-serif text-xl font-semibold", value > 0 ? cls : "text-court-fg-muted/60")}>{value}</div>
       <div className="mt-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted leading-tight">{label}</div>
     </div>

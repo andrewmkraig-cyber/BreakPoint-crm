@@ -186,6 +186,7 @@ export default async function PipelinePage({
         lastActionAt: p.updatedAt.toISOString(),
         daysInStage: daysBetween(p.updatedAt.toISOString()),
         isKept: rfEntry?.isKept ?? false,
+        placementId: p.id,
         placement: toPlacementDetails(p),
         nextInterview: isRfCandidate && isRfJob
           ? nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null
@@ -217,6 +218,7 @@ export default async function PipelinePage({
         lastActionAt: r.stageMovedAt,
         daysInStage: daysBetween(r.stageMovedAt),
         isKept: r.isKept,
+        placementId: null,
         placement: null,
         nextInterview: nextByKey.get(`${r.candidateId}:${r.jobId}`) ?? null,
       });
