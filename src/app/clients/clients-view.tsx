@@ -260,7 +260,12 @@ export function ClientsView({
     <div className="mx-auto max-w-[1200px]">
       {/* Header — owned by ClientsView now (page.tsx no longer renders
           PageHeader). Eyebrow + serif h1 + subtitle + New Client. */}
-      <div className="mb-7 flex items-start justify-between gap-6">
+      {/* items-end pulls the action button down to the baseline of
+          the description, putting it just above the search bar —
+          matches PageHeader's behavior on /candidates and /jobs.
+          Sizing also matches those two (px-3 py-1.5 text-xs) so the
+          three create-buttons read as the same height. */}
+      <div className="mb-7 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-court-fg-muted">
             Accounts
@@ -272,7 +277,7 @@ export function ClientsView({
         </div>
         <Link
           href="/clients/new"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-4 py-2 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
         >
           Create New Client
         </Link>
