@@ -99,41 +99,74 @@ export function ComposeFAB() {
 
   // Mail-only context: when on /candidates/[id], pre-fill the To field
   // and pass the candidate ref through to the composer so smart
-  // context (active jobs / merge tags) lights up.
+  // context (active jobs / merge tags) lights up. When on /clients/[id],
+  // fetch that client's contacts so the composer's To input gets a
+  // typeahead dropdown of names instead of forcing the recruiter to
+  // remember addresses.
   const [contextEmail, setContextEmail] = useState("");
   const [contextRef, setContextRef] = useState("");
+  const [clientContactSuggestions, setClientContactSuggestions] = useState<
+    Array<{ name: string; email: string }>
+  >([]);
   useEffect(() => {
     if (!pathname) {
       setContextEmail("");
       setContextRef("");
+      setClientContactSuggestions([]);
       return;
     }
-    const m = pathname.match(/^\/candidates\/([^/]+)/);
-    if (!m) {
+    const candidateMatch = pathname.match(/^\/candidates\/([^/]+)/);
+    const clientMatch = pathname.match(/^\/clients\/([^/]+)/);
+    if (!candidateMatch && !clientMatch) {
       setContextEmail("");
       setContextRef("");
+      setClientContactSuggestions([]);
       return;
     }
-    const ref = decodeURIComponent(m[1]);
-    setContextRef(ref);
     let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch(
-          `/api/mail/candidate-context/${encodeURIComponent(ref)}`,
-          { cache: "no-store" },
-        );
-        if (!res.ok) return;
-        const body = (await res.json().catch(() => null)) as
-          | { candidate?: { email?: string } }
-          | null;
-        if (!cancelled && body?.candidate?.email) {
-          setContextEmail(body.candidate.email);
+    if (candidateMatch) {
+      const ref = decodeURIComponent(candidateMatch[1]);
+      setContextRef(ref);
+      setClientContactSuggestions([]);
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/mail/candidate-context/${encodeURIComponent(ref)}`,
+            { cache: "no-store" },
+          );
+          if (!res.ok) return;
+          const body = (await res.json().catch(() => null)) as
+            | { candidate?: { email?: string } }
+            | null;
+          if (!cancelled && body?.candidate?.email) {
+            setContextEmail(body.candidate.email);
+          }
+        } catch {
+          // Silent: composer still opens, just without the prefill.
         }
-      } catch {
-        // Silent: composer still opens, just without the prefill.
-      }
-    })();
+      })();
+    } else if (clientMatch) {
+      const slug = decodeURIComponent(clientMatch[1]);
+      setContextEmail("");
+      setContextRef("");
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/clients/${encodeURIComponent(slug)}/contacts`,
+            { cache: "no-store" },
+          );
+          if (!res.ok) return;
+          const body = (await res.json().catch(() => null)) as
+            | { contacts?: Array<{ name: string; email: string }> }
+            | null;
+          if (!cancelled && body?.contacts) {
+            setClientContactSuggestions(body.contacts);
+          }
+        } catch {
+          // Silent: composer still opens, just without the typeahead.
+        }
+      })();
+    }
     return () => {
       cancelled = true;
     };
@@ -301,6 +334,11 @@ export function ComposeFAB() {
         templates: init.templates,
         candidateRef: contextRef || undefined,
         nonBlocking: true,
+        // Client-page launches forward the client's contact roster so
+        // the To input gets typeahead suggestions. Empty array on every
+        // other route — the AddressRow shows no dropdown when the
+        // suggestion list is empty.
+        toSuggestions: clientContactSuggestions,
         mergeContext: {
           user: {
             firstName: init.user.firstName,

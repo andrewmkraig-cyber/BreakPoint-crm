@@ -80,8 +80,18 @@ type Props = {
   // Same-company CC picker source. When provided + non-empty, the CC
   // row exposes a dropdown button that lists these contacts so the
   // recruiter can click-to-add them. Suggestions are NOT applied as
-  // type-ahead autocomplete — picking is always explicit.
+  // type-ahead autocomplete — picking is always explicit. If omitted,
+  // the composer self-fetches based on whatever's in the To field
+  // (so it works for any launch surface, not just the candidate
+  // profile that originally wired it).
   ccPickerOptions?: Array<{ name: string; email: string }>;
+  // Optional To-field type-ahead source. The FAB pre-loads this with
+  // the active client's contacts when launched from /clients/[id] so
+  // the recruiter can start typing a name and pick from a dropdown
+  // instead of memorizing the email. Empty by default — type-ahead
+  // requires an explicit suggestion source to stay quiet on routes
+  // where it'd be noise (mail thread reply, etc.).
+  toSuggestions?: Array<{ name: string; email: string }>;
   // Phase 5A.2: smart context resolution. When set, the composer
   // fetches the candidate's active applied jobs on mount and
   // populates {{job.*}} / {{client.*}} fields based on how many
@@ -118,7 +128,8 @@ export function MailComposer({
   autoFocusBody = false,
   templates = [],
   mergeContext = {},
-  ccPickerOptions = [],
+  ccPickerOptions: ccPickerOptionsProp,
+  toSuggestions = [],
   candidateRef,
   asModal = false,
   modalTitle = "New email",
@@ -130,6 +141,53 @@ export function MailComposer({
   const [cc, setCc] = useState(defaultCc ?? "");
   const [bcc, setBcc] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
+  // CC picker options auto-resolve from the To value: whenever it
+  // contains an email matching a Contact in our CRM, we pull the
+  // peers at that Contact's clientId so the CC + Contact button
+  // surfaces the rest of the company. Caller can still pre-seed via
+  // the prop (e.g. mail-view ThreadDetail wants the picker primed
+  // before the composer mounts) but in steady-state the composer
+  // owns the fetch.
+  const [ccPickerAutoOptions, setCcPickerAutoOptions] = useState<
+    Array<{ name: string; email: string }>
+  >([]);
+  const ccPickerOptions = ccPickerOptionsProp ?? ccPickerAutoOptions;
+  useEffect(() => {
+    // Skip when the parent already supplied options — avoids a
+    // duplicate fetch immediately after mount on the candidate-profile
+    // path that pre-resolves the picker.
+    if (ccPickerOptionsProp) return;
+    const email = extractFirstEmail(to);
+    if (!email) {
+      setCcPickerAutoOptions([]);
+      return;
+    }
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/contacts/cc-suggestions?email=${encodeURIComponent(email)}`,
+            { cache: "no-store" },
+          );
+          if (!res.ok) return;
+          const body = (await res.json().catch(() => null)) as
+            | { contacts?: Array<{ name: string; email: string }> }
+            | null;
+          if (!cancelled && body?.contacts) {
+            setCcPickerAutoOptions(body.contacts);
+          }
+        } catch {
+          // Silent: an empty picker is the worst case; recruiter can
+          // still type CC addresses by hand.
+        }
+      })();
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [to, ccPickerOptionsProp]);
   // Default CC to visible if we pre-populated it — otherwise the user
   // won't realize extra recipients are being carried over.
   const [showCc, setShowCc] = useState(Boolean(defaultCc && defaultCc.trim()));
@@ -831,7 +889,12 @@ export function MailComposer({
         </div>
       </div>
       <div className="space-y-2 px-5 py-3">
-        <AddressRow label="To" value={to} onChange={setTo} />
+        <AddressRow
+          label="To"
+          value={to}
+          onChange={setTo}
+          suggestions={toSuggestions}
+        />
         <div className="flex gap-2 text-[11px] text-court-fg-muted">
           <button
             type="button"
@@ -1548,6 +1611,23 @@ function ComposerAddonToolbar({
       />
     </div>
   );
+}
+
+// Pulls the first bare email out of a free-form To string (handles
+// "Name <addr>" + comma-separated lists). Returns null when nothing
+// looks like an email — the CC-picker auto-fetch effect treats null
+// as "clear the options," so the picker doesn't surface stale peers
+// after the recruiter wipes the To field.
+function extractFirstEmail(raw: string): string | null {
+  if (!raw.trim()) return null;
+  for (const part of raw.split(/[,;]/)) {
+    const token = part.trim();
+    if (!token) continue;
+    const m = token.match(/<([^>]+)>/);
+    const candidate = (m ? m[1] : token).trim();
+    if (candidate.includes("@")) return candidate;
+  }
+  return null;
 }
 
 function splitAddresses(raw: string): string[] {

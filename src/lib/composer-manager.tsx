@@ -42,6 +42,10 @@ export type OpenComposerInput = {
   // and interacting with the app while the composer is open. Used by
   // the global ComposeFAB. Defaults to false (full modal blocking).
   nonBlocking?: boolean;
+  // Optional To-field type-ahead source. The FAB pre-loads this with
+  // the active client's contacts when launched from /clients/[id] so
+  // the recruiter can start typing a name and pick from a dropdown.
+  toSuggestions?: Array<{ name: string; email: string }>;
   // Called after a successful send. The composer auto-closes on send,
   // so this is for parent-side bookkeeping (e.g., refreshing a list).
   onSent?: () => void;
@@ -86,6 +90,7 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           templates={s.templates}
           mergeContext={s.mergeContext}
           candidateRef={s.candidateRef}
+          toSuggestions={s.toSuggestions}
           onClose={() => close(s.id)}
           onSent={() => {
             s.onSent?.();
