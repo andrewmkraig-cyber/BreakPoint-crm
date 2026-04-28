@@ -201,6 +201,14 @@ export function PhoneView() {
           void (async () => {
             try {
               await markThreadRead(selectedId);
+              // Optimistic local clear so the row's unread badge
+              // disappears immediately. The next /api/phone/threads
+              // refetch will return the same hasUnread=false anyway.
+              setThreads((prev) =>
+                prev.map((t) =>
+                  t.candidateId === selectedId ? { ...t, hasUnread: false } : t,
+                ),
+              );
               await phoneCtx.refreshUnread();
             } catch {
               // Silent: badge will catch up on next 30s poll.
@@ -520,12 +528,25 @@ function ThreadRow({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className="truncate text-sm font-medium text-court-fg">
+          <span
+            className={
+              "truncate text-sm text-court-fg " +
+              (thread.hasUnread ? "font-semibold" : "font-medium")
+            }
+          >
             {thread.contactName || thread.phoneNumber || "(unknown)"}
           </span>
-          <span className="shrink-0 text-[11px] text-court-fg-muted">
-            {last?.at ? formatRelative(last.at) : ""}
-          </span>
+          <div className="flex shrink-0 items-center gap-1.5">
+            {thread.hasUnread && (
+              <span
+                aria-label="Unread"
+                className="inline-block h-1.5 w-1.5 rounded-full bg-brand"
+              />
+            )}
+            <span className="text-[11px] text-court-fg-muted">
+              {last?.at ? formatRelative(last.at) : ""}
+            </span>
+          </div>
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-court-fg-muted">
           {thread.kind === "candidate" && (
@@ -541,8 +562,14 @@ function ThreadRow({
           {hasMissed && (
             <PhoneMissed className="h-3 w-3 shrink-0 text-red-600" />
           )}
-          <span className="truncate text-xs text-court-fg-muted">{preview}</span>
-          {/* TODO: Phase 3: show unread dot when s.readAt === null && s.direction === inbound */}
+          <span
+            className={
+              "truncate text-xs " +
+              (thread.hasUnread ? "font-medium text-court-fg" : "text-court-fg-muted")
+            }
+          >
+            {preview}
+          </span>
         </div>
       </div>
     </button>

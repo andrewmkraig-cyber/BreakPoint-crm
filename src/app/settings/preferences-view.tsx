@@ -19,31 +19,24 @@ import {
 import { renderNewMailToast } from "@/components/mail-notification-toast";
 import { renderNewTextToast, renderNewCallToast } from "@/components/text-notification-toast";
 
-export function PreferencesView({
-  autoSend,
-  myPhone,
-  mySignature,
-  myEmail,
-}: {
-  autoSend: boolean;
-  myPhone: string;
-  mySignature: string;
-  myEmail: string;
-}) {
-  const router = useRouter();
-  const [enabled, setEnabled] = useState(autoSend);
-  const [phone, setPhone] = useState(myPhone);
-  const [signature, setSignature] = useState(mySignature);
-  const [isTogglePending, startToggle] = useTransition();
-  const [isPhonePending, startPhone] = useTransition();
-  const [isSigPending, startSig] = useTransition();
-  // Mail notifications toggle is local-only — no server roundtrip.
-  // Stored in localStorage as the same key MailContext reads on each
-  // poll tick so flipping it takes effect on the next 30s window
-  // without requiring a refresh. Default OFF per spec.
+// Quiet hours toggle persists to localStorage. Suppression logic
+// (skipping toasts during the chosen window) hasn't shipped yet —
+// today this is just the on/off control. Wired so the persisted
+// value is ready when the suppression code lands.
+const QUIET_HOURS_KEY = "ace_quiet_hours";
+
+// ----------------------------------------------------------------
+// NotificationPreferencesView — in-app notif on/off, email + text
+// toast style pickers, quiet-hours toggle. Sized to live next to
+// Court Mode in a 2-col grid on Settings.
+// ----------------------------------------------------------------
+
+export function NotificationPreferencesView() {
   const [mailNotifs, setMailNotifs] = useState(false);
   const [toastTheme, setToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
   const [textToastTheme, setTextToastTheme] = useState<ToastThemeId>(DEFAULT_TOAST_THEME);
+  const [quietHours, setQuietHours] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     setMailNotifs(window.localStorage.getItem(MAIL_NOTIFICATIONS_PREF_KEY) === "true");
@@ -55,7 +48,9 @@ export function PreferencesView({
     if (storedTextTheme && storedTextTheme in TOAST_THEMES) {
       setTextToastTheme(storedTextTheme as ToastThemeId);
     }
+    setQuietHours(window.localStorage.getItem(QUIET_HOURS_KEY) === "true");
   }, []);
+
   function onToggleMailNotifs(next: boolean) {
     setMailNotifs(next);
     if (typeof window !== "undefined") {
@@ -74,8 +69,74 @@ export function PreferencesView({
       window.localStorage.setItem(TEXT_TOAST_THEME_KEY, next);
     }
   }
+  function onToggleQuietHours(next: boolean) {
+    setQuietHours(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(QUIET_HOURS_KEY, next ? "true" : "false");
+    }
+  }
 
-  function onToggle(next: boolean) {
+  return (
+    <div className="space-y-3">
+      <ToggleRow
+        label="In-app notifications"
+        description="Show a popup when new mail arrives."
+        checked={mailNotifs}
+        onChange={onToggleMailNotifs}
+      />
+      <div className="border-t border-court-border pt-3">
+        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Email notification style
+        </div>
+        <NotifStylePicker value={toastTheme} onPick={onPickToastTheme} kind="email" />
+      </div>
+      <div className="border-t border-court-border pt-3">
+        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Phone notification style
+        </div>
+        <div className="mt-1 text-[11px] text-court-fg-muted">
+          Applies once Quo text notifications are wired up.
+        </div>
+        <NotifStylePicker value={textToastTheme} onPick={onPickTextToastTheme} kind="text" />
+      </div>
+      <div className="border-t border-court-border pt-3">
+        <ToggleRow
+          label="Quiet hours"
+          description="Suppress non-urgent toasts on a schedule. UI persists; suppression wires up next."
+          checked={quietHours}
+          onChange={onToggleQuietHours}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------
+// EmailPreferencesView — Triggers (auto-send), recruiter phone,
+// email signature. The "Triggers" subheading is the user-requested
+// home for the auto-send-after-submittal toggle.
+// ----------------------------------------------------------------
+
+export function EmailPreferencesView({
+  autoSend,
+  myPhone,
+  mySignature,
+  myEmail,
+}: {
+  autoSend: boolean;
+  myPhone: string;
+  mySignature: string;
+  myEmail: string;
+}) {
+  const router = useRouter();
+  const [enabled, setEnabled] = useState(autoSend);
+  const [phone, setPhone] = useState(myPhone);
+  const [signature, setSignature] = useState(mySignature);
+  const [isTogglePending, startToggle] = useTransition();
+  const [isPhonePending, startPhone] = useTransition();
+  const [isSigPending, startSig] = useTransition();
+
+  function onToggleAutoSend(next: boolean) {
     setEnabled(next);
     startToggle(async () => {
       const result = await setAutoSendCandidateConfirmation(next);
@@ -115,86 +176,22 @@ export function PreferencesView({
 
   return (
     <div className="space-y-5">
-      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
-        <label className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-sm font-semibold text-court-fg">Auto-send candidate confirmation after submittal</div>
-            <div className="mt-1 text-xs text-court-fg-muted">
-              When on, the &quot;BreakPoint Talent has reviewed…&quot; email is sent immediately after a successful client
-              submittal. When off, it lands in your Gmail Drafts for review.
-            </div>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={enabled}
-            onClick={() => onToggle(!enabled)}
-            disabled={isTogglePending}
-            className={cn(
-              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-              // `bg-brand` on the ON state stays the BreakPoint green in
-              // every mode (intentional — the brand color is consistent).
-              // OFF state swaps `bg-muted-foreground/30` for a mode-aware
-              // `bg-court-fg-muted/40` so the track reads against the
-              // themed card background in Clay / Grass.
-              enabled ? "bg-brand" : "bg-court-fg-muted/40",
-              isTogglePending && "opacity-60",
-            )}
-          >
-            <span
-              className={cn(
-                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-                enabled ? "translate-x-5" : "translate-x-0.5",
-              )}
-            />
-          </button>
-        </label>
+      <div>
+        <div className="mb-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Triggers
+        </div>
+        <ToggleRow
+          label="Auto-send candidate confirmation after submittal"
+          description={
+            'When on, the "BreakPoint Talent has reviewed…" email is sent immediately after a successful client submittal. When off, it lands in your Gmail Drafts for review.'
+          }
+          checked={enabled}
+          onChange={onToggleAutoSend}
+          disabled={isTogglePending}
+        />
       </div>
 
-      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
-        <label className="flex items-start justify-between gap-4">
-          <div>
-            <div className="text-sm font-semibold text-court-fg">In-app notifications</div>
-            <div className="mt-1 text-xs text-court-fg-muted">
-              Show a popup when new mail arrives.
-            </div>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={mailNotifs}
-            onClick={() => onToggleMailNotifs(!mailNotifs)}
-            className={cn(
-              "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-              mailNotifs ? "bg-brand" : "bg-court-fg-muted/40",
-            )}
-          >
-            <span
-              className={cn(
-                "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-                mailNotifs ? "translate-x-5" : "translate-x-0.5",
-              )}
-            />
-          </button>
-        </label>
-        <div className="mt-4 border-t border-court-border pt-4">
-          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-            Email notification style
-          </div>
-          <NotifStylePicker value={toastTheme} onPick={onPickToastTheme} kind="email" />
-        </div>
-        <div className="mt-4 border-t border-court-border pt-4">
-          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-            Text notification style
-          </div>
-          <div className="mt-1 text-[11px] text-court-fg-muted">
-            Applies once Quo text notifications are wired up.
-          </div>
-          <NotifStylePicker value={textToastTheme} onPick={onPickTextToastTheme} kind="text" />
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="border-t border-court-border pt-5">
         <div className="flex items-end justify-between gap-4">
           <label className="flex-1">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Your phone number</span>
@@ -219,7 +216,7 @@ export function PreferencesView({
         </div>
       </div>
 
-      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="border-t border-court-border pt-5">
         <div className="mb-2">
           <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email signature</div>
           <div className="mt-1 text-xs text-court-fg-muted">
@@ -248,6 +245,54 @@ export function PreferencesView({
   );
 }
 
+// ----------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  description?: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <div className="text-sm font-semibold text-court-fg">{label}</div>
+        {description && (
+          <div className="mt-1 text-xs text-court-fg-muted">{description}</div>
+        )}
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        disabled={disabled}
+        className={cn(
+          "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+          checked ? "bg-brand" : "bg-court-fg-muted/40",
+          disabled && "opacity-60",
+        )}
+      >
+        <span
+          className={cn(
+            "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+            checked ? "translate-x-5" : "translate-x-0.5",
+          )}
+        />
+      </button>
+    </label>
+  );
+}
+
 function NotifStyleCard({
   spec,
   kind,
@@ -268,19 +313,12 @@ function NotifStyleCard({
       onClick={onClick}
       aria-pressed={selected}
       className={cn(
-        "flex flex-col gap-3 rounded-xl border p-3 text-left transition",
-        // Tailwind arbitrary values pass through verbatim, so the
-        // var() must already resolve to a color string. Globals.css
-        // stores court vars as RGB triplets; wrap in rgb() so the
-        // browser parses it as a real color.
+        "flex flex-col gap-2 rounded-xl border p-2.5 text-left transition",
         selected
           ? "border-court-accent shadow-[0_0_0_3px_rgb(var(--court-accent-tint))]"
           : "border-court-border hover:border-court-fg/40",
       )}
     >
-      {/* Mini toast preview — inline styles bound to the theme spec
-          so the swatch tracks the live theme tokens (and stays
-          self-contained — no lucide imports here). */}
       <div
         style={{
           position: "relative",
@@ -334,13 +372,7 @@ function NotifStyleCard({
         </span>
       </div>
 
-      {/* Bottom: radio circle, label, desc on its own line. Spec:
-          14×14 radio (border court-accent + filled when selected;
-          otherwise court-border outline), label 13/600 in
-          text-court-fg, desc 11.5px in text-court-fg-muted on a new
-          line. Selected keeps the accent border AND the accent fill
-          so the ring stays visible against light backgrounds. */}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
         <div className="flex items-center gap-2">
           <span
             className={cn(
@@ -352,9 +384,9 @@ function NotifStyleCard({
           >
             {selected && <span className="h-1 w-1 rounded-full bg-white" />}
           </span>
-          <span className="text-[13px] font-semibold text-court-fg">{spec.label}</span>
+          <span className="text-[12.5px] font-semibold text-court-fg">{spec.label}</span>
         </div>
-        <span className="text-[11.5px] leading-snug text-court-fg-muted">{spec.desc}</span>
+        <span className="text-[11px] leading-snug text-court-fg-muted">{spec.desc}</span>
       </div>
     </button>
   );
@@ -370,8 +402,8 @@ function NotifStylePicker({
   kind: "email" | "text";
 }) {
   return (
-    <div className="mt-3 flex max-w-[640px] flex-col gap-2.5">
-      <div className="grid grid-cols-3 gap-2.5">
+    <div className="mt-2 flex max-w-[640px] flex-col gap-2">
+      <div className="grid grid-cols-3 gap-2">
         {TOAST_THEME_ORDER.map((id) => {
           const spec = TOAST_THEMES[id];
           return (
@@ -389,27 +421,38 @@ function NotifStylePicker({
         <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           Try it:
         </span>
-        <button
-          type="button"
-          onClick={fireSampleEmailToast}
-          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-        >
-          Email
-        </button>
-        <button
-          type="button"
-          onClick={fireSampleTextToast}
-          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-        >
-          Text
-        </button>
-        <button
-          type="button"
-          onClick={fireSampleCallToast}
-          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-        >
-          Call
-        </button>
+        {/* Each picker only previews the toasts it actually styles —
+            email picker fires the email toast; phone picker fires
+            text + call toasts. Cross-firing was confusing because a
+            test toast that doesn't use the picker's theme looks like
+            a bug. */}
+        {kind === "email" && (
+          <button
+            type="button"
+            onClick={fireSampleEmailToast}
+            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+          >
+            Email
+          </button>
+        )}
+        {kind === "text" && (
+          <>
+            <button
+              type="button"
+              onClick={fireSampleTextToast}
+              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+            >
+              Text
+            </button>
+            <button
+              type="button"
+              onClick={fireSampleCallToast}
+              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+            >
+              Call
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

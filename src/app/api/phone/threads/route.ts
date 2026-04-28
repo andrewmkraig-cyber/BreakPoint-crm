@@ -78,6 +78,7 @@ export async function GET(req: NextRequest) {
         fromNumber: true,
         toNumber: true,
         status: true,
+        isRead: true,
         createdAt: true,
       },
     }),
@@ -151,12 +152,13 @@ export async function GET(req: NextRequest) {
         direction: s.direction,
       };
     }
-    // SmsMessage doesn't carry a read/unread field yet, so we cannot
-    // distinguish "new" inbound texts from ones the user has already
-    // seen. Treat every existing row as read until that field exists
-    // and gets stamped on thread open. This keeps the green dot off
-    // every thread and the sidebar badge at zero. When read tracking
-    // ships, set hasUnread = (s.direction === 'inbound' && !s.readAt).
+    // Any unread inbound row flips the thread's hasUnread flag. The
+    // markThreadRead server action (fired when the thread is opened)
+    // updates SmsMessage.isRead → true for inbound rows, so on the
+    // next fetch this branch stops contributing for opened threads.
+    if (s.direction === "inbound" && !s.isRead) {
+      t.hasUnread = true;
+    }
   }
   for (const c of callRows) {
     const t = ensureThread(c.candidateId);

@@ -4,9 +4,13 @@ import { PageHeader } from "@/components/page-header";
 import { prisma } from "@/lib/prisma";
 import { ensureDefaultTemplates } from "@/app/settings/templates-actions";
 import { TemplatesView, type TemplateRow } from "@/app/settings/templates-view";
-import { PreferencesView } from "@/app/settings/preferences-view";
+import {
+  EmailPreferencesView,
+  NotificationPreferencesView,
+} from "@/app/settings/preferences-view";
 import { CourtModeView } from "@/app/settings/court-mode-view";
 import { BrandingView, type BrandingInitial } from "@/app/settings/branding-view";
+import { CollapsibleSection } from "@/components/settings/collapsible-section";
 import { ensureDefaultPreferences, getAppPreferences } from "@/lib/preferences";
 import { getUserBrandingProfile } from "@/lib/signature";
 
@@ -77,59 +81,53 @@ export default async function SettingsPage() {
         description="Preferences and reusable email templates for submittals and candidate notifications."
       />
 
-      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <div className="mb-4">
-          <h2 className="font-serif text-lg font-semibold text-court-fg">Court Mode</h2>
-          <p className="mt-1 text-xs text-court-fg-muted">
-            Pick the palette Ace renders with. Persists per browser via localStorage and flips
-            instantly — no reload needed. Per-component theming lands surface by surface;
-            today only Settings consumes the court-* tokens.
-          </p>
-        </div>
-        <CourtModeView />
-      </section>
+      {/* Top row — Court Mode and Notification Preferences sit side by
+          side on lg+; stack on smaller screens. Both surfaces are
+          self-contained client components, so the grid only handles
+          layout. */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <CollapsibleSection
+          title="Court Mode"
+          description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly — no reload needed."
+        >
+          <CourtModeView />
+        </CollapsibleSection>
 
-      {brandingInitial && (
-        <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-          <div className="mb-4">
-            <h2 className="font-serif text-lg font-semibold text-court-fg">Branding &amp; Signature</h2>
-            <p className="mt-1 text-xs text-court-fg-muted">
-              Used as the signature block on every email you send from Ace — Mail Tab replies,
-              submittals, candidate confirmations. Stored per user; never shared across the org.
-            </p>
-          </div>
-          <BrandingView initial={brandingInitial} />
-        </section>
-      )}
+        <CollapsibleSection
+          title="Notification Preferences"
+          description="In-app popups for new mail, calls, and texts. Style picker recolors with Court Mode automatically (Ink stays dark)."
+        >
+          <NotificationPreferencesView />
+        </CollapsibleSection>
+      </div>
 
-      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <div className="mb-4">
-          <h2 className="font-serif text-lg font-semibold text-court-fg">Preferences</h2>
-          <p className="mt-1 text-xs text-court-fg-muted">
-            Controls how Ace behaves around email delivery.
-          </p>
-        </div>
-        <PreferencesView
+      <CollapsibleSection
+        title="Email Preferences"
+        description="Send-time triggers, recruiter phone, and the auto-appended signature block."
+      >
+        <EmailPreferencesView
           autoSend={prefs.autoSendCandidateConfirmation}
           myPhone={myPhone}
           mySignature={mySignature}
           myEmail={myEmail}
         />
-      </section>
+      </CollapsibleSection>
 
-      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="font-serif text-lg font-semibold text-court-fg">Email templates</h2>
-            <p className="mt-1 text-xs text-court-fg-muted">
-              Reusable subject + body you can drop into any email you send from Ace. Use the
-              {" "}<span className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] font-semibold text-court-fg">Insert Field</span> picker in the editor to add merge fields like
-              {" "}<code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg">[Candidate First Name]</code>.
-            </p>
-          </div>
-        </div>
+      {brandingInitial && (
+        <CollapsibleSection
+          title="Branding & Signature"
+          description="Used as the signature block on every email you send from Ace — Mail Tab replies, submittals, candidate confirmations. Stored per user; never shared across the org."
+        >
+          <BrandingView initial={brandingInitial} />
+        </CollapsibleSection>
+      )}
+
+      <CollapsibleSection
+        title="Email templates"
+        description="Reusable subject + body you can drop into any email you send from Ace. Use the Insert Field picker in the editor to add merge fields like [Candidate First Name]."
+      >
         <TemplatesView initial={rows} />
-      </section>
+      </CollapsibleSection>
     </div>
   );
 }
