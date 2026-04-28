@@ -380,6 +380,50 @@ export function MailView({
     }
   }
 
+  // Create a brand-new Gmail label without applying it to a thread.
+  // Used by the standalone "+ New label" entry at the bottom of the
+  // labels sidebar — recruiters frequently want to set up a label
+  // ahead of time (e.g. for a new client) before any matching thread
+  // arrives. Pushes the created label into local state so it appears
+  // in the sidebar tree + Move To dropdown without a full refetch.
+  async function createLabelStandalone(name: string) {
+    try {
+      const res = await fetch("/api/mail/labels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.label?.id) {
+        toast.error("Couldn't create label", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const newLabel = body.label as { id: string; name: string };
+      setLabels((prev) =>
+        prev
+          ? [...prev, { id: newLabel.id, name: newLabel.name, type: "user", messagesTotal: 0 }]
+          : prev,
+      );
+      toast.success(`Created label "${newLabel.name}"`);
+    } catch (e) {
+      toast.error("Couldn't create label", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    }
+  }
+
+  // "+ New label" entry's inline-input state. Mirrors the Move To
+  // dropdown's pattern (creating boolean + draft string) so the two
+  // create flows feel identical to the recruiter.
+  const [sidebarCreating, setSidebarCreating] = useState(false);
+  const [sidebarLabelDraft, setSidebarLabelDraft] = useState("");
+  const sidebarLabelInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (sidebarCreating) sidebarLabelInputRef.current?.focus();
+  }, [sidebarCreating]);
+
   // Create a brand-new Gmail label and immediately apply it to a single
   // thread. Mirrors moveThread's optimistic list-prune so the thread
   // disappears from the current view (it just left INBOX), and pushes
@@ -685,19 +729,22 @@ export function MailView({
       `}</style>
       <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <nav className="p-2 text-sm">
-          {/* Premium Inbox card — the visual anchor of the sidebar.
-              Uses literal hex colors per the redesign spec; matches the
-              brand-tint / brand / brand-dark token palette but is locked
-              to the Hard Court palette in all three Court Modes. */}
+          {/* Inbox entry — the visual anchor of the sidebar but
+              proportioned to match the Sent / Drafts / label rows
+              below it. Earlier this was a chunky border-2/py-4 card
+              that dwarfed the rest of the sidebar; user feedback was
+              "too thick." Now it's a normal-height nav row with a
+              subtle green tint so it still reads as the default
+              destination without towering over its siblings. */}
           <button
             type="button"
             onClick={() => setSelectedLabel(null)}
-            className="group flex w-full items-center gap-3 rounded-2xl border-2 border-[#5A9642] bg-[#EAF4E4] px-5 py-4 text-left shadow-sm transition hover:border-[#3F7030]"
+            className="flex min-h-9 w-full items-center gap-2 rounded-lg border border-[#5A9642]/40 bg-[#EAF4E4] px-3 py-1.5 text-left transition hover:border-[#5A9642]"
           >
-            <MailIcon className="h-6 w-6 shrink-0 text-[#5A9642]" />
-            <span className="flex-1 font-bold text-[#3F7030]">Inbox</span>
+            <MailIcon className="h-4 w-4 shrink-0 text-[#5A9642]" />
+            <span className="flex-1 text-sm font-semibold text-[#3F7030]">Inbox</span>
             {unreadCount > 0 && (
-              <span className="inline-flex min-w-[28px] items-center justify-center rounded-full bg-white px-2 py-0.5 text-xs font-bold text-[#3F7030]">
+              <span className="inline-flex min-w-[22px] items-center justify-center rounded-full bg-white px-1.5 py-0.5 text-[11px] font-bold text-[#3F7030]">
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
@@ -780,6 +827,61 @@ export function MailView({
               </ul>
             </>
           )}
+          {/* Standalone "+ New label" entry: creates a Gmail label
+              that doesn't get applied to any thread. Recruiters need
+              this to set up a client/project label ahead of time. The
+              Move To dropdown's "New label…" still exists for the
+              create-and-apply-immediately flow. */}
+          <div className="mt-2 px-1">
+            {sidebarCreating ? (
+              <div className="flex items-center gap-1 px-2 py-1.5">
+                <input
+                  ref={sidebarLabelInputRef}
+                  value={sidebarLabelDraft}
+                  onChange={(e) => setSidebarLabelDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const name = sidebarLabelDraft.trim();
+                      if (!name) return;
+                      setSidebarCreating(false);
+                      setSidebarLabelDraft("");
+                      void createLabelStandalone(name);
+                    } else if (e.key === "Escape") {
+                      e.preventDefault();
+                      setSidebarCreating(false);
+                      setSidebarLabelDraft("");
+                    }
+                  }}
+                  placeholder="Label name"
+                  className="min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-court-accent"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const name = sidebarLabelDraft.trim();
+                    if (!name) return;
+                    setSidebarCreating(false);
+                    setSidebarLabelDraft("");
+                    void createLabelStandalone(name);
+                  }}
+                  disabled={!sidebarLabelDraft.trim()}
+                  className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                >
+                  Create
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setSidebarCreating(true)}
+                className="flex w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-left text-xs font-medium text-court-fg-muted transition hover:bg-slate-50 hover:text-court-fg"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New label
+              </button>
+            )}
+          </div>
         </nav>
       </aside>
 
@@ -1302,13 +1404,29 @@ export function ThreadDetail({
   >(null);
   const composerOpen = composerMode !== null;
 
-  // Reply-recipient logic: the "other party" on the latest message.
+  // Which specific message the recruiter is replying to. Defaults to
+  // the latest, so the top-level Reply / Reply All / Forward buttons
+  // behave as before. The per-message action buttons inside each
+  // MessageBlock header set this to point at that exact message so
+  // recipients + quoted body get computed against the right one. Reset
+  // to null when composer closes so the next top-level click goes
+  // back to the latest.
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!composerOpen) setReplyTargetId(null);
+  }, [composerOpen]);
+  const replyTarget = useMemo(() => {
+    if (!replyTargetId) return latest;
+    return orderedMessages.find((m) => m.id === replyTargetId) ?? latest;
+  }, [orderedMessages, replyTargetId, latest]);
+
+  // Reply-recipient logic: the "other party" on the target message.
   // - If I sent the last message, reply to whoever I sent it to.
   // - If someone else sent it, reply to them.
   // Never pre-fill To with my own address. computeReplyRecipients
   // already returns CC for the Reply All case; plain Reply drops it.
   const { defaultTo, defaultCc } = computeReplyRecipients(
-    latest,
+    replyTarget,
     selectedThread,
     currentUserEmail,
   );
@@ -1319,13 +1437,26 @@ export function ThreadDetail({
     ? detail.subject
     : `Fwd: ${detail.subject}`;
   // Forward body: blank line on top so the user can type their note,
-  // then a quoted block citing the original message's headers + body.
+  // then a quoted block citing the chosen message's headers + body.
   // The composer's tiptap editor focuses at the start (Forward sets
   // autoFocusBody w/ defaultBody non-empty), so the cursor lands
   // ABOVE the quote.
   const forwardBody = useMemo(
-    () => buildForwardQuote(latest),
-    [latest],
+    () => buildForwardQuote(replyTarget),
+    [replyTarget],
+  );
+
+  // Per-message action handler used by each MessageBlock's reply /
+  // reply-all / forward buttons. Captures the chosen message as the
+  // reply target before opening the composer, so the recipient +
+  // quoted-body computations above re-run against THAT message
+  // instead of the thread's latest.
+  const onMessageAction = useCallback(
+    (msg: MailThreadMessage, mode: "reply" | "replyAll" | "forward") => {
+      setReplyTargetId(msg.id);
+      setComposerMode(mode);
+    },
+    [],
   );
 
   // CC same-company picker: when the To address resolves to a Contact
@@ -1460,7 +1591,12 @@ export function ThreadDetail({
       </div>
       <div className="flex-1 overflow-y-auto">
         {orderedMessages.map((m, i) => (
-          <MessageBlock key={m.id} msg={m} isFirst={i === 0} />
+          <MessageBlock
+            key={m.id}
+            msg={m}
+            isFirst={i === 0}
+            onAction={composerOpen ? undefined : (mode) => onMessageAction(m, mode)}
+          />
         ))}
       </div>
       {composerOpen && (
@@ -1779,7 +1915,14 @@ function LabelTreeNode({
             (active
               ? "bg-[#EAF4E4] font-semibold text-[#3F7030]"
               : node.id === null
-                ? "cursor-default text-court-fg-muted"
+                ? // Synthetic parent (no real Gmail label at this
+                  // path — exists only because a child label nests
+                  // under it, e.g. "Admin/Foo" creates an "Admin"
+                  // intermediate node). Keep the same text weight
+                  // + color as real labels so the tree reads
+                  // uniformly; just drop hover + cursor since
+                  // there's no id to filter the inbox by.
+                  "cursor-default text-court-fg"
                 : "text-court-fg hover:bg-slate-50")
           }
           title={node.name}

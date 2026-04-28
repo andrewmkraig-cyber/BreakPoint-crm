@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/page-header";
 import { listGmailThreads, type MailListThread } from "@/lib/gmail";
 import { MailView } from "@/app/mail/mail-view";
+import { ComposeNewEmailButton } from "@/components/mail/compose-new-email-button";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 
 // Read-only Mail Tab foundation (Phase 6.0). The left-rail thread list
@@ -67,6 +68,13 @@ export default async function MailPage() {
         eyebrow="Inbox"
         title="Mail"
         description="Your Gmail inbox — read-only for now. Reply composer ships next."
+        actions={
+          <ComposeNewEmailButton
+            templates={templates}
+            currentUserFirstName={myFirstName}
+            currentUserFullName={myFullName}
+          />
+        }
       />
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">

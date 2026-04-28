@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Forward, Reply, ReplyAll } from "lucide-react";
 import type { MailThreadMessage } from "@/lib/gmail";
+
+export type MessageBlockAction = "reply" | "replyAll" | "forward";
 
 // Single message renderer used by both the inline Mail Tab thread
 // pane and the popped-out FloatingThreadWindow. Body HTML is already
@@ -20,9 +23,17 @@ import type { MailThreadMessage } from "@/lib/gmail";
 export function MessageBlock({
   msg,
   isFirst,
+  onAction,
 }: {
   msg: MailThreadMessage;
   isFirst: boolean;
+  // When provided, each MessageBlock renders its own Reply / Reply
+  // All / Forward buttons. The parent ThreadDetail wires the handler
+  // so the composer opens with THIS message's recipients + quoted
+  // body — lets the recruiter reply to any message in a long thread,
+  // not just the latest one. Omit (or pass undefined) to hide the
+  // per-message buttons (e.g. while the composer is already open).
+  onAction?: (mode: MessageBlockAction) => void;
 }) {
   // After the dangerouslySetInnerHTML body mounts, attach error
   // handlers to every <img> inside it so a failed remote load
@@ -62,20 +73,53 @@ export function MessageBlock({
         "px-5 py-4 " + (isFirst ? "" : "border-t border-court-border")
       }
     >
-      <header className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-        <div>
+      <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
           <div className="text-sm font-medium text-court-fg">
             {msg.fromName || msg.fromEmail || "(unknown sender)"}
           </div>
           {msg.to && (
-            <div className="text-[11px] text-court-fg-muted">
+            <div className="truncate text-[11px] text-court-fg-muted">
               to {msg.to}
               {msg.cc ? ` · cc ${msg.cc}` : ""}
             </div>
           )}
         </div>
-        <div className="text-[11px] text-court-fg-muted">
-          {msg.dateIso ? new Date(msg.dateIso).toLocaleString() : ""}
+        <div className="flex shrink-0 items-center gap-2">
+          {onAction && (
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => onAction("reply")}
+                aria-label="Reply to this message"
+                title="Reply to this message"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+              >
+                <Reply className="h-3 w-3" /> Reply
+              </button>
+              <button
+                type="button"
+                onClick={() => onAction("replyAll")}
+                aria-label="Reply all to this message"
+                title="Reply all to this message"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+              >
+                <ReplyAll className="h-3 w-3" /> Reply All
+              </button>
+              <button
+                type="button"
+                onClick={() => onAction("forward")}
+                aria-label="Forward this message"
+                title="Forward this message"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+              >
+                <Forward className="h-3 w-3" /> Forward
+              </button>
+            </div>
+          )}
+          <div className="text-[11px] text-court-fg-muted">
+            {msg.dateIso ? new Date(msg.dateIso).toLocaleString() : ""}
+          </div>
         </div>
       </header>
       <div

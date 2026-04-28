@@ -926,7 +926,6 @@ export function MailComposer({
             value={cc}
             onChange={setCc}
             pickerOptions={ccPickerOptions}
-            pickerLabel="Add same-company contact"
           />
         )}
         {showBcc && (
@@ -942,7 +941,6 @@ export function MailComposer({
             // approaches the field.
             suggestions={ORG_MEMBER_SUGGESTIONS}
             pickerOptions={ORG_MEMBER_SUGGESTIONS}
-            pickerLabel="BCC a teammate"
           />
         )}
         <label className="flex items-center gap-2 text-sm">
@@ -1267,26 +1265,25 @@ function AddressRow({
   onChange,
   suggestions = [],
   pickerOptions = [],
-  pickerLabel,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
-  // Optional autocomplete source. When provided + the field is
-  // focused, a dropdown surfaces matching org members. Picking one
-  // appends "Name <email>, " to the field — same string-comma format
-  // the To and CC fields expect.
+  // Typeahead source — surfaces matching contacts when the field is
+  // focused. Picking one appends "Name <email>, " to the field —
+  // same string-comma format the To and CC fields expect.
   suggestions?: Array<{ name: string; email: string }>;
-  // Click-to-pick options. Distinct from `suggestions` (which is
-  // type-ahead): picker is opened explicitly by a button next to the
-  // input and lists every remaining option for one-click insertion.
-  // No filter on what the user has typed — picker is the explicit
-  // path for "show me who else I can add."
+  // Same-company / org-member contacts that should also surface in
+  // the typeahead. Folded into `suggestions` here so a single
+  // dropdown handles both sources — previously these were exposed
+  // via a separate "+ Contact" picker button which spawned its own
+  // absolutely-positioned dropdown that overlayed the next field
+  // (CC's picker was sitting on top of the Subject input, blocking
+  // every click in the row beneath it). Removed per Andrew's
+  // request — typeahead is the single recipient-pick path now.
   pickerOptions?: Array<{ name: string; email: string }>;
-  pickerLabel?: string;
 }) {
   const [focused, setFocused] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
 
   // The "current segment" is whatever the user is typing after the
   // last comma. We filter suggestions against this so the dropdown
@@ -1295,8 +1292,24 @@ function AddressRow({
   const lastCommaIdx = value.lastIndexOf(",");
   const currentSegment = value.slice(lastCommaIdx + 1).trim().toLowerCase();
 
+  // Merge suggestions + pickerOptions, de-duped by email (lowercase).
+  // Caller may pass overlap (the BCC field passes ORG_MEMBER_SUGGESTIONS
+  // as both); the dedupe here keeps Austin from rendering twice in
+  // the dropdown.
+  const merged = (() => {
+    const out: Array<{ name: string; email: string }> = [];
+    const seen = new Set<string>();
+    for (const s of [...suggestions, ...pickerOptions]) {
+      const key = s.email.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(s);
+    }
+    return out;
+  })();
+
   const filtered = focused
-    ? suggestions.filter((s) => {
+    ? merged.filter((s) => {
         // Skip anyone already present in the field.
         if (lowerValue.includes(s.email.toLowerCase())) return false;
         // Empty segment → show every remaining suggestion.
@@ -1308,13 +1321,6 @@ function AddressRow({
       })
     : [];
 
-  // Picker shows every option the user hasn't already added, with no
-  // filtering on what they've typed — picking is an explicit "show me
-  // the rest of the team" gesture.
-  const pickerVisible = pickerOptions.filter(
-    (s) => !lowerValue.includes(s.email.toLowerCase()),
-  );
-
   function pick(s: { name: string; email: string }) {
     const addr = `${s.name} <${s.email}>`;
     // Drop the in-progress segment, replace with the full picked
@@ -1323,17 +1329,6 @@ function AddressRow({
     const before =
       lastCommaIdx >= 0 ? value.slice(0, lastCommaIdx + 1) + " " : "";
     onChange(before + addr + ", ");
-  }
-
-  function pickFromPicker(s: { name: string; email: string }) {
-    // Picker appends — we never strip an in-progress segment, since
-    // the user clicked the picker button rather than typing. Empty
-    // value → `Name <email>, ` outright; non-empty → ensure trailing
-    // separator before appending.
-    const trimmed = value.trimEnd();
-    const sep = trimmed.length === 0 ? "" : trimmed.endsWith(",") ? " " : ", ";
-    onChange(trimmed + sep + `${s.name} <${s.email}>` + ", ");
-    setPickerOpen(false);
   }
 
   return (
@@ -1349,23 +1344,8 @@ function AddressRow({
           onBlur={() => setFocused(false)}
           className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
-        {pickerOptions.length > 0 && (
-          <button
-            type="button"
-            aria-label={pickerLabel ?? "Pick contact"}
-            // Capture mousedown so the click registers before the
-            // input's blur dismisses any open suggestion list.
-            onMouseDown={(e) => {
-              e.preventDefault();
-              setPickerOpen((v) => !v);
-            }}
-            className="shrink-0 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-          >
-            + Contact
-          </button>
-        )}
       </label>
-      {filtered.length > 0 && !pickerOpen && (
+      {filtered.length > 0 && (
         <ul className="absolute left-[72px] right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
           {filtered.map((s) => (
             <li key={s.email}>
@@ -1389,34 +1369,6 @@ function AddressRow({
               </button>
             </li>
           ))}
-        </ul>
-      )}
-      {pickerOpen && (
-        <ul className="absolute left-[72px] right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
-          {pickerVisible.length === 0 ? (
-            <li className="px-3 py-2 text-xs text-court-fg-muted">
-              {pickerOptions.length === 0
-                ? "No suggestions yet."
-                : "Everyone in the list is already added."}
-            </li>
-          ) : (
-            pickerVisible.map((s) => (
-              <li key={s.email}>
-                <button
-                  type="button"
-                  onMouseDown={(e) => {
-                    if (e.button !== 0) return;
-                    e.preventDefault();
-                    pickFromPicker(s);
-                  }}
-                  className="block w-full px-3 py-2 text-left text-sm transition hover:bg-court-surface-subtle"
-                >
-                  <div className="font-medium text-court-fg">{s.name}</div>
-                  <div className="text-[11px] text-court-fg-muted">{s.email}</div>
-                </button>
-              </li>
-            ))
-          )}
         </ul>
       )}
     </div>
