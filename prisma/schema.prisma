@@ -563,6 +563,10 @@ model SmsMessage {
   toNumber       String
   status         String   @default("sent")
   krispcallId    String?
+  // Phone Tab Phase 2: read tracking for the sidebar unread badge.
+  // Outbound rows are written true since the recruiter sent them;
+  // inbound rows flip to true when the recruiter opens that thread.
+  isRead         Boolean  @default(false)
   createdAt      DateTime @default(now())
 
   @@index([organizationId])

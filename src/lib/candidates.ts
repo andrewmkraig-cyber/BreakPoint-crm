@@ -34,23 +34,35 @@ function composeName(first: string | null | undefined, last: string | null | und
 // tenant returns zero rows rather than escaping the boundary.
 function buildCandidateWhere(
   orgId: string,
-  query?: string,
-  listId?: string,
+  query: string | undefined,
+  listId: string | undefined,
+  phoneTokenIds?: Map<string, string[]>,
 ): Prisma.CandidateWhereInput {
   const q = query?.trim() ?? "";
   const where: Prisma.CandidateWhereInput = { organizationId: orgId };
   if (q) {
     const tokens = q.split(/\s+/).filter(Boolean);
-    where.AND = tokens.map((t) => ({
-      OR: [
+    where.AND = tokens.map((t) => {
+      const orClauses: Prisma.CandidateWhereInput[] = [
         { firstName: { contains: t, mode: "insensitive" } },
         { lastName: { contains: t, mode: "insensitive" } },
         { email: { contains: t, mode: "insensitive" } },
         { currentDesignation: { contains: t, mode: "insensitive" } },
         { currentOrganization: { contains: t, mode: "insensitive" } },
         { location: { contains: t, mode: "insensitive" } },
-      ],
-    }));
+      ];
+      // Phone match: ID list is pre-resolved by resolvePhoneTokenIds
+      // (raw SQL with regexp_replace) so the OR can include candidates
+      // whose stored phone is formatted as "(216) 555-0100" when the
+      // query is "2165550100". Prisma's `contains` operator can't do
+      // regexp_replace on the stored side, so the digits-only match
+      // has to round-trip through raw SQL.
+      const ids = phoneTokenIds?.get(t);
+      if (ids && ids.length > 0) {
+        orClauses.push({ id: { in: ids } });
+      }
+      return { OR: orClauses };
+    });
   }
   if (listId) {
     where.listMemberships = {
@@ -58,6 +70,28 @@ function buildCandidateWhere(
     };
   }
   return where;
+}
+
+// Pre-resolves the candidate ids whose stored phone (digits-only)
+// contains a query token (digits-only). Called once per list query
+// when the user's query has at least one 7+ digit token; the result
+// is fed into buildCandidateWhere as an `id IN (...)` extension to
+// the per-token OR. Returns an empty map when no token qualifies, in
+// which case the where clause stays purely name/email-based.
+async function resolvePhoneTokenIds(orgId: string, tokens: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (const t of tokens) {
+    const digits = t.replace(/\D/g, "");
+    if (digits.length < 7) continue;
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT id FROM "Candidate"
+      WHERE "organizationId" = ${orgId}
+        AND phone IS NOT NULL
+        AND regexp_replace(phone, '\D', '', 'g') LIKE ${`%${digits}%`}
+    `);
+    if (rows.length > 0) out.set(t, rows.map((r) => r.id));
+  }
+  return out;
 }
 
 const CANDIDATE_LIST_SELECT = {
@@ -96,7 +130,9 @@ function rowFromDb(r: {
 
 export async function getCandidatesForOrg(params: { query?: string; listId?: string } = {}): Promise<CandidateListRow[]> {
   const org = await getCurrentOrg();
-  const where = buildCandidateWhere(org.id, params.query, params.listId);
+  const tokens = (params.query?.trim() ?? "").split(/\s+/).filter(Boolean);
+  const phoneTokenIds = tokens.length > 0 ? await resolvePhoneTokenIds(org.id, tokens) : undefined;
+  const where = buildCandidateWhere(org.id, params.query, params.listId, phoneTokenIds);
   const rows = await prisma.candidate.findMany({
     where,
     select: CANDIDATE_LIST_SELECT,
@@ -121,7 +157,9 @@ export async function getCandidatesPageForOrg(params: {
   pageSize: number;
 }): Promise<CandidatesPageResult> {
   const org = await getCurrentOrg();
-  const where = buildCandidateWhere(org.id, params.query, params.listId);
+  const tokens = (params.query?.trim() ?? "").split(/\s+/).filter(Boolean);
+  const phoneTokenIds = tokens.length > 0 ? await resolvePhoneTokenIds(org.id, tokens) : undefined;
+  const where = buildCandidateWhere(org.id, params.query, params.listId, phoneTokenIds);
   // Clamp page to >= 1; the caller already validated input but be
   // defensive — Prisma's skip can't go negative.
   const safePage = Math.max(1, Math.floor(params.page));

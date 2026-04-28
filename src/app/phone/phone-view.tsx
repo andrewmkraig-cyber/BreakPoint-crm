@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
@@ -20,6 +21,7 @@ import {
 import { toast } from "sonner";
 import { usePhonePanels, type PhoneContact } from "@/lib/phone-panels-context";
 import { usePhoneContext } from "@/lib/phone-context";
+import { matchContactByPhone, markThreadRead, type PhoneMatch } from "@/app/phone/actions";
 
 // Phase 1 Phone Tab. Layout mirrors /mail exactly:
 //   sidebar (col-span-2) · thread list (col-span-3) · detail (col-span-7)
@@ -116,6 +118,10 @@ export function PhoneView() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // Phone Tab Phase 2: profile-jump pill in the thread header. Resolved
+  // async after the detail loads so the thread itself isn't blocked on
+  // the lookup.
+  const [profileMatch, setProfileMatch] = useState<PhoneMatch | null>(null);
 
   // Cross-component panels (NewText + Call) are mounted at the bottom
   // of this view; the FAB elsewhere triggers them via this context.
@@ -160,11 +166,13 @@ export function PhoneView() {
   useEffect(() => {
     if (!selectedId) {
       setDetail(null);
+      setProfileMatch(null);
       return;
     }
     const ac = new AbortController();
     setDetailLoading(true);
     setDetailError(null);
+    setProfileMatch(null);
     void (async () => {
       try {
         const res = await fetch(
@@ -176,7 +184,29 @@ export function PhoneView() {
           return;
         }
         const body = (await res.json().catch(() => null)) as ThreadDetail | null;
-        if (body) setDetail(body);
+        if (body) {
+          setDetail(body);
+          // Async fan-out after thread render: profile lookup + mark-read.
+          // Both are best-effort — failures don't surface to the user.
+          if (body.contact.phoneNumber) {
+            void (async () => {
+              try {
+                const match = await matchContactByPhone(body.contact.phoneNumber);
+                if (!ac.signal.aborted) setProfileMatch(match);
+              } catch {
+                // Silent: pill stays hidden if lookup fails.
+              }
+            })();
+          }
+          void (async () => {
+            try {
+              await markThreadRead(selectedId);
+              await phoneCtx.refreshUnread();
+            } catch {
+              // Silent: badge will catch up on next 30s poll.
+            }
+          })();
+        }
       } catch (e) {
         if ((e as { name?: string }).name === "AbortError") return;
         setDetailError(
@@ -187,7 +217,7 @@ export function PhoneView() {
       }
     })();
     return () => ac.abort();
-  }, [selectedId]);
+  }, [selectedId, phoneCtx]);
 
   // Client-side bucket filtering over the already-loaded threads.
   const filteredThreads = useMemo(() => {
@@ -359,7 +389,7 @@ export function PhoneView() {
         ) : detailError ? (
           <div className="p-5 text-sm text-red-700">{detailError}</div>
         ) : detail ? (
-          <ThreadDetailPane detail={detail} />
+          <ThreadDetailPane detail={detail} profileMatch={profileMatch} />
         ) : (
           <EmptyDetail />
         )}
@@ -539,7 +569,13 @@ function EmptyDetail() {
   );
 }
 
-function ThreadDetailPane({ detail }: { detail: ThreadDetail }) {
+function ThreadDetailPane({
+  detail,
+  profileMatch,
+}: {
+  detail: ThreadDetail;
+  profileMatch: PhoneMatch | null;
+}) {
   return (
     <div className="flex h-[calc(100vh-240px)] flex-col">
       {/* Header */}
@@ -561,7 +597,7 @@ function ThreadDetailPane({ detail }: { detail: ThreadDetail }) {
           <ActionPlaceholder label="Call" icon={<PhoneCall className="h-3 w-3" />} />
           <ActionPlaceholder label="Text" icon={<Send className="h-3 w-3" />} />
           <OpenInQuoButton phoneNumber={detail.contact.phoneNumber} />
-          <ActionPlaceholder label="Open Profile" icon={<UserIcon className="h-3 w-3" />} />
+          <OpenProfileButton match={profileMatch} />
           <ActionPlaceholder label="More" icon={<MoreHorizontal className="h-3 w-3" />} />
         </div>
       </div>
@@ -653,6 +689,24 @@ function ActionPlaceholder({
       {icon}
       {label}
     </button>
+  );
+}
+
+// Renders nothing until matchContactByPhone finds a Candidate or
+// Client for the thread's number. Matched → green pill linking to the
+// resolved profile. Lookup miss / lookup pending → no chrome at all,
+// keeping the header tight when there's no profile to jump to.
+function OpenProfileButton({ match }: { match: PhoneMatch | null }) {
+  if (!match || match.type === null) return null;
+  const href = match.type === "candidate" ? `/candidates/${match.id}` : `/clients/${match.id}`;
+  return (
+    <Link
+      href={href}
+      className="inline-flex items-center gap-1 rounded-md bg-[#5A9642] px-2 py-1 text-[11px] font-medium text-white shadow-sm transition hover:bg-[#3F7030]"
+    >
+      <UserIcon className="h-3 w-3" />
+      Open Profile
+    </Link>
   );
 }
 
