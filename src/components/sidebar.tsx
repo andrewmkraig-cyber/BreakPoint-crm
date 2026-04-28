@@ -23,10 +23,10 @@ import { usePhoneContext } from "@/lib/phone-context";
 //   Dashboard (ungrouped overview at top)
 //   ATS — Pipeline → Applicants → Candidates (active recruiting work)
 //   CRM — Clients → Jobs (reference surfaces)
-//   Communications — Mail → Phone (inbox check, sits just above Settings)
-// The communications block lives toward the bottom because the
-// recruiter spends most of the day in ATS/CRM and only dips into
-// comms when an alert pulls them there.
+//   Inbox — Mail → Phone (inbox check, sits just above Settings)
+// The inbox block lives toward the bottom because the recruiter
+// spends most of the day in ATS/CRM and only dips into the inbox
+// when an alert pulls them there.
 type NavGroup = {
   title: string | null;
   items: ReadonlyArray<{ href: string; label: string; icon: NavItem["icon"] }>;
@@ -53,7 +53,7 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     ],
   },
   {
-    title: "Communications",
+    title: "Inbox",
     items: [
       { href: "/mail", label: "Mail", icon: Mail },
       { href: "/phone", label: "Phone", icon: Phone },
@@ -67,7 +67,7 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
 // CRMs (Apollo, HubSpot, Linear).
 const FOOTER_NAV = [{ href: "/settings", label: "Settings", icon: Settings }] as const;
 
-export function Sidebar() {
+export function Sidebar({ width }: { width?: number } = {}) {
   const pathname = usePathname();
   const { unreadCount } = useMailContext();
   const { unreadCount: phoneUnreadCount } = usePhoneContext();
@@ -87,7 +87,17 @@ export function Sidebar() {
     // main-nav block gets its own internal scroll so the Settings
     // footer + brand blurb stay pinned at the bottom of the sidebar
     // even on viewports too short to fit every nav item.
-    <aside className="sticky top-0 hidden h-screen w-60 shrink-0 self-start border-r border-court-border bg-court-surface grass:bg-[#1F3A1F] md:flex md:flex-col">
+    // Width is driven by the AppShell (drag-resizable + persisted to
+    // localStorage). When no width prop is provided we fall back to
+    // the legacy w-60 (240px) Tailwind class so the component still
+    // renders sanely if used outside AppShell.
+    <aside
+      style={width ? { width: `${width}px` } : undefined}
+      className={
+        "sticky top-0 hidden h-screen shrink-0 self-start border-r border-court-border bg-court-surface grass:bg-[#1F3A1F] md:flex md:flex-col " +
+        (width ? "" : "w-60")
+      }
+    >
       <div className="flex h-16 shrink-0 items-center border-b border-court-border px-5">
         <BrandMark withTag />
       </div>
@@ -95,7 +105,7 @@ export function Sidebar() {
         {NAV_GROUPS.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-5"}>
             {group.title && (
-              // Section headliners (ATS / CRM / Communications) read as
+              // Section headliners (ATS / CRM / Inbox) read as
               // headers, not metadata. Bumped to xs serif, full-strength
               // text color, separator rule above, and a subtle accent
               // bar to anchor the eye. Grass mode keeps its lighter

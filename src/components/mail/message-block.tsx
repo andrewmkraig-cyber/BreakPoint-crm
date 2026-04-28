@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useRef } from "react";
 import type { MailThreadMessage } from "@/lib/gmail";
 
 // Single message renderer used by both the inline Mail Tab thread
@@ -21,6 +24,38 @@ export function MessageBlock({
   msg: MailThreadMessage;
   isFirst: boolean;
 }) {
+  // After the dangerouslySetInnerHTML body mounts, attach error
+  // handlers to every <img> inside it so a failed remote load
+  // collapses the element rather than leaving a broken-image
+  // placeholder that reserves the image's original `width` /
+  // `height` space. Without this, Quo support emails (and other
+  // templates with a CDN-hosted header banner blocked by the
+  // recipient network) painted a giant empty rectangle above the
+  // body — the avatar reserved its full height even though the
+  // src never loaded.
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const root = bodyRef.current;
+    if (!root) return;
+    const imgs = Array.from(root.querySelectorAll("img"));
+    function hideBroken(this: HTMLImageElement) {
+      this.style.display = "none";
+    }
+    for (const img of imgs) {
+      // complete + naturalWidth=0 means the image already failed
+      // (cached error) before our listener attached. Hide
+      // synchronously in that case.
+      if (img.complete && img.naturalWidth === 0) {
+        img.style.display = "none";
+      } else {
+        img.addEventListener("error", hideBroken);
+      }
+    }
+    return () => {
+      for (const img of imgs) img.removeEventListener("error", hideBroken);
+    };
+  }, [msg.bodyHtml]);
+
   return (
     <article
       className={
@@ -44,6 +79,7 @@ export function MessageBlock({
         </div>
       </header>
       <div
+        ref={bodyRef}
         className={[
           // whitespace-pre-line preserves source newlines as line
           // breaks. The API sanitizer strips inline style attributes
@@ -82,13 +118,14 @@ export function MessageBlock({
           // thread instead of monospace blocks.
           "[&_pre]:whitespace-pre-wrap [&_pre]:font-sans [&_pre]:text-sm [&_pre]:leading-relaxed",
           // Inline images: cap width so wide screenshots don't blow
-          // out the column. Don't apply auto vertical margin — that
-          // injected ghost spacing around signature avatars and the
-          // BreakPoint logo, which the sender's own table padding
-          // already controls. `align-middle` keeps inline icons (the
-          // green envelope/phone/web circles in Andrew's signature)
-          // riding the text baseline instead of dropping below it.
-          "[&_img]:max-w-full [&_img]:h-auto [&_img]:align-middle",
+          // out the column. Don't impose `h-auto` — the source
+          // height attribute (and the sender's signature template
+          // sizing) needs to stay authoritative, otherwise the logo
+          // grows to its natural size and wrecks the rowspan/cell
+          // alignment in multi-cell signatures. align-middle keeps
+          // inline icons (envelope/phone/web circles) riding the
+          // baseline instead of dropping below it.
+          "[&_img]:max-w-full [&_img]:align-middle",
           // Tables (Gmail signatures, forwarded confirmations).
           // Previously every <td> got `py-1 pr-3` which fought the
           // sender's own cellpadding/style and produced the cracked
