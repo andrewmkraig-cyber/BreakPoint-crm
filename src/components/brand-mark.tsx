@@ -1,10 +1,13 @@
 import { cn } from "@/lib/utils";
 
-// Brand wordmark for the sidebar header. Tennis-ball icon (mirrors the
-// favicon) + "Ace" wordmark in dark charcoal, optional "BREAKPOINT
-// TALENT" subtitle below. Hex colors are intentional per the redesign
-// spec; matches favicon.svg / icon.tsx so the brand reads identically
-// across the app surface and the browser tab.
+// Sidebar wordmark — Serve Arc mark + "Ace · BreakPoint Talent"
+// lockup. The mark colors (#111111, #7BB85B) are intentionally
+// hard-coded: the brand mark is an asset, not a UI surface, so it
+// reads identically across every Court Mode. Surrounding text DOES
+// follow the Court Mode tokens — court-fg / court-fg-muted /
+// court-accent-dark — so "BreakPoint Talent" lifts to the lifted
+// green in Night and recolors per surface elsewhere without losing
+// brand legibility.
 export function BrandMark({
   className,
   withTag = false,
@@ -15,51 +18,33 @@ export function BrandMark({
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <svg
-        width="32"
-        height="32"
-        viewBox="0 0 64 64"
-        className="shrink-0"
+        width="36"
+        height="36"
+        viewBox="0 0 60 60"
+        fill="none"
         aria-hidden="true"
+        className="shrink-0"
       >
-        <circle
-          cx="32"
-          cy="32"
-          r="30"
-          fill="#5A9642"
-          stroke="#222222"
-          strokeWidth="2.5"
-        />
+        <circle cx="30" cy="30" r="28" fill="#111111" />
         <path
-          d="M 8 24 Q 22 32 8 42"
+          d="M 14 38 Q 30 18 46 30"
+          stroke="#7BB85B"
+          strokeWidth="3"
           fill="none"
-          stroke="white"
-          strokeWidth="3.5"
           strokeLinecap="round"
         />
-        <path
-          d="M 56 24 Q 42 32 56 42"
-          fill="none"
-          stroke="white"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-        />
-        <text
-          x="32"
-          y="37"
-          textAnchor="middle"
-          fontFamily="Arial Black, Arial, sans-serif"
-          fontWeight={900}
-          fontSize="19"
-          fill="white"
-        >
-          Ace
-        </text>
+        <circle cx="46" cy="30" r="4.5" fill="#7BB85B" />
       </svg>
       <div className="leading-tight">
-        <div className="text-[16px] font-semibold text-court-fg">Ace</div>
+        <div className="font-serif text-[22px] font-bold tracking-tight text-court-fg">
+          Ace
+        </div>
         {withTag && (
-          <div className="text-[11px] font-medium uppercase tracking-[0.06em] text-[#6B7280]">
-            BreakPoint Talent
+          <div className="mt-0.5 font-serif text-[12px] italic text-court-fg-muted">
+            by{" "}
+            <span className="font-semibold text-court-accent-dark">
+              BreakPoint Talent
+            </span>
           </div>
         )}
       </div>

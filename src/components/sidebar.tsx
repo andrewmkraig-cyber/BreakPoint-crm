@@ -98,7 +98,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
         (width ? "" : "w-60")
       }
     >
-      <div className="flex h-16 shrink-0 items-center border-b border-court-border px-5">
+      <div className="flex h-20 shrink-0 items-center border-b border-court-border px-5">
         <BrandMark withTag />
       </div>
       <nav className="flex-1 overflow-y-auto p-3">

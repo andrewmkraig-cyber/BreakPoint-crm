@@ -24,10 +24,14 @@ import {
 // meant dark-green. We migrate that one-shot on load to the two-key
 // scheme then drop the legacy key.
 
-export type CourtSurface = "hard" | "clay" | "grass";
+// "night" is inherently dark — we ignore the data-theme attr in
+// globals.css for that surface so toggling theme is a no-op while
+// Night is selected. The CourtSurface union still carries it through
+// every storage / validation / picker boundary.
+export type CourtSurface = "hard" | "clay" | "grass" | "night";
 export type CourtTheme = "light" | "dark";
 
-const SURFACES: readonly CourtSurface[] = ["hard", "clay", "grass"] as const;
+const SURFACES: readonly CourtSurface[] = ["hard", "clay", "grass", "night"] as const;
 const THEMES: readonly CourtTheme[] = ["light", "dark"] as const;
 
 const SURFACE_KEY = "ace-court-surface";
@@ -195,5 +199,5 @@ export function useCourtMode(): CourtModeContextShape {
 // the legacy "courtMode" migration inline so the very first render
 // after the upgrade reads correctly.
 export const COURT_MODE_PRE_HYDRATION_SCRIPT = `
-(function(){try{var ls=window.localStorage;var legacy=ls.getItem('courtMode');var s,t;if(legacy){s=legacy==='clay'?'clay':legacy==='grass'?'grass':'hard';t=(legacy==='clay'||legacy==='grass')?'dark':'light';ls.setItem('ace-court-surface',s);ls.setItem('ace-court-theme',t);ls.removeItem('courtMode');}else{s=ls.getItem('ace-court-surface')||'hard';t=ls.getItem('ace-court-theme')||'light';}document.documentElement.setAttribute('data-surface',s);document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
+(function(){try{var ls=window.localStorage;var legacy=ls.getItem('courtMode');var s,t;if(legacy){s=legacy==='clay'?'clay':legacy==='grass'?'grass':'hard';t=(legacy==='clay'||legacy==='grass')?'dark':'light';ls.setItem('ace-court-surface',s);ls.setItem('ace-court-theme',t);ls.removeItem('courtMode');}else{s=ls.getItem('ace-court-surface')||'hard';t=ls.getItem('ace-court-theme')||'light';}if(['hard','clay','grass','night'].indexOf(s)<0)s='hard';document.documentElement.setAttribute('data-surface',s);document.documentElement.setAttribute('data-theme',t);}catch(e){}})();
 `.trim();

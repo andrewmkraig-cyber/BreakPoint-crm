@@ -82,6 +82,24 @@ html[data-surface='grass'][data-theme='dark'] {
   --court-accent-tint:     28  58  32;
 }
 
+/* ============================================================
+   NIGHT COURT — true dark, charcoal & graphite
+   Neutral surfaces. Brand green ONLY as accent (CTAs, active nav,
+   focus, success). Lifted to #7BB85B for AA contrast on dark.
+   Activated via <html data-surface='night'>; theme attr ignored
+   because Night is inherently dark.
+   ============================================================ */
+html[data-surface='night'] {
+  --court-surface:         28  28  28;  /* #1C1C1C card / chrome */
+  --court-surface-subtle:  20  20  20;  /* #141414 page body */
+  --court-fg:             236 237 239;  /* #ECEDEF */
+  --court-fg-muted:       142 144 148;  /* #8E9094 */
+  --court-border:          46  46  46;  /* #2E2E2E warm graphite */
+  --court-accent:         123 184  91;  /* #7BB85B brand green lifted */
+  --court-accent-dark:    156 214 131;  /* #9CD683 hover / link */
+  --court-accent-tint:     31  42  24;  /* #1F2A18 active-nav bg */
+}
+
 @layer utilities {
   .text-balance { text-wrap: balance; }
 
