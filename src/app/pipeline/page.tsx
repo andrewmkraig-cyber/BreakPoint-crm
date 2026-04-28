@@ -21,7 +21,7 @@ const PAGE_SIZE = 25;
 export default async function PipelinePage({
   searchParams,
 }: {
-  searchParams?: { stage?: string; q?: string; page?: string; clientId?: string };
+  searchParams?: { stage?: string; q?: string; page?: string; clientId?: string; jobId?: string };
 }) {
   const stage: Stage = (STAGES as string[]).includes(searchParams?.stage ?? "")
     ? (searchParams!.stage as Stage)
@@ -33,6 +33,13 @@ export default async function PipelinePage({
   // aren't tracked in Neon Placement (consistent with how the client detail
   // counters compute, so the per-client counts match end-to-end).
   const clientFilter = searchParams?.clientId?.trim() || null;
+  // ?jobId=<rfNumeric> filter — emitted by the per-job stage pills in the
+  // client detail Jobs table. Job rows there iterate raw.open_jobs /
+  // raw.closed_jobs, both keyed by the RF numeric id, so jobId here is
+  // matched against Placement.jobRfId. RF-flat rows are skipped when set
+  // (same rationale as the clientId filter — those rows aren't in Neon).
+  const jobIdRaw = searchParams?.jobId?.trim();
+  const jobFilter = jobIdRaw && /^\d+$/.test(jobIdRaw) ? Number(jobIdRaw) : null;
   const pageParam = parseInt(searchParams?.page ?? "1", 10);
   const page = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 1;
 
@@ -135,6 +142,9 @@ export default async function PipelinePage({
       // Per-client filter: drop placements whose clientId doesn't match.
       // Skipped via early-continue so neither counts nor rows include them.
       if (clientFilter && p.clientId !== clientFilter) continue;
+      // Per-job filter: same pattern, matching Placement.jobRfId against
+      // the numeric id passed from the per-row pills on the client page.
+      if (jobFilter !== null && p.jobRfId !== jobFilter) continue;
       const key = placementKey(p);
       seen.add(key);
       const stageName = p.stage as Stage;
@@ -185,11 +195,12 @@ export default async function PipelinePage({
 
     for (const r of flat) {
       if (!isPipelineStage(r.bucket)) continue;
-      // When a clientId filter is active, RF-flat rows are excluded
-      // entirely (they aren't tracked in Neon Placement so we can't
-      // verify their client linkage; counts on the client detail page
-      // come from Placement only, so this keeps the math consistent).
-      if (clientFilter) continue;
+      // When a clientId or jobId filter is active, RF-flat rows are
+      // excluded entirely (they aren't tracked in Neon Placement so we
+      // can't verify their client/job linkage; counts on the client
+      // detail page come from Placement only, so this keeps the math
+      // consistent).
+      if (clientFilter || jobFilter !== null) continue;
       // flat entries are always RF numeric on both sides.
       const key = `rf:${r.candidateId}|rf:${r.jobId}`;
       if (seen.has(key)) continue;

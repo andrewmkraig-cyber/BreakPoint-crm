@@ -6,7 +6,6 @@ import {
   FileText,
   ShieldCheck,
   Briefcase,
-  Mail,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import {
@@ -66,7 +65,7 @@ export default async function ClientDetailPage({
   // Agreements / benefits are keyed by the legacy numeric id (Phase 5
   // drop). Ace-native Clients without a legacyRfId have no agreements
   // or benefits yet; skip the query rather than fetching with a sentinel.
-  const [contacts, agreements, benefits, benefitsFiles, gmailTags] = await Promise.all([
+  const [contacts, agreements, benefits, benefitsFiles] = await Promise.all([
     legacyRfId != null
       ? prisma.contact.findMany({
           where: { OR: [{ clientId: client.id }, { client: { legacyRfId } }] },
@@ -142,12 +141,6 @@ export default async function ClientDetailPage({
           },
         })
       : Promise.resolve([] as Array<never>),
-    prisma.gmailThreadTag.findMany({
-      where: { clientId: client.id, organizationId: client.organizationId },
-      orderBy: { createdAt: "desc" },
-      take: 20,
-      select: { threadId: true },
-    }),
   ]);
 
   const location = (client.location as LocationJson) ?? null;
@@ -391,19 +384,39 @@ export default async function ClientDetailPage({
                             </span>
                           </td>
                           <td className="px-5 py-2.5 text-right">
-                            <JobCountPill value={c.submitted} tone="submitted" />
+                            <JobCountPill
+                              value={c.submitted}
+                              tone="submitted"
+                              href={c.submitted > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=submitted` : undefined}
+                            />
                           </td>
                           <td className="px-5 py-2.5 text-right">
-                            <JobCountPill value={c.interviewing} tone="interviewing" />
+                            <JobCountPill
+                              value={c.interviewing}
+                              tone="interviewing"
+                              href={c.interviewing > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=interviewing` : undefined}
+                            />
                           </td>
                           <td className="px-5 py-2.5 text-right">
-                            <JobCountPill value={c.offer} tone="offer" />
+                            <JobCountPill
+                              value={c.offer}
+                              tone="offer"
+                              href={c.offer > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=offer` : undefined}
+                            />
                           </td>
                           <td className="px-5 py-2.5 text-right">
-                            <JobCountPill value={c.pendingStart} tone="pendingStart" />
+                            <JobCountPill
+                              value={c.pendingStart}
+                              tone="pendingStart"
+                              href={c.pendingStart > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=pending_start` : undefined}
+                            />
                           </td>
                           <td className="px-5 py-2.5 text-right">
-                            <JobCountPill value={c.hired} tone="hired" />
+                            <JobCountPill
+                              value={c.hired}
+                              tone="hired"
+                              href={c.hired > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=hired` : undefined}
+                            />
                           </td>
                         </tr>
                       );
@@ -414,26 +427,10 @@ export default async function ClientDetailPage({
             )}
           </div>
 
-          {gmailTags.length > 0 && (
-            <div className="rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
-              <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
-                <h2 className="font-serif text-lg font-semibold text-court-fg">Email Threads</h2>
-              </div>
-              <ul className="divide-y divide-court-border">
-                {gmailTags.map((t) => (
-                  <li key={t.threadId} className="px-5 py-2.5">
-                    <Link
-                      href={`/mail?thread=${encodeURIComponent(t.threadId)}`}
-                      className="inline-flex items-center gap-1.5 text-brand-dark hover:underline"
-                    >
-                      <Mail className="h-3.5 w-3.5" />
-                      <span className="font-mono text-xs">{t.threadId}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {/* TODO: Email thread display — pending auto-tagging. Raw
+              GmailThreadTag.threadId list rendered useless without
+              subject/preview metadata; cut until the auto-tagging
+              fetch surfaces those. */}
         </div>
       ) : tab === "contacts" ? (
         <ContactsTab
@@ -613,7 +610,17 @@ function Stat({
   return <div className={wrapperCls}>{inner}</div>;
 }
 
-function JobCountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "offer" | "pendingStart" | "hired" }) {
+function JobCountPill({
+  value,
+  tone,
+  href,
+}: {
+  value: number;
+  tone: "submitted" | "interviewing" | "offer" | "pendingStart" | "hired";
+  href?: string;
+}) {
+  // Zero counts always render as plain muted text — no link, no pill —
+  // since there's nothing to navigate to.
   if (!value) return <span className="text-court-fg-muted/60">0</span>;
   const cls = {
     submitted: "bg-brand-tint text-brand-dark",
@@ -622,11 +629,15 @@ function JobCountPill({ value, tone }: { value: number; tone: "submitted" | "int
     pendingStart: "bg-amber-50 text-amber-700",
     hired: "bg-emerald-50 text-emerald-700",
   }[tone];
-  return (
-    <span className={cn("inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold", cls)}>
-      {value}
-    </span>
-  );
+  const pillCls = cn("inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-bold", cls);
+  if (href) {
+    return (
+      <Link href={href} className={cn(pillCls, "transition hover:brightness-110")} onClick={(e) => e.stopPropagation()}>
+        {value}
+      </Link>
+    );
+  }
+  return <span className={pillCls}>{value}</span>;
 }
 
 function firstPhone(raw: unknown): string {
