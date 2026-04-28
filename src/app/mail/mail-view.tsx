@@ -762,7 +762,7 @@ export function MailView({
               <div className="px-3 text-[11px] uppercase tracking-wider text-court-fg-muted">
                 Labels
               </div>
-              <ul className="mt-1 space-y-0.5">
+              <ul className="mt-1 space-y-1">
                 {labelTree.map((node) => (
                   <LabelTreeNode
                     key={node.name}
@@ -1775,9 +1775,9 @@ function LabelTreeNode({
           }}
           disabled={node.id === null}
           className={
-            "flex h-9 flex-1 items-center truncate rounded-lg px-3 text-left transition " +
+            "flex h-9 flex-1 items-center truncate rounded-lg px-3 text-left text-[13px] font-medium transition " +
             (active
-              ? "bg-[#EAF4E4] text-[#3F7030]"
+              ? "bg-[#EAF4E4] font-semibold text-[#3F7030]"
               : node.id === null
                 ? "cursor-default text-court-fg-muted"
                 : "text-court-fg hover:bg-slate-50")
@@ -1788,7 +1788,7 @@ function LabelTreeNode({
         </button>
       </div>
       {hasChildren && !isCollapsed && (
-        <ul className="space-y-0.5">
+        <ul className="space-y-1">
           {node.children.map((child) => (
             <LabelTreeNode
               key={child.name}
