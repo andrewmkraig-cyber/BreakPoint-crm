@@ -146,9 +146,8 @@ function ClientGridCard({ card }: { card: ClientCard }) {
 
       <div className="mt-5 flex items-center justify-between border-t border-court-border pt-3 text-[11px] text-court-fg-muted">
         <span>
-          <span className="font-semibold text-court-fg">{card.openJobsCount}</span> open
-          <span className="mx-1.5">·</span>
-          {card.closedJobsCount} closed
+          Job status: <span className="font-semibold text-court-fg">{card.openJobsCount}</span> Open,{" "}
+          <span className="font-semibold text-court-fg">{card.closedJobsCount}</span> closed
         </span>
         {card.feePct != null && (
           <span>
