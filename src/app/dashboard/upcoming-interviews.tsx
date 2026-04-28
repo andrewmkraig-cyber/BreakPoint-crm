@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarClock, MapPin, PhoneCall, Video } from "lucide-react";
+import { CalendarClock, CalendarCog, MapPin, PhoneCall, Video } from "lucide-react";
 
 export type UpcomingInterviewRow = {
   id: string;
@@ -13,6 +13,16 @@ export type UpcomingInterviewRow = {
   source: "ace_scheduled" | "client_scheduled";
   meetLink: string | null;
 };
+
+// Builds a deep-link to the candidate's profile that auto-opens the
+// reschedule-interview modal pre-filled with this interview. The
+// candidate page's placement-flows useEffect listens for
+// `?edit=interview&interviewId=...`, opens the modal, and strips the
+// params so refresh / back-nav don't re-fire.
+function buildEditInterviewHref(candidateHref: string, interviewId: string): string {
+  const sep = candidateHref.includes("?") ? "&" : "?";
+  return `${candidateHref}${sep}edit=interview&interviewId=${encodeURIComponent(interviewId)}`;
+}
 
 export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
   return (
@@ -75,6 +85,14 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
                     Meet
                   </a>
                 )}
+                <Link
+                  href={buildEditInterviewHref(r.candidateHref, r.id)}
+                  aria-label="Edit interview"
+                  title="Edit interview"
+                  className="shrink-0 rounded-md border border-court-border bg-court-surface p-1.5 text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-accent-dark"
+                >
+                  <CalendarCog className="h-4 w-4" />
+                </Link>
               </li>
             );
           })}

@@ -29,6 +29,6 @@ export async function GET() {
   const templates: ActiveTemplateSummary[] = await listActiveTemplates();
   return NextResponse.json({
     templates,
-    user: { firstName, fullName },
+    user: { firstName, fullName, email: session.user.email },
   });
 }

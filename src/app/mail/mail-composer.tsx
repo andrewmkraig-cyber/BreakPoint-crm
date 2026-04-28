@@ -66,8 +66,22 @@ type Props = {
   defaultTo: string;
   defaultCc?: string;
   defaultSubject: string;
+  // Pre-fills the editor body. Used by Forward to drop the quoted
+  // original message in before the cursor lands; Reply / Reply All
+  // leave this empty.
+  defaultBody?: string;
+  // When true (Reply / Reply All / Forward), auto-focus the editor
+  // body on mount so the recruiter can start typing without clicking
+  // into the field. Skipped for click-to-email so the To row gets
+  // the focus instead.
+  autoFocusBody?: boolean;
   templates?: ActiveTemplateSummary[];
   mergeContext?: MailMergeContext;
+  // Same-company CC picker source. When provided + non-empty, the CC
+  // row exposes a dropdown button that lists these contacts so the
+  // recruiter can click-to-add them. Suggestions are NOT applied as
+  // type-ahead autocomplete — picking is always explicit.
+  ccPickerOptions?: Array<{ name: string; email: string }>;
   // Phase 5A.2: smart context resolution. When set, the composer
   // fetches the candidate's active applied jobs on mount and
   // populates {{job.*}} / {{client.*}} fields based on how many
@@ -100,8 +114,11 @@ export function MailComposer({
   defaultTo,
   defaultCc,
   defaultSubject,
+  defaultBody,
+  autoFocusBody = false,
   templates = [],
   mergeContext = {},
+  ccPickerOptions = [],
   candidateRef,
   asModal = false,
   modalTitle = "New email",
@@ -416,7 +433,7 @@ export function MailComposer({
       // screenshot in the composer" actually land in the sent email.
       Image.configure({ inline: true, allowBase64: true }),
     ],
-    content: "",
+    content: defaultBody ?? "",
     onUpdate: () => {
       // User-typed updates invalidate the saved template source so the
       // next context change doesn't overwrite their edits. Programmatic
@@ -465,6 +482,19 @@ export function MailComposer({
     return () => {
       editor?.destroy();
     };
+  }, [editor]);
+
+  // Auto-focus the body when this composer opens as a reply / forward.
+  // Cursor lands at the start of the editor for forwards (so the
+  // recruiter types above the quoted original) and at the end for
+  // empty replies. Runs once when the editor finishes constructing —
+  // editor identity is stable for the life of the composer.
+  useEffect(() => {
+    if (!editor) return;
+    if (!autoFocusBody) return;
+    const pos = defaultBody ? "start" : "end";
+    editor.commands.focus(pos);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor]);
 
   // Phase 5A.2-fix: re-substitute the saved templateSource whenever
@@ -807,7 +837,15 @@ export function MailComposer({
             {showBcc ? "− BCC" : "+ BCC"}
           </button>
         </div>
-        {showCc && <AddressRow label="CC" value={cc} onChange={setCc} />}
+        {showCc && (
+          <AddressRow
+            label="CC"
+            value={cc}
+            onChange={setCc}
+            pickerOptions={ccPickerOptions}
+            pickerLabel="Add same-company contact"
+          />
+        )}
         {showBcc && (
           <AddressRow
             label="BCC"
@@ -1123,6 +1161,8 @@ function AddressRow({
   value,
   onChange,
   suggestions = [],
+  pickerOptions = [],
+  pickerLabel,
 }: {
   label: string;
   value: string;
@@ -1132,8 +1172,16 @@ function AddressRow({
   // appends "Name <email>, " to the field — same string-comma format
   // the To and CC fields expect.
   suggestions?: Array<{ name: string; email: string }>;
+  // Click-to-pick options. Distinct from `suggestions` (which is
+  // type-ahead): picker is opened explicitly by a button next to the
+  // input and lists every remaining option for one-click insertion.
+  // No filter on what the user has typed — picker is the explicit
+  // path for "show me who else I can add."
+  pickerOptions?: Array<{ name: string; email: string }>;
+  pickerLabel?: string;
 }) {
   const [focused, setFocused] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   // The "current segment" is whatever the user is typing after the
   // last comma. We filter suggestions against this so the dropdown
@@ -1155,6 +1203,13 @@ function AddressRow({
       })
     : [];
 
+  // Picker shows every option the user hasn't already added, with no
+  // filtering on what they've typed — picking is an explicit "show me
+  // the rest of the team" gesture.
+  const pickerVisible = pickerOptions.filter(
+    (s) => !lowerValue.includes(s.email.toLowerCase()),
+  );
+
   function pick(s: { name: string; email: string }) {
     const addr = `${s.name} <${s.email}>`;
     // Drop the in-progress segment, replace with the full picked
@@ -1163,6 +1218,17 @@ function AddressRow({
     const before =
       lastCommaIdx >= 0 ? value.slice(0, lastCommaIdx + 1) + " " : "";
     onChange(before + addr + ", ");
+  }
+
+  function pickFromPicker(s: { name: string; email: string }) {
+    // Picker appends — we never strip an in-progress segment, since
+    // the user clicked the picker button rather than typing. Empty
+    // value → `Name <email>, ` outright; non-empty → ensure trailing
+    // separator before appending.
+    const trimmed = value.trimEnd();
+    const sep = trimmed.length === 0 ? "" : trimmed.endsWith(",") ? " " : ", ";
+    onChange(trimmed + sep + `${s.name} <${s.email}>` + ", ");
+    setPickerOpen(false);
   }
 
   return (
@@ -1178,8 +1244,23 @@ function AddressRow({
           onBlur={() => setFocused(false)}
           className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
+        {pickerOptions.length > 0 && (
+          <button
+            type="button"
+            aria-label={pickerLabel ?? "Pick contact"}
+            // Capture mousedown so the click registers before the
+            // input's blur dismisses any open suggestion list.
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setPickerOpen((v) => !v);
+            }}
+            className="shrink-0 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+          >
+            + Contact
+          </button>
+        )}
       </label>
-      {filtered.length > 0 && (
+      {filtered.length > 0 && !pickerOpen && (
         <ul className="absolute left-[72px] right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
           {filtered.map((s) => (
             <li key={s.email}>
@@ -1203,6 +1284,32 @@ function AddressRow({
               </button>
             </li>
           ))}
+        </ul>
+      )}
+      {pickerOpen && (
+        <ul className="absolute left-[72px] right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
+          {pickerVisible.length === 0 ? (
+            <li className="px-3 py-2 text-xs text-court-fg-muted">
+              No other contacts at this company.
+            </li>
+          ) : (
+            pickerVisible.map((s) => (
+              <li key={s.email}>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    pickFromPicker(s);
+                  }}
+                  className="block w-full px-3 py-2 text-left text-sm transition hover:bg-court-surface-subtle"
+                >
+                  <div className="font-medium text-court-fg">{s.name}</div>
+                  <div className="text-[11px] text-court-fg-muted">{s.email}</div>
+                </button>
+              </li>
+            ))
+          )}
         </ul>
       )}
     </div>

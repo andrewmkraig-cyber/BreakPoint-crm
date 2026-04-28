@@ -2,7 +2,7 @@
 
 import { Mail as MailIcon, Eye } from "lucide-react";
 import { toast } from "sonner";
-import { useComposerManager } from "@/lib/composer-manager";
+import { useFloatingThread } from "@/lib/floating-thread-context";
 import { getStoredToastTheme, toastBoxShadow } from "@/lib/toast-theme";
 import { ActionChip, DismissBtn } from "@/components/_toast-chrome";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -25,7 +25,7 @@ import type { UnreadInboxThread } from "@/lib/mail-context";
 
 type ComposeInitPayload = {
   templates: ActiveTemplateSummary[];
-  user: { firstName: string; fullName: string };
+  user: { firstName: string; fullName: string; email: string };
 };
 
 let cachedInit: Promise<ComposeInitPayload> | null = null;
@@ -40,6 +40,22 @@ function fetchComposeInit(): Promise<ComposeInitPayload> {
     return (await res.json()) as ComposeInitPayload;
   })();
   return cachedInit;
+}
+
+type LabelRow = { id: string; name: string; type?: string };
+let cachedLabels: Promise<LabelRow[]> | null = null;
+function fetchLabels(): Promise<LabelRow[]> {
+  if (cachedLabels) return cachedLabels;
+  cachedLabels = (async () => {
+    const res = await fetch("/api/mail/labels");
+    if (!res.ok) {
+      cachedLabels = null;
+      throw new Error(`labels failed (${res.status})`);
+    }
+    const body = (await res.json()) as { labels?: LabelRow[] };
+    return body.labels ?? [];
+  })();
+  return cachedLabels;
 }
 
 // Stable per-thread toast id so the Mail Tab can dismiss the
@@ -62,30 +78,28 @@ function NewMailToast({
   thread: UnreadInboxThread;
   toastId: string | number;
 }) {
-  const composer = useComposerManager();
+  const floatingThread = useFloatingThread();
 
-  async function onReply() {
+  async function onView() {
     try {
-      const init = await fetchComposeInit();
-      const subject = thread.subject.toLowerCase().startsWith("re:")
-        ? thread.subject
-        : `Re: ${thread.subject}`;
-      const to = thread.fromName
-        ? `${thread.fromName} <${thread.fromEmail}>`
-        : thread.fromEmail;
-      composer.open({
-        defaultTo: to,
-        defaultSubject: subject,
-        threadId: thread.id,
+      // Race the labels fetch against compose-init so we open the
+      // popup as soon as both resolve — labels can be slower (Gmail
+      // round-trip) but every floating window needs them for its
+      // Move To menu.
+      const [init, labels] = await Promise.all([
+        fetchComposeInit(),
+        fetchLabels().catch(() => [] as LabelRow[]),
+      ]);
+      floatingThread.open(thread.id, {
+        labels: labels.length > 0 ? labels : null,
         templates: init.templates,
-        mergeContext: {
-          user: { firstName: init.user.firstName, fullName: init.user.fullName },
-        },
-        modalTitle: "Reply",
+        currentUserEmail: init.user.email,
+        currentUserFirstName: init.user.firstName,
+        currentUserFullName: init.user.fullName,
       });
       toast.dismiss(toastId);
     } catch (err) {
-      toast.error("Couldn't open composer", {
+      toast.error("Couldn't open thread", {
         description: err instanceof Error ? err.message : "unknown error",
       });
     }
@@ -148,7 +162,7 @@ function NewMailToast({
         </div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, marginLeft: 12 }}>
-        <ActionChip theme={theme} onClick={onReply} label="View" icon={<Eye size={12} />} />
+        <ActionChip theme={theme} onClick={onView} label="View" icon={<Eye size={12} />} />
         <DismissBtn theme={theme} onClick={() => toast.dismiss(toastId)} />
       </div>
     </div>

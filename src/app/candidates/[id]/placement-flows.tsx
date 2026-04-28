@@ -305,6 +305,32 @@ export function PlacementActions({
     router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router, jobs]);
 
+  // Deep-link for the Dashboard's per-row interview edit icon. Format
+  // is ?edit=interview&interviewId=<cuid>. Finds the matching
+  // InterviewSummary across every job linked to this candidate and
+  // opens the reschedule modal pre-filled. Same param-strip pattern as
+  // the placement edit deep-link so refreshes / back-nav don't re-fire.
+  useEffect(() => {
+    const edit = searchParams?.get("edit");
+    const interviewId = searchParams?.get("interviewId");
+    if (edit !== "interview" || !interviewId) return;
+    let found: InterviewSummary | null = null;
+    for (const j of jobs) {
+      const hit = j.interviews.find((iv) => iv.id === interviewId);
+      if (hit) {
+        found = hit;
+        break;
+      }
+    }
+    if (!found) return;
+    setRescheduleFor(found);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("edit");
+    next.delete("interviewId");
+    const queryString = next.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobs]);
+
 
   return (
     <>

@@ -8,11 +8,13 @@ import {
   ChevronRight,
   FileText,
   FolderInput,
+  Forward,
   Loader2,
   Mail as MailIcon,
   Maximize2,
   RefreshCw,
   Reply,
+  ReplyAll,
   Search,
   Send,
   X,
@@ -1003,12 +1005,20 @@ export function ThreadDetail({
   const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
   const latest = orderedMessages[0];
   const floatingThread = useFloatingThread();
-  const [composerOpen, setComposerOpen] = useState(false);
+  // Composer mode tracks WHICH button opened the composer so the
+  // setup (To, Cc, Subject, body, threadId, modal title) matches the
+  // user's intent — Reply / Reply All / Forward each compute their
+  // own initial state below.
+  const [composerMode, setComposerMode] = useState<
+    null | "reply" | "replyAll" | "forward"
+  >(null);
+  const composerOpen = composerMode !== null;
 
   // Reply-recipient logic: the "other party" on the latest message.
   // - If I sent the last message, reply to whoever I sent it to.
   // - If someone else sent it, reply to them.
-  // Never pre-fill To with my own address.
+  // Never pre-fill To with my own address. computeReplyRecipients
+  // already returns CC for the Reply All case; plain Reply drops it.
   const { defaultTo, defaultCc } = computeReplyRecipients(
     latest,
     selectedThread,
@@ -1017,6 +1027,56 @@ export function ThreadDetail({
   const defaultSubject = detail.subject.toLowerCase().startsWith("re:")
     ? detail.subject
     : `Re: ${detail.subject}`;
+  const forwardSubject = detail.subject.toLowerCase().startsWith("fwd:")
+    ? detail.subject
+    : `Fwd: ${detail.subject}`;
+  // Forward body: blank line on top so the user can type their note,
+  // then a quoted block citing the original message's headers + body.
+  // The composer's tiptap editor focuses at the start (Forward sets
+  // autoFocusBody w/ defaultBody non-empty), so the cursor lands
+  // ABOVE the quote.
+  const forwardBody = useMemo(
+    () => buildForwardQuote(latest),
+    [latest],
+  );
+
+  // CC same-company picker: when the To address resolves to a Contact
+  // in our CRM, fetch the other Contacts at that Contact's clientId so
+  // the CC row can offer a click-to-pick dropdown. Recomputed when the
+  // composer opens so a stale selection from a different thread can't
+  // leak in.
+  const [ccPickerOptions, setCcPickerOptions] = useState<
+    Array<{ name: string; email: string }>
+  >([]);
+  useEffect(() => {
+    if (!composerOpen) {
+      setCcPickerOptions([]);
+      return;
+    }
+    const toEmail = extractFirstEmail(defaultTo);
+    if (!toEmail) {
+      setCcPickerOptions([]);
+      return;
+    }
+    let cancelled = false;
+    fetch(
+      `/api/contacts/cc-suggestions?email=${encodeURIComponent(toEmail)}`,
+      { cache: "no-store" },
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((body: { contacts?: Array<{ name: string; email: string }> } | null) => {
+        if (!cancelled && body?.contacts) {
+          setCcPickerOptions(body.contacts);
+        }
+      })
+      .catch(() => {
+        // Silent failure — CC picker just stays empty. The recruiter
+        // can still type CC addresses by hand.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [composerOpen, defaultTo]);
 
   return (
     <div
@@ -1043,11 +1103,27 @@ export function ThreadDetail({
         >
           <button
             type="button"
-            onClick={() => setComposerOpen(true)}
+            onClick={() => setComposerMode("reply")}
             disabled={composerOpen}
             className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             <Reply className="h-3 w-3" /> Reply
+          </button>
+          <button
+            type="button"
+            onClick={() => setComposerMode("replyAll")}
+            disabled={composerOpen}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            <ReplyAll className="h-3 w-3" /> Reply All
+          </button>
+          <button
+            type="button"
+            onClick={() => setComposerMode("forward")}
+            disabled={composerOpen}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            <Forward className="h-3 w-3" /> Forward
           </button>
           <button
             type="button"
@@ -1100,20 +1176,34 @@ export function ThreadDetail({
       </div>
       {composerOpen && (
         <MailComposer
-          threadId={detail.id}
-          defaultTo={defaultTo}
-          defaultCc={defaultCc}
-          defaultSubject={defaultSubject}
+          // Forward starts a new Gmail thread; Reply / Reply All stay
+          // in the existing one so Gmail keeps them threaded.
+          threadId={composerMode === "forward" ? undefined : detail.id}
+          defaultTo={composerMode === "forward" ? "" : defaultTo}
+          defaultCc={composerMode === "replyAll" ? defaultCc : ""}
+          defaultSubject={
+            composerMode === "forward" ? forwardSubject : defaultSubject
+          }
+          defaultBody={composerMode === "forward" ? forwardBody : ""}
+          autoFocusBody
           templates={templates}
+          ccPickerOptions={ccPickerOptions}
           mergeContext={{
             user: {
               firstName: currentUserFirstName,
               fullName: currentUserFullName,
             },
           }}
-          onClose={() => setComposerOpen(false)}
+          modalTitle={
+            composerMode === "forward"
+              ? "Forward"
+              : composerMode === "replyAll"
+                ? "Reply All"
+                : "Reply"
+          }
+          onClose={() => setComposerMode(null)}
           onSent={() => {
-            setComposerOpen(false);
+            setComposerMode(null);
             onSent?.();
           }}
         />
@@ -1164,6 +1254,58 @@ function computeReplyRecipients(
     defaultTo: to.toLowerCase() === myLower ? "" : to,
     defaultCc: ccMinusMe,
   };
+}
+
+// Picks the first bare email out of a free-form To: string the user
+// would type ("Sara Lee <sara@acme.com>, ops@acme.com"). Used to
+// resolve "the contact this email is going to" when fetching the
+// same-company CC picker options.
+function extractFirstEmail(raw: string): string | null {
+  const tokens = splitAddrHeader(raw);
+  for (const t of tokens) {
+    if (t.email && t.email.includes("@")) return t.email;
+  }
+  return null;
+}
+
+// Builds the quoted-original block we drop into the editor body when
+// the user picks Forward. Mirrors Gmail's own forward layout: a
+// horizontal rule, header (From / Date / Subject / To / optional Cc),
+// then the original HTML body indented with a blockquote-like left
+// margin. The composer focuses at the start of the document so the
+// recruiter types ABOVE this block.
+function buildForwardQuote(latest: MailThreadMessage | undefined): string {
+  if (!latest) return "<p></p>";
+  const fromLine = latest.fromName
+    ? `${escapeHtml(latest.fromName)} &lt;${escapeHtml(latest.fromEmail)}&gt;`
+    : escapeHtml(latest.fromEmail);
+  const date = latest.dateIso ? new Date(latest.dateIso).toLocaleString() : "";
+  const headerRows = [
+    `<div><strong>From:</strong> ${fromLine}</div>`,
+    date ? `<div><strong>Date:</strong> ${escapeHtml(date)}</div>` : "",
+    `<div><strong>Subject:</strong> ${escapeHtml(latest.subject)}</div>`,
+    latest.to ? `<div><strong>To:</strong> ${escapeHtml(latest.to)}</div>` : "",
+    latest.cc ? `<div><strong>Cc:</strong> ${escapeHtml(latest.cc)}</div>` : "",
+  ]
+    .filter(Boolean)
+    .join("");
+  // Two leading paragraphs so the cursor (set to "start") has somewhere
+  // visible to land before the divider — without this the editor jumps
+  // straight into the quoted block.
+  return [
+    "<p></p>",
+    "<p>---------- Forwarded message ----------</p>",
+    headerRows,
+    "<p></p>",
+    `<blockquote>${latest.bodyHtml}</blockquote>`,
+  ].join("");
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 // RFC 5322 address header splitter — handles "Name <addr>, Name2 <addr2>"

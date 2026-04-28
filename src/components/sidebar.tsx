@@ -93,10 +93,22 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
         {NAV_GROUPS.map((group, idx) => (
-          <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-4"}>
+          <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-5"}>
             {group.title && (
-              <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted/80 grass:text-[#A0B89E]">
-                {group.title}
+              // Section headliners (ATS / CRM / Communications) read as
+              // headers, not metadata. Bumped to xs serif, full-strength
+              // text color, separator rule above, and a subtle accent
+              // bar to anchor the eye. Grass mode keeps its lighter
+              // foreground but inherits the same prominence.
+              <div className="mb-1.5 flex items-center gap-2 px-3 pt-2">
+                <span
+                  aria-hidden="true"
+                  className="h-3 w-0.5 shrink-0 rounded-full bg-court-accent grass:bg-[#A0C898]"
+                />
+                <div className="font-serif text-xs font-bold uppercase tracking-[0.18em] text-court-fg grass:text-[#E8F4E2]">
+                  {group.title}
+                </div>
+                <div className="ml-1 h-px flex-1 bg-court-border/70 grass:bg-[#3A5A3A]" />
               </div>
             )}
             <div className="space-y-0.5">

@@ -283,12 +283,14 @@ export function EditableResume({
 
   return (
     <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
-      {/* No-wrap row so the toolbar stays one line at any width. When
-          the column is narrow, the action group on the right scrolls
-          horizontally rather than wrapping to a second row. */}
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-court-border px-3 py-1.5">
+      {/* Wrap to multiple rows when the column is narrow (resume +
+          right-rail layout on candidate profiles squeezes this toolbar
+          on smaller viewports). Previously used overflow-x-auto, but
+          horizontal scrollbars on a header row were hiding "Upload new
+          version" off-screen — the recruiter never knew it was there. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-3 py-1.5">
         <h2 className="shrink-0 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">Resume</h2>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* Version dropdown — Court Mode tokens. Architecture: any
               ResumeVersion entry slots in here without component
               changes (originals + redacted today; branded next prompt). */}
