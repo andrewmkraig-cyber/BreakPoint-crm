@@ -42,9 +42,16 @@ export function AppShell({
           <div className="flex min-h-screen bg-court-surface-subtle">
             <MailTabTitleSync />
             <Sidebar />
-            <div className="flex flex-1 flex-col">
+            {/* min-w-0 on the flex-1 column + main lets nested
+                wide content (e.g. /jobs table with min-w-[1080px])
+                trigger their own overflow-x-auto wrappers instead of
+                pushing the entire page wider than the viewport. Without
+                min-w-0, flex-1's default min-content sizing follows
+                the widest descendant and shoves header action buttons
+                (Post New Job, Search, etc.) off the right edge. */}
+            <div className="flex min-w-0 flex-1 flex-col">
               <TopBar />
-              <main className="flex-1 p-6 md:p-8">{children}</main>
+              <main className="min-w-0 flex-1 p-6 md:p-8">{children}</main>
             </div>
           </div>
         </TextingProvider>
