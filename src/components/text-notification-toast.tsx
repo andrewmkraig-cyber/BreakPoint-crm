@@ -66,6 +66,11 @@ function QuoToast(props: QuoToastProps) {
       ? truncate(props.event.body || "(no message)", 60).toUpperCase()
       : truncate(callSubtitle(props.event), 60);
 
+  // TODO: split Reply and View handlers once the SMS composer is
+  // exposed via a single-call ID. Today both chips fire onView, which
+  // jumps to the candidate profile (where the activity card has the
+  // SMS composer); good enough as a Reply target until the composer
+  // can be opened directly from a toast.
   function onView() {
     if (candidateId) router.push(`/candidates/${candidateId}`);
     toast.dismiss(props.toastId);

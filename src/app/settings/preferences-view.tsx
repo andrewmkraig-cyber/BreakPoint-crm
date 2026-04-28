@@ -14,6 +14,7 @@ import {
   TOAST_THEMES,
   TOAST_THEME_ORDER,
   type ToastThemeId,
+  type ToastThemeSpec,
 } from "@/lib/toast-theme";
 import { renderNewMailToast } from "@/components/mail-notification-toast";
 import { renderNewTextToast, renderNewCallToast } from "@/components/text-notification-toast";
@@ -191,32 +192,6 @@ export function PreferencesView({
           </div>
           <NotifStylePicker value={textToastTheme} onPick={onPickTextToastTheme} kind="text" />
         </div>
-        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-court-border pt-4">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-            Try it:
-          </span>
-          <button
-            type="button"
-            onClick={fireSampleEmailToast}
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-          >
-            Email
-          </button>
-          <button
-            type="button"
-            onClick={fireSampleTextToast}
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-          >
-            Text
-          </button>
-          <button
-            type="button"
-            onClick={fireSampleCallToast}
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
-          >
-            Call
-          </button>
-        </div>
       </div>
 
       <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
@@ -274,40 +249,34 @@ export function PreferencesView({
 }
 
 function NotifStyleCard({
-  id,
-  active,
-  onPick,
+  spec,
   kind,
+  selected,
+  onClick,
 }: {
-  id: ToastThemeId;
-  active: boolean;
-  onPick: (id: ToastThemeId) => void;
+  spec: ToastThemeSpec;
   kind: "email" | "text";
+  selected: boolean;
+  onClick: () => void;
 }) {
-  const theme = TOAST_THEMES[id];
   const previewName = kind === "email" ? "New email" : "New text";
   const previewSub = kind === "email" ? "Meeting request" : "Reply needed";
 
   return (
     <button
       type="button"
-      onClick={() => onPick(id)}
-      aria-pressed={active}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 8,
-        padding: 12,
-        borderRadius: 12,
-        border: active ? "1.5px solid var(--court-accent)" : "1px solid var(--court-border)",
-        boxShadow: active ? "0 0 0 3px var(--court-accent-tint)" : "none",
-        background: "var(--court-surface)",
-        cursor: "pointer",
-        textAlign: "left",
-        transition: "border-color 0.15s, box-shadow 0.15s",
-      }}
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "flex flex-col gap-3 rounded-xl border p-3 text-left transition",
+        selected
+          ? "border-court-accent shadow-[0_0_0_3px_var(--court-accent-tint)]"
+          : "border-court-border hover:border-court-fg/40",
+      )}
     >
-      {/* Mini toast preview */}
+      {/* Mini toast preview — inline styles bound to the theme spec
+          so the swatch tracks the live theme tokens (and stays
+          self-contained — no lucide imports here). */}
       <div
         style={{
           position: "relative",
@@ -316,20 +285,20 @@ function NotifStyleCard({
           gap: 8,
           padding: "8px 10px",
           borderRadius: 8,
-          border: `1px solid ${theme.border}`,
-          background: theme.bg,
+          border: `1px solid ${spec.border}`,
+          background: spec.bg,
           overflow: "hidden",
           minHeight: 44,
         }}
       >
-        {theme.leftStrip && (
+        {spec.leftStrip && (
           <span
             aria-hidden="true"
             style={{
               position: "absolute",
               inset: "0 auto 0 0",
               width: 2,
-              background: theme.accent,
+              background: spec.accent,
             }}
           />
         )}
@@ -338,9 +307,9 @@ function NotifStyleCard({
             flexShrink: 0,
             width: 22,
             height: 22,
-            borderRadius: 5,
-            background: theme.iconBg,
-            color: theme.iconFg,
+            borderRadius: 6,
+            background: spec.iconBg,
+            color: spec.iconFg,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -352,35 +321,30 @@ function NotifStyleCard({
           </svg>
         </span>
         <span style={{ minWidth: 0, flex: 1 }}>
-          <span style={{ display: "block", fontSize: 9.5, fontWeight: 600, color: theme.fg, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ display: "block", fontSize: 9.5, fontWeight: 600, color: spec.fg, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {previewName}
           </span>
-          <span style={{ display: "block", fontSize: 8.5, color: theme.fgMuted, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <span style={{ display: "block", fontSize: 8.5, color: spec.fgMuted, lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {previewSub}
           </span>
         </span>
       </div>
 
-      {/* Radio + label */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span
-          style={{
-            width: 14,
-            height: 14,
-            borderRadius: "50%",
-            border: active ? "none" : "1.5px solid var(--court-border)",
-            background: active ? "var(--court-accent)" : "transparent",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-          }}
-        >
-          {active && <span style={{ width: 4, height: 4, borderRadius: "50%", background: "#fff" }} />}
-        </span>
-        <span style={{ fontSize: 13, fontWeight: 600, color: "var(--court-fg)" }}>{theme.label}</span>
+      {/* Bottom: radio circle, label, desc on its own line */}
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span
+            className={cn(
+              "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full",
+              selected ? "border-0 bg-court-accent" : "border-[1.5px] border-court-border bg-transparent",
+            )}
+          >
+            {selected && <span className="h-1 w-1 rounded-full bg-white" />}
+          </span>
+          <span className="text-[13px] font-semibold text-court-fg">{spec.label}</span>
+        </div>
+        <span className="text-[11.5px] leading-snug text-court-fg-muted">{spec.desc}</span>
       </div>
-      <span style={{ fontSize: 11.5, color: "var(--court-fg-muted)", lineHeight: 1.4 }}>{theme.desc}</span>
     </button>
   );
 }
@@ -395,11 +359,46 @@ function NotifStylePicker({
   kind: "email" | "text";
 }) {
   return (
-    <div style={{ maxWidth: 640 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-        {TOAST_THEME_ORDER.map((id) => (
-          <NotifStyleCard key={id} id={id} active={value === id} onPick={onPick} kind={kind} />
-        ))}
+    <div className="mt-3 flex max-w-[640px] flex-col gap-2.5">
+      <div className="grid grid-cols-3 gap-2.5">
+        {TOAST_THEME_ORDER.map((id) => {
+          const spec = TOAST_THEMES[id];
+          return (
+            <NotifStyleCard
+              key={id}
+              spec={spec}
+              kind={kind}
+              selected={value === id}
+              onClick={() => onPick(id)}
+            />
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Try it:
+        </span>
+        <button
+          type="button"
+          onClick={fireSampleEmailToast}
+          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+        >
+          Email
+        </button>
+        <button
+          type="button"
+          onClick={fireSampleTextToast}
+          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+        >
+          Text
+        </button>
+        <button
+          type="button"
+          onClick={fireSampleCallToast}
+          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-2.5 py-1 text-xs font-medium text-court-fg transition hover:bg-court-surface"
+        >
+          Call
+        </button>
       </div>
     </div>
   );
@@ -408,8 +407,8 @@ function NotifStylePicker({
 function fireSampleEmailToast() {
   renderNewMailToast({
     id: `sample-${Date.now()}`,
-    fromName: "Austin Barnard",
-    fromEmail: "austin@breakpointtalent.com",
+    fromName: "Sample Sender",
+    fromEmail: "sender@example.com",
     subject: "Meeting request",
     timestampIso: new Date().toISOString(),
   });
@@ -419,8 +418,8 @@ function fireSampleTextToast() {
   renderNewTextToast({
     id: `sample-${Date.now()}`,
     candidateId: "",
-    candidateName: "Austin Barnard",
-    fromNumber: "+12164885565",
+    candidateName: "Sample Sender",
+    fromNumber: "+15555550100",
     body: "Reply needed on the offer",
     createdAtIso: new Date().toISOString(),
   });
@@ -430,8 +429,8 @@ function fireSampleCallToast() {
   renderNewCallToast({
     id: `sample-${Date.now()}`,
     candidateId: "",
-    candidateName: "Austin Barnard",
-    fromNumber: "+12164885565",
+    candidateName: "Sample Sender",
+    fromNumber: "+15555550100",
     duration: null,
     status: "missed",
     createdAtIso: new Date().toISOString(),
