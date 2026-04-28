@@ -285,6 +285,13 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 - Boolean candidate search - skills/location/title/employer/education with AND/OR/NOT.
 - MPC (Most Placeable Candidates) feature.
 - Sentry N+1 fixes: ACE-CRM-5 (37 events), ACE-CRM-6 (28 events), ACE-CRM-7 (2 events), ACE-CRM-9 (1 event), ACE-CRM-A (1 event). Plus one Hydration Error. Fix via Prisma include eager-loading.
+- **Calendar Tab**
+  - Dedicated /calendar page in the sidebar (between Pipeline and Applicants, or after Phone - Andrew to confirm position).
+  - Month/week/day view of all scheduled interviews and meetings.
+  - Create meeting button: opens a modal to create a Google Calendar event directly from Ace. Fields: title, date/time, duration, attendees (pull from candidate/client contacts), location/video link, notes.
+  - Existing scheduled interviews already appear (they are already on Google Calendar via the interview scheduler).
+  - One-click meeting creation without going to the interview scheduler flow - for BD calls, intro calls, internal meetings.
+  - Sync is read/write with Google Calendar (Andrew's calendar, google account already connected).
 
 ### Week 4
 
