@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
@@ -15,6 +15,7 @@ import {
   removeLocalKeptCandidate,
 } from "@/app/applicants/actions";
 import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
+import { setCandidateNavList } from "@/lib/candidate-nav";
 
 // candidateId is polymorphic: RF-imported rows carry the numeric RF id;
 // Ace-native rows carry a cuid string. The row-level action buttons
@@ -103,6 +104,20 @@ export function ApplicantsView({
     [applied, sortKey, sortDir],
   );
   const sortedKept = useMemo(() => sortKept(kept, sortKey, sortDir), [kept, sortKey, sortDir]);
+
+  // Stash the active tab's row ids (in current sort order) so the
+  // candidate profile's Prev/Next nav can walk them. Re-runs when the
+  // tab flips or the sort changes — the nav follows whichever slice
+  // the recruiter is actually staring at.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const visible = tab === "applied" ? sortedApplied : sortedKept;
+    setCandidateNavList({
+      source: "applicants",
+      backHref: "/applicants",
+      ids: visible.map((r) => String(r.candidateId)),
+    });
+  }, [tab, sortedApplied, sortedKept]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) {

@@ -9,6 +9,7 @@ import {
   type QuickContactRow,
   type QuickSearchRow,
 } from "@/app/candidates/actions";
+import { setCandidateNavList } from "@/lib/candidate-nav";
 
 // Phase 5.4: global quick-search across candidates + clients + contacts.
 // Lives in the TopBar, visible on every route. Debounced 300ms. Up to
@@ -113,10 +114,16 @@ export function TopBarSearch() {
   function navigate(item: ResultItem) {
     setIsOpen(false);
     setQ("");
-    setCandidates([]);
-    setClients([]);
-    setContacts([]);
     if (item.kind === "candidate") {
+      // Stash the candidate id list from the current global-search
+      // dropdown so the profile's Prev/Next can walk those matches.
+      // Skips any non-candidate rows (clients / contacts in the same
+      // dropdown) — those don't belong in candidate navigation.
+      setCandidateNavList({
+        source: "candidates",
+        backHref: "/candidates",
+        ids: candidates.map((c) => c.id),
+      });
       router.push(`/candidates/${item.id}`);
     } else if (item.kind === "client") {
       router.push(`/clients/${item.slug}`);
@@ -126,6 +133,11 @@ export function TopBarSearch() {
       // back to the clients index rather than a dead /clients/ URL.
       router.push(item.clientSlug ? `/clients/${item.clientSlug}?tab=contacts` : "/clients");
     }
+    // Clear the in-memory result lists AFTER stashing so the snapshot
+    // captures the dropdown's actual contents at click time.
+    setCandidates([]);
+    setClients([]);
+    setContacts([]);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
