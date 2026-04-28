@@ -81,11 +81,23 @@ export function MessageBlock({
           // typography so plain emails read like the rest of the
           // thread instead of monospace blocks.
           "[&_pre]:whitespace-pre-wrap [&_pre]:font-sans [&_pre]:text-sm [&_pre]:leading-relaxed",
-          // Inline images shouldn't blow out the column width.
-          "[&_img]:my-2 [&_img]:max-w-full [&_img]:rounded-md",
-          // Tables (Gmail signatures, forwarded confirmations) get
-          // sane defaults so the layout doesn't collapse to one line.
-          "[&_table]:my-2 [&_table]:w-auto [&_td]:py-1 [&_td]:pr-3 [&_th]:py-1 [&_th]:pr-3 [&_th]:font-semibold",
+          // Inline images: cap width so wide screenshots don't blow
+          // out the column. Don't apply auto vertical margin — that
+          // injected ghost spacing around signature avatars and the
+          // BreakPoint logo, which the sender's own table padding
+          // already controls. `align-middle` keeps inline icons (the
+          // green envelope/phone/web circles in Andrew's signature)
+          // riding the text baseline instead of dropping below it.
+          "[&_img]:max-w-full [&_img]:h-auto [&_img]:align-middle",
+          // Tables (Gmail signatures, forwarded confirmations).
+          // Previously every <td> got `py-1 pr-3` which fought the
+          // sender's own cellpadding/style and produced the cracked
+          // signature layout (logo split off from contact rows, Quo
+          // avatar pushed away from its message body). Let the
+          // sender's own table styling drive spacing. We only set
+          // border-collapse + a vertical-align default so multi-row
+          // tables track the original geometry.
+          "[&_table]:border-collapse [&_td]:align-top [&_th]:align-top",
         ].join(" ")}
         dangerouslySetInnerHTML={{ __html: msg.bodyHtml }}
       />

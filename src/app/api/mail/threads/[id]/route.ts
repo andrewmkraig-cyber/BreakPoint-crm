@@ -77,17 +77,85 @@ export async function GET(
             "font",
           ],
           allowedAttributes: {
-            a: ["href", "name", "target", "rel"],
-            img: ["src", "alt", "width", "height"],
-            span: ["class"],
-            pre: ["class"],
-            font: ["color"],
+            a: ["href", "name", "target", "rel", "style"],
+            img: ["src", "alt", "width", "height", "style", "align"],
+            // Email signatures lean heavily on table layout with legacy
+            // HTML attrs (cellpadding/cellspacing/align/valign/width).
+            // Stripping them collapsed Gmail-shaped signatures into the
+            // wrong column structure — the BreakPoint logo split off
+            // from the contact rows. Whitelist them so multi-cell
+            // signatures + Quo-style avatar+body messages render with
+            // the same geometry the sender designed.
+            table: ["cellpadding", "cellspacing", "border", "align", "width", "height", "style", "class"],
+            tr: ["align", "valign", "style", "class"],
+            td: ["align", "valign", "width", "height", "colspan", "rowspan", "style", "class"],
+            th: ["align", "valign", "width", "height", "colspan", "rowspan", "style", "class"],
+            div: ["style", "class", "align"],
+            p: ["style", "class", "align"],
+            span: ["class", "style"],
+            pre: ["class", "style"],
+            font: ["color", "size", "face"],
+            h1: ["style", "class"],
+            h2: ["style", "class"],
+            h3: ["style", "class"],
+            blockquote: ["style", "class"],
+            ul: ["style", "class"],
+            ol: ["style", "class"],
+            li: ["style", "class"],
             "*": ["class"],
           },
+          // Whitelist the layout/typography props that Gmail-style
+          // signatures and forwarded messages depend on. Anything not
+          // listed (position, expression, behavior, etc.) is stripped
+          // — keeps obvious vectors out without nuking signature
+          // geometry. Each property allows non-malicious value shapes
+          // only (px / %, rgb / hex, common keywords).
+          allowedStyles: {
+            "*": {
+              "color": [/^.+$/],
+              "background-color": [/^.+$/],
+              "font-family": [/^.+$/],
+              "font-size": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "font-weight": [/^(normal|bold|\d{3})$/],
+              "font-style": [/^(normal|italic|oblique)$/],
+              "text-align": [/^(left|right|center|justify)$/],
+              "text-decoration": [/^.+$/],
+              "vertical-align": [/^(baseline|top|middle|bottom|sub|super|text-top|text-bottom)$/],
+              "line-height": [/^[\d.]+\s*(px|pt|em|rem|%|)$/],
+              "letter-spacing": [/^[\d.]+\s*(px|pt|em|rem)$/],
+              "padding": [/^[\d.\s]+(px|pt|em|rem|%)$/],
+              "padding-top": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "padding-right": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "padding-bottom": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "padding-left": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "margin": [/^[\d.\s]+(px|pt|em|rem|%|auto)$/],
+              "margin-top": [/^[\d.]+\s*(px|pt|em|rem|%|auto)$/],
+              "margin-right": [/^[\d.]+\s*(px|pt|em|rem|%|auto)$/],
+              "margin-bottom": [/^[\d.]+\s*(px|pt|em|rem|%|auto)$/],
+              "margin-left": [/^[\d.]+\s*(px|pt|em|rem|%|auto)$/],
+              "width": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "max-width": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "min-width": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "height": [/^[\d.]+\s*(px|pt|em|rem|%|auto)$/],
+              "max-height": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "min-height": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "border": [/^[\d.]+\s*(px|pt|em|rem)\s+(solid|dashed|dotted|none)\s+.+$/],
+              "border-top": [/^[\d.]+\s*(px|pt|em|rem)\s+(solid|dashed|dotted|none)\s+.+$/],
+              "border-right": [/^[\d.]+\s*(px|pt|em|rem)\s+(solid|dashed|dotted|none)\s+.+$/],
+              "border-bottom": [/^[\d.]+\s*(px|pt|em|rem)\s+(solid|dashed|dotted|none)\s+.+$/],
+              "border-left": [/^[\d.]+\s*(px|pt|em|rem)\s+(solid|dashed|dotted|none)\s+.+$/],
+              "border-color": [/^.+$/],
+              "border-style": [/^(solid|dashed|dotted|none|hidden)$/],
+              "border-width": [/^[\d.]+\s*(px|pt|em|rem)$/],
+              "border-radius": [/^[\d.]+\s*(px|pt|em|rem|%)$/],
+              "border-collapse": [/^(collapse|separate)$/],
+              "border-spacing": [/^[\d.\s]+(px|pt|em|rem)$/],
+              "display": [/^(block|inline|inline-block|table|table-cell|table-row|none|flex|inline-flex)$/],
+              "float": [/^(left|right|none)$/],
+              "clear": [/^(left|right|both|none)$/],
+            },
+          },
           allowedSchemes: ["http", "https", "mailto", "tel", "cid", "data"],
-          // Strip the dangerous-by-default style attribute entirely —
-          // Gmail HTML is full of inline CSS but we prefer a consistent
-          // look inside Ace over the sender's original palette.
           disallowedTagsMode: "discard",
           transformTags: {
             a: (tagName, attribs) => ({

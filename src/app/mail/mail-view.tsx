@@ -570,9 +570,120 @@ export function MailView({
     [threads, selected],
   );
 
+  // Resizable column widths for the lg+ three-pane layout. Defaults
+  // mirror the previous lg:col-span-2 / col-span-3 / col-span-7 split
+  // (~16% / 25% / 59%) at a typical 1440px viewport. Persisted to
+  // localStorage under `ace-mail-column-widths` so the recruiter's
+  // chosen widths survive navigation away from /mail and back. Below
+  // the lg breakpoint the layout falls back to single-column (the
+  // grid-template-columns CSS only applies at lg+ via a media query
+  // baked into the inline style).
+  const [sidebarWidth, setSidebarWidth] = useState<number>(220);
+  const [listWidth, setListWidth] = useState<number>(360);
+  const SIDEBAR_MIN = 160;
+  const SIDEBAR_MAX = 480;
+  const LIST_MIN = 240;
+  const LIST_MAX = 720;
+  const isFirstColumnLoad = useRef(true);
+  useEffect(() => {
+    if (isFirstColumnLoad.current) {
+      isFirstColumnLoad.current = false;
+      try {
+        const raw = window.localStorage.getItem("ace-mail-column-widths");
+        if (raw) {
+          const parsed = JSON.parse(raw) as { sidebar?: number; list?: number };
+          if (typeof parsed.sidebar === "number") {
+            setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, parsed.sidebar)));
+          }
+          if (typeof parsed.list === "number") {
+            setListWidth(Math.max(LIST_MIN, Math.min(LIST_MAX, parsed.list)));
+          }
+        }
+      } catch {
+        // Corrupt storage — keep defaults.
+      }
+      return;
+    }
+    try {
+      window.localStorage.setItem(
+        "ace-mail-column-widths",
+        JSON.stringify({ sidebar: sidebarWidth, list: listWidth }),
+      );
+    } catch {
+      // Quota / private mode — non-fatal.
+    }
+  }, [sidebarWidth, listWidth]);
+
+  // Active drag state. `null` when no drag is in flight; otherwise
+  // the handle the user grabbed. Stored at the component level so the
+  // global mousemove/mouseup listeners installed in the effect can
+  // read which handle is being dragged.
+  const [dragging, setDragging] = useState<null | "sidebar" | "list">(null);
+  const dragStartRef = useRef<{ x: number; sidebar: number; list: number } | null>(null);
+  useEffect(() => {
+    if (!dragging) return;
+    function onMove(e: MouseEvent) {
+      const start = dragStartRef.current;
+      if (!start) return;
+      const dx = e.clientX - start.x;
+      if (dragging === "sidebar") {
+        const next = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, start.sidebar + dx));
+        setSidebarWidth(next);
+      } else {
+        const next = Math.max(LIST_MIN, Math.min(LIST_MAX, start.list + dx));
+        setListWidth(next);
+      }
+    }
+    function onUp() {
+      setDragging(null);
+      dragStartRef.current = null;
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    // Lock the cursor + disable text selection while dragging so a
+    // fast drag doesn't accidentally highlight the thread list.
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [dragging]);
+  const beginDrag = useCallback(
+    (which: "sidebar" | "list") => (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragStartRef.current = { x: e.clientX, sidebar: sidebarWidth, list: listWidth };
+      setDragging(which);
+    },
+    [sidebarWidth, listWidth],
+  );
+
   return (
-    <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
-      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
+    <div
+      className="ace-mail-grid mt-4 grid grid-cols-1 gap-4 lg:gap-0"
+      style={
+        {
+          // CSS vars consumed by the lg+ media query in the inline
+          // <style> below. Setting them as inline custom props lets
+          // the grid template react to drag updates without a class
+          // swap. Below lg the grid-cols-1 class wins.
+          ["--mail-sidebar-w"]: `${sidebarWidth}px`,
+          ["--mail-list-w"]: `${listWidth}px`,
+        } as React.CSSProperties
+      }
+    >
+      <style>{`
+        @media (min-width: 1024px) {
+          .ace-mail-grid {
+            grid-template-columns: var(--mail-sidebar-w) 6px var(--mail-list-w) 6px minmax(0, 1fr);
+          }
+        }
+      `}</style>
+      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <nav className="p-2 text-sm">
           {/* Premium Inbox card — the visual anchor of the sidebar.
               Uses literal hex colors per the redesign spec; matches the
@@ -672,7 +783,24 @@ export function MailView({
         </nav>
       </aside>
 
-      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
+      {/* Drag handle: sidebar ↔ thread list. Hidden below lg where
+          the layout stacks vertically. The 6px wide column in the
+          template plus a centered visible 1px line gives a generous
+          hit-target without painting a heavy divider. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize sidebar"
+        onMouseDown={beginDrag("sidebar")}
+        className={
+          "hidden cursor-col-resize select-none items-stretch justify-center lg:flex " +
+          (dragging === "sidebar" ? "bg-brand/20" : "hover:bg-brand/10")
+        }
+      >
+        <span className="my-2 w-px self-stretch bg-court-border" />
+      </div>
+
+      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="border-b border-court-border bg-court-surface-subtle/60 px-3 py-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
@@ -801,7 +929,22 @@ export function MailView({
         )}
       </aside>
 
-      <section className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
+      {/* Drag handle: thread list ↔ thread detail. Same pattern as
+          the sidebar handle above. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize thread list"
+        onMouseDown={beginDrag("list")}
+        className={
+          "hidden cursor-col-resize select-none items-stretch justify-center lg:flex " +
+          (dragging === "list" ? "bg-brand/20" : "hover:bg-brand/10")
+        }
+      >
+        <span className="my-2 w-px self-stretch bg-court-border" />
+      </div>
+
+      <section className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
