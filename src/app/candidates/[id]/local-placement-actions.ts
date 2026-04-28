@@ -10,6 +10,12 @@ import { generateSubmittalWriteup } from "@/lib/claude";
 import { sendGmail } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
 import { submittalToHtml, submittalToPlainText } from "@/lib/submittal-format";
+import { fireTriggerAndLog } from "@/lib/trigger-fire";
+import {
+  CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
+  CANDIDATE_CONFIRMATION_TRIGGER,
+  CANDIDATE_REJECTION_TRIGGER,
+} from "@/app/settings/template-constants";
 
 // Local-candidate placement actions. Mirror the three RF actions (Apply /
 // Submit / Reference Request) but never call RecruiterFlow. Placement rows
@@ -137,6 +143,25 @@ export async function applyLocalCandidateToJob(input: ApplyLocalInput): Promise<
 
     revalidatePath(`/candidates/${input.candidateId}`);
     revalidatePath("/pipeline");
+
+    // Auto-fire Candidate Applied — Confirmation. Best-effort tail
+    // off the apply path; the Placement row + ActivityLog are
+    // already saved, so a missing template / inactive template /
+    // Anthropic timeout never corrupts pipeline state.
+    void fireTriggerAndLog({
+      trigger: CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
+      ref: {
+        candidateId: input.candidateId,
+        jobRfId,
+        jobId,
+        clientRfId,
+        clientId,
+      },
+      actionType: "candidate_applied_confirmation_email",
+      organizationId: org.id,
+      metadata: { jobRfId, jobId, clientRfId, clientId, local: true },
+    });
+
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Apply failed." };
@@ -385,6 +410,29 @@ export async function sendLocalSubmittalEmail(
 
     revalidatePath(`/candidates/${input.candidateId}`);
     revalidatePath("/pipeline");
+
+    // Auto-fire Candidate Submission Confirmation to the candidate.
+    // Mirrors the RF-side createCandidateConfirmationDraft path so
+    // the candidate gets the same "Great News — your profile was
+    // submitted" follow-up no matter which candidate type they are.
+    void fireTriggerAndLog({
+      trigger: CANDIDATE_CONFIRMATION_TRIGGER,
+      ref: {
+        candidateId: input.candidateId,
+        jobRfId,
+        jobId,
+        clientRfId,
+        clientId,
+      },
+      actionType: "candidate_submission_confirmation_email",
+      organizationId: org.id,
+      metadata: {
+        placementId: placement.id,
+        submittalGmailMessageId: sendResult.id,
+        local: true,
+      },
+    });
+
     return { ok: true, value: { placementId: placement.id, gmailMessageId: sendResult.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Send failed." };
@@ -490,6 +538,33 @@ export async function rejectLocalPlacement(input: { placementId: string }): Prom
     });
     if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
     revalidatePath(`/pipeline`);
+
+    // Auto-fire Candidate Rejected. Same best-effort pattern: the
+    // stage flip is already committed, so a fire failure can't
+    // corrupt the pipeline. Only fires when we have a candidateId
+    // (every Ace-native row does); RF rejections still flow through
+    // the older sendRejectionEmail path.
+    if (placement.candidateId) {
+      void fireTriggerAndLog({
+        trigger: CANDIDATE_REJECTION_TRIGGER,
+        ref: {
+          candidateId: placement.candidateId,
+          candidateRfId: placement.candidateRfId,
+          jobId: placement.jobId,
+          jobRfId: placement.jobRfId,
+          clientId: placement.clientId,
+          clientRfId: placement.clientRfId,
+        },
+        actionType: "candidate_rejection_email",
+        organizationId: org.id,
+        metadata: {
+          placementId: input.placementId,
+          previousStage,
+          local: true,
+        },
+      });
+    }
+
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to reject candidate." };
