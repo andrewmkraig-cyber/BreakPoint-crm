@@ -260,9 +260,31 @@ export const PIPELINE_ORDER: Array<keyof typeof PIPELINE_LABELS> = [
   "hired",
 ];
 
+// Set of every canonical PipelineBucket string. Lets canonicalStage()
+// short-circuit when called with an already-canonical value (e.g. a Neon
+// Placement.stage column) — the substring matching below was written for
+// RF payload stage_name strings (which use spaces / hyphens like "pending
+// start" / "pre-start") and silently mapped "pending_start" / "cancelled"
+// to "other" because no substring rule matched. That hid the Pending
+// Start counter on every page that runs canonicalStage(Placement.stage).
+const CANONICAL_BUCKETS: ReadonlySet<PipelineBucket> = new Set<PipelineBucket>([
+  "sourced",
+  "applied",
+  "kept",
+  "submitted",
+  "interviewing",
+  "offer",
+  "pending_start",
+  "hired",
+  "rejected",
+  "cancelled",
+  "other",
+]);
+
 export function canonicalStage(stageName: string | null | undefined): PipelineBucket {
   if (!stageName) return "other";
   const s = stageName.toLowerCase().trim();
+  if (CANONICAL_BUCKETS.has(s as PipelineBucket)) return s as PipelineBucket;
   if (s === "sourced" || s === "new" || s === "lead") return "sourced";
   if (s.includes("reject") || s.includes("disqualif") || s.includes("declin")) return "rejected";
   if (s.includes("hired") || s.includes("placed") || s === "joined" || s === "started") return "hired";
