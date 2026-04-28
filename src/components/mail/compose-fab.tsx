@@ -739,7 +739,7 @@ export function ComposeFAB() {
                   type="search"
                   value={noteSearch}
                   onChange={(e) => setNoteSearch(e.target.value)}
-                  placeholder="Type a candidate or client name..."
+                  placeholder="Search in Ace"
                   aria-label="Search profiles"
                   className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-8 pr-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />
