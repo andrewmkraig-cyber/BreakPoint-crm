@@ -1,10 +1,48 @@
 # ACE_STATE.md
-Last updated: 2026-04-27 - End of Ace 25.0
+Last updated: 2026-04-28 - End of Ace 26.0
 
 ## Current Status
 Current Version: Ace 26.0
-Last Session: Ace 25.0 - April 27, 2026
-Current Status: All Ace 25.0 tasks complete. Ready for Ace 26.0.
+Last Session: Ace 26.0 - April 28, 2026
+Live at: ace.breakpointtalent.com
+Current Status: Ace 26.0 ships closed. Phone Tab Phase 3 complete; Clients page redesign complete; notification toast redesign complete; CLAUDE.md root rules file in place. Ready to start Ace 27.0.
+
+## What Shipped in Ace 26.0 (2026-04-28)
+- canonicalStage root cause fix: client card counters for pending_start and cancelled now read from Neon Placement.stage (canonical) instead of leaking through the RF stage_name string. The bucket-driven counts on client detail are correct end-to-end now
+- Stage chip label leak fixed: RF-imported candidate JobActionRow no longer renders the RF payload's stage_name in the StageBadge label. Label is derived off Placement.stage; bucket color was already right
+- Clickable job counter pills on client detail: each per-stage pill is a Link to /pipeline filtered by client + stage so a single click jumps from "5 Submitted" on a client card to the filtered pipeline list
+- Email Threads raw ID section removed from client detail: useless without subject/preview metadata; matches the same removal on candidate profiles in 25.0. TODO comment in place pending auto-tagging surfaces
+- Reject button restored on candidate profile job rows: Submitted / Interviewing / Offer / Pending Start stages all have it again. Previously regressed during the compact-row sweep
+- Reject button added to /pipeline view rows for Submitted + Interviewing stages — recruiters can reject straight from the pipeline list without bouncing to the candidate profile
+- Schedule Interview button on Submitted pipeline rows: same one-click semantics as the candidate profile, fires the existing Schedule modal pre-filled with the row's candidate + job context
+- Offer button on Interviewing pipeline rows: opens the Offer modal (existing flow) directly from the pipeline row
+- Clients page full redesign: ClientLogo + PipelinePill components, grid-vs-list view toggle, per-client stage counters, sort + filter row at top. Single source of truth for the new visuals so any future client widget reuses the same components
+- Unnamed RF stub client deleted (legacyRfId 24): one-shot DELETE to clear a placeholder row that was confusing the Clients list
+- Phone Tab Phase 3:
+  - Auto-tagging: every inbound + outbound SMS / call now matches against Candidate.phone (last 10 digits) AND Contact.phoneNumbers JSON; SmsMessage.candidateId / CallLog.candidateId / clientId stamped on the write path. Activity card on the matched profile picks them up automatically
+  - Open Profile button on /phone thread header navigates to the matched candidate or client
+  - Read tracking via SmsMessage.isRead: marked true when the thread opens in the candidate Activity card sub-tab OR in the /phone right-pane detail. Sidebar Phone unread badge + thread-list "Needs reply" count both read this field
+  - Global header search expanded to email + phone in addition to name
+- Notification toast redesign: Subtle / Tint / Ink styles, all court-token bound. Shared ActionChip + DismissBtn components; the new chrome is reused for the upcoming text + call toasts so style stays consistent
+- Settings notifications section: NotifStylePicker with three style cards (Subtle / Tint / Ink), Try-it buttons that emit a sample toast, Quiet hours toggle. Style picker writes to localStorage so it takes effect on the very next toast — no reload, no remount
+- CLAUDE.md created at repo root: permanent project-brain rules file, auto-loaded every Code session. Codifies the 13 architecture non-negotiables, banned vocabulary, Step 0 grep, tenant-scoping rules, design system, key file locations, and the "what NOT to build" list
+- Calendar Tab added to Week 3 roadmap: month/week/day view, Google Calendar read/write sync, create-meeting modal for BD calls + intro calls without going through the full interview scheduler flow
+- Jobs page: salary range column + condensed Apply-to-Job dropdown (shipped mid-session)
+
+## Known Issues / Still In Progress (carry into Ace 27.0)
+- Text toast icon showing MessageSquare instead of Phone (regression after the toast chrome refactor — should match the Phone icon used on the Phone sidebar nav)
+- Text toast showing "· Text" trailing label that should be removed (eyebrow already says SMS context, the dot-Text suffix is redundant)
+- Reply button low contrast on some Court Mode themes — needs token rebind so it reads against tinted backgrounds
+- Compose FAB still visible on /settings page (should be hidden — Settings has no surface that benefits from the launcher)
+- Toast subtitle text rendering in ALL CAPS in some themes — likely a CSS uppercase rule applying too broadly to the eyebrow + subtitle slots
+- Settings appearance section not yet matching Claude Design two-column layout (Court Mode + Notification Preferences should sit side-by-side at desktop widths)
+
+## Next Task for Ace 27.0
+Jobs Page Enhancements are done. Pick one of:
+1. Toast fixes (in progress) — close out the six known issues above so the notification system reads clean across all themes
+2. CSV Import/Export — bulk candidate / contact ingest path that's been on the backlog since Week 2
+
+Andrew to confirm priority at session start.
 
 ## What Shipped in Ace 25.0 (2026-04-27)
 - Quo SMS fix: krispcall.ts dead code deleted, /api/krispcall/webhook moved to /api/quo/webhook (OpenPhone provider URL must be updated in settings), error message in SmsComposer points at Quo env vars. Webhook signature + write paths verified end-to-end with a real send
@@ -23,9 +61,6 @@ Current Status: All Ace 25.0 tasks complete. Ready for Ace 26.0.
 - Email Threads sections removed from candidate profiles (raw thread-id list was useless without subject/preview); TODO comment in place. gmailThreadTag fetch dropped from page.tsx Promise.all and from local-profile.tsx candidate select
 - Vercel build fixes shipped through the day: prefer-const on jobId in activity API; unused-vars cleanup after removing Hired chip / badgeSuffixFor / InterviewList / InterviewRow / extensionFor / formatBytes / displayNameFor / Pencil + Check / Clock + MapPin + PhoneCall + Trash2 + Video / cancelInterview imports
 
-## Known Bugs / Backlog
-- RF-imported candidate profiles still render the RF payload's stage_name string in the StageBadge instead of Neon's Placement.stage. Means a candidate moved to Hired in Ace can keep showing "Client Submission" or whatever RF last knew. The bucket-driven color is correct (StageBadge maps the canonical bucket), but the label text leaks RF state. Fix: pass `label={null}` (or a derived label off Placement.stage) on the RF JobActionRow StageBadge call instead of `job.rfStageName`. Touched today's commit but the call-site `label={job.rfStageName ?? null}` was preserved to avoid scope creep — flagging here for a 26.0+ pass.
-
 ## What Shipped in Ace 24.0 (2026-04-27)
 - Phone Tab Phase 1: schema migration (organizationId + clientId on SmsMessage + CallLog), 3-pane page shell at /phone, thread list wired to real data, sidebar nav item, refresh button
 - Phone Tab Phase 2: FAB with phone icon, start conversation popup, new text panel (POST /api/sms), call panel, webhook orgId fix, unread count fix, sidebar badge plumbing
@@ -38,13 +73,6 @@ Current Status: All Ace 25.0 tasks complete. Ready for Ace 26.0.
 - Generate/Edit with Claude buttons: dark background white text unified across all surfaces
 - Activity tab: added to candidate and client profiles next to Game Plan, fetches ActivityLog via GET /api/activity/[entityType]/[entityId]/route.ts
 - Vercel build errors fixed: ESLint prefer-const on jobId in activity API route
-
-## Next Task for Ace 26.0 — Phone Tab Phase 3
-- Auto-tagging: every inbound/outbound call and text auto-links to candidate (by phone number lookup) or client contact (by phone match against Contact.phoneNumbers JSON). Surfaces on their profile Activity card automatically
-- Read tracking: add readAt field to SmsMessage. Mark inbound rows as read when the thread is opened in the candidate Activity card sub-tab or in the /phone right-pane detail. Sidebar unread badge + thread-list "Needs reply" count both read this field
-- Incoming text toast: bottom-right, 8s auto-dismiss with hover-to-pause, click to expand inline reply, Enter sends, all logs to candidate/client thread automatically
-- Incoming call toast: persistent until dismissed. Answer turns the toast into a "Connected" card with running timer + End Call. Voicemail forwards to VM. Every action logs to CallLog
-- Search through text + call history in /phone (top of thread list, debounced, server-side LIKE on body / phone number / candidate name)
 
 ## What Shipped in Ace 23.0 (2026-04-27)
 - GmailThreadTag schema table - links email threads to candidate/client profiles by address matching
@@ -87,7 +115,7 @@ Current Status: All Ace 25.0 tasks complete. Ready for Ace 26.0.
 - Ringover webhooks wired for inbound events
 - Click-to-call exists on candidate profiles
 - Claude transcript summaries exist
-- NONE of this has a dedicated /phone UI page
+- NONE of this has a dedicated /phone UI page (shipped 24.0/26.0 — the /phone tab is now the surface)
 
 ## On the Horizon
 - Multi-recruiter permissions: ownerId on Client and Job, shared candidate pool, manager view

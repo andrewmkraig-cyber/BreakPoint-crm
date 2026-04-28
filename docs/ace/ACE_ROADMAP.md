@@ -1,13 +1,49 @@
 # Ace Roadmap
 
-## Ace 26.0 — Next up: Phone Tab Phase 3
+## In Progress / Needs Fix (top priority — Ace 27.0 candidate)
 
-Four items, ship in this order. The thread list and per-thread detail UI shipped in Phase 1+2 (Ace 24.0); Phase 3 adds the live behaviors that turn it into a full recruiting comms surface.
+These are known issues from Ace 26.0 that didn't make the close. Pull off the top of this stack before greenfield work.
 
-1. **Auto-tagging.** Every inbound/outbound call and text auto-links to a Candidate (Candidate.phone substring match on last 10 digits) or a client Contact (Contact.phoneNumbers JSON array lookup). Stamps SmsMessage.candidateId / CallLog.candidateId / clientId on the write path so the Activity card on the matched profile picks it up automatically. Wire the "Open Profile" button on the /phone thread header to navigate to the matched candidate / client.
-2. **Read tracking + unread badge.** Add readAt field to SmsMessage. Mark inbound rows as read when the thread is opened in the candidate Activity card sub-tab OR in the /phone right-pane detail. Sidebar Mail-style unread badge + thread-list "Needs reply" count both read this field.
-3. **Incoming toasts.** New inbound SMS → bottom-right toast with hover-to-pause, click to expand inline reply, Enter sends, logs to thread automatically. New inbound call → persistent toast with Answer (turns into "Connected" card + running timer + End Call) and Voicemail. Every action logs to CallLog.
-4. **Search.** Top-of-list search box on /phone (debounced) — server-side LIKE on body / phone number / candidate name / email, returning matched threads.
+- Text toast icon showing MessageSquare instead of Phone (regression after the toast chrome refactor — should match the Phone icon used on the Phone sidebar nav).
+- Text toast showing "· Text" trailing label that should be removed (eyebrow already says SMS context, the dot-Text suffix is redundant).
+- Reply button low contrast on some Court Mode themes — needs token rebind so it reads against tinted backgrounds.
+- Compose FAB still visible on /settings page (should be hidden — Settings has no surface that benefits from the launcher).
+- Toast subtitle text rendering in ALL CAPS in some themes — likely a CSS uppercase rule applying too broadly to the eyebrow + subtitle slots.
+- Settings appearance section not yet matching Claude Design two-column layout (Court Mode + Notification Preferences should sit side-by-side at desktop widths).
+
+## Ace 27.0 — Next up (pick one)
+
+Jobs Page Enhancements are done as of Ace 26.0. Next item is one of:
+
+1. **Toast fixes (in progress)** — close out the six known issues above so the notification system reads clean across all themes.
+2. **CSV Import/Export** — bulk candidate / contact ingest path that's been on the backlog since Week 2.
+
+Andrew confirms priority at session start.
+
+## Completed - Ace 26.0 (April 28, 2026)
+
+All shipped 2026-04-28. See docs/ace/ACE_STATE.md for the full per-item log.
+
+- canonicalStage root cause fix: client card counters for pending_start and cancelled now read Neon Placement.stage instead of leaking through RF stage_name.
+- Stage chip label leak fixed: RF JobActionRow no longer renders RF payload's stage_name in the StageBadge label; label derives off Placement.stage.
+- Clickable job counter pills on client detail — each per-stage pill is a Link to /pipeline filtered by client + stage.
+- Email Threads raw ID section removed from client detail (matches the same removal on candidate profiles in 25.0).
+- Reject button restored on candidate profile job rows (Submitted / Interviewing / Offer / Pending Start).
+- Reject button added to /pipeline view rows for Submitted + Interviewing stages.
+- Schedule Interview button on Submitted pipeline rows.
+- Offer button on Interviewing pipeline rows.
+- Clients page full redesign: ClientLogo, PipelinePill, grid-vs-list toggle, per-client stage counters, sort + filter row.
+- Unnamed RF stub client deleted (legacyRfId 24).
+- Phone Tab Phase 3:
+  - Auto-tagging on every inbound + outbound SMS / call — matches against Candidate.phone (last 10 digits) AND Contact.phoneNumbers; SmsMessage.candidateId / CallLog.candidateId / clientId stamped on the write path.
+  - Open Profile button on /phone thread header navigates to the matched candidate or client.
+  - Read tracking via SmsMessage.isRead — sidebar Phone unread badge + thread-list "Needs reply" count both read this field.
+  - Global header search expanded to email + phone in addition to name.
+- Notification toast redesign: Subtle / Tint / Ink styles, court-token bound, shared ActionChip + DismissBtn components.
+- Settings notifications section: NotifStylePicker with three style cards, Try-it buttons that emit a sample toast, Quiet hours toggle. localStorage-backed so the picker takes effect on the next toast.
+- CLAUDE.md created at repo root — permanent project-brain rules file, auto-loaded every Code session.
+- Calendar Tab added to Week 3 roadmap (see Week 3 section below).
+- Jobs page: salary range column + condensed Apply-to-Job dropdown (shipped mid-session).
 
 ## Completed - Ace 25.0 (Candidate profile redesign + Quo SMS fixes)
 
@@ -28,7 +64,7 @@ All shipped 2026-04-27. See docs/ace/ACE_STATE.md for the full per-item log.
 1. New /phone page in the main nav. Two-pane layout similar to /mail. — SHIPPED
 2. Call log pulled from Quo (formerly Krispcall) - timestamp, direction, candidate/client match, duration, status. — SHIPPED
 3. SMS threads from Quo - one thread per phone number, message history, ordered by most recent activity. — SHIPPED
-4. Match every call + SMS thread to a Candidate or Contact by phone number lookup. Unmatched ones surface in an "Unknown" bucket. — Partial; auto-tagging full sweep is Phase 3.
+4. Match every call + SMS thread to a Candidate or Contact by phone number lookup. Unmatched ones surface in an "Unknown" bucket. — SHIPPED in 26.0 (auto-tagging on the write path).
 5. Read paths only in Phase 1 - no inbound notifications or reply UI yet. — SHIPPED
 
 ### Phase 2 - Inbound notifications + click-to-call [SHIPPED]
@@ -36,13 +72,17 @@ All shipped 2026-04-27. See docs/ace/ACE_STATE.md for the full per-item log.
 2. Schema migration adding organizationId + clientId to SmsMessage / CallLog. — SHIPPED
 3. Click-to-call entry points exist on candidate profile + Phone tab. Outbound call API wiring is Phase 3 (current placeCall toasts a "coming soon" placeholder).
 
-### Phase 3 - Search, filters, recordings [NEXT — Ace 26.0, see top]
+### Phase 3 - Auto-tagging, read tracking, search, toasts [SHIPPED 26.0]
 
-Detailed Phase 3 plan now lives at the top of this file under "Ace 26.0".
+All four items shipped:
+1. Auto-tagging — write-path stamps candidateId / clientId on every inbound + outbound SMS / call. Open Profile button on /phone thread header navigates to the match.
+2. Read tracking via SmsMessage.isRead. Sidebar Phone unread badge + thread-list "Needs reply" count both read this field.
+3. Incoming SMS toast (Subtle / Tint / Ink chrome). Incoming call toast still TBD — see "In Progress / Needs Fix" at top.
+4. Global header search expanded to email + phone in addition to name (lighter-weight than the dedicated /phone search box originally specced; full-text search on body remains backlog).
 
 ## Future — Multi-recruiter permissions
 
-Originally slotted as Ace 25.0 but deferred — 25.0 absorbed the candidate profile redesign + Quo SMS work instead. Carry these items forward.
+Originally slotted as Ace 25.0 but deferred. Carry these items forward.
 
 1. Schema additions: ownerId on Client and Job (nullable, FK to User). Existing rows backfilled to Andrew. Permission rules: a recruiter sees clients/jobs they own + any explicitly shared with them.
 2. Shared candidates - many-to-many join (CandidateAccessGrant?) so candidates can be shared across recruiters without duplicating rows. Grant types: read, edit.
@@ -253,29 +293,36 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 
 ## Recovered Backlog (audit 2026-04-25)
 
-### Week 2
+### Week 2 (remaining order — confirmed end of Ace 26.0)
 
-#### COMPLETED Ace 24.0 (April 27, 2026) - move these to completed:
-- Phone Tab Phase 1 + Phase 2 (see STATE for details)
-- Full brand system + court mode 6-palette overhaul
-- Dashboard premium redesign
-- Button system unified across app
-- Activity tab on candidate + client profiles
+1. **Toast fixes (in progress)** — see "In Progress / Needs Fix" at top of file.
+2. **CSV Import/Export** — bulk candidate / contact ingest path.
+3. **Candidates Page UX** — multi-select, prev/next, keyboard nav (left/right arrow keys when not focused on an input). Prev/Next respects current list/search filter and sort order. Also applies when navigating from global header search results.
+4. **Settings Fix Generator** — small utility surface inside Settings to repair common data issues without touching the DB by hand.
+5. **Daily Industry Briefing + Word of the Day** — Vercel Cron 6 AM EST. Daily public-accounting industry brief + a vocabulary card delivered in-app.
+6. **Ace Assistant Tab** — sidebar Claude chat panel with read access to the Neon DB. Internal use only. Andrew asks recruiting questions (comp benchmarks, company research, market intel, candidate talking points), Claude answers using both the live DB and web search.
+7. **Game Plan — Full DB + Web Access** — Game Plan workspace gets full DB read access + web search so the "Find Matches" experience covers both internal records (candidates / clients) and external sources (Indeed / ZipRecruiter / SimplyHired / company career pages).
+8. **Market Insights Tab** — Tab 6 on client detail. Generate market briefs inline. Save brief history per client. Pick recipients from contacts. Compose / auto-generate email, attach PDF, send from Ace.
+9. **BD Tab + Prospects Database** — dedicated /bd surface and a Prospect table. Stores company / contact / title / email / LinkedIn / triggering job posting per prospect, sequence status, last touch.
+10. **BD Automation Engine** — Daily 6 AM cron. Step 1 (Indeed API): scan last-24hr jobs, filter for public accounting firms by company name (CPA / Associates / Partners / Accounting / Advisory / Group) OR JD signals (audit / tax / public accounting). Discard staffing agencies and corporate in-house. Output 20 companies/day. Step 2 (Apollo API): one best contact per company — Managing Partner, Tax Partner, Controller, CFO, or HR Director. Step 3: Write each prospect to the Prospect table. Step 4: Auto-enroll in email sequence using warmed burner domains. All sending and tracking in Ace, not Apollo. BD Settings screen for keywords / titles / limit / sequence. BD feed showing overnight additions and sequence status. Apollo is data source only. Replaces Andrew's manual BD flow.
 
-#### Remaining Week 2:
-- Phone Tab Phase 3 (incoming toasts, auto-tagging, search, read tracking) - NEXT
-- Visual markup change TBD (Andrew provides spec at Ace 25.0 start)
-- BD Automation Engine (full vision): Daily 6 AM cron. Step 1 (Indeed API): scan last-24hr jobs, filter for public accounting firms by company name (CPA/Associates/Partners/Accounting/Advisory/Group) OR JD signals (audit/tax/public accounting). Discard staffing agencies and corporate in-house. Output 20 companies/day. Step 2 (Apollo API): one best contact per company - Managing Partner, Tax Partner, Controller, CFO, or HR Director. Step 3: Write each prospect to Ace's Prospect table with company, contact, title, email, LinkedIn, triggering job posting. Step 4: Auto-enroll in email sequence using warmed burner domains. All sending and tracking in Ace, not Apollo. BD Settings screen for keywords/titles/limit/sequence. BD feed showing overnight additions and sequence status. Apollo is data source only. Replaces Andrew's manual BD flow.
-- Word of the Day - Vercel Cron 6 AM EST same as Daily Industry Briefing.
-- Market Insights Tab - Tab 6 on client detail. Generate market briefs inline. Save brief history per client. Pick recipients from contacts. Compose/auto-generate email, attach PDF, send from Ace. Same design as the market-brief skill.
-- Game Plan Web Search "Find Matches" button - candidate page queries Indeed/ZipRecruiter/SimplyHired/career pages, client/job page queries Neon candidates.
-- Claude-powered web search assistant panel (internal use only): embedded chat panel inside Ace where Andrew can ask recruiting questions (comp benchmarks, company research, market intel, candidate talking points) and Claude searches the web to answer in real time without leaving Ace. Separate from Game Plan - lives as a persistent panel or dedicated tab.
-- Cosmetic polish pass: billing tower, h1 contrast Clay/Grass, counter subtext removal, replace "Welcome back, Andrew" with "Activity Dashboard", remove INTERNAL OPS header, fix footer location.
-- Mail composer Generate-from-prompt input box: small input at top of composer. User types a prompt like "email Linda a summary of highlights regarding this company". Click Generate. Claude writes the email body. Context Claude gets: candidate/client name from open profile, recent thread history if reply, signature stays intact. Originally bundled in Prompt 2C with templates+merge-fields - templates and merge fields shipped, this Generate input was either skipped or never surfaced. Verify or rebuild as ~10 min task.
-- Next/Previous navigation between candidate profiles:
-  - Also applies when navigating from global header search results
-  - Prev/Next arrows appear on the candidate profile page and respect current list/search filter and sort order
-  - Keyboard shortcut: left/right arrow keys when not focused on an input
+#### Already shipped from earlier Week 2 plan:
+- Phone Tab Phase 1 + 2 (Ace 24.0).
+- Phone Tab Phase 3 (Ace 26.0).
+- Full brand system + court mode 6-palette overhaul (Ace 24.0).
+- Dashboard premium redesign (Ace 24.0).
+- Button system unified across app (Ace 24.0).
+- Activity tab on candidate + client profiles (Ace 24.0).
+- Visual markup change — addressed via the candidate profile redesign + clients page redesign (25.0 / 26.0).
+
+#### Earlier Week 2 items rolled into the 1–10 ordering above:
+- Daily Industry Briefing + Word of the Day → item 5.
+- Market Insights Tab → item 8.
+- Game Plan Web Search "Find Matches" button → item 7.
+- Claude-powered web search assistant panel (internal use only) → item 6 (Ace Assistant Tab).
+- Mail composer Generate-from-prompt input box → ships shipped under Generate with Claude in the composer; if there's a regression, surface in toast-fix sweep.
+- Cosmetic polish pass (billing tower, h1 contrast, counter subtext, "Welcome back, Andrew" → "Activity Dashboard", remove INTERNAL OPS header, fix footer location) → mostly shipped 24.0; remaining items roll into the next polish batch.
+- Next/Previous navigation between candidate profiles → item 3.
 
 ### Week 3
 
@@ -285,13 +332,12 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 - Boolean candidate search - skills/location/title/employer/education with AND/OR/NOT.
 - MPC (Most Placeable Candidates) feature.
 - Sentry N+1 fixes: ACE-CRM-5 (37 events), ACE-CRM-6 (28 events), ACE-CRM-7 (2 events), ACE-CRM-9 (1 event), ACE-CRM-A (1 event). Plus one Hydration Error. Fix via Prisma include eager-loading.
-- **Calendar Tab**
-  - Dedicated /calendar page in the sidebar (between Pipeline and Applicants, or after Phone - Andrew to confirm position).
-  - Month/week/day view of all scheduled interviews and meetings.
-  - Create meeting button: opens a modal to create a Google Calendar event directly from Ace. Fields: title, date/time, duration, attendees (pull from candidate/client contacts), location/video link, notes.
-  - Existing scheduled interviews already appear (they are already on Google Calendar via the interview scheduler).
-  - One-click meeting creation without going to the interview scheduler flow - for BD calls, intro calls, internal meetings.
-  - Sync is read/write with Google Calendar (Andrew's calendar, google account already connected).
+- **Calendar Tab** (added end of Ace 26.0)
+  - Dedicated /calendar page in the sidebar (between Pipeline and Applicants, or after Phone — Andrew to confirm position).
+  - Month / week / day view of all scheduled interviews and meetings.
+  - Google Calendar read/write sync with Andrew's calendar (Google account already connected). Existing scheduled interviews appear automatically (already on Google Calendar via the interview scheduler).
+  - Create-meeting modal opened from the page header. Fields: title, date/time, duration, attendees (pull from Neon contacts — candidate + client picker), location / video link, notes.
+  - One-click meeting creation for BD calls + intro calls + internal meetings without going through the full interview scheduler flow.
 
 ### Week 4
 
@@ -348,7 +394,6 @@ Stage tag, side tag (candidate-facing vs client-facing), bracket+merge syntax, a
 - Compound-unique widening (3 Placement compound uniques don't include organizationId).
 - SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping.
 - Manual Andrew actions: delete RECRUITERFLOW_API_KEY from .env.local and GitHub Actions secrets, delete src/lib/recruiterflow/ entirely.
-- RF stage chip leak (Ace 25.0 known bug): RF-imported candidate profile renders the RF payload's stage_name in the StageBadge label instead of Neon Placement.stage. Bucket color is right; visible text leaks RF state. Fix: drop `label={job.rfStageName ?? null}` on the RF JobActionRow StageBadge call (or derive label from Placement.stage instead).
 
 ### Removed From Roadmap (productization deferred indefinitely)
 
