@@ -272,9 +272,9 @@ export function ClientsView({
         </div>
         <Link
           href="/clients/new"
-          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-100 px-4 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-200"
         >
-          + New Client
+          Create New Client
         </Link>
       </div>
 

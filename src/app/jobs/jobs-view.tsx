@@ -7,7 +7,6 @@ import { Search, Loader2, MapPin } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 
 export type JobRow = {
   id: number;
@@ -98,9 +97,12 @@ export function JobsView(props: JobsViewProps) {
             className="w-full rounded-lg border border-transparent bg-court-surface-subtle py-2 pl-10 pr-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-brand focus:bg-court-surface focus:outline-none"
           />
         </div>
-        <Button type="submit" size="md">
+        <button
+          type="submit"
+          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-100 px-5 py-2 text-sm font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-200 disabled:opacity-60"
+        >
           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
-        </Button>
+        </button>
       </form>
 
       {error && (

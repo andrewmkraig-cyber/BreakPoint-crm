@@ -450,14 +450,13 @@ export function ComposeFAB() {
         aria-label="New email, text, call, or note"
         aria-expanded={open}
         title="New…"
-        // Header-sized round button (h-9 to match avatar / sign-out
-        // chips next to it) so it lives cleanly inline with the
-        // user-info cluster instead of overlapping the bottom-right
-        // BreakPoint footer block. No fixed positioning — the parent
-        // (TopBar) handles placement.
-        className="group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-[#438631] active:bg-[#39762A] focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(79,154,58,0.35)]"
+        // Two-tone emerald to match the new Apply / Submit / Create
+        // pattern across the app: lighter interior, slightly darker
+        // border, dark text/icon. Header-sized (h-9) so it lives
+        // inline with the avatar / sign-out chips in the user
+        // cluster.
+        className="group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-emerald-200 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-emerald-300/60"
         style={{
-          background: "#4F9A3A",
           transform: open ? "rotate(45deg)" : undefined,
           transitionDuration: "160ms",
         }}

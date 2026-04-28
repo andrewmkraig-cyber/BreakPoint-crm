@@ -129,9 +129,9 @@ function JobsHeaderActions() {
   return (
     <Link
       href="/jobs/new"
-      className="inline-flex items-center justify-center gap-1.5 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-200"
     >
-      New Job in Ace
+      Post New Job
     </Link>
   );
 }
