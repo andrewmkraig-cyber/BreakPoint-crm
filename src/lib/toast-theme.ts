@@ -1,130 +1,100 @@
-// New-mail toast theme catalog. The Settings picker writes the
-// chosen id to localStorage; the toast component reads it at render
-// time so a theme swap takes effect on the very next toast (no
-// reload, no provider remount).
+// Notification toast style catalog. Three options:
 //
-// Themes are kept as raw hex values rather than Tailwind tokens
-// because three of them (Ohio State, Cleveland Browns, Dark) live
-// outside our brand palette entirely — defining them as inline styles
-// keeps them out of the global tailwind theme where they don't
-// belong.
+//   • subtle  — white card, accent-strip on the left, ink text. The default.
+//   • tint    — soft brand-tint background. Quietly distinctive.
+//   • ink     — dark surface, light text. Calm; consistent across courts.
 //
-// IDs use kebab-case so existing localStorage values from earlier
-// pickers continue to resolve.
+// All three bind to court tokens (var(--court-surface), var(--court-fg),
+// var(--court-accent), …) so they recolor automatically when the user
+// flips Court Mode in Settings — no per-mode duplication.
+//
+// `ink` is intentionally NOT court-bound on its surface — it stays the
+// same near-black on every court, by design (it's the "doesn't try to
+// match" option).
 
-export type ToastThemeId =
-  | "breakpoint"
-  | "ohio-state"
-  | "cleveland-browns"
-  | "dark"
-  | "yellow"
-  | "white";
+export type ToastThemeId = "subtle" | "tint" | "ink";
 
 export type ToastThemeSpec = {
   id: ToastThemeId;
   label: string;
-  // Card surface
+  desc: string;
   bg: string;
   border: string;
-  // Box-shadow glow color. `null` = no glow (Dark theme).
-  glow: string | null;
-  // 40px circular envelope-icon container on the left
-  iconCircleBorder: string;
-  // Body text
+  leftStrip: boolean;
   text: string;
   subText: string;
-  // Reply / X chips on the right
+  iconBg: string;
+  iconFg: string;
   buttonBg: string;
   buttonBorder: string;
+  buttonText: string;
+  primaryBg: string;
+  primaryText: string;
+  accent: string;
 };
 
 export const TOAST_THEMES: Record<ToastThemeId, ToastThemeSpec> = {
-  breakpoint: {
-    id: "breakpoint",
-    label: "BreakPoint",
-    bg: "#5A9642",
-    border: "#5A9642",
-    glow: "#5A9642",
-    iconCircleBorder: "#EAF4E4",
-    text: "#ffffff",
-    subText: "#EAF4E4",
-    buttonBg: "#3F7030",
-    buttonBorder: "#EAF4E4",
+  subtle: {
+    id: "subtle",
+    label: "Subtle",
+    desc: "White card, colored accent strip, ink text.",
+    bg: "var(--court-surface)",
+    border: "var(--court-border)",
+    leftStrip: true,
+    text: "var(--court-fg)",
+    subText: "var(--court-fg-muted)",
+    iconBg: "var(--court-accent-tint)",
+    iconFg: "var(--court-accent-dark)",
+    buttonBg: "var(--court-surface-subtle)",
+    buttonBorder: "var(--court-border)",
+    buttonText: "var(--court-fg)",
+    primaryBg: "var(--court-accent)",
+    primaryText: "#FFFFFF",
+    accent: "var(--court-accent)",
   },
-  "ohio-state": {
-    id: "ohio-state",
-    label: "Ohio State",
-    bg: "#BB0000",
-    border: "#BB0000",
-    glow: "#BB0000",
-    iconCircleBorder: "#ffffff",
-    text: "#ffffff",
-    subText: "#ffcccc",
-    buttonBg: "#8B0000",
-    buttonBorder: "#ffffff",
+  tint: {
+    id: "tint",
+    label: "Tint",
+    desc: "Soft brand-tint background. Low-key but distinctly Ace.",
+    bg: "var(--court-accent-tint)",
+    border: "var(--court-accent)",
+    leftStrip: false,
+    text: "var(--court-fg)",
+    subText: "var(--court-fg-muted)",
+    iconBg: "var(--court-surface)",
+    iconFg: "var(--court-accent-dark)",
+    buttonBg: "var(--court-surface)",
+    buttonBorder: "var(--court-border)",
+    buttonText: "var(--court-fg)",
+    primaryBg: "var(--court-accent)",
+    primaryText: "#FFFFFF",
+    accent: "var(--court-accent)",
   },
-  "cleveland-browns": {
-    id: "cleveland-browns",
-    label: "Cleveland Browns",
-    bg: "#311D00",
-    border: "#FF3C00",
-    glow: "#FF3C00",
-    iconCircleBorder: "#FF3C00",
-    text: "#ffffff",
-    subText: "#FF3C00",
-    buttonBg: "#311D00",
-    buttonBorder: "#FF3C00",
-  },
-  dark: {
-    id: "dark",
-    label: "Dark",
-    bg: "#1E1E1E",
+  ink: {
+    id: "ink",
+    label: "Ink",
+    desc: "Dark surface, light text. Calm; works on every court.",
+    bg: "#1A1A1A",
     border: "#2A2A2A",
-    glow: null,
-    iconCircleBorder: "#2A2A2A",
-    text: "#ffffff",
-    subText: "#999999",
-    buttonBg: "#2A2A2A",
-    buttonBorder: "#444444",
-  },
-  yellow: {
-    id: "yellow",
-    label: "Yellow",
-    bg: "#FFD400",
-    border: "#B8860B",
-    glow: "#FFD400",
-    iconCircleBorder: "#1A1A1A",
-    text: "#1A1A1A",
-    subText: "#5C4400",
-    buttonBg: "#FFFFFF",
-    buttonBorder: "#1A1A1A",
-  },
-  white: {
-    id: "white",
-    label: "White",
-    bg: "#FFFFFF",
-    border: "#E5E5E5",
-    glow: null,
-    iconCircleBorder: "#1A1A1A",
-    text: "#1A1A1A",
-    subText: "#6B7280",
-    buttonBg: "#F4F4F5",
-    buttonBorder: "#1A1A1A",
+    leftStrip: false,
+    text: "#F7F5EE",
+    subText: "rgba(247, 245, 238, 0.65)",
+    iconBg: "rgba(255, 255, 255, 0.08)",
+    iconFg: "var(--court-accent)",
+    buttonBg: "rgba(255, 255, 255, 0.10)",
+    buttonBorder: "rgba(255, 255, 255, 0.18)",
+    buttonText: "#F7F5EE",
+    primaryBg: "var(--court-accent)",
+    primaryText: "#FFFFFF",
+    accent: "var(--court-accent)",
   },
 };
 
-export const TOAST_THEME_ORDER: ToastThemeId[] = [
-  "breakpoint",
-  "ohio-state",
-  "cleveland-browns",
-  "dark",
-  "yellow",
-  "white",
-];
+export const TOAST_THEME_ORDER: ToastThemeId[] = ["subtle", "tint", "ink"];
 
 export const MAIL_TOAST_THEME_KEY = "ace_toast_theme";
 export const TEXT_TOAST_THEME_KEY = "ace_text_toast_theme";
-export const DEFAULT_TOAST_THEME: ToastThemeId = "breakpoint";
+export const DEFAULT_TOAST_THEME: ToastThemeId = "subtle";
 
 export function getStoredToastTheme(): ToastThemeSpec {
   return readThemeKey(MAIL_TOAST_THEME_KEY);
@@ -141,24 +111,6 @@ function readThemeKey(key: string): ToastThemeSpec {
   return TOAST_THEMES[DEFAULT_TOAST_THEME];
 }
 
-// `0 0 12px 2px <glow @ 30%>` per spec. Returns "none" for themes
-// that opted out of a glow.
-export function toastGlowBoxShadow(theme: ToastThemeSpec): string {
-  if (!theme.glow) return "none";
-  return `0 0 12px 2px ${hexToRgba(theme.glow, 0.3)}`;
-}
-
-function hexToRgba(hex: string, alpha: number): string {
-  const clean = hex.replace("#", "");
-  const full =
-    clean.length === 3
-      ? clean
-          .split("")
-          .map((c) => c + c)
-          .join("")
-      : clean;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+export function toastBoxShadow(): string {
+  return "0 8px 24px -8px rgba(0, 0, 0, 0.18), 0 2px 6px -2px rgba(0, 0, 0, 0.08)";
 }

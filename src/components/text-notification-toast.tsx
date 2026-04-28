@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Phone, X } from "lucide-react";
+import { MessageSquare, Phone, Reply, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   getStoredTextToastTheme,
-  toastGlowBoxShadow,
+  toastBoxShadow,
   type ToastThemeSpec,
 } from "@/lib/toast-theme";
 
@@ -65,7 +65,7 @@ function QuoToast(props: QuoToastProps) {
   // Phone icon for both inbound text and inbound call — per the
   // notification redesign, SMS and calls share the same telephony
   // surface, so they share an icon.
-  const Icon = Phone;
+  const Icon = props.mode === "text" ? MessageSquare : Phone;
   const subtitle =
     props.mode === "text"
       ? truncate(props.event.body || "(no message)", 60).toUpperCase()
@@ -78,33 +78,57 @@ function QuoToast(props: QuoToastProps) {
 
   return (
     <div
-      className="flex min-w-[280px] items-center gap-3 rounded-2xl"
+      className="relative flex min-w-[280px] items-center gap-3 overflow-hidden rounded-[14px]"
       style={{
         background: theme.bg,
         color: theme.text,
-        border: "2px solid #000000",
-        boxShadow: toastGlowBoxShadow(theme),
-        padding: "12px 16px",
+        border: `1px solid ${theme.border}`,
+        boxShadow: toastBoxShadow(),
+        padding: "12px 14px",
       }}
     >
+      {theme.leftStrip && (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 left-0 w-[3px]"
+          style={{ background: theme.accent }}
+        />
+      )}
       <div
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
-        style={{ border: `2px solid ${theme.iconCircleBorder}` }}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px]"
+        style={{ background: theme.iconBg, color: theme.iconFg }}
       >
-        <Icon className="h-4 w-4" style={{ color: theme.text }} />
+        <Icon className="h-[17px] w-[17px]" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="truncate text-base font-bold" style={{ color: theme.text }}>
-          {candidateName}
+        <div className="flex items-baseline gap-1.5">
+          <span
+            className="truncate text-[13.5px] font-semibold"
+            style={{ color: theme.text }}
+          >
+            {candidateName}
+          </span>
+          <span
+            className="shrink-0 text-[11px]"
+            style={{ color: theme.subText }}
+          >
+            · {props.mode === "text" ? "Text" : "Call"}
+          </span>
         </div>
         <div
-          className="mt-0.5 truncate text-sm uppercase tracking-wide"
+          className="mt-0.5 truncate text-[12.5px]"
           style={{ color: theme.subText }}
         >
           {subtitle}
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-1.5">
+        {props.mode === "text" && (
+          <ChipButton theme={theme} variant="primary" onClick={onView} ariaLabel="Reply">
+            <Reply className="h-3 w-3" />
+            <span>Reply</span>
+          </ChipButton>
+        )}
         <ChipButton theme={theme} onClick={onView} ariaLabel="View candidate">
           <span>View</span>
         </ChipButton>
@@ -114,7 +138,7 @@ function QuoToast(props: QuoToastProps) {
           ariaLabel="Dismiss"
           iconOnly
         >
-          <X className="h-4 w-4" />
+          <X className="h-3 w-3" />
         </ChipButton>
       </div>
     </div>
@@ -126,27 +150,30 @@ function ChipButton({
   onClick,
   ariaLabel,
   iconOnly,
+  variant,
   children,
 }: {
   theme: ToastThemeSpec;
   onClick: () => void;
   ariaLabel: string;
   iconOnly?: boolean;
+  variant?: "primary";
   children: React.ReactNode;
 }) {
+  const isPrimary = variant === "primary";
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={ariaLabel}
       className={
-        "inline-flex h-9 items-center justify-center gap-1.5 rounded-lg text-sm font-medium transition " +
-        (iconOnly ? "w-9" : "px-3")
+        "inline-flex items-center justify-center gap-1 rounded-[8px] text-[12px] font-semibold transition " +
+        (iconOnly ? "h-7 w-7 p-0" : "h-7 px-2.5")
       }
       style={{
-        background: theme.buttonBg,
-        color: theme.text,
-        border: `1px solid ${theme.buttonBorder}`,
+        background: isPrimary ? theme.primaryBg : theme.buttonBg,
+        color: isPrimary ? theme.primaryText : theme.buttonText,
+        border: `1px solid ${isPrimary ? "transparent" : theme.buttonBorder}`,
       }}
     >
       {children}

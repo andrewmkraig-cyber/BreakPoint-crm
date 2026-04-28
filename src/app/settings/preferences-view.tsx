@@ -178,7 +178,7 @@ export function PreferencesView({
           <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
             Email notification style
           </div>
-          <ThemeSwatchRow
+          <ThemeCardRow
             value={toastTheme}
             onPick={onPickToastTheme}
             ariaPrefix="email"
@@ -191,7 +191,7 @@ export function PreferencesView({
           <div className="mt-1 text-[11px] text-court-fg-muted">
             Applies once Quo text notifications are wired up.
           </div>
-          <ThemeSwatchRow
+          <ThemeCardRow
             value={textToastTheme}
             onPick={onPickTextToastTheme}
             ariaPrefix="text"
@@ -253,7 +253,7 @@ export function PreferencesView({
   );
 }
 
-function ThemeSwatchRow({
+function ThemeCardRow({
   value,
   onPick,
   ariaPrefix,
@@ -263,7 +263,7 @@ function ThemeSwatchRow({
   ariaPrefix: string;
 }) {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
+    <div className="mt-2 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
       {TOAST_THEME_ORDER.map((id) => {
         const theme = TOAST_THEMES[id];
         const active = value === id;
@@ -272,23 +272,68 @@ function ThemeSwatchRow({
             key={id}
             type="button"
             onClick={() => onPick(id)}
-            aria-label={`Use ${theme.label} ${ariaPrefix} toast theme`}
+            aria-label={`Use ${theme.label} ${ariaPrefix} notification style`}
             aria-pressed={active}
-            title={theme.label}
             className={cn(
-              "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition",
+              "flex flex-col gap-2 rounded-xl border p-3 text-left transition",
               active
-                ? "ring-2 ring-court-accent ring-offset-2 ring-offset-court-surface"
-                : "ring-1 ring-court-border hover:ring-court-fg/40",
+                ? "border-court-accent shadow-[0_0_0_3px_var(--court-accent-tint)]"
+                : "border-court-border hover:border-court-fg/40",
             )}
-            style={{
-              background: theme.bg,
-              border: `2px solid ${theme.border}`,
-            }}
-          />
+          >
+            <div
+              className="relative flex min-h-[44px] items-center gap-2 overflow-hidden rounded-md px-2.5 py-2"
+              style={{
+                background: theme.bg,
+                border: `1px solid ${theme.border}`,
+              }}
+            >
+              {theme.leftStrip && (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-y-0 left-0 w-[2px]"
+                  style={{ background: theme.accent }}
+                />
+              )}
+              <span
+                className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded"
+                style={{ background: theme.iconBg, color: theme.iconFg }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="2" y="5" width="20" height="14" rx="2.5" />
+                  <path d="m3 7 9 6 9-6" />
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span
+                  className="block truncate text-[9.5px] font-semibold leading-tight"
+                  style={{ color: theme.text }}
+                >
+                  Austin Barnard
+                </span>
+                <span
+                  className="block truncate text-[8.5px] leading-tight"
+                  style={{ color: theme.subText }}
+                >
+                  Meeting request
+                </span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={cn(
+                  "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full border",
+                  active ? "border-court-accent bg-court-accent" : "border-court-border",
+                )}
+              >
+                {active && <span className="h-1 w-1 rounded-full bg-white" />}
+              </span>
+              <span className="text-[13px] font-semibold text-court-fg">{theme.label}</span>
+            </div>
+            <span className="text-[11.5px] leading-snug text-court-fg-muted">{theme.desc}</span>
+          </button>
         );
       })}
-      <span className="ml-2 text-xs text-court-fg-muted">{TOAST_THEMES[value].label}</span>
     </div>
   );
 }
