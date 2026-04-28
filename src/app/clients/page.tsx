@@ -100,6 +100,10 @@ export default async function ClientsPage({
         feePct: c.feePct,
         submittedCount: pc.submitted,
         interviewingCount: pc.interviewing,
+        // Offer counter rolls up canonical "offer" + "pending_start"
+        // (offer accepted, awaiting start) — both are post-interview
+        // active states the recruiter wants to see at a glance.
+        offerCount: pc.offer + pc.pendingStart,
         hiredCount: pc.hired,
         isActive: hasOpenJob || hadRecentPlacement,
       };

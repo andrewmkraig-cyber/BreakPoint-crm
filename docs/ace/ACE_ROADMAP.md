@@ -272,6 +272,10 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 - Claude-powered web search assistant panel (internal use only): embedded chat panel inside Ace where Andrew can ask recruiting questions (comp benchmarks, company research, market intel, candidate talking points) and Claude searches the web to answer in real time without leaving Ace. Separate from Game Plan - lives as a persistent panel or dedicated tab.
 - Cosmetic polish pass: billing tower, h1 contrast Clay/Grass, counter subtext removal, replace "Welcome back, Andrew" with "Activity Dashboard", remove INTERNAL OPS header, fix footer location.
 - Mail composer Generate-from-prompt input box: small input at top of composer. User types a prompt like "email Linda a summary of highlights regarding this company". Click Generate. Claude writes the email body. Context Claude gets: candidate/client name from open profile, recent thread history if reply, signature stays intact. Originally bundled in Prompt 2C with templates+merge-fields - templates and merge fields shipped, this Generate input was either skipped or never surfaced. Verify or rebuild as ~10 min task.
+- Next/Previous navigation between candidate profiles:
+  - Also applies when navigating from global header search results
+  - Prev/Next arrows appear on the candidate profile page and respect current list/search filter and sort order
+  - Keyboard shortcut: left/right arrow keys when not focused on an input
 
 ### Week 3
 
