@@ -161,6 +161,24 @@ export function PhoneView() {
     void loadThreads();
   }, [loadThreads]);
 
+  // Listen for thread-read broadcasts (text toast quick-reply, etc.)
+  // and optimistically clear the matching thread's hasUnread flag.
+  // The next refetch will return the same value from the server, so
+  // this just shaves off the visible delay.
+  useEffect(() => {
+    function onThreadRead(e: Event) {
+      const detail = (e as CustomEvent<{ candidateId: string }>).detail;
+      if (!detail?.candidateId) return;
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.candidateId === detail.candidateId ? { ...t, hasUnread: false } : t,
+        ),
+      );
+    }
+    window.addEventListener("ace:phone-thread-read", onThreadRead);
+    return () => window.removeEventListener("ace:phone-thread-read", onThreadRead);
+  }, []);
+
   // Per-thread fetch on selection. Aborts in-flight fetches when the
   // user clicks another row before the previous one resolves.
   useEffect(() => {

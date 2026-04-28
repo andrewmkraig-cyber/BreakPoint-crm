@@ -57,7 +57,17 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     const id = window.setInterval(() => {
       void refreshUnread();
     }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
+    // Listen for thread-read broadcasts (e.g. quick reply from the
+    // text toast) so the sidebar badge flips down immediately
+    // instead of waiting for the next 30s poll.
+    function onThreadRead() {
+      void refreshUnread();
+    }
+    window.addEventListener("ace:phone-thread-read", onThreadRead);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("ace:phone-thread-read", onThreadRead);
+    };
   }, [refreshUnread]);
 
   return (

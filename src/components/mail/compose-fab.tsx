@@ -241,7 +241,7 @@ export function ComposeFAB() {
           aria-label="Start call or text"
           aria-expanded={phonePopoverOpen}
           title="New call or text"
-          className="group fixed right-6 bottom-6 z-[1000] flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-[#438631] active:bg-[#39762A] focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(79,154,58,0.35)]"
+          className="group fixed left-6 bottom-6 z-[1000] flex h-14 w-14 items-center justify-center rounded-full text-white shadow-lg transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-[#438631] active:bg-[#39762A] focus:outline-none focus-visible:ring-[3px] focus-visible:ring-[rgba(79,154,58,0.35)]"
           style={{
             background: "#4F9A3A",
             transform: phonePopoverOpen ? "rotate(15deg)" : undefined,
@@ -250,7 +250,7 @@ export function ComposeFAB() {
         >
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute right-0 bottom-full mb-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+            className="pointer-events-none absolute left-0 bottom-full mb-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
           >
             New call or text
           </span>
@@ -261,7 +261,7 @@ export function ComposeFAB() {
             ref={popoverRef}
             role="dialog"
             aria-label="Start conversation"
-            className="fixed right-6 bottom-24 z-[1001] w-80 rounded-xl border border-court-border bg-court-surface p-3 shadow-2xl"
+            className="fixed left-6 bottom-24 z-[1001] w-80 rounded-xl border border-court-border bg-court-surface p-3 shadow-2xl"
           >
             <div className="px-1 pb-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
               Start conversation
@@ -369,7 +369,7 @@ export function ComposeFAB() {
     >
       <span
         aria-hidden="true"
-        className="pointer-events-none absolute right-0 bottom-full mb-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+        className="pointer-events-none absolute left-0 bottom-full mb-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
       >
         Compose email
       </span>
