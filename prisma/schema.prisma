@@ -629,6 +629,11 @@ model Client {
   careersPage    String?
   companySize    String?
   overview       String?   @db.Text
+  // Free-form recruiter notes attached to the client. Distinct from
+  // `overview` (which is the public-facing about/summary blurb) — this
+  // field is the scratchpad for "talked to Linda Tuesday, fee terms TBD"
+  // style entries that show up under the Notes tab on the client profile.
+  notes          String?   @db.Text
   location       Json?
   phoneNumbers   Json?
   tags           String[]  @default([])
@@ -640,7 +645,7 @@ model Client {
   lastContact    DateTime?
   lastEngagement DateTime?
   raw            Json?
-  organizationId String 
+  organizationId String
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
