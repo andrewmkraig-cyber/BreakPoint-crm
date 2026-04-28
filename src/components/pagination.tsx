@@ -106,7 +106,7 @@ function PageLink({
       <span
         aria-current="page"
         aria-label={ariaLabel}
-        className={cn(base, "border-brand bg-brand text-white shadow-sm")}
+        className={cn(base, "border-emerald-400 bg-emerald-200 text-emerald-900 shadow-sm")}
       >
         {children}
       </span>

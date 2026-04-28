@@ -292,7 +292,7 @@ function LocalJobActionRow({
           {canSubmit && (
             <Link
               href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
-              className="inline-flex items-center justify-center gap-1.5 rounded-full bg-brand px-3 py-1 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
               title="Open submittal composer"
             >
               <Send className="h-3 w-3" /> Submit
@@ -748,7 +748,7 @@ function Footer({
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+        className="inline-flex items-center gap-1 rounded-md border border-emerald-400 bg-emerald-200 px-4 py-2 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300 disabled:opacity-60"
       >
         {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarClock className="h-3 w-3" />}
         {label}

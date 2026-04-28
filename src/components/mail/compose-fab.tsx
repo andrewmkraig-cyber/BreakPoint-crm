@@ -455,7 +455,7 @@ export function ComposeFAB() {
         // border, dark text/icon. Header-sized (h-9) so it lives
         // inline with the avatar / sign-out chips in the user
         // cluster.
-        className="group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-300 bg-emerald-100 text-emerald-800 shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-emerald-200 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-emerald-300/60"
+        className="group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-emerald-400 bg-emerald-200 text-emerald-900 shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-emerald-300 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-emerald-300/60"
         style={{
           transform: open ? "rotate(45deg)" : undefined,
           transitionDuration: "160ms",

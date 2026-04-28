@@ -287,7 +287,7 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
               the email. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center justify-center gap-1 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            className="inline-flex items-center justify-center gap-1 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1 text-[11px] font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
           >
             Submit
           </Link>
@@ -406,7 +406,7 @@ function KeptRowView({ row }: { row: KeptRow }) {
               the row from the Kept query on next refresh. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center justify-center gap-1 rounded-full bg-brand px-3 py-1 text-[11px] font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+            className="inline-flex items-center justify-center gap-1 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1 text-[11px] font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
           >
             Submit
           </Link>

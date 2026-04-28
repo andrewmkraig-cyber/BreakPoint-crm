@@ -518,7 +518,7 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
               href={`/candidates/${candidate.id}?openSubmit=1`}
               // Two-tone emerald to match Apply to Job's amber pair
               // — see the RF page.tsx site for the design rationale.
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800 shadow-sm transition hover:bg-emerald-200"
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
             >
               Submit to different job
             </Link>

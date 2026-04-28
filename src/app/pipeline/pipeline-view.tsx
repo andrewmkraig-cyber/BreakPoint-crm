@@ -376,7 +376,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full bg-brand px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-white shadow-sm transition hover:bg-brand-dark"
+            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full border border-emerald-400 bg-emerald-200 px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-emerald-900 shadow-sm transition hover:bg-emerald-300"
           >
             Confirm Start
           </Link>
@@ -497,9 +497,12 @@ function StageTab({ label, count, active, href }: { label: string; count: number
       <span
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          // Active pill stays solid brand green (high-contrast counter); the
-          // inactive pill tracks the court palette.
-          active ? "bg-brand text-white" : "bg-court-surface-subtle text-court-fg-muted",
+          // Active pill uses the same two-tone emerald shared across
+          // the app's primary buttons; inactive pill tracks the
+          // muted court palette.
+          active
+            ? "border border-emerald-400 bg-emerald-200 text-emerald-900"
+            : "bg-court-surface-subtle text-court-fg-muted",
         )}
       >
         {count.toLocaleString()}
