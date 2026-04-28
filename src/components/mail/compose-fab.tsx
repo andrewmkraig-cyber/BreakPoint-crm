@@ -565,7 +565,7 @@ export function ComposeFAB() {
               />
               <ActionRow
                 icon={<StickyNote className="h-4 w-4" />}
-                label="Notes"
+                label="New Note"
                 hint="Quick note + attach to a profile"
                 onClick={pickNotes}
               />
