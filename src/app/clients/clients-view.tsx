@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { LayoutGrid, List, Search } from "lucide-react";
+import { Building2, LayoutGrid, List, Search } from "lucide-react";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
 
@@ -279,7 +279,7 @@ export function ClientsView({
           href="/clients/new"
           className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
         >
-          Create New Client
+          <Building2 className="h-3 w-3" /> Create New Client
         </Link>
       </div>
 

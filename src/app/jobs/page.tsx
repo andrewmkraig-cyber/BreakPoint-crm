@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Briefcase } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { JobsView, type JobRow } from "@/app/jobs/jobs-view";
 import {
@@ -131,7 +132,7 @@ function JobsHeaderActions() {
       href="/jobs/new"
       className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
     >
-      Post New Job
+      <Briefcase className="h-3 w-3" /> Post New Job
     </Link>
   );
 }
