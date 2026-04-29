@@ -532,10 +532,11 @@ export function ComposeFAB() {
         >
           {view === "menu" && (
             <div className="p-2">
-              <div className="flex items-center justify-between px-2 py-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                  New…
-                </span>
+              {/* "New…" eyebrow used to live here above the action
+                  rows; dropped per Andrew's request — the menu's
+                  rows already self-describe (New Email / New Text /
+                  New Call / New Note). Just the close button now. */}
+              <div className="flex items-center justify-end px-2 py-1.5">
                 <button
                   type="button"
                   onClick={closeAll}
