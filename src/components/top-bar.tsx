@@ -14,7 +14,13 @@ export function TopBar() {
     // #2d4a2d. All text/border colors route through court-* tokens so
     // they track each mode's palette without per-class dark:/grass:
     // overrides.
-    <header className="flex h-24 items-center justify-between gap-4 border-b border-court-border bg-court-surface px-6">
+    //
+    // sticky top-0 + z-30 pins the bar to the viewport top while the
+    // page content scrolls underneath, mirroring the sidebar's
+    // sticky-h-screen behavior. Page-level modals and floating panels
+    // (z-50, z-[100], z-[1000]+) still render above. The opaque
+    // bg-court-surface stops scrolling content from bleeding through.
+    <header className="sticky top-0 z-30 flex h-24 items-center justify-between gap-4 border-b border-court-border bg-court-surface px-6">
       <div className="hidden text-xs uppercase tracking-[0.18em] text-court-fg-muted md:block">
         {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </div>
