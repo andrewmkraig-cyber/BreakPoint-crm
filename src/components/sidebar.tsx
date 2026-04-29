@@ -98,8 +98,12 @@ export function Sidebar({ width }: { width?: number } = {}) {
         (width ? "" : "w-60")
       }
     >
-      <div className="flex h-20 shrink-0 items-center border-b border-court-border px-5">
-        <BrandMark withTag />
+      {/* Top header is the Serve Arc mark only, sized up to fill the
+          h-20 block now that the "Ace · by BreakPoint Talent" wordmark
+          has moved to the bottom of the sidebar. Centered so the mark
+          sits as a clean visual anchor regardless of sidebar width. */}
+      <div className="flex h-20 shrink-0 items-center justify-center border-b border-court-border px-5">
+        <BrandMark variant="logo" size={56} />
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
         {NAV_GROUPS.map((group, idx) => (
@@ -145,6 +149,12 @@ export function Sidebar({ width }: { width?: number } = {}) {
           <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
       </nav>
+      {/* Bottom signature block — Ace + "by BreakPoint Talent" wordmark
+          pinned below Settings. Replaces the old top-of-sidebar tag and
+          gives the sidebar a "signed" closing line. */}
+      <div className="shrink-0 border-t border-court-border px-5 py-3">
+        <BrandMark variant="wordmark" withTag />
+      </div>
     </aside>
   );
 }
