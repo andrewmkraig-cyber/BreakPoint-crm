@@ -1,11 +1,11 @@
 # ACE_STATE.md
-Last updated: 2026-04-28 - End of Ace 27.0
+Last updated: 2026-04-29 - Start of Ace 28.0
 
 ## Current Status
-Current Version: Ace 27.0
-Last Session: Ace 27.0 - April 28, 2026
+Current Version: Ace 28.0 (in progress)
+Last Shipped: Ace 27.0 - April 28, 2026
 Live at: ace.breakpointtalent.com
-Current Status: Ace 27.0 ships closed. Toast cleanup, full mail revamp, full phone revamp, Night Court mode, brand mark + favicon revamp, candidate / client / job UX sweep, profile contact-card dropdown, design system rebuild all shipped today. All open Ace 26.0 known issues closed. Ready to start Game Plan Phase 1.
+Current Status: Ace 28.0 open. Game Plan Phase 1 (web search tool on src/app/api/ai-workspace/route.ts) is the active task. Phases 2-6 queued behind it. All Ace 27.0 work shipped clean; no carry-overs open.
 
 ## What Shipped in Ace 27.0 (2026-04-28)
 - Toast fixes: MessageSquare icon swap, removed redundant "· Text" trailing label, Reply button contrast lifted across themes
@@ -81,13 +81,6 @@ Current Status: Ace 27.0 ships closed. Toast cleanup, full mail revamp, full pho
 - Compose FAB still visible on /settings page (should be hidden — Settings has no surface that benefits from the launcher)
 - Toast subtitle text rendering in ALL CAPS in some themes — likely a CSS uppercase rule applying too broadly to the eyebrow + subtitle slots
 - Settings appearance section not yet matching Claude Design two-column layout (Court Mode + Notification Preferences should sit side-by-side at desktop widths)
-
-## Next Task for Ace 27.0
-Jobs Page Enhancements are done. Pick one of:
-1. Toast fixes (in progress) — close out the six known issues above so the notification system reads clean across all themes
-2. CSV Import/Export — bulk candidate / contact ingest path that's been on the backlog since Week 2
-
-Andrew to confirm priority at session start.
 
 ## What Shipped in Ace 25.0 (2026-04-27)
 - Quo SMS fix: krispcall.ts dead code deleted, /api/krispcall/webhook moved to /api/quo/webhook (OpenPhone provider URL must be updated in settings), error message in SmsComposer points at Quo env vars. Webhook signature + write paths verified end-to-end with a real send
