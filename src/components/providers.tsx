@@ -9,6 +9,7 @@ import { FloatingThreadProvider } from "@/lib/floating-thread-context";
 import { PhonePanelsProvider } from "@/lib/phone-panels-context";
 import { MinimizedTray } from "@/components/composer/minimized-tray";
 import { FloatingThreadWindow } from "@/components/mail/floating-thread-window";
+import { GlobalPhonePanels } from "@/components/phone/global-phone-panels";
 
 // ComposeFAB used to mount here as a portal-style fixed FAB. It now
 // lives inside TopBar (left of the user info cluster) so it can't
@@ -25,6 +26,7 @@ export function Providers({ children }: { children: ReactNode }) {
               {children}
               <MinimizedTray />
               <FloatingThreadWindow />
+              <GlobalPhonePanels />
               <Toaster
                 position="bottom-right"
                 richColors

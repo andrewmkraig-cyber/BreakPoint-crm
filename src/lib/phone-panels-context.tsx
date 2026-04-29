@@ -4,17 +4,20 @@ import {
   createContext,
   useCallback,
   useContext,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
-// Bridges the global Compose FAB (mounted at the app shell) to the
-// New-Text and Call panels (mounted only inside /phone's PhoneView).
-// Provider lives at the app shell so the FAB can fire open/close
-// regardless of route; PhoneView reads state and renders the panels
-// only when present. Navigating away from /phone unmounts the
-// renderers but keeps state — clicking the FAB again from /phone
-// resurfaces the panel exactly where it was.
+// Bridges the global Compose FAB (mounted in the app shell) to the
+// New-Text and Call floating panels (mounted globally in Providers
+// via GlobalPhonePanels). Both the FAB and the panels live above the
+// route tree so the recruiter can start a text or call from any page.
+//
+// /phone's PhoneView still cares about send completion so its thread
+// list can refresh; it registers a callback via setAfterSend and the
+// global panel calls triggerAfterSend after a successful send. Off
+// /phone the callback is null and the trigger is a no-op.
 
 export type PhoneContact = {
   // Candidate cuid when matched. null for unknown / new conversations.
@@ -38,6 +41,11 @@ type PhonePanelsCtx = {
   // contact. Used by the "Call instead" / "Text instead" cross-links.
   switchToText: () => void;
   switchToCall: () => void;
+  // After-send hook. PhoneView registers loadThreads here so the
+  // global text panel can re-fetch the list once a message goes out.
+  // Stored in a ref so registering doesn't re-render every consumer.
+  setAfterSend: (cb: (() => void) | null) => void;
+  triggerAfterSend: () => void;
 };
 
 const Context = createContext<PhonePanelsCtx | null>(null);
@@ -46,6 +54,7 @@ export function PhonePanelsProvider({ children }: { children: ReactNode }) {
   const [textOpen, setTextOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
   const [contact, setContact] = useState<PhoneContact | null>(null);
+  const afterSendRef = useRef<(() => void) | null>(null);
 
   const openText = useCallback((c?: PhoneContact | null) => {
     if (c !== undefined) setContact(c ?? null);
@@ -77,6 +86,14 @@ export function PhonePanelsProvider({ children }: { children: ReactNode }) {
     setCallOpen(true);
   }, []);
 
+  const setAfterSend = useCallback((cb: (() => void) | null) => {
+    afterSendRef.current = cb;
+  }, []);
+
+  const triggerAfterSend = useCallback(() => {
+    afterSendRef.current?.();
+  }, []);
+
   return (
     <Context.Provider
       value={{
@@ -89,6 +106,8 @@ export function PhonePanelsProvider({ children }: { children: ReactNode }) {
         closeCall,
         switchToText,
         switchToCall,
+        setAfterSend,
+        triggerAfterSend,
       }}
     >
       {children}

@@ -123,8 +123,11 @@ export function PhoneView() {
   // the lookup.
   const [profileMatch, setProfileMatch] = useState<PhoneMatch | null>(null);
 
-  // Cross-component panels (NewText + Call) are mounted at the bottom
-  // of this view; the FAB elsewhere triggers them via this context.
+  // The New-Text + Call floating panels are mounted at the global
+  // Providers level (GlobalPhonePanels) so the FAB works from any
+  // route. We still need the context here so that after a successful
+  // send the global panel can refresh this page's thread list — see
+  // the setAfterSend useEffect below.
   const phonePanels = usePhonePanels();
   // Sidebar unread badge polling. Triggering refreshUnread() inside
   // loadThreads keeps the sidebar in lockstep with the threads list
@@ -160,6 +163,17 @@ export function PhoneView() {
   useEffect(() => {
     void loadThreads();
   }, [loadThreads]);
+
+  // Register loadThreads as the global text panel's onSent hook so
+  // sending a text from /phone (or anywhere while /phone is mounted)
+  // refreshes this list. Cleared on unmount so off-route sends are
+  // a no-op.
+  useEffect(() => {
+    phonePanels.setAfterSend(() => {
+      void loadThreads();
+    });
+    return () => phonePanels.setAfterSend(null);
+  }, [phonePanels, loadThreads]);
 
   // Listen for thread-read broadcasts (text toast quick-reply, etc.)
   // and optimistically clear the matching thread's hasUnread flag.
@@ -421,25 +435,11 @@ export function PhoneView() {
         )}
       </section>
 
-      {/* Phase 2 surface: New Text + Call panels. The FAB triggers
-          their open via PhonePanelsContext; we render them only here
-          so they unmount cleanly when the user navigates away from
-          /phone. */}
-      {phonePanels.textOpen && (
-        <NewTextPanel
-          contact={phonePanels.contact}
-          onClose={phonePanels.closeText}
-          onSwitchToCall={phonePanels.switchToCall}
-          onSent={() => void loadThreads()}
-        />
-      )}
-      {phonePanels.callOpen && (
-        <CallPanel
-          contact={phonePanels.contact}
-          onClose={phonePanels.closeCall}
-          onSwitchToText={phonePanels.switchToText}
-        />
-      )}
+      {/* The NewText + Call floating panels render globally from
+          src/components/phone/global-phone-panels.tsx (mounted in
+          Providers) so the FAB works on every route. Sends fired
+          while /phone is open trigger loadThreads via the after-send
+          callback registered above. */}
     </div>
   );
 }
@@ -986,10 +986,14 @@ function formatRelative(iso: string | null): string {
 // row + Quo dispatch follow the same path. Phase 1 limits the To
 // field to a single contact picked from the FAB popover; broader
 // candidate/client search is a Phase 2 enhancement.
+//
+// Exported so GlobalPhonePanels (mounted in Providers) can render the
+// same panel from any route — the FAB lives globally and so must the
+// surface it opens.
 
 const TEXT_BODY_MAX = 1000;
 
-function NewTextPanel({
+export function NewTextPanel({
   contact,
   onClose,
   onSwitchToCall,
@@ -1177,8 +1181,10 @@ function NewTextPanel({
 //
 // Smaller floating panel; click "Call now" toasts a Phase-2 message
 // because there's no /api/krispcall/call outbound endpoint yet.
+// Exported for the same reason as NewTextPanel — GlobalPhonePanels
+// renders this from Providers so the FAB works on every route.
 
-function CallPanel({
+export function CallPanel({
   contact,
   onClose,
   onSwitchToText,
