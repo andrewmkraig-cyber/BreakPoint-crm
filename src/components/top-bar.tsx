@@ -14,7 +14,7 @@ export function TopBar() {
     // #2d4a2d. All text/border colors route through court-* tokens so
     // they track each mode's palette without per-class dark:/grass:
     // overrides.
-    <header className="flex h-16 items-center justify-between gap-4 border-b border-court-border bg-court-surface px-6">
+    <header className="flex h-24 items-center justify-between gap-4 border-b border-court-border bg-court-surface px-6">
       <div className="hidden text-xs uppercase tracking-[0.18em] text-court-fg-muted md:block">
         {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </div>

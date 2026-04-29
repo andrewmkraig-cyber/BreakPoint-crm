@@ -118,6 +118,10 @@ export function PhoneView() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // Bump after a send so the detail-load useEffect re-runs and the
+  // newly-saved outbound row appears in the thread without a manual
+  // refresh.
+  const [detailRefresh, setDetailRefresh] = useState(0);
   // Phone Tab Phase 2: profile-jump pill in the thread header. Resolved
   // async after the detail loads so the thread itself isn't blocked on
   // the lookup.
@@ -257,7 +261,7 @@ export function PhoneView() {
       }
     })();
     return () => ac.abort();
-  }, [selectedId, phoneCtx]);
+  }, [selectedId, phoneCtx, detailRefresh]);
 
   // Client-side bucket filtering over the already-loaded threads.
   const filteredThreads = useMemo(() => {
@@ -429,7 +433,14 @@ export function PhoneView() {
         ) : detailError ? (
           <div className="p-5 text-sm text-red-700">{detailError}</div>
         ) : detail ? (
-          <ThreadDetailPane detail={detail} profileMatch={profileMatch} />
+          <ThreadDetailPane
+            detail={detail}
+            profileMatch={profileMatch}
+            onSent={() => {
+              void loadThreads();
+              setDetailRefresh((c) => c + 1);
+            }}
+          />
         ) : (
           <EmptyDetail />
         )}
@@ -766,9 +777,11 @@ function formatDialPadNumber(raw: string): string {
 function ThreadDetailPane({
   detail,
   profileMatch,
+  onSent,
 }: {
   detail: ThreadDetail;
   profileMatch: PhoneMatch | null;
+  onSent: () => void;
 }) {
   return (
     <div className="flex h-[calc(100vh-240px)] flex-col">
@@ -788,8 +801,12 @@ function ThreadDetailPane({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
+          {/* Text button removed — the inline composer at the bottom of
+              this pane is the same surface, so a separate header
+              button would just be a redundant entry point. Outbound
+              calling still ships in Phase 3, so Call stays a
+              placeholder for now. */}
           <ActionPlaceholder label="Call" icon={<PhoneCall className="h-3 w-3" />} />
-          <ActionPlaceholder label="Text" icon={<Send className="h-3 w-3" />} />
           <OpenInQuoButton phoneNumber={detail.contact.phoneNumber} />
           <OpenProfileButton match={profileMatch} />
           <ActionPlaceholder label="More" icon={<MoreHorizontal className="h-3 w-3" />} />
@@ -845,24 +862,103 @@ function ThreadDetailPane({
           </ul>
         )}
       </div>
-      {/* Bottom composer placeholder — Phase 2 wires this through Quo. */}
-      {/* TODO: Phase 2: wire send via Quo API */}
-      <div className="flex items-center gap-2 border-t border-court-border bg-court-surface-subtle/40 px-3 py-2">
-        <input
-          type="text"
-          disabled
-          placeholder="Type a message..."
-          className="h-9 flex-1 rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg-muted disabled:cursor-not-allowed disabled:opacity-60"
-        />
-        <button
-          type="button"
-          disabled
-          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 text-xs font-medium text-court-fg-muted disabled:cursor-not-allowed disabled:opacity-60"
-        >
+      {/* Inline composer — POSTs directly to /api/sms (same path the
+          NewTextPanel and the candidate-sidebar SMS composer use), so
+          replies land via Quo and get the same write-side auto-tagging.
+          The parent's onSent re-fetches both the threads list and this
+          pane's detail so the new outbound bubble appears without a
+          manual refresh. */}
+      <InlineSmsComposer
+        candidateId={detail.contact.id}
+        phoneNumber={detail.contact.phoneNumber}
+        onSent={onSent}
+      />
+    </div>
+  );
+}
+
+const INLINE_SMS_BODY_MAX = 1000;
+
+function InlineSmsComposer({
+  candidateId,
+  phoneNumber,
+  onSent,
+}: {
+  candidateId: string;
+  phoneNumber: string;
+  onSent: () => void;
+}) {
+  const [body, setBody] = useState("");
+  const [sending, setSending] = useState(false);
+
+  const trimmed = body.trim();
+  const sendDisabled = sending || trimmed.length === 0 || !phoneNumber;
+
+  async function send() {
+    if (sendDisabled) return;
+    setSending(true);
+    try {
+      const res = await fetch("/api/sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId,
+          toNumber: phoneNumber,
+          body: trimmed,
+        }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { status?: string }
+        | null;
+      if (!res.ok) {
+        toast.error(`Send failed (${res.status})`);
+        return;
+      }
+      if (json?.status === "failed") {
+        toast.error("Saved, but Quo reported send failed.");
+        return;
+      }
+      setBody("");
+      onSent();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Send failed.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Enter sends; Shift+Enter inserts a newline. Standard messaging
+    // UX — matches iMessage, Slack, etc.
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      void send();
+    }
+  }
+
+  return (
+    <div className="flex items-end gap-2 border-t border-court-border bg-court-surface-subtle/40 px-3 py-2">
+      <textarea
+        value={body}
+        onChange={(e) => setBody(e.target.value.slice(0, INLINE_SMS_BODY_MAX))}
+        onKeyDown={onKeyDown}
+        placeholder="Type a message..."
+        rows={1}
+        className="max-h-32 min-h-9 flex-1 resize-none rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+      />
+      <button
+        type="button"
+        onClick={() => void send()}
+        disabled={sendDisabled}
+        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-[#5A9642] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {sending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
           <Send className="h-3.5 w-3.5" />
-          Send
-        </button>
-      </div>
+        )}
+        Send
+      </button>
     </div>
   );
 }

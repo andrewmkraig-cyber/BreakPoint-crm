@@ -1017,7 +1017,7 @@ export function MailComposer({
               disabled={aiBusy}
               className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed"
             />
-            Generate subject line with Claude too
+            Generate subject line with Claude
           </label>
         </div>
       )}

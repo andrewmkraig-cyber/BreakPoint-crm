@@ -525,10 +525,11 @@ export function ComposeFAB() {
           ref={popoverRef}
           role="dialog"
           aria-label="Quick action"
-          // Anchored to the top-right under the header (h-16 = top-16)
+          // Anchored to the top-right under the header (h-24 = 96px)
           // since the trigger now sits in the user-info cluster on the
-          // right side of the TopBar.
-          className="fixed right-6 top-[68px] z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-2xl"
+          // right side of the TopBar. Plus 4px so the popover sits just
+          // below the header's bottom border.
+          className="fixed right-6 top-[100px] z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-2xl"
         >
           {view === "menu" && (
             <div className="relative p-2">
