@@ -16,6 +16,7 @@ import {
   usePhonePanels,
   type PhoneContact,
 } from "@/lib/phone-panels-context";
+import { matchContactByPhone, type PhoneMatch } from "@/app/phone/actions";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 
 // Global multi-action launcher pinned to the bottom-left corner. The
@@ -275,6 +276,48 @@ export function ComposeFAB() {
       (t) => t.phoneNumber.replace(/\D/g, "") === adhocPhoneInput.digits,
     );
   }, [adhocPhoneInput, recentThreads]);
+
+  // Resolve typed digits against the full Candidate phone column (not
+  // just the recents list) so a saved candidate without an SMS thread
+  // surfaces by name. Without this, a number like 216-870-4655 would
+  // only ever offer the raw "Use 2168704655" ad-hoc row even when
+  // that number belongs to a candidate already in Ace. Debounced 200ms
+  // so each keystroke doesn't fire a server action.
+  const [phoneNumberMatch, setPhoneNumberMatch] = useState<PhoneMatch | null>(
+    null,
+  );
+  const [phoneMatchLoading, setPhoneMatchLoading] = useState(false);
+  useEffect(() => {
+    if (!open || view !== "phone" || !adhocPhoneInput) {
+      setPhoneNumberMatch(null);
+      setPhoneMatchLoading(false);
+      return;
+    }
+    if (adhocAlreadyKnown) {
+      // The recents list already has the candidate row — no need to
+      // duplicate via the matched-row path.
+      setPhoneNumberMatch(null);
+      return;
+    }
+    let cancelled = false;
+    setPhoneMatchLoading(true);
+    const handle = setTimeout(() => {
+      void (async () => {
+        try {
+          const match = await matchContactByPhone(adhocPhoneInput.digits);
+          if (!cancelled) setPhoneNumberMatch(match);
+        } catch {
+          if (!cancelled) setPhoneNumberMatch(null);
+        } finally {
+          if (!cancelled) setPhoneMatchLoading(false);
+        }
+      })();
+    }, 200);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [open, view, adhocPhoneInput, adhocAlreadyKnown]);
 
   // Notes popup state: free-text body + profile-search query + the
   // current set of hits split into candidates / clients. Picking a
@@ -608,43 +651,79 @@ export function ComposeFAB() {
                 />
               </div>
               <div className="max-h-56 overflow-y-auto">
-                {/* Ad-hoc number entry: surfaces a "Use <number>"
-                    row when the recruiter has typed a phone-shaped
-                    string that doesn't match any saved contact. One
-                    click sets the pending contact with candidateId
-                    null so commitText/commitCall fires off a fresh
-                    conversation against that raw number. */}
-                {adhocPhoneInput && !adhocAlreadyKnown && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPendingContact({
-                        candidateId: null,
-                        name: adhocPhoneInput.display,
-                        phoneNumber: adhocPhoneInput.display,
-                        tag: null,
-                      });
-                    }}
-                    className={
-                      "mb-1 flex w-full items-center gap-2 rounded-md border border-dashed px-2 py-1.5 text-left transition " +
-                      (pendingContact?.candidateId === null &&
-                      pendingContact?.phoneNumber === adhocPhoneInput.display
-                        ? "border-[#5A9642] bg-[#EAF4E4] text-[#3F7030]"
-                        : "border-court-border text-court-fg hover:bg-court-surface-subtle")
-                    }
-                  >
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[10px] font-semibold uppercase text-court-fg-muted">
-                      #
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm">
-                        Use {adhocPhoneInput.display}
+                {/* Typed-digits → saved candidate match. Surfaces the
+                    candidate by name (not the raw digits) so a number
+                    that's already in Ace gets attached to its record
+                    instead of becoming an ad-hoc unattached send. */}
+                {adhocPhoneInput &&
+                  !adhocAlreadyKnown &&
+                  phoneNumberMatch?.type === "candidate" && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingContact({
+                          candidateId: phoneNumberMatch.id,
+                          name: phoneNumberMatch.name,
+                          phoneNumber: adhocPhoneInput.display,
+                          tag: "Candidate",
+                        });
+                      }}
+                      className={
+                        "mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition " +
+                        (pendingContact?.candidateId === phoneNumberMatch.id
+                          ? "border-[#5A9642] bg-[#EAF4E4] text-[#3F7030]"
+                          : "border-court-border text-court-fg hover:bg-court-surface-subtle")
+                      }
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[10px] font-semibold uppercase text-court-fg-muted">
+                        {phoneNumberMatch.name
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((s) => s[0]!.toUpperCase())
+                          .join("") || "?"}
                       </span>
-                      <span className="block truncate text-[11px] text-court-fg-muted">
-                        New number — not in Ace
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">
+                          {phoneNumberMatch.name}
+                        </span>
+                        <span className="block truncate text-[11px] text-court-fg-muted">
+                          {adhocPhoneInput.display}
+                        </span>
                       </span>
-                    </span>
-                  </button>
+                      <span className="shrink-0 rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
+                        Candidate
+                      </span>
+                    </button>
+                  )}
+                {/* Ad-hoc fallback: only when no candidate match was
+                    found for the typed digits. Lets the recruiter
+                    still see the raw number while telling them it's
+                    not in Ace. Send is currently blocked downstream
+                    (candidateId required) — the row is informational
+                    until the schema relaxes. */}
+                {adhocPhoneInput &&
+                  !adhocAlreadyKnown &&
+                  !phoneMatchLoading &&
+                  phoneNumberMatch?.type !== "candidate" && (
+                    <div className="mb-1 flex w-full items-center gap-2 rounded-md border border-dashed border-court-border px-2 py-1.5 text-left text-court-fg-muted">
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[10px] font-semibold uppercase">
+                        #
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-sm">
+                          {adhocPhoneInput.display}
+                        </span>
+                        <span className="block truncate text-[11px]">
+                          Not in Ace — add the candidate first to text them.
+                        </span>
+                      </span>
+                    </div>
+                  )}
+                {adhocPhoneInput && !adhocAlreadyKnown && phoneMatchLoading && (
+                  <div className="mb-1 px-2 py-1.5 text-[11px] text-court-fg-muted">
+                    Looking up contact…
+                  </div>
                 )}
                 {recentLoading ? (
                   <div className="px-2 py-3 text-xs text-court-fg-muted">

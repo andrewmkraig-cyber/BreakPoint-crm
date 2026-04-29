@@ -1079,15 +1079,97 @@ function formatRelative(iso: string | null): string {
 // Bottom-right floating panel anchored at the same corner as the FAB
 // but sitting just above it. POSTs to the existing /api/sms endpoint
 // (used by the candidate-sidebar SMS composer too) so the outbound
-// row + Quo dispatch follow the same path. Phase 1 limits the To
-// field to a single contact picked from the FAB popover; broader
-// candidate/client search is a Phase 2 enhancement.
+// row + Quo dispatch follow the same path.
 //
 // Exported so GlobalPhonePanels (mounted in Providers) can render the
 // same panel from any route — the FAB lives globally and so must the
 // surface it opens.
 
 const TEXT_BODY_MAX = 1000;
+
+// Inline recipient input shown after the user clears the To pill.
+// Accepts a phone number; on Enter / blur it runs matchContactByPhone
+// so a saved candidate gets picked by name (not just digits) and the
+// SMS lands against their candidateId. If no candidate matches, falls
+// through to an ad-hoc entry — the panel's Send stays disabled in
+// that case because /api/sms requires a candidateId, but the user
+// still gets visible feedback that the number didn't match.
+function NewTextRecipientInput({
+  onPick,
+}: {
+  onPick: (contact: PhoneContact) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [resolving, setResolving] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+
+  async function commit() {
+    const raw = value.trim();
+    if (!raw) return;
+    const digits = raw.replace(/\D/g, "");
+    setHint(null);
+    if (digits.length >= 7) {
+      setResolving(true);
+      try {
+        const match = await matchContactByPhone(raw);
+        if (match.type === "candidate") {
+          onPick({
+            candidateId: match.id,
+            name: match.name,
+            phoneNumber: raw,
+            tag: "Candidate",
+          });
+          return;
+        }
+        // No candidate match — fall through to ad-hoc. Send button
+        // remains disabled (candidateId required for /api/sms).
+        setHint("No saved candidate for this number. Add the candidate in Ace first to text them.");
+        onPick({
+          candidateId: null,
+          name: raw,
+          phoneNumber: raw,
+          tag: null,
+        });
+      } finally {
+        setResolving(false);
+      }
+    } else {
+      // Too few digits to attempt a phone match — most likely a name
+      // search, which the FAB picker handles. Nudge the user there.
+      setHint("Type a phone number, or use the + button (top right) to search by name.");
+    }
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      void commit();
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={() => void commit()}
+        placeholder="Phone number (then Enter)"
+        autoFocus
+        className="h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+      />
+      {resolving && (
+        <div className="px-1 text-[11px] text-court-fg-muted">
+          Looking up contact…
+        </div>
+      )}
+      {hint && !resolving && (
+        <div className="px-1 text-[11px] text-court-fg-muted">{hint}</div>
+      )}
+    </div>
+  );
+}
 
 export function NewTextPanel({
   contact,
@@ -1195,27 +1277,38 @@ export function NewTextPanel({
             To
           </div>
           {recipient ? (
-            <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-court-border bg-court-surface-subtle px-2 py-1">
-              <span className="truncate text-sm text-court-fg">
-                {recipient.name}
-              </span>
-              <span className="truncate text-[11px] text-court-fg-muted">
-                {recipient.phoneNumber}
-              </span>
-              <button
-                type="button"
-                onClick={() => setRecipient(null)}
-                aria-label="Clear recipient"
-                className="rounded-full p-0.5 text-court-fg-muted transition hover:bg-court-fg/10 hover:text-court-fg"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
+            (() => {
+              // Dedupe display when the "name" is just the phone number
+              // (ad-hoc fresh number flow). Comparing the digit-only
+              // forms catches "(216) 870-4655" === "2168704655" too.
+              const nameDigits = recipient.name.replace(/\D/g, "");
+              const phoneDigits = recipient.phoneNumber.replace(/\D/g, "");
+              const showPhoneSubline =
+                recipient.name !== recipient.phoneNumber &&
+                !(nameDigits && nameDigits === phoneDigits);
+              return (
+                <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-court-border bg-court-surface-subtle px-2 py-1">
+                  <span className="truncate text-sm text-court-fg">
+                    {recipient.name}
+                  </span>
+                  {showPhoneSubline && (
+                    <span className="truncate text-[11px] text-court-fg-muted">
+                      {recipient.phoneNumber}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setRecipient(null)}
+                    aria-label="Clear recipient"
+                    className="rounded-full p-0.5 text-court-fg-muted transition hover:bg-court-fg/10 hover:text-court-fg"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })()
           ) : (
-            <div className="rounded-md border border-dashed border-court-border bg-court-surface-subtle/50 px-3 py-2 text-xs text-court-fg-muted">
-              Pick a contact from the FAB. Free-form To search ships in
-              Phase 2.
-            </div>
+            <NewTextRecipientInput onPick={setRecipient} />
           )}
         </div>
 
