@@ -531,21 +531,20 @@ export function ComposeFAB() {
           className="fixed right-6 top-[68px] z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-2xl"
         >
           {view === "menu" && (
-            <div className="p-2">
-              {/* "New…" eyebrow used to live here above the action
-                  rows; dropped per Andrew's request — the menu's
-                  rows already self-describe (New Email / New Text /
-                  New Call / New Note). Just the close button now. */}
-              <div className="flex items-center justify-end px-2 py-1.5">
-                <button
-                  type="button"
-                  onClick={closeAll}
-                  aria-label="Close"
-                  className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
+            <div className="relative p-2">
+              {/* Close button is absolutely positioned in the top-
+                  right corner so the action rows can start flush at
+                  the top of the panel. The earlier dedicated header
+                  row left ~32px of empty space above New Email after
+                  the "New…" eyebrow was removed. */}
+              <button
+                type="button"
+                onClick={closeAll}
+                aria-label="Close"
+                className="absolute right-2 top-2 z-10 rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
               <ActionRow
                 icon={<Mail className="h-4 w-4" />}
                 label="New Email"
