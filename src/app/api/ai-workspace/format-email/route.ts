@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
     "- Strip any signoff (Talk soon / Best / Thanks / etc.) and any signature lines (Andrew Kraig / BreakPoint Talent). Gmail attaches the real signature on send.\n" +
     "- Strip leading/trailing `---` separators and any 'Here\\'s a clean email...' / 'Ready to copy and send...' framing lines.\n" +
     "- Preserve job listings, links, comp ranges, location notes — those are the substance the candidate needs.\n" +
+    "- **Preserve the two-section structure** if the source has one. Specific role postings (Section 1) and broader job-board search pointers (Section 2 — LinkedIn / Indeed / ZipRecruiter etc.) MUST stay visually separated in the email. Use clear bold section headers like `**Open Roles**` and `**Broader job-board searches to watch**`. Section 1 stays numbered; Section 2 stays bulleted. Never merge them into one numbered list — the candidate needs to see at a glance which links are pre-vetted specific roles vs. which are 'pages to browse on your own'.\n" +
     "- Keep markdown formatting in the body (bold, bullets, [text](url) links). The downstream renderer converts it to HTML for Gmail.\n" +
     "- If the source already has a `Subject:` line, use it (cleaned up) instead of inventing one.\n" +
     "- Never invent facts. Use only what's in the source message.";
