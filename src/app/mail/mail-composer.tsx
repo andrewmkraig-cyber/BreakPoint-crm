@@ -997,19 +997,30 @@ export function MailComposer({
       className={
         asModal
           ? "flex h-full w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
-          : "border-t border-court-border bg-court-surface-subtle/30"
+          : // Inline mode (Mail Tab Reply / Reply All / Forward + the
+            // Floating Thread Window's reply pane). Same flex-column +
+            // overflow-hidden chassis as the modal so the chrome rows
+            // pin top, the editor scrolls in its own region, and the
+            // footer (Send / Save Draft / Delete) stays glued to the
+            // bottom. max-h-[55vh] bounds the composer at just over
+            // half the viewport so the messages list above it stays
+            // visible — without this cap the composer's intrinsic
+            // content height pushed Send below the fold inside the
+            // floating thread window.
+            "flex max-h-[55vh] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
       }
     >
       <div
         onMouseDown={onTitleBarMouseDown}
         className={cn(
-          "flex items-center justify-between border-b border-court-border px-5 py-2",
-          // shrink-0 across every chrome row in modal mode so flex
-          // distribution never robs the footer of its declared height.
-          // Without this, an open AI panel + smart-context dropdown +
-          // a long unresolved-fields banner can compress the row stack
-          // far enough that Send slides under the modal's bottom edge.
-          asModal && "shrink-0 select-none",
+          "flex shrink-0 items-center justify-between border-b border-court-border px-5 py-2",
+          // shrink-0 across every chrome row (in BOTH modal and inline
+          // modes) so flex distribution never robs the footer of its
+          // declared height. Without this, an open AI panel +
+          // smart-context dropdown + a long unresolved-fields banner
+          // can compress the row stack far enough that Send slides
+          // under the wrapper's bottom edge.
+          asModal && "select-none",
           asModal && !isDragging && "cursor-grab",
           asModal && isDragging && "cursor-grabbing",
         )}
@@ -1071,7 +1082,7 @@ export function MailComposer({
           </button>
         </div>
       </div>
-      <div className={cn("space-y-2 px-5 py-3", asModal && "shrink-0")}>
+      <div className="shrink-0 space-y-2 px-5 py-3">
         <AddressRow
           label="To"
           value={to}
@@ -1155,12 +1166,7 @@ export function MailComposer({
         onEditWithClaude={onEditWithClaude}
       />
       {openAiPanel && (
-        <div
-          className={cn(
-            "space-y-2 border-b border-court-border bg-court-surface px-5 py-3",
-            asModal && "shrink-0",
-          )}
-        >
+        <div className="shrink-0 space-y-2 border-b border-court-border bg-court-surface px-5 py-3">
           <label className="block text-[11px] uppercase tracking-wider text-court-fg-muted">
             Describe what you want to say
           </label>
@@ -1215,12 +1221,7 @@ export function MailComposer({
           right above the rich-text toolbar so the user can resolve
           context before they start typing. */}
       {candidateRef && contextLoaded && activeJobs.length >= 2 && (
-        <div
-          className={cn(
-            "border-b border-court-border bg-court-surface-subtle/40 px-5 py-2",
-            asModal && "shrink-0",
-          )}
-        >
+        <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/40 px-5 py-2">
           <label className="flex items-center gap-2 text-sm">
             <span className="shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
               Which job is this email about?
@@ -1263,11 +1264,12 @@ export function MailComposer({
         onFocusCapture={() => (lastFocused.current = "body")}
         className={cn(
           "mx-5 rounded-lg transition",
-          // Modal mode: editor body is the flex-1 scroll region so the
-          // footer (Send button) stays pinned at the bottom regardless
-          // of composer size. min-h-0 lets the wrapper shrink below
-          // the editor's intrinsic min-height when the modal is small.
-          asModal && "flex-1 min-h-0 overflow-y-auto",
+          // Editor body is the only flex-1 region in BOTH inline and
+          // modal modes so the footer (Send / Save Draft / Delete)
+          // stays pinned at the bottom regardless of composer size.
+          // min-h-0 lets the wrapper shrink below the editor's
+          // intrinsic min-height when the wrapper is small.
+          "flex-1 min-h-0 overflow-y-auto",
           dragOver && "ring-2 ring-brand/50 ring-offset-2 ring-offset-court-surface-subtle",
         )}
       >
@@ -1275,7 +1277,7 @@ export function MailComposer({
       </div>
 
       {attachments.length > 0 && (
-        <ul className={cn("mx-5 mt-2 space-y-1", asModal && "shrink-0")}>
+        <ul className="mx-5 mt-2 shrink-0 space-y-1">
           {attachments.map((a) => (
             <li
               key={a.key}
@@ -1305,12 +1307,7 @@ export function MailComposer({
           why ([No active job] / [Pick job above]) when smart context
           is in play. Court Mode tokens only. */}
       {allUnresolved.length > 0 && (
-        <div
-          className={cn(
-            "mx-5 mt-2 rounded-lg border border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg",
-            asModal && "shrink-0",
-          )}
-        >
+        <div className="mx-5 mt-2 shrink-0 rounded-lg border border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg">
           <span className="font-medium text-court-fg-muted">
             {unresolvedNote ? `${unresolvedNote} — ` : ""}
             These fields will send literally:
@@ -1327,21 +1324,17 @@ export function MailComposer({
       )}
 
       {error && (
-        <div className={cn("mx-5 mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800", asModal && "shrink-0")}>
+        <div className="mx-5 mt-2 shrink-0 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
           {error}
         </div>
       )}
 
-      <div
-        className={cn(
-          "flex items-center justify-between px-5 py-3",
-          // Modal mode: pin the footer so the Send button is always
-          // visible. shrink-0 prevents the parent flex from collapsing
-          // it. Top border + surface bg separates it from the scroll
-          // content above. Tokens only — no hardcoded colors.
-          asModal && "shrink-0 border-t border-court-border bg-court-surface",
-        )}
-      >
+      <div className="flex shrink-0 items-center justify-between border-t border-court-border bg-court-surface px-5 py-3">
+        {/* Footer pins to the bottom of the composer in BOTH inline
+            and modal modes — shrink-0 prevents the parent flex from
+            collapsing it, so Send / Save Draft / Delete are always
+            visible regardless of how much content sits in the editor
+            above. Court tokens only. */}
         <div className="flex items-center gap-2">
           <input
             ref={fileInputRef}
