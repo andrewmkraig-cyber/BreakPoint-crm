@@ -128,7 +128,7 @@ export function stripMarkdownToPlain(text: string): string {
 // claude, /api/calls/summary, /api/ai-workspace, clients/new actions).
 // Sampling params (temperature/top_p/top_k) and budget_tokens are
 // removed on 4.x — do not re-add them.
-export const CLAUDE_MODEL = "claude-sonnet-4-20250514";
+export const CLAUDE_MODEL = "claude-sonnet-4-6";
 
 let cached: Anthropic | null = null;
 

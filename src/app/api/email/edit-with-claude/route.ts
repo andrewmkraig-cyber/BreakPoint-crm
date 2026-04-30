@@ -83,7 +83,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
 
   try {
     const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 2048,
       tools: [
         {
