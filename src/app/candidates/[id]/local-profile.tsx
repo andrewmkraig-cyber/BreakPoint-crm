@@ -19,6 +19,7 @@ import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 // redact, brand). The inline single-resume preview was retired.
 import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editable-resume";
 import { AddToListButton } from "@/components/lists/add-to-list-button";
+import { DeleteCandidateButton } from "@/app/candidates/[id]/delete-candidate-button";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -631,6 +632,8 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
           />
         </aside>
       </div>
+
+      <DeleteCandidateButton candidateId={candidate.id} candidateName={fullName} />
     </div>
   );
 }

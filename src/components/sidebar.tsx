@@ -73,20 +73,16 @@ export function Sidebar({ width }: { width?: number } = {}) {
   const { unreadCount: phoneUnreadCount } = usePhoneContext();
 
   return (
-    // Sidebar background is mode-aware: Hard = white (unchanged from
-    // legacy), Clay = #1e293b (slate-800, "lifted" over body's #0f172a),
-    // Grass = #2d4a2d (mid-green, lifted over body's #1a2e1a). Using
-    // explicit dark:/grass: hex overrides rather than a court-* token
-    // because this surface wants the *subtle* shade in Clay/Grass while
-    // still being pure white in Hard — no single existing token matches
-    // that across all three modes.
-    // Sticky positioning + h-screen makes the sidebar always visible as
-    // the page content scrolls. self-start anchors it to the top of the
-    // flex parent so its height stays bounded by the viewport instead
-    // of stretching to match the (potentially much taller) page. The
-    // main-nav block gets its own internal scroll so the Settings
-    // footer + brand blurb stay pinned at the bottom of the sidebar
-    // even on viewports too short to fit every nav item.
+    // Sidebar background tracks `bg-court-surface` across all four Court
+    // Modes so it reads as one continuous surface with the top bar
+    // (which uses the same token). Earlier the sidebar carried a
+    // hardcoded `grass:bg-[#1F3A1F]` override that left the topbar a
+    // different green in Grass mode — visible vertical seam at the
+    // boundary. Dropping the override + matching brand-mark/nav text
+    // colors back to court-* tokens keeps everything legible across the
+    // four modes without per-class hex overrides.
+    // Sticky positioning + h-screen keeps it visible as the page
+    // content scrolls; self-start bounds its height to the viewport.
     // Width is driven by the AppShell (drag-resizable + persisted to
     // localStorage). When no width prop is provided we fall back to
     // the legacy w-60 (240px) Tailwind class so the component still
@@ -94,14 +90,16 @@ export function Sidebar({ width }: { width?: number } = {}) {
     <aside
       style={width ? { width: `${width}px` } : undefined}
       className={
-        "sticky top-0 hidden h-screen shrink-0 self-start border-r border-court-border bg-court-surface grass:bg-[#1F3A1F] md:flex md:flex-col " +
+        "sticky top-0 hidden h-screen shrink-0 self-start border-r border-court-border bg-court-surface md:flex md:flex-col " +
         (width ? "" : "w-60")
       }
     >
       {/* Top header carries the full Serve Arc + "Ace · by BreakPoint
-          Talent" lockup. Bumped from h-20 → h-24 so the lockup has
-          breathing room above and below instead of feeling crowded. */}
-      <div className="flex h-24 shrink-0 items-center border-b border-court-border px-5">
+          Talent" lockup. h-24 matches the top bar so the brand mark
+          and the date eyebrow share the same vertical band. No
+          horizontal border — the brand mark area flows into the nav
+          column without a dividing rule. */}
+      <div className="flex h-24 shrink-0 items-center px-5">
         <BrandMark withTag />
       </div>
       <nav className="flex-1 overflow-y-auto p-3">
@@ -116,12 +114,12 @@ export function Sidebar({ width }: { width?: number } = {}) {
               <div className="mb-1.5 flex items-center gap-2 px-3 pt-2">
                 <span
                   aria-hidden="true"
-                  className="h-3 w-0.5 shrink-0 rounded-full bg-court-accent grass:bg-[#A0C898]"
+                  className="h-3 w-0.5 shrink-0 rounded-full bg-court-accent"
                 />
-                <div className="font-serif text-xs font-bold uppercase tracking-[0.18em] text-court-fg grass:text-[#E8F4E2]">
+                <div className="font-serif text-xs font-bold uppercase tracking-[0.18em] text-court-fg">
                   {group.title}
                 </div>
-                <div className="ml-1 h-px flex-1 bg-court-border/70 grass:bg-[#3A5A3A]" />
+                <div className="ml-1 h-px flex-1 bg-court-border/70" />
               </div>
             )}
             <div className="space-y-0.5">
@@ -180,7 +178,7 @@ function NavLink({
         "flex h-12 items-center gap-3 rounded-xl border px-4 text-sm font-medium transition-colors",
         active
           ? "border-court-accent/40 bg-court-accent-tint text-court-accent-dark shadow-sm"
-          : "border-transparent bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle grass:bg-transparent grass:text-[#C8D8C0] grass:hover:bg-[#2A4A2A]",
+          : "border-transparent bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle",
       )}
     >
       <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />

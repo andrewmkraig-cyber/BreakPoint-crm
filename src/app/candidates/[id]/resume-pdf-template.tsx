@@ -84,13 +84,20 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     color: NEUTRAL_900,
     letterSpacing: 0.5,
+    // Tight line-box on the name so the descender slack (page-default
+    // lineHeight 1.4 over 24pt = ~9pt below baseline) doesn't push
+    // into the title underneath. Without this, the green role line
+    // sits inside the name's descenders and the two read as one
+    // muddy block instead of cleanly stacked lines.
+    lineHeight: 1.1,
   },
   title: {
-    marginTop: 4,
+    marginTop: 10,
     fontSize: 12,
     fontFamily: "Helvetica-Bold",
     color: BRAND_GREEN_DARK,
     letterSpacing: 0.3,
+    lineHeight: 1.2,
   },
   // Body grid — left sidebar + right main column.
   body: {

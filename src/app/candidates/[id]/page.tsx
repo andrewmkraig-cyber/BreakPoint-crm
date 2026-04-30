@@ -40,6 +40,7 @@ import type {
 } from "@/app/candidates/[id]/placement-flows";
 import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
+import { DeleteCandidateButton } from "@/app/candidates/[id]/delete-candidate-button";
 import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -703,6 +704,8 @@ export default async function CandidateProfilePage({
           <EditableEmployment candidateId={id} initial={employmentInitial} />
         </aside>
       </div>
+
+      <DeleteCandidateButton candidateId={candidate.id} candidateName={name} />
     </div>
     </CandidateProfileBoundary>
   );

@@ -157,6 +157,64 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
   }
 }
 
+// Ace 28.0: hard-delete a candidate and every row that references it.
+// Cascades follow the explicit list documented in the prompt rather
+// than leaning on Prisma's onDelete: Cascade alone — three of the
+// related tables (SmsMessage, CallLog, ActivityLog) carry a candidateId
+// without a foreign-key relation, and CallTranscript points at CallLog
+// without an onDelete clause, so an unscoped Candidate.delete would
+// orphan rows. Wrapping the whole sequence in $transaction keeps it
+// atomic: any failure rolls back the entire delete.
+//
+// Tenant scope (Architecture rule #8): the candidate is resolved via
+// the org-scoped lookup before any delete fires. A forged id from
+// another tenant returns "Candidate not found." with no rows touched.
+export async function deleteCandidate(id: string): Promise<ActionResult> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  if (!id) return { ok: false, error: "Missing candidate id." };
+
+  try {
+    const org = await getCurrentOrg();
+    const candidate = await prisma.candidate.findFirst({
+      where: { id, organizationId: org.id },
+      select: { id: true, rfId: true, organizationId: true },
+    });
+    if (!candidate) return { ok: false, error: "Candidate not found." };
+
+    await prisma.$transaction(async (tx) => {
+      // CallTranscript first — its FK to CallLog has no onDelete cascade
+      // so the rows must come out before their parent CallLog rows.
+      const callLogIds = await tx.callLog.findMany({
+        where: { candidateId: candidate.id },
+        select: { id: true },
+      });
+      if (callLogIds.length > 0) {
+        await tx.callTranscript.deleteMany({
+          where: { callLogId: { in: callLogIds.map((r) => r.id) } },
+        });
+      }
+      await tx.callLog.deleteMany({ where: { candidateId: candidate.id } });
+      await tx.smsMessage.deleteMany({ where: { candidateId: candidate.id } });
+      await tx.activityLog.deleteMany({
+        where: { targetType: "candidate", targetId: candidate.id },
+      });
+      await tx.candidateResume.deleteMany({ where: { candidateId: candidate.id } });
+      await tx.placement.deleteMany({ where: { candidateId: candidate.id } });
+      await tx.interview.deleteMany({ where: { candidateId: candidate.id } });
+      await tx.candidateListMembership.deleteMany({ where: { candidateId: candidate.id } });
+      await tx.gmailThreadTag.deleteMany({ where: { candidateId: candidate.id } });
+      await tx.candidate.delete({ where: { id: candidate.id } });
+    });
+
+    revalidatePath("/candidates");
+    revalidatePath(`/candidates/${candidate.id}`);
+    if (candidate.rfId != null) revalidatePath(`/candidates/${candidate.rfId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete candidate." };
+  }
+}
+
 // Phase 5A.5.b (Ace 20.0): per-version delete. Earlier versions of this
 // action took a candidateId/rfId and wiped EVERY CandidateResume row
 // for that candidate — fine when there was only one row per candidate,
