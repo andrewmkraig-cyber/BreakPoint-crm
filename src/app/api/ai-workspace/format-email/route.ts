@@ -11,7 +11,13 @@ import { getClaude, CLAUDE_MODEL } from "@/lib/claude";
 // clicks the "Email this" button in AiWorkspace, so the popup is
 // always populated with a sendable subject + body — never the raw
 // chat bubble.
-export const maxDuration = 30;
+//
+// 30s budget was too tight on long Game Plan bubbles (5+ specific
+// roles + Section 2 with multiple aggregator pointers) — Sonnet
+// rewrite was hitting the Vercel function ceiling and the popup
+// surfaced "format-email failed (504)". 120s gives Sonnet headroom
+// without burning the whole AI Workspace 300s budget.
+export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   let entityType: string | undefined;

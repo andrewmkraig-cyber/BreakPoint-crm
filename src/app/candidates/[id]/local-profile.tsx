@@ -508,18 +508,20 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             <AddToListButton candidateId={candidate.id} candidateName={fullName} />
             <Link
               href={`/candidates/${candidate.id}?openApply=1`}
-              // Amber to match the APPLIED stage chip — same as the
-              // RF-imported path. Recolored together so the visual
-              // language stays consistent across both candidate types.
-              className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
+              // Squared chrome (rounded-md / px-2.5 / text-xs font-medium)
+              // matches Add to List so the three toolbar actions read as
+              // one set. Amber palette stays — it ties the button to the
+              // APPLIED stage chip across the app.
+              className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-800 shadow-sm transition hover:bg-amber-200"
             >
               <Target className="h-3 w-3" /> Apply to Job
             </Link>
             <Link
               href={`/candidates/${candidate.id}?openSubmit=1`}
-              // Two-tone emerald to match Apply to Job's amber pair
-              // — see the RF page.tsx site for the design rationale.
-              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+              // Squared chrome matches Add to List + Apply to Job above
+              // so the trio shares one shape. Emerald palette stays —
+              // it pairs with Apply to Job's amber as a coordinated set.
+              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-900 shadow-sm transition hover:bg-emerald-300"
             >
               <Send className="h-3 w-3" /> Submit to different job
             </Link>
@@ -695,8 +697,12 @@ function LocalNotesTab({
 }
 
 function UnderlineTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidateId: string }) {
+  // Segmented-control pill row. Active tab is a lifted white pill inside
+  // a muted track so it stands out next to the small "PIPELINE · 0" label
+  // that previously dominated the row visually. Inactive tabs are muted
+  // text only — hover lightens to fg.
   return (
-    <div className="flex gap-6 border-b border-court-border">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface-subtle/60 p-1">
       <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
       <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
       <UnderlineTabLink label="Notes" href={`/candidates/${candidateId}?tab=notes`} active={tab === "notes"} />
@@ -708,11 +714,12 @@ function UnderlineTabLink({ label, href, active }: { label: string; href: string
   return (
     <Link
       href={href}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "-mb-px border-b-2 pb-2 text-sm font-medium transition-colors",
+        "rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
         active
-          ? "border-court-accent text-court-accent-dark"
-          : "border-transparent text-court-fg-muted hover:text-court-fg",
+          ? "bg-court-surface text-court-accent-dark shadow-sm ring-1 ring-court-border"
+          : "text-court-fg-muted hover:bg-court-surface/60 hover:text-court-fg",
       )}
     >
       {label}

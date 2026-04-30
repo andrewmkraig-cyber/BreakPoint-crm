@@ -636,26 +636,24 @@ export default async function CandidateProfilePage({
               <AddToListButton candidateId={candidate.id} candidateName={name} />
               <Link
                 href={`/candidates/${id}?openApply=1`}
-                // Amber background to match the APPLIED stage chip
-                // (amber-100 / amber-800 / amber-300) — keeps the
-                // visual story "this button puts the candidate in the
-                // Applied stage" obvious at a glance. Target icon
-                // matches the inline Apply action in
-                // local-candidate-actions.tsx so the same verb reads
-                // identically across surfaces.
-                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
+                // Squared chrome (rounded-md / px-2.5 / text-xs
+                // font-medium) matches Add to List so the toolbar
+                // actions read as one set. Amber palette stays — it
+                // ties the button to the APPLIED stage chip across
+                // the app. Target icon matches the inline Apply
+                // action in local-candidate-actions.tsx.
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-800 shadow-sm transition hover:bg-amber-200"
               >
                 <Target className="h-3 w-3" /> Apply to Job
               </Link>
               <Link
                 href={`/candidates/${id}?openSubmit=1`}
-                // Matches the two-tone treatment Apply to Job uses
-                // (amber-100 / 300 / 800) — emerald variant of the
-                // same shape so the pair reads as a coordinated
-                // action set instead of one solid + one tinted.
-                // Send icon matches the inline Submit action in
+                // Squared chrome matches Add to List + Apply to Job
+                // above so the trio shares one shape. Emerald palette
+                // pairs with Apply to Job's amber as a coordinated
+                // set. Send icon matches the inline Submit action in
                 // local-placement-rows.tsx.
-                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-900 shadow-sm transition hover:bg-emerald-300"
               >
                 <Send className="h-3 w-3" /> Submit to different job
               </Link>
@@ -740,8 +738,12 @@ function ProfileAccordion({ title, children }: { title: string; children: React.
 }
 
 function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
+  // Segmented-control pill row. Active tab is a lifted white pill inside
+  // a muted track so it stands out next to the small "PIPELINE · 0" label
+  // that previously dominated the row visually. Inactive tabs are muted
+  // text only — hover lightens to fg.
   return (
-    <div className="flex gap-6 border-b border-court-border">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface-subtle/60 p-1">
       <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
       <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
       <UnderlineTabLink label="Notes" href={`/candidates/${candidateId}?tab=notes`} active={tab === "notes"} />
@@ -753,11 +755,12 @@ function UnderlineTabLink({ label, href, active }: { label: string; href: string
   return (
     <Link
       href={href}
+      aria-current={active ? "page" : undefined}
       className={cn(
-        "-mb-px border-b-2 pb-2 text-sm font-medium transition-colors",
+        "rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
         active
-          ? "border-court-accent text-court-accent-dark"
-          : "border-transparent text-court-fg-muted hover:text-court-fg",
+          ? "bg-court-surface text-court-accent-dark shadow-sm ring-1 ring-court-border"
+          : "text-court-fg-muted hover:bg-court-surface/60 hover:text-court-fg",
       )}
     >
       {label}
