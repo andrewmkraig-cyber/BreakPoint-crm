@@ -120,37 +120,163 @@ async function verifyOne(url: string): Promise<UrlVerification> {
   if (SKIP_VERIFY_HOSTS.has(host)) {
     return { url, alive: true, skipped: true, reason: "aggregator host" };
   }
+
+  // Modern ATS pages (Ashby, Greenhouse v2, Lever, Workable, SmartRecruiters)
+  // are SPAs — the static HTML response is just a React shell, and the
+  // "Job not found" copy is rendered client-side after the SPA fetches the
+  // posting from the ATS API. Pattern-matching the static HTML missed an
+  // Ashby/HockeyStack closed posting that bounced Andrew's candidate; we
+  // now hit the ATS's documented public posting API directly so closure
+  // status is unambiguous.
+  if (host === "jobs.ashbyhq.com") return verifyAshby(url);
+  if (host === "boards.greenhouse.io" || host === "job-boards.greenhouse.io") {
+    return verifyGreenhouse(url, host);
+  }
+  if (host === "jobs.lever.co") return verifyLever(url);
+
+  return verifyGeneric(url);
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+): Promise<Response> {
   const ctrl = new AbortController();
   const timeout = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(url, {
-      method: "GET",
+    return await fetch(url, {
+      ...init,
+      signal: ctrl.signal,
       headers: {
-        // Default Node UAs get 403'd by some ATS hosts. Pretend to be
-        // a normal Chrome on macOS — these endpoints are public, no
-        // auth, no rate-limit concern at our volume.
         "User-Agent":
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
           "(KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36",
+        ...(init.headers ?? {}),
+      },
+      redirect: "follow",
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Ashby: jobs.ashbyhq.com/<board>/<jobId-uuid>
+// Public API lists every active job on the board; if the URL's jobId
+// isn't in the list, the posting is closed.
+async function verifyAshby(url: string): Promise<UrlVerification> {
+  const m = url.match(
+    /jobs\.ashbyhq\.com\/([^\/?#]+)\/([0-9a-f][0-9a-f-]{8,})/i,
+  );
+  if (!m) return verifyGeneric(url);
+  const [, board, jobId] = m;
+  const apiUrl = `https://api.ashbyhq.com/posting-api/job-board/${encodeURIComponent(
+    board,
+  )}?includeCompensation=false`;
+  try {
+    const res = await fetchWithTimeout(apiUrl, {
+      headers: { Accept: "application/json" },
+    });
+    if (res.status === 404 || res.status === 410) {
+      return { url, alive: false, reason: `Ashby board API ${res.status}` };
+    }
+    if (!res.ok) {
+      // API hiccup — fall back to generic, don't false-positive a board.
+      return verifyGeneric(url);
+    }
+    const data = (await res.json()) as { jobs?: Array<{ id?: string }> };
+    const jobs = data.jobs ?? [];
+    const found = jobs.some((j) => j.id?.toLowerCase() === jobId.toLowerCase());
+    if (!found) {
+      return {
+        url,
+        alive: false,
+        reason: "Ashby: job not in active board listings",
+      };
+    }
+    return { url, alive: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Ashby fetch failed";
+    return { url, alive: false, reason: msg };
+  }
+}
+
+// Greenhouse: boards.greenhouse.io/<slug>/jobs/<numericId> or
+//             job-boards.greenhouse.io/<slug>/jobs/<numericId>
+// Public posting API returns the job directly; 404 means closed.
+async function verifyGreenhouse(
+  url: string,
+  host: string,
+): Promise<UrlVerification> {
+  const m = url.match(/\/([^\/?#]+)\/jobs\/(\d+)/i);
+  if (!m) return verifyGeneric(url);
+  const [, slug, jobId] = m;
+  const apiUrl = `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(
+    slug,
+  )}/jobs/${jobId}`;
+  try {
+    const res = await fetchWithTimeout(apiUrl, {
+      headers: { Accept: "application/json" },
+    });
+    if (res.status === 404 || res.status === 410) {
+      return { url, alive: false, reason: `Greenhouse API ${res.status}` };
+    }
+    if (!res.ok) {
+      // Unexpected status — fall back to scraping the public page.
+      return verifyGeneric(url);
+    }
+    return { url, alive: true };
+  } catch {
+    return verifyGeneric(url);
+  } finally {
+    // host param is documented; suppress unused warning.
+    void host;
+  }
+}
+
+// Lever: jobs.lever.co/<slug>/<uuid>
+// Public posting API returns the job directly; 404 means closed.
+async function verifyLever(url: string): Promise<UrlVerification> {
+  const m = url.match(
+    /jobs\.lever\.co\/([^\/?#]+)\/([0-9a-f][0-9a-f-]{8,})/i,
+  );
+  if (!m) return verifyGeneric(url);
+  const [, slug, jobId] = m;
+  const apiUrl = `https://api.lever.co/v0/postings/${encodeURIComponent(
+    slug,
+  )}/${jobId}`;
+  try {
+    const res = await fetchWithTimeout(apiUrl, {
+      headers: { Accept: "application/json" },
+    });
+    if (res.status === 404 || res.status === 410) {
+      return { url, alive: false, reason: `Lever API ${res.status}` };
+    }
+    if (!res.ok) {
+      return verifyGeneric(url);
+    }
+    return { url, alive: true };
+  } catch {
+    return verifyGeneric(url);
+  }
+}
+
+async function verifyGeneric(url: string): Promise<UrlVerification> {
+  try {
+    const res = await fetchWithTimeout(url, {
+      method: "GET",
+      headers: {
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
       },
-      redirect: "follow",
-      signal: ctrl.signal,
     });
     if (res.status === 404 || res.status === 410) {
       return { url, alive: false, reason: `HTTP ${res.status}` };
     }
     if (res.status >= 400 && res.status < 500) {
-      // Any other 4xx is suspect. 401/403 sometimes wraps a closed job
-      // behind auth, sometimes is a bot block — treat as dead so Claude
-      // revises rather than shipping a link that bounces.
       return { url, alive: false, reason: `HTTP ${res.status}` };
     }
     if (res.status >= 500) {
-      // Transient — assume alive so a flaky upstream doesn't strip a
-      // valid listing.
       return { url, alive: true, reason: `HTTP ${res.status} (transient)` };
     }
     const body = await res.text();
@@ -167,7 +293,5 @@ async function verifyOne(url: string): Promise<UrlVerification> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "fetch failed";
     return { url, alive: false, reason: msg };
-  } finally {
-    clearTimeout(timeout);
   }
 }
