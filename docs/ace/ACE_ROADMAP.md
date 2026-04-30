@@ -224,35 +224,9 @@ On Schedule Interview button click:
 7. Trigger any "On Interview Scheduled" stage actions registered in stage_action_templates table
 8. Toast confirmation: "Interview scheduled. Calendar invites sent to {{interviewers}} and {{candidate.full_name}}."
 
-#### Prompt 11 - Stage-Triggered Template Actions System
+#### Prompt 11 - Stage-Triggered Template Actions System [KILLED]
 
-Each pipeline stage gets a set of pre-built action buttons that fire templated emails. User can click these from the candidate profile or pipeline view.
-
-Stage → Action Button → Template mapping:
-- Submitted → "Send Submission Confirmation" → Submittal Confirmation template (5B output)
-- Submitted → "Follow Up" → Follow Up Submission template (build new)
-- Interview Scheduled → "Send Interview Prep" → Interview Prep template (build new, includes interview tips, company links, prep checklist)
-- Interview Scheduled → "Send Reminder" → Day-Before Reminder template (build new)
-- Interview Scheduled → "Reschedule" → Reschedule Request template (build new)
-- Interviewed → "Send Thank You Note" → Post-Interview Thank You (candidate-side, build new)
-- Interviewed → "Request Feedback from Client" → Feedback Request (client-side, build new)
-- Offer Extended → "Send Offer Details" → Offer Details template (build new)
-- Offer Extended → "Resignation Letter Template" → Resignation Helper (build new)
-- Offer Accepted → "Send Acceptance Confirmation to Client" → Acceptance Confirmation (5B output)
-- Offer Accepted → "Send Onboarding Prep to Candidate" → Onboarding Prep (build new)
-- Hired → "Send Welcome Note" → Welcome (build new)
-- Hired → "Send 30-Day Check-In" → 30-Day Check-In (build new)
-- Hired → "Send 90-Day Check-In" → 90-Day Check-In (build new)
-
-Each action button:
-- Pulls template from user's template library by name
-- Auto-loads candidate + job + client + interview context (if relevant)
-- Opens popup composer with To/Subject/Body pre-populated
-- User reviews, edits, sends with one click
-
-Mapping stored in stage_action_templates Neon table so user can change which template fires on which action without code changes.
-
-Action buttons render on candidate profile in a horizontal row below the tabs, contextual to current stage.
+Killed. See "Explicitly Killed - Do Not Build" at the bottom of this file. Do not build.
 
 #### Prompt 12 - Candidate Profile Layout Reorganization
 
