@@ -50,12 +50,16 @@ export async function GET() {
   ]);
 
   // Hydrate candidate names in one round-trip so the toast renders
-  // a real name instead of just a phone number.
+  // a real name instead of just a phone number. candidateId is nullable
+  // now (unknown-number rows leave it null), so filter those out before
+  // the lookup — the toast just falls back to the phone number for
+  // those.
   const candidateIds = Array.from(
-    new Set([
-      ...texts.map((t) => t.candidateId),
-      ...calls.map((c) => c.candidateId),
-    ]),
+    new Set(
+      [...texts, ...calls]
+        .map((r) => r.candidateId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
   );
   const candidates = candidateIds.length
     ? await prisma.candidate.findMany({
@@ -71,7 +75,7 @@ export async function GET() {
     texts: texts.map((t) => ({
       id: t.id,
       candidateId: t.candidateId,
-      candidateName: nameById.get(t.candidateId) || "",
+      candidateName: t.candidateId ? nameById.get(t.candidateId) || "" : "",
       fromNumber: t.fromNumber,
       body: t.body,
       createdAtIso: t.createdAt.toISOString(),
@@ -79,7 +83,7 @@ export async function GET() {
     calls: calls.map((c) => ({
       id: c.id,
       candidateId: c.candidateId,
-      candidateName: nameById.get(c.candidateId) || "",
+      candidateName: c.candidateId ? nameById.get(c.candidateId) || "" : "",
       fromNumber: c.fromNumber,
       duration: c.duration,
       status: c.status,

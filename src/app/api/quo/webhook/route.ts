@@ -52,21 +52,24 @@ export async function POST(req: NextRequest) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: fromNumber.replace(/\D/g, '').slice(-10) } },
       })
-      const orgId = candidate?.organizationId ?? null
-      if (candidate) {
-        await prisma.smsMessage.create({
-          data: {
-            candidateId: candidate.id,
-            organizationId: orgId,
-            direction: 'inbound',
-            body: content ?? '',
-            fromNumber,
-            toNumber: toNumber ?? '',
-            status: 'received',
-            krispcallId: pickStr(body, ['data.object.id', 'id']),
-          },
-        })
-      }
+      // Always persist the row — even when the from-number doesn't match
+      // any candidate. The Phone tab now surfaces unknown-number threads
+      // with an "Add to Ace" action, so dropping them on the floor would
+      // hide real activity (e.g. inbound texts from a client contact who
+      // hasn't been added to the CRM yet).
+      const orgId = candidate?.organizationId ?? (await defaultOrgId())
+      await prisma.smsMessage.create({
+        data: {
+          candidateId: candidate?.id ?? null,
+          organizationId: orgId,
+          direction: 'inbound',
+          body: content ?? '',
+          fromNumber,
+          toNumber: toNumber ?? '',
+          status: 'received',
+          krispcallId: pickStr(body, ['data.object.id', 'id']),
+        },
+      })
     }
   }
 
@@ -236,36 +239,56 @@ export async function POST(req: NextRequest) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: phoneToMatch } },
       })
-      const orgId = candidate?.organizationId ?? null
-      if (candidate) {
-        const existing = quoId
-          ? await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
-          : null
-        if (existing) {
-          await prisma.callLog.update({
-            where: { id: existing.id },
-            data: { duration, status: 'completed', recordingUrl, organizationId: orgId },
-          })
-        } else {
-          await prisma.callLog.create({
-            data: {
-              candidateId: candidate.id,
-              organizationId: orgId,
-              direction,
-              fromNumber: fromNumber ?? '',
-              toNumber: toNumber ?? '',
-              duration,
-              status: 'completed',
-              recordingUrl,
-              krispcallId: quoId,
-            },
-          })
-        }
+      // Persist the call log even when the other-party number doesn't
+      // match a known Candidate. The Phone tab surfaces those rows as
+      // unknown-number threads with an "Add to Ace" action so the
+      // recruiter can find calls they had with people not yet in the
+      // CRM (e.g. a client contact, or a referral they haven't logged).
+      const orgId = candidate?.organizationId ?? (await defaultOrgId())
+      const existing = quoId
+        ? await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
+        : null
+      if (existing) {
+        await prisma.callLog.update({
+          where: { id: existing.id },
+          data: { duration, status: 'completed', recordingUrl, organizationId: orgId },
+        })
+      } else {
+        await prisma.callLog.create({
+          data: {
+            candidateId: candidate?.id ?? null,
+            organizationId: orgId,
+            direction,
+            fromNumber: fromNumber ?? '',
+            toNumber: toNumber ?? '',
+            duration,
+            status: 'completed',
+            recordingUrl,
+            krispcallId: quoId,
+          },
+        })
       }
     }
   }
 
   return NextResponse.json({ ok: true })
+}
+
+// Webhooks have no caller session, so we can't use getCurrentOrg().
+// Pick the first Organization row as a fallback when an inbound row
+// doesn't match any Candidate — Ace is single-tenant in practice
+// (BreakPoint Talent), so this resolves to the right org without
+// hardcoding a cuid in source. Cached after first hit so the webhook
+// never makes more than one extra round-trip per cold container.
+let cachedDefaultOrgId: string | null = null
+async function defaultOrgId(): Promise<string | null> {
+  if (cachedDefaultOrgId) return cachedDefaultOrgId
+  const org = await prisma.organization.findFirst({
+    orderBy: { createdAt: 'asc' },
+    select: { id: true },
+  })
+  cachedDefaultOrgId = org?.id ?? null
+  return cachedDefaultOrgId
 }
 
 function verifySignature(header: string | null, rawBody: string): boolean {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
+  Building2,
   ExternalLink,
   Loader2,
   Mic,
@@ -14,6 +15,7 @@ import {
   RefreshCw,
   Send,
   User as UserIcon,
+  UserPlus,
   Users as UsersIcon,
   Voicemail,
   X,
@@ -53,8 +55,13 @@ type ThreadEntryLast =
 
 type PhoneThread = {
   id: string;
-  kind: "candidate";
-  candidateId: string;
+  // "candidate" — joined to a Candidate row.
+  // "unknown"   — no Candidate match in the CRM. Surfaced so the
+  //               recruiter still sees calls/texts with people not
+  //               yet added (e.g. a client contact); the row offers
+  //               an "Add to Ace" affordance.
+  kind: "candidate" | "unknown";
+  candidateId: string | null;
   contactName: string;
   phoneNumber: string;
   lastActivity: ThreadEntryLast | null;
@@ -89,7 +96,7 @@ type ThreadEntry = SmsEntry | CallEntry;
 
 type ThreadDetail = {
   contact: {
-    kind: "candidate";
+    kind: "candidate" | "unknown";
     id: string;
     name: string;
     phoneNumber: string;
@@ -578,9 +585,13 @@ function ThreadRow({
           </div>
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-court-fg-muted">
-          {thread.kind === "candidate" && (
+          {thread.kind === "candidate" ? (
             <span className="rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider">
               Candidate
+            </span>
+          ) : (
+            <span className="rounded-sm bg-amber-50 px-1 py-0.5 text-[10px] font-medium uppercase tracking-wider text-amber-700">
+              Unknown
             </span>
           )}
           {thread.phoneNumber && (
@@ -792,7 +803,14 @@ function ThreadDetailPane({
             {detail.contact.name}
           </h2>
           <p className="mt-0.5 flex items-center gap-2 text-xs text-court-fg-muted">
-            <span className="rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider">
+            <span
+              className={
+                "rounded-sm px-1 py-0.5 text-[10px] uppercase tracking-wider " +
+                (detail.contact.kind === "unknown"
+                  ? "bg-amber-50 font-medium text-amber-700"
+                  : "bg-court-surface-subtle")
+              }
+            >
               {detail.contact.kind}
             </span>
             {detail.contact.phoneNumber && (
@@ -808,7 +826,11 @@ function ThreadDetailPane({
               placeholder for now. */}
           <ActionPlaceholder label="Call" icon={<PhoneCall className="h-3 w-3" />} />
           <OpenInQuoButton phoneNumber={detail.contact.phoneNumber} />
-          <OpenProfileButton match={profileMatch} />
+          {detail.contact.kind === "unknown" ? (
+            <AddToAceButton phoneNumber={detail.contact.phoneNumber} />
+          ) : (
+            <OpenProfileButton match={profileMatch} />
+          )}
           <ActionPlaceholder label="More" icon={<MoreHorizontal className="h-3 w-3" />} />
         </div>
       </div>
@@ -1032,6 +1054,77 @@ function OpenInQuoButton({ phoneNumber }: { phoneNumber: string }) {
       {loading ? <Loader2 className="h-3 w-3 animate-spin" /> : <ExternalLink className="h-3 w-3" />}
       Open in Quo
     </button>
+  );
+}
+
+// "Add to Ace" pop-up shown on unknown-number threads. Two paths only,
+// keeping the menu shallow: jump to /candidates/new pre-filled with
+// the phone, or jump to /clients to pick the company that owns the
+// contact (the client profile already has its own Add Contact form).
+// Closing on outside-click + escape is handled by the global click
+// handler below — no custom dropdown framework needed.
+function AddToAceButton({ phoneNumber }: { phoneNumber: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDocClick(e: MouseEvent) {
+      if (!ref.current) return;
+      if (e.target instanceof Node && !ref.current.contains(e.target)) {
+        setOpen(false);
+      }
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const phoneParam = encodeURIComponent(phoneNumber || "");
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-court-accent hover:text-court-accent-dark"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        title="Add this number to Ace"
+      >
+        <UserPlus className="h-3 w-3" />
+        Add to Ace
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 z-30 mt-1 w-56 overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg"
+        >
+          <Link
+            href={`/candidates/new?phone=${phoneParam}`}
+            className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg transition hover:bg-court-accent-tint/40"
+            onClick={() => setOpen(false)}
+            role="menuitem"
+          >
+            <UserIcon className="h-3.5 w-3.5 text-court-fg-muted" />
+            Add as candidate
+          </Link>
+          <Link
+            href={`/clients?addContactPhone=${phoneParam}`}
+            className="flex items-center gap-2 border-t border-court-border px-3 py-2 text-xs text-court-fg transition hover:bg-court-accent-tint/40"
+            onClick={() => setOpen(false)}
+            role="menuitem"
+          >
+            <Building2 className="h-3.5 w-3.5 text-court-fg-muted" />
+            Add as client contact
+          </Link>
+        </div>
+      )}
+    </div>
   );
 }
 

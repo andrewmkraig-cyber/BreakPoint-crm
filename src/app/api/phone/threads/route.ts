@@ -33,8 +33,13 @@ type ThreadEntryLast =
 
 type PhoneThread = {
   id: string;
-  kind: "candidate";
-  candidateId: string;
+  // "candidate" — joined to a Candidate row.
+  // "unknown"   — no matching Candidate in the CRM. The thread is
+  //               keyed by the other-party phone number so the
+  //               recruiter can still see the activity and offer to
+  //               add the contact to Ace afterwards.
+  kind: "candidate" | "unknown";
+  candidateId: string | null;
   contactName: string;
   phoneNumber: string;
   lastActivity: ThreadEntryLast | null;
@@ -101,10 +106,11 @@ export async function GET(req: NextRequest) {
   // Bucket every row by candidateId so we can hydrate contact names
   // in one round-trip and assemble per-thread aggregates.
   const candidateIds = Array.from(
-    new Set([
-      ...smsRows.map((s) => s.candidateId),
-      ...callRows.map((c) => c.candidateId),
-    ]),
+    new Set(
+      [...smsRows, ...callRows]
+        .map((r) => r.candidateId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
   );
   const candidates = candidateIds.length
     ? await prisma.candidate.findMany({
@@ -120,13 +126,15 @@ export async function GET(req: NextRequest) {
   const candById = new Map(candidates.map((c) => [c.id, c]));
 
   const threadMap = new Map<string, PhoneThread>();
-  function ensureThread(candidateId: string): PhoneThread | null {
+
+  function ensureCandidateThread(candidateId: string): PhoneThread | null {
     const cand = candById.get(candidateId);
     if (!cand) return null;
-    const existing = threadMap.get(candidateId);
+    const key = `cand:${candidateId}`;
+    const existing = threadMap.get(key);
     if (existing) return existing;
     const fresh: PhoneThread = {
-      id: candidateId,
+      id: key,
       kind: "candidate",
       candidateId,
       contactName:
@@ -136,12 +144,40 @@ export async function GET(req: NextRequest) {
       counts: { sms: 0, calls: 0, missedCalls: 0 },
       hasUnread: false,
     };
-    threadMap.set(candidateId, fresh);
+    threadMap.set(key, fresh);
+    return fresh;
+  }
+
+  // Unknown-number threads are keyed by the last-10 digits of the other
+  // party's number. Same digits always collapse into the same thread,
+  // even if Quo formats the number differently across events ((937)
+  // 555-1234 vs +1 937 555 1234, etc.).
+  function normalizeOther(num: string | null | undefined): string {
+    return (num ?? "").replace(/\D/g, "").slice(-10);
+  }
+  function ensureUnknownThread(rawNumber: string): PhoneThread {
+    const digits = normalizeOther(rawNumber);
+    const key = `unk:${digits || rawNumber}`;
+    const existing = threadMap.get(key);
+    if (existing) return existing;
+    const fresh: PhoneThread = {
+      id: key,
+      kind: "unknown",
+      candidateId: null,
+      contactName: rawNumber || "(unknown number)",
+      phoneNumber: rawNumber,
+      lastActivity: null,
+      counts: { sms: 0, calls: 0, missedCalls: 0 },
+      hasUnread: false,
+    };
+    threadMap.set(key, fresh);
     return fresh;
   }
 
   for (const s of smsRows) {
-    const t = ensureThread(s.candidateId);
+    const t = s.candidateId
+      ? ensureCandidateThread(s.candidateId)
+      : ensureUnknownThread(s.direction === "outbound" ? s.toNumber : s.fromNumber);
     if (!t) continue;
     t.counts.sms += 1;
     if (!t.lastActivity || s.createdAt > new Date(t.lastActivity.at)) {
@@ -161,7 +197,9 @@ export async function GET(req: NextRequest) {
     }
   }
   for (const c of callRows) {
-    const t = ensureThread(c.candidateId);
+    const t = c.candidateId
+      ? ensureCandidateThread(c.candidateId)
+      : ensureUnknownThread(c.direction === "outbound" ? c.toNumber : c.fromNumber);
     if (!t) continue;
     t.counts.calls += 1;
     const isMissed = c.status === "missed" || c.status === "no-answer";

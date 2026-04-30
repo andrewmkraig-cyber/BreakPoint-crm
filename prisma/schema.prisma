@@ -550,7 +550,11 @@ model JobOverride {
 
 model SmsMessage {
   id             String   @id @default(cuid())
-  candidateId    String
+  // Nullable so webhooks can store messages from unknown numbers. The
+  // Phone tab surfaces those as "unknown" threads keyed by phoneOther
+  // and offers "Add to Ace" affordances to link them to a Candidate /
+  // Client contact later.
+  candidateId    String?
   // Phone Tab Phase 1: tenant scope + client linkage. Both nullable to
   // permit a backfill pass; existing rows get organizationId stamped
   // from Candidate.organizationId by scripts. clientId stays null
@@ -576,7 +580,9 @@ model SmsMessage {
 
 model CallLog {
   id             String         @id @default(cuid())
-  candidateId    String
+  // Nullable so webhooks can store calls from unknown numbers, same
+  // rationale as SmsMessage above.
+  candidateId    String?
   // Phone Tab Phase 1: see SmsMessage above for the same nullable
   // organizationId / clientId rationale.
   organizationId String?

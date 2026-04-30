@@ -47,8 +47,112 @@ export async function GET(
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const org = await getCurrentOrg();
-  const candidateId = params.id;
+  // Thread id encoding mirrors the threads list endpoint:
+  //   "cand:<cuid>"  → matched Candidate thread
+  //   "unk:<digits>" → unknown-number thread, keyed by last-10 digits
+  // Older callers may still pass a bare cuid (legacy "candidate-only"
+  // ids); treat those as cand: for backward compat.
+  const raw = params.id;
+  const isUnknown = raw.startsWith("unk:");
+  const isCandidate = raw.startsWith("cand:");
+  const subjectId = isUnknown || isCandidate ? raw.slice(raw.indexOf(":") + 1) : raw;
 
+  if (isUnknown) {
+    const digits = subjectId.replace(/\D/g, "").slice(-10);
+    if (!digits) {
+      return NextResponse.json({ error: "Thread not found" }, { status: 404 });
+    }
+    const [smsRows, callRows] = await Promise.all([
+      prisma.smsMessage.findMany({
+        where: {
+          organizationId: org.id,
+          candidateId: null,
+          OR: [
+            { fromNumber: { contains: digits } },
+            { toNumber: { contains: digits } },
+          ],
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          direction: true,
+          body: true,
+          fromNumber: true,
+          toNumber: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+      prisma.callLog.findMany({
+        where: {
+          organizationId: org.id,
+          candidateId: null,
+          OR: [
+            { fromNumber: { contains: digits } },
+            { toNumber: { contains: digits } },
+          ],
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          direction: true,
+          fromNumber: true,
+          toNumber: true,
+          duration: true,
+          status: true,
+          recordingUrl: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+    const sms: SmsEntry[] = smsRows.map((s) => ({
+      kind: "sms",
+      id: s.id,
+      direction: s.direction,
+      body: s.body,
+      fromNumber: s.fromNumber,
+      toNumber: s.toNumber,
+      status: s.status,
+      createdAt: s.createdAt.toISOString(),
+    }));
+    const calls: CallEntry[] = callRows.map((c) => ({
+      kind: "call",
+      id: c.id,
+      direction: c.direction,
+      fromNumber: c.fromNumber,
+      toNumber: c.toNumber,
+      duration: c.duration,
+      status: c.status,
+      recordingUrl: c.recordingUrl,
+      createdAt: c.createdAt.toISOString(),
+    }));
+    const entries: Array<SmsEntry | CallEntry> = [...sms, ...calls].sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    );
+    // Pick the other-party number from the most recent row so the
+    // header doesn't render "(unknown number)" when we have a
+    // formatted version on hand.
+    const all = [...smsRows, ...callRows].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
+    );
+    const sample = all[0];
+    const phoneNumber = sample
+      ? sample.direction === "outbound"
+        ? sample.toNumber
+        : sample.fromNumber
+      : digits;
+    return NextResponse.json({
+      contact: {
+        kind: "unknown" as const,
+        id: raw,
+        name: phoneNumber || "(unknown number)",
+        phoneNumber,
+      },
+      entries,
+    });
+  }
+
+  const candidateId = subjectId;
   const candidate = await prisma.candidate.findFirst({
     where: { id: candidateId, organizationId: org.id },
     select: { id: true, firstName: true, lastName: true, phone: true },
