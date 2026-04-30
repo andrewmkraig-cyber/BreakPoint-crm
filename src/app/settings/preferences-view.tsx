@@ -71,17 +71,17 @@ export function NotificationPreferencesView() {
         checked={mailNotifs}
         onChange={onToggleMailNotifs}
       />
-      <div className="border-t border-court-border pt-3">
-        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+      <div className="border-t border-court-border pt-5">
+        <div className="text-sm font-semibold text-court-fg">
           Email notification style
         </div>
         <NotifStylePicker value={toastTheme} onPick={onPickToastTheme} kind="email" />
       </div>
-      <div className="border-t border-court-border pt-3">
-        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+      <div className="border-t border-court-border pt-5">
+        <div className="text-sm font-semibold text-court-fg">
           Phone notification style
         </div>
-        <div className="mt-1 text-[11px] text-court-fg-muted">
+        <div className="mt-0.5 text-xs text-court-fg-muted">
           Applies once Quo text notifications are wired up.
         </div>
         <NotifStylePicker value={textToastTheme} onPick={onPickTextToastTheme} kind="text" />
