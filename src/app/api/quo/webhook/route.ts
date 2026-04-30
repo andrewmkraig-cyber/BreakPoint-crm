@@ -33,6 +33,17 @@ export async function POST(req: NextRequest) {
     (body as { event_type?: string }).event_type ||
     (body as { action?: string }).action
 
+  // Diagnostic logger — surfaces every Quo event's type and the top-level
+  // shape of body + body.data.object in Vercel logs so unhandled events
+  // and unexpected payload paths become visible without a code change.
+  // Read-only; no behavior impact on the branches below.
+  const dataObj = (body as { data?: { object?: Record<string, unknown> } }).data?.object
+  console.log(
+    `[quo/webhook] event=${eventType ?? '(undefined)'}` +
+      ` body_keys=${Object.keys(body).join(',')}` +
+      ` data_object_keys=${dataObj ? Object.keys(dataObj).join(',') : '(none)'}`,
+  )
+
   if (eventType === 'message.received' || eventType === 'new_sms_or_mms') {
     const fromNumber = pickStr(body, ['data.object.from', 'from_number', 'from'])
     const toNumber = pickStr(body, ['data.object.to', 'to_number', 'to'])
