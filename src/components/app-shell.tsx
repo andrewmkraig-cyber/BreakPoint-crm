@@ -133,14 +133,30 @@ export function AppShell({
               onMouseDown={onHandleMouseDown}
               className={
                 "sticky top-0 hidden h-screen w-1.5 shrink-0 cursor-col-resize self-start md:block " +
-                // Default bg matches the sidebar + topbar so the
-                // 1.5px strip between them doesn't expose the darker
-                // body bg as a visible vertical seam at the top of
-                // the page. Drag/hover states remain brand-tinted so
-                // the hit-target still telegraphs interactivity.
-                (dragging ? "bg-brand/40" : "bg-court-surface hover:bg-brand/20")
+                // Body bg matches the page content (court-surface-subtle)
+                // below the topbar so the 1.5px strip blends with the
+                // page in the content area — only the sidebar's
+                // border-r remains as the visible vertical divider.
+                // The top-h-24 segment is overlaid below to match the
+                // chrome (court-surface) so the strip doesn't expose
+                // the page bg in the brand-mark/topbar row either.
+                // Drag/hover states stay brand-tinted on top.
+                (dragging ? "bg-brand/40" : "bg-court-surface-subtle hover:bg-brand/20")
               }
-            />
+            >
+              {/* Top-row filler: matches the sidebar + topbar's
+                  bg-court-surface for the h-24 chrome band. pointer-
+                  events-none lets clicks/drags fall through to the
+                  parent so this overlay never steals the resize
+                  hit-target. Hidden during drag so the brand-tinted
+                  drag bg shows the full strip. */}
+              {!dragging ? (
+                <div
+                  aria-hidden="true"
+                  className="pointer-events-none h-24 w-full bg-court-surface"
+                />
+              ) : null}
+            </div>
             {/* min-w-0 on the flex-1 column + main lets nested
                 wide content (e.g. /jobs table with min-w-[1080px])
                 trigger their own overflow-x-auto wrappers instead of
