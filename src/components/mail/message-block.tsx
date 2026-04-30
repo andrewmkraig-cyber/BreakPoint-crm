@@ -78,34 +78,41 @@ export function MessageBlock({
   return (
     <article
       className={
-        "min-w-0 overflow-hidden px-5 py-4 " +
+        "min-w-0 overflow-hidden px-4 py-2 " +
         (isFirst ? "" : "border-t border-court-border")
       }
     >
-      <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-court-fg">
-            <span>{msg.fromName || msg.fromEmail || "(unknown sender)"}</span>
-            {msg.senderClient && (
-              // Sender's address resolved to a Contact whose Client we
-              // know — surface a one-click jump to that profile so the
-              // recruiter can land on the company without leaving the
-              // thread first.
-              <Link
-                href={`/clients/${msg.senderClient.slug}`}
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
-                title={`Open ${msg.senderClient.name}`}
-              >
-                <Building2 className="h-3 w-3" />
-                Open {msg.senderClient.name}
-              </Link>
-            )}
-          </div>
+      {/* Single tight header row: sender + date + per-message actions
+          all on one line, "to ..." line underneath in muted small.
+          Pre-fix this took two rows of large text + a separate Open
+          client chip, eating most of the popup's vertical real estate
+          when the actual email body was three letters long. */}
+      <header className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span className="truncate text-sm font-medium text-court-fg">
+            {msg.fromName || msg.fromEmail || "(unknown sender)"}
+          </span>
+          {msg.senderClient && (
+            // Sender's address resolved to a Contact whose Client we
+            // know — surface a one-click jump to that profile so the
+            // recruiter can land on the company without leaving the
+            // thread first. Subtler treatment now (link, not button)
+            // so it reads as metadata next to the name instead of a
+            // chip taking its own row.
+            <Link
+              href={`/clients/${msg.senderClient.slug}`}
+              className="inline-flex items-center gap-0.5 text-[11px] font-medium text-court-accent-dark hover:underline"
+              title={`Open ${msg.senderClient.name}`}
+            >
+              <Building2 className="h-3 w-3" />
+              {msg.senderClient.name}
+            </Link>
+          )}
           {msg.to && (
-            <div className="truncate text-[11px] text-court-fg-muted">
+            <span className="truncate text-[11px] text-court-fg-muted">
               to {msg.to}
               {msg.cc ? ` · cc ${msg.cc}` : ""}
-            </div>
+            </span>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -142,9 +149,9 @@ export function MessageBlock({
               </button>
             </div>
           )}
-          <div className="text-[11px] text-court-fg-muted">
+          <span className="text-[11px] text-court-fg-muted">
             {msg.dateIso ? new Date(msg.dateIso).toLocaleString() : ""}
-          </div>
+          </span>
         </div>
       </header>
       <div
@@ -168,18 +175,17 @@ export function MessageBlock({
           // the user a horizontal scroll within the message instead
           // of pushing the popup wider than the viewport.
           "min-w-0 max-w-full overflow-x-auto",
-          // "Reading paper" container — pure white in light Court
-          // Modes (Hard / Clay / Grass light) so emails read like a
-          // normal mail client, then a soft cream in dark modes
-          // (Hard / Clay / Grass dark) so the card doesn't blast the
-          // eyes on dark page bg. Tailwind's dark: variant maps to
-          // [data-theme='dark'] in this app's config (see
-          // tailwind.config.ts), which covers all three dark courts.
-          // Night mode reads as bg-white — matches Gmail's own dark-
-          // mode treatment where the email card stays white. Anchor +
-          // blockquote colors below stay pinned to fixed slate/green
-          // values so they read on either bg.
-          "rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-sm dark:bg-[#F5F1E8]",
+          // Background guarantees a light surface for the email body
+          // even in dark Court Modes — most HTML emails ship with
+          // dark text and would be unreadable on the dark popup bg
+          // otherwise. We dropped the previous border + shadow + p-4
+          // chrome that wrapped the body in an extra "reading paper"
+          // card; with one short message the card looked like a tiny
+          // bubble inside a giant empty popup. The body now flows
+          // edge-to-edge so the email itself dominates the popup
+          // visually. Anchor + blockquote colors below stay pinned to
+          // fixed slate/green values so they read on either bg.
+          "bg-white py-1 text-slate-900 dark:bg-[#F5F1E8] dark:rounded-md dark:px-3 dark:py-2",
           // No [&>div+div]:mt-2 here — Gmail emits empty <div><br></div>
           // spacers between paragraphs already, so adding extra margin
           // on top doubled the rhythm and was the second contributor
