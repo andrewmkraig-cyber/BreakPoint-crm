@@ -18,6 +18,7 @@ export type ContactRow = {
   title: string;
   email: string;
   phone: string;
+  extension: string;
   linkedIn: string | null;
   notes: string;
   lastContactedAt: string | null;
@@ -101,7 +102,10 @@ export function ContactsTab({
             <Field label="Last name" name="last_name" />
             <Field label="Title" name="current_designation" placeholder="e.g. VP Engineering" />
             <Field label="Email" name="email" type="email" placeholder="name@company.com" />
-            <Field label="Phone" name="phone_number" placeholder="(555) 555-5555" />
+            <div className="grid grid-cols-[1fr_auto] gap-2">
+              <Field label="Phone" name="phone_number" placeholder="(555) 555-5555" />
+              <Field label="Ext." name="phone_extension" placeholder="123" className="w-20" />
+            </div>
             <Field label="LinkedIn URL" name="linkedin_profile" placeholder="https://linkedin.com/in/…" />
           </div>
           {error && (
@@ -206,8 +210,15 @@ export function ContactsTab({
                     }}
                   >
                     {c.phone ? (
-                      <a href={telHref(c.phone)} className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark">
-                        <PhoneIcon className="h-3 w-3 text-court-fg-muted" /> {formatPhone(c.phone)}
+                      <a
+                        href={telHref(c.phone, c.extension)}
+                        className="inline-flex items-center gap-1 text-court-fg hover:text-brand-dark"
+                      >
+                        <PhoneIcon className="h-3 w-3 text-court-fg-muted" />
+                        {formatPhone(c.phone)}
+                        {c.extension && (
+                          <span className="text-court-fg-muted">ext. {c.extension}</span>
+                        )}
                       </a>
                     ) : (
                       <span className="text-court-fg-muted">—</span>
@@ -251,6 +262,7 @@ function ContactEditor({
   const [title, setTitle] = useState(contact.title);
   const [email, setEmail] = useState(contact.email);
   const [phone, setPhone] = useState(contact.phone);
+  const [extension, setExtension] = useState(contact.extension);
   const [linkedin, setLinkedin] = useState(contact.linkedIn ?? "");
   const [notes, setNotes] = useState(contact.notes);
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +287,7 @@ function ContactEditor({
         title,
         email,
         phone,
+        extension,
         linkedin,
         notes,
       });
@@ -290,6 +303,7 @@ function ContactEditor({
         title: res.value.title,
         email: res.value.email,
         phone: res.value.phone,
+        extension: res.value.extension,
         linkedIn: res.value.linkedin || null,
         notes: res.value.notes,
       });
@@ -322,7 +336,10 @@ function ContactEditor({
           </div>
           <EditorField label="Title" value={title} onChange={setTitle} placeholder="e.g. VP Engineering" />
           <EditorField label="Email" type="email" value={email} onChange={setEmail} placeholder="name@company.com" />
-          <EditorField label="Phone" value={phone} onChange={setPhone} placeholder="(555) 555-5555" />
+          <div className="grid grid-cols-[1fr_auto] gap-2">
+            <EditorField label="Phone" value={phone} onChange={setPhone} placeholder="(555) 555-5555" />
+            <EditorField label="Ext." value={extension} onChange={setExtension} placeholder="123" className="w-24" />
+          </div>
           <EditorField label="LinkedIn URL" value={linkedin} onChange={setLinkedin} placeholder="https://linkedin.com/in/…" />
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Notes</span>
@@ -372,6 +389,7 @@ function EditorField({
   required,
   placeholder,
   autoFocus,
+  className,
 }: {
   label: string;
   value: string;
@@ -380,9 +398,10 @@ function EditorField({
   required?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  className?: string;
 }) {
   return (
-    <label className="block text-sm">
+    <label className={cn("block text-sm", className)}>
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}
@@ -410,6 +429,7 @@ function Field({
   required,
   placeholder,
   autoFocus,
+  className,
 }: {
   label: string;
   name: string;
@@ -417,9 +437,10 @@ function Field({
   required?: boolean;
   placeholder?: string;
   autoFocus?: boolean;
+  className?: string;
 }) {
   return (
-    <label className="block text-sm">
+    <label className={cn("block text-sm", className)}>
       <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
         {label}
         {required && <span className="ml-0.5 text-red-500">*</span>}

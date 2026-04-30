@@ -35,6 +35,7 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
   const last = String(formData.get("last_name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim();
   const phone = String(formData.get("phone_number") ?? "").trim();
+  const extension = String(formData.get("phone_extension") ?? "").trim();
   const title = String(formData.get("current_designation") ?? "").trim();
   const linkedin = String(formData.get("linkedin_profile") ?? "").trim();
 
@@ -48,13 +49,19 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
     });
     if (!client) return { ok: false, error: "Client not found." };
 
+    const phoneEntry = phone
+      ? extension
+        ? { number: phone, extension }
+        : { number: phone }
+      : null;
+
     const created = await prisma.contact.create({
       data: {
         firstName: first,
         lastName: last || null,
         name: [first, last].filter(Boolean).join(" "),
         emails: email ? [email] : [],
-        phoneNumbers: phone ? [{ number: phone }] : undefined,
+        phoneNumbers: phoneEntry ? [phoneEntry] : undefined,
         currentDesignation: title || null,
         linkedinProfile: linkedin || null,
         clientId: client.id,
@@ -78,6 +85,7 @@ export type UpdateContactInput = {
   title: string;
   email: string;
   phone: string;
+  extension: string;
   linkedin: string;
   notes: string;
 };
@@ -90,6 +98,7 @@ export type UpdateContactResult = ActionResult<{
   title: string;
   email: string;
   phone: string;
+  extension: string;
   linkedin: string;
   notes: string;
 }>;
@@ -118,10 +127,17 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
 
     const email = input.email.trim();
     const phone = input.phone.trim();
+    const extension = input.extension.trim();
     const title = input.title.trim();
     const linkedin = input.linkedin.trim();
     const notes = input.notes.trim();
     const combined = [first, last].filter(Boolean).join(" ");
+
+    const phoneEntry = phone
+      ? extension
+        ? { number: phone, extension }
+        : { number: phone }
+      : null;
 
     const updated = await prisma.contact.update({
       where: { id: existing.id },
@@ -130,7 +146,7 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
         lastName: last || null,
         name: combined,
         emails: email ? [email] : [],
-        phoneNumbers: phone ? [{ number: phone }] : undefined,
+        phoneNumbers: phoneEntry ? [phoneEntry] : undefined,
         currentDesignation: title || null,
         linkedinProfile: linkedin || null,
         notes: notes || null,
@@ -156,9 +172,13 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
       revalidatePath(`/clients/${slug}`);
     }
 
-    const phoneOut = (() => {
-      const pn = updated.phoneNumbers as Array<{ number?: string | null }> | null;
-      return pn?.[0]?.number ?? "";
+    const { phoneOut, extensionOut } = (() => {
+      const pn = updated.phoneNumbers as Array<{ number?: string | null; extension?: string | null }> | null;
+      const first = pn?.[0];
+      return {
+        phoneOut: first?.number ?? "",
+        extensionOut: first?.extension ?? "",
+      };
     })();
 
     return {
@@ -171,6 +191,7 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
         title: updated.currentDesignation ?? "",
         email: Array.isArray(updated.emails) && updated.emails.length > 0 ? updated.emails[0] : "",
         phone: phoneOut,
+        extension: extensionOut,
         linkedin: updated.linkedinProfile ?? "",
         notes: updated.notes ?? "",
       },

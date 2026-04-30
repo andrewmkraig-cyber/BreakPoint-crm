@@ -518,14 +518,24 @@ export function normalizeToE164(raw: string | null | undefined): string | null {
 }
 
 // Builds a `tel:` href (E.164) so Krispcall/Quo click-to-call always receives
-// a leading + and country code.
-export function telHref(raw: string | null | undefined): string {
+// a leading + and country code. Optional extension is appended via the RFC
+// 3966 ;ext=N suffix — most clients (incl. Quo desktop) honor it as the
+// post-dial digits, callers that don't just ignore it.
+export function telHref(
+  raw: string | null | undefined,
+  extension?: string | null,
+): string {
   if (!raw) return "";
   const digits = raw.replace(/\D/g, "");
   if (!digits) return "";
-  if (digits.length === 10) return `tel:+1${digits}`;
-  if (digits.length === 11 && digits.startsWith("1")) return `tel:+${digits}`;
-  return `tel:+${digits}`;
+  const base =
+    digits.length === 10
+      ? `tel:+1${digits}`
+      : digits.length === 11 && digits.startsWith("1")
+        ? `tel:+${digits}`
+        : `tel:+${digits}`;
+  const ext = (extension ?? "").trim().replace(/[^\d#*]/g, "");
+  return ext ? `${base};ext=${ext}` : base;
 }
 
 export function daysBetween(iso: string | null | undefined, now: Date = new Date()): number | null {

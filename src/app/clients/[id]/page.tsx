@@ -451,6 +451,7 @@ export default async function ClientDetailPage({
             title: c.currentDesignation ?? "",
             email: Array.isArray(c.emails) && c.emails.length > 0 ? c.emails[0] : "",
             phone: firstPhone(c.phoneNumbers),
+            extension: firstExtension(c.phoneNumbers),
             linkedIn: c.linkedinProfile ?? null,
             notes: c.notes ?? "",
             lastContactedAt:
@@ -683,6 +684,16 @@ function firstPhone(raw: unknown): string {
   if (first && typeof first === "object" && "number" in (first as object)) {
     const n = (first as { number?: string }).number;
     return typeof n === "string" ? n : "";
+  }
+  return "";
+}
+
+function firstExtension(raw: unknown): string {
+  if (!Array.isArray(raw) || raw.length === 0) return "";
+  const first = raw[0];
+  if (first && typeof first === "object" && "extension" in (first as object)) {
+    const ext = (first as { extension?: string | null }).extension;
+    return typeof ext === "string" ? ext : "";
   }
   return "";
 }
