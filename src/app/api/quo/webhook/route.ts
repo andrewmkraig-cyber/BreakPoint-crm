@@ -76,15 +76,43 @@ export async function POST(req: NextRequest) {
   // upsert into the 1:1 CallTranscript relation keyed on callLogId.
   // Summary stays untouched here; call.summary.completed handles it
   // separately because the two events can arrive in either order.
+  //
+  // Real payload shape (confirmed from a live event 2026-04-30):
+  //   - top-level wrapper is body.object (NOT body.data)
+  //   - callId at body.object.data.object.callId
+  //   - dialogue is an array at body.object.data.object.dialogue:
+  //       [{ start: 2.87, end, content, identifier, userId }, ...]
+  // Older fallback paths kept so legacy / alt-nesting events don't drop
+  // silently.
   if (eventType === 'call.transcript.completed') {
-    const quoId = pickStr(body, ['data.object.id', 'id', 'call_id'])
-    const transcriptText = pickStr(body, [
-      'data.object.transcript',
-      'data.object.transcription',
-      'transcript',
+    const quoId = pickStr(body, [
+      'object.data.object.callId',
+      'data.object.callId',
+      'data.object.id',
+      'id',
+      'call_id',
     ])
+    const dialogue =
+      (getPath(body, 'object.data.object.dialogue') as unknown) ??
+      (getPath(body, 'data.object.dialogue') as unknown)
+    let transcriptText: string | undefined
+    if (Array.isArray(dialogue)) {
+      transcriptText = dialogue
+        .map((d) => {
+          const item = d as { start?: number; content?: string; identifier?: string }
+          const ts = formatMmss(typeof item.start === 'number' ? item.start : 0)
+          const speaker = item.identifier ?? '(unknown)'
+          const content = (item.content ?? '').trim()
+          return `${ts} ${speaker}: ${content}`
+        })
+        .join('\n')
+    }
     if (!quoId || !transcriptText) {
-      console.warn('[quo/webhook] call.transcript.completed missing id or transcript', { quoId, hasTranscript: !!transcriptText })
+      console.warn('[quo/webhook] call.transcript.completed missing id or dialogue', {
+        quoId,
+        dialogueIsArray: Array.isArray(dialogue),
+        dialogueLen: Array.isArray(dialogue) ? dialogue.length : 0,
+      })
       return NextResponse.json({ ok: true })
     }
     const callLog = await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
@@ -107,15 +135,54 @@ export async function POST(req: NextRequest) {
   // summary event arrives before the transcript event (rare but
   // possible), we create the row with an empty transcript that the
   // later transcript event will overwrite.
+  //
+  // Real payload shape (confirmed 2026-04-30):
+  //   - body.object.data.object.summary  -> string[] of bullet sentences
+  //   - body.object.data.object.nextSteps -> string[] of bullet sentences
+  // Format saved to CallTranscript.summary:
+  //   <summary lines joined by \n>
+  //   <blank line>
+  //   "Next Steps:"
+  //   <nextSteps lines joined by \n>
+  // (the Next Steps block is omitted when nextSteps is empty/absent).
   if (eventType === 'call.summary.completed') {
-    const quoId = pickStr(body, ['data.object.id', 'id', 'call_id'])
-    const summaryText = pickStr(body, [
-      'data.object.summary',
-      'data.object.ai_summary',
-      'summary',
+    const quoId = pickStr(body, [
+      'object.data.object.callId',
+      'data.object.callId',
+      'data.object.id',
+      'id',
+      'call_id',
     ])
+    const summary =
+      (getPath(body, 'object.data.object.summary') as unknown) ??
+      (getPath(body, 'data.object.summary') as unknown)
+    const nextSteps =
+      (getPath(body, 'object.data.object.nextSteps') as unknown) ??
+      (getPath(body, 'data.object.nextSteps') as unknown)
+    let summaryText: string | undefined
+    if (Array.isArray(summary) && summary.length > 0) {
+      const summaryLines = summary
+        .map((s) => (typeof s === 'string' ? s.trim() : ''))
+        .filter(Boolean)
+        .join('\n')
+      if (Array.isArray(nextSteps) && nextSteps.length > 0) {
+        const nextStepLines = nextSteps
+          .map((s) => (typeof s === 'string' ? s.trim() : ''))
+          .filter(Boolean)
+          .join('\n')
+        summaryText = nextStepLines
+          ? `${summaryLines}\n\nNext Steps:\n${nextStepLines}`
+          : summaryLines
+      } else {
+        summaryText = summaryLines
+      }
+    }
     if (!quoId || !summaryText) {
-      console.warn('[quo/webhook] call.summary.completed missing id or summary', { quoId, hasSummary: !!summaryText })
+      console.warn('[quo/webhook] call.summary.completed missing id or summary', {
+        quoId,
+        summaryIsArray: Array.isArray(summary),
+        summaryLen: Array.isArray(summary) ? summary.length : 0,
+      })
       return NextResponse.json({ ok: true })
     }
     const callLog = await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
@@ -223,4 +290,16 @@ function getPath(obj: unknown, path: string): unknown {
     }
     return undefined
   }, obj)
+}
+
+// Format a seconds float (e.g. 2.87 from a Quo dialogue.start field)
+// as "M:SS" so transcript lines read like "0:02 +12168704655: Hello.".
+// Floor to whole seconds — sub-second precision is noise for human
+// reading. Negative or non-finite inputs collapse to "0:00".
+function formatMmss(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
+  const total = Math.floor(seconds)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
