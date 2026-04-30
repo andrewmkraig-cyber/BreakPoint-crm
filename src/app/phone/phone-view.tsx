@@ -1497,38 +1497,15 @@ export function CallPanel({
     .map((s) => s[0]!.toUpperCase())
     .join("");
 
-  const [calling, setCalling] = useState(false);
-  // POSTs to /api/quo/call which forwards to OpenPhone /v1/calls. On
-  // success, OpenPhone rings the Quo apps signed in to QUO_FROM_NUMBER
-  // and the recruiter picks up wherever they're at — we just need to
-  // dispatch the call request and acknowledge.
-  async function placeCall() {
-    if (!contact?.phoneNumber || calling) return;
-    setCalling(true);
-    try {
-      const res = await fetch("/api/quo/call", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: contact.phoneNumber }),
-      });
-      const body = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
-      if (!res.ok || !body?.ok) {
-        toast.error("Couldn't place call", {
-          description: body?.error ?? `HTTP ${res.status}`,
-        });
-        return;
-      }
-      toast.success(`Calling ${contact.phoneNumber}…`);
-      onClose();
-    } catch (e) {
-      toast.error("Couldn't place call", {
-        description: e instanceof Error ? e.message : "unknown error",
-      });
-    } finally {
-      setCalling(false);
-    }
+  // OpenPhone's public API doesn't expose outbound call initiation —
+  // POST /v1/calls returns 404 because there is no such endpoint. So
+  // "Call now" hands off to the Quo web app, where the recruiter can
+  // place the call from the Quo dialer directly.
+  function placeCall() {
+    if (!contact?.phoneNumber) return;
+    toast.info("Opening Quo to place call...");
+    window.open("https://my.openphone.com", "_blank", "noopener,noreferrer");
+    onClose();
   }
 
   return (
@@ -1572,11 +1549,11 @@ export function CallPanel({
         <button
           type="button"
           onClick={placeCall}
-          disabled={!contact || calling}
+          disabled={!contact}
           className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PhoneCall className="h-4 w-4" />}
-          Call now
+          <PhoneCall className="h-4 w-4" />
+          Call in Quo
         </button>
         <div className="flex items-center justify-between text-[11px]">
           <button
