@@ -525,7 +525,11 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             </Link>
           </div>
           {tab === "game-plan" ? (
-            <AiWorkspace entityType="candidate" entityId={candidate.id} />
+            <AiWorkspace
+              entityType="candidate"
+              entityId={candidate.id}
+              recipientEmail={candidate.email ?? null}
+            />
           ) : tab === "notes" ? (
             <LocalNotesTab
               candidateId={candidate.id}

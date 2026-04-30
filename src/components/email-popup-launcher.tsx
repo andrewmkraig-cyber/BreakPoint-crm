@@ -44,6 +44,8 @@ export function EmailPopupLauncher({
   context,
   candidateRef,
   defaultSubject = "",
+  defaultBody,
+  nonBlocking,
   onSent,
 }: {
   email: string | null | undefined;
@@ -60,6 +62,14 @@ export function EmailPopupLauncher({
   // API resolves both. Phase 5A.2.
   candidateRef?: string;
   defaultSubject?: string;
+  // Pre-fills the rich-text editor body. AI Workspace passes the
+  // bubble's clean HTML so an email straight from a Game Plan keeps
+  // its hyperlinks + bullets without dragging the dark theme along.
+  defaultBody?: string;
+  // Lets the caller override blocking behavior. Defaults to true so
+  // launching a click-to-email popup doesn't dim the rest of Ace —
+  // the recruiter can keep navigating with the composer floating.
+  nonBlocking?: boolean;
   onSent?: () => void;
 }) {
   const composer = useComposerManager();
@@ -76,6 +86,7 @@ export function EmailPopupLauncher({
       composer.open({
         defaultTo: trimmed,
         defaultSubject,
+        defaultBody,
         templates: init.templates,
         mergeContext: {
           ...(context ?? {}),
@@ -85,6 +96,7 @@ export function EmailPopupLauncher({
           },
         },
         candidateRef,
+        nonBlocking: nonBlocking ?? true,
         onSent,
       });
     } catch (err) {

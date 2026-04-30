@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Check, Copy, Loader2, Send, Trash2 } from "lucide-react";
+import { Check, Copy, Loader2, Mail, Send, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -21,6 +22,11 @@ export type AiWorkspaceProps = {
   entityType: "client" | "candidate";
   entityId: string;
   title?: string;
+  // When provided, assistant bubbles render an "Email" button that
+  // pops the in-app composer pre-filled with this address and the
+  // bubble's clean HTML as the body. Lets the recruiter ship a Game
+  // Plan response straight out of Ace without copy / paste.
+  recipientEmail?: string | null;
 };
 
 type Message = {
@@ -32,7 +38,7 @@ type Message = {
 
 const TEMP_ID_PREFIX = "local-";
 
-export function AiWorkspace({ entityType, entityId, title }: AiWorkspaceProps) {
+export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiWorkspaceProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -192,7 +198,14 @@ export function AiWorkspace({ entityType, entityId, title }: AiWorkspaceProps) {
         ) : (
           <ul className="space-y-4">
             {messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble
+                key={m.id}
+                message={m}
+                recipientEmail={recipientEmail ?? null}
+                candidateRef={
+                  entityType === "candidate" ? entityId : undefined
+                }
+              />
             ))}
           </ul>
         )}
@@ -231,15 +244,76 @@ export function AiWorkspace({ entityType, entityId, title }: AiWorkspaceProps) {
   );
 }
 
-function MessageBubble({ message }: { message: Message }) {
+function MessageBubble({
+  message,
+  recipientEmail,
+  candidateRef,
+}: {
+  message: Message;
+  recipientEmail: string | null;
+  candidateRef?: string;
+}) {
   const isUser = message.role === "user";
   // Hide the copy affordance on the "Thinking…" placeholder — copying that
   // placeholder text is never useful and would just be noise while the
   // real response streams in.
   const showCopy = !isUser && message.content.trim().length > 0 && message.content !== "Thinking…";
+
+  // Copy interceptor: when the recruiter selects an assistant bubble and
+  // Cmd+C's it into Gmail / Outlook / etc., the browser would normally
+  // serialize the selection with the bubble's computed styles
+  // (bg-court-surface-subtle in particular). That painted a black
+  // background onto the pasted email body and the destination's own
+  // theme couldn't override it.
+  //
+  // We rewrite the clipboard payload here. If the user picked the whole
+  // bubble (or nearly all of it), we hand over the full markdown source
+  // converted to clean semantic HTML — same headings + bullets + links
+  // as the rendered bubble but with zero classes / inline styles, so
+  // Gmail can paint it on its own white canvas. For partial selections
+  // we fall back to the selection toString (we can't infer which slice
+  // of the source markdown the user selected).
+  const onCopy = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    if (isUser) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    if (!e.clipboardData) return;
+    const selected = selection.toString();
+    // Heuristic: if the selection covers most of the rendered bubble
+    // (within ~10% of the message length), assume the user wanted the
+    // whole thing and use the full markdown source. Otherwise fall back
+    // to a per-selection cleanup so we don't include text the user
+    // didn't actually pick.
+    const wholeBubble =
+      selected.length >= Math.max(40, message.content.length * 0.7);
+    if (wholeBubble) {
+      e.clipboardData.setData("text/html", markdownToCleanHtml(message.content));
+      e.clipboardData.setData(
+        "text/plain",
+        flattenMarkdownForClipboard(message.content),
+      );
+    } else {
+      const range = selection.getRangeAt(0);
+      const wrapper = document.createElement("div");
+      wrapper.appendChild(range.cloneContents());
+      wrapper.querySelectorAll("*").forEach((el) => {
+        if (!(el instanceof HTMLElement)) return;
+        el.removeAttribute("style");
+        el.removeAttribute("class");
+      });
+      e.clipboardData.setData("text/html", wrapper.innerHTML);
+      e.clipboardData.setData(
+        "text/plain",
+        flattenMarkdownForClipboard(selected),
+      );
+    }
+    e.preventDefault();
+  };
+
   return (
     <li className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
       <div
+        onCopy={onCopy}
         className={cn(
           "relative max-w-[75%] break-words rounded-2xl px-3 py-2 text-sm shadow-sm",
           isUser
@@ -260,6 +334,23 @@ function MessageBubble({ message }: { message: Message }) {
         )}
         {showCopy && <CopyButton text={message.content} />}
       </div>
+      {/* Per-bubble action row. Only on assistant bubbles, only when
+          there's real content to send. The Email button pops the in-app
+          composer (non-blocking, so the user can keep navigating Ace)
+          pre-filled with the bubble's clean HTML — links + bullets
+          preserved, no theme baggage in the body. */}
+      {!isUser && showCopy && recipientEmail && (
+        <div className="mt-1 flex items-center gap-2">
+          <EmailPopupLauncher
+            email={recipientEmail}
+            candidateRef={candidateRef}
+            defaultBody={markdownToCleanHtml(message.content)}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+          >
+            <Mail className="h-3 w-3" /> Email this
+          </EmailPopupLauncher>
+        </div>
+      )}
       <div className="mt-1 text-[10px] text-court-fg-muted">
         {formatTimestamp(message.createdAt)}
       </div>
@@ -308,6 +399,99 @@ function flattenMarkdownForClipboard(input: string): string {
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
     (_match, text: string, url: string) => `${text} - ${url}`,
   );
+}
+
+// Lightweight markdown → semantic HTML for clipboard payloads. Handles
+// the cases Claude actually emits in the AI Workspace: links, bold,
+// italic, headings, ordered + unordered lists, paragraphs, line breaks.
+// Output uses zero classes / inline styles, so a paste into Gmail /
+// Outlook / Word inherits the destination's theme — no dark background
+// dragged along from the source bubble.
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderMarkdownInline(text: string): string {
+  // Process inline markdown — link / bold / italic — on a single string.
+  // The regex order matters: bold before italic (so **x** doesn't get
+  // half-eaten by the italic rule), links last so the inner [text] hasn't
+  // been touched yet.
+  let out = text.replace(
+    /\*\*([^*]+)\*\*/g,
+    (_m, inner) => `<strong>${escapeHtml(inner)}</strong>`,
+  );
+  out = out.replace(
+    /(^|\W)\*([^*]+)\*(\W|$)/g,
+    (_m, pre, inner, post) =>
+      `${pre}<em>${escapeHtml(inner)}</em>${post}`,
+  );
+  out = out.replace(
+    /\[([^\]]+)\]\(([^)\s]+)\)/g,
+    (_m, label: string, url: string) =>
+      `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`,
+  );
+  // Auto-link bare URLs that aren't already wrapped in an anchor.
+  out = out.replace(
+    /(^|[\s])(https?:\/\/[^\s<]+)/g,
+    (_m, pre: string, url: string) =>
+      `${pre}<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(url)}</a>`,
+  );
+  return out;
+}
+
+function markdownToCleanHtml(input: string): string {
+  const lines = input.split(/\r?\n/);
+  const out: string[] = [];
+  let listKind: "ul" | "ol" | null = null;
+  const closeList = () => {
+    if (listKind) {
+      out.push(`</${listKind}>`);
+      listKind = null;
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.replace(/^\s+|\s+$/g, "");
+    if (!line) {
+      closeList();
+      continue;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      out.push(`<h${level}>${renderMarkdownInline(heading[2])}</h${level}>`);
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      if (listKind !== "ul") {
+        closeList();
+        out.push("<ul>");
+        listKind = "ul";
+      }
+      out.push(`<li>${renderMarkdownInline(bullet[1])}</li>`);
+      continue;
+    }
+    const numbered = line.match(/^\d+\.\s+(.+)$/);
+    if (numbered) {
+      if (listKind !== "ol") {
+        closeList();
+        out.push("<ol>");
+        listKind = "ol";
+      }
+      out.push(`<li>${renderMarkdownInline(numbered[1])}</li>`);
+      continue;
+    }
+    closeList();
+    out.push(`<p>${renderMarkdownInline(line)}</p>`);
+  }
+  closeList();
+  return out.join("\n");
 }
 
 // Ghost icon button pinned to the bottom-right of an assistant bubble.

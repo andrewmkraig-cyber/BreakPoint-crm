@@ -662,7 +662,11 @@ export default async function CandidateProfilePage({
             </div>
           </div>
           {tab === "game-plan" ? (
-            <AiWorkspace entityType="candidate" entityId={String(id)} />
+            <AiWorkspace
+              entityType="candidate"
+              entityId={String(id)}
+              recipientEmail={candidate.email ?? null}
+            />
           ) : tab === "notes" ? (
             <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
               <header className="border-b border-court-border px-5 py-3">
