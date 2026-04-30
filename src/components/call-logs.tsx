@@ -134,7 +134,7 @@ export function CallLogs(props: CallLogsProps) {
             <>
               <ul className="divide-y divide-border">
                 {(showAll ? logs : logs.slice(0, VISIBLE_CALLS_DEFAULT)).map((row) => (
-                  <CallRowView key={row.id} row={row} onChanged={fetchLogs} />
+                  <CallRowView key={row.id} row={row} />
                 ))}
               </ul>
               {logs.length > VISIBLE_CALLS_DEFAULT && (
@@ -161,7 +161,7 @@ export function CallLogs(props: CallLogsProps) {
   );
 }
 
-function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }) {
+function CallRowView({ row }: { row: CallRow }) {
   const outbound = row.direction === "outbound";
   const Icon = outbound ? PhoneOutgoing : PhoneIncoming;
   const directionLabel = outbound ? "Outbound" : "Inbound";
@@ -176,38 +176,6 @@ function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }
   const transcriptText = row.transcript?.transcript?.trim() ?? "";
   const summaryText = row.transcript?.summary?.trim() ?? "";
   const hasAnything = Boolean(transcriptText) || Boolean(summaryText);
-
-  // Generate-Summary action — re-runs Claude over the saved transcript
-  // via /api/calls/summary and refreshes the parent list so the new
-  // summary text shows up in the expanded section. Only renders when a
-  // transcript actually exists (no point summarizing an empty string).
-  // Also useful as a manual override when Quo's auto-summary differs
-  // from what the recruiter wants surfaced.
-  const [summarizing, setSummarizing] = useState(false);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
-  async function onGenerateSummary(e: React.MouseEvent) {
-    // Don't bubble — would otherwise toggle the row's expand state.
-    e.stopPropagation();
-    setSummaryError(null);
-    setSummarizing(true);
-    try {
-      const res = await fetch("/api/calls/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callLogId: row.id }),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        setSummaryError(text || `Summary failed (${res.status})`);
-        return;
-      }
-      onChanged();
-    } catch (err) {
-      setSummaryError(err instanceof Error ? err.message : "Summary failed.");
-    } finally {
-      setSummarizing(false);
-    }
-  }
 
   return (
     <li className="flex flex-col py-3 text-sm">
@@ -252,33 +220,6 @@ function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }
                   Transcript
                 </span>
               )}
-              {/* Inline Generate Summary action — sits next to the
-                  TRANSCRIPT pill so the recruiter can re-summarize
-                  without expanding the row. Hidden until a transcript
-                  exists, since /api/calls/summary needs CallTranscript
-                  to be present before it'll run.
-                  The wrapper span catches the click bubble even when
-                  the button is `disabled` (HTML cancels the button's
-                  own onClick, so without the wrapper the click would
-                  bubble up to the row's expand toggle). */}
-              {transcriptText && (
-                <span onClick={(e) => e.stopPropagation()}>
-                  <button
-                    type="button"
-                    onClick={onGenerateSummary}
-                    disabled={summarizing}
-                    title="Re-run Claude on the saved transcript"
-                    className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
-                  >
-                    {summarizing ? (
-                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-2.5 w-2.5" />
-                    )}
-                    Generate Summary
-                  </button>
-                </span>
-              )}
             </div>
             <div className="mt-0.5 text-[11px] text-court-fg-muted">
               {formatTs(row.createdAt)}
@@ -294,9 +235,6 @@ function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }
               >
                 Recording <ExternalLink className="h-3 w-3" />
               </a>
-            )}
-            {summaryError && (
-              <div className="mt-1 text-[11px] text-red-700">{summaryError}</div>
             )}
           </div>
         </div>

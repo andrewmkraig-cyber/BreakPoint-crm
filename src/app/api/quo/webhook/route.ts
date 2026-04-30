@@ -159,29 +159,51 @@ export async function POST(req: NextRequest) {
     const nextSteps =
       (getPath(body, 'object.data.object.nextSteps') as unknown) ??
       (getPath(body, 'data.object.nextSteps') as unknown)
+    // Defensive item normalizer — if Quo sends array items as objects
+    // (e.g. [{ content: "..." }]) instead of plain strings, fall back
+    // to common string fields. Returns "" for items we can't decode,
+    // which the .filter(Boolean) below drops.
+    const itemToString = (it: unknown): string => {
+      if (typeof it === 'string') return it.trim()
+      if (it && typeof it === 'object') {
+        const o = it as Record<string, unknown>
+        for (const k of ['content', 'text', 'body', 'value', 'description']) {
+          const v = o[k]
+          if (typeof v === 'string' && v.trim().length > 0) return v.trim()
+        }
+      }
+      return ''
+    }
     let summaryText: string | undefined
     if (Array.isArray(summary) && summary.length > 0) {
-      const summaryLines = summary
-        .map((s) => (typeof s === 'string' ? s.trim() : ''))
-        .filter(Boolean)
-        .join('\n')
+      const summaryLines = summary.map(itemToString).filter(Boolean).join('\n')
       if (Array.isArray(nextSteps) && nextSteps.length > 0) {
-        const nextStepLines = nextSteps
-          .map((s) => (typeof s === 'string' ? s.trim() : ''))
-          .filter(Boolean)
-          .join('\n')
+        const nextStepLines = nextSteps.map(itemToString).filter(Boolean).join('\n')
         summaryText = nextStepLines
           ? `${summaryLines}\n\nNext Steps:\n${nextStepLines}`
           : summaryLines
       } else {
         summaryText = summaryLines
       }
+      // Empty after extraction → treat as missing so the diagnostic
+      // warn fires and we see what shape actually arrived.
+      if (!summaryText.trim()) summaryText = undefined
     }
     if (!quoId || !summaryText) {
+      // Log a sample of the raw values so we can see what Quo actually
+      // sent when the upsert decides not to fire. Truncated to keep
+      // log lines short — full payload still in the diagnostic logger
+      // line near the top of the handler.
+      const sample = (val: unknown): unknown => {
+        if (Array.isArray(val)) return val.slice(0, 2)
+        return val
+      }
       console.warn('[quo/webhook] call.summary.completed missing id or summary', {
         quoId,
         summaryIsArray: Array.isArray(summary),
         summaryLen: Array.isArray(summary) ? summary.length : 0,
+        summarySample: sample(summary),
+        nextStepsSample: sample(nextSteps),
       })
       return NextResponse.json({ ok: true })
     }
