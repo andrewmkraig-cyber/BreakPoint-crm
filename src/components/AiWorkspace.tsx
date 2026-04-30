@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Check, Copy, Loader2, Send, Trash2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
@@ -230,7 +232,7 @@ function MessageBubble({ message }: { message: Message }) {
     <li className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "relative max-w-[75%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm shadow-sm",
+          "relative max-w-[75%] break-words rounded-2xl px-3 py-2 text-sm shadow-sm",
           isUser
             ? "bg-brand text-white"
             : "bg-court-surface-subtle text-court-fg",
@@ -239,7 +241,14 @@ function MessageBubble({ message }: { message: Message }) {
           showCopy && "pb-7",
         )}
       >
-        {renderWithLineBreaks(message.content)}
+        {isUser ? (
+          // User messages stay literal — no markdown parsing of recruiter
+          // input. Whitespace + line breaks preserved with the same
+          // splitter the bubble used to use for both roles.
+          renderWithLineBreaks(message.content)
+        ) : (
+          <MarkdownContent content={message.content} />
+        )}
         {showCopy && <CopyButton text={message.content} />}
       </div>
       <div className="mt-1 text-[10px] text-court-fg-muted">
@@ -249,17 +258,62 @@ function MessageBubble({ message }: { message: Message }) {
   );
 }
 
+// Markdown renderer for assistant bubbles. react-markdown handles the
+// link / bold / list / paragraph cases the system prompt asks Claude to
+// emit; remark-gfm adds bare-URL autolinks and tables. Links are forced
+// to open in a new tab with rel="noopener noreferrer" so a candidate
+// page never gets navigated away when the recruiter clicks a job
+// listing. Tailwind classes mirror the bubble's existing token palette
+// — no global "prose" plugin needed for this scope.
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="space-y-2 [&_p]:my-0 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_h1]:mt-2 [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_code]:rounded [&_code]:bg-court-border/40 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children, ...rest }) => (
+            <a
+              {...rest}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-court-accent-dark underline underline-offset-2 hover:opacity-80"
+            >
+              {children}
+            </a>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+// Flatten markdown links to "text - url" so a copy-paste survives into
+// SMS / iMessage / plaintext email, where bare URLs auto-linkify but
+// "[text](url)" syntax shows up as literal punctuation. Bold and list
+// markers stay as-is — they're cosmetically harmless in plaintext.
+function flattenMarkdownForClipboard(input: string): string {
+  return input.replace(
+    /\[([^\]]+)\]\(([^)\s]+)\)/g,
+    (_match, text: string, url: string) => `${text} - ${url}`,
+  );
+}
+
 // Ghost icon button pinned to the bottom-right of an assistant bubble.
-// Copies the message as plain text — message.content is already plain
-// text in the DB (the system prompt tells Claude no markdown), so
-// navigator.clipboard.writeText hands it to the clipboard untouched.
-// Shows a checkmark for 2s on success.
+// Copies the message after flattening markdown links to "text - url"
+// form so a paste into iMessage / SMS / plaintext email leaves a bare
+// URL the destination client can auto-linkify. Headers + bullet
+// markers stay as-is — they're cosmetically harmless in plaintext and
+// some clients still highlight them. Shows a checkmark for 2s on
+// success.
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
   async function onCopy() {
     try {
-      await navigator.clipboard.writeText(text);
+      await navigator.clipboard.writeText(flattenMarkdownForClipboard(text));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
