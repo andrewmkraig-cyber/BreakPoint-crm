@@ -51,43 +51,76 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Log every detail of the outbound dispatch so the user can pinpoint
+  // why OpenPhone is rejecting the request without redeploying.
+  const requestBody = {
+    from: fromNumber,
+    to: [to],
+    phoneNumberId,
+  };
+  const requestUrl = "https://api.openphone.com/v1/calls";
+  console.log("[quo/call] dispatch", {
+    url: requestUrl,
+    body: requestBody,
+    phoneNumberIdShape: phoneNumberIdShape(phoneNumberId),
+    fromNumberShape: fromNumber,
+    toShape: to,
+  });
+
   try {
-    const res = await fetch("https://api.openphone.com/v1/calls", {
+    const res = await fetch(requestUrl, {
       method: "POST",
       headers: {
         Authorization: apiKey,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        from: fromNumber,
-        to: [to],
-        phoneNumberId,
-      }),
+      body: JSON.stringify(requestBody),
       cache: "no-store",
     });
 
+    // Always read the raw text first so we can log the upstream
+    // response verbatim, then attempt to parse as JSON.
+    const upstreamText = await res.text();
+    console.log("[quo/call] response", {
+      status: res.status,
+      statusText: res.statusText,
+      headers: Object.fromEntries(res.headers.entries()),
+      bodyText: upstreamText,
+    });
+
     if (!res.ok) {
-      // Try to surface OpenPhone's own error message if we can parse
-      // their JSON; fall back to the status text otherwise so the
-      // user sees something actionable instead of an opaque 500.
-      const upstream = (await res.json().catch(() => null)) as
-        | { message?: string; error?: { message?: string }; errors?: Array<{ message?: string }> }
-        | null;
+      let upstream: { message?: string; error?: { message?: string }; errors?: Array<{ message?: string }> } | null = null;
+      try {
+        upstream = upstreamText ? JSON.parse(upstreamText) : null;
+      } catch {
+        upstream = null;
+      }
       const message =
         upstream?.message ||
         upstream?.error?.message ||
         upstream?.errors?.[0]?.message ||
         `Quo rejected the call (HTTP ${res.status})`;
-      return NextResponse.json({ error: message }, { status: res.status });
+      return NextResponse.json(
+        { error: message, upstreamStatus: res.status, upstreamBody: upstreamText },
+        { status: res.status },
+      );
     }
 
     return NextResponse.json({ ok: true });
   } catch (e) {
+    console.error("[quo/call] exception", e);
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed to place call." },
       { status: 502 },
     );
   }
+}
+
+// Tiny helper that describes the phoneNumberId without leaking it in
+// logs in raw form. Helpful for spotting "did this start with PN... or
+// is it a UUID, or is it the phone number itself?" without a redeploy.
+function phoneNumberIdShape(id: string): string {
+  return `${id.length} chars, prefix=${id.slice(0, 3)}…${id.slice(-3)}`;
 }
 
 function toE164(raw: string): string | null {

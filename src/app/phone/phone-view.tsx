@@ -1214,9 +1214,11 @@ function NewTextRecipientInput({
           });
           return;
         }
-        // No candidate match — fall through to ad-hoc. Send button
-        // remains disabled (candidateId required for /api/sms).
-        setHint("No saved candidate for this number. Add the candidate in Ace first to text them.");
+        // No candidate match — fall through to ad-hoc. /api/sms now
+        // accepts a null candidateId, so the recruiter can text the
+        // number even when it's not yet in Ace; we surface the
+        // unknown state but leave Send enabled.
+        setHint("Texting a number not yet in Ace — that's fine, the message still sends.");
         onPick({
           candidateId: null,
           name: raw,
@@ -1303,16 +1305,21 @@ export function NewTextPanel({
     }
   }, [recipient]);
 
+  // Allow sending to unknown numbers — the recipient may be a brand-
+  // new lead the recruiter hasn't added to Ace yet. /api/sms accepts
+  // null candidateId; the row is still saved + the Quo dispatch still
+  // fires. (Earlier the disabled check required a candidateId, which
+  // was the bug behind "send doesn't fire" from the dialer's new-
+  // conversation flow.)
   const sendDisabled =
     sending ||
     success ||
     !recipient ||
-    !recipient.candidateId ||
     !recipient.phoneNumber ||
     body.trim().length === 0;
 
   async function onSend() {
-    if (sendDisabled || !recipient || !recipient.candidateId) return;
+    if (sendDisabled || !recipient) return;
     setSending(true);
     setError(null);
     try {
@@ -1320,7 +1327,7 @@ export function NewTextPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          candidateId: recipient.candidateId,
+          candidateId: recipient.candidateId ?? null,
           toNumber: recipient.phoneNumber,
           body: body.trim(),
         }),
