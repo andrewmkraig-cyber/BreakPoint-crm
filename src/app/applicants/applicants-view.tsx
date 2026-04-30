@@ -457,9 +457,10 @@ function ActionButton({
 }) {
   // Primary (rare here) and Destructive route through the shared
   // Button primitive so the visual hierarchy stays in lockstep with
-  // the rest of the app. Neutral (Keep) keeps a slate chip — there's
-  // no slate variant on Button by design, so this stays a raw button
-  // with the same shape (rounded-full, h-7, font-bold, text-[11px]).
+  // the rest of the app. Neutral (Keep) is a teal chip matching the
+  // Keep tone in pipeline-row-actions.tsx so the same action reads
+  // identically across /applicants, /jobs/[id]/pipeline, and the
+  // candidate profile pipeline rows.
   if (primary) {
     return (
       <Button
@@ -495,7 +496,7 @@ function ActionButton({
       disabled={disabled}
       className={cn(
         "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 text-[11px] font-bold shadow-sm transition disabled:opacity-60",
-        "border border-court-border bg-slate-100 text-slate-600 hover:bg-slate-200",
+        "border border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100",
       )}
     >
       {children}

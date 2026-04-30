@@ -207,7 +207,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             title="Open submittal composer"
           />
           <ActionButton icon={Plus} label="Apply" tone="apply" onClick={onApply} />
-          <ActionButton icon={Bookmark} label="Keep" onClick={onKeep} />
+          <ActionButton icon={Bookmark} label="Keep" tone="keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
@@ -227,7 +227,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
             title="Open submittal composer"
           />
-          <ActionButton icon={Bookmark} label="Keep" onClick={onKeep} />
+          <ActionButton icon={Bookmark} label="Keep" tone="keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
@@ -272,6 +272,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           <ActionButton
             icon={CornerUpLeft}
             label="Move to Kept"
+            tone="keep"
             title="Pull this candidate back to Kept"
             onClick={onMoveToKept}
           />
@@ -293,6 +294,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
           <DialogOrNav
             icon={DollarSign}
             label="Offer"
+            tone="offer"
             title="Offer Received"
             onClick={props.onOffer}
             href={profileHref}
@@ -353,7 +355,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     case "rejected":
       return (
         <ActionRow disabled={isPending}>
-          <ActionButton icon={RotateCcw} label="Un-reject" onClick={onUnreject} />
+          <ActionButton icon={RotateCcw} label="Un-reject" tone="unreject" onClick={onUnreject} />
         </ActionRow>
       );
     case "cancelled":
@@ -381,14 +383,28 @@ function ActionRow({ children, disabled }: { children: React.ReactNode; disabled
   );
 }
 
-type Tone = "default" | "primary" | "danger" | "schedule" | "apply";
+type Tone =
+  | "default"
+  | "primary"
+  | "danger"
+  | "schedule"
+  | "apply"
+  | "keep"
+  | "offer"
+  | "unreject";
 
+// keep   = teal — calm "save for later"
+// offer  = purple — matches OFFER stage chip + /pipeline page Offer button
+// unreject = indigo — distinct restore action, neither red (Reject) nor green (Submit)
 const TONE_CLASS: Record<Tone, string> = {
   default: "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200",
   primary: "border-brand bg-brand text-white hover:bg-brand-dark",
   danger: "border-red-200 bg-red-50 text-red-600 hover:bg-red-100",
   schedule: "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
   apply: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
+  keep: "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100",
+  offer: "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100",
+  unreject: "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100",
 };
 
 function ActionButton({
