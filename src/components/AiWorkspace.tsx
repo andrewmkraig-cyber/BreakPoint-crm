@@ -170,14 +170,23 @@ export function AiWorkspace({ entityType, entityId, title }: AiWorkspaceProps) {
       <div
         ref={scrollRef}
         className="overflow-y-auto px-5 py-4"
-        style={{ height: "calc(100vh - 380px)" }}
+        // Cap with maxHeight (not height) so an empty conversation
+        // collapses to its content — keeps the textarea + Send button
+        // visible above the fold instead of hanging at the bottom of
+        // a near-full-viewport scroll container. A small minHeight
+        // guarantees enough room for the empty-state copy + bubbles
+        // while typing the first message.
+        style={{
+          minHeight: "120px",
+          maxHeight: "calc(100vh - 380px)",
+        }}
       >
         {loading ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-center text-sm text-court-fg-muted">
+          <div className="flex items-center justify-center py-8 text-center text-sm text-court-fg-muted">
             No conversation yet. Ask anything about this {emptyLabel}.
           </div>
         ) : (
