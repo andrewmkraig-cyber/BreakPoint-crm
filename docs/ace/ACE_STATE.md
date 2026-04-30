@@ -1,21 +1,104 @@
 # ACE_STATE.md
-Last updated: 2026-04-30 - Ace 28.0 day 1 ships logged
+Last updated: 2026-04-30 - Ace 29.0 closed (full session log)
 
 ## Current Status
-Current Version: Ace 28.0 (in progress)
-Last Shipped: Ace 28.0 day 1 - April 30, 2026
+Current Version: Ace 29.0 (complete)
+Last Shipped: Ace 29.0 - April 30, 2026
 Live at: ace.breakpointtalent.com
-Current Status: Game Plan Phase 1 web search shipped across all 5 Claude API call sites. Quo auto-transcription wired. Call Log UI rebuilt. Generate Resume button shipped. Next active task: Game Plan Phase 2 (internal candidate matching / Find Matches). All Ace 27.0 work clean; no carry-overs open.
+Current Status: Ace 29.0 closed clean. Game Plan workstream landed end-to-end (web search across all 5 Claude call sites, markdown rendering, "Email this" with auto-formatted Subject + body + signature strip), Quo auto-transcription wired to the real v3 webhook shape, Phone tab outbound call routing fixed (`tel:` → Quo Desktop), Generate Resume button shipped, full mail/composer/thread UX revamp, light-mode Court palettes calmed, Settings connectors panel + sound dropdowns. Next active task: Settings + dark mode overhaul. No carry-overs open.
 
-## What Shipped in Ace 28.0 (2026-04-30)
-- **Game Plan Phase 1 - Web search across all 5 Claude API call sites**: web_search_20250305 tool added to src/app/api/ai-workspace/route.ts, src/app/api/mail/ai-compose/route.ts, src/app/api/email/edit-with-claude/route.ts, src/app/api/calls/summary/route.ts, src/app/clients/new/actions.ts
-- Multi-block response handling fixed in ai-workspace route (web search returns 4 content blocks; route was only reading the first one). max_tokens lifted to 4096. Markdown formatting instructions added to the system prompt
-- react-markdown + remark-gfm installed; Game Plan chat bubbles now render clickable hyperlinks
-- CopyButton flattens markdown links to bare URLs for SMS / iMessage paste (so links survive when pasted into a non-markdown surface)
-- Model id normalized to claude-sonnet-4-6 codebase-wide (replaced any remaining stale id references)
-- **Quo auto-transcription**: call.transcript.completed and call.summary.completed webhook branches added to src/app/api/quo/webhook/route.ts. Patched to the real Quo v3 payload shape - callId at body.object.data.object.callId, transcript is a dialogue array, summary is a string array. Dialogue formatted as `M:SS [identifier]: [content]` per line. Summary formatted as bullet lines plus a Next Steps section
-- **Call Log UI rebuild**: Paste Transcript / Generate Summary buttons replaced with inline expand-on-click. Expanded row shows Transcript and Summary sections with placeholders when null. TRANSCRIPT pill on the collapsed row when data exists. List truncates to 3 most recent calls; "Show all N calls" expands. Client profile now shows the CallLogs component above the activity feed. Redundant Generate Summary button removed (Quo handles it automatically)
-- **Generate Resume button** on candidate profiles with no resume on file: pulls all candidate profile data, sends to Claude, renders as a professional PDF via react-pdf/renderer, saves as a CandidateResume row with displayName "AI Generated"
+## What Shipped in Ace 29.0 (2026-04-30)
+
+### Game Plan / AI Workspace
+- **Web search across all 5 Claude API call sites** — `web_search_20250305` tool added to `src/app/api/ai-workspace/route.ts`, `src/app/api/mail/ai-compose/route.ts`, `src/app/api/email/edit-with-claude/route.ts`, `src/app/api/calls/summary/route.ts`, `src/app/clients/new/actions.ts`. Replaces the standalone "Game Plan Phase 1 + Phase 3 (web + internal blend)" entries.
+- Multi-block response handling fixed in ai-workspace route (web_search returns `[text(preface), server_tool_use, web_search_tool_result, text(answer)]`; route was only reading `content[0]`, so the cited final answer was being discarded).
+- `max_tokens` lifted to 4096.
+- Markdown formatting instructions added to the system prompt (link form, bold headers, hyphen bullets).
+- `react-markdown` + `remark-gfm` installed; chat bubbles render clickable hyperlinks.
+- `CopyButton` flattens markdown links to bare URLs for SMS / iMessage paste (so links survive when pasted into a non-markdown surface).
+- Model id normalized to `claude-sonnet-4-6` codebase-wide.
+- **"Email this" button on every assistant bubble** — pops a non-blocking in-app composer pre-filled with the bubble (links + bullets preserved, no theme baggage in the body).
+- **Email this v2** — split Subject + body, drop signature; one ordered list per draft (was producing six `1.` items because blank lines closed/reopened the `<ol>`); **freshness mandate** added to AI Workspace system prompt (every external fact must be verified via web_search THIS turn; never hedge with "data may be old"; OMIT items that can't be verified).
+- **Email this v3** — every click runs the bubble through new `/api/ai-workspace/format-email` before opening the composer. Generates Subject line + `Hi <FirstName>,` body + strips recruiter-internal commentary ("Want me to draft outreach?", "Let me know which interests you"). Recruiter no longer has to ask for "a clean version".
+- Game Plan card pinned to viewport (`sticky top-4` + bounded height + `flex-1` internal scroll on messages) so the textarea stays visible even with a long pre-existing chat.
+- Real chat-send error messages surfaced (was generic "Failed to send - try again"); `maxDuration` on `/api/ai-workspace` bumped 60s → 300s so Sonnet + web_search on long threads stops timing out at the function ceiling.
+- **No signoff / no signature** — both candidate + client system prompts now end with "NEVER end a response with a signoff or signature lines (Andrew Kraig / BreakPoint Talent). Andrew's signature is auto-appended by Ace on send." Deterministic post-strip in format-email walks back from the body and chops trailing signoff lines, "Andrew Kraig" / "BreakPoint Talent" lines, and inline "Best, Andrew Kraig BreakPoint Talent" runs — single model slip can't leak through.
+
+### Quo auto-transcription / Phone tab
+- `call.transcript.completed` + `call.summary.completed` webhook branches added to `/api/quo/webhook`; patched to the real Quo v3 payload shape — `callId` at `body.object.data.object.callId`, `transcript` is a dialogue array, `summary` is a string array. Dialogue formatted as `M:SS [identifier]: [content]` per line; summary formatted as bullet lines + Next Steps section.
+- Diagnostic logger on Quo webhook for transcript-path verification (kept for now while soaking new payloads).
+- Inline transcript / summary expand on call log rows + Client profile call log.
+- Call log truncates to 3 most recent + "Show all N calls".
+- Redundant Generate Summary button removed (Quo handles automatically).
+- **Phone tab outbound call routing fixed** — replaced the broken /call API (OpenPhone has no outbound call API) with a Quo deep link via `tel:` so Call buttons open Quo Desktop instead of the Quo web app in a new tab.
+- SMS send fix (was not firing in some paths) + call debug logging.
+- Wire Quo outbound call from the dialer.
+- Phone tab: surface unknown-number activity with an Add to Ace action.
+- Quo connector: trust recent webhook activity over `/v1/webhooks` list (list endpoint sometimes lies about active webhooks).
+
+### Resume
+- **Generate Resume button** on candidate profiles with no resume on file — pulls profile data, sends to Claude, renders a professional HTML-to-PDF layout via `react-pdf/renderer`, saves as `CandidateResume` row with `displayName: "AI Generated"`.
+- Plain-text PDF replaced with the professional HTML-to-PDF resume layout.
+- Inline rename for the selected resume version + matching delete buttons (closes the Ace 25.0 click-to-rename regression that was open since the resume toolbar consolidation).
+
+### Mail / composer
+- Email body rendered on forced-white card so dark Court Modes stay readable (no more dark-on-dark email bodies on Night / Hard Dark).
+- Email body spacing tightened to match Gmail; card softened to cream; TopBar FAB and avatar bumped to 40px.
+- Floating thread window — GPU-composited drag + CSS `contain` on resize for smoother behavior on long threads; layout holds at narrow widths.
+- Mail thread popup: consolidated chrome, tighter composer, more messages visible at once; body-first layout, tighter header, no nested card.
+- Mail thread: "Open client" button when the sender resolves to a CRM Client.
+- Non-blocking composer pop-out + new icon; smart Reply All; white email cards.
+- Inline composer: sticky footer + `max-h-[55vh]` so Send is always visible.
+- Sticky composer footer + carry-over text + save draft + delete (Ace 28.0b set, rolled in).
+- Mail compose: keep job-select chevron visible at narrow widths (`min-w-0` on the select).
+
+### Court Mode / themes
+- Grass Court Light: surfaces shifted to actual green tints (was reading as off-white).
+- Clay Light + Grass Light: white surfaces, accents only — over-tint regression fixed.
+- Light-mode tints deepened so Hard, Clay, Grass read distinctly side-by-side in the Settings picker.
+
+### Settings
+- **Connectors panel** — Quo, Gmail, Calendar status visible at a glance.
+- Mail / Phone banners surface when those connectors aren't actually live.
+- Notification sound dropdowns + bold notification-style headers.
+- Real Quo webhook check (uses webhook activity, not the wrong `/v1/webhooks` list).
+- Settings tab order tweaked; tennis-ball bounce affordance.
+
+### App shell / UI polish
+- Sidebar resize-handle vertical seam killed; handle bg matches chrome only in the top `h-24` region.
+- Ace logo links back to `/dashboard`.
+- AI resume spacing fixed.
+- Distinct colors for Keep (teal), Offer (purple), Un-reject (indigo) so the action row reads at a glance.
+- Target / Send icons added to "Apply to Job" + "Submit to different job" buttons.
+
+### Clients / Pipeline / Candidates
+- Delete-client flow added (mirrors delete-candidate).
+- Delete client button: quieter default, more breathing room.
+- Client contacts: phone extension field.
+- Client Notes tab: inline "Add note" instead of pointing at the topbar `+`.
+- Pipeline: "Back to <client>" link when arriving from a client profile.
+- LinkedIn URLs: normalize bare slugs into full hrefs on save and render.
+- Candidate delete (Ace 28.0a set, rolled in).
+
+## Known Issues / Still In Progress (carry into Ace 30.0)
+- (none open — Ace 29.0 closed clean)
+
+## Next Task for Ace 30.0
+**Settings + dark mode overhaul.** Full sweep of `/settings` UX (sectioning, layout, copy) plus a real dark mode pass — every Court Mode dark variant gets re-audited for contrast on Generate-with-Claude buttons, toast chrome, mail body cards, composer chrome, and any surface that still looks washed out or low-contrast at night. Should leave Ace usable end-to-end on a true dark surface without manual fiddling.
+
+Remaining Ace 30.0+ sequence after Settings + dark mode:
+1. **Game Plan Phase 2** — Internal candidate matching. "Find Matches" button on the job + client Game Plan surfaces. Queries Neon's candidate database; surfaces top fits by title, skills, location, comp.
+2. **Game Plan Phase 3** — Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context.
+3. **Game Plan Phase 4** — "My Writing Style" setting in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
+4. **Game Plan Phase 5** — Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access.
+5. **Game Plan context depth** — Send full resume text + full JD text into the ai-workspace prompt so Claude reasons against the actual content, not just metadata.
+6. **CSV Import/Export** — bulk candidate / contact ingest path.
+7. **Candidates Page UX** — full keyboard nav + prev/next from header search results (partial sweep landed in 27.0).
+8. **Settings Fix Generator** — small utility surface inside Settings to repair common data issues without touching the DB.
+9. **Daily Industry Briefing + Word of the Day** — Vercel Cron 6 AM EST.
+10. **Market Insights Tab** — Tab 6 on client detail.
+11. **BD Tab + Prospects Database** + **BD Automation Engine** — `/bd` surface, Prospect table, Indeed + Apollo daily cron, sequence engine via warmed burner domains.
+12. **Docs handoff** — Push ACE docs to GitHub at session end (handoff hygiene).
 
 ## What Shipped in Ace 27.0 (2026-04-28)
 - Toast fixes: MessageSquare icon swap, removed redundant "· Text" trailing label, Reply button contrast lifted across themes
@@ -56,21 +139,6 @@ Current Status: Game Plan Phase 1 web search shipped across all 5 Claude API cal
 - Sidebar bottom-left "BreakPoint Talent / Solon, OH · Est. 2026" footer removed
 - Dashboard left padding fixed (dropped legacy -mx-2 / md:-mx-4 negative margins so it inherits the same gutter as every other page)
 
-## Known Issues / Still In Progress (carry into Ace 28.0)
-- (none open — all Ace 26.0 known issues closed in 27.0)
-
-## Next Task for Ace 28.0
-**Game Plan Phase 2** - Internal candidate matching. "Find Matches" button on the job + client Game Plan surfaces. Queries Neon's candidate database; surfaces top fits by title, skills, location, comp.
-
-Remaining 28.0 sequence after Phase 2:
-- **Phase 3** - Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context
-- **Phase 4** - "My Writing Style" setting in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan)
-- **Phase 5** - Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access
-- **Game Plan context depth** - Send full resume text + full JD text into the ai-workspace prompt so Claude reasons against the actual content, not just metadata
-- **Docs handoff** - Push ACE docs to GitHub at session end (handoff hygiene)
-
-Note: the old Phase 3 ("web search on Game Plan + internal blend") was folded into Phase 1, which shipped web search across all 5 Claude API call sites including ai-workspace. Renumbered accordingly.
-
 ## What Shipped in Ace 26.0 (2026-04-28)
 - canonicalStage root cause fix: client card counters for pending_start and cancelled now read from Neon Placement.stage (canonical) instead of leaking through the RF stage_name string. The bucket-driven counts on client detail are correct end-to-end now
 - Stage chip label leak fixed: RF-imported candidate JobActionRow no longer renders the RF payload's stage_name in the StageBadge label. Label is derived off Placement.stage; bucket color was already right
@@ -93,14 +161,6 @@ Note: the old Phase 3 ("web search on Game Plan + internal blend") was folded in
 - Calendar Tab added to Week 3 roadmap: month/week/day view, Google Calendar read/write sync, create-meeting modal for BD calls + intro calls without going through the full interview scheduler flow
 - Jobs page: salary range column + condensed Apply-to-Job dropdown (shipped mid-session)
 
-## Known Issues / Still In Progress (carry into Ace 27.0)
-- Text toast icon showing MessageSquare instead of Phone (regression after the toast chrome refactor — should match the Phone icon used on the Phone sidebar nav)
-- Text toast showing "· Text" trailing label that should be removed (eyebrow already says SMS context, the dot-Text suffix is redundant)
-- Reply button low contrast on some Court Mode themes — needs token rebind so it reads against tinted backgrounds
-- Compose FAB still visible on /settings page (should be hidden — Settings has no surface that benefits from the launcher)
-- Toast subtitle text rendering in ALL CAPS in some themes — likely a CSS uppercase rule applying too broadly to the eyebrow + subtitle slots
-- Settings appearance section not yet matching Claude Design two-column layout (Court Mode + Notification Preferences should sit side-by-side at desktop widths)
-
 ## What Shipped in Ace 25.0 (2026-04-27)
 - Quo SMS fix: krispcall.ts dead code deleted, /api/krispcall/webhook moved to /api/quo/webhook (OpenPhone provider URL must be updated in settings), error message in SmsComposer points at Quo env vars. Webhook signature + write paths verified end-to-end with a real send
 - SmsMessage candidateId consistency fix: candidate profile (RF page) was passing the numeric RF id stringified to SmsComposer/TextingExchanges; both inbound webhook writes and outbound POST /api/sms now key on the Neon cuid. One-shot UPDATE backfilled 2 orphaned rows
@@ -112,7 +172,7 @@ Note: the old Phase 3 ("web search on Game Plan + internal blend") was folded in
 - Compact pipeline rows (RF placement-flows.tsx + Ace local-placement-rows.tsx): card wrapper per row removed, parent uses divide-y inside one rounded-xl border. Single flex row per job, py-1.5 px-3, briefcase + title + · company + StageBadge all left-aligned, action buttons right-aligned only. Per-row Hired chip removed (StageBadge already shows it). Past interviews hidden entirely; only the next-upcoming interview renders inline as "· Apr 19 · 8:59 AM · Video" after the stage chip
 - Universal stage chip colors via stage-badge.tsx BUCKET_CLASS map (single source of truth). Mapping: Submitted=emerald, Interviewing=blue, Applied=amber, Sourced=neutral surface-subtle, Offer/PendingStart=purple, Hired=darker emerald (100/800/300), Rejected/Cancelled=red, Kept=amber-100/800/300. Pill base shrunk to px-2 py-0.5 text-[10px] font-semibold. Applied to /pipeline + candidate profile + Ace local rows automatically
 - Header Apply/Submit wired via URL deep-links on both paths: ?openApply=1 / ?openSubmit=1 open the existing modals (LocalCandidateActions on Ace got a hideButtons prop; PlacementActions on RF got new useEffect handlers). The duplicate in-island "Jobs (N)" + Apply/Submit row in placement-flows.tsx PlacementActions was removed
-- Resume toolbar collapsed to a single row: "Resume" eyebrow on the left, version dropdown + Edit Resume + Convert to PDF (DOCX) + Download + Upload + Delete on the right. Padding px-3 py-1.5. Filename / size / upload-date subline removed (info already in version dropdown label). No-wrap with overflow-x-auto so the row stays one line at any column width. KNOWN REGRESSION: click-to-rename UX is gone with the filename row — renameCandidateResume server action stays available for future re-wiring
+- Resume toolbar collapsed to a single row: "Resume" eyebrow on the left, version dropdown + Edit Resume + Convert to PDF (DOCX) + Download + Upload + Delete on the right. Padding px-3 py-1.5. Filename / size / upload-date subline removed (info already in version dropdown label). No-wrap with overflow-x-auto so the row stays one line at any column width. KNOWN REGRESSION CLOSED IN 29.0: click-to-rename UX restored via inline rename on the selected version
 - TextingExchanges: max-h-64 overflow-y-auto scroll-smooth on the bubble list + auto-scroll-to-bottom useEffect on mount and on every messages update
 - BillingTower (dashboard): sparkline removed; Q2 card uses left-aligned label/value/hint stack
 - Email Threads sections removed from candidate profiles (raw thread-id list was useless without subject/preview); TODO comment in place. gmailThreadTag fetch dropped from page.tsx Promise.all and from local-profile.tsx candidate select
