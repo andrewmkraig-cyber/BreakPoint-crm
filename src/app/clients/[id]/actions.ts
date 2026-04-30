@@ -372,6 +372,132 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
   }
 }
 
+// Hard-delete a client and every row that references it. Mirrors
+// deleteCandidate's strategy: explicit cascade rather than relying on
+// schema-level onDelete alone, because Job and Contact use SetNull
+// (would leave orphan rows pointing at a missing client), and
+// ActivityLog/SmsMessage/CallLog/AiWorkspaceMessage carry clientId
+// without a foreign key relation. Wrapping the sequence in
+// $transaction keeps it atomic.
+//
+// Tenant scope (Architecture rule #8): the client is resolved via an
+// org-scoped lookup before any delete fires. A forged id from another
+// tenant returns "Client not found." with no rows touched.
+//
+// Phone-trail rows (SmsMessage / CallLog) get clientId set to null
+// rather than being deleted — those conversations are owned by the
+// candidate side and should outlive the client they happened to
+// reference.
+export async function deleteClient(clientCuid: string): Promise<ActionResult> {
+  const user = await requireUserId();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!clientCuid) return { ok: false, error: "Missing client id." };
+
+  try {
+    const org = await getCurrentOrg();
+    const existing = await prisma.client.findFirst({
+      where: { id: clientCuid, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!existing) return { ok: false, error: "Client not found." };
+
+    const jobs = await prisma.job.findMany({
+      where: { clientId: existing.id },
+      select: { id: true, legacyRfId: true },
+    });
+    const jobIds = jobs.map((j) => j.id);
+    const jobLegacyIds = jobs
+      .map((j) => j.legacyRfId)
+      .filter((v): v is number => typeof v === "number");
+
+    await prisma.$transaction(async (tx) => {
+      // ActivityLog rows are loose-typed (targetType + targetId, no FK)
+      // so they don't cascade — clear the client and job entries by hand.
+      await tx.activityLog.deleteMany({
+        where: { targetType: "client", targetId: existing.id },
+      });
+      if (existing.legacyRfId != null) {
+        await tx.activityLog.deleteMany({
+          where: { targetType: "client", targetId: String(existing.legacyRfId) },
+        });
+      }
+      if (jobIds.length > 0) {
+        await tx.activityLog.deleteMany({
+          where: { targetType: "job", targetId: { in: jobIds } },
+        });
+      }
+      if (jobLegacyIds.length > 0) {
+        await tx.activityLog.deleteMany({
+          where: {
+            targetType: "job",
+            targetId: { in: jobLegacyIds.map(String) },
+          },
+        });
+      }
+
+      // AiWorkspace pages (Game Plan tab) are keyed by stringified rfId
+      // for client + numeric id for jobs. Clear both forms so a future
+      // client at the same legacyRfId doesn't inherit prior chats.
+      if (existing.legacyRfId != null) {
+        await tx.aiWorkspaceMessage.deleteMany({
+          where: { entityType: "client", entityId: String(existing.legacyRfId) },
+        });
+      }
+      await tx.aiWorkspaceMessage.deleteMany({
+        where: { entityType: "client", entityId: existing.id },
+      });
+      if (jobIds.length > 0) {
+        await tx.aiWorkspaceMessage.deleteMany({
+          where: { entityType: "job", entityId: { in: jobIds } },
+        });
+      }
+      if (jobLegacyIds.length > 0) {
+        await tx.aiWorkspaceMessage.deleteMany({
+          where: {
+            entityType: "job",
+            entityId: { in: jobLegacyIds.map(String) },
+          },
+        });
+      }
+
+      // Phone trail: keep the rows (they belong to candidates) but
+      // null out the now-stale client pointer.
+      await tx.smsMessage.updateMany({
+        where: { clientId: existing.id },
+        data: { clientId: null },
+      });
+      await tx.callLog.updateMany({
+        where: { clientId: existing.id },
+        data: { clientId: null },
+      });
+
+      // Contact uses onDelete: SetNull on its clientId FK — orphaning
+      // a contact when its company is gone is rarely useful, so wipe
+      // those rows along with the client.
+      await tx.contact.deleteMany({ where: { clientId: existing.id } });
+
+      // Job uses onDelete: SetNull as well. Deleting the jobs first
+      // cascades their dependents (JobOverride, Placement, Interview)
+      // before we drop the client.
+      if (jobIds.length > 0) {
+        await tx.job.deleteMany({ where: { id: { in: jobIds } } });
+      }
+
+      // Final blow. Schema-level cascades clean up the rest:
+      //   ClientAgreement, ClientBenefits, ClientBenefitsFile,
+      //   Placement, Interview, GmailThreadTag.
+      await tx.client.delete({ where: { id: existing.id } });
+    });
+
+    revalidatePath("/clients");
+    revalidatePath(`/clients/${existing.id}`);
+    if (existing.legacyRfId != null) revalidatePath(`/clients/${existing.legacyRfId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to delete client." };
+  }
+}
+
 async function fetchBlobBytes(url: string): Promise<Buffer> {
   const { head } = await import("@vercel/blob");
   // For private blob stores, head() returns a short-lived downloadUrl.

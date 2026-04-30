@@ -21,6 +21,7 @@ import { ContactsTab } from "@/app/clients/[id]/contacts-tab";
 import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
 import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
+import { DeleteClientButton } from "@/app/clients/[id]/delete-client-button";
 import AiWorkspace from "@/components/AiWorkspace";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CallLogs } from "@/components/call-logs";
@@ -526,6 +527,8 @@ export default async function ClientDetailPage({
           This tab isn&apos;t available yet for Ace-native clients.
         </div>
       )}
+
+      <DeleteClientButton clientId={client.id} clientName={displayName} />
     </div>
   );
 }
