@@ -1231,26 +1231,34 @@ export function MailComposer({
                 content width (e.g. "Tax Manager in Cleveland -
                 Northeast Ohio at BreakPoint") wins and pushes the
                 native chevron past the modal's right edge. With
-                min-w-0 + flex-1 the select shrinks to fit and the
-                chevron stays glued to the option-text right side. */}
-            <select
-              value={selectedJobId ?? ""}
-              onChange={(e) => setSelectedJobId(e.target.value || null)}
-              className="min-w-0 flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="">— Pick a job —</option>
-              {activeJobs.map((j) => {
-                const loc = [j.jobCity, j.jobState].filter(Boolean).join(", ");
-                const label = loc
-                  ? `${j.jobTitle} - ${loc} at ${j.clientName}`
-                  : `${j.jobTitle} at ${j.clientName}`;
-                return (
-                  <option key={j.jobId} value={j.jobId}>
-                    {label}
-                  </option>
-                );
-              })}
-            </select>
+                min-w-0 + flex-1 the select shrinks to fit. We render
+                our own chevron (appearance-none + absolute icon +
+                pr-8) so the long truncated option text can never
+                overlap the arrow at narrow widths. */}
+            <div className="relative min-w-0 flex-1">
+              <select
+                value={selectedJobId ?? ""}
+                onChange={(e) => setSelectedJobId(e.target.value || null)}
+                className="w-full appearance-none truncate rounded-md border border-court-border bg-court-surface py-1 pl-2 pr-8 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                <option value="">— Pick a job —</option>
+                {activeJobs.map((j) => {
+                  const loc = [j.jobCity, j.jobState].filter(Boolean).join(", ");
+                  const label = loc
+                    ? `${j.jobTitle} - ${loc} at ${j.clientName}`
+                    : `${j.jobTitle} at ${j.clientName}`;
+                  return (
+                    <option key={j.jobId} value={j.jobId}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
+              />
+            </div>
           </label>
         </div>
       )}
