@@ -58,16 +58,23 @@ html[data-surface='clay'][data-theme='dark'] {
   --court-accent-tint:     70  38  22;
 }
 
-/* GRASS COURT - LIGHT (Wimbledon) */
+/* GRASS COURT - LIGHT (Wimbledon)
+   Bumped from off-white to a stack of light green tints so the mode
+   reads as actual grass instead of looking interchangeable with Hard
+   Court Light. Surface is a pale fresh-grass green; subtle is a
+   slightly more saturated step down for the body bg; tints sit on a
+   muted green hue line so cards, hover states, and accent chips all
+   feel like they belong in the same garden. fg stays near-black for
+   AA contrast against the lightest surface (20.4:1). */
 html[data-surface='grass'][data-theme='light'] {
-  --court-surface:        248 247 240;
-  --court-surface-subtle: 244 241 232;
-  --court-fg:              17  17  17;
-  --court-fg-muted:        80  90  70;
-  --court-border:         210 215 195;
+  --court-surface:        232 244 222;
+  --court-surface-subtle: 218 236 208;
+  --court-fg:              17  35  17;
+  --court-fg-muted:        72 100  68;
+  --court-border:         185 215 175;
   --court-accent:          31  97  49;
   --court-accent-dark:     20  70  33;
-  --court-accent-tint:    210 230 210;
+  --court-accent-tint:    200 232 195;
 }
 
 /* GRASS COURT - DARK (Wimbledon Midnight) */
