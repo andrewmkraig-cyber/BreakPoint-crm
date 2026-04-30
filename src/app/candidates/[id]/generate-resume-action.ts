@@ -8,6 +8,11 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { CLAUDE_MODEL } from "@/lib/claude";
+import type {
+  ResumeData,
+  ResumeEducationEntry,
+  ResumeExperienceEntry,
+} from "@/app/candidates/[id]/resume-pdf-template";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -97,23 +102,40 @@ export async function generateAiResume(input: {
       rfRaw: candidate.raw ?? null,
     };
 
+    // Ask Claude for a structured JSON document instead of free prose
+    // so the @react-pdf template can render each section in the right
+    // slot. Strict-JSON output is more reliable than parsing prose;
+    // we still strip a stray ```json fence in stripJsonFences below
+    // for the rare turn where the model wraps it.
     const systemPrompt = [
       "You are a professional resume writer for a recruiting agency.",
-      "Generate a clean, professional resume in plain text format from the candidate data provided.",
-      "Use standard sections in this order: Name + contact line, Professional Summary, Experience, Education, Skills, Certifications (only if present in data).",
-      "Each role under Experience should include: Job Title, Company, Dates, and 2-4 concise bullet points using hyphens.",
-      "Use blank lines to separate sections. Use ALL CAPS for section headers (e.g. EXPERIENCE, EDUCATION, SKILLS).",
-      "Do NOT use markdown syntax (no **bold**, no [links](url), no # headers).",
-      "Do NOT invent facts. If a field is missing, omit it — never fill in placeholder text.",
-      "Do NOT include any preamble, commentary, or sign-off — output only the resume content.",
-      "Start the resume with the candidate's full name on its own line.",
+      "From the candidate data, produce a clean professional resume as STRICT JSON only — no commentary, no markdown, no fences.",
+      "Schema:",
+      "{",
+      '  "name": string,',
+      '  "title": string,                       // current job title or target role',
+      '  "contact": { "email"?: string, "phone"?: string, "location"?: string, "linkedin"?: string },',
+      '  "summary"?: string,                    // 2-4 sentence professional summary',
+      '  "experience": [{',
+      '    "title": string, "company": string, "dates": string, "location"?: string,',
+      '    "bullets": string[]                  // 2-4 bullets, each one impact-focused sentence',
+      "  }],",
+      '  "education": [{ "degree": string, "school": string, "year"?: string, "details"?: string }],',
+      '  "skills": string[],                    // 8-15 short skill phrases',
+      '  "certifications": string[]             // omit / empty if none in source data',
+      "}",
+      "Hard rules:",
+      "- Do NOT invent facts. If a field is missing in the source, omit it from the output.",
+      "- Output ONLY the JSON document. No explanation, no fences, no extra text.",
+      "- Bullets are concise and start with a strong verb. Never include the candidate's name in a bullet.",
+      "- If the candidate has no work experience in the source data, return an empty experience array.",
     ].join("\n");
 
     const userMessage = [
-      "Candidate data (JSON):",
+      "Candidate data (source-of-truth JSON):",
       JSON.stringify(profileBlob, null, 2),
       "",
-      "Write the resume.",
+      "Return the resume JSON now.",
     ].join("\n");
 
     const response = await anthropic.messages.create({
@@ -125,85 +147,48 @@ export async function generateAiResume(input: {
 
     // No tools: array — resume formatting doesn't need web search and
     // we don't want the model to invent facts via a stray search.
-    const resumeText = response.content
+    const rawText = response.content
       .filter((b): b is Extract<typeof b, { type: "text" }> => b.type === "text")
       .map((b) => b.text)
       .join("\n\n")
       .trim();
 
-    if (!resumeText) {
-      return { ok: false, error: "Claude returned no resume text." };
+    if (!rawText) {
+      return { ok: false, error: "Claude returned no resume content." };
     }
 
-    // ---- text → PDF ---------------------------------------------------
-    // Mirrors the convertDocxResumeToPdf rendering loop in actions.ts:
-    // Helvetica 11pt, 0.75" margins, manual word-wrap, page break when
-    // y falls below the bottom margin. Non-WinAnsi characters fall back
-    // to "?" so a stray emoji never 500s the whole render.
-    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
-    const pdf = await PDFDocument.create();
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    const fontSize = 11;
-    const lineHeight = fontSize * 1.4;
-    const margin = 54;
-    const pageWidth = 612;
-    const pageHeight = 792;
-    const usableWidth = pageWidth - margin * 2;
-    const black = rgb(0, 0, 0);
-
-    let page = pdf.addPage([pageWidth, pageHeight]);
-    let y = pageHeight - margin - fontSize;
-
-    const ensureSpace = () => {
-      if (y < margin) {
-        page = pdf.addPage([pageWidth, pageHeight]);
-        y = pageHeight - margin - fontSize;
-      }
-    };
-
-    const drawLine = (line: string) => {
-      ensureSpace();
-      const safe = line.replace(/[^\x00-\x7F]/g, (c) => {
-        try {
-          font.widthOfTextAtSize(c, fontSize);
-          return c;
-        } catch {
-          return "?";
-        }
-      });
-      page.drawText(safe, { x: margin, y, size: fontSize, font, color: black });
-      y -= lineHeight;
-    };
-
-    const paragraphs = resumeText.replace(/\r\n/g, "\n").split(/\n+/);
-    for (const paragraph of paragraphs) {
-      const trimmed = paragraph.trim();
-      if (!trimmed) {
-        y -= lineHeight;
-        continue;
-      }
-      const words = trimmed.split(/\s+/);
-      let line = "";
-      for (const word of words) {
-        const candidate = line ? `${line} ${word}` : word;
-        let width: number;
-        try {
-          width = font.widthOfTextAtSize(candidate, fontSize);
-        } catch {
-          width = candidate.length * fontSize * 0.6;
-        }
-        if (width > usableWidth && line) {
-          drawLine(line);
-          line = word;
-        } else {
-          line = candidate;
-        }
-      }
-      if (line) drawLine(line);
-      y -= lineHeight * 0.3;
+    const resumeData = parseResumeJson(rawText, fullName, candidate);
+    if (!resumeData) {
+      return {
+        ok: false,
+        error: "Couldn't parse resume JSON from Claude. Try again.",
+      };
     }
 
-    const outputBytes = await pdf.save();
+    // ---- JSX → PDF via @react-pdf/renderer -----------------------------
+    // pure-JS render, no Chromium. The template lives in
+    // resume-pdf-template.tsx; this action just hands it the parsed
+    // ResumeData and pulls the rendered bytes out as a Buffer.
+    const { pdf } = await import("@react-pdf/renderer");
+    const { ResumeDocument } = await import(
+      "@/app/candidates/[id]/resume-pdf-template"
+    );
+    // Calling the component as a plain function returns the <Document>
+    // element directly, which is what pdf() wants. createElement wraps
+    // the result in a FunctionComponentElement that pdf()'s types don't
+    // accept.
+    //
+    // @react-pdf/renderer v4 changed toBuffer() to return a Node
+    // ReadableStream — we drain it into chunks and concat into a single
+    // Buffer before converting to the Uint8Array Prisma's Bytes column
+    // expects.
+    const pdfDoc = pdf(ResumeDocument({ data: resumeData }));
+    const stream = await pdfDoc.toBuffer();
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream as unknown as AsyncIterable<Buffer | Uint8Array>) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    const outputBytes = new Uint8Array(Buffer.concat(chunks));
     const safeName = fullName.replace(/[^A-Za-z0-9_-]+/g, "_");
     const filename = `${safeName || "resume"}_AI_Generated.pdf`;
 
@@ -239,4 +224,123 @@ export async function generateAiResume(input: {
       error: e instanceof Error ? e.message : "Failed to generate resume.",
     };
   }
+}
+
+// Strip accidental ```json … ``` fences and any leading prose so the
+// JSON.parse call in parseResumeJson lands on a clean object literal.
+// Claude usually returns clean JSON now, but the defensive strip lets
+// the rare fenced response still parse instead of failing the whole
+// generation.
+function stripJsonFences(raw: string): string {
+  let s = raw.trim();
+  if (s.startsWith("```")) {
+    // Drop the opening fence line ("```json" or just "```").
+    const firstNewline = s.indexOf("\n");
+    if (firstNewline !== -1) s = s.slice(firstNewline + 1);
+    // Drop the trailing fence.
+    if (s.endsWith("```")) s = s.slice(0, -3);
+  }
+  // Some replies prefix with prose like "Here is the JSON:". Find the
+  // first '{' and assume everything before it is preamble.
+  const firstBrace = s.indexOf("{");
+  if (firstBrace > 0) s = s.slice(firstBrace);
+  // Same for trailing prose after the closing brace.
+  const lastBrace = s.lastIndexOf("}");
+  if (lastBrace !== -1 && lastBrace < s.length - 1) {
+    s = s.slice(0, lastBrace + 1);
+  }
+  return s.trim();
+}
+
+// Parse Claude's JSON output into a fully-populated ResumeData. Falls
+// back to data we already have on the Candidate row when a field is
+// missing or malformed, so the template never receives undefineds.
+function parseResumeJson(
+  rawText: string,
+  fullName: string,
+  candidate: {
+    currentDesignation: string | null;
+    email: string | null;
+    phone: string | null;
+    location: string | null;
+    linkedinProfile: string | null;
+    skills: string[];
+  },
+): ResumeData | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripJsonFences(rawText));
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== "object") return null;
+  const obj = parsed as Record<string, unknown>;
+
+  const asString = (v: unknown): string =>
+    typeof v === "string" ? v.trim() : "";
+  const asStringArray = (v: unknown): string[] =>
+    Array.isArray(v)
+      ? v.map(asString).filter((s) => s.length > 0)
+      : [];
+
+  const contactRaw = (obj.contact ?? {}) as Record<string, unknown>;
+  const contact: ResumeData["contact"] = {
+    email: asString(contactRaw.email) || candidate.email || undefined,
+    phone: asString(contactRaw.phone) || candidate.phone || undefined,
+    location: asString(contactRaw.location) || candidate.location || undefined,
+    linkedin:
+      asString(contactRaw.linkedin) ||
+      candidate.linkedinProfile ||
+      undefined,
+  };
+
+  const experience: ResumeExperienceEntry[] = Array.isArray(obj.experience)
+    ? (obj.experience as unknown[]).flatMap<ResumeExperienceEntry>((row) => {
+        if (!row || typeof row !== "object") return [];
+        const r = row as Record<string, unknown>;
+        const title = asString(r.title);
+        const company = asString(r.company);
+        if (!title && !company) return [];
+        return [
+          {
+            title: title || "(role)",
+            company: company || "(company)",
+            dates: asString(r.dates),
+            location: asString(r.location) || undefined,
+            bullets: asStringArray(r.bullets),
+          },
+        ];
+      })
+    : [];
+
+  const education: ResumeEducationEntry[] = Array.isArray(obj.education)
+    ? (obj.education as unknown[]).flatMap<ResumeEducationEntry>((row) => {
+        if (!row || typeof row !== "object") return [];
+        const r = row as Record<string, unknown>;
+        const degree = asString(r.degree);
+        const school = asString(r.school);
+        if (!degree && !school) return [];
+        return [
+          {
+            degree: degree || "(degree)",
+            school: school || "(school)",
+            year: asString(r.year) || undefined,
+            details: asString(r.details) || undefined,
+          },
+        ];
+      })
+    : [];
+
+  return {
+    name: asString(obj.name) || fullName,
+    title: asString(obj.title) || candidate.currentDesignation || "",
+    contact,
+    summary: asString(obj.summary) || undefined,
+    experience,
+    education,
+    skills: asStringArray(obj.skills).length > 0
+      ? asStringArray(obj.skills)
+      : candidate.skills,
+    certifications: asStringArray(obj.certifications),
+  };
 }
