@@ -48,12 +48,19 @@ export type CallLogsProps =
   | { candidateId: string; clientId?: undefined; defaultOpen?: boolean }
   | { clientId: string; candidateId?: undefined; defaultOpen?: boolean };
 
+const VISIBLE_CALLS_DEFAULT = 3;
+
 export function CallLogs(props: CallLogsProps) {
   const { candidateId, clientId, defaultOpen } = props;
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [logs, setLogs] = useState<CallRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Truncation: collapse to the 3 most recent rows by default. Recruiter
+  // hits "Show all N calls" to expand to the full list. Resets back to
+  // collapsed if the candidate/client switches (component remounts) or
+  // if the underlying list shrinks below the threshold.
+  const [showAll, setShowAll] = useState(false);
   const lastKey = useRef<string>("");
 
   const fetchLogs = useCallback(async () => {
@@ -124,11 +131,24 @@ export function CallLogs(props: CallLogsProps) {
           ) : logs.length === 0 ? (
             <div className="py-6 text-center text-sm text-court-fg-muted">No calls logged yet</div>
           ) : (
-            <ul className="divide-y divide-border">
-              {logs.map((row) => (
-                <CallRowView key={row.id} row={row} />
-              ))}
-            </ul>
+            <>
+              <ul className="divide-y divide-border">
+                {(showAll ? logs : logs.slice(0, VISIBLE_CALLS_DEFAULT)).map((row) => (
+                  <CallRowView key={row.id} row={row} onChanged={fetchLogs} />
+                ))}
+              </ul>
+              {logs.length > VISIBLE_CALLS_DEFAULT && (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((v) => !v)}
+                  className="mt-2 inline-flex w-full items-center justify-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+                >
+                  {showAll
+                    ? `Show 3 most recent`
+                    : `Show all ${logs.length} calls`}
+                </button>
+              )}
+            </>
           )}
           {error && (
             <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800">
@@ -141,7 +161,7 @@ export function CallLogs(props: CallLogsProps) {
   );
 }
 
-function CallRowView({ row }: { row: CallRow }) {
+function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }) {
   const outbound = row.direction === "outbound";
   const Icon = outbound ? PhoneOutgoing : PhoneIncoming;
   const directionLabel = outbound ? "Outbound" : "Inbound";
@@ -157,16 +177,58 @@ function CallRowView({ row }: { row: CallRow }) {
   const summaryText = row.transcript?.summary?.trim() ?? "";
   const hasAnything = Boolean(transcriptText) || Boolean(summaryText);
 
+  // Generate-Summary action — re-runs Claude over the saved transcript
+  // via /api/calls/summary and refreshes the parent list so the new
+  // summary text shows up in the expanded section. Only renders when a
+  // transcript actually exists (no point summarizing an empty string).
+  // Also useful as a manual override when Quo's auto-summary differs
+  // from what the recruiter wants surfaced.
+  const [summarizing, setSummarizing] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+  async function onGenerateSummary(e: React.MouseEvent) {
+    // Don't bubble — would otherwise toggle the row's expand state.
+    e.stopPropagation();
+    setSummaryError(null);
+    setSummarizing(true);
+    try {
+      const res = await fetch("/api/calls/summary", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callLogId: row.id }),
+      });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        setSummaryError(text || `Summary failed (${res.status})`);
+        return;
+      }
+      onChanged();
+    } catch (err) {
+      setSummaryError(err instanceof Error ? err.message : "Summary failed.");
+    } finally {
+      setSummarizing(false);
+    }
+  }
+
   return (
     <li className="flex flex-col py-3 text-sm">
-      {/* Click target spans the whole meta row. button + aria-expanded
-          for keyboard / screen-reader parity. The recording link is
-          stopPropagation'd so clicking it doesn't also expand. */}
-      <button
-        type="button"
+      {/* Click target uses role="button" instead of <button> so the
+          inline "Generate Summary" action button can be nested without
+          violating the no-button-in-button HTML rule. Keyboard parity:
+          Enter / Space toggle expand. The recording link and the
+          generate-summary button both stopPropagation so clicking
+          either doesn't also collapse/expand the row. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
         aria-expanded={expanded}
-        className="-mx-2 flex w-full items-start justify-between gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-court-surface-subtle/50"
+        className="-mx-2 flex w-full cursor-pointer items-start justify-between gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-court-surface-subtle/50"
       >
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <div
@@ -180,7 +242,7 @@ function CallRowView({ row }: { row: CallRow }) {
             <Icon className="h-3.5 w-3.5" />
           </div>
           <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="font-semibold text-court-fg">{directionLabel}</span>
               {counterpartNumber && (
                 <span className="text-xs text-court-fg-muted">· {counterpartNumber}</span>
@@ -188,6 +250,33 @@ function CallRowView({ row }: { row: CallRow }) {
               {hasAnything && (
                 <span className="rounded-full bg-brand-tint px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-dark">
                   Transcript
+                </span>
+              )}
+              {/* Inline Generate Summary action — sits next to the
+                  TRANSCRIPT pill so the recruiter can re-summarize
+                  without expanding the row. Hidden until a transcript
+                  exists, since /api/calls/summary needs CallTranscript
+                  to be present before it'll run.
+                  The wrapper span catches the click bubble even when
+                  the button is `disabled` (HTML cancels the button's
+                  own onClick, so without the wrapper the click would
+                  bubble up to the row's expand toggle). */}
+              {transcriptText && (
+                <span onClick={(e) => e.stopPropagation()}>
+                  <button
+                    type="button"
+                    onClick={onGenerateSummary}
+                    disabled={summarizing}
+                    title="Re-run Claude on the saved transcript"
+                    className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
+                  >
+                    {summarizing ? (
+                      <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-2.5 w-2.5" />
+                    )}
+                    Generate Summary
+                  </button>
                 </span>
               )}
             </div>
@@ -206,6 +295,9 @@ function CallRowView({ row }: { row: CallRow }) {
                 Recording <ExternalLink className="h-3 w-3" />
               </a>
             )}
+            {summaryError && (
+              <div className="mt-1 text-[11px] text-red-700">{summaryError}</div>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
@@ -217,7 +309,7 @@ function CallRowView({ row }: { row: CallRow }) {
             )}
           />
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="ml-10 mt-3 space-y-3">
