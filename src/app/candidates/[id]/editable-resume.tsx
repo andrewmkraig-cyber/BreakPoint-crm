@@ -5,13 +5,16 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
+  Check,
   Download,
   Edit3,
   FileOutput,
   FileText,
   Loader2,
+  Pencil,
   Trash2,
   Upload,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
@@ -21,6 +24,7 @@ import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
   convertDocxResumeToPdf,
   deleteCandidateResume,
+  renameCandidateResume,
 } from "@/app/candidates/[id]/actions";
 import { generateAiResume } from "@/app/candidates/[id]/generate-resume-action";
 import { Sparkles } from "lucide-react";
@@ -257,9 +261,56 @@ export function EditableResume({
     });
   }
 
-  // commitRename() helper removed alongside the click-to-rename
-  // filename UI. The renameCandidateResume server action remains
-  // available for future re-wiring (e.g. dropdown context menu).
+  // Inline rename of the selected version. Replaces the version
+  // dropdown with a text input on click; Enter / Save commits via the
+  // renameCandidateResume server action and router.refresh() pulls
+  // the new displayName back into the dropdown label. Trailing
+  // extensions are stripped server-side so the recruiter never has
+  // to think about ".pdf" suffixes.
+  const [renaming, setRenaming] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingName, setSavingName] = useState(false);
+
+  function startRename() {
+    if (!selected) return;
+    const stripped = (selected.displayName?.trim() || selected.filename).replace(
+      /\.(pdf|docx?|txt)$/i,
+      "",
+    );
+    setNameDraft(stripped);
+    setRenaming(true);
+  }
+
+  function cancelRename() {
+    setRenaming(false);
+    setNameDraft("");
+  }
+
+  async function commitRename() {
+    if (!selected) return;
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      toast.error("Name can't be empty.");
+      return;
+    }
+    setSavingName(true);
+    try {
+      const res = await renameCandidateResume({
+        resumeId: selected.resumeId,
+        displayName: trimmed,
+      });
+      if (!res.ok) {
+        toast.error("Couldn't rename resume", { description: res.error });
+        return;
+      }
+      toast.success("Resume renamed");
+      setRenaming(false);
+      setNameDraft("");
+      router.refresh();
+    } finally {
+      setSavingName(false);
+    }
+  }
 
   if (versions.length === 0) {
     return (
@@ -339,22 +390,77 @@ export function EditableResume({
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
           {/* Version dropdown — Court Mode tokens. Architecture: any
               ResumeVersion entry slots in here without component
-              changes (originals + redacted today; branded next prompt). */}
-          <label className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
-            <span className="uppercase tracking-wider">Version</span>
-            <select
-              value={selectedKey ?? ""}
-              onChange={(e) => setSelectedKey(e.target.value)}
-              disabled={isUploading || isPending}
-              className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
-            >
-              {versions.map((v) => (
-                <option key={v.key} value={v.key}>
-                  {dropdownLabelFor(v)}
-                </option>
-              ))}
-            </select>
-          </label>
+              changes (originals + redacted today; branded next prompt).
+              Click the pencil to swap the dropdown for an inline rename
+              input on the currently-selected version. */}
+          {renaming ? (
+            <div className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
+              <span className="uppercase tracking-wider">Name</span>
+              <input
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void commitRename();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                disabled={savingName}
+                autoFocus
+                placeholder="Resume name"
+                className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+              />
+              <button
+                type="button"
+                onClick={() => void commitRename()}
+                disabled={savingName || !nameDraft.trim()}
+                aria-label="Save resume name"
+                title="Save"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
+              >
+                {savingName ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+              </button>
+              <button
+                type="button"
+                onClick={cancelRename}
+                disabled={savingName}
+                aria-label="Cancel rename"
+                title="Cancel"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <label className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
+              <span className="uppercase tracking-wider">Version</span>
+              <select
+                value={selectedKey ?? ""}
+                onChange={(e) => setSelectedKey(e.target.value)}
+                disabled={isUploading || isPending}
+                className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+              >
+                {versions.map((v) => (
+                  <option key={v.key} value={v.key}>
+                    {dropdownLabelFor(v)}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={startRename}
+                disabled={isUploading || isPending}
+                aria-label="Rename this version"
+                title="Rename this version"
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            </label>
+          )}
           {canEdit && (
             <button
               type="button"

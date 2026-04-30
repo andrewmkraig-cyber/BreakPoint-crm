@@ -47,7 +47,7 @@ export function DeleteClientButton({
           className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 transition hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3" />
-          Delete client
+          Delete
         </button>
       </div>
     );
