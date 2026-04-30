@@ -23,6 +23,7 @@ import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
 import AiWorkspace from "@/components/AiWorkspace";
 import { ActivityFeed } from "@/components/activity-feed";
+import { CallLogs } from "@/components/call-logs";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -510,7 +511,16 @@ export default async function ClientDetailPage({
           </div>
         </section>
       ) : tab === "activity" ? (
-        <ActivityFeed entityType="client" entityId={client.id} />
+        <div className="space-y-6">
+          {/* Call log first — auto-populated through the Quo webhook
+              (call.completed → call.transcript.completed → call.summary.completed).
+              Surfaces transcripts + AI summaries inline per row. Note: requires
+              CallLog.clientId to be stamped on the write path; until the webhook
+              also matches Contact-side phones, this list will be empty for
+              client-only conversations. */}
+          <CallLogs clientId={client.id} defaultOpen />
+          <ActivityFeed entityType="client" entityId={client.id} />
+        </div>
       ) : (
         <div className="rounded-xl border border-court-border bg-court-surface p-6 text-sm text-court-fg-muted">
           This tab isn&apos;t available yet for Ace-native clients.

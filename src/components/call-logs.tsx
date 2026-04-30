@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ChevronDown,
   ExternalLink,
-  FileText,
   Loader2,
   Phone,
   PhoneIncoming,
@@ -34,13 +33,23 @@ type CallRow = {
   transcript: TranscriptShape | null;
 };
 
-// Collapsible call-log thread for a single candidate. Fetches lazily when the
-// accordion opens (same pattern as TextingExchanges), renders newest-first
-// rows with a direction icon, timestamp, duration, status pill, and a
-// recording link when present. No polling — call rows land via the Krispcall
-// webhook after the call completes; a quick close/reopen of the accordion is
-// the recruiter's refresh affordance.
-export function CallLogs({ candidateId, defaultOpen }: { candidateId: string; defaultOpen?: boolean }) {
+// Collapsible call-log thread scoped either to one candidate or to one
+// client. Fetches lazily when the accordion opens (same pattern as
+// TextingExchanges), renders newest-first rows with a direction icon,
+// timestamp, duration, status pill, and a recording link when present.
+// Each row is independently click-to-expand, revealing the auto-saved
+// transcript + AI summary that Quo's webhook writes through the
+// call.transcript.completed / call.summary.completed events.
+//
+// Discriminated prop: pass exactly one of candidateId or clientId.
+// candidateId wins when both are supplied (defensive — should not
+// happen with TS narrowing).
+export type CallLogsProps =
+  | { candidateId: string; clientId?: undefined; defaultOpen?: boolean }
+  | { clientId: string; candidateId?: undefined; defaultOpen?: boolean };
+
+export function CallLogs(props: CallLogsProps) {
+  const { candidateId, clientId, defaultOpen } = props;
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [logs, setLogs] = useState<CallRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -49,19 +58,24 @@ export function CallLogs({ candidateId, defaultOpen }: { candidateId: string; de
 
   const fetchLogs = useCallback(async () => {
     try {
-      const res = await fetch(
-        `/api/calls?candidateId=${encodeURIComponent(candidateId)}`,
-        { cache: "no-store" },
-      );
+      const queryParam = candidateId
+        ? `candidateId=${encodeURIComponent(candidateId)}`
+        : `clientId=${encodeURIComponent(clientId!)}`;
+      const res = await fetch(`/api/calls?${queryParam}`, { cache: "no-store" });
       if (!res.ok) {
         setError(`Couldn't load calls (${res.status})`);
         return;
       }
       const rows = (await res.json()) as CallRow[];
       // Dedupe re-renders — if nothing changed since the last fetch, don't
-      // flash the list. Keyed on (id, status, duration) since duration
-      // typically gets filled in after the call completes.
-      const key = rows.map((r) => `${r.id}:${r.status}:${r.duration ?? ""}`).join("|");
+      // flash the list. Keyed on (id, status, duration, summary-presence)
+      // so a transcript/summary arriving via webhook re-renders the row.
+      const key = rows
+        .map(
+          (r) =>
+            `${r.id}:${r.status}:${r.duration ?? ""}:${r.transcript?.transcript ? "t" : ""}:${r.transcript?.summary ? "s" : ""}`,
+        )
+        .join("|");
       if (key === lastKey.current) return;
       lastKey.current = key;
       setLogs(rows);
@@ -71,7 +85,7 @@ export function CallLogs({ candidateId, defaultOpen }: { candidateId: string; de
     } finally {
       setLoaded(true);
     }
-  }, [candidateId]);
+  }, [candidateId, clientId]);
 
   useEffect(() => {
     if (!open) return;
@@ -112,7 +126,7 @@ export function CallLogs({ candidateId, defaultOpen }: { candidateId: string; de
           ) : (
             <ul className="divide-y divide-border">
               {logs.map((row) => (
-                <CallRowView key={row.id} row={row} onChanged={fetchLogs} />
+                <CallRowView key={row.id} row={row} />
               ))}
             </ul>
           )}
@@ -127,147 +141,128 @@ export function CallLogs({ candidateId, defaultOpen }: { candidateId: string; de
   );
 }
 
-function CallRowView({ row, onChanged }: { row: CallRow; onChanged: () => void }) {
+function CallRowView({ row }: { row: CallRow }) {
   const outbound = row.direction === "outbound";
   const Icon = outbound ? PhoneOutgoing : PhoneIncoming;
   const directionLabel = outbound ? "Outbound" : "Inbound";
   const counterpartNumber = outbound ? row.toNumber : row.fromNumber;
 
-  const [transcriptModalOpen, setTranscriptModalOpen] = useState(false);
-  const [summarizing, setSummarizing] = useState(false);
-  // Optimistic in-session override for the summary text. The server persists
-  // to CallTranscript.summary and the parent's fetchLogs refresh would pick
-  // it up, but we also mirror it here so the result appears instantly without
-  // a round-trip.
-  const [liveSummary, setLiveSummary] = useState<string | null>(null);
-  const [summaryError, setSummaryError] = useState<string | null>(null);
-
-  const hasTranscript = Boolean(row.transcript);
-  const currentSummary = liveSummary ?? row.transcript?.summary ?? null;
-
-  async function onGenerateSummary() {
-    setSummaryError(null);
-    setSummarizing(true);
-    try {
-      const res = await fetch("/api/calls/summary", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ callLogId: row.id }),
-      });
-      if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        setSummaryError(text || `Summary failed (${res.status})`);
-        return;
-      }
-      const json = (await res.json()) as { summary?: string };
-      if (json.summary) {
-        setLiveSummary(json.summary);
-        onChanged();
-      }
-    } catch (e) {
-      setSummaryError(e instanceof Error ? e.message : "Summary failed.");
-    } finally {
-      setSummarizing(false);
-    }
-  }
+  // Whole-row click toggles inline Transcript + Summary. Quo writes
+  // both through call.transcript.completed / call.summary.completed
+  // webhook events — the recruiter no longer pastes anything by hand.
+  // Empty-string transcripts (out-of-order summary-first arrival) read
+  // as "not yet available" until the transcript event lands.
+  const [expanded, setExpanded] = useState(false);
+  const transcriptText = row.transcript?.transcript?.trim() ?? "";
+  const summaryText = row.transcript?.summary?.trim() ?? "";
+  const hasAnything = Boolean(transcriptText) || Boolean(summaryText);
 
   return (
-    <>
-      <li className="flex flex-col gap-2 py-3 text-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-start gap-3">
-            <div
-              className={cn(
-                "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                outbound ? "bg-emerald-50 text-emerald-700" : "bg-court-surface-subtle text-court-fg-muted",
-              )}
-              title={directionLabel}
-              aria-label={directionLabel}
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="font-semibold text-court-fg">{directionLabel}</span>
-                {counterpartNumber && (
-                  <span className="text-xs text-court-fg-muted">· {counterpartNumber}</span>
-                )}
-              </div>
-              <div className="mt-0.5 text-[11px] text-court-fg-muted">
-                {formatTs(row.createdAt)}
-                {row.duration != null && <span className="ml-2">· {formatDuration(row.duration)}</span>}
-              </div>
-              {row.recordingUrl && (
-                <a
-                  href={row.recordingUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-1 inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
-                >
-                  Recording <ExternalLink className="h-3 w-3" />
-                </a>
-              )}
-            </div>
-          </div>
-          <StatusPill status={row.status} />
-        </div>
-
-        {/* Action bar — sits below the meta row so it never crowds the
-            direction/number line. Paste Transcript is always available (an
-            upsert on the server so re-paste just overwrites). Generate
-            Summary only appears once a transcript row exists. */}
-        <div className="flex flex-wrap items-center gap-2 pl-10">
-          <button
-            type="button"
-            onClick={() => setTranscriptModalOpen(true)}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+    <li className="flex flex-col py-3 text-sm">
+      {/* Click target spans the whole meta row. button + aria-expanded
+          for keyboard / screen-reader parity. The recording link is
+          stopPropagation'd so clicking it doesn't also expand. */}
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        className="-mx-2 flex w-full items-start justify-between gap-3 rounded-lg px-2 py-1 text-left transition hover:bg-court-surface-subtle/50"
+      >
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <div
+            className={cn(
+              "mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
+              outbound ? "bg-emerald-50 text-emerald-700" : "bg-court-surface-subtle text-court-fg-muted",
+            )}
+            title={directionLabel}
+            aria-label={directionLabel}
           >
-            <FileText className="h-3 w-3" />
-            {hasTranscript ? "Edit Transcript" : "Paste Transcript"}
-          </button>
-          {hasTranscript && (
-            <button
-              type="button"
-              onClick={() => void onGenerateSummary()}
-              disabled={summarizing}
-              className="inline-flex items-center gap-1 rounded-md border border-brand/40 bg-brand-tint px-2 py-1 text-[11px] font-semibold text-brand-dark shadow-sm transition hover:bg-brand-tint/70 disabled:opacity-60"
-            >
-              {summarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              {currentSummary ? "Regenerate Summary" : "Generate Summary"}
-            </button>
-          )}
+            <Icon className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <span className="font-semibold text-court-fg">{directionLabel}</span>
+              {counterpartNumber && (
+                <span className="text-xs text-court-fg-muted">· {counterpartNumber}</span>
+              )}
+              {hasAnything && (
+                <span className="rounded-full bg-brand-tint px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-brand-dark">
+                  Transcript
+                </span>
+              )}
+            </div>
+            <div className="mt-0.5 text-[11px] text-court-fg-muted">
+              {formatTs(row.createdAt)}
+              {row.duration != null && <span className="ml-2">· {formatDuration(row.duration)}</span>}
+            </div>
+            {row.recordingUrl && (
+              <a
+                href={row.recordingUrl}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="mt-1 inline-flex items-center gap-1 text-[11px] text-brand-dark hover:underline"
+              >
+                Recording <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <StatusPill status={row.status} />
+          <ChevronDown
+            className={cn(
+              "h-4 w-4 text-court-fg-muted transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+        </div>
+      </button>
 
-        {currentSummary && (
-          <div className="ml-10 rounded-lg border border-brand/20 bg-brand-tint/20 px-3 py-2 text-xs text-court-fg whitespace-pre-wrap">
+      {expanded && (
+        <div className="ml-10 mt-3 space-y-3">
+          {/* Transcript — pre-formatted text from Quo (one line per turn,
+              "0:00 Speaker: text"). whitespace-pre-wrap preserves the
+              line breaks Quo bakes in. */}
+          <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs text-court-fg">
+            <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              <Phone className="h-2.5 w-2.5" /> Transcript
+            </div>
+            {transcriptText ? (
+              <div className="whitespace-pre-wrap">{transcriptText}</div>
+            ) : (
+              <div className="italic text-court-fg-muted">
+                Transcript not yet available.
+              </div>
+            )}
+          </div>
+
+          {/* Summary — Quo's "Powered by AI" callout, brand-tinted to
+              echo the in-app Claude-output styling. */}
+          <div className="rounded-lg border border-brand/20 bg-brand-tint/20 px-3 py-2 text-xs text-court-fg">
             <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-brand-dark">
               <Sparkles className="h-2.5 w-2.5" /> Summary
             </div>
-            <div>{currentSummary}</div>
+            {summaryText ? (
+              <div className="whitespace-pre-wrap">{summaryText}</div>
+            ) : (
+              <div className="italic text-court-fg-muted">
+                Summary not yet available.
+              </div>
+            )}
           </div>
-        )}
-        {summaryError && (
-          <div className="ml-10 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-800">
-            {summaryError}
-          </div>
-        )}
-      </li>
-
-      {transcriptModalOpen && (
-        <TranscriptModal
-          callLogId={row.id}
-          initial={row.transcript?.transcript ?? ""}
-          onClose={() => setTranscriptModalOpen(false)}
-          onSaved={() => {
-            setTranscriptModalOpen(false);
-            onChanged();
-          }}
-        />
+        </div>
       )}
-    </>
+    </li>
   );
 }
 
+// Manual transcript-paste modal. Kept intentionally as dead code so we
+// can re-enable a manual override path if Quo's auto-transcription
+// drops a call. Quo's webhook (call.transcript.completed /
+// call.summary.completed) is the live path. /api/calls/transcript stays
+// available for any future caller.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function TranscriptModal({
   callLogId,
   initial,

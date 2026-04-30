@@ -10,10 +10,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  // Accept either candidateId or clientId. Candidate scoping is the
+  // primary use case; clientId scoping powers the call log on the
+  // client profile activity tab. If both arrive somehow, candidateId
+  // takes precedence.
   const candidateId = req.nextUrl.searchParams.get('candidateId')
-  if (!candidateId) return NextResponse.json([])
+  const clientId = req.nextUrl.searchParams.get('clientId')
+  if (!candidateId && !clientId) return NextResponse.json([])
   const logs = await prisma.callLog.findMany({
-    where: { candidateId },
+    where: candidateId ? { candidateId } : { clientId: clientId! },
     include: { transcript: true },
     orderBy: { createdAt: 'desc' },
   })
