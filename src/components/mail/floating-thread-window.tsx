@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { GripVertical, Loader2, Minus, X } from "lucide-react";
 import { toast } from "sonner";
@@ -44,6 +44,7 @@ export function FloatingThreadWindow() {
   const [archiving, setArchiving] = useState(false);
   const [moving, setMoving] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  const windowRef = useRef<HTMLDivElement | null>(null);
 
   // createPortal needs document.body; gate until after mount so SSR
   // (and the initial server render of "use client" components) doesn't
@@ -99,48 +100,85 @@ export function FloatingThreadWindow() {
 
   const pos = position ?? { x: 100, y: 100 };
 
-  // Drag: pointer-down on header captures the deltas, window-level
-  // pointermove/pointerup handle the rest. Avoiding setPointerCapture
-  // because state-driven re-renders of the header element can swap
-  // the captured target out from under us.
+  // Drag: pointer-down on header captures the start state, window-level
+  // pointermove/pointerup handle the rest. To keep dragging snappy on a
+  // popup that contains heavy ThreadDetail content (HTML emails, big
+  // body strings), pointermove writes the new left/top STRAIGHT to the
+  // DOM via the windowRef and a single rAF-coalesced tick — React
+  // doesn't re-render the ThreadDetail subtree until pointerup, when
+  // the final position is committed to context state. Without this
+  // path, every pointer event triggered a full re-render of the email
+  // body and the drag visibly lagged.
+  //
+  // Avoiding setPointerCapture because state-driven re-renders of the
+  // header element can swap the captured target out from under us.
   const onHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    // Ignore drags initiated from buttons inside the header.
     if ((e.target as HTMLElement).closest("button")) return;
+    if (!windowRef.current) return;
     const startPx = e.clientX;
     const startPy = e.clientY;
     const startX = pos.x;
     const startY = pos.y;
+    let nextX = startX;
+    let nextY = startY;
+    let rafId = 0;
+    const flush = () => {
+      rafId = 0;
+      const node = windowRef.current;
+      if (!node) return;
+      node.style.left = `${nextX}px`;
+      node.style.top = `${nextY}px`;
+    };
     const onMove = (ev: PointerEvent) => {
-      setPosition({
-        x: Math.max(0, startX + ev.clientX - startPx),
-        y: Math.max(0, startY + ev.clientY - startPy),
-      });
+      nextX = Math.max(0, startX + ev.clientX - startPx);
+      nextY = Math.max(0, startY + ev.clientY - startPy);
+      if (rafId === 0) rafId = requestAnimationFrame(flush);
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      // Commit the final position to context state — guarantees the
+      // popup keeps its position after a navigation that re-mounts
+      // FloatingThreadWindow.
+      setPosition({ x: nextX, y: nextY });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
 
+  // Same rAF-coalesced ref-write strategy as the drag handler — resizing
+  // mutates the ref's width/height inline; React state is only updated
+  // on pointerup so the heavy ThreadDetail re-renders once at the end.
   const onResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    if (!windowRef.current) return;
     const startPx = e.clientX;
     const startPy = e.clientY;
     const startW = size.w;
     const startH = size.h;
+    let nextW = startW;
+    let nextH = startH;
+    let rafId = 0;
+    const flush = () => {
+      rafId = 0;
+      const node = windowRef.current;
+      if (!node) return;
+      node.style.width = `${nextW}px`;
+      node.style.height = `${nextH}px`;
+    };
     const onMove = (ev: PointerEvent) => {
-      setSize({
-        w: Math.max(FLOATING_THREAD_MIN_W, startW + ev.clientX - startPx),
-        h: Math.max(FLOATING_THREAD_MIN_H, startH + ev.clientY - startPy),
-      });
+      nextW = Math.max(FLOATING_THREAD_MIN_W, startW + ev.clientX - startPx);
+      nextH = Math.max(FLOATING_THREAD_MIN_H, startH + ev.clientY - startPy);
+      if (rafId === 0) rafId = requestAnimationFrame(flush);
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
+      if (rafId !== 0) cancelAnimationFrame(rafId);
+      setSize({ w: nextW, h: nextH });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -227,6 +265,7 @@ export function FloatingThreadWindow() {
 
   return createPortal(
     <div
+      ref={windowRef}
       role="dialog"
       aria-label="Email thread"
       className="pointer-events-auto fixed z-[1000] flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"

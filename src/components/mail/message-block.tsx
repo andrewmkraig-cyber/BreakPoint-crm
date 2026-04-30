@@ -77,7 +77,8 @@ export function MessageBlock({
   return (
     <article
       className={
-        "px-5 py-4 " + (isFirst ? "" : "border-t border-court-border")
+        "min-w-0 overflow-hidden px-5 py-4 " +
+        (isFirst ? "" : "border-t border-court-border")
       }
     >
       <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
@@ -145,6 +146,13 @@ export function MessageBlock({
           // inside a <pre class=whitespace-pre-wrap> wrapper that the
           // [&_pre] rule below preserves.
           "max-w-none text-sm leading-normal",
+          // Cap the rendered email to its container so wide signature
+          // tables / fixed-width templates can't blow the floating
+          // window apart at narrow sizes. min-w-0 lets the flex
+          // container actually constrain us; overflow-x-auto gives
+          // the user a horizontal scroll within the message instead
+          // of pushing the popup wider than the viewport.
+          "min-w-0 max-w-full overflow-x-auto",
           // "Reading paper" container — pure white in light Court
           // Modes (Hard / Clay / Grass light) so emails read like a
           // normal mail client, then a soft cream in dark modes
