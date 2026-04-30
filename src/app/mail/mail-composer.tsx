@@ -1226,10 +1226,17 @@ export function MailComposer({
             <span className="shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
               Which job is this email about?
             </span>
+            {/* min-w-0 lets flex-1 actually constrain the select's
+                width — without it, the longest <option>'s intrinsic
+                content width (e.g. "Tax Manager in Cleveland -
+                Northeast Ohio at BreakPoint") wins and pushes the
+                native chevron past the modal's right edge. With
+                min-w-0 + flex-1 the select shrinks to fit and the
+                chevron stays glued to the option-text right side. */}
             <select
               value={selectedJobId ?? ""}
               onChange={(e) => setSelectedJobId(e.target.value || null)}
-              className="flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              className="min-w-0 flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             >
               <option value="">— Pick a job —</option>
               {activeJobs.map((j) => {
