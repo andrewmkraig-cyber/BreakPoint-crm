@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
+import { linkedinUrlFrom } from "@/lib/rf-payload-shapes";
 
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -119,7 +120,7 @@ export async function updateCandidate(patch: CandidatePatch): Promise<ActionResu
     if (patch.current_organization !== undefined)
       data.currentOrganization = patch.current_organization ?? null;
     if (patch.linkedin_profile !== undefined)
-      data.linkedinProfile = patch.linkedin_profile ?? null;
+      data.linkedinProfile = linkedinUrlFrom(patch.linkedin_profile) || null;
     if (patch.location !== undefined) data.location = locationToString(patch.location);
     if (patch.skills !== undefined) data.skills = patch.skills ?? [];
     if (patch.tags !== undefined) data.tags = patch.tags ?? [];

@@ -6,6 +6,7 @@ import { createActionLog } from "@/lib/action-log";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { linkedinUrlFrom } from "@/lib/rf-payload-shapes";
 
 // Quick-add contact used by the Schedule Interview dialog's "+ Add new
 // contact" option. Phase 5: contacts are Neon-native now — write goes
@@ -75,7 +76,7 @@ export async function createClientContact(
     const email = input.email?.trim() || "";
     const phone = input.phone?.trim() || "";
     const title = input.title?.trim() || null;
-    const linkedin = input.linkedinUrl?.trim() || null;
+    const linkedin = linkedinUrlFrom(input.linkedinUrl) || null;
 
     const created = await prisma.contact.create({
       data: {

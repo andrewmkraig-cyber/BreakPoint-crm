@@ -538,6 +538,37 @@ export function telHref(
   return ext ? `${base};ext=${ext}` : base;
 }
 
+// Coerces whatever shape the recruiter pasted into a clickable LinkedIn
+// URL. Inputs we tolerate (all common copy/paste patterns):
+//   • full URL — "https://www.linkedin.com/in/jeannie-seery-..."  → kept as is
+//   • host-only path — "linkedin.com/in/jeannie-..."              → prefixed
+//   • path-only — "in/jeannie-..." or "/in/jeannie-..."           → prefixed
+//   • bare slug — "jeannie-seery-..."                              → assumed
+//                                                                   personal,
+//                                                                   prefixed
+//                                                                   with /in/
+//   • bare company slug — "company/foo"                           → kept under
+//                                                                   /company/
+// Returns "" when input is empty so callers can `if (href)` cleanly. The
+// bug this fixes: links rendered with bare-slug values resolved as
+// site-relative URLs (Ace's own host) and 404'd.
+export function linkedinUrlFrom(raw: string | null | undefined): string {
+  if (!raw) return "";
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  // Strip leading slashes + "linkedin.com/" / "www.linkedin.com/" prefix.
+  let rest = trimmed.replace(/^\/+/, "");
+  rest = rest.replace(/^(?:www\.)?linkedin\.com\//i, "");
+  rest = rest.replace(/^\/+/, "");
+  const lower = rest.toLowerCase();
+  if (lower.startsWith("in/") || lower.startsWith("company/") || lower.startsWith("school/") || lower.startsWith("pub/")) {
+    return `https://www.linkedin.com/${rest}`;
+  }
+  // Bare slug → personal profile.
+  return `https://www.linkedin.com/in/${rest}`;
+}
+
 export function daysBetween(iso: string | null | undefined, now: Date = new Date()): number | null {
   if (!iso) return null;
   const t = new Date(iso).getTime();

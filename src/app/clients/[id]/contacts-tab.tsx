@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Mail, Phone as PhoneIcon, Plus, UserPlus, X, ExternalLink } from "lucide-react";
-import { formatPhone, telHref } from "@/lib/rf-payload-shapes";
+import { formatPhone, linkedinUrlFrom, telHref } from "@/lib/rf-payload-shapes";
 import { addContact, updateContact } from "@/app/clients/[id]/actions";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn } from "@/lib/utils";
@@ -165,7 +165,7 @@ export function ContactsTab({
                         <div className="font-medium text-court-fg">{c.name}</div>
                         {c.linkedIn && (
                           <a
-                            href={c.linkedIn}
+                            href={linkedinUrlFrom(c.linkedIn)}
                             target="_blank"
                             rel="noreferrer"
                             onClick={(e) => e.stopPropagation()}

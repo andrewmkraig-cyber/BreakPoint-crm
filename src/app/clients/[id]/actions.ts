@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { linkedinUrlFrom } from "@/lib/rf-payload-shapes";
 import {
   summarizeAgreementTerms as summarizeAgreementTermsWithClaude,
   summarizeBenefits as summarizeBenefitsWithClaude,
@@ -37,7 +38,11 @@ export async function addContact(clientCuid: string, formData: FormData): Promis
   const phone = String(formData.get("phone_number") ?? "").trim();
   const extension = String(formData.get("phone_extension") ?? "").trim();
   const title = String(formData.get("current_designation") ?? "").trim();
-  const linkedin = String(formData.get("linkedin_profile") ?? "").trim();
+  const linkedinRaw = String(formData.get("linkedin_profile") ?? "").trim();
+  // Persist a fully-qualified LinkedIn URL so the rendered <a href>
+  // can never resolve as a site-relative link (which 404'd against
+  // ace.breakpointtalent.com).
+  const linkedin = linkedinUrlFrom(linkedinRaw);
 
   if (!first) return { ok: false, error: "First name is required." };
 
@@ -129,7 +134,7 @@ export async function updateContact(input: UpdateContactInput): Promise<UpdateCo
     const phone = input.phone.trim();
     const extension = input.extension.trim();
     const title = input.title.trim();
-    const linkedin = input.linkedin.trim();
+    const linkedin = linkedinUrlFrom(input.linkedin);
     const notes = input.notes.trim();
     const combined = [first, last].filter(Boolean).join(" ");
 
@@ -378,7 +383,7 @@ export async function updateClientCompany(input: UpdateClientInput): Promise<Act
       data: {
         domain: domain || null,
         industry: input.industry.trim() || null,
-        linkedinPage: input.linkedin.trim() || null,
+        linkedinPage: linkedinUrlFrom(input.linkedin) || null,
         phoneNumbers: phoneTrimmed ? [{ number: phoneTrimmed }] : [],
         location,
       },
