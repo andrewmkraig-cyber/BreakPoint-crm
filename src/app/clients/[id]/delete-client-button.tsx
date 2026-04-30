@@ -33,23 +33,28 @@ export function DeleteClientButton({
   }
 
   if (!confirming) {
+    // Quiet by default: ghost-style text button tucked down at the
+    // bottom of the page. Recruiters rarely delete clients, so the
+    // affordance shouldn't compete with active workflows. Only on
+    // hover does it pick up the danger color so the destructive
+    // intent is still legible.
     return (
-      <div className="pt-8">
-        <Button
-          variant="danger"
-          size="sm"
+      <div className="pt-24 text-right">
+        <button
+          type="button"
           onClick={() => setConfirming(true)}
           aria-label="Delete client"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 transition hover:bg-red-50 hover:text-red-600"
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash2 className="h-3 w-3" />
           Delete client
-        </Button>
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="pt-8">
+    <div className="pt-24">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
         <span className="font-medium">
           Delete {clientName}? This cannot be undone — every job, contact, agreement, benefit file, and pipeline entry tied to this client goes with it.
