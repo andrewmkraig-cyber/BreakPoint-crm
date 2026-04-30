@@ -98,10 +98,16 @@ export function Sidebar({ width }: { width?: number } = {}) {
           Talent" lockup. h-24 matches the top bar so the brand mark
           and the date eyebrow share the same vertical band. No
           horizontal border — the brand mark area flows into the nav
-          column without a dividing rule. */}
-      <div className="flex h-24 shrink-0 items-center px-5">
+          column without a dividing rule. The lockup is a link back to
+          /dashboard so the recruiter can always click the logo to
+          home, the same convention every other web app uses. */}
+      <Link
+        href="/dashboard"
+        aria-label="Ace dashboard"
+        className="flex h-24 shrink-0 items-center px-5 transition-opacity hover:opacity-80"
+      >
         <BrandMark withTag />
-      </div>
+      </Link>
       <nav className="flex-1 overflow-y-auto p-3">
         {NAV_GROUPS.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-5"}>

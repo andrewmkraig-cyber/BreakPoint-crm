@@ -133,7 +133,12 @@ export function AppShell({
               onMouseDown={onHandleMouseDown}
               className={
                 "sticky top-0 hidden h-screen w-1.5 shrink-0 cursor-col-resize self-start md:block " +
-                (dragging ? "bg-brand/40" : "bg-transparent hover:bg-brand/20")
+                // Default bg matches the sidebar + topbar so the
+                // 1.5px strip between them doesn't expose the darker
+                // body bg as a visible vertical seam at the top of
+                // the page. Drag/hover states remain brand-tinted so
+                // the hit-target still telegraphs interactivity.
+                (dragging ? "bg-brand/40" : "bg-court-surface hover:bg-brand/20")
               }
             />
             {/* min-w-0 on the flex-1 column + main lets nested
