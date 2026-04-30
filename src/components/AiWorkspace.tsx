@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import { Check, Copy, Loader2, Mail, Send, Trash2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { EmailPopupLauncher } from "@/components/email-popup-launcher";
+import { useComposerManager } from "@/lib/composer-manager";
 
 // Per-entity AI chat surface. Drops onto a client or candidate detail page
 // as a standalone card: loads its own history from /api/ai-workspace,
@@ -108,21 +109,30 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ entityType, entityId, userMessage: text }),
       });
-      if (!res.ok) throw new Error(`Send failed (${res.status})`);
-      const { content } = (await res.json()) as { content: string };
-      // Replace the "Thinking…" placeholder with the real assistant reply.
+      const payload = (await res.json().catch(() => null)) as
+        | { content?: string; error?: string }
+        | null;
+      if (!res.ok) {
+        // Surface the real reason (Anthropic timeout, rate limit, etc.)
+        // so we're not staring at a generic "try again" while the chat
+        // silently dies on every send.
+        const reason = payload?.error ?? `HTTP ${res.status}`;
+        throw new Error(reason);
+      }
+      const content = payload?.content ?? "";
       setMessages((prev) =>
         prev.map((m) =>
           m.id === pendingAssistantId
-            ? { ...m, content: content ?? "", createdAt: new Date().toISOString() }
+            ? { ...m, content, createdAt: new Date().toISOString() }
             : m,
         ),
       );
-    } catch {
+    } catch (err) {
       // Drop the "Thinking…" bubble but keep the optimistic user message
       // visible so the recruiter can see what they sent + retry.
       setMessages((prev) => prev.filter((m) => m.id !== pendingAssistantId));
-      setErrorText("Failed to send - try again");
+      const detail = err instanceof Error ? err.message : "unknown error";
+      setErrorText(`Failed to send — ${detail}`);
     } finally {
       setSending(false);
     }
@@ -157,7 +167,16 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
   const emptyLabel = entityType === "client" ? "client" : "candidate";
 
   return (
-    <div className="flex flex-col rounded-xl border border-court-border bg-court-surface shadow-sm">
+    // Card is viewport-bound and pinned with `sticky top-4` so the input
+    // row is always on screen, even when there's a long pre-existing
+    // conversation. Without this, the recruiter had to scroll the page
+    // to find the textarea on the Game Plan tab. Messages live in a
+    // flex-1 internal scroll region so they never push the input off
+    // the bottom of the card.
+    <div
+      className="sticky top-4 flex flex-col rounded-xl border border-court-border bg-court-surface shadow-sm"
+      style={{ height: "calc(100vh - 8rem)" }}
+    >
       <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
           {title ?? "AI Workspace"}
@@ -175,17 +194,8 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
 
       <div
         ref={scrollRef}
-        className="overflow-y-auto px-5 py-4"
-        // Cap with maxHeight (not height) so an empty conversation
-        // collapses to its content — keeps the textarea + Send button
-        // visible above the fold instead of hanging at the bottom of
-        // a near-full-viewport scroll container. A small minHeight
-        // guarantees enough room for the empty-state copy + bubbles
-        // while typing the first message.
-        style={{
-          minHeight: "120px",
-          maxHeight: "calc(100vh - 380px)",
-        }}
+        className="flex-1 overflow-y-auto px-5 py-4"
+        style={{ minHeight: "120px" }}
       >
         {loading ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
@@ -202,6 +212,8 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
                 key={m.id}
                 message={m}
                 recipientEmail={recipientEmail ?? null}
+                entityType={entityType}
+                entityId={entityId}
                 candidateRef={
                   entityType === "candidate" ? entityId : undefined
                 }
@@ -247,10 +259,14 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
 function MessageBubble({
   message,
   recipientEmail,
+  entityType,
+  entityId,
   candidateRef,
 }: {
   message: Message;
   recipientEmail: string | null;
+  entityType: "client" | "candidate";
+  entityId: string;
   candidateRef?: string;
 }) {
   const isUser = message.role === "user";
@@ -335,42 +351,23 @@ function MessageBubble({
         {showCopy && <CopyButton text={message.content} />}
       </div>
       {/* Per-bubble action row. Only on assistant bubbles, only when
-          there's real content to send. The Email button pops the in-app
-          composer (non-blocking, so the user can keep navigating Ace)
-          pre-filled with the bubble's clean HTML — links + bullets
-          preserved, no theme baggage in the body. */}
-      {!isUser && showCopy && recipientEmail && (() => {
-        // Pre-process the bubble before handing it to the composer.
-        // Claude's "draft an email" output looks like:
-        //   Here's a clean email ready to send Danny:
-        //   ---
-        //   Subject: Strong Remote BA Opportunities Worth Your Time
-        //   Hi Daniel,
-        //   <body...>
-        //   Talk soon,
-        //   Andrew Kraig
-        //   BreakPoint Talent
-        //   ---
-        //   Ready to copy and send to ...
-        // We pull the Subject line into its own field, drop the
-        // preamble + trailing footer + Andrew's signature (Gmail
-        // appends one automatically), and pass only the greeting +
-        // body to the composer.
-        const { subject, body } = parseEmailFromMessage(message.content);
-        return (
-          <div className="mt-1 flex items-center gap-2">
-            <EmailPopupLauncher
-              email={recipientEmail}
-              candidateRef={candidateRef}
-              defaultSubject={subject ?? ""}
-              defaultBody={markdownToCleanHtml(body)}
-              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
-            >
-              <Mail className="h-3 w-3" /> Email this
-            </EmailPopupLauncher>
-          </div>
-        );
-      })()}
+          there's real content to send. The Email button always runs
+          the bubble through /api/ai-workspace/format-email first, so
+          the popup opens with a generated subject line and a clean
+          candidate-ready body (greeting + content, no recruiter-side
+          meta commentary, no "Want me to draft outreach?" trailing
+          questions, no double signature). */}
+      {!isUser && showCopy && recipientEmail && (
+        <div className="mt-1 flex items-center gap-2">
+          <EmailThisButton
+            email={recipientEmail}
+            entityType={entityType}
+            entityId={entityId}
+            candidateRef={candidateRef}
+            content={message.content}
+          />
+        </div>
+      )}
       <div className="mt-1 text-[10px] text-court-fg-muted">
         {formatTimestamp(message.createdAt)}
       </div>
@@ -519,74 +516,6 @@ function markdownToCleanHtml(input: string): string {
   return out.join("\n");
 }
 
-// Split a "draft an email" assistant bubble into Subject + Body for
-// the composer. Strips: the lead-in line ("Here's a clean email ready
-// to send X:"), `---` separator rules, the trailing "Ready to copy and
-// send to ..." footer, and Andrew's signoff + signature block (Gmail
-// appends a real signature on send, so dragging Claude's plaintext
-// "Andrew Kraig / BreakPoint Talent" along would double-sign every
-// email). If the bubble doesn't look like an email draft (no Subject:
-// line) we hand the original content back unchanged so the composer
-// still gets a usable body.
-function parseEmailFromMessage(content: string): { subject: string | null; body: string } {
-  const lines = content.split(/\r?\n/);
-  let subjectIdx = -1;
-  let subject: string | null = null;
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(/^\s*Subject:\s*(.+?)\s*$/i);
-    if (m) {
-      subject = m[1].trim();
-      subjectIdx = i;
-      break;
-    }
-  }
-  if (subjectIdx < 0) return { subject: null, body: content };
-
-  let bodyStart = subjectIdx + 1;
-  let bodyEnd = lines.length;
-
-  // Trailing "Ready to copy and send to <email>." footer.
-  for (let i = bodyStart; i < lines.length; i++) {
-    if (/^\s*Ready to copy and send/i.test(lines[i])) {
-      bodyEnd = i;
-      break;
-    }
-  }
-
-  // Drop signoff + signature ("Talk soon," / "Best," / "Thanks," ...
-  // followed by name + company on subsequent lines). Anchored to the
-  // last few lines of the body window so we don't accidentally cut a
-  // mid-email "Best of luck," sentence.
-  const signoffRe =
-    /^(thanks|thank you|best|best regards|regards|cheers|talk soon|warmly|sincerely|kind regards),?\s*$/i;
-  for (let i = bodyEnd - 1; i >= bodyStart; i--) {
-    const t = lines[i].trim();
-    if (!t) continue;
-    if (signoffRe.test(t)) {
-      bodyEnd = i;
-      break;
-    }
-    // Stop walking back once we've passed a non-signoff non-empty
-    // line — signoffs only live at the end of the message.
-    break;
-  }
-
-  // Trim leading/trailing blank + `---` separator lines.
-  const sepRe = /^-{2,}$/;
-  while (
-    bodyStart < bodyEnd &&
-    (!lines[bodyStart].trim() || sepRe.test(lines[bodyStart].trim()))
-  )
-    bodyStart++;
-  while (
-    bodyEnd > bodyStart &&
-    (!lines[bodyEnd - 1].trim() || sepRe.test(lines[bodyEnd - 1].trim()))
-  )
-    bodyEnd--;
-
-  return { subject, body: lines.slice(bodyStart, bodyEnd).join("\n") };
-}
-
 // Ghost icon button pinned to the bottom-right of an assistant bubble.
 // Copies the message after flattening markdown links to "text - url"
 // form so a paste into iMessage / SMS / plaintext email leaves a bare
@@ -645,6 +574,97 @@ function formatTimestamp(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+// "Email this" button on assistant bubbles. Always runs the bubble
+// through /api/ai-workspace/format-email before opening the composer
+// so the popup gets a generated subject line and a candidate-ready
+// body — never the raw bubble (which often contains "Want me to
+// draft outreach?" / "Let me know which interests you" recruiter-side
+// commentary). Andrew's signature is set up in Ace and is appended on
+// send, so the format endpoint strips any trailing "Talk soon, Andrew
+// Kraig / BreakPoint Talent" the model emitted to avoid double-signing.
+function EmailThisButton({
+  email,
+  entityType,
+  entityId,
+  candidateRef,
+  content,
+}: {
+  email: string;
+  entityType: "client" | "candidate";
+  entityId: string;
+  candidateRef?: string;
+  content: string;
+}) {
+  const composer = useComposerManager();
+  const [busy, setBusy] = useState(false);
+
+  async function handleClick() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const [initRes, formatRes] = await Promise.all([
+        fetch("/api/mail/compose-init"),
+        fetch("/api/ai-workspace/format-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ entityType, entityId, content }),
+        }),
+      ]);
+      if (!initRes.ok) {
+        throw new Error(`compose-init failed (${initRes.status})`);
+      }
+      if (!formatRes.ok) {
+        const errBody = await formatRes.json().catch(() => ({}));
+        throw new Error(errBody?.error ?? `format-email failed (${formatRes.status})`);
+      }
+      const init = (await initRes.json()) as {
+        templates: import("@/app/email/actions").ActiveTemplateSummary[];
+        user: { firstName: string; fullName: string };
+      };
+      const { subject, body } = (await formatRes.json()) as {
+        subject: string;
+        body: string;
+      };
+      composer.open({
+        defaultTo: email,
+        defaultSubject: subject,
+        defaultBody: markdownToCleanHtml(body),
+        templates: init.templates,
+        mergeContext: {
+          user: {
+            firstName: init.user.firstName,
+            fullName: init.user.fullName,
+          },
+        },
+        candidateRef,
+        nonBlocking: true,
+      });
+    } catch (err) {
+      toast.error("Couldn't prep email", {
+        description: err instanceof Error ? err.message : "unknown error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void handleClick()}
+      disabled={busy}
+      className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
+    >
+      {busy ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : (
+        <Mail className="h-3 w-3" />
+      )}
+      {busy ? "Preparing…" : "Email this"}
+    </button>
+  );
 }
 
 export default AiWorkspace;

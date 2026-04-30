@@ -17,9 +17,13 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(messages)
 }
 
-// Max serverless function duration — Claude Opus on a thick context can take
-// 15–25s. Keeping this generous so Vercel doesn't kill the function mid-call.
-export const maxDuration = 60
+// Max serverless function duration. Sonnet + web_search on a long
+// thread (10+ turns of accumulated context, multiple search round-
+// trips per turn) routinely blows past 60s — the recruiter's "what
+// would the subject line for this be?" follow-ups were timing out
+// because the model still re-ran web_search on the cached citations.
+// 300s is the Vercel Pro ceiling for the default node runtime.
+export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   const { entityType, entityId, userMessage } = await req.json()
