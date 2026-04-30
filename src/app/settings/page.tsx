@@ -93,6 +93,33 @@ export default async function SettingsPage() {
       />
 
       <CollapsibleSection
+        title="Court Mode"
+        description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly — no reload needed."
+      >
+        <CourtModeView />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Notification Preferences"
+        description="In-app popups + sounds for new mail, calls, and texts. Style picker recolors with Court Mode automatically (Ink stays dark)."
+      >
+        <NotificationPreferencesView />
+        <div className="mt-5 border-t border-court-border pt-5">
+          <div className="mb-3">
+            <div className="text-sm font-semibold text-court-fg">
+              Notification sounds
+            </div>
+            <div className="mt-0.5 text-xs text-court-fg-muted">
+              Pick a sound for new mail and another for texts/calls.
+              Sounds are synthesized in-browser — preview by clicking
+              any option.
+            </div>
+          </div>
+          <NotificationSoundsView />
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection
         title="Connectors"
         description="Live health of the integrations Ace depends on. Gmail can be reconnected here; Claude and Quo are env-managed (Quo logins happen at quo.com)."
       >
@@ -101,27 +128,6 @@ export default async function SettingsPage() {
           claude={connectors.claude}
           quo={connectors.quo}
         />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Court Mode"
-        description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly — no reload needed."
-      >
-        <CourtModeView />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Notification Sounds"
-        description="Pick a sound for new mail and another for texts/calls. Sounds are synthesized in-browser — preview by clicking any option."
-      >
-        <NotificationSoundsView />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Notification Preferences"
-        description="In-app popups for new mail, calls, and texts. Style picker recolors with Court Mode automatically (Ink stays dark)."
-      >
-        <NotificationPreferencesView />
       </CollapsibleSection>
 
       <CollapsibleSection

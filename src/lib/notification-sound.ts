@@ -18,7 +18,7 @@ export const SOUND_OPTIONS: ReadonlyArray<{ id: SoundId; label: string; descript
   { id: "ding", label: "Ding", description: "Single high bell tone." },
   { id: "chime", label: "Chime", description: "Two-note rising chime." },
   { id: "pop", label: "Pop", description: "Soft pop, like a bubble." },
-  { id: "tennis", label: "Tennis", description: "Sharp racquet thwack." },
+  { id: "tennis", label: "Tennis", description: "Tennis ball bouncing." },
 ];
 
 export const MAIL_SOUND_KEY = "ace-sound-mail";
@@ -148,31 +148,43 @@ function playPop(c: AudioContext) {
 
 function playTennis(c: AudioContext) {
   const t = c.currentTime;
-  // A racquet thwack is a very short, sharp transient with broadband
-  // energy — synthesizable as a band-passed noise burst with a fast
-  // attack/decay. Center frequency around 2.5kHz hits the "string
-  // contact" zone; Q ~6 narrows the band so it reads as percussive
-  // rather than hissy. 90ms total, similar to a real ball impact.
-  const bufferSize = Math.floor(c.sampleRate * 0.1);
-  const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
-  const data = buffer.getChannelData(0);
-  for (let i = 0; i < bufferSize; i++) {
-    data[i] = Math.random() * 2 - 1;
+  // Tennis ball bouncing on a hard surface — a low-frequency thump
+  // with a quick pitched body. Each bounce is a sine-pitch glide
+  // (~210Hz down to ~150Hz over ~70ms) layered with a band-passed
+  // noise burst around 1kHz to add the "skin contact" rasp. We fire
+  // two bounces ~150ms apart, the second softer, to evoke the natural
+  // "thump … thump" of a ball settling on a court.
+  function oneBounce(start: number, peak: number, freqStart: number, freqEnd: number) {
+    // Pitched body — sine glide with snappy envelope.
+    const body = c.createOscillator();
+    body.type = "sine";
+    body.frequency.setValueAtTime(freqStart, start);
+    body.frequency.exponentialRampToValueAtTime(freqEnd, start + 0.07);
+    const bodyGain = c.createGain();
+    envelope(c, bodyGain, start, 0.003, 0.09, peak);
+    body.connect(bodyGain).connect(c.destination);
+    body.start(start);
+    body.stop(start + 0.12);
+
+    // Contact rasp — short band-passed noise so the thump has bite.
+    const bufferSize = Math.floor(c.sampleRate * 0.04);
+    const buffer = c.createBuffer(1, bufferSize, c.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+    const noise = c.createBufferSource();
+    noise.buffer = buffer;
+    const filter = c.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(1000, start);
+    filter.Q.setValueAtTime(4, start);
+    const noiseGain = c.createGain();
+    envelope(c, noiseGain, start, 0.001, 0.04, peak * 0.35);
+    noise.connect(filter).connect(noiseGain).connect(c.destination);
+    noise.start(start);
+    noise.stop(start + 0.05);
   }
-  const noise = c.createBufferSource();
-  noise.buffer = buffer;
-
-  const filter = c.createBiquadFilter();
-  filter.type = "bandpass";
-  filter.frequency.setValueAtTime(2500, t);
-  filter.Q.setValueAtTime(6, t);
-
-  const gain = c.createGain();
-  envelope(c, gain, t, 0.001, 0.09, 0.45);
-
-  noise.connect(filter).connect(gain).connect(c.destination);
-  noise.start(t);
-  noise.stop(t + 0.1);
+  oneBounce(t, 0.5, 220, 150);
+  oneBounce(t + 0.16, 0.32, 200, 140);
 }
 
 export function playSound(id: SoundId) {
