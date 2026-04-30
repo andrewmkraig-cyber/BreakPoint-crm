@@ -101,60 +101,71 @@ export function FloatingThreadWindow() {
   const pos = position ?? { x: 100, y: 100 };
 
   // Drag: pointer-down on header captures the start state, window-level
-  // pointermove/pointerup handle the rest. To keep dragging snappy on a
-  // popup that contains heavy ThreadDetail content (HTML emails, big
-  // body strings), pointermove writes the new left/top STRAIGHT to the
-  // DOM via the windowRef and a single rAF-coalesced tick — React
-  // doesn't re-render the ThreadDetail subtree until pointerup, when
-  // the final position is committed to context state. Without this
-  // path, every pointer event triggered a full re-render of the email
-  // body and the drag visibly lagged.
+  // pointermove/pointerup handle the rest.
   //
-  // Avoiding setPointerCapture because state-driven re-renders of the
-  // header element can swap the captured target out from under us.
+  // Perf: an earlier version mutated style.left / style.top directly on
+  // every rAF tick. That works for small popups but on this one — which
+  // contains a sanitized HTML email tree, often with multi-cell
+  // signatures + inline images + a shadow-2xl drop shadow — every move
+  // forced layout + paint of the entire subtree, so the drag visibly
+  // lagged behind the cursor.
+  //
+  // Switched to CSS transform (translate3d): the popup keeps its
+  // resolved left/top from React state, and the drag delta is applied
+  // as a GPU-composited transform. The browser hands the element off
+  // to its own compositor layer (will-change: transform), so dragging
+  // skips layout + paint entirely and just moves a ready-baked layer.
+  // On pointerup the transform is cleared and the new left/top is
+  // committed to context state in a single render.
   const onHeaderPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest("button")) return;
-    if (!windowRef.current) return;
+    const node = windowRef.current;
+    if (!node) return;
     const startPx = e.clientX;
     const startPy = e.clientY;
     const startX = pos.x;
     const startY = pos.y;
-    let nextX = startX;
-    let nextY = startY;
+    let dx = 0;
+    let dy = 0;
     let rafId = 0;
+    node.style.willChange = "transform";
     const flush = () => {
       rafId = 0;
-      const node = windowRef.current;
-      if (!node) return;
-      node.style.left = `${nextX}px`;
-      node.style.top = `${nextY}px`;
+      node.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
     };
     const onMove = (ev: PointerEvent) => {
-      nextX = Math.max(0, startX + ev.clientX - startPx);
-      nextY = Math.max(0, startY + ev.clientY - startPy);
+      dx = ev.clientX - startPx;
+      dy = ev.clientY - startPy;
       if (rafId === 0) rafId = requestAnimationFrame(flush);
     };
     const onUp = () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       if (rafId !== 0) cancelAnimationFrame(rafId);
-      // Commit the final position to context state — guarantees the
-      // popup keeps its position after a navigation that re-mounts
-      // FloatingThreadWindow.
-      setPosition({ x: nextX, y: nextY });
+      // Clear the transform and commit the resolved position to state
+      // so the next render pins the popup in its new spot via left/top.
+      node.style.transform = "";
+      node.style.willChange = "";
+      setPosition({
+        x: Math.max(0, startX + dx),
+        y: Math.max(0, startY + dy),
+      });
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
   };
 
-  // Same rAF-coalesced ref-write strategy as the drag handler — resizing
-  // mutates the ref's width/height inline; React state is only updated
-  // on pointerup so the heavy ThreadDetail re-renders once at the end.
+  // Resize fundamentally changes the box dimensions, so transform won't
+  // help — children have to re-layout against the new constraints. We
+  // still avoid React state churn by mutating width/height directly on
+  // each rAF tick and committing to context state once on pointerup.
+  // will-change: width/height hints the browser to optimize this path.
   const onResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    if (!windowRef.current) return;
+    const node = windowRef.current;
+    if (!node) return;
     const startPx = e.clientX;
     const startPy = e.clientY;
     const startW = size.w;
@@ -162,10 +173,9 @@ export function FloatingThreadWindow() {
     let nextW = startW;
     let nextH = startH;
     let rafId = 0;
+    node.style.willChange = "width, height";
     const flush = () => {
       rafId = 0;
-      const node = windowRef.current;
-      if (!node) return;
       node.style.width = `${nextW}px`;
       node.style.height = `${nextH}px`;
     };
@@ -178,6 +188,7 @@ export function FloatingThreadWindow() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       if (rafId !== 0) cancelAnimationFrame(rafId);
+      node.style.willChange = "";
       setSize({ w: nextW, h: nextH });
     };
     window.addEventListener("pointermove", onMove);
@@ -274,6 +285,10 @@ export function FloatingThreadWindow() {
         top: `${pos.y}px`,
         width: `${size.w}px`,
         height: `${effectiveHeight}px`,
+        // Confine layout/paint cost to inside the popup so a resize
+        // doesn't have to consider any ancestor (CSS containment).
+        // Big perf win when ThreadDetail's email body is dense.
+        contain: "layout paint",
       }}
     >
       <div
