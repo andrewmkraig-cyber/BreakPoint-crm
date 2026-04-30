@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Link2, Mail, MapPin, Phone } from "lucide-react";
+import { Link2, Mail, MapPin, Phone, Send, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
@@ -510,17 +510,17 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
               // Amber to match the APPLIED stage chip — same as the
               // RF-imported path. Recolored together so the visual
               // language stays consistent across both candidate types.
-              className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
+              className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
             >
-              Apply to Job
+              <Target className="h-3 w-3" /> Apply to Job
             </Link>
             <Link
               href={`/candidates/${candidate.id}?openSubmit=1`}
               // Two-tone emerald to match Apply to Job's amber pair
               // — see the RF page.tsx site for the design rationale.
-              className="inline-flex items-center gap-1 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+              className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
             >
-              Submit to different job
+              <Send className="h-3 w-3" /> Submit to different job
             </Link>
           </div>
           {tab === "game-plan" ? (

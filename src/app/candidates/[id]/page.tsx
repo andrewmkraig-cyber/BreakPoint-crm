@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bookmark } from "lucide-react";
+import { Bookmark, Send, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
@@ -638,10 +638,13 @@ export default async function CandidateProfilePage({
                 // Amber background to match the APPLIED stage chip
                 // (amber-100 / amber-800 / amber-300) — keeps the
                 // visual story "this button puts the candidate in the
-                // Applied stage" obvious at a glance.
-                className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
+                // Applied stage" obvious at a glance. Target icon
+                // matches the inline Apply action in
+                // local-candidate-actions.tsx so the same verb reads
+                // identically across surfaces.
+                className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
               >
-                Apply to Job
+                <Target className="h-3 w-3" /> Apply to Job
               </Link>
               <Link
                 href={`/candidates/${id}?openSubmit=1`}
@@ -649,9 +652,11 @@ export default async function CandidateProfilePage({
                 // (amber-100 / 300 / 800) — emerald variant of the
                 // same shape so the pair reads as a coordinated
                 // action set instead of one solid + one tinted.
-                className="inline-flex items-center gap-1 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+                // Send icon matches the inline Submit action in
+                // local-placement-rows.tsx.
+                className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
               >
-                Submit to different job
+                <Send className="h-3 w-3" /> Submit to different job
               </Link>
             </div>
           </div>
