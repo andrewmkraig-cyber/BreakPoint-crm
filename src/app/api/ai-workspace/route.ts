@@ -33,9 +33,26 @@ export async function POST(req: NextRequest) {
   // builder prompts. Markdown link form keeps web_search citations
   // readable; bullet + bold conventions keep job / company lists
   // scannable in the chat bubble.
+  //
+  // Freshness mandate: Andrew sends Game Plan output directly to
+  // candidates and clients, so any external fact (job listing, comp
+  // range, hiring activity, link) must be current as of THIS turn.
+  // The earlier prompt let Claude fall back on training-data
+  // recollection — it once shipped six BA roles to Danny with two
+  // missing links and a "data may be outdated" hedge in a follow-up.
+  // The rules below force web_search per external claim and outright
+  // forbid the hedge phrasing.
+  const today = new Date().toISOString().slice(0, 10);
   const systemPrompt =
     baseSystemPrompt +
     "\n\n" +
+    `TODAY: ${today}.\n\n` +
+    "FRESHNESS RULES (mandatory):\n" +
+    "- Every external fact you cite — job titles, employers, comp ranges, market salaries, hiring activity, contact info, news — MUST be verified via web_search performed during THIS turn. Do not rely on training-data recollection for anything time-sensitive.\n" +
+    "- Every URL you include MUST be a link you just retrieved with web_search. If web_search cannot return a working, currently-live URL for a specific role, OMIT that role entirely. Do not guess, do not approximate, do not paste a careers-page URL as a substitute.\n" +
+    "- Never write hedges like \"data may be old\", \"could be outdated\", \"information might have changed\", or similar. If you cannot verify it now, leave it out of the response.\n" +
+    "- When listing N jobs or N companies, every single one must have a verified live link. If you can only verify 4 of 6, return 4 — never pad with unverified items.\n\n" +
+    "FORMATTING RULES:\n" +
     "Always format URLs as markdown hyperlinks like [Link Text](url) - never paste raw URLs. " +
     "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
     "hyphen bullets for items, and descriptive link text instead of full URLs. " +
