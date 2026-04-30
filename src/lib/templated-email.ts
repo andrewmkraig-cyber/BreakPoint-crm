@@ -104,7 +104,18 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
       bodyText: body,
       bodyHtml: html,
     });
-    return { status: "drafted", result: drafted, subject, body, templateName: look.template.name };
+    // Ace 28.0b — createGmailDraft returns { draftId, messageId,
+    // threadId } now. The fire-result shape carries SendEmailResult
+    // (= { id, threadId }) for backward compatibility with downstream
+    // call-sites that log .id. Map messageId → id; the draft id
+    // itself isn't surfaced through this path today.
+    return {
+      status: "drafted",
+      result: { id: drafted.messageId, threadId: drafted.threadId },
+      subject,
+      body,
+      templateName: look.template.name,
+    };
   } catch (e) {
     return { status: "error", error: e instanceof Error ? e.message : "Email delivery failed." };
   }

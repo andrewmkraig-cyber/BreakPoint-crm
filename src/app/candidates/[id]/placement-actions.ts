@@ -1800,11 +1800,11 @@ export async function deliverCandidateConfirmation(
       metadata: {
         to: input.candidateEmail,
         subject,
-        gmailDraftId: draft.id,
+        gmailDraftId: draft.draftId,
         gmailThreadId: draft.threadId,
       },
     });
-    return { ok: true, value: { mode: "drafted", id: draft.id, threadId: draft.threadId } };
+    return { ok: true, value: { mode: "drafted", id: draft.messageId, threadId: draft.threadId } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to deliver candidate confirmation." };
   }

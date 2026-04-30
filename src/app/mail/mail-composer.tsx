@@ -24,6 +24,9 @@ import {
   ChevronDown,
   Minus,
   GripVertical,
+  Maximize2,
+  Save,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -52,7 +55,7 @@ import { useMinimizedDrafts } from "@/lib/minimized-drafts-context";
 // attached as base64 in the JSON payload; server-side buildRfc2822
 // assembles the multipart/mixed message.
 
-type AttachmentDraft = {
+export type AttachmentDraft = {
   key: string;
   filename: string;
   mimeType: string;
@@ -60,16 +63,48 @@ type AttachmentDraft = {
   dataBase64: string;
 };
 
+// Snapshot of the composer's user-facing state. Emitted via onPopOut
+// when the user clicks the Pop Out icon in the inline header so the
+// parent can re-launch the same draft inside an asModal popup with
+// nothing typed lost.
+export type ComposerStateSnapshot = {
+  to: string;
+  cc: string;
+  bcc: string;
+  subject: string;
+  bodyHtml: string;
+  attachments: AttachmentDraft[];
+  draftId: string | null;
+};
+
 type Props = {
   // Threaded reply when present; fresh send (click-to-email popup) when omitted.
   threadId?: string;
   defaultTo: string;
   defaultCc?: string;
+  // Pre-fills BCC. Carried over when the inline composer pops out into
+  // a modal so the recruiter doesn't lose recipients they already
+  // typed. Omitted in the from-scratch click-to-email path.
+  defaultBcc?: string;
   defaultSubject: string;
   // Pre-fills the editor body. Used by Forward to drop the quoted
   // original message in before the cursor lands; Reply / Reply All
-  // leave this empty.
+  // leave this empty. Also seeded by the inline → modal pop-out so the
+  // body's rich-text formatting transfers verbatim.
   defaultBody?: string;
+  // Pre-fills attachments — used by the inline → modal pop-out so any
+  // files the recruiter dragged in before popping out aren't dropped.
+  defaultAttachments?: AttachmentDraft[];
+  // When the recruiter has already saved a Gmail draft this session,
+  // we carry the draft id through pop-outs so the Delete button knows
+  // which draft to remove. Null/undefined means "no draft yet".
+  defaultDraftId?: string | null;
+  // Inline-only callback fired when the recruiter clicks the Pop Out
+  // icon in the header. Receives the current composer state so the
+  // parent can re-launch in modal mode with everything carried over.
+  // Ignored in modal mode — the modal already has drag/resize +
+  // sticky footer.
+  onPopOut?: (snapshot: ComposerStateSnapshot) => void;
   // When true (Reply / Reply All / Forward), auto-focus the editor
   // body on mount so the recruiter can start typing without clicking
   // into the field. Skipped for click-to-email so the To row gets
@@ -123,8 +158,11 @@ export function MailComposer({
   threadId,
   defaultTo,
   defaultCc,
+  defaultBcc,
   defaultSubject,
   defaultBody,
+  defaultAttachments,
+  defaultDraftId = null,
   autoFocusBody = false,
   templates = [],
   mergeContext = {},
@@ -134,13 +172,23 @@ export function MailComposer({
   asModal = false,
   modalTitle = "New email",
   nonBlocking = false,
+  onPopOut,
   onClose,
   onSent,
 }: Props) {
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState(defaultCc ?? "");
-  const [bcc, setBcc] = useState("");
+  const [bcc, setBcc] = useState(defaultBcc ?? "");
   const [subject, setSubject] = useState(defaultSubject);
+  // Tracks the Gmail draft id the most recent Save Draft created. Set
+  // by Save Draft on success, carried over from defaults when the
+  // composer is re-opened from a pop-out, and cleared after Delete.
+  // The Delete button uses this to decide whether to call Gmail or
+  // just discard locally. Distinct from the local `draftId = useId()`
+  // below, which keys the minimized-drafts tray entry.
+  const [gmailDraftId, setGmailDraftId] = useState<string | null>(defaultDraftId);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [deletingDraft, setDeletingDraft] = useState(false);
   // CC picker options auto-resolve from the To value: whenever it
   // contains an email matching a Contact in our CRM, we pull the
   // peers at that Contact's clientId so the CC + Contact button
@@ -189,10 +237,13 @@ export function MailComposer({
     };
   }, [to, ccPickerOptionsProp]);
   // Default CC to visible if we pre-populated it — otherwise the user
-  // won't realize extra recipients are being carried over.
+  // won't realize extra recipients are being carried over. Same for
+  // BCC when the carry-over snapshot has values.
   const [showCc, setShowCc] = useState(Boolean(defaultCc && defaultCc.trim()));
-  const [showBcc, setShowBcc] = useState(false);
-  const [attachments, setAttachments] = useState<AttachmentDraft[]>([]);
+  const [showBcc, setShowBcc] = useState(Boolean(defaultBcc && defaultBcc.trim()));
+  const [attachments, setAttachments] = useState<AttachmentDraft[]>(
+    defaultAttachments ? [...defaultAttachments] : [],
+  );
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -763,6 +814,104 @@ export function MailComposer({
     }
   }
 
+  // Fix 4c — Save Draft hits the Gmail drafts endpoint via our wrapper
+  // route. Same payload shape as /api/mail/send; the route reuses
+  // createGmailDraft so the user's stored Account-row refresh token is
+  // the boundary. On success we record the draft id so a subsequent
+  // Delete click can DELETE the same row at Gmail; we then close the
+  // composer and toast. We deliberately do NOT resolve merge fields
+  // here — drafts are work-in-progress and the recruiter usually
+  // wants the literal {{...}} tags preserved so they can pick a job
+  // before sending. (Send still resolves them at send time.)
+  async function onSaveDraft() {
+    setError(null);
+    const toArr = splitAddresses(to);
+    if (toArr.length === 0) {
+      setError("Add at least one To: recipient before saving a draft.");
+      return;
+    }
+    const ccArr = showCc ? splitAddresses(cc) : [];
+    const bccArr = showBcc ? splitAddresses(bcc) : [];
+    const bodyHtml = editor?.getHTML() ?? "";
+    setSavingDraft(true);
+    try {
+      const res = await fetch(`/api/mail/drafts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId,
+          to: toArr,
+          cc: ccArr.length > 0 ? ccArr : undefined,
+          bcc: bccArr.length > 0 ? bccArr : undefined,
+          subject: subject || "(no subject)",
+          bodyHtml,
+          attachments: attachments.map((a) => ({
+            filename: a.filename,
+            mimeType: a.mimeType,
+            dataBase64: a.dataBase64,
+          })),
+          // When a previous Save Draft already created a draft this
+          // session, pass the id so the route can replace the prior
+          // draft instead of stacking duplicates in Gmail's Drafts
+          // label. New row otherwise.
+          draftId: gmailDraftId ?? undefined,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        const msg = body?.error ?? `Save Draft failed (${res.status})`;
+        setError(msg);
+        toast.error("Couldn't save draft", { description: msg });
+        return;
+      }
+      const newDraftId = (body?.draftId as string | undefined) ?? null;
+      if (newDraftId) setGmailDraftId(newDraftId);
+      toast.success("Draft saved.");
+      onClose();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Save Draft failed";
+      setError(msg);
+      toast.error("Couldn't save draft", { description: msg });
+    } finally {
+      setSavingDraft(false);
+    }
+  }
+
+  // Fix 4c — Delete: discard the in-progress message. If a Gmail draft
+  // was already saved this session, DELETE it through our wrapper so
+  // Gmail's Drafts label doesn't accumulate ghost rows. If nothing
+  // was saved yet, we just close the composer locally — no remote call
+  // needed.
+  async function onDelete() {
+    setError(null);
+    if (!gmailDraftId) {
+      // Nothing to delete on Gmail — just discard locally.
+      onClose();
+      return;
+    }
+    setDeletingDraft(true);
+    try {
+      const res = await fetch(
+        `/api/mail/drafts/${encodeURIComponent(gmailDraftId)}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok && res.status !== 404) {
+        // 404 = already gone; treat as success.
+        const body = await res.json().catch(() => null);
+        const msg = body?.error ?? `Delete failed (${res.status})`;
+        toast.error("Couldn't delete draft", { description: msg });
+        return;
+      }
+      toast.success("Draft deleted.");
+      onClose();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Delete failed";
+      toast.error("Couldn't delete draft", { description: msg });
+    } finally {
+      setDeletingDraft(false);
+    }
+  }
+
   async function onSend() {
     setError(null);
     const toArr = splitAddresses(to);
@@ -855,8 +1004,14 @@ export function MailComposer({
         onMouseDown={onTitleBarMouseDown}
         className={cn(
           "flex items-center justify-between border-b border-court-border px-5 py-2",
-          asModal && "select-none",
-          asModal && (isDragging ? "cursor-grabbing" : "cursor-grab"),
+          // shrink-0 across every chrome row in modal mode so flex
+          // distribution never robs the footer of its declared height.
+          // Without this, an open AI panel + smart-context dropdown +
+          // a long unresolved-fields banner can compress the row stack
+          // far enough that Send slides under the modal's bottom edge.
+          asModal && "shrink-0 select-none",
+          asModal && !isDragging && "cursor-grab",
+          asModal && isDragging && "cursor-grabbing",
         )}
       >
         <div className="flex items-center gap-2">
@@ -866,6 +1021,34 @@ export function MailComposer({
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {!asModal && onPopOut && (
+            // Inline-only Pop Out icon. Reads the editor's current HTML
+            // (so rich-text formatting carries over verbatim) plus the
+            // form state, hands the snapshot to the parent, and the
+            // parent re-launches in modal mode via composer-manager.
+            // No state lives here past the call — onPopOut is paired
+            // with onClose by the parent so the inline pane closes
+            // immediately, leaving exactly one composer on screen.
+            <button
+              type="button"
+              onClick={() => {
+                onPopOut({
+                  to,
+                  cc,
+                  bcc,
+                  subject,
+                  bodyHtml: editor?.getHTML() ?? "",
+                  attachments,
+                  draftId: gmailDraftId,
+                });
+              }}
+              className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              aria-label="Pop out composer into a floating window"
+              title="Pop out into a floating window"
+            >
+              <Maximize2 className="h-4 w-4" />
+            </button>
+          )}
           {asModal && (
             <button
               type="button"
@@ -888,7 +1071,7 @@ export function MailComposer({
           </button>
         </div>
       </div>
-      <div className="space-y-2 px-5 py-3">
+      <div className={cn("space-y-2 px-5 py-3", asModal && "shrink-0")}>
         <AddressRow
           label="To"
           value={to}
@@ -972,7 +1155,12 @@ export function MailComposer({
         onEditWithClaude={onEditWithClaude}
       />
       {openAiPanel && (
-        <div className="space-y-2 border-b border-court-border bg-court-surface px-5 py-3">
+        <div
+          className={cn(
+            "space-y-2 border-b border-court-border bg-court-surface px-5 py-3",
+            asModal && "shrink-0",
+          )}
+        >
           <label className="block text-[11px] uppercase tracking-wider text-court-fg-muted">
             Describe what you want to say
           </label>
@@ -1027,7 +1215,12 @@ export function MailComposer({
           right above the rich-text toolbar so the user can resolve
           context before they start typing. */}
       {candidateRef && contextLoaded && activeJobs.length >= 2 && (
-        <div className="border-b border-court-border bg-court-surface-subtle/40 px-5 py-2">
+        <div
+          className={cn(
+            "border-b border-court-border bg-court-surface-subtle/40 px-5 py-2",
+            asModal && "shrink-0",
+          )}
+        >
           <label className="flex items-center gap-2 text-sm">
             <span className="shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
               Which job is this email about?
@@ -1173,15 +1366,54 @@ export function MailComposer({
           </button>
           <span className="text-[11px] text-court-fg-muted">or drag files onto the body.</span>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          onClick={onSend}
-          disabled={sending}
-        >
-          {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-          Send
-        </Button>
+        <div className="flex items-center gap-2">
+          {asModal && (
+            <>
+              {/* Fix 4c — Save Draft + Delete sit alongside Send only
+                  in modal mode. Inline reply already commits on
+                  Send and doesn't need draft persistence (Gmail's
+                  inline pane is short-lived; the recruiter pops out
+                  if they want to step away). */}
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={onDelete}
+                disabled={deletingDraft || sending}
+              >
+                {deletingDraft ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3 w-3" />
+                )}
+                Delete
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={onSaveDraft}
+                disabled={savingDraft || sending}
+              >
+                {savingDraft ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Save className="h-3 w-3" />
+                )}
+                Save Draft
+              </Button>
+            </>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            onClick={onSend}
+            disabled={sending || savingDraft || deletingDraft}
+          >
+            {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+            Send
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -1391,7 +1623,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
     </button>
   );
   return (
-    <div className="mx-5 flex items-center gap-1 border-b border-court-border py-1">
+    <div className="mx-5 flex shrink-0 items-center gap-1 border-b border-court-border py-1">
       {btn(
         editor.isActive("bold"),
         () => editor.chain().focus().toggleBold().run(),
@@ -1477,7 +1709,7 @@ function ComposerAddonToolbar({
   onEditWithClaude: (editType: EditType) => void;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-5 py-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-court-border px-5 py-2">
       {/* Use Template */}
       <div className="relative">
         <button

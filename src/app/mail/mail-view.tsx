@@ -22,12 +22,13 @@ import {
 } from "lucide-react";
 import { useMailContext } from "@/lib/mail-context";
 import { useFloatingThread } from "@/lib/floating-thread-context";
+import { useComposerManager } from "@/lib/composer-manager";
 import { MessageBlock } from "@/components/mail/message-block";
 import { mailToastIdForThread } from "@/components/mail-notification-toast";
 import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
-import { MailComposer } from "@/app/mail/mail-composer";
+import { MailComposer, type ComposerStateSnapshot } from "@/app/mail/mail-composer";
 
 // Two-pane Mail Tab layout. The server fetched the thread list; the
 // client manages selection + loads each thread's detail on demand.
@@ -1497,6 +1498,7 @@ export function ThreadDetail({
   const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
   const latest = orderedMessages[0];
   const floatingThread = useFloatingThread();
+  const composerManager = useComposerManager();
   // Composer mode tracks WHICH button opened the composer so the
   // setup (To, Cc, Subject, body, threadId, modal title) matches the
   // user's intent — Reply / Reply All / Forward each compute their
@@ -1753,6 +1755,41 @@ export function ThreadDetail({
           onSent={() => {
             setComposerMode(null);
             onSent?.();
+          }}
+          onPopOut={(snapshot: ComposerStateSnapshot) => {
+            // Fix 4b — re-launch the same draft as a modal composer
+            // via the manager. The snapshot carries every field the
+            // recruiter edited (including rich-text body HTML and any
+            // saved Gmail draft id) so the modal opens pre-filled with
+            // exactly what was in the inline pane. We close the inline
+            // pane immediately so there's only one composer on screen.
+            const popOutTitle =
+              composerMode === "forward"
+                ? "Forward"
+                : composerMode === "replyAll"
+                  ? "Reply All"
+                  : "Reply";
+            composerManager.open({
+              threadId:
+                composerMode === "forward" ? undefined : detail.id,
+              defaultTo: snapshot.to,
+              defaultCc: snapshot.cc,
+              defaultBcc: snapshot.bcc,
+              defaultSubject: snapshot.subject,
+              defaultBody: snapshot.bodyHtml,
+              defaultAttachments: snapshot.attachments,
+              defaultDraftId: snapshot.draftId,
+              templates,
+              mergeContext: {
+                user: {
+                  firstName: currentUserFirstName,
+                  fullName: currentUserFullName,
+                },
+              },
+              modalTitle: popOutTitle,
+              onSent: () => onSent?.(),
+            });
+            setComposerMode(null);
           }}
         />
       )}

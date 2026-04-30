@@ -111,7 +111,11 @@ export async function createEmailDraftAction(input: ComposeEmailInput): Promise<
       bodyHtml: plainToHtml(input.bodyText),
       threadId: input.threadId,
     });
-    return { ok: true, value: out };
+    // Ace 28.0b — createGmailDraft now returns { draftId, messageId,
+    // threadId }; this action's existing contract still hands back a
+    // SendEmailResult ({ id, threadId }). The `id` historically meant
+    // "message id" so map messageId → id to keep the contract intact.
+    return { ok: true, value: { id: out.messageId, threadId: out.threadId } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Email draft failed." };
   }

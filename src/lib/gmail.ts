@@ -298,7 +298,19 @@ export async function sendGmail(input: SendEmailInput): Promise<SendEmailResult>
   return { id: json.id, threadId: json.threadId };
 }
 
-export async function createGmailDraft(input: SendEmailInput): Promise<SendEmailResult> {
+// Ace 28.0b — Save Draft now returns the Gmail Draft id (not just the
+// underlying message id) so the composer can DELETE it later via
+// /v1/users/me/drafts/{draftId}. The Gmail API uses two distinct id
+// spaces — Draft.id and Message.id — and only the former works on the
+// drafts.* endpoints. We keep both fields so callers that only need
+// "open this thread on Gmail" can still use threadId.
+export type GmailDraftCreateResult = {
+  draftId: string;
+  messageId: string;
+  threadId: string;
+};
+
+export async function createGmailDraft(input: SendEmailInput): Promise<GmailDraftCreateResult> {
   const accessToken = await getFreshAccessToken(input.userId);
   const signed = await withSignature(input);
   const raw = base64UrlEncode(buildRfc2822(signed));
@@ -316,7 +328,27 @@ export async function createGmailDraft(input: SendEmailInput): Promise<SendEmail
     throw new Error(`Gmail draft create failed (${res.status}): ${text || "no body"}`);
   }
   const json = (await res.json()) as { id: string; message: { id: string; threadId: string } };
-  return { id: json.message.id, threadId: json.message.threadId };
+  return { draftId: json.id, messageId: json.message.id, threadId: json.message.threadId };
+}
+
+// Ace 28.0b — Delete a Gmail draft by its Draft.id. 204 = gone, 404 =
+// already gone (we treat that as success since the desired end state
+// matches). Anything else throws so the caller can decide how to
+// surface the error.
+export async function deleteGmailDraft(userId: string, draftId: string): Promise<void> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    },
+  );
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail draft delete failed (${res.status}): ${text || "no body"}`);
+  }
 }
 
 // ---- Mail Tab read paths (Phase 6) ----

@@ -7,7 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { MailComposer } from "@/app/mail/mail-composer";
+import { MailComposer, type AttachmentDraft } from "@/app/mail/mail-composer";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { MailMergeContext } from "@/lib/mail-merge-fields";
 
@@ -26,6 +26,14 @@ import type { MailMergeContext } from "@/lib/mail-merge-fields";
 export type OpenComposerInput = {
   defaultTo: string;
   defaultCc?: string;
+  // Carry-over fields used by the inline → modal pop-out so a started
+  // reply doesn't lose typed BCC, body HTML, attachments, or an
+  // already-saved Gmail draft id when it transitions into the modal
+  // composer. Not used by the click-to-email or FAB launch paths.
+  defaultBcc?: string;
+  defaultBody?: string;
+  defaultAttachments?: AttachmentDraft[];
+  defaultDraftId?: string | null;
   defaultSubject?: string;
   threadId?: string;
   templates: ActiveTemplateSummary[];
@@ -85,7 +93,11 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           nonBlocking={s.nonBlocking}
           defaultTo={s.defaultTo}
           defaultCc={s.defaultCc}
+          defaultBcc={s.defaultBcc}
           defaultSubject={s.defaultSubject ?? ""}
+          defaultBody={s.defaultBody}
+          defaultAttachments={s.defaultAttachments}
+          defaultDraftId={s.defaultDraftId}
           threadId={s.threadId}
           templates={s.templates}
           mergeContext={s.mergeContext}
