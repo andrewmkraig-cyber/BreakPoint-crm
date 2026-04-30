@@ -71,12 +71,12 @@ export function TopBarProfileCard({
           <Image
             src={imageUrl}
             alt={name ?? "avatar"}
-            width={36}
-            height={36}
+            width={40}
+            height={40}
             className="rounded-full border border-court-border"
           />
         ) : (
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
+          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
             {name?.[0] ?? "?"}
           </span>
         )}

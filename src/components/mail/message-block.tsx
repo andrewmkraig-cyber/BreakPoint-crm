@@ -125,35 +125,33 @@ export function MessageBlock({
       <div
         ref={bodyRef}
         className={[
-          // whitespace-pre-line preserves source newlines as line
-          // breaks. The API sanitizer strips inline style attributes
-          // (security), which removes the `white-space: pre-wrap`
-          // Gmail relies on to render its <div>-with-newlines body
-          // format. Without this, Gmail-shaped emails collapsed into
-          // one continuous flow paragraph in Ace even though they
-          // read with proper line breaks in Gmail itself.
-          "max-w-none whitespace-pre-line text-sm leading-relaxed",
-          // Forced "reading paper" container — render every email on
-          // a fixed white card regardless of Court Mode. Senders
-          // author email HTML for white backgrounds with hardcoded
-          // color: #000 inline styles; on Night (charcoal) and Grass
-          // dark (deep green) those dark colors got swallowed by the
-          // surface and read as invisible body text. The white card +
-          // slate-200 border + soft shadow framing reads as a letter
-          // on light themes too, with stronger contrast on dark.
-          // Anchor / blockquote colors below also pin to fixed values
-          // that work on white in every theme — the court-* tokens
-          // for those would invert on dark themes and disappear
-          // against this forced-white card.
-          "rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-sm",
-          // Top-level direct-child <div> spacing — Gmail ships emails
-          // as a stack of sibling <div> blocks (one per paragraph)
-          // rather than <p> tags. Adding margin between direct
-          // children gives those stacks the visual paragraph rhythm
-          // the body needs to read like Gmail's canonical view.
-          "[&>div+div]:mt-2",
-          // Block-level rhythm for proper <p> based emails too.
-          "[&_p]:my-2 [&_p]:leading-relaxed",
+          // Match Gmail's body typography exactly: no whitespace-pre-line
+          // (Gmail uses normal HTML whitespace handling — literal source
+          // newlines between tags collapse to spaces; visible breaks
+          // come from <br> / <div><br></div> structure only). The
+          // earlier pre-line treatment was layered ON TOP of those
+          // structural breaks and produced the 6-line gap-between-
+          // paragraphs problem reported on 2026-04-30. Plain-text
+          // emails still wrap correctly because gmail.ts puts them
+          // inside a <pre class=whitespace-pre-wrap> wrapper that the
+          // [&_pre] rule below preserves.
+          "max-w-none text-sm leading-normal",
+          // "Reading paper" container — soft cream instead of pure
+          // white so the card doesn't blast the eyes on dark Court
+          // Modes (Night charcoal, Grass dark green). Still light
+          // enough that emails authored with color: #000 inline styles
+          // read normally. Anchor / blockquote colors below pin to
+          // fixed values that work on the cream tone in every theme —
+          // court-* tokens would invert on dark themes and vanish
+          // against this forced-light card.
+          "rounded-lg border border-slate-200 bg-[#F5F1E8] p-4 text-slate-900 shadow-sm",
+          // No [&>div+div]:mt-2 here — Gmail emits empty <div><br></div>
+          // spacers between paragraphs already, so adding extra margin
+          // on top doubled the rhythm and was the second contributor
+          // to the over-spacing bug.
+          // Block-level rhythm for proper <p> based emails. Tightened
+          // to match Gmail's own paragraph cadence.
+          "[&_p]:my-1 [&_p]:leading-normal",
           "[&_h1]:mb-2 [&_h1]:mt-4 [&_h1]:font-serif [&_h1]:text-lg [&_h1]:font-semibold",
           "[&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:font-serif [&_h2]:text-base [&_h2]:font-semibold",
           "[&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:font-semibold",
@@ -179,7 +177,7 @@ export function MessageBlock({
           // font-sans>`); keep the wrap behavior + match the body
           // typography so plain emails read like the rest of the
           // thread instead of monospace blocks.
-          "[&_pre]:whitespace-pre-wrap [&_pre]:font-sans [&_pre]:text-sm [&_pre]:leading-relaxed",
+          "[&_pre]:whitespace-pre-wrap [&_pre]:font-sans [&_pre]:text-sm [&_pre]:leading-normal",
           // Inline images: cap width so wide screenshots don't blow
           // out the column. Don't impose `h-auto` — the source
           // height attribute (and the sender's signature template
