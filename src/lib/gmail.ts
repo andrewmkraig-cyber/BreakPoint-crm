@@ -501,6 +501,12 @@ export type MailThreadMessage = {
   // HTML body (already sanitized by the route) if available; otherwise
   // the plain-text body converted to HTML via <pre>.
   bodyHtml: string;
+  // When the sender's address resolves to a CRM Contact whose Client is
+  // known, the route stamps a slug + name here so MessageBlock can
+  // render an "Open client" affordance straight from the thread view.
+  // Null when the sender isn't tied to any Client (or there's no
+  // matching Contact at all).
+  senderClient?: { slug: string; name: string } | null;
 };
 
 export type MailThreadDetail = {

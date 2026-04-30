@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef } from "react";
-import { Forward, Reply, ReplyAll } from "lucide-react";
+import { Building2, Forward, Reply, ReplyAll } from "lucide-react";
 import type { MailThreadMessage } from "@/lib/gmail";
 
 export type MessageBlockAction = "reply" | "replyAll" | "forward";
@@ -83,8 +84,22 @@ export function MessageBlock({
     >
       <header className="mb-2 flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-sm font-medium text-court-fg">
-            {msg.fromName || msg.fromEmail || "(unknown sender)"}
+          <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-court-fg">
+            <span>{msg.fromName || msg.fromEmail || "(unknown sender)"}</span>
+            {msg.senderClient && (
+              // Sender's address resolved to a Contact whose Client we
+              // know — surface a one-click jump to that profile so the
+              // recruiter can land on the company without leaving the
+              // thread first.
+              <Link
+                href={`/clients/${msg.senderClient.slug}`}
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+                title={`Open ${msg.senderClient.name}`}
+              >
+                <Building2 className="h-3 w-3" />
+                Open {msg.senderClient.name}
+              </Link>
+            )}
           </div>
           {msg.to && (
             <div className="truncate text-[11px] text-court-fg-muted">

@@ -45,6 +45,7 @@ export async function GET(
     // Auto-tag the thread to candidate/client profiles whose address
     // appears in any sender/recipient header. Idempotent upserts; failure
     // here must not break the read path.
+    const senderClientByEmail = new Map<string, { slug: string; name: string }>();
     try {
       const org = await getCurrentOrg();
       const addresses = detail.messages.flatMap((m) => [
@@ -57,6 +58,45 @@ export async function GET(
         addresses,
         organizationId: org.id,
       });
+
+      // Resolve each unique sender address to a Contact's Client so the
+      // MessageBlock can render an "Open client" link. We only look at
+      // fromEmail here — recipient-side matches (the recruiter being
+      // To/Cc'd) aren't useful for that affordance. Tenant-scoped via
+      // the same org boundary as the auto-tag step above.
+      const fromEmails = Array.from(
+        new Set(
+          detail.messages
+            .map((m) => (m.fromEmail || "").trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      );
+      if (fromEmails.length > 0) {
+        const contacts = await prisma.contact.findMany({
+          where: {
+            organizationId: org.id,
+            emails: { hasSome: fromEmails },
+            client: { isNot: null },
+          },
+          select: {
+            emails: true,
+            client: { select: { id: true, legacyRfId: true, name: true } },
+          },
+        });
+        for (const c of contacts) {
+          if (!c.client) continue;
+          const slug =
+            c.client.legacyRfId != null ? String(c.client.legacyRfId) : c.client.id;
+          for (const e of c.emails) {
+            const key = e.trim().toLowerCase();
+            if (!key || senderClientByEmail.has(key)) continue;
+            senderClientByEmail.set(key, {
+              slug,
+              name: c.client.name || "client",
+            });
+          }
+        }
+      }
     } catch (tagErr) {
       console.warn("[mail/threads GET] auto-tag failed", tagErr);
     }
@@ -65,6 +105,8 @@ export async function GET(
       ...detail,
       messages: detail.messages.map((m) => ({
         ...m,
+        senderClient:
+          senderClientByEmail.get((m.fromEmail || "").trim().toLowerCase()) ?? null,
         bodyHtml: sanitizeHtml(m.bodyHtml, {
           allowedTags: [
             ...sanitizeHtml.defaults.allowedTags,
