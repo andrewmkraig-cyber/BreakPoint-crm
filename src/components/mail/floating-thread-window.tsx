@@ -2,14 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { GripVertical, Loader2, Minus, X } from "lucide-react";
+import {
+  Archive,
+  FolderInput,
+  Forward,
+  GripVertical,
+  Loader2,
+  Minus,
+  Reply,
+  ReplyAll,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   FLOATING_THREAD_MIN_H,
   FLOATING_THREAD_MIN_W,
   useFloatingThread,
 } from "@/lib/floating-thread-context";
-import { ThreadDetail } from "@/app/mail/mail-view";
+import {
+  messageHasOtherRecipients,
+  MoveToMenu,
+  ThreadDetail,
+} from "@/app/mail/mail-view";
 import type { MailThreadDetail } from "@/lib/gmail";
 
 // Portal-rendered draggable + resizable window for a single Gmail
@@ -44,6 +58,16 @@ export function FloatingThreadWindow() {
   const [archiving, setArchiving] = useState(false);
   const [moving, setMoving] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
+  // composerMode lives here (not in ThreadDetail) so the action toolbar
+  // can ride on this window's title bar instead of duplicating chrome
+  // below it. Reset whenever the popup switches threads — same defense
+  // ThreadDetail does internally for inline mode.
+  const [composerMode, setComposerMode] = useState<
+    null | "reply" | "replyAll" | "forward"
+  >(null);
+  useEffect(() => {
+    setComposerMode(null);
+  }, [threadId]);
   const windowRef = useRef<HTMLDivElement | null>(null);
 
   // createPortal needs document.body; gate until after mount so SSR
@@ -274,6 +298,20 @@ export function FloatingThreadWindow() {
   // Effective height when minimized: just the header bar.
   const effectiveHeight = minimized ? 40 : size.h;
 
+  // Reply All only renders when the latest message has at least one
+  // other recipient — same DM-suppression rule the inline ThreadDetail
+  // uses, recomputed here so the toolbar in this title bar can reflect
+  // it without lifting more state. Cheap call, no memo needed (and a
+  // useMemo here would sit after the early return above and break the
+  // rules of hooks).
+  const latestMessage = detail?.messages[detail.messages.length - 1];
+  const showReplyAll = messageHasOtherRecipients(
+    latestMessage,
+    toolkit?.currentUserEmail ?? "",
+  );
+  const composerOpen = composerMode !== null;
+  const actionsDisabled = !detail || composerOpen;
+
   return createPortal(
     <div
       ref={windowRef}
@@ -293,15 +331,72 @@ export function FloatingThreadWindow() {
     >
       <div
         onPointerDown={onHeaderPointerDown}
-        className="flex shrink-0 cursor-grab select-none items-center gap-2 border-b border-court-border px-5 py-2 active:cursor-grabbing"
+        className="flex shrink-0 cursor-grab select-none items-center gap-2 border-b border-court-border px-3 py-1.5 active:cursor-grabbing"
       >
-        <div className="flex items-center gap-2">
-          <GripVertical className="h-3.5 w-3.5 text-court-fg-muted" />
-        </div>
-        <div className="min-w-0 flex-1 truncate text-center text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+        <GripVertical className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+        <div className="min-w-0 flex-1 truncate text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           {detail?.subject ?? (loading ? "Loading…" : "Email")}
         </div>
-        <div className="flex items-center gap-1">
+        {/* Action toolbar lives on the title-bar row instead of in
+            ThreadDetail's own header — saves a chrome row and matches
+            the user's "Reply / Reply All / Forward / Archive / Move To
+            on the same line as pop out & x" request. Disabled while the
+            composer is already open or the thread hasn't loaded. */}
+        {!minimized && detail && (
+          <div className="flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setComposerMode("reply")}
+              disabled={actionsDisabled}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              <Reply className="h-3 w-3" /> Reply
+            </button>
+            {showReplyAll && (
+              <button
+                type="button"
+                onClick={() => setComposerMode("replyAll")}
+                disabled={actionsDisabled}
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                <ReplyAll className="h-3 w-3" /> Reply All
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setComposerMode("forward")}
+              disabled={actionsDisabled}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              <Forward className="h-3 w-3" /> Forward
+            </button>
+            <button
+              type="button"
+              onClick={archiveCurrent}
+              disabled={archiving || !detail}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+              Archive
+            </button>
+            <MoveToMenu
+              labels={toolkit?.labels ?? null}
+              busy={moving}
+              onPick={moveCurrent}
+              buttonContent={
+                <>
+                  {moving ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <FolderInput className="h-3 w-3" />
+                  )}
+                  Move To
+                </>
+              }
+            />
+          </div>
+        )}
+        <div className="flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={() => setMinimized(!minimized)}
@@ -347,8 +442,13 @@ export function FloatingThreadWindow() {
                 templates={toolkit.templates}
                 onArchive={archiveCurrent}
                 onMove={moveCurrent}
-                onSent={() => setReloadTick((n) => n + 1)}
+                onSent={() => {
+                  setComposerMode(null);
+                  setReloadTick((n) => n + 1);
+                }}
                 isFloating
+                composerMode={composerMode}
+                onComposerModeChange={setComposerMode}
               />
             )}
           </div>

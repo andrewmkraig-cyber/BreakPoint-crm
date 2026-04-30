@@ -1002,12 +1002,13 @@ export function MailComposer({
             // overflow-hidden chassis as the modal so the chrome rows
             // pin top, the editor scrolls in its own region, and the
             // footer (Send / Save Draft / Delete) stays glued to the
-            // bottom. max-h-[55vh] bounds the composer at just over
-            // half the viewport so the messages list above it stays
-            // visible — without this cap the composer's intrinsic
-            // content height pushed Send below the fold inside the
-            // floating thread window.
-            "flex max-h-[55vh] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
+            // bottom. max-h-[50%] caps the composer at half the parent
+            // (typically the popup or the inline /mail thread pane)
+            // so the messages list above always keeps a meaningful
+            // visible region — that's the "scroll down to see the
+            // original email" complaint. Falls back to max-h-[55vh] in
+            // non-bounded contexts where the parent has no fixed height.
+            "flex max-h-[50%] max-h-[min(55vh,50%)] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
       }
     >
       <div
@@ -1082,7 +1083,7 @@ export function MailComposer({
           </button>
         </div>
       </div>
-      <div className="shrink-0 space-y-2 px-5 py-3">
+      <div className="shrink-0 space-y-1.5 px-5 py-2">
         <AddressRow
           label="To"
           value={to}

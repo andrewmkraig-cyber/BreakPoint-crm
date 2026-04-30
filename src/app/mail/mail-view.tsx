@@ -1200,7 +1200,7 @@ function EmptyRightPane() {
 // bulk toolbar. Click-outside closes the menu. The button itself is
 // disabled until labels finish loading and there's at least one user
 // label to pick from.
-function MoveToMenu({
+export function MoveToMenu({
   labels,
   busy,
   buttonContent,
@@ -1379,6 +1379,13 @@ export type ThreadDetailProps = {
   // hides the Pop-out button. Also drops the inline-only viewport
   // height calc so the component fills the floating frame.
   isFloating?: boolean;
+  // Controlled-mode props. When provided (FloatingThreadWindow does
+  // this so the Reply / Reply All / Forward buttons can live in its
+  // own title bar instead of duplicating chrome), composerMode is
+  // sourced from the parent and the parent renders the action
+  // toolbar — ThreadDetail's own header is hidden.
+  composerMode?: null | "reply" | "replyAll" | "forward";
+  onComposerModeChange?: (mode: null | "reply" | "replyAll" | "forward") => void;
 };
 
 export function ThreadDetail({
@@ -1396,6 +1403,8 @@ export function ThreadDetail({
   onCreateAndApplyLabel,
   onSent,
   isFloating = false,
+  composerMode: composerModeProp,
+  onComposerModeChange,
 }: ThreadDetailProps) {
   // Newest-first: show most recent message at the top of the pane so
   // opening a long thread lands directly on "what just happened."
@@ -1406,10 +1415,24 @@ export function ThreadDetail({
   // Composer mode tracks WHICH button opened the composer so the
   // setup (To, Cc, Subject, body, threadId, modal title) matches the
   // user's intent — Reply / Reply All / Forward each compute their
-  // own initial state below.
-  const [composerMode, setComposerMode] = useState<
+  // own initial state below. Falls into "controlled" mode when the
+  // parent passes composerMode + onComposerModeChange (used by
+  // FloatingThreadWindow so its title bar can drive these directly).
+  const isControlled = composerModeProp !== undefined;
+  const [internalComposerMode, setInternalComposerMode] = useState<
     null | "reply" | "replyAll" | "forward"
   >(null);
+  const composerMode = isControlled ? composerModeProp ?? null : internalComposerMode;
+  const setComposerMode = useCallback(
+    (next: null | "reply" | "replyAll" | "forward") => {
+      if (isControlled) {
+        onComposerModeChange?.(next);
+      } else {
+        setInternalComposerMode(next);
+      }
+    },
+    [isControlled, onComposerModeChange],
+  );
   const composerOpen = composerMode !== null;
 
   // Which specific message the recruiter is replying to. Defaults to
@@ -1427,8 +1450,8 @@ export function ThreadDetail({
   // action buttons and shows a stale composer over the new thread.
   useEffect(() => {
     setReplyTargetId(null);
-    setComposerMode(null);
-  }, [detail.id]);
+    if (!isControlled) setInternalComposerMode(null);
+  }, [detail.id, isControlled]);
   const replyTarget = useMemo(() => {
     if (!replyTargetId) return latest;
     return orderedMessages.find((m) => m.id === replyTargetId) ?? latest;
@@ -1534,12 +1557,18 @@ export function ThreadDetail({
     };
   }, [composerOpen, defaultTo]);
 
+  // When the parent controls composerMode (FloatingThreadWindow does,
+  // so the action toolbar can live in its own title bar), suppress
+  // ThreadDetail's redundant chrome row entirely.
+  const renderOwnHeader = !(isFloating && isControlled);
+
   return (
     <div
       className={
         "flex flex-col " + (isFloating ? "h-full" : "h-[calc(100vh-240px)]")
       }
     >
+      {renderOwnHeader && (
       <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
         {!isFloating && (
           <div className="min-w-0">
@@ -1638,6 +1667,7 @@ export function ThreadDetail({
           )}
         </div>
       </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         {orderedMessages.map((m, i) => (
           <MessageBlock
@@ -1846,6 +1876,23 @@ function escapeHtml(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+// True when the message has at least one recipient (To/Cc) besides
+// the signed-in user — so a "Reply All" wouldn't just duplicate Reply.
+// Exported for FloatingThreadWindow which renders the action toolbar
+// in its own title bar.
+export function messageHasOtherRecipients(
+  msg: MailThreadMessage | undefined,
+  currentUserEmail: string,
+): boolean {
+  if (!msg) return false;
+  const me = currentUserEmail.trim().toLowerCase();
+  const all = [
+    ...splitAddrHeader(msg.to ?? ""),
+    ...splitAddrHeader(msg.cc ?? ""),
+  ];
+  return all.some((a) => a.email && a.email.toLowerCase() !== me);
 }
 
 // RFC 5322 address header splitter — handles "Name <addr>, Name2 <addr2>"
