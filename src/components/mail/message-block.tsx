@@ -24,6 +24,7 @@ export function MessageBlock({
   msg,
   isFirst,
   onAction,
+  showReplyAll = true,
 }: {
   msg: MailThreadMessage;
   isFirst: boolean;
@@ -34,6 +35,12 @@ export function MessageBlock({
   // not just the latest one. Omit (or pass undefined) to hide the
   // per-message buttons (e.g. while the composer is already open).
   onAction?: (mode: MessageBlockAction) => void;
+  // When false, the Reply All button is hidden — the parent computes
+  // this from the message's recipient set (true when the message has
+  // any addresses besides the current user; false when it's a DM).
+  // Defaults to true so callers that don't compute this still get the
+  // legacy three-button layout.
+  showReplyAll?: boolean;
 }) {
   // After the dangerouslySetInnerHTML body mounts, attach error
   // handlers to every <img> inside it so a failed remote load
@@ -97,15 +104,17 @@ export function MessageBlock({
               >
                 <Reply className="h-3 w-3" /> Reply
               </button>
-              <button
-                type="button"
-                onClick={() => onAction("replyAll")}
-                aria-label="Reply all to this message"
-                title="Reply all to this message"
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
-              >
-                <ReplyAll className="h-3 w-3" /> Reply All
-              </button>
+              {showReplyAll && (
+                <button
+                  type="button"
+                  onClick={() => onAction("replyAll")}
+                  aria-label="Reply all to this message"
+                  title="Reply all to this message"
+                  className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                >
+                  <ReplyAll className="h-3 w-3" /> Reply All
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onAction("forward")}
@@ -136,15 +145,18 @@ export function MessageBlock({
           // inside a <pre class=whitespace-pre-wrap> wrapper that the
           // [&_pre] rule below preserves.
           "max-w-none text-sm leading-normal",
-          // "Reading paper" container — soft cream instead of pure
-          // white so the card doesn't blast the eyes on dark Court
-          // Modes (Night charcoal, Grass dark green). Still light
-          // enough that emails authored with color: #000 inline styles
-          // read normally. Anchor / blockquote colors below pin to
-          // fixed values that work on the cream tone in every theme —
-          // court-* tokens would invert on dark themes and vanish
-          // against this forced-light card.
-          "rounded-lg border border-slate-200 bg-[#F5F1E8] p-4 text-slate-900 shadow-sm",
+          // "Reading paper" container — pure white in light Court
+          // Modes (Hard / Clay / Grass light) so emails read like a
+          // normal mail client, then a soft cream in dark modes
+          // (Hard / Clay / Grass dark) so the card doesn't blast the
+          // eyes on dark page bg. Tailwind's dark: variant maps to
+          // [data-theme='dark'] in this app's config (see
+          // tailwind.config.ts), which covers all three dark courts.
+          // Night mode reads as bg-white — matches Gmail's own dark-
+          // mode treatment where the email card stays white. Anchor +
+          // blockquote colors below stay pinned to fixed slate/green
+          // values so they read on either bg.
+          "rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-sm dark:bg-[#F5F1E8]",
           // No [&>div+div]:mt-2 here — Gmail emits empty <div><br></div>
           // spacers between paragraphs already, so adding extra margin
           // on top doubled the rhythm and was the second contributor

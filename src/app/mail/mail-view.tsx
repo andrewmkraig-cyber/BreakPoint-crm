@@ -11,8 +11,8 @@ import {
   Forward,
   Loader2,
   Mail as MailIcon,
-  Maximize2,
   Plus,
+  SquareArrowOutUpRight,
   RefreshCw,
   Reply,
   ReplyAll,
@@ -1343,107 +1343,11 @@ function MoveToMenu({
   );
 }
 
-// Reply-target picker — toolbar dropdown that lets the recruiter
-// pick WHICH message in a multi-message thread the Reply / Reply
-// All / Forward buttons should act on. Defaults to the latest
-// (label reads "Reply to: latest"); selecting an older message
-// switches the label to that sender + timestamp so the recruiter
-// can verify the target before clicking Reply.
-function ReplyTargetMenu({
-  messages,
-  targetId,
-  latestId,
-  disabled,
-  onPick,
-}: {
-  messages: MailThreadMessage[];
-  targetId: string | null;
-  latestId: string | null;
-  disabled: boolean;
-  onPick: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onDocClick(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
-  }, [open]);
-  const target = messages.find((m) => m.id === targetId) ?? messages[0];
-  const isLatest = (target?.id ?? null) === latestId;
-  const buttonLabel = isLatest
-    ? "Reply to: latest"
-    : `Reply to: ${target?.fromName || target?.fromEmail || "(unknown)"}`;
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={disabled}
-        title="Pick which message in this thread to reply to"
-        className={
-          "inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-medium shadow-sm transition disabled:opacity-60 " +
-          (isLatest
-            ? "border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg"
-            : "border-court-accent bg-court-accent-tint text-court-accent-dark")
-        }
-      >
-        <span className="max-w-[160px] truncate">{buttonLabel}</span>
-        <ChevronDown className="h-3 w-3" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-72 overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg">
-          <div className="border-b border-court-border bg-court-surface-subtle/60 px-3 py-1.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
-            {messages.length} messages — pick one to reply to
-          </div>
-          <ul className="max-h-72 overflow-y-auto py-1">
-            {messages.map((m, i) => {
-              const active = (target?.id ?? null) === m.id;
-              const sender = m.fromName || m.fromEmail || "(unknown)";
-              const when = m.dateIso
-                ? new Date(m.dateIso).toLocaleString()
-                : "";
-              return (
-                <li key={m.id}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onPick(m.id);
-                      setOpen(false);
-                    }}
-                    className={
-                      "block w-full px-3 py-1.5 text-left transition " +
-                      (active
-                        ? "bg-court-accent-tint text-court-accent-dark"
-                        : "text-court-fg hover:bg-court-surface-subtle")
-                    }
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium">
-                        {sender}
-                      </span>
-                      {i === 0 && (
-                        <span className="shrink-0 rounded-sm bg-court-fg/10 px-1 py-0.5 text-[9px] uppercase tracking-wider text-court-fg-muted">
-                          Latest
-                        </span>
-                      )}
-                    </div>
-                    <div className="truncate text-[10px] text-court-fg-muted">
-                      {when}
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </div>
-  );
-}
+// (ReplyTargetMenu — the "Reply to: latest" picker — was removed in
+// Ace 28.0c. Per-message Reply / Reply All / Forward buttons inside
+// each older MessageBlock are now the dedicated path for targeting a
+// specific message in a long thread; the latest message is always
+// addressed by the toolbar's plain Reply button.)
 
 // Shared interface so ThreadDetail can be rendered both inline in
 // MailView and inside the popped-out FloatingThreadWindow with the
@@ -1556,11 +1460,12 @@ export function ThreadDetail({
     [replyTarget],
   );
 
-  // Per-message action handler used by each MessageBlock's reply /
-  // reply-all / forward buttons. Captures the chosen message as the
-  // reply target before opening the composer, so the recipient +
-  // quoted-body computations above re-run against THAT message
-  // instead of the thread's latest.
+  // Per-message action handler — fires from the Reply / Reply All /
+  // Forward buttons rendered inside each MessageBlock (inline only;
+  // suppressed when the thread is floating in a popup window). Captures
+  // the chosen message as the reply target before opening the
+  // composer so the recipient + quoted-body computations re-run
+  // against THAT message instead of the thread's latest.
   const onMessageAction = useCallback(
     (msg: MailThreadMessage, mode: "reply" | "replyAll" | "forward") => {
       setReplyTargetId(msg.id);
@@ -1568,6 +1473,28 @@ export function ThreadDetail({
     },
     [],
   );
+
+  // True when the message has at least one recipient address (To / Cc)
+  // beyond the current user — i.e. Reply All would actually reach
+  // someone Reply wouldn't. When false (DM-style: came from one
+  // person, addressed only to me), the Reply All button is hidden so
+  // the toolbar doesn't offer two visually-distinct actions that
+  // produce identical sends.
+  const hasMultipleRecipients = useCallback(
+    (msg: MailThreadMessage | undefined): boolean => {
+      if (!msg) return false;
+      const me = currentUserEmail.trim().toLowerCase();
+      const all = [
+        ...splitAddrHeader(msg.to ?? ""),
+        ...splitAddrHeader(msg.cc ?? ""),
+      ];
+      return all.some(
+        (a) => a.email && a.email.toLowerCase() !== me,
+      );
+    },
+    [currentUserEmail],
+  );
+  const showReplyAllForLatest = hasMultipleRecipients(replyTarget);
 
   // CC same-company picker: when the To address resolves to a Contact
   // in our CRM, fetch the other Contacts at that Contact's clientId so
@@ -1630,21 +1557,11 @@ export function ThreadDetail({
             "flex shrink-0 items-center gap-2 " + (isFloating ? "ml-auto" : "")
           }
         >
-          {/* Reply-target picker. Only renders for multi-message
-              threads — there's no point in a "pick which message"
-              picker when there's only one. Defaults to the latest;
-              picking an older message routes the toolbar's Reply /
-              Reply All / Forward through that one's recipients +
-              quoted body. */}
-          {orderedMessages.length > 1 && (
-            <ReplyTargetMenu
-              messages={orderedMessages}
-              targetId={replyTargetId ?? latest?.id ?? null}
-              latestId={latest?.id ?? null}
-              disabled={composerOpen}
-              onPick={(id) => setReplyTargetId(id)}
-            />
-          )}
+          {/* "Reply to: latest" picker removed — the per-message
+              Reply / Reply All / Forward buttons rendered inside each
+              MessageBlock are the dedicated path for replying to a
+              specific older message in a long thread. Top-toolbar
+              Reply still defaults to the most recent message. */}
           <button
             type="button"
             onClick={() => setComposerMode("reply")}
@@ -1653,14 +1570,21 @@ export function ThreadDetail({
           >
             <Reply className="h-3 w-3" /> Reply
           </button>
-          <button
-            type="button"
-            onClick={() => setComposerMode("replyAll")}
-            disabled={composerOpen}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-          >
-            <ReplyAll className="h-3 w-3" /> Reply All
-          </button>
+          {/* Reply All only renders when the latest message has at
+              least one recipient besides the current user — DMs from
+              a single person to only me collapse to "Reply" since
+              Reply All would send to the same single recipient and
+              read as duplicated chrome. */}
+          {showReplyAllForLatest && (
+            <button
+              type="button"
+              onClick={() => setComposerMode("replyAll")}
+              disabled={composerOpen}
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              <ReplyAll className="h-3 w-3" /> Reply All
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setComposerMode("forward")}
@@ -1709,7 +1633,7 @@ export function ThreadDetail({
               aria-label="Pop out thread into a floating window"
               className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
             >
-              <Maximize2 className="h-3 w-3" /> Pop out
+              <SquareArrowOutUpRight className="h-3 w-3" /> Pop out
             </button>
           )}
         </div>
@@ -1720,7 +1644,31 @@ export function ThreadDetail({
             key={m.id}
             msg={m}
             isFirst={i === 0}
-            onAction={composerOpen ? undefined : (mode) => onMessageAction(m, mode)}
+            // Per-message Reply / Reply All / Forward buttons render
+            // ONLY for older messages in a multi-message inline thread.
+            // Suppressed when:
+            //   - rendered inside FloatingThreadWindow (isFloating) —
+            //     popups opened from notifications get one toolbar only
+            //   - a composer is already open
+            //   - the message is the latest one (i === 0 in our newest-
+            //     first ordering) — the top toolbar already handles it,
+            //     so per-message buttons there are pure duplication.
+            //     A single-message thread therefore renders zero
+            //     per-message buttons (the only message IS the latest).
+            //     Older messages in a chain keep their buttons so the
+            //     recruiter can scroll down and reply to a specific
+            //     earlier message in the conversation.
+            onAction={
+              isFloating || composerOpen || i === 0
+                ? undefined
+                : (mode) => onMessageAction(m, mode)
+            }
+            // Per-message Reply All only renders when this specific
+            // message had multiple recipients — DM-style messages
+            // (one sender, only me on To) collapse to Reply so the
+            // toolbar doesn't offer two buttons that produce
+            // identical sends.
+            showReplyAll={hasMultipleRecipients(m)}
           />
         ))}
       </div>
@@ -1763,6 +1711,12 @@ export function ThreadDetail({
             // saved Gmail draft id) so the modal opens pre-filled with
             // exactly what was in the inline pane. We close the inline
             // pane immediately so there's only one composer on screen.
+            // nonBlocking matches the thread Pop-out behavior — the
+            // user must be able to keep navigating Ace (open another
+            // candidate, switch to /phone, etc.) while the popped-out
+            // composer floats above. Without this the manager renders
+            // a black/40 backdrop that swallows every click on the
+            // page underneath.
             const popOutTitle =
               composerMode === "forward"
                 ? "Forward"
@@ -1780,6 +1734,7 @@ export function ThreadDetail({
               defaultAttachments: snapshot.attachments,
               defaultDraftId: snapshot.draftId,
               templates,
+              nonBlocking: true,
               mergeContext: {
                 user: {
                   firstName: currentUserFirstName,

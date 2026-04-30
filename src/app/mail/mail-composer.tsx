@@ -24,7 +24,7 @@ import {
   ChevronDown,
   Minus,
   GripVertical,
-  Maximize2,
+  SquareArrowOutUpRight,
   Save,
   Trash2,
 } from "lucide-react";
@@ -1046,7 +1046,7 @@ export function MailComposer({
               aria-label="Pop out composer into a floating window"
               title="Pop out into a floating window"
             >
-              <Maximize2 className="h-4 w-4" />
+              <SquareArrowOutUpRight className="h-4 w-4" />
             </button>
           )}
           {asModal && (
