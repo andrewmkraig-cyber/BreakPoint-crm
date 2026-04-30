@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { renderNewMailToast } from "@/components/mail-notification-toast";
+import { playMailSound } from "@/lib/notification-sound";
 
 // Live-polling source of truth for the Mail Tab's "what's unread right
 // now" state. Replaces the per-render server fetch the sidebar +
@@ -98,6 +99,11 @@ export function MailProvider({
       window.localStorage.getItem(MAIL_NOTIFICATIONS_KEY) === "true";
     if (enabled) {
       for (const thread of fresh) renderNewMailToast(thread);
+      // Ace 28.0: play the recruiter's chosen mail notification sound
+      // when fresh threads land. Fires once per poll batch (not per
+      // thread) so a flurry of new mail produces a single audible cue
+      // instead of a stream of overlapping tones.
+      playMailSound();
     }
     seenIdsRef.current = incomingIds;
   }, []);

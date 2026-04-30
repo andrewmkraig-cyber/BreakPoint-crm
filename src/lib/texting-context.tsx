@@ -8,6 +8,7 @@ import {
   type InboundCallEvent,
 } from "@/components/text-notification-toast";
 import { MAIL_NOTIFICATIONS_PREF_KEY } from "@/lib/mail-context";
+import { playSmsSound } from "@/lib/notification-sound";
 
 // Polls /api/krispcall/recent every 30s and fires text/call toasts
 // for events that weren't present on the previous tick. Reuses the
@@ -60,12 +61,14 @@ export function TextingProvider({ children }: { children: ReactNode }) {
       typeof window !== "undefined" &&
       window.localStorage.getItem(MAIL_NOTIFICATIONS_PREF_KEY) === "true";
 
+    let anyFresh = false;
     const incomingTexts = new Set(body.texts.map((t) => t.id));
     if (seenTextIdsRef.current === null) {
       seenTextIdsRef.current = incomingTexts;
     } else {
       const fresh = body.texts.filter((t) => !seenTextIdsRef.current!.has(t.id));
       if (enabled) for (const t of fresh) renderNewTextToast(t);
+      if (fresh.length > 0) anyFresh = true;
       seenTextIdsRef.current = incomingTexts;
     }
 
@@ -75,8 +78,15 @@ export function TextingProvider({ children }: { children: ReactNode }) {
     } else {
       const fresh = body.calls.filter((c) => !seenCallIdsRef.current!.has(c.id));
       if (enabled) for (const c of fresh) renderNewCallToast(c);
+      if (fresh.length > 0) anyFresh = true;
       seenCallIdsRef.current = incomingCalls;
     }
+
+    // Ace 28.0: shared SMS/call notification sound. Fires once per
+    // tick when at least one fresh event arrived so a burst of texts
+    // produces one cue instead of a stream. Honors the same in-app
+    // notifications master switch so silent-mode stays silent.
+    if (enabled && anyFresh) playSmsSound();
   }
 
   return <>{children}</>;

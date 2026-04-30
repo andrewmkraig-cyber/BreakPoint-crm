@@ -2,6 +2,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { PageHeader } from "@/components/page-header";
 import { PhoneView } from "@/app/phone/phone-view";
+import { getQuoStatus } from "@/lib/connectors";
+import { ConnectorBanner } from "@/components/connector-banner";
 
 // Phone Tab Phase 1 foundation. Calls + SMS are already in Neon
 // (CallLog / SmsMessage tables, populated via Quo webhook), but until
@@ -25,6 +27,13 @@ export default async function PhonePage() {
     );
   }
 
+  // Ace 28.0: surface a Quo health banner if the API key isn't
+  // resolving. The check pings /v1/phone-numbers — a healthy
+  // response confirms outbound calls + SMS will work. Webhook
+  // delivery is independent (and only verifiable by a real inbound
+  // event), so the banner copy doesn't promise inbound health.
+  const quoStatus = await getQuoStatus();
+
   return (
     <div>
       <PageHeader
@@ -32,6 +41,12 @@ export default async function PhonePage() {
         title="Calls & Texts"
         description="Your Quo texts and calls."
       />
+      {quoStatus.state !== "connected" ? (
+        <ConnectorBanner
+          variant="quo-down"
+          message={`Quo ${quoStatus.state === "degraded" ? "looks degraded" : "unreachable"} — calls and texts may not work. ${quoStatus.detail}`}
+        />
+      ) : null}
       <PhoneView />
     </div>
   );

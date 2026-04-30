@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -289,6 +289,7 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
             className="inline-flex items-center justify-center gap-1 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1 text-[11px] font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
           >
+            <Send className="h-3 w-3" />
             Submit
           </Link>
           {/* Phase 4b: Keep / Reject fire inline regardless of job
@@ -296,8 +297,11 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
               jobRfId (RF-imported) or a cuid jobId (Ace-native); clients
               pick the right field here. Identical UX for both shapes —
               user stays on /applicants, row hops to the Kept tab (or
-              disappears on Reject). */}
+              disappears on Reject). Icons match the pipeline-row Submit/
+              Keep/Reject set on the candidate profile so the same verbs
+              read identically across surfaces. */}
           <ActionButton
+            icon={<Bookmark className="h-3 w-3" />}
             disabled={isPending}
             onClick={() => {
               const isAceJob = typeof row.jobId === "string";
@@ -327,6 +331,7 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
           </ActionButton>
           <ActionButton
             destructive
+            icon={<UserX className="h-3 w-3" />}
             disabled={isPending}
             onClick={() => {
               const isAceJob = typeof row.jobId === "string";
@@ -408,10 +413,12 @@ function KeptRowView({ row }: { row: KeptRow }) {
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
             className="inline-flex items-center justify-center gap-1 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1 text-[11px] font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
           >
+            <Send className="h-3 w-3" />
             Submit
           </Link>
           <ActionButton
             destructive
+            icon={<UserX className="h-3 w-3" />}
             disabled={isPending}
             onClick={() => {
               const isAceJob = typeof row.jobId === "string";
@@ -448,12 +455,17 @@ function ActionButton({
   disabled,
   primary,
   destructive,
+  icon,
 }: {
   children: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
   primary?: boolean;
   destructive?: boolean;
+  // Optional leading icon — rendered to the left of `children`. Used
+  // by the Submit/Keep/Reject row actions so they match the icon set
+  // the candidate profile pipeline rows render.
+  icon?: React.ReactNode;
 }) {
   // Primary (rare here) and Destructive route through the shared
   // Button primitive so the visual hierarchy stays in lockstep with
@@ -471,6 +483,7 @@ function ActionButton({
         disabled={disabled}
         className="h-7 text-[11px] font-bold"
       >
+        {icon}
         {children}
       </Button>
     );
@@ -485,6 +498,7 @@ function ActionButton({
         disabled={disabled}
         className="h-7 text-[11px] font-bold"
       >
+        {icon}
         {children}
       </Button>
     );
@@ -495,10 +509,11 @@ function ActionButton({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 text-[11px] font-bold shadow-sm transition disabled:opacity-60",
+        "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-full px-3 text-[11px] font-bold shadow-sm transition disabled:opacity-60",
         "border border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100",
       )}
     >
+      {icon}
       {children}
     </button>
   );

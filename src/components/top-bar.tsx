@@ -20,7 +20,7 @@ export function TopBar() {
     // page content scrolls underneath, mirroring the sidebar's
     // sticky-h-screen behavior. Page-level modals and floating panels
     // (z-50, z-[100], z-[1000]+) still render above.
-    <header className="sticky top-0 z-30 flex h-24 items-center justify-between gap-4 bg-court-surface px-6">
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between gap-4 bg-court-surface px-6">
       <div className="hidden text-xs uppercase tracking-[0.18em] text-court-fg-muted md:block">
         {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
       </div>

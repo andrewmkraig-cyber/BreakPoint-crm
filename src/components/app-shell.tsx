@@ -145,7 +145,7 @@ export function AppShell({
               }
             >
               {/* Top-row filler: matches the sidebar + topbar's
-                  bg-court-surface for the h-24 chrome band. pointer-
+                  bg-court-surface for the h-20 chrome band. pointer-
                   events-none lets clicks/drags fall through to the
                   parent so this overlay never steals the resize
                   hit-target. Hidden during drag so the brand-tinted
@@ -153,7 +153,7 @@ export function AppShell({
               {!dragging ? (
                 <div
                   aria-hidden="true"
-                  className="pointer-events-none h-24 w-full bg-court-surface"
+                  className="pointer-events-none h-20 w-full bg-court-surface"
                 />
               ) : null}
             </div>

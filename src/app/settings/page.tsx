@@ -13,6 +13,9 @@ import { BrandingView, type BrandingInitial } from "@/app/settings/branding-view
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
 import { ensureDefaultPreferences, getAppPreferences } from "@/lib/preferences";
 import { getUserBrandingProfile } from "@/lib/signature";
+import { ConnectorsView } from "@/app/settings/connectors-view";
+import { NotificationSoundsView } from "@/app/settings/sounds-view";
+import { getAllConnectorStatuses } from "@/lib/connectors";
 
 export const dynamic = "force-dynamic";
 
@@ -26,6 +29,14 @@ export default async function SettingsPage() {
     }),
     getAppPreferences(),
   ]);
+
+  // Ace 28.0: Connector statuses are computed server-side once per
+  // page load — Gmail hits Google's token endpoint, Claude + Quo each
+  // ping a cheap health URL. The three checks run in parallel inside
+  // getAllConnectorStatuses so the slowest one bounds total latency
+  // instead of the sum.
+  const sessionUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
+  const connectors = await getAllConnectorStatuses(sessionUserId);
 
   const rows: TemplateRow[] = templates.map((t) => ({
     id: t.id,
@@ -82,10 +93,28 @@ export default async function SettingsPage() {
       />
 
       <CollapsibleSection
+        title="Connectors"
+        description="Live health of the integrations Ace depends on. Gmail can be reconnected here; Claude and Quo are env-managed (Quo logins happen at quo.com)."
+      >
+        <ConnectorsView
+          gmail={connectors.gmail}
+          claude={connectors.claude}
+          quo={connectors.quo}
+        />
+      </CollapsibleSection>
+
+      <CollapsibleSection
         title="Court Mode"
         description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly — no reload needed."
       >
         <CourtModeView />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        title="Notification Sounds"
+        description="Pick a sound for new mail and another for texts/calls. Sounds are synthesized in-browser — preview by clicking any option."
+      >
+        <NotificationSoundsView />
       </CollapsibleSection>
 
       <CollapsibleSection

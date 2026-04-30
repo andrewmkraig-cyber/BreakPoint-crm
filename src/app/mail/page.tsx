@@ -6,6 +6,8 @@ import { listGmailThreads, type MailListThread } from "@/lib/gmail";
 import { MailView } from "@/app/mail/mail-view";
 import { ComposeNewEmailButton } from "@/components/mail/compose-new-email-button";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
+import { getGmailStatus } from "@/lib/connectors";
+import { ConnectorBanner } from "@/components/connector-banner";
 
 // Read-only Mail Tab foundation (Phase 6.0). The left-rail thread list
 // is server-rendered so the first paint shows real inbox content
@@ -41,6 +43,12 @@ export default async function MailPage() {
   let threads: MailListThread[] = [];
   let error: string | null = null;
   let templates: ActiveTemplateSummary[] = [];
+  // Ace 28.0: pre-flight Gmail health so the banner can decide whether
+  // to surface a Reconnect prompt at the top of the page. The check
+  // runs in parallel with the inbox fetch so a healthy mailbox doesn't
+  // pay the extra round-trip — Gmail status hits the Google token
+  // endpoint, listGmailThreads hits the Gmail REST API, both ~150ms.
+  const [gmailStatus] = await Promise.all([getGmailStatus(user.id)]);
   try {
     [threads, templates] = await Promise.all([
       listGmailThreads(user.id, { maxResults: 50 }),
@@ -76,6 +84,12 @@ export default async function MailPage() {
           />
         }
       />
+      {gmailStatus.state !== "connected" ? (
+        <ConnectorBanner
+          variant="gmail-down"
+          message={`Gmail ${gmailStatus.state === "degraded" ? "looks degraded" : "disconnected"} — emails cannot be sent or received. ${gmailStatus.detail}`}
+        />
+      ) : null}
       {error ? (
         <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <p className="font-medium">Couldn&rsquo;t load your inbox.</p>

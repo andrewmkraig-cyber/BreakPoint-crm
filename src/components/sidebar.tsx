@@ -95,16 +95,18 @@ export function Sidebar({ width }: { width?: number } = {}) {
       }
     >
       {/* Top header carries the full Serve Arc + "Ace · by BreakPoint
-          Talent" lockup. h-24 matches the top bar so the brand mark
-          and the date eyebrow share the same vertical band. No
-          horizontal border — the brand mark area flows into the nav
-          column without a dividing rule. The lockup is a link back to
-          /dashboard so the recruiter can always click the logo to
-          home, the same convention every other web app uses. */}
+          Talent" lockup. h-20 matches the top bar so the brand mark
+          and the date eyebrow read as one continuous top row. The
+          border-b sits at the bottom of the row — same y where the
+          topbar ends and the page content begins on the right column
+          — so the divider line aligns across both columns. The
+          lockup is a link back to /dashboard so the recruiter can
+          always click the logo to home, the same convention every
+          other web app uses. */}
       <Link
         href="/dashboard"
         aria-label="Ace dashboard"
-        className="flex h-24 shrink-0 items-center px-5 transition-opacity hover:opacity-80"
+        className="flex h-20 shrink-0 items-center border-b border-court-border px-5 transition-opacity hover:opacity-80"
       >
         <BrandMark withTag />
       </Link>
