@@ -248,6 +248,12 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 800,
+    tools: [
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+      },
+    ],
     system:
       "You extract company fields from a website homepage for a recruiting CRM. " +
       "You return strict JSON only. You never fabricate fields — if a value isn't clearly present, return null.",

@@ -82,6 +82,12 @@ export async function POST(req: NextRequest) {
       // models in one place, not seven.
       model: CLAUDE_MODEL,
       max_tokens: 1024,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+        },
+      ],
       system: systemPrompt,
       messages,
     })
