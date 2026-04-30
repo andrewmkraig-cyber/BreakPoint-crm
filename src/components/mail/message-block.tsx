@@ -132,7 +132,20 @@ export function MessageBlock({
           // format. Without this, Gmail-shaped emails collapsed into
           // one continuous flow paragraph in Ace even though they
           // read with proper line breaks in Gmail itself.
-          "max-w-none whitespace-pre-line text-sm leading-relaxed text-court-fg",
+          "max-w-none whitespace-pre-line text-sm leading-relaxed",
+          // Forced "reading paper" container — render every email on
+          // a fixed white card regardless of Court Mode. Senders
+          // author email HTML for white backgrounds with hardcoded
+          // color: #000 inline styles; on Night (charcoal) and Grass
+          // dark (deep green) those dark colors got swallowed by the
+          // surface and read as invisible body text. The white card +
+          // slate-200 border + soft shadow framing reads as a letter
+          // on light themes too, with stronger contrast on dark.
+          // Anchor / blockquote colors below also pin to fixed values
+          // that work on white in every theme — the court-* tokens
+          // for those would invert on dark themes and disappear
+          // against this forced-white card.
+          "rounded-lg border border-slate-200 bg-white p-4 text-slate-900 shadow-sm",
           // Top-level direct-child <div> spacing — Gmail ships emails
           // as a stack of sibling <div> blocks (one per paragraph)
           // rather than <p> tags. Adding margin between direct
@@ -151,10 +164,16 @@ export function MessageBlock({
           "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
           "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
           "[&_li]:my-0.5",
-          // Links pop in the brand color, not the bare browser blue.
-          "[&_a]:text-court-accent-dark [&_a]:underline [&_a:hover]:opacity-80",
+          // Links pop in the brand green, hardcoded so they read on
+          // the forced-white card in every Court Mode (the
+          // court-accent-dark token shifts to a lifted lighter green
+          // on dark themes and would disappear against white).
+          "[&_a]:text-[#3F7030] [&_a]:underline [&_a:hover]:opacity-80",
           // Quoted blocks (forwards / inline replies) get a left rule.
-          "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-court-border [&_blockquote]:pl-3 [&_blockquote]:text-court-fg-muted",
+          // Slate fixed-on-white tones — court-fg-muted would invert
+          // to a near-white on dark themes and vanish against the
+          // forced-white background.
+          "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-500",
           // <pre> is the wrapper for plain-text emails (gmail.ts
           // wraps text/plain bodies in `<pre class=whitespace-pre-wrap
           // font-sans>`); keep the wrap behavior + match the body
