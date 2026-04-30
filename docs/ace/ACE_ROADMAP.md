@@ -2,22 +2,33 @@
 
 ## In Progress / Needs Fix (top priority — Ace 28.0 candidate)
 
-All six Ace 26.0 carry-overs (toast icon, "· Text" label, Reply contrast, FAB on Settings, ALL CAPS subtitle, Settings two-column layout) closed in Ace 27.0. Open issues for 28.0:
+All six Ace 26.0 carry-overs closed in Ace 27.0. Phase 1 (web search across all 5 Claude API call sites) shipped 2026-04-30. Open issues for 28.0:
 
-- (none open — all 26.0 carry-overs closed in 27.0)
+- (none open — Phase 1 shipped clean)
 
 ## Ace 28.0 — Next up (Game Plan phases — Week 2 active work)
 
-Game Plan is the active workstream. Six-phase sequence; ship in order:
+Game Plan is the active workstream. Phase 1 shipped 2026-04-30; remaining sequence ships in order:
 
-1. **Phase 1** — Add web search tool to `src/app/api/ai-workspace/route.ts`. Claude auto-searches when the prompt requires it.
-2. **Phase 2** — Find Matches button on the job + client Game Plan surfaces. Queries Neon's candidate database; surfaces top fits by title, skills, location, comp.
-3. **Phase 3** — Web search on job + client Game Plan alongside internal matching. Salary benchmarks, company intel, market data.
-4. **Phase 4** — Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context.
-5. **Phase 5** — "My Writing Style" setting. New field in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
-6. **Phase 6** — Sidebar Claude panel — persistent chat inside Ace with web search + full Ace data access.
+1. **Phase 1 [SHIPPED 2026-04-30]** - Web search tool added to all 5 Claude API call sites: ai-workspace, mail/ai-compose, email/edit-with-claude, calls/summary, clients/new. Claude auto-searches when the prompt requires it. Folded in the old standalone "Phase 3 - web search on Game Plan + internal blend" since web search now lives across the whole app, not just Game Plan.
+2. **Phase 2** - Find Matches button on the job + client Game Plan surfaces. Queries Neon's candidate database; surfaces top fits by title, skills, location, comp.
+3. **Phase 3** - Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context.
+4. **Phase 4** - "My Writing Style" setting. New field in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
+5. **Phase 5** - Sidebar Claude panel - persistent chat inside Ace with web search + full Ace data access.
+6. **Game Plan context depth** - Send full resume text + full JD text into the ai-workspace prompt so Claude reasons against the actual content, not just metadata.
 
-Phases 1-3 are the immediate next ships. Phases 5 + 6 fold in / replace the older standalone "Ace Assistant Tab" + "Game Plan — Full DB + Web Access" Week 2 entries below.
+Phase 2 is the immediate next ship. Phases 4 + 5 fold in / replace the older standalone "Ace Assistant Tab" + "Game Plan — Full DB + Web Access" Week 2 entries below.
+
+## Completed - Ace 28.0 day 1 (April 30, 2026)
+
+All shipped 2026-04-30. See `docs/ace/ACE_STATE.md` for the full per-item log.
+
+- **Game Plan Phase 1 - Web search rolled out to all 5 Claude API call sites**: ai-workspace/route.ts, mail/ai-compose/route.ts, email/edit-with-claude/route.ts, calls/summary/route.ts, clients/new/actions.ts. web_search_20250305 tool registered everywhere; multi-block response handling fixed in ai-workspace (was reading content[0] only, now walks the full block list); max_tokens lifted to 4096; markdown formatting instructions added to system prompt.
+- react-markdown + remark-gfm installed; Game Plan chat bubbles render clickable hyperlinks. CopyButton flattens markdown links to bare URLs for SMS / iMessage paste.
+- Model id normalized to claude-sonnet-4-6 codebase-wide.
+- **Quo auto-transcription**: call.transcript.completed and call.summary.completed webhook branches added. Patched to real Quo v3 payload shape (callId at body.object.data.object.callId, transcript is dialogue array, summary is string array). Dialogue formatted as `M:SS [identifier]: [content]` per line; summary formatted as bullet lines + Next Steps section.
+- **Call Log UI rebuild**: inline expand-on-click replaces Paste Transcript / Generate Summary buttons. TRANSCRIPT pill on collapsed row when data exists; truncates to 3 most recent + "Show all N calls". Client profile now shows CallLogs above the activity feed. Generate Summary button removed (Quo handles it).
+- **Generate Resume button** on candidate profiles with no resume on file: pulls profile data, sends to Claude, renders a professional PDF via react-pdf/renderer, saves as a CandidateResume row with displayName "AI Generated".
 
 ## Completed - Ace 27.0 (April 28, 2026)
 
@@ -290,14 +301,14 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 
 ### Week 2 (remaining order — confirmed end of Ace 27.0)
 
-**Active workstream: Game Plan phases (1-6).** These are the immediate next ships and supersede the older standalone "Ace Assistant Tab" + "Game Plan — Full DB + Web Access" entries below.
+**Active workstream: Game Plan phases (Phase 2 is the immediate next ship).** Supersedes the older standalone "Ace Assistant Tab" + "Game Plan — Full DB + Web Access" entries below.
 
-1. **Game Plan Phase 1** — Add web search tool to `src/app/api/ai-workspace/route.ts`. Claude auto-searches when the prompt requires it.
-2. **Game Plan Phase 2** — Find Matches button on the job + client Game Plan. Queries the Neon candidate database; surfaces top fits by title, skills, location, comp.
-3. **Game Plan Phase 3** — Web search on the job + client Game Plan alongside internal matching. Salary benchmarks, company intel, market data.
-4. **Game Plan Phase 4** — Feed last 5 tagged emails from the candidate / client into the Game Plan prompt as context.
-5. **Game Plan Phase 5** — "My Writing Style" setting. New field in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
-6. **Game Plan Phase 6** — Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access. Replaces / fulfills the older "Ace Assistant Tab" entry.
+1. **Game Plan Phase 1 [SHIPPED 2026-04-30]** - Web search rolled out to all 5 Claude API call sites: ai-workspace, mail/ai-compose, email/edit-with-claude, calls/summary, clients/new. Folded in the old "Phase 3 - web search + internal blend" since web search now lives across the whole app.
+2. **Game Plan Phase 2** - Find Matches button on the job + client Game Plan. Queries the Neon candidate database; surfaces top fits by title, skills, location, comp.
+3. **Game Plan Phase 3** - Feed last 5 tagged emails from the candidate / client into the Game Plan prompt as context.
+4. **Game Plan Phase 4** - "My Writing Style" setting. New field in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
+5. **Game Plan Phase 5** - Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access. Replaces / fulfills the older "Ace Assistant Tab" entry.
+6. **Game Plan context depth** - Send full resume text + full JD text into the ai-workspace prompt so Claude reasons against the actual content, not just metadata.
 
 **Other Week 2 items (carry forward after Game Plan phases):**
 
@@ -335,7 +346,7 @@ Andrew uploaded screenshots from a Jobot/Jax recruiting database during Ace 17.0
 
 - JD auto-generate Claude button on job page.
 - Resume parser improvements (5-10 test resumes to tune).
-- Quo auto-transcription webhook (call.transcript.completed, save transcript + Claude summary).
+- Quo auto-transcription webhook (call.transcript.completed, save transcript + Claude summary). [SHIPPED Ace 28.0 day 1 - 2026-04-30]
 - Boolean candidate search - skills/location/title/employer/education with AND/OR/NOT.
 - MPC (Most Placeable Candidates) feature.
 - Sentry N+1 fixes: ACE-CRM-5 (37 events), ACE-CRM-6 (28 events), ACE-CRM-7 (2 events), ACE-CRM-9 (1 event), ACE-CRM-A (1 event). Plus one Hydration Error. Fix via Prisma include eager-loading.

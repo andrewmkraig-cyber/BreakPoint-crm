@@ -1,11 +1,21 @@
 # ACE_STATE.md
-Last updated: 2026-04-29 - Start of Ace 28.0
+Last updated: 2026-04-30 - Ace 28.0 day 1 ships logged
 
 ## Current Status
 Current Version: Ace 28.0 (in progress)
-Last Shipped: Ace 27.0 - April 28, 2026
+Last Shipped: Ace 28.0 day 1 - April 30, 2026
 Live at: ace.breakpointtalent.com
-Current Status: Ace 28.0 open. Game Plan Phase 1 (web search tool on src/app/api/ai-workspace/route.ts) is the active task. Phases 2-6 queued behind it. All Ace 27.0 work shipped clean; no carry-overs open.
+Current Status: Game Plan Phase 1 web search shipped across all 5 Claude API call sites. Quo auto-transcription wired. Call Log UI rebuilt. Generate Resume button shipped. Next active task: Game Plan Phase 2 (internal candidate matching / Find Matches). All Ace 27.0 work clean; no carry-overs open.
+
+## What Shipped in Ace 28.0 (2026-04-30)
+- **Game Plan Phase 1 - Web search across all 5 Claude API call sites**: web_search_20250305 tool added to src/app/api/ai-workspace/route.ts, src/app/api/mail/ai-compose/route.ts, src/app/api/email/edit-with-claude/route.ts, src/app/api/calls/summary/route.ts, src/app/clients/new/actions.ts
+- Multi-block response handling fixed in ai-workspace route (web search returns 4 content blocks; route was only reading the first one). max_tokens lifted to 4096. Markdown formatting instructions added to the system prompt
+- react-markdown + remark-gfm installed; Game Plan chat bubbles now render clickable hyperlinks
+- CopyButton flattens markdown links to bare URLs for SMS / iMessage paste (so links survive when pasted into a non-markdown surface)
+- Model id normalized to claude-sonnet-4-6 codebase-wide (replaced any remaining stale id references)
+- **Quo auto-transcription**: call.transcript.completed and call.summary.completed webhook branches added to src/app/api/quo/webhook/route.ts. Patched to the real Quo v3 payload shape - callId at body.object.data.object.callId, transcript is a dialogue array, summary is a string array. Dialogue formatted as `M:SS [identifier]: [content]` per line. Summary formatted as bullet lines plus a Next Steps section
+- **Call Log UI rebuild**: Paste Transcript / Generate Summary buttons replaced with inline expand-on-click. Expanded row shows Transcript and Summary sections with placeholders when null. TRANSCRIPT pill on the collapsed row when data exists. List truncates to 3 most recent calls; "Show all N calls" expands. Client profile now shows the CallLogs component above the activity feed. Redundant Generate Summary button removed (Quo handles it automatically)
+- **Generate Resume button** on candidate profiles with no resume on file: pulls all candidate profile data, sends to Claude, renders as a professional PDF via react-pdf/renderer, saves as a CandidateResume row with displayName "AI Generated"
 
 ## What Shipped in Ace 27.0 (2026-04-28)
 - Toast fixes: MessageSquare icon swap, removed redundant "· Text" trailing label, Reply button contrast lifted across themes
@@ -50,7 +60,16 @@ Current Status: Ace 28.0 open. Game Plan Phase 1 (web search tool on src/app/api
 - (none open — all Ace 26.0 known issues closed in 27.0)
 
 ## Next Task for Ace 28.0
-**Game Plan Phase 1** — Add web search tool to src/app/api/ai-workspace/route.ts. Claude auto-searches when the prompt requires it. See ACE_ROADMAP.md "Game Plan phases" under Week 2 for the full Phase 1-6 sequence (web search → Find Matches → external + internal blend → tagged-email context → My Writing Style setting → sidebar Claude panel).
+**Game Plan Phase 2** - Internal candidate matching. "Find Matches" button on the job + client Game Plan surfaces. Queries Neon's candidate database; surfaces top fits by title, skills, location, comp.
+
+Remaining 28.0 sequence after Phase 2:
+- **Phase 3** - Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context
+- **Phase 4** - "My Writing Style" setting in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan)
+- **Phase 5** - Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access
+- **Game Plan context depth** - Send full resume text + full JD text into the ai-workspace prompt so Claude reasons against the actual content, not just metadata
+- **Docs handoff** - Push ACE docs to GitHub at session end (handoff hygiene)
+
+Note: the old Phase 3 ("web search on Game Plan + internal blend") was folded into Phase 1, which shipped web search across all 5 Claude API call sites including ai-workspace. Renumbered accordingly.
 
 ## What Shipped in Ace 26.0 (2026-04-28)
 - canonicalStage root cause fix: client card counters for pending_start and cancelled now read from Neon Placement.stage (canonical) instead of leaking through the RF stage_name string. The bucket-driven counts on client detail are correct end-to-end now
