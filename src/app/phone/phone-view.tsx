@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { usePhonePanels, type PhoneContact } from "@/lib/phone-panels-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import { matchContactByPhone, markThreadRead, type PhoneMatch } from "@/app/phone/actions";
+import { telHref } from "@/lib/rf-payload-shapes";
 
 // Phase 1 Phone Tab. Layout mirrors /mail exactly:
 //   sidebar (col-span-2) · thread list (col-span-3) · detail (col-span-7)
@@ -821,10 +822,11 @@ function ThreadDetailPane({
         <div className="flex shrink-0 items-center gap-2">
           {/* Text button removed — the inline composer at the bottom of
               this pane is the same surface, so a separate header
-              button would just be a redundant entry point. Outbound
-              calling still ships in Phase 3, so Call stays a
-              placeholder for now. */}
-          <ActionPlaceholder label="Call" icon={<PhoneCall className="h-3 w-3" />} />
+              button would just be a redundant entry point. Call hands
+              off to the Quo Desktop app via tel: (matches click-to-
+              call from candidate / client profiles) since OpenPhone's
+              public API has no outbound-call endpoint. */}
+          <CallInQuoButton phoneNumber={detail.contact.phoneNumber} />
           <OpenInQuoButton phoneNumber={detail.contact.phoneNumber} />
           {detail.contact.kind === "unknown" ? (
             <AddToAceButton phoneNumber={detail.contact.phoneNumber} />
@@ -1025,6 +1027,36 @@ function OpenProfileButton({ match }: { match: PhoneMatch | null }) {
 // Resolves the Quo conversation deep-link via /api/quo/conversation,
 // then opens it in a new tab. Falls back to the inbox URL if the
 // lookup misses — the API route handles that branch silently.
+// Click-to-call hands off to the Quo Desktop app via tel:. macOS /
+// Windows route the URL to whichever app the user has set as the
+// default phone handler (Quo Desktop, when installed) — same path
+// that already works from candidate / client profile phone links.
+function CallInQuoButton({ phoneNumber }: { phoneNumber: string }) {
+  const href = telHref(phoneNumber);
+  const disabled = !href;
+  return (
+    <a
+      href={href || "#"}
+      onClick={(e) => {
+        if (disabled) {
+          e.preventDefault();
+          return;
+        }
+        toast.info("Opening Quo to place call...");
+      }}
+      aria-disabled={disabled}
+      className={
+        "inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg" +
+        (disabled ? " pointer-events-none opacity-50" : "")
+      }
+      title="Place call from Quo Desktop"
+    >
+      <PhoneCall className="h-3 w-3" />
+      Call in Quo
+    </a>
+  );
+}
+
 function OpenInQuoButton({ phoneNumber }: { phoneNumber: string }) {
   const [loading, setLoading] = useState(false);
   const disabled = !phoneNumber || loading;
@@ -1498,13 +1530,19 @@ export function CallPanel({
     .join("");
 
   // OpenPhone's public API doesn't expose outbound call initiation —
-  // POST /v1/calls returns 404 because there is no such endpoint. So
-  // "Call now" hands off to the Quo web app, where the recruiter can
-  // place the call from the Quo dialer directly.
+  // POST /v1/calls returns 404 because there is no such endpoint. We
+  // hand off to the Quo Desktop app via the tel: URL scheme, which
+  // macOS / Windows route to whichever app the user has set as their
+  // default phone handler (Quo Desktop, when installed). That mirrors
+  // the click-to-call path on candidate / client profiles, where
+  // dialing from a tel: link opens the Quo app pre-filled with the
+  // number — no browser tab in between.
   function placeCall() {
     if (!contact?.phoneNumber) return;
+    const href = telHref(contact.phoneNumber);
+    if (!href) return;
     toast.info("Opening Quo to place call...");
-    window.open("https://my.openphone.com", "_blank", "noopener,noreferrer");
+    window.location.href = href;
     onClose();
   }
 
