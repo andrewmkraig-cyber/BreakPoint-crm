@@ -59,6 +59,69 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Quo's transcription pipeline fires this once the recording has
+  // been transcribed (typically 10-30s after call.completed). The CallLog
+  // row should already exist from the earlier call.completed write — we
+  // upsert into the 1:1 CallTranscript relation keyed on callLogId.
+  // Summary stays untouched here; call.summary.completed handles it
+  // separately because the two events can arrive in either order.
+  if (eventType === 'call.transcript.completed') {
+    const quoId = pickStr(body, ['data.object.id', 'id', 'call_id'])
+    const transcriptText = pickStr(body, [
+      'data.object.transcript',
+      'data.object.transcription',
+      'transcript',
+    ])
+    if (!quoId || !transcriptText) {
+      console.warn('[quo/webhook] call.transcript.completed missing id or transcript', { quoId, hasTranscript: !!transcriptText })
+      return NextResponse.json({ ok: true })
+    }
+    const callLog = await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
+    if (!callLog) {
+      console.warn('[quo/webhook] call.transcript.completed: no CallLog for quoId', { quoId })
+      return NextResponse.json({ ok: true })
+    }
+    await prisma.callTranscript.upsert({
+      where: { callLogId: callLog.id },
+      // On create: summary is null until call.summary.completed fires.
+      create: { callLogId: callLog.id, transcript: transcriptText },
+      // On update: leave summary alone.
+      update: { transcript: transcriptText },
+    })
+  }
+
+  // Quo's AI summary fires after the transcript pipeline finishes its
+  // own pass. Mirror of the transcript branch above — same call lookup,
+  // same upsert table, but only writes the summary column. If the
+  // summary event arrives before the transcript event (rare but
+  // possible), we create the row with an empty transcript that the
+  // later transcript event will overwrite.
+  if (eventType === 'call.summary.completed') {
+    const quoId = pickStr(body, ['data.object.id', 'id', 'call_id'])
+    const summaryText = pickStr(body, [
+      'data.object.summary',
+      'data.object.ai_summary',
+      'summary',
+    ])
+    if (!quoId || !summaryText) {
+      console.warn('[quo/webhook] call.summary.completed missing id or summary', { quoId, hasSummary: !!summaryText })
+      return NextResponse.json({ ok: true })
+    }
+    const callLog = await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
+    if (!callLog) {
+      console.warn('[quo/webhook] call.summary.completed: no CallLog for quoId', { quoId })
+      return NextResponse.json({ ok: true })
+    }
+    await prisma.callTranscript.upsert({
+      where: { callLogId: callLog.id },
+      // Out-of-order arrival: empty transcript placeholder until the
+      // transcript event fills it in. Schema requires transcript to be
+      // non-null, so we can't omit it on create.
+      create: { callLogId: callLog.id, transcript: '', summary: summaryText },
+      update: { summary: summaryText },
+    })
+  }
+
   if (eventType === 'call.completed' || eventType === 'new_call') {
     const fromNumber = pickStr(body, ['data.object.from', 'from_number', 'from'])
     const toNumber = pickStr(body, ['data.object.to', 'to_number', 'to'])
