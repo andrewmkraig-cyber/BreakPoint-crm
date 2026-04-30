@@ -174,28 +174,25 @@ export async function getClaudeStatus(): Promise<ConnectorStatus> {
   }
 }
 
-// Quo (OpenPhone) — three-part health check that actually answers
-// "is Ace integrated with Quo right now?" instead of just "does Ace
-// have an API key on file".
+// Quo (OpenPhone) — health check that answers "is Ace integrated with
+// Quo right now?" rather than just "does Ace have an API key on file".
 //
-//   1. API key valid?      — GET /v1/phone-numbers
-//   2. Webhook configured? — GET /v1/webhooks; verify at least one
-//                            subscription points back at /api/quo/webhook
-//                            and is currently enabled. THIS is the
-//                            integration boundary: if the subscription
-//                            disappears or pauses, inbound texts/calls
-//                            stop reaching Ace even though the API key
-//                            is still valid.
-//   3. Recent activity?    — most recent SmsMessage / CallLog row.
-//                            Belt-and-suspenders confirmation that the
-//                            webhook is actually firing (a misconfigured
-//                            URL would still appear "enabled" in step 2
-//                            but never deliver). Threshold lenient enough
-//                            to not false-positive on a quiet weekend.
+// Order matters: recent webhook activity is the ground truth (events
+// actually reached Ace), so we trust it OVER OpenPhone's /v1/webhooks
+// list endpoint. That list endpoint historically misses subscriptions
+// (it doesn't enumerate every webhook category) and was reporting
+// "no Ace webhook" against an integration that was demonstrably
+// delivering inbound texts. Letting the list win in that case
+// red-flagged a healthy integration.
 //
-// Any of {key invalid, webhook missing, webhook disabled} → disconnected.
-// Webhook is healthy but no recent activity → degraded with explanation.
-// All three pass → connected, with the last-seen timestamp surfaced.
+//   1. API key valid?    — GET /v1/phone-numbers
+//   2. Recent activity?  — most recent SmsMessage / CallLog row. Within
+//                          stale threshold → connected, no further calls
+//                          needed (events are arriving, by definition).
+//   3. Webhook list?     — only consulted when there's no recent
+//                          activity to confirm. A missing subscription
+//                          here means the integration probably isn't
+//                          wired up; we surface that as disconnected.
 const QUO_STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
 
 type OpenPhoneWebhook = {
@@ -246,11 +243,49 @@ export async function getQuoStatus(): Promise<ConnectorStatus> {
     };
   }
 
-  // Step 2 — webhook subscription check. This is the actual "is Ace
-  // integrated" question. We list configured webhooks and look for one
-  // pointing at /api/quo/webhook. A missing or disabled subscription
-  // means inbound texts/calls won't reach Ace regardless of how
-  // healthy the API key looks.
+  // Step 2 — recent webhook activity is the definitive signal. If
+  // events are arriving, the integration is working regardless of what
+  // /v1/webhooks reports.
+  let lastEventAt: Date | null = null;
+  try {
+    const [latestSms, latestCall] = await Promise.all([
+      prisma.smsMessage.findFirst({
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+      prisma.callLog.findFirst({
+        orderBy: { createdAt: "desc" },
+        select: { createdAt: true },
+      }),
+    ]);
+    lastEventAt = latestestOf(latestSms?.createdAt, latestCall?.createdAt);
+  } catch {
+    // DB read fail — diagnostics query shouldn't 500 the status check.
+  }
+
+  if (lastEventAt) {
+    const ageMs = Date.now() - lastEventAt.getTime();
+    if (ageMs <= QUO_STALE_THRESHOLD_MS) {
+      const minutesAgo = Math.round(ageMs / 60_000);
+      const fresh =
+        minutesAgo < 1
+          ? "just now"
+          : minutesAgo < 60
+          ? `${minutesAgo}m ago`
+          : `${Math.round(minutesAgo / 60)}h ago`;
+      return {
+        id: "quo",
+        label: "Quo",
+        state: "connected",
+        detail: `API healthy. Last inbound event ${fresh}.`,
+        managedIn: "env",
+      };
+    }
+  }
+
+  // Step 3 — no recent activity to confirm. Consult the webhook list
+  // to decide between "subscription missing" (disconnected) and
+  // "probably fine, just quiet" (degraded/connected).
   try {
     const res = await fetch("https://api.openphone.com/v1/webhooks", {
       method: "GET",
@@ -287,57 +322,22 @@ export async function getQuoStatus(): Promise<ConnectorStatus> {
         };
       }
     }
-    // If the /v1/webhooks endpoint returns non-200, fall through to
-    // the activity check rather than treating it as a hard failure —
-    // OpenPhone has rate limited this endpoint historically and we'd
-    // rather show a tentative "connected, last seen 5m ago" than red-
-    // flag a healthy integration on a 429.
+    // Non-200 → fall through to the tentative connected default below.
+    // OpenPhone rate-limits this endpoint and we don't want a 429 to
+    // red-flag a healthy integration.
   } catch {
-    // Network blip — same fallback to activity check below.
+    // Network blip — same fallback below.
   }
 
-  // Step 3 — recent webhook activity. If the API + subscription both
-  // look right, confirm events have actually been arriving recently.
-  try {
-    const [latestSms, latestCall] = await Promise.all([
-      prisma.smsMessage.findFirst({
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
-      }),
-      prisma.callLog.findFirst({
-        orderBy: { createdAt: "desc" },
-        select: { createdAt: true },
-      }),
-    ]);
-    const lastEventAt = latestestOf(latestSms?.createdAt, latestCall?.createdAt);
-    if (lastEventAt) {
-      const ageMs = Date.now() - lastEventAt.getTime();
-      if (ageMs > QUO_STALE_THRESHOLD_MS) {
-        const hours = Math.round(ageMs / (60 * 60 * 1000));
-        return {
-          id: "quo",
-          label: "Quo",
-          state: "degraded",
-          detail: `Webhook subscribed, but no events in ${hours}h — confirm Quo is still routing to Ace.`,
-          managedIn: "env",
-        };
-      }
-      const minutesAgo = Math.round(ageMs / 60_000);
-      const fresh =
-        minutesAgo < 60
-          ? `${minutesAgo}m ago`
-          : `${Math.round(minutesAgo / 60)}h ago`;
-      return {
-        id: "quo",
-        label: "Quo",
-        state: "connected",
-        detail: `API + webhook healthy. Last inbound event ${fresh}.`,
-        managedIn: "env",
-      };
-    }
-  } catch {
-    // DB read fail — the status check itself shouldn't 500 over a
-    // diagnostics query. Fall through to a tentative connected.
+  if (lastEventAt) {
+    const hours = Math.round((Date.now() - lastEventAt.getTime()) / (60 * 60 * 1000));
+    return {
+      id: "quo",
+      label: "Quo",
+      state: "degraded",
+      detail: `Webhook subscribed, but no events in ${hours}h — confirm Quo is still routing to Ace.`,
+      managedIn: "env",
+    };
   }
 
   return {
