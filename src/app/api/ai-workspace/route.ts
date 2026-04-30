@@ -24,9 +24,22 @@ export const maxDuration = 60
 export async function POST(req: NextRequest) {
   const { entityType, entityId, userMessage } = await req.json()
 
-  const systemPrompt = entityType === 'client'
+  const baseSystemPrompt = entityType === 'client'
     ? await buildClientContext(entityId)
     : await buildCandidateContext(entityId)
+
+  // Formatting rules appended after the entity context so they apply
+  // to every Game Plan response without rewriting the per-entity
+  // builder prompts. Markdown link form keeps web_search citations
+  // readable; bullet + bold conventions keep job / company lists
+  // scannable in the chat bubble.
+  const systemPrompt =
+    baseSystemPrompt +
+    "\n\n" +
+    "Always format URLs as markdown hyperlinks like [Link Text](url) - never paste raw URLs. " +
+    "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
+    "hyphen bullets for items, and descriptive link text instead of full URLs. " +
+    "Keep responses scannable and well-organized."
 
   // Persist the new user message first so the POST is recoverable if
   // something downstream blows up — the recruiter's question is never lost.
