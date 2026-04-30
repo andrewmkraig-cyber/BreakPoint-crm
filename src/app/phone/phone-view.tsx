@@ -1490,13 +1490,38 @@ export function CallPanel({
     .map((s) => s[0]!.toUpperCase())
     .join("");
 
-  // TODO: Phase 2 — POST /api/krispcall/call with { to: phoneNumber }
-  // and reflect the call status in the UI. The Quo outbound API is
-  // not wired up yet; click-to-call from candidate profiles
-  // currently goes through Quo's hosted dialer. Replace this toast
-  // when the outbound API arrives.
-  function placeCall() {
-    toast.info("Call feature coming soon");
+  const [calling, setCalling] = useState(false);
+  // POSTs to /api/quo/call which forwards to OpenPhone /v1/calls. On
+  // success, OpenPhone rings the Quo apps signed in to QUO_FROM_NUMBER
+  // and the recruiter picks up wherever they're at — we just need to
+  // dispatch the call request and acknowledge.
+  async function placeCall() {
+    if (!contact?.phoneNumber || calling) return;
+    setCalling(true);
+    try {
+      const res = await fetch("/api/quo/call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: contact.phoneNumber }),
+      });
+      const body = (await res.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+      if (!res.ok || !body?.ok) {
+        toast.error("Couldn't place call", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      toast.success(`Calling ${contact.phoneNumber}…`);
+      onClose();
+    } catch (e) {
+      toast.error("Couldn't place call", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setCalling(false);
+    }
   }
 
   return (
@@ -1540,10 +1565,10 @@ export function CallPanel({
         <button
           type="button"
           onClick={placeCall}
-          disabled={!contact}
+          disabled={!contact || calling}
           className="inline-flex h-10 w-full items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-sm font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          <PhoneCall className="h-4 w-4" />
+          {calling ? <Loader2 className="h-4 w-4 animate-spin" /> : <PhoneCall className="h-4 w-4" />}
           Call now
         </button>
         <div className="flex items-center justify-between text-[11px]">
