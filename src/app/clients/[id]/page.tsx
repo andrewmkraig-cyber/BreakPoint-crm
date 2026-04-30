@@ -22,6 +22,7 @@ import { AgreementsTab } from "@/app/clients/[id]/agreements-tab";
 import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
 import { DeleteClientButton } from "@/app/clients/[id]/delete-client-button";
+import { AddClientNote } from "@/app/clients/[id]/add-client-note";
 import AiWorkspace from "@/components/AiWorkspace";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CallLogs } from "@/components/call-logs";
@@ -497,10 +498,10 @@ export default async function ClientDetailPage({
             <h2 className="font-serif text-base font-semibold text-court-fg">Notes</h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
               Recruiter notes attached to this client. Newest at the top.
-              Use the green + button in the top bar to add a new note.
             </p>
           </header>
-          <div className="p-5">
+          <div className="space-y-4 p-5">
+            <AddClientNote clientId={client.id} />
             {client.notes ? (
               <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
                 {client.notes}
