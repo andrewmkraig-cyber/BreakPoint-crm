@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       // client auto-fill — already reads from this constant. Swap
       // models in one place, not seven.
       model: CLAUDE_MODEL,
-      max_tokens: 1024,
+      max_tokens: 4096,
       tools: [
         {
           type: "web_search_20250305",
@@ -91,7 +91,17 @@ export async function POST(req: NextRequest) {
       system: systemPrompt,
       messages,
     })
-    assistantContent = response.content[0]?.type === 'text' ? response.content[0].text : ''
+    // Server-side web_search returns a multi-block response:
+    //   [ text(preface), server_tool_use, web_search_tool_result, text(answer) ]
+    // The earlier single-block grab (response.content[0]) only kept the
+    // preface, so the saved assistant row read "Let me search for X..."
+    // and stopped — the cited final answer was discarded. Walk the
+    // content array, keep every text block, join with a blank line so
+    // the preface and final answer read as one message.
+    assistantContent = response.content
+      .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
+      .map((b) => b.text)
+      .join('\n\n')
     if (!assistantContent) {
       ok = false
       errorMessage = 'Claude returned no text content'
