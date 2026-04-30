@@ -88,7 +88,46 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ subject: parsed.subject.trim(), body: parsed.body });
+  return NextResponse.json({
+    subject: parsed.subject.trim(),
+    body: stripSignoffAndSignature(parsed.body),
+  });
+}
+
+// Belt-and-suspenders strip for the body the model returns. The system
+// prompt tells Claude to drop signoffs + the "Andrew Kraig / BreakPoint
+// Talent" signature; this enforces it deterministically so a single
+// model slip doesn't produce a double signature in the recruiter's
+// outbound email (Ace appends Andrew's real signature on send).
+function stripSignoffAndSignature(body: string): string {
+  const lines = body.split(/\r?\n/);
+  let end = lines.length;
+
+  const signoffRe =
+    /^(thanks|thank you|thank you so much|best|best regards|all the best|regards|cheers|talk soon|warmly|sincerely|kind regards)[,.!]?\s*$/i;
+  const signatureRe =
+    /^(andrew(\s+kraig)?|kraig|breakpoint(\s+talent)?|--+|—+)\s*$/i;
+  // Same patterns but glued onto a single line — e.g. "Best, Andrew
+  // Kraig BreakPoint Talent" or "Talk soon, Andrew" — that the AI
+  // Workspace markdown renderer collapses into one paragraph. Walk
+  // back from the end and chop the line entirely if it matches.
+  const inlineSignoffRe =
+    /^\s*(thanks|thank you|thank you so much|best|best regards|all the best|regards|cheers|talk soon|warmly|sincerely|kind regards)[,.!]?\s+(andrew|kraig|the bp team|breakpoint)\b.*$/i;
+
+  while (end > 0) {
+    const t = lines[end - 1].trim();
+    if (!t) {
+      end--;
+      continue;
+    }
+    if (signoffRe.test(t) || signatureRe.test(t) || inlineSignoffRe.test(t)) {
+      end--;
+      continue;
+    }
+    break;
+  }
+
+  return lines.slice(0, end).join("\n").replace(/\s+$/g, "");
 }
 
 function safeParseJson(s: string): { subject?: unknown; body?: unknown } | null {
