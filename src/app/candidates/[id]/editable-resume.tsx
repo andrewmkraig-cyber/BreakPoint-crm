@@ -22,6 +22,8 @@ import {
   convertDocxResumeToPdf,
   deleteCandidateResume,
 } from "@/app/candidates/[id]/actions";
+import { generateAiResume } from "@/app/candidates/[id]/generate-resume-action";
+import { Sparkles } from "lucide-react";
 
 const ACCEPT_RESUME_MIME =
   "application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx,text/plain,.txt";
@@ -127,6 +129,10 @@ export function EditableResume({
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [editorOpen, setEditorOpen] = useState(false);
+  // Empty-state-only flag for the "Generate Resume" action. Lives next
+  // to isUploading so both actions share the disable state on the
+  // upload button + dropzone while either is in flight.
+  const [isGenerating, setIsGenerating] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Selected version key. Re-syncs to the new default whenever the
@@ -195,6 +201,31 @@ export function EditableResume({
     }
   }
 
+  async function onGenerate() {
+    setIsGenerating(true);
+    const toastId = toast.loading("Generating resume with Claude…");
+    try {
+      const result = await generateAiResume({ candidateId });
+      if (!result.ok) {
+        toast.error("Couldn't generate resume", {
+          id: toastId,
+          description: result.error,
+        });
+        return;
+      }
+      toast.success("Resume generated", { id: toastId });
+      setPendingSelectId(result.value.resumeId);
+      router.refresh();
+    } catch (err) {
+      toast.error("Couldn't generate resume", {
+        id: toastId,
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setIsGenerating(false);
+    }
+  }
+
   function onDelete() {
     if (!selected) return;
     if (!confirm("Delete this resume version? This can't be undone.")) return;
@@ -239,7 +270,7 @@ export function EditableResume({
         <div className="p-5">
           <DocumentDropzone
             multiple={false}
-            isBusy={isUploading}
+            isBusy={isUploading || isGenerating}
             accept={ACCEPT_RESUME_MIME}
             onFiles={onFiles}
             emptyHint="PDF, DOC/DOCX, or TXT up to 25MB"
@@ -259,11 +290,26 @@ export function EditableResume({
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
+              disabled={isUploading || isGenerating}
               className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
             >
               {isUploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
               Upload Resume
+            </button>
+            {/* Generate Resume — only renders in the empty-state branch
+                (no resume on file). Uses Sparkles icon to match the
+                Generate-with-Claude treatment elsewhere in the app
+                (mail composer, JD generator, etc.). Disabled while
+                an upload OR another generation is in flight so the
+                two paths can't race. */}
+            <button
+              type="button"
+              onClick={() => void onGenerate()}
+              disabled={isUploading || isGenerating}
+              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:bg-court-surface-subtle disabled:opacity-60"
+            >
+              {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              Generate Resume
             </button>
             <span className="text-[11px] text-court-fg-muted">or drag and drop a file above.</span>
           </div>
