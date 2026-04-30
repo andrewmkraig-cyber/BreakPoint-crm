@@ -1,6 +1,9 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { PipelineView, type NextInterview, type PipelineRow, type PlacementDetails } from "@/app/pipeline/pipeline-view";
 import { prisma } from "@/lib/prisma";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   flattenPipeline,
   PIPELINE_LABELS,
@@ -258,8 +261,37 @@ export default async function PipelinePage({
   const safePage = Math.min(Math.max(1, page), totalPages);
   const pageRows = rows.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
+  // When the page is reached via a stage-pill on a client profile, render
+  // a "← Back to <client>" affordance so the recruiter can return without
+  // hitting the browser back button (which would replay the stage-pill
+  // click and re-route them right back here).
+  let backToClient: { href: string; name: string } | null = null;
+  if (clientFilter) {
+    try {
+      const org = await getCurrentOrg();
+      const client = await prisma.client.findFirst({
+        where: { id: clientFilter, organizationId: org.id },
+        select: { id: true, legacyRfId: true, name: true },
+      });
+      if (client) {
+        const slug = client.legacyRfId != null ? String(client.legacyRfId) : client.id;
+        backToClient = { href: `/clients/${slug}`, name: client.name || "client" };
+      }
+    } catch {
+      // Soft-fail: missing client lookup just hides the back link.
+    }
+  }
+
   return (
     <div>
+      {backToClient && (
+        <Link
+          href={backToClient.href}
+          className="mb-3 inline-flex items-center gap-1 text-sm text-court-fg-muted transition hover:text-court-fg"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" /> Back to {backToClient.name}
+        </Link>
+      )}
       <PageHeader
         title="Pipeline"
         description="Every active submittal across your open jobs. One row per candidate-per-job. Kept candidates are tagged, not bucketed as their own stage."
