@@ -477,11 +477,15 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         openJobs={openJobs}
         hideButtons
       />
-      <section id="pipeline" className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
-          Pipeline · {jobRows.length}
-        </h2>
-        {jobRows.length > 0 && (
+      {/* Pipeline section only renders when there are placements.
+          The empty "Pipeline · 0" header that used to print on every
+          new candidate was wasting vertical space and made the page
+          feel half-empty. */}
+      {jobRows.length > 0 && (
+        <section id="pipeline" className="space-y-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+            Pipeline · {jobRows.length}
+          </h2>
           <LocalPlacementRows
             candidateId={candidate.id}
             candidateName={fullName}
@@ -494,37 +498,36 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             jobs={jobRows}
             aceTeam={aceTeam}
           />
-        )}
-      </section>
+        </section>
+      )}
 
       {/* Section 3: Two-column main. Same shape as the RF page. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-4 lg:col-span-7">
-          <UnderlineTabs tab={tab} candidateId={candidate.id} />
-          {/* Toolbar above the resume column — Add to List + Apply +
-              Submit. ?openApply=1 / ?openSubmit=1 deep-link into the
-              LocalCandidateActions modals (mounted with hideButtons). */}
-          <div className="flex items-center justify-end gap-2">
-            <AddToListButton candidateId={candidate.id} candidateName={fullName} />
-            <Link
-              href={`/candidates/${candidate.id}?openApply=1`}
-              // Squared chrome (rounded-md / px-2.5 / text-xs font-medium)
-              // matches Add to List so the three toolbar actions read as
-              // one set. Amber palette stays — it ties the button to the
-              // APPLIED stage chip across the app.
-              className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-800 shadow-sm transition hover:bg-amber-200"
-            >
-              <Target className="h-3 w-3" /> Apply to Job
-            </Link>
-            <Link
-              href={`/candidates/${candidate.id}?openSubmit=1`}
-              // Squared chrome matches Add to List + Apply to Job above
-              // so the trio shares one shape. Emerald palette stays —
-              // it pairs with Apply to Job's amber as a coordinated set.
-              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-900 shadow-sm transition hover:bg-emerald-300"
-            >
-              <Send className="h-3 w-3" /> Submit to different job
-            </Link>
+          {/* Single toolbar row — tabs on the left, action buttons on
+              the right. Combined into one row so the Game Plan
+              textarea sits closer to the top of the viewport (the
+              empty Pipeline header + a separate tab row + a separate
+              actions row was pushing it below the fold). ?openApply=1 /
+              ?openSubmit=1 deep-link into the LocalCandidateActions
+              modals (mounted with hideButtons). */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <UnderlineTabs tab={tab} candidateId={candidate.id} />
+            <div className="flex shrink-0 items-center gap-2">
+              <AddToListButton candidateId={candidate.id} candidateName={fullName} />
+              <Link
+                href={`/candidates/${candidate.id}?openApply=1`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-800 shadow-sm transition hover:bg-amber-200"
+              >
+                <Target className="h-3 w-3" /> Apply to Job
+              </Link>
+              <Link
+                href={`/candidates/${candidate.id}?openSubmit=1`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+              >
+                <Send className="h-3 w-3" /> Submit to different job
+              </Link>
+            </div>
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace

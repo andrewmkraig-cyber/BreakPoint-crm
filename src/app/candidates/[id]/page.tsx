@@ -577,10 +577,11 @@ export default async function CandidateProfilePage({
         </div>
       </header>
 
-      {/* Section 2: Pipeline. The existing PlacementActionsIsland holds
-          the row table + Submit/Apply/Schedule/Offer/Reject modals;
-          rebuilding it as a 32px-row component is deferred. Wrapper
-          gives the section the new "Pipeline · N" header. */}
+      {/* Pipeline section only renders when there are placements.
+          The empty "Pipeline · 0" header that used to print on every
+          new candidate was wasting vertical space and made the page
+          feel half-empty. */}
+      {placementJobs.length > 0 && (
       <section id="pipeline" className="space-y-2">
         <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           Pipeline · {placementJobs.length}
@@ -608,19 +609,21 @@ export default async function CandidateProfilePage({
           aceTeam={aceTeam}
         />
       </section>
+      )}
 
       {/* Section 3: Two-column main. Left (70%) carries Profile/Game
           Plan tabs + content. Right (30%) sidebar stacks Activity card
           + Employment + Contact. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-4 lg:col-span-7">
-          <UnderlineTabs tab={tab} candidateId={id} />
-          {/* Toolbar above the resume column. Status chips on the
-              left, primary actions right-aligned. Sits between the
-              underline tabs and the tab content. ?openApply=1 /
-              ?openSubmit=1 deep-link into PlacementActions modals. */}
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-2">
+          {/* Single toolbar row — tabs on the left, status chips +
+              action buttons on the right. Combined into one row so the
+              Game Plan textarea sits closer to the top of the viewport
+              (the empty Pipeline header + a separate tab row + a
+              separate actions row was pushing it below the fold). */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <UnderlineTabs tab={tab} candidateId={id} />
               {isKept && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
                   <Bookmark className="h-3 w-3" /> Kept
@@ -636,23 +639,12 @@ export default async function CandidateProfilePage({
               <AddToListButton candidateId={candidate.id} candidateName={name} />
               <Link
                 href={`/candidates/${id}?openApply=1`}
-                // Squared chrome (rounded-md / px-2.5 / text-xs
-                // font-medium) matches Add to List so the toolbar
-                // actions read as one set. Amber palette stays — it
-                // ties the button to the APPLIED stage chip across
-                // the app. Target icon matches the inline Apply
-                // action in local-candidate-actions.tsx.
                 className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-800 shadow-sm transition hover:bg-amber-200"
               >
                 <Target className="h-3 w-3" /> Apply to Job
               </Link>
               <Link
                 href={`/candidates/${id}?openSubmit=1`}
-                // Squared chrome matches Add to List + Apply to Job
-                // above so the trio shares one shape. Emerald palette
-                // pairs with Apply to Job's amber as a coordinated
-                // set. Send icon matches the inline Submit action in
-                // local-placement-rows.tsx.
                 className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-900 shadow-sm transition hover:bg-emerald-300"
               >
                 <Send className="h-3 w-3" /> Submit to different job

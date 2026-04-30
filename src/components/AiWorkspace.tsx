@@ -465,6 +465,15 @@ function markdownToCleanHtml(input: string): string {
   const lines = input.split(/\r?\n/);
   const out: string[] = [];
   let listKind: "ul" | "ol" | null = null;
+  // Running counter so consecutive `<ol>` blocks separated by paragraph
+  // text continue numbering. Game Plan output puts a description
+  // paragraph + an apply link between each numbered role, which forces
+  // us to close the `<ol>` and reopen it when the next number arrives.
+  // Without `start=`, every reopened `<ol>` restarted at 1 and the
+  // candidate's email read "1. … 1. … 1. …". Reset to 0 only when we
+  // hit a real section break (heading, `---`, or a bold "Section …" /
+  // "Open Roles" / "Broader …" pseudo-header).
+  let olCount = 0;
   const closeList = () => {
     if (listKind) {
       out.push(`</${listKind}>`);
@@ -475,18 +484,31 @@ function markdownToCleanHtml(input: string): string {
     const line = raw.replace(/^\s+|\s+$/g, "");
     if (!line) {
       // Blank lines between list items are normal markdown — they
-      // don't terminate the list. The earlier version closed the
-      // <ol> on every blank, which produced a fresh <ol> per item
-      // and rendered all six numbered jobs as "1." in the email
-      // composer (each <ol> restarts at 1). Leave the active list
-      // open; a real non-list line below closes it.
+      // don't terminate the list.
       continue;
     }
     const heading = line.match(/^(#{1,3})\s+(.+)$/);
     if (heading) {
       closeList();
+      olCount = 0;
       const level = heading[1].length;
       out.push(`<h${level}>${renderMarkdownInline(heading[2])}</h${level}>`);
+      continue;
+    }
+    if (/^---+$/.test(line)) {
+      closeList();
+      olCount = 0;
+      out.push("<hr>");
+      continue;
+    }
+    // Bold pseudo-header lines like `**Open Roles**` or
+    // `**Broader job-board searches to watch**` mark the boundary
+    // between Section 1 (numbered) and Section 2 (bullets), and they
+    // mean the next `<ol>` should start fresh at 1.
+    if (/^\*\*[^*]+\*\*\s*$/.test(line)) {
+      closeList();
+      olCount = 0;
+      out.push(`<p>${renderMarkdownInline(line)}</p>`);
       continue;
     }
     const bullet = line.match(/^[-*•]\s+(.+)$/);
@@ -503,10 +525,11 @@ function markdownToCleanHtml(input: string): string {
     if (numbered) {
       if (listKind !== "ol") {
         closeList();
-        out.push("<ol>");
+        out.push(olCount > 0 ? `<ol start="${olCount + 1}">` : "<ol>");
         listKind = "ol";
       }
       out.push(`<li>${renderMarkdownInline(numbered[1])}</li>`);
+      olCount++;
       continue;
     }
     closeList();

@@ -24,7 +24,7 @@ export type UrlVerification = {
   skipped?: boolean;
 };
 
-const FETCH_TIMEOUT_MS = 8_000;
+const FETCH_TIMEOUT_MS = 4_000;
 
 // Aggregator / search-engine hosts. They bot-block default UAs (LinkedIn
 // returns 999, Indeed returns 403, etc.), and they're virtually always

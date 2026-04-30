@@ -152,53 +152,27 @@ export async function POST(req: NextRequest) {
       // URL verification pass. Extract every URL from the draft, fetch
       // the non-aggregator ones (LinkedIn / Indeed / etc. bot-block our
       // UA and are always Section-2 anyway), and look for known
-      // closed-job patterns. If any are dead, send them back to Claude
-      // as a revision turn so the saved bubble never contains broken
-      // job links. Andrew was sending candidates "Apply at Fleetio"
-      // links that 404'd the moment the candidate opened them.
+      // closed-job patterns. Dead Section-1 listings are stripped
+      // DETERMINISTICALLY — no second Claude call. The earlier design
+      // looped Claude back through web_search to find replacements,
+      // which routinely pushed total response time past Vercel's 300s
+      // function ceiling and left the recruiter staring at the
+      // "(response still processing — refresh in a moment)" placeholder
+      // forever. Stripping is instant and good enough — if Andrew wants
+      // replacements he can ask in chat.
       const urls = extractUrls(assistantContent)
       if (urls.length > 0) {
         const verifications = await verifyUrls(urls)
-        const dead = verifications.filter((v) => !v.alive)
-        if (dead.length > 0) {
+        const deadUrls = verifications.filter((v) => !v.alive).map((v) => v.url)
+        if (deadUrls.length > 0) {
           // eslint-disable-next-line no-console
           console.log(
-            '[ai-workspace] URL verification: %d dead of %d',
-            dead.length,
+            '[ai-workspace] URL verification: %d dead of %d — deterministic strip',
+            deadUrls.length,
             urls.length,
-            dead.map((d) => `${d.url} → ${d.reason}`),
+            deadUrls,
           )
-          try {
-            const revision = await anthropic.messages.create({
-              model: CLAUDE_MODEL,
-              max_tokens: 4096,
-              tools: [{ type: 'web_search_20250305', name: 'web_search' }],
-              system: systemPrompt,
-              messages: [
-                ...messages,
-                { role: 'assistant', content: assistantContent },
-                {
-                  role: 'user',
-                  content:
-                    'AUTOMATED URL VERIFICATION FAILURE. The following URLs in your previous response are dead, closed, or returning 404 / "no longer open" pages right now:\n\n' +
-                    dead.map((d) => `- ${d.url} → ${d.reason ?? 'unknown'}`).join('\n') +
-                    '\n\nRewrite the response with EVERY dead URL above removed entirely. If you can find a currently-live replacement role via web_search (verify by fetching the URL and confirming it shows an active posting), include it — otherwise return fewer Section-1 entries rather than padding. Do NOT re-include any of the dead URLs above. Do NOT acknowledge this revision in the response (no "I removed X" or "updated list" preamble). Maintain the two-section structure (Section 1 = numbered specific roles with verified live ATS links; Section 2 = bulleted broader job-board search pointers). Return only the cleaned, final response — the recruiter will see this verbatim.',
-                },
-              ],
-            })
-            const revisedText = revision.content
-              .filter((b): b is Extract<typeof b, { type: 'text' }> => b.type === 'text')
-              .map((b) => b.text)
-              .join('\n\n')
-            if (revisedText) assistantContent = revisedText
-          } catch (revErr) {
-            // Revision call failed (timeout, rate limit, etc.). Keep
-            // the draft so Andrew at least sees something — better than
-            // a blank bubble. The Section-1 roles will still show but
-            // some apply links may be dead. Log so we can monitor.
-            // eslint-disable-next-line no-console
-            console.error('[ai-workspace] URL revision call failed', revErr)
-          }
+          assistantContent = stripDeadListings(assistantContent, new Set(deadUrls))
         }
       }
     }
@@ -225,4 +199,66 @@ export async function DELETE(req: NextRequest) {
   if (!entityType || !entityId) return NextResponse.json({ ok: false })
   await prisma.aiWorkspaceMessage.deleteMany({ where: { entityType, entityId } })
   return NextResponse.json({ ok: true })
+}
+
+// Deterministic dead-listing strip. Walks the response line-by-line,
+// groups consecutive lines under each `\d+. ` numbered marker (Section
+// 1 specific roles in the Game Plan format), and drops any block whose
+// body contains a verified-dead URL. Section-2 boundary detection
+// stops the grouping at "Section 2", "## " headings, or `---`
+// separators so we never accidentally strip a Section-2 bullet just
+// because it shares a verified URL string with a Section-1 block.
+// After dropping, remaining numbered items are renumbered 1..N.
+function stripDeadListings(text: string, deadUrls: Set<string>): string {
+  if (deadUrls.size === 0) return text
+
+  const lines = text.split('\n')
+  const out: string[] = []
+  let block: string[] | null = null
+
+  const deadList = Array.from(deadUrls)
+  function blockHasDead(buf: string[]): boolean {
+    const joined = buf.join('\n')
+    for (const u of deadList) {
+      if (joined.includes(u)) return true
+    }
+    return false
+  }
+
+  function flush() {
+    if (!block) return
+    if (!blockHasDead(block)) out.push(...block)
+    block = null
+  }
+
+  for (const line of lines) {
+    if (/^\s*\d+\.\s/.test(line)) {
+      // New numbered item starts — flush previous, begin new block.
+      flush()
+      block = [line]
+      continue
+    }
+    if (block !== null) {
+      // Section boundary: end Section 1 here, flush block, drop the
+      // boundary line into the output stream as-is.
+      if (
+        /^\s*(##\s+|\*\*)?Section\s+2/i.test(line) ||
+        /^\s*##\s+/.test(line) ||
+        /^---+\s*$/.test(line)
+      ) {
+        flush()
+        out.push(line)
+        continue
+      }
+      block.push(line)
+      continue
+    }
+    out.push(line)
+  }
+  flush()
+
+  // Renumber remaining `\d+. ` markers to 1..N so a strip in the middle
+  // doesn't leave gaps like "1. ... 3. ... 4. ...".
+  let n = 1
+  return out.join('\n').replace(/^(\s*)\d+\.\s/gm, (_m, indent: string) => `${indent}${n++}. `)
 }
