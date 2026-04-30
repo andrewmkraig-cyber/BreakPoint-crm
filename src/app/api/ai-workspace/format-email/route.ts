@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { getClaude, CLAUDE_MODEL } from "@/lib/claude";
+import { getClaude } from "@/lib/claude";
+
+// Haiku 4.5 instead of the project-wide Sonnet model. Format-email is a
+// pure rewrite — strip recruiter-internal copy, preserve the two
+// sections, generate a subject line. Haiku ships in ~3–5s vs Sonnet's
+// 30–60s+ on long bubbles, and the recruiter was watching "Preparing…"
+// spin for two minutes on the Email this button. Rewrites of this
+// shape are well within Haiku's capability; if quality regresses we
+// can switch back via this single constant.
+const FORMAT_EMAIL_MODEL = "claude-haiku-4-5-20251001";
 
 // Pure rewrite endpoint — no web_search, no candidate context lookup,
 // no chat history. Hand it a Game Plan bubble and it returns a clean
@@ -72,7 +81,7 @@ export async function POST(req: NextRequest) {
   let raw = "";
   try {
     const response = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
+      model: FORMAT_EMAIL_MODEL,
       max_tokens: 2000,
       system,
       messages: [{ role: "user", content: userPrompt }],

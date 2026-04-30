@@ -47,6 +47,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
   const [errorText, setErrorText] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Auto-scroll to the bottom on every message-count change (and on load).
   useEffect(() => {
@@ -54,6 +55,22 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages.length, loading]);
+
+  // Scroll the page so the AI Workspace card is at the top of the
+  // viewport on mount. The card is `sticky top-4` with viewport-bound
+  // height — once its top is at the viewport top, the input row sits
+  // at viewport bottom and stays there as the user scrolls. Without
+  // this nudge, landing on the Game Plan tab leaves the card below
+  // the fold and the textarea offscreen until the recruiter manually
+  // scrolls down.
+  useEffect(() => {
+    const card = cardRef.current;
+    if (!card) return;
+    const id = window.requestAnimationFrame(() => {
+      card.scrollIntoView({ block: "start", behavior: "auto" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, []);
 
   const loadHistory = useCallback(async () => {
     setLoading(true);
@@ -174,8 +191,9 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     // flex-1 internal scroll region so they never push the input off
     // the bottom of the card.
     <div
+      ref={cardRef}
       className="sticky top-4 flex flex-col rounded-xl border border-court-border bg-court-surface shadow-sm"
-      style={{ height: "calc(100vh - 8rem)" }}
+      style={{ height: "calc(100vh - 6rem)" }}
     >
       <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
