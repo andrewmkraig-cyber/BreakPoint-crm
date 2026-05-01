@@ -84,79 +84,114 @@ export default async function SettingsPage() {
     }
   }
 
+  const SECTIONS = [
+    { id: "appearance",    label: "Appearance" },
+    { id: "notifications", label: "Notifications" },
+    { id: "connectors",    label: "Connectors" },
+    { id: "email",         label: "Email" },
+    { id: "branding",      label: "Branding" },
+    { id: "templates",     label: "Templates" },
+  ];
+
   return (
-    <div className="space-y-6">
-      <PageHeader
-        eyebrow="Admin"
-        title="Settings"
-        description="Preferences and reusable email templates for submittals and candidate notifications."
-      />
+    <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
+      <div className="lg:hidden">
+        <PageHeader
+          eyebrow="Admin"
+          title="Settings"
+          description="Preferences and reusable email templates."
+        />
+      </div>
 
-      <CollapsibleSection
-        title="Court Mode"
-        description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly — no reload needed."
-      >
-        <CourtModeView />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Notification Preferences"
-        description="In-app popups + sounds for new mail, calls, and texts. Style picker recolors with Court Mode automatically (Ink stays dark)."
-      >
-        <NotificationPreferencesView />
-        <div className="mt-5 border-t border-court-border pt-5">
-          <div className="mb-3">
-            <div className="text-sm font-semibold text-court-fg">
-              Notification sounds
-            </div>
-            <div className="mt-0.5 text-xs text-court-fg-muted">
-              Pick a sound for new mail and another for texts/calls.
-              Sounds are synthesized in-browser — preview by clicking
-              any option.
-            </div>
+      {/* LEFT RAIL — sticky TOC */}
+      <aside className="hidden lg:sticky lg:top-24 lg:block lg:w-56 lg:shrink-0">
+        <div className="mb-6 border-b border-court-border pb-4">
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-court-accent-dark">
+            Admin
           </div>
-          <NotificationSoundsView />
+          <h1 className="mt-1 font-serif text-2xl font-semibold text-court-fg">
+            Settings
+          </h1>
         </div>
-      </CollapsibleSection>
+        <nav className="space-y-0.5">
+          {SECTIONS.map((s) => (
+            <a
+              key={s.id}
+              href={`#${s.id}`}
+              className="block rounded-lg px-3 py-2 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            >
+              {s.label}
+            </a>
+          ))}
+        </nav>
+      </aside>
 
-      <CollapsibleSection
-        title="Connectors"
-        description="Live health of the integrations Ace depends on. Gmail can be reconnected here; Claude and Quo are env-managed (Quo logins happen at quo.com)."
-      >
-        <ConnectorsView
-          gmail={connectors.gmail}
-          claude={connectors.claude}
-          quo={connectors.quo}
-        />
-      </CollapsibleSection>
-
-      <CollapsibleSection
-        title="Email Preferences"
-        description="Send-time triggers, recruiter phone, and the auto-appended signature block."
-      >
-        <EmailPreferencesView
-          autoSend={prefs.autoSendCandidateConfirmation}
-          myPhone={myPhone}
-          mySignature={mySignature}
-          myEmail={myEmail}
-        />
-      </CollapsibleSection>
-
-      {brandingInitial && (
+      {/* RIGHT COLUMN — section stack. Each CollapsibleSection now takes an `id` prop (Edit 2 adds support). */}
+      <div className="min-w-0 flex-1 space-y-6">
         <CollapsibleSection
-          title="Branding & Signature"
-          description="Used as the signature block on every email you send from Ace — Mail Tab replies, submittals, candidate confirmations. Stored per user; never shared across the org."
+          id="appearance"
+          title="Court Mode"
+          description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly."
         >
-          <BrandingView initial={brandingInitial} />
+          <CourtModeView />
         </CollapsibleSection>
-      )}
 
-      <CollapsibleSection
-        title="Email templates"
-        description="Reusable subject + body you can drop into any email you send from Ace. Use the Insert Field picker in the editor to add merge fields like [Candidate First Name]."
-      >
-        <TemplatesView initial={rows} />
-      </CollapsibleSection>
+        <CollapsibleSection
+          id="notifications"
+          title="Notification Preferences"
+          description="In-app popups + sounds for new mail, calls, and texts."
+        >
+          <NotificationPreferencesView />
+          <div className="mt-5 border-t border-court-border pt-5">
+            <div className="mb-3">
+              <div className="text-sm font-semibold text-court-fg">Notification sounds</div>
+              <div className="mt-0.5 text-xs text-court-fg-muted">
+                Pick a sound for new mail and another for texts/calls.
+              </div>
+            </div>
+            <NotificationSoundsView />
+          </div>
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          id="connectors"
+          title="Connectors"
+          description="Live health of Gmail, Claude, and Quo."
+        >
+          <ConnectorsView gmail={connectors.gmail} claude={connectors.claude} quo={connectors.quo} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          id="email"
+          title="Email Preferences"
+          description="Send-time triggers, recruiter phone, and the auto-appended signature."
+        >
+          <EmailPreferencesView
+            autoSend={prefs.autoSendCandidateConfirmation}
+            myPhone={myPhone}
+            mySignature={mySignature}
+            myEmail={myEmail}
+          />
+        </CollapsibleSection>
+
+        {brandingInitial && (
+          <CollapsibleSection
+            id="branding"
+            title="Branding & Signature"
+            description="Used on every email you send from Ace."
+          >
+            <BrandingView initial={brandingInitial} />
+          </CollapsibleSection>
+        )}
+
+        <CollapsibleSection
+          id="templates"
+          title="Email templates"
+          description="Reusable subject + body. Use the Insert Field picker to add merge fields."
+        >
+          <TemplatesView initial={rows} />
+        </CollapsibleSection>
+      </div>
     </div>
   );
 }
