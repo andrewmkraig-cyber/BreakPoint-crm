@@ -1002,13 +1002,11 @@ export function MailComposer({
             // overflow-hidden chassis as the modal so the chrome rows
             // pin top, the editor scrolls in its own region, and the
             // footer (Send / Save Draft / Delete) stays glued to the
-            // bottom. max-h-[50%] caps the composer at half the parent
-            // (typically the popup or the inline /mail thread pane)
-            // so the messages list above always keeps a meaningful
-            // visible region — that's the "scroll down to see the
-            // original email" complaint. Falls back to max-h-[55vh] in
-            // non-bounded contexts where the parent has no fixed height.
-            "flex max-h-[50%] max-h-[min(55vh,50%)] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
+            // bottom. Composer is capped at 65% of the parent so the
+            // recruiter has a meaningful body region by default while
+            // still leaving the messages list scrollable above to read
+            // the message they're replying to.
+            "flex max-h-[65%] max-h-[min(72vh,65%)] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
       }
     >
       <div
@@ -1083,14 +1081,14 @@ export function MailComposer({
           </button>
         </div>
       </div>
-      <div className="shrink-0 space-y-1.5 px-5 py-2">
+      <div className="shrink-0 space-y-1 px-5 py-1.5">
         <AddressRow
           label="To"
           value={to}
           onChange={setTo}
           suggestions={toSuggestions}
         />
-        <div className="flex gap-2 text-[11px] text-court-fg-muted">
+        <div className="flex gap-2 text-[10px] text-court-fg-muted">
           <button
             type="button"
             onClick={() => {
@@ -1139,7 +1137,7 @@ export function MailComposer({
           />
         )}
         <label className="flex items-center gap-2 text-sm">
-          <span className="w-16 shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
+          <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
             Subject
           </span>
           <input
@@ -1147,7 +1145,7 @@ export function MailComposer({
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             onFocus={() => (lastFocused.current = "subject")}
-            className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            className="h-7 w-full rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
           />
         </label>
       </div>
@@ -1575,7 +1573,7 @@ function AddressRow({
   return (
     <div className="relative">
       <label className="flex items-center gap-2 text-sm">
-        <span className="w-16 shrink-0 text-[11px] uppercase tracking-wider text-court-fg-muted">
+        <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
           {label}
         </span>
         <input
@@ -1583,11 +1581,11 @@ function AddressRow({
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+          className="h-7 w-full rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
       </label>
       {filtered.length > 0 && (
-        <ul className="absolute left-[72px] right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
+        <ul className="absolute left-[64px] right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
           {filtered.map((s) => (
             <li key={s.email}>
               <button

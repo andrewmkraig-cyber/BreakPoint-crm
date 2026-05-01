@@ -1569,10 +1569,15 @@ export function ThreadDetail({
       }
     >
       {renderOwnHeader && (
-      <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
+      <div
+        className={
+          "border-b border-court-border px-5 py-3 " +
+          (isFloating ? "flex items-center justify-end gap-2" : "flex flex-col gap-2")
+        }
+      >
         {!isFloating && (
           <div className="min-w-0">
-            <h2 className="truncate font-serif text-base font-semibold text-court-fg">
+            <h2 className="font-serif text-base font-semibold leading-tight text-court-fg break-words">
               {detail.subject}
             </h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
@@ -1583,7 +1588,8 @@ export function ThreadDetail({
         )}
         <div
           className={
-            "flex shrink-0 items-center gap-2 " + (isFloating ? "ml-auto" : "")
+            "flex items-center gap-2 " +
+            (isFloating ? "shrink-0" : "flex-wrap justify-end")
           }
         >
           {/* "Reply to: latest" picker removed — the per-message
