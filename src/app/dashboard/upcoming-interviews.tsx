@@ -1,5 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
 import { CalendarClock, CalendarCog, MapPin, PhoneCall, Video } from "lucide-react";
+import { InterviewInvitePopup } from "./interview-invite-popup";
 
 export type UpcomingInterviewRow = {
   id: string;
@@ -25,6 +29,10 @@ function buildEditInterviewHref(candidateHref: string, interviewId: string): str
 }
 
 export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
+  // The CalendarCog icon now opens an inline edit-and-resend popup
+  // instead of routing to the candidate page. Whole-row click still
+  // goes to the candidate page (reschedule / cancel flow lives there).
+  const [popupRow, setPopupRow] = useState<UpcomingInterviewRow | null>(null);
   return (
     <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm">
       <div className="flex items-center justify-between">
@@ -47,12 +55,6 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
             const when = new Date(r.scheduledAt);
             const isLast = idx === rows.length - 1;
             const editHref = buildEditInterviewHref(r.candidateHref, r.id);
-            // Whole row is now a Link into the edit-interview modal so
-            // a single click anywhere on the interview opens the
-            // edit / cancel / add-attendees flow on the candidate page
-            // — recruiters were missing the small CalendarCog icon.
-            // The Meet link is the one stop-propagation child since
-            // it goes to a third-party URL in a new tab.
             return (
               <li
                 key={r.id}
@@ -95,15 +97,32 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
                       Meet
                     </a>
                   )}
-                  <CalendarCog
-                    aria-hidden="true"
-                    className="h-4 w-4 shrink-0 text-court-fg-muted"
-                  />
+                  <button
+                    type="button"
+                    aria-label="Edit calendar invite"
+                    title="Edit calendar invite"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setPopupRow(r);
+                    }}
+                    className="shrink-0 rounded-md border border-court-border bg-court-surface p-1.5 text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-accent-dark"
+                  >
+                    <CalendarCog className="h-4 w-4" />
+                  </button>
                 </Link>
               </li>
             );
           })}
         </ul>
+      )}
+      {popupRow && (
+        <InterviewInvitePopup
+          interviewId={popupRow.id}
+          whenLabel={formatWhen(new Date(popupRow.scheduledAt))}
+          jobLabel={[popupRow.jobTitle, popupRow.clientName].filter(Boolean).join(" · ")}
+          onClose={() => setPopupRow(null)}
+        />
       )}
     </section>
   );

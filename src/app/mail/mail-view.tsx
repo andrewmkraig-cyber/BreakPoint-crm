@@ -2079,7 +2079,7 @@ function LabelTreeNode({
           }}
           disabled={node.id === null}
           className={
-            "flex h-9 flex-1 items-center truncate rounded-lg px-3 text-left text-[13px] font-medium transition " +
+            "flex h-9 flex-1 items-center truncate rounded-lg pl-1 pr-3 text-left text-[13px] font-medium transition " +
             (active
               ? "bg-[#EAF4E4] font-semibold text-[#3F7030]"
               : node.id === null
