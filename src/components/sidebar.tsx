@@ -175,26 +175,29 @@ function NavLink({
 }) {
   const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
   const Icon = item.icon;
-  // Per design rules: green is a scalpel, not a paint bucket. The
-  // unread badge uses the BreakPoint green token (#5A9642) for a
-  // positive-status chip — one of the four sanctioned green use cases.
   const showBadge = badge > 0;
   return (
     <Link
       href={item.href}
       className={cn(
-        "flex h-12 items-center gap-3 rounded-xl border px-4 text-sm font-medium transition-colors",
+        "relative flex h-10 items-center gap-3 rounded-lg pl-4 pr-3 text-sm font-medium transition-colors",
         active
-          ? "border-court-accent/40 bg-court-accent-tint text-court-accent-dark shadow-sm"
-          : "border-transparent bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle",
+          ? "bg-court-accent-tint text-court-accent-dark"
+          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
       )}
     >
+      {active && (
+        <span
+          aria-hidden="true"
+          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-court-accent"
+        />
+      )}
       <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />
       <span className="flex-1">{item.label}</span>
       {showBadge && (
         <span
           aria-label={`${badge} unread`}
-          className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-brand grass:bg-grass-purple px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+          className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-brand grass:bg-grass-purple px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
         >
           {badge > 99 ? "99+" : badge}
         </span>
