@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Search, Loader2, MapPin } from "lucide-react";
+import { Briefcase, Search, Loader2, MapPin } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
@@ -80,8 +80,14 @@ export function JobsView(props: JobsViewProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
+      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
         <Tabs tab={tab} activeCount={activeCount} inactiveCount={inactiveCount} buildHref={buildHref} />
+        <Link
+          href="/jobs/new"
+          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+        >
+          <Briefcase className="h-3 w-3" /> Post New Job
+        </Link>
       </div>
 
       <form
@@ -99,7 +105,7 @@ export function JobsView(props: JobsViewProps) {
         </div>
         <button
           type="submit"
-          className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-5 py-2 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300 disabled:opacity-60"
+          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-5 py-2 text-sm font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300 disabled:opacity-60"
         >
           {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Search"}
         </button>

@@ -1,5 +1,3 @@
-import Link from "next/link";
-import { Briefcase } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { JobsView, type JobRow } from "@/app/jobs/jobs-view";
 import {
@@ -106,7 +104,6 @@ export default async function JobsPage({
         eyebrow="Requisitions"
         title="Jobs"
         description="Active and inactive requisitions. Counts come from each candidate's pipeline stage."
-        actions={<JobsHeaderActions />}
       />
       <JobsView
         rows={pageRows}
@@ -123,17 +120,6 @@ export default async function JobsPage({
         error={error}
       />
     </div>
-  );
-}
-
-function JobsHeaderActions() {
-  return (
-    <Link
-      href="/jobs/new"
-      className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
-    >
-      <Briefcase className="h-3 w-3" /> Post New Job
-    </Link>
   );
 }
 

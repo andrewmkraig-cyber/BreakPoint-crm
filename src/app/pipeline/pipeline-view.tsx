@@ -376,14 +376,14 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full border border-emerald-400 bg-emerald-200 px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-md border border-emerald-400 bg-emerald-200 px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-emerald-900 shadow-sm transition hover:bg-emerald-300"
           >
             Confirm Start
           </Link>
           <Link
             href={`/candidates/${row.candidateId}?edit=placement&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-full border border-court-border bg-court-surface px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
+            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-md border border-court-border bg-court-surface px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-court-fg-muted shadow-sm transition hover:border-court-accent/40 hover:text-court-fg"
           >
             Edit Placement
           </Link>

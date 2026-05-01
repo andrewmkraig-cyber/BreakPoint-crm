@@ -292,7 +292,7 @@ function LocalJobActionRow({
           {canSubmit && (
             <Link
               href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
-              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
               title="Open submittal composer"
             >
               <Send className="h-3 w-3" /> Submit
@@ -311,7 +311,7 @@ function LocalJobActionRow({
               <button
                 type="button"
                 onClick={onClientInvite}
-                className="inline-flex items-center justify-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
+                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
                 title="Log an interview the client is scheduling themselves — adds to your calendar only"
               >
                 <CalendarPlus className="h-3 w-3" /> Client Sending Invite
@@ -323,7 +323,7 @@ function LocalJobActionRow({
               type="button"
               onClick={onReject}
               disabled={isRejecting}
-              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
               title="Reject this candidate for this job"
             >
               {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}

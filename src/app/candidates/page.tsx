@@ -66,7 +66,7 @@ export default async function CandidatesPage({
         actions={
           <Link
             href="/candidates/new"
-            className="inline-flex items-center justify-center gap-1.5 rounded-full border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+            className="inline-flex items-center justify-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
           >
             <UserPlus className="h-3 w-3" /> Create New Candidate
           </Link>
