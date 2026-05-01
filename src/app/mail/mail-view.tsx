@@ -2054,7 +2054,7 @@ function LabelTreeNode({
           "flex min-h-9 items-center gap-0.5 rounded-lg " +
           (dragOver ? "border border-[#5A9642] bg-[#EAF4E4]" : "")
         }
-        style={{ paddingLeft: `${depth * 16}px` }}
+        style={{ paddingLeft: `${depth * 8}px` }}
       >
         {hasChildren ? (
           <button

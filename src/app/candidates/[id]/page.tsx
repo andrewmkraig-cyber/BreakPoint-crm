@@ -563,15 +563,15 @@ export default async function CandidateProfilePage({
           {initials || "?"}
         </div>
         <div className="min-w-0">
-          {c.current_organization && (
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-              Currently at {c.current_organization}
-            </div>
-          )}
           <h1 className="font-serif text-3xl font-bold text-court-fg">{name}</h1>
           {(c.current_designation || locationLabel) && (
             <div className="mt-0.5 text-sm text-court-fg-muted">
               {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
+            </div>
+          )}
+          {c.current_organization && (
+            <div className="mt-1 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+              Currently at {c.current_organization}
             </div>
           )}
         </div>
@@ -735,7 +735,7 @@ function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: n
   // that previously dominated the row visually. Inactive tabs are muted
   // text only — hover lightens to fg.
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface-subtle/60 p-1">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
       <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
       <UnderlineTabLink label="Notes" href={`/candidates/${candidateId}?tab=notes`} active={tab === "notes"} />
@@ -751,8 +751,8 @@ function UnderlineTabLink({ label, href, active }: { label: string; href: string
       className={cn(
         "rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
         active
-          ? "bg-court-surface text-court-accent-dark shadow-sm ring-1 ring-court-border"
-          : "text-court-fg-muted hover:bg-court-surface/60 hover:text-court-fg",
+          ? "bg-court-accent-tint text-court-accent-dark ring-1 ring-court-accent/40"
+          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
       )}
     >
       {label}

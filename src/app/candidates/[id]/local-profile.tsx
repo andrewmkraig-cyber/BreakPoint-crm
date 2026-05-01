@@ -450,15 +450,15 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
           {initials || "?"}
         </div>
         <div className="min-w-0">
-          {candidate.currentOrganization && (
-            <div className="text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-              Currently at {candidate.currentOrganization}
-            </div>
-          )}
           <h1 className="font-serif text-3xl font-bold text-court-fg">{fullName}</h1>
           {(candidate.currentDesignation || locationLabel) && (
             <div className="mt-0.5 text-sm text-court-fg-muted">
               {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
+            </div>
+          )}
+          {candidate.currentOrganization && (
+            <div className="mt-1 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+              Currently at {candidate.currentOrganization}
             </div>
           )}
         </div>
@@ -705,7 +705,7 @@ function UnderlineTabs({ tab, candidateId }: { tab: LocalCandidateTab; candidate
   // that previously dominated the row visually. Inactive tabs are muted
   // text only — hover lightens to fg.
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface-subtle/60 p-1">
+    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
       <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
       <UnderlineTabLink label="Notes" href={`/candidates/${candidateId}?tab=notes`} active={tab === "notes"} />
@@ -721,8 +721,8 @@ function UnderlineTabLink({ label, href, active }: { label: string; href: string
       className={cn(
         "rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
         active
-          ? "bg-court-surface text-court-accent-dark shadow-sm ring-1 ring-court-border"
-          : "text-court-fg-muted hover:bg-court-surface/60 hover:text-court-fg",
+          ? "bg-court-accent-tint text-court-accent-dark ring-1 ring-court-accent/40"
+          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
       )}
     >
       {label}
