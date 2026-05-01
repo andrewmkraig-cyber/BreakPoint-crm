@@ -117,9 +117,14 @@ export function stripMarkdownToPlain(text: string): string {
     // Drop single-* italic wrappers only when they look like pairs, not inside words.
     line = line.replace(/(^|\s)\*(?!\s)(.+?)(?<!\s)\*(?=\s|$|[.,;:!?)])/g, "$1$2");
     line = line.replace(/(^|\s)_(?!\s)(.+?)(?<!\s)_(?=\s|$|[.,;:!?)])/g, "$1$2");
+    // Banned punctuation: em dashes (`—`) and en dashes (`–`). Andrew
+    // reads them as ChatGPT-flavored writing, so strip them codebase-
+    // wide. Replace with a comma + space, which is what the model
+    // usually meant.
+    line = line.replace(/\s*[–—]\s*/g, ", ");
     out.push(line);
   }
-  // Collapse 3+ blank lines → 2 blanks.
+  // Collapse 3+ blank lines into 2 blanks.
   return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
@@ -636,6 +641,7 @@ export async function generateJobDescription(params: {
     "You turn client-supplied job descriptions into anonymous plain-text write-ups for BreakPoint Talent. " +
     "CRITICAL: output is plain text, never markdown. Never emit #, ##, **, or hyphen bullets. " +
     "Bullets always use the • glyph. Section titles sit on their own line, unadorned. " +
+    "NEVER use em dashes (the long `—` character) anywhere in the output. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens are also banned (no `-` separators). " +
     "Every response must contain all four headers: 'A Bit About Us', 'Why Join Us', 'Job Details', " +
     "'Key Responsibilities and Duties', AND 'You Should Have Most of the Following'. " +
     "Stick to the structure the user specifies. Never fabricate facts.";
@@ -770,12 +776,13 @@ export async function generateSubmittalWriteup(input: SubmittalInput): Promise<s
     max_tokens: 1400,
     system:
       "You write candidate submittal emails for BreakPoint Talent recruiters. " +
-      "The output goes straight into the recruiter's submittal email body — they do not reformat it. " +
+      "The output goes straight into the recruiter's submittal email body, they do not reformat it. " +
       "Section headers MUST be wrapped in **double-asterisks** (Markdown bold). The email renderer turns those into real bold tags in Gmail. " +
       "Bullets MUST use a leading dash followed by a space ('- '). " +
       "Do NOT use any other markdown (no #, no *, no _ italics, no numbered lists). " +
+      "NEVER use em dashes (the long `—` character) anywhere in the output. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens (`-`) are fine for compound words and bullet markers. " +
       "Confident, concise, recruiter voice. Never fabricate facts not in the source data. " +
-      "Always tie the candidate's background to the specific role — this is a targeted pitch, not a generic summary.",
+      "Always tie the candidate's background to the specific role: this is a targeted pitch, not a generic summary.",
     messages: [
       {
         role: "user",

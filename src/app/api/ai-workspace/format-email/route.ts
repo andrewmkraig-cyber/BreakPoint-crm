@@ -59,13 +59,14 @@ export async function POST(req: NextRequest) {
     "no prose, no markdown fences, no preamble. Shape: " +
     `{ "subject": string, "body": string }. ` +
     "Rules:\n" +
-    "- subject: short (≤ 70 chars), specific to the message content, written for the candidate (not Andrew).\n" +
+    "- subject: short (<= 70 chars), specific to the message content, written for the candidate (not Andrew).\n" +
     "- body: plain text email starting with `Hi <FirstName>,` then a blank line, then the message.\n" +
     "- Strip everything that was internal-to-Andrew: meta questions like 'Want me to draft outreach?', 'Let me know which interests you', recruiter-side commentary about why the candidate is a fit (the candidate already knows themselves), references to internal call notes, anything addressed at Andrew rather than the candidate.\n" +
-    "- Strip any signoff (Talk soon / Best / Thanks / etc.) and any signature lines (Andrew Kraig / BreakPoint Talent). Gmail attaches the real signature on send.\n" +
+    "- End the body with a SHORT signoff line on its own (e.g. `Thanks,` or `Best,` or `Talk soon,`) so the message transitions cleanly into Andrew's auto-appended signature. Choose the closing that fits the tone of the message. Do NOT include Andrew's name, BreakPoint Talent, or any other signature lines after the closing — Ace appends his real signature on send and any extra name lines double-sign the email.\n" +
     "- Strip leading/trailing `---` separators and any 'Here\\'s a clean email...' / 'Ready to copy and send...' framing lines.\n" +
-    "- Preserve job listings, links, comp ranges, location notes — those are the substance the candidate needs.\n" +
-    "- **Preserve the two-section structure** if the source has one. Specific role postings (Section 1) and broader job-board search pointers (Section 2 — LinkedIn / Indeed / ZipRecruiter etc.) MUST stay visually separated in the email. Use clear bold section headers like `**Open Roles**` and `**Broader job-board searches to watch**`. Section 1 stays numbered; Section 2 stays bulleted. Never merge them into one numbered list — the candidate needs to see at a glance which links are pre-vetted specific roles vs. which are 'pages to browse on your own'.\n" +
+    "- Preserve job listings, links, comp ranges, location notes. Those are the substance the candidate needs.\n" +
+    "- NEVER use em dashes (the long `—` character) anywhere in the subject or body. This is a hard rule. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens (`-`) are fine for compound words.\n" +
+    "- Preserve the two-section structure if the source has one. Specific role postings (Section 1) and broader job-board search pointers (Section 2: LinkedIn / Indeed / ZipRecruiter etc.) MUST stay visually separated in the email. Use clear bold section headers like `**Open Roles:**` and `**Broader job-board searches to watch:**`. Section 1 stays numbered; Section 2 stays bulleted. Never merge them into one numbered list. The candidate needs to see at a glance which links are pre-vetted specific roles vs. which are 'pages to browse on your own'.\n" +
     "- Keep markdown formatting in the body (bold, bullets, [text](url) links). The downstream renderer converts it to HTML for Gmail.\n" +
     "- If the source already has a `Subject:` line, use it (cleaned up) instead of inventing one.\n" +
     "- Never invent facts. Use only what's in the source message.";
@@ -105,40 +106,59 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    subject: parsed.subject.trim(),
-    body: stripSignoffAndSignature(parsed.body),
+    subject: stripEmDashes(parsed.subject.trim()),
+    body: stripEmDashes(stripSignatureKeepSignoff(parsed.body)),
   });
 }
 
-// Belt-and-suspenders strip for the body the model returns. The system
-// prompt tells Claude to drop signoffs + the "Andrew Kraig / BreakPoint
-// Talent" signature; this enforces it deterministically so a single
-// model slip doesn't produce a double signature in the recruiter's
-// outbound email (Ace appends Andrew's real signature on send).
-function stripSignoffAndSignature(body: string): string {
-  const lines = body.split(/\r?\n/);
-  let end = lines.length;
+// Drop em dashes anywhere they appear. Andrew never wants the long
+// `—` character in outbound copy — he reads it as ChatGPT-flavored
+// writing — so we replace it with a comma + space (which is what the
+// model usually meant). En dashes (`–`) get the same treatment for
+// consistency. Hyphens (`-`) are left alone since they're valid in
+// compound words.
+function stripEmDashes(s: string): string {
+  return s.replace(/\s*[–—]\s*/g, ", ");
+}
 
-  const signoffRe =
-    /^(thanks|thank you|thank you so much|best|best regards|all the best|regards|cheers|talk soon|warmly|sincerely|kind regards)[,.!]?\s*$/i;
+// Belt-and-suspenders cleanup for the body the model returns. We KEEP
+// any standalone short signoff line (e.g. `Thanks,`) so the message
+// transitions cleanly into Andrew's auto-appended Ace signature, but
+// we strip the name + company lines below it ("Andrew Kraig" /
+// "BreakPoint Talent" / `---` separators) because those would
+// double-sign the email. We also rewrite an inline "Best, Andrew Kraig
+// BreakPoint Talent" line into just "Best," so the closing survives
+// even when the model concatenated the signoff and signature into one
+// paragraph.
+function stripSignatureKeepSignoff(body: string): string {
+  const lines = body.split(/\r?\n/);
   const signatureRe =
-    /^(andrew(\s+kraig)?|kraig|breakpoint(\s+talent)?|--+|—+)\s*$/i;
-  // Same patterns but glued onto a single line — e.g. "Best, Andrew
-  // Kraig BreakPoint Talent" or "Talk soon, Andrew" — that the AI
-  // Workspace markdown renderer collapses into one paragraph. Walk
-  // back from the end and chop the line entirely if it matches.
+    /^(andrew(\s+kraig)?|kraig|breakpoint(\s+talent)?|--+|—+|–+|managing partner.*|founder.*)\s*$/i;
   const inlineSignoffRe =
     /^\s*(thanks|thank you|thank you so much|best|best regards|all the best|regards|cheers|talk soon|warmly|sincerely|kind regards)[,.!]?\s+(andrew|kraig|the bp team|breakpoint)\b.*$/i;
 
+  // Walk back from the end and drop signature/separator lines. Stop
+  // once we hit a non-signature line (which is either a real body
+  // line or, ideally, the standalone signoff we want to keep).
+  let end = lines.length;
   while (end > 0) {
     const t = lines[end - 1].trim();
     if (!t) {
       end--;
       continue;
     }
-    if (signoffRe.test(t) || signatureRe.test(t) || inlineSignoffRe.test(t)) {
+    if (signatureRe.test(t)) {
       end--;
       continue;
+    }
+    // Inline "Best, Andrew Kraig BreakPoint Talent" — keep just the
+    // signoff portion ("Best,"). Mutate in place and stop walking.
+    const inlineMatch = lines[end - 1].match(inlineSignoffRe);
+    if (inlineMatch) {
+      const closing = inlineMatch[1];
+      const punct = lines[end - 1].match(/^\s*[A-Za-z ]+([,.!])/)?.[1] ?? ",";
+      lines[end - 1] = `${closing}${punct}`;
+      break;
     }
     break;
   }

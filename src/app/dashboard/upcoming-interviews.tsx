@@ -46,52 +46,59 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
             const Icon = r.type === "phone_screen" ? PhoneCall : r.type === "video" ? Video : MapPin;
             const when = new Date(r.scheduledAt);
             const isLast = idx === rows.length - 1;
+            const editHref = buildEditInterviewHref(r.candidateHref, r.id);
+            // Whole row is now a Link into the edit-interview modal so
+            // a single click anywhere on the interview opens the
+            // edit / cancel / add-attendees flow on the candidate page
+            // — recruiters were missing the small CalendarCog icon.
+            // The Meet link is the one stop-propagation child since
+            // it goes to a third-party URL in a new tab.
             return (
               <li
                 key={r.id}
-                className={`flex items-center gap-4 px-2 py-4 ${isLast ? "" : "border-b border-court-border"}`}
+                className={isLast ? "" : "border-b border-court-border"}
               >
-                <Icon className="h-4 w-4 shrink-0 text-court-fg-muted" />
-                <div className="min-w-0 flex-1">
-                  <Link
-                    href={r.candidateHref}
-                    className="truncate text-sm font-semibold text-court-fg hover:text-court-accent-dark"
-                  >
-                    {r.candidateName}
-                  </Link>
-                  <div className="truncate text-xs text-court-fg-muted">
-                    {[
-                      r.jobTitle,
-                      r.clientName || null,
-                      r.source === "client_scheduled" ? "Client-scheduled" : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                  </div>
-                </div>
-                <div className="shrink-0 text-right">
-                  <div className="text-sm font-semibold text-court-fg">{formatWhen(when)}</div>
-                  <div className="text-xs text-court-fg-muted">
-                    {r.durationMin}m · {formatType(r.type)}
-                  </div>
-                </div>
-                {r.meetLink && (
-                  <a
-                    href={r.meetLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="shrink-0 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg hover:border-court-accent/40 hover:text-court-accent-dark"
-                  >
-                    Meet
-                  </a>
-                )}
                 <Link
-                  href={buildEditInterviewHref(r.candidateHref, r.id)}
-                  aria-label="Edit interview"
-                  title="Edit interview"
-                  className="shrink-0 rounded-md border border-court-border bg-court-surface p-1.5 text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-accent-dark"
+                  href={editHref}
+                  aria-label={`Edit interview with ${r.candidateName}`}
+                  className="flex items-center gap-4 rounded-lg px-2 py-4 transition hover:bg-court-surface-subtle/60"
                 >
-                  <CalendarCog className="h-4 w-4" />
+                  <Icon className="h-4 w-4 shrink-0 text-court-fg-muted" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold text-court-fg">
+                      {r.candidateName}
+                    </div>
+                    <div className="truncate text-xs text-court-fg-muted">
+                      {[
+                        r.jobTitle,
+                        r.clientName || null,
+                        r.source === "client_scheduled" ? "Client-scheduled" : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <div className="text-sm font-semibold text-court-fg">{formatWhen(when)}</div>
+                    <div className="text-xs text-court-fg-muted">
+                      {r.durationMin}m · {formatType(r.type)}
+                    </div>
+                  </div>
+                  {r.meetLink && (
+                    <a
+                      href={r.meetLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="shrink-0 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-semibold text-court-fg hover:border-court-accent/40 hover:text-court-accent-dark"
+                    >
+                      Meet
+                    </a>
+                  )}
+                  <CalendarCog
+                    aria-hidden="true"
+                    className="h-4 w-4 shrink-0 text-court-fg-muted"
+                  />
                 </Link>
               </li>
             );

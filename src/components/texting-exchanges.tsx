@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, MessageSquare } from "lucide-react";
+import { ChevronDown, Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type SmsRow = {
@@ -27,8 +27,44 @@ export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: st
   const [messages, setMessages] = useState<SmsRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const lastFetchKey = useRef<string>("");
   const listRef = useRef<HTMLUListElement | null>(null);
+
+  // Single-bubble delete. Confirms first, then optimistically drops
+  // the row so the bubble disappears immediately; on server failure
+  // we restore the row and surface the error in the existing error
+  // banner. Carrier-delivered messages aren't recalled — this is a
+  // recruiter-side scrub of Ace's record only.
+  const onDeleteMessage = useCallback(
+    async (id: string) => {
+      const target = messages.find((m) => m.id === id);
+      if (!target) return;
+      const preview = target.body.slice(0, 80) + (target.body.length > 80 ? "…" : "");
+      if (!window.confirm(`Delete this message from Ace?\n\n"${preview}"\n\nThis won't unsend it from the recipient's phone.`)) {
+        return;
+      }
+      setDeletingId(id);
+      const snapshot = messages;
+      setMessages((prev) => prev.filter((m) => m.id !== id));
+      try {
+        const res = await fetch(`/api/sms?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+        if (!res.ok) {
+          const payload = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(payload?.error ?? `Delete failed (${res.status})`);
+        }
+        // Reset the dedupe key so the next poll doesn't no-op against
+        // a stale snapshot that still contained the now-deleted row.
+        lastFetchKey.current = "";
+      } catch (e) {
+        setMessages(snapshot);
+        setError(e instanceof Error ? e.message : "Couldn't delete message.");
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    [messages],
+  );
 
   const fetchMessages = useCallback(async () => {
     try {
@@ -110,21 +146,48 @@ export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: st
             <ul ref={listRef} className="max-h-64 space-y-3 overflow-y-auto scroll-smooth">
               {messages.map((m) => {
                 const outbound = m.direction === "outbound";
+                const isDeleting = deletingId === m.id;
                 return (
                   <li
                     key={m.id}
-                    className={cn("flex flex-col", outbound ? "items-end" : "items-start")}
+                    className={cn("group flex flex-col", outbound ? "items-end" : "items-start")}
                   >
                     <div
                       className={cn(
-                        "max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm",
-                        outbound
-                          ? "bg-emerald-600 text-white"
-                          : "bg-court-surface-subtle text-court-fg",
-                        m.status === "failed" && outbound && "bg-red-500",
+                        "flex max-w-[75%] items-start gap-1.5",
+                        outbound ? "flex-row" : "flex-row-reverse",
                       )}
                     >
-                      {m.body}
+                      {/* Delete affordance — shows on hover, sits to
+                          the side of the bubble (left of outbound,
+                          right of inbound) so it doesn't crowd the
+                          message text. Confirms before deleting; only
+                          touches Ace's record, not the carrier. */}
+                      <button
+                        type="button"
+                        onClick={() => void onDeleteMessage(m.id)}
+                        disabled={isDeleting}
+                        aria-label="Delete this message from Ace"
+                        title="Delete this message from Ace"
+                        className="mt-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-court-fg-muted/0 transition hover:bg-court-surface-subtle hover:text-red-600 focus:text-court-fg-muted group-hover:text-court-fg-muted disabled:opacity-60"
+                      >
+                        {isDeleting ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3 w-3" />
+                        )}
+                      </button>
+                      <div
+                        className={cn(
+                          "rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm",
+                          outbound
+                            ? "bg-emerald-600 text-white"
+                            : "bg-court-surface-subtle text-court-fg",
+                          m.status === "failed" && outbound && "bg-red-500",
+                        )}
+                      >
+                        {m.body}
+                      </div>
                     </div>
                     <div className="mt-1 text-[10px] text-court-fg-muted">
                       {formatTs(m.createdAt)}

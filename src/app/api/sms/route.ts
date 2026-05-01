@@ -46,3 +46,22 @@ export async function GET(req: NextRequest) {
   })
   return NextResponse.json(messages)
 }
+
+// Single-row delete. Removes the SmsMessage from Neon — purely a
+// recruiter-side cleanup (the carrier already delivered the SMS, so
+// this does NOT recall the message from the recipient's phone). Used
+// to scrub typos, accidental sends, or test traffic out of a
+// candidate's activity log without touching the rest of the thread.
+export async function DELETE(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) {
+    return NextResponse.json({ ok: false, error: 'missing id' }, { status: 400 })
+  }
+  try {
+    await prisma.smsMessage.delete({ where: { id } })
+    return NextResponse.json({ ok: true })
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'delete failed'
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 })
+  }
+}
