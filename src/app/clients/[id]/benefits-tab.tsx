@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Save, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
-import { PlainProse } from "@/components/plain-prose";
+import { MarkdownProse } from "@/components/markdown-prose";
 import {
   deleteBenefitsFile,
   saveBenefits,
@@ -305,7 +305,7 @@ function BenefitsTabInner({
             </div>
           ) : saved.body.trim() ? (
             <>
-              <PlainProse text={saved.body} />
+              <MarkdownProse content={saved.body} />
               {saved.updatedAt && (
                 <div className="mt-4 border-t border-court-border pt-3 text-[11px] text-court-fg-muted">
                   Last updated {safeDateString(saved.updatedAt)}

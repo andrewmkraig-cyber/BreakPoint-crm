@@ -12,7 +12,7 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import { PlainProse } from "@/components/plain-prose";
+import { MarkdownProse } from "@/components/markdown-prose";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { toast } from "sonner";
 import { deleteAgreement, summarizeAgreement } from "@/app/clients/[id]/actions";
@@ -234,7 +234,7 @@ function AgreementItem({
             <Sparkles className="h-3 w-3 text-brand-dark" /> Key terms
             {summaryUpdatedAt && <span className="normal-case tracking-normal">· updated {new Date(summaryUpdatedAt).toLocaleString()}</span>}
           </div>
-          <PlainProse text={summary} />
+          <MarkdownProse content={summary} />
         </div>
       )}
     </li>
