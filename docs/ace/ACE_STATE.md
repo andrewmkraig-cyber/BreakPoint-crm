@@ -1,20 +1,20 @@
 # ACE_STATE.md
-Last updated: 2026-05-05 - Ace 30.0 closed (full session log)
+Last updated: 2026-05-05 - Ace 31.0 closed (full session log)
 
 ## Current Status
-Current Version: Ace 30.0 (complete)
-Last Shipped: Ace 30.0 - May 5, 2026
-Last SHA: 7265ba8
+Current Version: Ace 31.0 (complete)
+Last Shipped: Ace 31.0 - May 5, 2026
+Last SHA: f568e04
 Live at: ace.breakpointtalent.com
-Current Status: Ace 30.0 closed clean. Candidate profile header reorder + bolder tabs, dashboard edit-and-resend invite popup, square buttons + topbar layout restore (Post New Job repositioned), Benefits + Agreements summaries rendered as markdown, smoke test fixes (Email field collision + Apply/Submit Link selectors), and Court Modes palette v5 adopted across all 7 modes (full token surface, sidebar/brand rewire, tinted accent per mode, purple reserved for Grass). Next active task: Game Plan Phase 2 - Internal Candidate Matching. No carry-overs open.
+Current Status: Ace 31.0 closed clean. Game Plan Phase 2 complete end-to-end (Find Matches streaming panel with 6-band scoring + per-axis score popover, dismiss + Reject + one-click Apply, job picker on client targets, per-entity panel scoping, persistent CandidateMatch table with scoreBreakdown, /jobs/[id] Matched tab with live refresh + 5/page pagination, server-side exclusion of already-matched + already-pipelined candidates on re-run). Job Game Plan chat live on /jobs/[id]?tab=game-plan. Floating thread reply composer body-first + 60% of popup + auto-focus. Em dash + emoji banned across all 5 Claude routes. AI chat bubble green tint dropped. Minimized-drafts tray docks right of sidebar. Two-column /jobs/[id] layout (Job Description / Game Plan tabs + 30% Overview sidebar with single-Edit-toggle inline editing + hourly/salary frequency toggle). Reject button matches /applicants styling everywhere. Apply / Reject from Matched persists jobRfId so /applicants + pipeline see the row. "Contingent · Full time" subtitle dropped on /jobs listing. Next active task: Ace 32.0 Jobs page layout overhaul. No carry-overs open.
 
-## Known Issues / Still In Progress (carry into Ace 31.0)
-- (none open — Ace 30.0 closed clean)
+## Known Issues / Still In Progress (carry into Ace 32.0)
+- (none open — Ace 31.0 closed clean)
 
-## Next Task for Ace 31.0
-**Game Plan Phase 2 - Internal Candidate Matching.** "Find Matches" button on the job + client Game Plan surfaces. Queries Neon's candidate database; surfaces top fits by title, skills, location, and comp. Foundation for Phases 3-5 (tagged-email context, My Writing Style setting, sidebar Claude panel) and the broader Game Plan context-depth work.
+## Next Task for Ace 32.0
+**Jobs page layout overhaul.** Deeper redesign of the /jobs listing surface beyond the salary-range column + condensed Apply-to-Job dropdown shipped in 26.0 / 27.0 and the row-subtitle + hourly/salary cleanup landed in 31.0. Scope to be specified at session open.
 
-Remaining Ace 31.0+ sequence after Game Plan Phase 2:
+Remaining Ace 32.0+ sequence after the Jobs page overhaul:
 1. **Game Plan Phase 3** — Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context.
 2. **Game Plan Phase 4** — "My Writing Style" setting in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
 3. **Game Plan Phase 5** — Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access.
@@ -27,8 +27,50 @@ Remaining Ace 31.0+ sequence after Game Plan Phase 2:
 10. **BD Tab + Prospects Database** + **BD Automation Engine** — `/bd` surface, Prospect table, Indeed + Apollo daily cron, sequence engine via warmed burner domains.
 11. **Docs handoff** — Push ACE docs to GitHub at session end (handoff hygiene).
 
-## What Shipped in Ace 30.0 (2026-05-05)
-Last SHA: 7265ba8
+## What Shipped in Ace 31.0 (2026-05-05)
+Last SHA: f568e04
+
+### Game Plan Phase 2 — Internal Candidate Matching (complete)
+- **Find Matches button + streaming NDJSON panel** — portal-rendered, draggable + resizable, per-entity scoping via FindMatchesContext (panel state survives navigation; opens cached results on return). State hoisted to the providers shell same way the floating thread window is.
+- **Streaming Claude scoring** with 6-band tone (95+ / 90+ / 85+ / 80+ / 70+ / <70) so a 92 reads visibly stronger than an 86 even though both are "green." Hardcoded color names — intentional brand signals identical across all six Court modes.
+- **Score popover** with per-axis breakdown (Title Match / Location Fit / Experience Fit / Compensation Fit / Overall Summary). Bold uppercase headers. Portal-rendered into document.body so it never clips against the panel's overflow-hidden container; positioning recomputes on scroll/resize. Copy button flattens to plaintext for clipboard.
+- **ScoreBadge clickable everywhere** — extracted to `src/components/game-plan/score-badge.tsx`; both the Find Matches panel cards and the /jobs/[id] Matched-tab rows render the same component. `normalizeBreakdown(scoreBreakdown, rationale)` falls back to a synthetic breakdown whose overallSummary echoes the rationale on legacy rows.
+- **Dismiss-X removed; one-click Reject in its place** — bottom-of-card Reject button (Button variant="danger" + UserX icon) on both panel ActionRow and pipeline MatchedRowItem. Same styling as `/applicants`.
+- **One-click Apply** — POSTs `/api/placements` with stage APPLIED, no modal, no nav. Auto-dismisses the card and bumps the per-job tick so the Matched tab refetches.
+- **Job picker on client-context Find Matches** — client targets with 2+ open jobs surface an `awaiting_pick` event and the panel renders a picker; single-open-job clients auto-pick. Picked job re-runs the stream against the chosen role.
+- **CandidateMatch persistence** — Prisma model with score + rationale + scoreBreakdown JSON. Stream upserts on every Claude match event; tenant-scoped; unique on (jobId, candidateId) so re-runs upsert instead of duplicating.
+- **/jobs/[id] Matched tab** — chip on the compact pipeline strip, expanded panel with View Profile / Apply / Submit / Reject row actions, paginated 5/page (Prev / "Page X of Y" / Next, hidden ≤5 rows, page resets to 1 on tab re-open via component unmount/remount).
+- **Live refresh** — FindMatchesContext exposes `notifyMatchesSaved(jobId)` which bumps a per-job tick. Both the page-level Matched count and the tab list refetch from `GET /api/game-plan/matched-candidates?jobId=X` without a server-component reload. Panel calls it after Apply / Reject so the tab updates without leaving the panel host page.
+- **Excludes already-matched on re-run** — preflight `fetchExistingMatchIds` seeds excludeIds before the stream kicks for both initial mount and post-pickJob.
+- **Server-side exclusion of any pipelined candidate** — find-matches route unions Placement candidate cuids (any stage) into the exclude Set after target resolution, so applying / rejecting a candidate prevents Claude from re-scoring them as a "new" match on the next run regardless of what the client sent.
+- **Auto-prune Matched on any Placement** — both the page-level fetch and the matched-candidates API exclude any candidate with a Placement on this job, regardless of stage. So Apply, Submit, Reject — and any future stage move — all converge on the same rule: acted-on candidates leave Matched on the next read.
+- **/api/placements REJECTED branch + jobRfId fix** — route accepts stage=REJECTED (upserts a Placement to stage=rejected when none exists, otherwise bumps an existing row); both APPLIED and REJECTED now pass `job.legacyRfId` instead of hardcoded null so the Placement carries both identity keys (RF-imported job pipeline reads scope by jobRfId; /applicants joins job display via the legacy RF lookup — null jobRfId left rows invisible to both surfaces).
+
+### Job Game Plan chat
+- **AiWorkspace mounted on /jobs/[id]?tab=game-plan** — same `entityType="job"` workspace candidate profiles already use. FindMatchesButton sits to the right of the JobTabs row regardless of which tab is active.
+- **Game Plan card pinned** to the viewport via the existing sticky-top + bounded height + flex-1 internal scroll set used elsewhere.
+- **Auto-scroll fix** — chat scrolls to the latest assistant bubble on every new message append.
+
+### Reply composer / floating thread layout
+- **Body-first reply layout in the floating thread popup** — composer ABOVE quoted history; recruiter lands in the body field with prior thread one scroll away. Inline /mail composer untouched (still pinned to bottom).
+- **Composer body grows to ~60% of popup height** — added `growToFill` prop on MailComposer; FloatingThreadWindow's ThreadDetail passes `growToFill={isFloating}` and the quoted-history pane drops to `basis-2/5 shrink min-h-0`. Editor body autofocus on mount.
+- Composer node lifted out of JSX into a single variable so the same instance moves between the two layout slots without unmount/remount churn (autofocus + draft state survive).
+
+### Sticky composer + content-rule sweep
+- **Em dash + emoji banned across all 5 Claude routes** — system prompts on `/api/ai-workspace`, `/api/mail/ai-compose`, `/api/email/edit-with-claude`, `/api/calls/summary`, `/api/clients/new` carry the rule. Deterministic post-strip on format-email walks the body and removes em dashes and emoji that slipped through.
+- **AI chat bubble green tint dropped** — bubbles render on the neutral surface; only the assistant accent stripe carries brand color.
+- **Minimized-drafts tray docks right of the sidebar** — tray slides flush against the resized sidebar instead of overlapping it; survives sidebar resize via the same width-persistence key the AppShell uses.
+
+### /jobs/[id] two-column layout overhaul
+- **Page restructured** — dropped the 4 stat boxes (Status / Submitted / Interviewing / Hired) at the top; pipeline summary now lives directly above the main content as a compact chip strip (single wrap-friendly row, smaller paddings, text-base count). Two-column grid mirrors the candidate profile (lg:grid-cols-10): left col-7 hosts JobTabs (Job Description default, Game Plan via `?tab=game-plan`) + content; right col-3 is the new EditableJobOverview sidebar.
+- **EditableJobOverview** — single Edit toggle at the card header flips every editable row (Compensation / Location / Openings / Status / Employment Type) into its input simultaneously. One Save commits all changes via a single `updateJobOverview` server-action call. One Cancel discards the entire draft set. Validation runs once on Save, bails on the first failure with a single inline red banner.
+- **Compensation hourly/salary toggle** — Salary / Hourly radio at the top of the comp form; persists via `salaryFrequency` on Job (column already in schema). Display suffixes ` / yr` or ` / hr`. Placeholders adapt to the selected frequency.
+- **"Contingent · Full time" subtitle dropped on /jobs listing** — every BreakPoint job is contingent so the chip duplicated context that's true everywhere; title alone now identifies the job.
+
+### Score popover restoration after schema sync
+- **scoreBreakdown column on CandidateMatch** — additive nullable Json field; `prisma db push` synced live. Page-level fetch + `/api/game-plan/matched-candidates` + find-matches upsert all read/write the column. Legacy rows written before the column existed render the popover with rationale fallback only.
+
+
 
 ### Candidate / Dashboard / App shell polish
 - **Candidate header reorder + bolder tabs** — header layout reshuffled on candidate profiles for better hierarchy; Profile / Game Plan underline tabs bolder for legibility; mail label indent tightened in the same pass.
