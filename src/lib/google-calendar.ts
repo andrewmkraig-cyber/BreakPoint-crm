@@ -307,11 +307,12 @@ export async function updateCalendarEvent(params: {
   durationMin: number;
   location?: string;
   sendUpdates?: boolean;
+  timeZone?: string;
 }): Promise<void> {
   const accessToken = await getFreshAccessToken(params.userId);
   const start = new Date(params.startISO);
   const end = new Date(start.getTime() + params.durationMin * 60 * 1000);
-  const tz = "America/New_York";
+  const tz = params.timeZone || "America/New_York";
   const sendUpdates = params.sendUpdates ? "all" : "none";
   const url = new URL(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(params.eventId)}`,

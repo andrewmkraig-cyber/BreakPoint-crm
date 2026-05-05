@@ -34,12 +34,23 @@ export type InviteParty = {
   body: string;
 };
 
+export type ClientContactSuggestion = {
+  id: string;
+  name: string;
+  email: string;
+  title: string | null;
+};
+
 export type InterviewInviteState =
   | {
       ok: true;
       value: {
         interviewId: string;
         candidateName: string;
+        scheduledAt: string;
+        durationMin: number;
+        clientName: string;
+        clientContacts: ClientContactSuggestion[];
         client: InviteParty;
         candidate: InviteParty;
       };
@@ -156,6 +167,8 @@ export async function getInterviewInviteState(interviewId: string): Promise<Inte
       jobId: true,
       jobRfId: true,
       clientId: true,
+      scheduledAt: true,
+      durationMin: true,
       googleEventIdClient: true,
       googleEventIdCandidate: true,
     },
@@ -244,11 +257,48 @@ export async function getInterviewInviteState(interviewId: string): Promise<Inte
     ? await fetchEvent(user.id, interview.googleEventIdCandidate).catch(() => null)
     : null;
 
+  // Pull every Contact at this client so the To: field on the Client
+  // Invite can autocomplete to real names instead of forcing the
+  // recruiter to remember + retype each address. Only contacts that
+  // have at least one email are useful as suggestions.
+  const clientContacts: ClientContactSuggestion[] = [];
+  if (interview.clientId) {
+    const rows = await prisma.contact.findMany({
+      where: { clientId: interview.clientId, organizationId: org.id },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        name: true,
+        emails: true,
+        currentDesignation: true,
+      },
+      orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+    });
+    for (const r of rows) {
+      const display =
+        [r.firstName, r.lastName].filter(Boolean).join(" ").trim() || r.name?.trim() || "";
+      for (const email of r.emails ?? []) {
+        if (!email) continue;
+        clientContacts.push({
+          id: `${r.id}:${email}`,
+          name: display || email,
+          email,
+          title: r.currentDesignation ?? null,
+        });
+      }
+    }
+  }
+
   return {
     ok: true,
     value: {
       interviewId: interview.id,
       candidateName,
+      scheduledAt: interview.scheduledAt.toISOString(),
+      durationMin: interview.durationMin,
+      clientName,
+      clientContacts,
       client: {
         party: "client",
         hasEvent: Boolean(clientEvent),

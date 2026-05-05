@@ -437,6 +437,7 @@ export type RescheduleInterviewInput = {
   interviewId: string;
   scheduledAt: string;
   durationMin?: number;
+  timeZone?: string;
 };
 
 export async function rescheduleInterview(input: RescheduleInterviewInput): Promise<Result> {
@@ -482,6 +483,7 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
           startISO: when.toISOString(),
           durationMin,
           sendUpdates: ev.notify,
+          timeZone: input.timeZone,
         });
       } catch (e) {
         return {
