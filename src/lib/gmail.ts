@@ -59,7 +59,7 @@ async function refreshAccessToken(refreshToken: string): Promise<{ accessToken: 
 
 // Returns a usable access token for the user. Reuses the stored one if it's
 // still valid for at least 60s; otherwise refreshes and persists the new one.
-async function getFreshAccessToken(userId: string): Promise<string> {
+export async function getFreshAccessToken(userId: string): Promise<string> {
   const acct = await getGoogleAccount(userId);
   if (!acct || !acct.refresh_token) {
     throw new Error(
@@ -1157,4 +1157,67 @@ export async function tagThreadByAddresses({
   ];
 
   await Promise.all(upserts);
+}
+
+// Game Plan Phase 3 — fetches the last message of each tagged Gmail
+// thread (up to 5) and returns a compact { subject, from, snippet }
+// summary for injection into the ai-workspace system prompt. Caller
+// passes a pre-resolved access token so this can run inside the
+// /api/ai-workspace POST without a second token-refresh round trip.
+// Failures on any single thread are swallowed — partial context beats
+// crashing the whole Game Plan response.
+export async function getRecentTaggedEmails(
+  accessToken: string,
+  threadIds: string[],
+  maxCharsPerMessage: number = 400,
+): Promise<{ subject: string; from: string; snippet: string }[]> {
+  if (threadIds.length === 0) return [];
+  const limited = threadIds.slice(0, 5);
+  const results = await Promise.all(
+    limited.map(async (threadId) => {
+      try {
+        const url = new URL(
+          `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}`,
+        );
+        url.searchParams.set("format", "full");
+        const r = await fetch(url.toString(), {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        if (!r.ok) return null;
+        const j = (await r.json()) as GmailThreadResponse;
+        const messages = j.messages ?? [];
+        if (messages.length === 0) return null;
+        const last = messages[messages.length - 1];
+        const subject = headerValue(last.payload?.headers, "Subject") || "(no subject)";
+        const from = headerValue(last.payload?.headers, "From") || "";
+
+        let snippet = "";
+        if (last.payload) {
+          const textPart = findPart(last.payload, "text/plain");
+          if (textPart?.body?.data) {
+            snippet = decodeB64Url(textPart.body.data);
+          } else {
+            const htmlPart = findPart(last.payload, "text/html");
+            if (htmlPart?.body?.data) {
+              snippet = decodeB64Url(htmlPart.body.data)
+                .replace(/<[^>]+>/g, " ")
+                .replace(/\s+/g, " ")
+                .trim();
+            }
+          }
+        }
+        if (!snippet) snippet = last.snippet ?? "";
+        if (snippet.length > maxCharsPerMessage) {
+          snippet = snippet.slice(0, maxCharsPerMessage);
+        }
+        return { subject, from, snippet };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return results.filter(
+    (r): r is { subject: string; from: string; snippet: string } => r !== null,
+  );
 }

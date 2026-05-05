@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { buildClientContext, buildCandidateContext, buildJobContext } from '@/lib/ai-workspace-context'
 import { CLAUDE_MODEL } from '@/lib/claude'
 import { extractUrls, verifyUrls } from '@/lib/url-verifier'
+import { authOptions } from '@/lib/auth'
+import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
+import { getFreshAccessToken, getRecentTaggedEmails } from '@/lib/gmail'
 
 const anthropic = new Anthropic()
 
@@ -35,6 +39,57 @@ export async function POST(req: NextRequest) {
       : entityType === 'job'
         ? await buildJobContext(entityId)
         : await buildCandidateContext(entityId)
+
+  // Phase 3: pull the last 5 tagged Gmail threads for this entity and
+  // surface their last-message subject/from/snippet to Claude. Wrapped
+  // in a try/catch — any failure (no session, no Gmail scope, no tagged
+  // threads, Gmail 5xx) silently degrades to no email context rather
+  // than blocking the Game Plan response.
+  let emailContextBlock = ''
+  try {
+    if (entityType === 'candidate' || entityType === 'client') {
+      const org = await getCurrentOrg()
+      const tags = await prisma.gmailThreadTag.findMany({
+        where: {
+          organizationId: org.id,
+          ...(entityType === 'candidate'
+            ? { candidateId: entityId }
+            : { clientId: entityId }),
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: { threadId: true },
+      })
+      const threadIds = tags.map((t) => t.threadId)
+      if (threadIds.length > 0) {
+        const session = await getServerSession(authOptions)
+        const userEmail = session?.user?.email
+        if (userEmail) {
+          const user = await prisma.user.findUnique({
+            where: { email: userEmail },
+            select: { id: true },
+          })
+          if (user) {
+            const accessToken = await getFreshAccessToken(user.id)
+            const emails = await getRecentTaggedEmails(accessToken, threadIds)
+            if (emails.length > 0) {
+              emailContextBlock =
+                `--- Recent Email Context (last ${emails.length} emails) ---\n` +
+                emails
+                  .map(
+                    (e, i) =>
+                      `[${i + 1}] From: ${e.from}\nSubject: ${e.subject}\n${e.snippet}`,
+                  )
+                  .join('\n\n') +
+                `\n--- End Email Context ---\n\n`
+            }
+          }
+        }
+      }
+    }
+  } catch {
+    // Silent — Game Plan must still work without Gmail context.
+  }
 
   // Formatting rules appended after the entity context so they apply
   // to every Game Plan response without rewriting the per-entity
@@ -68,6 +123,7 @@ export async function POST(req: NextRequest) {
     "**Broader job-board searches to watch:** — bulleted (hyphens, NOT numbered). Frame the section header explicitly as \"pages to browse — these are search results, not pre-vetted roles.\" Each bullet: site name + the specific filter/keyword/location the candidate should browse, with a `[Browse on <Site>](url)` link. LinkedIn / Indeed / ZipRecruiter / Glassdoor / Wellfound / Built In keyword-search pages live HERE, never in Section 1.\n\n" +
     "Section headers (the bolded `**Open Roles:**` / `**Broader job-board searches to watch:**` lines) MUST end with a trailing colon. Always. The colon is a hard rule — every future header for these sections lands with one.\n\n" +
     "If a Section-1 posting closes, drop it — never demote it into Section 2. Section 2 is for aggregator pages, not stale specific roles.\n\n" +
+    emailContextBlock +
     "FORMATTING RULES:\n" +
     "Always format URLs as markdown hyperlinks like [Link Text](url) - never paste raw URLs. " +
     "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
