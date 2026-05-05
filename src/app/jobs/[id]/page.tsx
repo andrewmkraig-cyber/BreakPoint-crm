@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, MapPin, Users, Building2, ExternalLink } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
+import { ArrowLeft, MapPin, Users, ExternalLink } from "lucide-react";
 import {
   normalizeJob,
   flattenPipeline,
@@ -239,21 +238,32 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         <ArrowLeft className="h-3 w-3" /> Back to jobs
       </Link>
 
-      <PageHeader
-        eyebrow={job.company || "Client"}
-        title={job.title}
-        description={[job.jobType, job.employmentType, job.location].filter(Boolean).join(" · ")}
-        actions={
-          clientSlug ? (
+      {/* Inline header (PageHeader-shaped but tuned for /jobs/[id]):
+          - eyebrow is the client name and links to the client profile
+            when we have a slug, replacing the standalone "Client
+            profile" pill button
+          - title font dropped one tier (4xl → 3xl) and eyebrow bumped
+            (xs → sm) so the client name reads as a real anchor, not
+            a tiny caption
+          - description row removed because the same job-type / location
+            lives in the Overview card directly below */}
+      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          {clientSlug ? (
             <Link
               href={`/clients/${clientSlug}`}
-              className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg"
+              className="text-sm font-semibold uppercase tracking-widest text-court-accent transition hover:underline"
             >
-              <Building2 className="h-3 w-3" /> Client profile
+              {job.company || "Client"}
             </Link>
-          ) : null
-        }
-      />
+          ) : (
+            <div className="text-sm font-semibold uppercase tracking-widest text-court-accent">
+              {job.company || "Client"}
+            </div>
+          )}
+          <h1 className="mt-1 font-serif text-3xl font-bold text-court-fg">{job.title}</h1>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatusCard isOpen={job.isOpen} />
