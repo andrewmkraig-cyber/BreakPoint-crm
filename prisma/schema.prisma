@@ -49,25 +49,25 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  accounts        Account[]
-  sessions        Session[]
-  actions         ActionLog[]
-  activities      ActivityLog[]
-  agreements      ClientAgreement[]
-  benefitsUpdates ClientBenefits[]
-  benefitsFiles   ClientBenefitsFile[]
-  resumeUploads   ResumeUpload[]
-  candidateResumes CandidateResume[]
-  placements      Placement[]
-  jobOverrides     JobOverride[]
-  candidates      Candidate[]
-  interviews      Interview[]
-  ownedOrganizations Organization[]           @relation("OrganizationOwner")
-  memberships        OrganizationMembership[]
-  profile            UserProfile?
+  accounts              Account[]
+  sessions              Session[]
+  actions               ActionLog[]
+  activities            ActivityLog[]
+  agreements            ClientAgreement[]
+  benefitsUpdates       ClientBenefits[]
+  benefitsFiles         ClientBenefitsFile[]
+  resumeUploads         ResumeUpload[]
+  candidateResumes      CandidateResume[]
+  placements            Placement[]
+  jobOverrides          JobOverride[]
+  candidates            Candidate[]
+  interviews            Interview[]
+  ownedOrganizations    Organization[]           @relation("OrganizationOwner")
+  memberships           OrganizationMembership[]
+  profile               UserProfile?
   // Phase 5A.4: lists the user has created. Inverse of
   // CandidateList.createdBy.
-  createdCandidateLists CandidateList[]      @relation("CandidateListCreatedBy")
+  createdCandidateLists CandidateList[]          @relation("CandidateListCreatedBy")
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -106,21 +106,21 @@ model VerificationToken {
 // ---- App state ----
 
 model EmailTemplate {
-  id          String   @id @default(cuid())
-  name        String
-  subject     String
-  body        String   @db.Text
-  trigger     String?  // e.g. "candidate_submitted", "interview_scheduled"
-  audience    String?  // "client" | "candidate"
+  id        String   @id @default(cuid())
+  name      String
+  subject   String
+  body      String   @db.Text
+  trigger   String? // e.g. "candidate_submitted", "interview_scheduled"
+  audience  String? // "client" | "candidate"
   // Coarse-grained category used by composer filters. Interview composers
   // surface every template with category="interview", regardless of trigger,
   // so recruiters can pick any interview-flavored template (client
   // confirmation, candidate prep, legacy confirmation, or any future
   // variants) from one dropdown.
-  category    String?  // "interview" | "submittal" | "offer" | "rejection" | "reference"
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  category  String? // "interview" | "submittal" | "offer" | "rejection" | "reference"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([trigger])
   @@index([category])
@@ -134,10 +134,10 @@ model Setting {
 
 // Local cache for KPI rollups; regenerated periodically.
 model KpiCache {
-  id         String   @id @default(cuid())
-  scope      String   // "user:<id>" | "team"
-  period     String   // "week:2026-W15" | "quarter:2026-Q2"
-  metrics    Json
+  id          String   @id @default(cuid())
+  scope       String // "user:<id>" | "team"
+  period      String // "week:2026-W15" | "quarter:2026-Q2"
+  metrics     Json
   refreshedAt DateTime @default(now())
 
   @@unique([scope, period])
@@ -146,14 +146,14 @@ model KpiCache {
 model ActionLog {
   id             String   @id @default(cuid())
   userId         String
-  actionType     String   // "email_sent" | "call_made" | "note_added" | "status_change" | "stage_change" | "submit" | "reject" | "keep" | "schedule_interview"
-  subjectType    String   // "candidate" | "job" | "client" | "contact"
+  actionType     String // "email_sent" | "call_made" | "note_added" | "status_change" | "stage_change" | "submit" | "reject" | "keep" | "schedule_interview"
+  subjectType    String // "candidate" | "job" | "client" | "contact"
   subjectId      String
   metadata       Json?
-  organizationId String 
+  organizationId String
   createdAt      DateTime @default(now())
 
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
@@ -167,8 +167,8 @@ model ActionLog {
 // separate object-store dependency. Can swap to Vercel Blob later if volume grows.
 model ClientAgreement {
   id               String    @id @default(cuid())
-  clientRfId       Int       // RecruiterFlow client/company id (Phase 5: drop)
-  clientId         String?   // cuid FK to Client — backfilled in Phase 0
+  clientRfId       Int // RecruiterFlow client/company id (Phase 5: drop)
+  clientId         String? // cuid FK to Client — backfilled in Phase 0
   filename         String
   mimeType         String
   size             Int
@@ -180,10 +180,10 @@ model ClientAgreement {
   // re-summarize every view; cleared when the user re-generates or deletes.
   summary          String?   @db.Text
   summaryUpdatedAt DateTime?
-  organizationId   String 
+  organizationId   String
 
-  uploadedBy   User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([clientRfId, uploadedAt])
@@ -200,10 +200,10 @@ model ClientBenefits {
   body           String   @db.Text
   updatedById    String
   updatedAt      DateTime @updatedAt
-  organizationId String 
+  organizationId String
 
-  updatedBy    User          @relation(fields: [updatedById], references: [id], onDelete: Cascade)
-  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  updatedBy    User         @relation(fields: [updatedById], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
@@ -220,17 +220,17 @@ model ClientBenefitsFile {
   filename       String
   mimeType       String
   size           Int
-  blobUrl        String?  // legacy Vercel Blob URL; nullable for new chunked rows
+  blobUrl        String? // legacy Vercel Blob URL; nullable for new chunked rows
   blobPathname   String?
-  data           Bytes?   // primary storage for chunk-assembled files
+  data           Bytes? // primary storage for chunk-assembled files
   uploadComplete Boolean  @default(true)
   uploadedById   String
   uploadedAt     DateTime @default(now())
 
-  organizationId String 
+  organizationId String
 
-  uploadedBy   User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([clientRfId, uploadedAt])
@@ -243,47 +243,47 @@ model ClientBenefitsFile {
 // offer → pending_start → hired; the previous stages' columns stick around so
 // the full placement history is on one row.
 model Placement {
-  id                    String    @id @default(cuid())
+  id            String  @id @default(cuid())
   // Exactly one of candidateRfId / candidateId is set. App-layer invariant,
   // not enforced at the DB level — Postgres can't express XOR constraints
   // across nullable columns. RF candidates keep using candidateRfId; Ace-
   // local candidates use candidateId (cuid) and leave candidateRfId null.
-  candidateRfId         Int?
-  candidateId           String?
-  jobRfId               Int?      // Phase 2: nullable — Ace-native Jobs leave this null
-  jobId                 String?   // cuid FK to Job — backfilled in Phase 0
-  clientRfId            Int?      // Phase 2: nullable — Ace-native Clients leave this null
-  clientId              String?   // cuid FK to Client — backfilled in Phase 0
-  stage                 String    // "offer" | "pending_start" | "hired"
+  candidateRfId Int?
+  candidateId   String?
+  jobRfId       Int? // Phase 2: nullable — Ace-native Jobs leave this null
+  jobId         String? // cuid FK to Job — backfilled in Phase 0
+  clientRfId    Int? // Phase 2: nullable — Ace-native Clients leave this null
+  clientId      String? // cuid FK to Client — backfilled in Phase 0
+  stage         String // "offer" | "pending_start" | "hired"
 
   // Offer details
-  offerReceivedAt       DateTime?
-  offerSalary           Int?      // annual base in whole currency units
-  offerCurrency         String?   @default("USD")
-  offerTitle            String?
-  offerStartDate        DateTime?
-  offerNotes            String?   @db.Text
+  offerReceivedAt DateTime?
+  offerSalary     Int? // annual base in whole currency units
+  offerCurrency   String?   @default("USD")
+  offerTitle      String?
+  offerStartDate  DateTime?
+  offerNotes      String?   @db.Text
 
   // Placement (offer accepted, fee locked) details
-  placedAt              DateTime?
-  acceptedSalary        Int?
-  acceptedCurrency      String?   @default("USD")
-  feePercentage         Float?
-  feeTotal              Int?
-  minFee                Int?
-  guaranteePeriodDays   Int?
-  billingContactName    String?
-  billingContactEmail   String?
+  placedAt            DateTime?
+  acceptedSalary      Int?
+  acceptedCurrency    String?   @default("USD")
+  feePercentage       Float?
+  feeTotal            Int?
+  minFee              Int?
+  guaranteePeriodDays Int?
+  billingContactName  String?
+  billingContactEmail String?
   // Multiple billing contacts per placement, stored as a JSON array of
   // { name, email } objects. We mirror the first entry into the legacy
   // billingContactName / billingContactEmail columns above so the Pipeline
   // table and any other single-contact reader keeps working without a
   // wave of call-site updates.
-  billingContacts       Json?
-  hiringManagerName     String?
-  hiringManagerEmail    String?
-  expectedStartDate     DateTime?
-  placementNotes        String?   @db.Text
+  billingContacts     Json?
+  hiringManagerName   String?
+  hiringManagerEmail  String?
+  expectedStartDate   DateTime?
+  placementNotes      String?   @db.Text
 
   // Hired (start confirmed) details
   startConfirmedAt      DateTime?
@@ -295,7 +295,7 @@ model Placement {
   // True if the last stage change was successfully pushed to RF. Currently
   // always false because RF /external has no stage-change endpoint; the UI
   // shows an "(Ace only)" badge when this is false.
-  syncedToRf            Boolean   @default(false)
+  syncedToRf Boolean @default(false)
 
   // How the candidate first landed on this job. Set on the row's first
   // write and not touched by later stage moves. Examples:
@@ -304,17 +304,17 @@ model Placement {
   //   "careers_form"       — inbound from the public apply link
   //   "rf_import"          — pre-existing RF stage_name carried in
   // null means the source wasn't recorded (older rows).
-  source                String?
+  source String?
 
-  createdById           String
-  organizationId        String 
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime  @updatedAt
-  createdBy             User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  candidate             Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  job                   Job?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  client                Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdById    String
+  organizationId String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  createdBy      User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  candidate      Candidate?   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job            Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  client         Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([candidateRfId, jobRfId])
   @@unique([candidateId, jobRfId])
@@ -332,25 +332,25 @@ model Placement {
 // NOT populated at create time; it's reserved for a future manual-pull or
 // admin-tool scenario, not for automatic sync.
 model Candidate {
-  id                  String    @id @default(cuid())
-  rfId                Int?      @unique
+  id   String @id @default(cuid())
+  rfId Int?   @unique
 
   firstName           String
   lastName            String?
-  email               String?   @unique
+  email               String?  @unique
   phone               String?
   currentDesignation  String?
   currentOrganization String?
   location            String?
   linkedinProfile     String?
-  skills              String[]  @default([])
+  skills              String[] @default([])
   // Free-form tags + RF attributes normalized to strings (e.g. "kept",
   // "keep"). Used by the profile chips and the keep filter.
-  tags                String[]  @default([])
+  tags                String[] @default([])
   // RF expected-salary blob { number, currency } kept as Json so we don't
   // have to split it into columns just to preserve the display shape.
   expectedSalary      Json?
-  notes               String?   @db.Text
+  notes               String?  @db.Text
   experience          Json?
   education           Json?
   // RF-imported candidates get the original payload stashed here so profile
@@ -361,29 +361,29 @@ model Candidate {
 
   // Resume copied from the ResumeUpload staging row on save. Kept in the
   // same row so the profile page can stream it back with a single query.
-  resumeFilename      String?
-  resumeMimeType      String?
-  resumeSize          Int?
-  resumeData          Bytes?
-  resumeUploadedAt    DateTime?
+  resumeFilename   String?
+  resumeMimeType   String?
+  resumeSize       Int?
+  resumeData       Bytes?
+  resumeUploadedAt DateTime?
 
-  createdById         String
-  organizationId      String 
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
+  createdById    String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  createdBy           User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  placements          Placement[]
-  interviews          Interview[]
+  createdBy       User                      @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  placements      Placement[]
+  interviews      Interview[]
   // Phase 5A.5.a: now 1:N — multiple resume versions per candidate.
-  resumes             CandidateResume[]
+  resumes         CandidateResume[]
   // Phase 5A.4: candidate-list memberships. Cascade-delete on the
   // membership side so removing a candidate cleans up their list
   // memberships without affecting the lists themselves.
-  listMemberships     CandidateListMembership[]
-  gmailTags           GmailThreadTag[]
-  matches             CandidateMatch[]
+  listMemberships CandidateListMembership[]
+  gmailTags       GmailThreadTag[]
+  matches         CandidateMatch[]
 
   @@index([email])
   @@index([createdById, createdAt])
@@ -433,10 +433,10 @@ model CandidateResume {
   redactedMimeType String?
   redactedSize     Int?
   redactedAt       DateTime?
-  organizationId   String 
+  organizationId   String
 
-  uploadedBy   User          @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  candidate    Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  candidate    Candidate?   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
@@ -448,26 +448,26 @@ model CandidateResume {
 // is scoped. We upsert Placement.stage = "interviewing" at create time so the
 // pipeline reflects the move.
 model Interview {
-  id              String    @id @default(cuid())
-  candidateRfId   Int?
-  candidateId     String?
-  jobRfId         Int?      // Phase 2: nullable — Ace-native Jobs leave this null
-  jobId           String?   // cuid FK to Job — backfilled in Phase 0
-  clientRfId      Int?      // Phase 2: nullable — Ace-native Clients leave this null
-  clientId        String?   // cuid FK to Client — backfilled in Phase 0
-  scheduledAt     DateTime
-  durationMin     Int       @default(30)
-  type            String    // "phone_screen" | "video" | "in_person"
-  meetLink        String?
-  clientAttendees Json?     // [{ id?: number, name: string, email: string }]
-  candidatePhone  String?
+  id                     String   @id @default(cuid())
+  candidateRfId          Int?
+  candidateId            String?
+  jobRfId                Int? // Phase 2: nullable — Ace-native Jobs leave this null
+  jobId                  String? // cuid FK to Job — backfilled in Phase 0
+  clientRfId             Int? // Phase 2: nullable — Ace-native Clients leave this null
+  clientId               String? // cuid FK to Client — backfilled in Phase 0
+  scheduledAt            DateTime
+  durationMin            Int      @default(30)
+  type                   String // "phone_screen" | "video" | "in_person"
+  meetLink               String?
+  clientAttendees        Json? // [{ id?: number, name: string, email: string }]
+  candidatePhone         String?
   // Street address for in_person interviews. Passed straight to Google
   // Calendar's event.location field so the native invite renders the
   // address (+ a Map link) inline.
-  location        String?
-  notes           String?   @db.Text
-  status          String    @default("scheduled") // scheduled | completed | cancelled | rescheduled
-  source          String    @default("ace_scheduled") // ace_scheduled | client_scheduled
+  location               String?
+  notes                  String?  @db.Text
+  status                 String   @default("scheduled") // scheduled | completed | cancelled | rescheduled
+  source                 String   @default("ace_scheduled") // ace_scheduled | client_scheduled
   // Google Calendar event id on the creator's primary calendar. The event
   // is created with just the creator at schedule time; the client and
   // candidate are added as attendees later via their respective email
@@ -485,16 +485,16 @@ model Interview {
   // events share one Meet URL; users from either event land in the same room.
   meetConferenceId       String?
 
-  createdById     String
-  organizationId  String 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdById    String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  createdBy       User          @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  candidate       Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  job             Job?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  client          Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  candidate    Candidate?   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job          Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([candidateRfId, scheduledAt])
   @@index([candidateId, scheduledAt])
@@ -540,10 +540,10 @@ model JobOverride {
   updatedAt      DateTime @updatedAt
   createdAt      DateTime @default(now())
   updatedById    String?
-  organizationId String 
+  organizationId String
 
-  updatedBy    User?         @relation(fields: [updatedById], references: [id], onDelete: SetNull)
-  job          Job?          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  updatedBy    User?        @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+  job          Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
@@ -580,7 +580,7 @@ model SmsMessage {
 }
 
 model CallLog {
-  id             String         @id @default(cuid())
+  id             String          @id @default(cuid())
   // Nullable so webhooks can store calls from unknown numbers, same
   // rationale as SmsMessage above.
   candidateId    String?
@@ -595,7 +595,7 @@ model CallLog {
   status         String
   recordingUrl   String?
   krispcallId    String?
-  createdAt      DateTime       @default(now())
+  createdAt      DateTime        @default(now())
   transcript     CallTranscript?
 
   @@index([organizationId])
@@ -701,12 +701,12 @@ model Job {
   //   JobOverride.description > Job.description > raw.description
   description      String?   @db.Text
   raw              Json?
-  organizationId   String 
+  organizationId   String
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   override     JobOverride?
   placements   Placement[]
   interviews   Interview[]
@@ -767,11 +767,11 @@ model Contact {
   addedAt            DateTime?
   lastActivityAt     DateTime?
   raw                Json?
-  organizationId     String 
+  organizationId     String
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  client       Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
@@ -798,24 +798,43 @@ model Organization {
   owner       User                     @relation("OrganizationOwner", fields: [ownerId], references: [id])
   memberships OrganizationMembership[]
 
-  candidates          Candidate[]
-  jobs                Job[]
-  clients             Client[]
-  contacts            Contact[]
-  placements          Placement[]
-  interviews          Interview[]
-  clientAgreements    ClientAgreement[]
-  clientBenefits      ClientBenefits[]
-  clientBenefitsFiles ClientBenefitsFile[]
-  candidateResumes    CandidateResume[]
-  jobOverrides        JobOverride[]
-  actionLogs          ActionLog[]
-  activityLogs        ActivityLog[]
+  candidates           Candidate[]
+  jobs                 Job[]
+  clients              Client[]
+  contacts             Contact[]
+  placements           Placement[]
+  interviews           Interview[]
+  clientAgreements     ClientAgreement[]
+  clientBenefits       ClientBenefits[]
+  clientBenefitsFiles  ClientBenefitsFile[]
+  candidateResumes     CandidateResume[]
+  jobOverrides         JobOverride[]
+  actionLogs           ActionLog[]
+  activityLogs         ActivityLog[]
   // Phase 5A.4: per-org candidate lists. Cascade-delete on the list
   // side so deleting an org tears down its lists too.
-  candidateLists      CandidateList[]
-  gmailTags           GmailThreadTag[]
-  candidateMatches    CandidateMatch[]
+  candidateLists       CandidateList[]
+  gmailTags            GmailThreadTag[]
+  candidateMatches     CandidateMatch[]
+  personalTrainerRules PersonalTrainerRule[]
+}
+
+// Personal Trainer rules — Andrew-curated standing instructions injected
+// into every Claude-system-prompt across Ace. Source of truth lives here
+// (Neon); a copy is mirrored to docs/ace/PERSONAL_TRAINER.md on every
+// add/update/delete via the GitHub API for visibility, but writes always
+// hit Neon first. Org-scoped so a future tenant can have its own rule
+// set without affecting BreakPoint Talent's.
+model PersonalTrainerRule {
+  id             String   @id @default(cuid())
+  organizationId String
+  text           String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
 }
 
 // Phase 5A.4: per-org candidate lists. Recruiter-curated buckets of
@@ -919,16 +938,16 @@ model OrganizationMembership {
 }
 
 model GmailThreadTag {
-  id             String    @id @default(cuid())
+  id             String   @id @default(cuid())
   threadId       String
   candidateId    String?
   clientId       String?
   organizationId String
-  createdAt      DateTime  @default(now())
+  createdAt      DateTime @default(now())
 
-  candidate    Candidate?    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  client       Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  candidate    Candidate?   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([threadId, candidateId])
   @@unique([threadId, clientId])

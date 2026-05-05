@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 
 export const dynamic = "force-dynamic";
 // Sonnet on a moderate-size body usually completes in 2–8s; 60s is the
@@ -67,19 +69,20 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
       ? "The input is HTML. Return valid HTML using the same structural tags found in the input (<p>, <br>, <strong>, <em>, <u>, <ul>, <ol>, <li>, <a>, <blockquote>). Do not wrap in <html> or <body>. Do not add inline styles."
       : "The input is plain text. Return plain text with paragraph breaks. Preserve any **bold** or __underline__ markers exactly.";
 
-  const system = [
-    "You are an email-revision assistant for a recruiter at BreakPoint Talent.",
-    `Edit instruction: ${EDIT_INSTRUCTIONS[payload.editType]}`,
-    "",
-    "Hard rules:",
-    "- Return ONLY the revised email body. No preamble, no commentary, no markdown code fences.",
-    "- Preserve every merge field token EXACTLY as it appears: tokens shaped like {{candidate.first_name}} (double curly braces) and [Candidate First Name] (square brackets) MUST be kept verbatim. Do not rephrase, translate, reorder, or remove them.",
-    "- Do NOT add a signature block. The application appends the recruiter's signature automatically.",
-    "- If a signature block already exists at the bottom of the input (multi-line block with a name + title + contact info), leave those signature lines exactly as-is. Do not edit them.",
-    "- Do NOT add a 'Subject:' line.",
-    "- Do NOT invent greetings the user didn't write. If they wrote one, you may revise its tone but keep the same recipient.",
-    formatRule,
-  ].join("\n");
+  const org = await getCurrentOrg();
+  const trainerBlock = await buildPersonalTrainerBlock(org.id);
+
+  const system =
+    [
+      "You are an email-revision assistant for a recruiter at BreakPoint Talent.",
+      `Edit instruction: ${EDIT_INSTRUCTIONS[payload.editType]}`,
+      "",
+      "Hard rules:",
+      "- Return ONLY the revised email body. No preamble, no commentary, no markdown code fences.",
+      "- If a signature block already exists at the bottom of the input (multi-line block with a name + title + contact info), leave those signature lines exactly as-is. Do not edit them.",
+      "- Do NOT add a 'Subject:' line.",
+      formatRule,
+    ].join("\n") + trainerBlock;
 
   try {
     const response = await anthropic.messages.create({

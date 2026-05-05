@@ -8,6 +8,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { findClientByDomain, normalizeDomainKey } from "@/lib/clients";
+import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 
 type Result<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -245,6 +246,8 @@ function stripHtmlToText(html: string): string {
 
 async function extractFieldsFromHomepage(url: string, pageText: string): Promise<WebsiteParseFields> {
   const anthropic = getClaude();
+  const org = await getCurrentOrg();
+  const trainerBlock = await buildPersonalTrainerBlock(org.id);
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 800,
@@ -256,8 +259,8 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
     ],
     system:
       "You extract company fields from a website homepage for a recruiting CRM. " +
-      "You return strict JSON only. You never fabricate fields — if a value isn't clearly present, return null. " +
-      "Never use em dashes (—). Use a hyphen (-) instead. Always.",
+      "You return strict JSON only." +
+      trainerBlock,
     messages: [
       {
         role: "user",

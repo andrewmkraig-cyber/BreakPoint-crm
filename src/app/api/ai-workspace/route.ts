@@ -8,6 +8,7 @@ import { extractUrls, verifyUrls } from '@/lib/url-verifier'
 import { authOptions } from '@/lib/auth'
 import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
 import { getFreshAccessToken, getRecentTaggedEmails } from '@/lib/gmail'
+import { buildPersonalTrainerBlock } from '@/lib/personal-trainer'
 
 const anthropic = new Anthropic()
 
@@ -33,6 +34,11 @@ export const maxDuration = 300
 export async function POST(req: NextRequest) {
   const { entityType, entityId, userMessage } = await req.json()
 
+  // Resolve tenant once up front. Used both for the Gmail-context
+  // lookup below and for the Personal Trainer rules block appended at
+  // the end of the system prompt.
+  const org = await getCurrentOrg()
+
   const baseSystemPrompt =
     entityType === 'client'
       ? await buildClientContext(entityId)
@@ -48,7 +54,6 @@ export async function POST(req: NextRequest) {
   let emailContextBlock = ''
   try {
     if (entityType === 'candidate' || entityType === 'client') {
-      const org = await getCurrentOrg()
       const tags = await prisma.gmailThreadTag.findMany({
         where: {
           organizationId: org.id,
@@ -125,12 +130,16 @@ export async function POST(req: NextRequest) {
     "If a Section-1 posting closes, drop it — never demote it into Section 2. Section 2 is for aggregator pages, not stale specific roles.\n\n" +
     emailContextBlock +
     "FORMATTING RULES:\n" +
-    "Always format URLs as markdown hyperlinks like [Link Text](url) - never paste raw URLs. " +
     "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
     "hyphen bullets for items, and descriptive link text instead of full URLs. " +
-    "Keep responses scannable and well-organized.\n\n" +
-    "Never use emojis anywhere in your response. Never.\n\n" +
-    "Never use em dashes (—). Use a hyphen (-) instead. Always."
+    "Keep responses scannable and well-organized."
+
+  // Personal Trainer rules — Andrew-curated standing instructions
+  // (no em dashes, no emojis, no signoff, freshness phrasing, voice
+  // rules, etc.) sourced from Settings > Personal Trainer. Appended
+  // last so they sit closest to the model's response and override any
+  // earlier prompt that drifts.
+  const fullSystemPrompt = systemPrompt + (await buildPersonalTrainerBlock(org.id))
 
   // Persist the new user message first so the POST is recoverable if
   // something downstream blows up — the recruiter's question is never lost.
@@ -192,7 +201,7 @@ export async function POST(req: NextRequest) {
           name: "web_search",
         },
       ],
-      system: systemPrompt,
+      system: fullSystemPrompt,
       messages,
     })
     // Server-side web_search returns a multi-block response:

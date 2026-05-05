@@ -17,6 +17,12 @@ import { getUserBrandingProfile } from "@/lib/signature";
 import { ConnectorsView } from "@/app/settings/connectors-view";
 import { NotificationSoundsView } from "@/app/settings/sounds-view";
 import { getAllConnectorStatuses } from "@/lib/connectors";
+import { PersonalTrainerView } from "@/app/settings/personal-trainer-view";
+import {
+  getRules,
+  seedDefaultRules,
+} from "@/app/settings/personal-trainer-actions";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +44,13 @@ export default async function SettingsPage() {
   // instead of the sum.
   const sessionUserId = (session?.user as { id?: string } | undefined)?.id ?? null;
   const connectors = await getAllConnectorStatuses(sessionUserId);
+
+  // Personal Trainer: seed defaults on first load (idempotent — no-op
+  // if the org already has rules), then fetch the current list to hand
+  // to the client view.
+  const org = await getCurrentOrg();
+  await seedDefaultRules(org.id);
+  const personalTrainerRules = await getRules(org.id);
 
   const rows: TemplateRow[] = templates.map((t) => ({
     id: t.id,
@@ -86,12 +99,13 @@ export default async function SettingsPage() {
   }
 
   const SECTIONS = [
-    { id: "appearance",    label: "Appearance" },
-    { id: "notifications", label: "Notifications" },
-    { id: "connectors",    label: "Connectors" },
-    { id: "email",         label: "Email" },
-    { id: "branding",      label: "Branding" },
-    { id: "templates",     label: "Templates" },
+    { id: "appearance",        label: "Appearance" },
+    { id: "notifications",     label: "Notifications" },
+    { id: "connectors",        label: "Connectors" },
+    { id: "email",             label: "Email" },
+    { id: "branding",          label: "Branding" },
+    { id: "templates",         label: "Templates" },
+    { id: "personal-trainer",  label: "Personal Trainer" },
   ];
 
   return (
@@ -191,6 +205,14 @@ export default async function SettingsPage() {
           description="Reusable subject + body. Use the Insert Field picker to add merge fields."
         >
           <TemplatesView initial={rows} />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          id="personal-trainer"
+          title="Personal Trainer"
+          description="Standing rules injected into every Claude response across Ace."
+        >
+          <PersonalTrainerView orgId={org.id} initialRules={personalTrainerRules} />
         </CollapsibleSection>
       </div>
     </div>

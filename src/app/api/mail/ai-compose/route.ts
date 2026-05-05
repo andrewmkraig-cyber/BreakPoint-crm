@@ -5,6 +5,8 @@ import { authOptions } from "@/lib/auth";
 import { CLAUDE_MODEL } from "@/lib/claude";
 import { prisma } from "@/lib/prisma";
 import { getGmailThread } from "@/lib/gmail";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 
 export const dynamic = "force-dynamic";
 // Claude Opus on a moderate context can take 5–15s. 60s leaves room
@@ -82,22 +84,26 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
   const senderTitle = user.profile?.jobTitle?.trim() || "";
   const includeSubject = Boolean(payload.includeSubject);
 
+  // Personal Trainer rules — appended last so the standing rules
+  // (no em dashes, no signoff, voice, etc.) ride after the route's
+  // structural prompt logic.
+  const org = await getCurrentOrg();
+  const trainerBlock = await buildPersonalTrainerBlock(org.id);
+
   // Two prompt variants:
   //  - body-only (default): same instructions as before; return raw
   //    HTML the composer drops into the editor.
   //  - body + subject (opt-in): ask Claude to emit a fenced JSON
   //    object {"subject": "...", "bodyHtml": "..."} so we can split
   //    the two pieces cleanly without regex-parsing free text.
-  const system = includeSubject
+  const baseSystem = includeSubject
     ? [
         "You are an email-drafting assistant for a recruiter at BreakPoint Talent.",
         "Write a professional, concise email subject line AND body based on the user's instruction.",
-        "Return STRICT JSON only — no prose, no preamble, no markdown fences. Shape: {\"subject\":\"...\",\"bodyHtml\":\"...\"}.",
+        "Return STRICT JSON only - no prose, no preamble, no markdown fences. Shape: {\"subject\":\"...\",\"bodyHtml\":\"...\"}.",
         "Subject: under 80 characters, no quotation marks, no trailing period.",
         "Body: plain HTML with <p> paragraphs. No <html>/<body> wrapper, no inline styles.",
-        "Do NOT write a signature, closing, or 'Best, Andrew' line in the body. The app auto-appends the signature block.",
         "Do NOT include any greeting line like 'Hi [Name],' UNLESS the user's prompt explicitly addresses a specific person by name; even then, keep it short.",
-        "Never use em dashes (—). Use a hyphen (-) instead. Always.",
         senderName ? `The sender is ${senderName}${senderTitle ? `, ${senderTitle}` : ""}.` : "",
       ]
         .filter(Boolean)
@@ -105,17 +111,16 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
     : [
         "You are an email-drafting assistant for a recruiter at BreakPoint Talent.",
         "Write a professional, concise email body based on the user's instruction.",
-        "The recipient and subject are being supplied separately — write ONLY the body text, nothing else.",
+        "The recipient and subject are being supplied separately - write ONLY the body text, nothing else.",
         "Do NOT include any greeting line like 'Hi [Name],' UNLESS the user's prompt explicitly addresses a specific person by name; even then, keep it short.",
-        "Do NOT write a signature, closing, or 'Best, Andrew' line. The app auto-appends the signature block.",
-        "Do NOT include 'Subject:' — the user sets the subject in a separate field.",
+        "Do NOT include 'Subject:' - the user sets the subject in a separate field.",
         "Write in plain prose with short paragraphs. Use one blank line between paragraphs.",
         "Return the body formatted as plain HTML with <p> paragraphs. No <html>/<body> wrapper, no inline styles.",
-        "Never use em dashes (—). Use a hyphen (-) instead. Always.",
         senderName ? `The sender is ${senderName}${senderTitle ? `, ${senderTitle}` : ""}.` : "",
       ]
         .filter(Boolean)
         .join("\n");
+  const system = baseSystem + trainerBlock;
 
   const userMessage = [
     threadSummary,
