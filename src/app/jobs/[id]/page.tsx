@@ -189,6 +189,14 @@ export default async function JobDetailPage({
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     ),
   );
+  // Explicit select (no `include` shorthand) so we can omit
+  // scoreBreakdown — that column was added in the most recent schema
+  // change but the live DB hasn't been `db:push`-ed yet. SELECTing a
+  // non-existent column crashes the entire server render of /jobs/[id]
+  // ("Server Components render" error in production with the message
+  // omitted). Reading just the established columns keeps the page
+  // up; the score popover falls through to rationale via
+  // normalizeBreakdown when scoreBreakdown is null.
   const candidateMatches = await prisma.candidateMatch.findMany({
     where: {
       jobId: jobRow.id,
@@ -198,7 +206,9 @@ export default async function JobDetailPage({
         : {}),
     },
     orderBy: { score: "desc" },
-    include: {
+    select: {
+      score: true,
+      rationale: true,
       candidate: {
         select: {
           id: true,
@@ -225,7 +235,7 @@ export default async function JobDetailPage({
       location: c.location ?? "",
       score: m.score,
       rationale: m.rationale,
-      scoreBreakdown: m.scoreBreakdown,
+      scoreBreakdown: null,
     };
   });
 

@@ -34,6 +34,10 @@ export async function GET(req: NextRequest) {
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     ),
   );
+  // Explicit select omits scoreBreakdown — see /jobs/[id]/page.tsx for
+  // the full reasoning. Until db:push lands the new column on the
+  // live DB, reading it crashes the response. Popover falls through
+  // to rationale via normalizeBreakdown when scoreBreakdown is null.
   const matches = await prisma.candidateMatch.findMany({
     where: {
       jobId,
@@ -43,7 +47,9 @@ export async function GET(req: NextRequest) {
         : {}),
     },
     orderBy: { score: "desc" },
-    include: {
+    select: {
+      score: true,
+      rationale: true,
       candidate: {
         select: {
           id: true,
@@ -71,10 +77,7 @@ export async function GET(req: NextRequest) {
       location: c.location ?? "",
       score: m.score,
       rationale: m.rationale,
-      // Json column from Prisma — pass through unchanged so the
-      // pipeline-side row type can run the same shape guard the panel
-      // already uses on streamed events.
-      scoreBreakdown: m.scoreBreakdown ?? null,
+      scoreBreakdown: null,
     };
   });
 
