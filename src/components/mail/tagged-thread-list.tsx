@@ -58,9 +58,13 @@ function fetchLabels(): Promise<LabelRow[]> {
   return cachedLabels;
 }
 
-const PAGE_SIZE = 5;
-
-export function TaggedThreadList({ url }: { url: string }) {
+export function TaggedThreadList({
+  url,
+  pageSize = 5,
+}: {
+  url: string;
+  pageSize?: number;
+}) {
   const [rows, setRows] = useState<ThreadRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
@@ -139,10 +143,10 @@ export function TaggedThreadList({ url }: { url: string }) {
   }
 
   const total = rows.length;
-  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const totalPages = Math.ceil(total / pageSize);
   const safePage = Math.min(page, totalPages - 1);
-  const start = safePage * PAGE_SIZE;
-  const end = Math.min(start + PAGE_SIZE, total);
+  const start = safePage * pageSize;
+  const end = Math.min(start + pageSize, total);
   const visible = rows.slice(start, end);
 
   return (

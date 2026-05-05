@@ -33,18 +33,21 @@ export function DeleteClientButton({
   }
 
   if (!confirming) {
-    // Quiet by default: ghost-style text button tucked down at the
-    // bottom of the page. Recruiters rarely delete clients, so the
-    // affordance shouldn't compete with active workflows. Only on
+    // Quiet by default: ghost-style text button pinned to the
+    // viewport's bottom-right corner so it never competes with
+    // active workflows in the middle of the page. Recruiters
+    // rarely delete clients, and on short tabs (Email tab, etc.)
+    // an inline footer button strands itself in the middle of
+    // empty space — fixed positioning sidesteps that. Only on
     // hover does it pick up the danger color so the destructive
     // intent is still legible.
     return (
-      <div className="pt-24 text-right">
+      <div className="fixed bottom-3 right-3 z-30">
         <button
           type="button"
           onClick={() => setConfirming(true)}
           aria-label="Delete client"
-          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 transition hover:bg-red-50 hover:text-red-600"
+          className="inline-flex items-center gap-1 rounded-md bg-court-surface/80 px-2 py-1 text-[11px] font-medium text-court-fg-muted/70 backdrop-blur transition hover:bg-red-50 hover:text-red-600"
         >
           <Trash2 className="h-3 w-3" />
           Delete

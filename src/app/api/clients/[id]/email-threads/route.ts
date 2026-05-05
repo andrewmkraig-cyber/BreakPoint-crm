@@ -55,10 +55,11 @@ export async function GET(
     summaries = [];
   }
 
-  const byId = new Map(summaries.map((s) => [s.threadId, s]));
-  const ordered = threadIds
-    .map((id) => byId.get(id))
-    .filter((s): s is NonNullable<typeof s> => s !== undefined);
+  // Sort by the actual most-recent-message date desc — newest email
+  // at the top.
+  const ordered = [...summaries].sort((a, b) =>
+    (b.dateIso ?? "").localeCompare(a.dateIso ?? ""),
+  );
 
   return NextResponse.json({ threads: ordered });
 }

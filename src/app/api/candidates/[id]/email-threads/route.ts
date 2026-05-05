@@ -49,15 +49,13 @@ export async function GET(
     summaries = [];
   }
 
-  // Preserve the GmailThreadTag.createdAt ordering (most recently
-  // tagged first). Gmail's metadata fetch may reorder due to the
-  // parallel Promise.all.
-  const byId = new Map(summaries.map((s) => [s.threadId, s]));
-  const ordered = threadIds
-    .map((id) => byId.get(id))
-    .filter(
-      (s): s is NonNullable<typeof s> => s !== undefined,
-    );
+  // Sort by the actual most-recent-message date desc — newest email
+  // at the top. GmailThreadTag.createdAt is when we *tagged* the
+  // thread, which is unrelated to the latest message's date once
+  // tags have been around for a while.
+  const ordered = [...summaries].sort((a, b) =>
+    (b.dateIso ?? "").localeCompare(a.dateIso ?? ""),
+  );
 
   return NextResponse.json({ threads: ordered });
 }

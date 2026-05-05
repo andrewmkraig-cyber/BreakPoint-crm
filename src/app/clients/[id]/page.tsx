@@ -544,7 +544,7 @@ export default async function ClientDetailPage({
       ) : tab === "email" ? (
         <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
           <h2 className="mb-3 font-serif text-lg font-semibold text-court-fg">Email</h2>
-          <TaggedThreadList url={`/api/clients/${encodeURIComponent(client.id)}/email-threads`} />
+          <TaggedThreadList url={`/api/clients/${encodeURIComponent(client.id)}/email-threads`} pageSize={10} />
         </section>
       ) : (
         <div className="rounded-xl border border-court-border bg-court-surface p-6 text-sm text-court-fg-muted">
