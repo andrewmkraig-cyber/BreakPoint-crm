@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { MERGE_FIELDS } from "@/lib/merge-fields";
 import { TRIGGER_OPTIONS, labelForTrigger } from "@/app/settings/template-constants";
 import { deleteEmailTemplate, upsertEmailTemplate, type EmailTemplateInput } from "@/app/settings/templates-actions";
-import { setAutoSendCandidateConfirmation } from "@/app/settings/preferences-actions";
 
 export type TemplateRow = {
   id: string;
@@ -23,7 +22,7 @@ export type TemplateRow = {
   updatedAt: string;
 };
 
-type TabId = "active" | "inactive" | "triggers";
+type TabId = "active" | "inactive";
 
 const AUDIENCE_OPTIONS = ["client", "candidate", "internal"] as const;
 const CATEGORY_OPTIONS = ["interview", "submittal", "offer", "rejection", "reference"] as const;
@@ -35,13 +34,7 @@ const CATEGORY_OPTIONS = ["interview", "submittal", "offer", "rejection", "refer
 const FIELD_CLASS =
   "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
-export function TemplatesView({
-  initial,
-  autoSendCandidateConfirmation,
-}: {
-  initial: TemplateRow[];
-  autoSendCandidateConfirmation: boolean;
-}) {
+export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
   const [editing, setEditing] = useState<TemplateRow | "new" | null>(null);
   const [tab, setTab] = useState<TabId>("active");
 
@@ -52,12 +45,12 @@ export function TemplatesView({
     return { active: a, inactive: i };
   }, [initial]);
 
-  const visible = tab === "active" ? active : tab === "inactive" ? inactive : [];
+  const visible = tab === "active" ? active : inactive;
 
   return (
     <div className="space-y-4">
-      {/* Tab strip — Active / Inactive / Triggers. Counts integrated
-          per ACE_DESIGN.md segmented-control rules. */}
+      {/* Sub-tab strip — Active / Inactive. Counts integrated per
+          ACE_DESIGN.md segmented-control rules. */}
       <div className="inline-flex rounded-md border border-court-border bg-court-surface-subtle p-1 text-sm">
         <TabButton active={tab === "active"} onClick={() => setTab("active")}>
           Active ({active.length})
@@ -65,37 +58,28 @@ export function TemplatesView({
         <TabButton active={tab === "inactive"} onClick={() => setTab("inactive")}>
           Inactive ({inactive.length})
         </TabButton>
-        <TabButton active={tab === "triggers"} onClick={() => setTab("triggers")}>
-          Triggers
-        </TabButton>
       </div>
 
-      {tab === "triggers" ? (
-        <TriggersTab autoSend={autoSendCandidateConfirmation} />
-      ) : (
-        <>
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-court-fg-muted">
-              {visible.length === 0
-                ? tab === "active"
-                  ? "No active templates."
-                  : "No inactive templates."
-                : `${visible.length} ${visible.length === 1 ? "template" : "templates"}`}
-            </div>
-            {tab === "active" && (
-              <Button type="button" size="sm" onClick={() => setEditing("new")}>
-                <Plus className="h-3.5 w-3.5" /> New template
-              </Button>
-            )}
-          </div>
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-court-fg-muted">
+          {visible.length === 0
+            ? tab === "active"
+              ? "No active templates."
+              : "No inactive templates."
+            : `${visible.length} ${visible.length === 1 ? "template" : "templates"}`}
+        </div>
+        {tab === "active" && (
+          <Button type="button" size="sm" onClick={() => setEditing("new")}>
+            <Plus className="h-3.5 w-3.5" /> New template
+          </Button>
+        )}
+      </div>
 
-          <ul className="space-y-3">
-            {visible.map((tpl) => (
-              <TemplateCard key={tpl.id} tpl={tpl} onEdit={() => setEditing(tpl)} />
-            ))}
-          </ul>
-        </>
-      )}
+      <ul className="space-y-3">
+        {visible.map((tpl) => (
+          <TemplateCard key={tpl.id} tpl={tpl} onEdit={() => setEditing(tpl)} />
+        ))}
+      </ul>
 
       {editing !== null && (
         <TemplateEditor
@@ -129,60 +113,6 @@ function TabButton({
     >
       {children}
     </button>
-  );
-}
-
-function TriggersTab({ autoSend }: { autoSend: boolean }) {
-  const router = useRouter();
-  const [enabled, setEnabled] = useState(autoSend);
-  const [pending, startTransition] = useTransition();
-
-  function onToggle(next: boolean) {
-    setEnabled(next);
-    startTransition(async () => {
-      const res = await setAutoSendCandidateConfirmation(next);
-      if (!res.ok) {
-        setEnabled(!next);
-        toast.error("Couldn't save trigger", { description: res.error });
-        return;
-      }
-      toast.success(next ? "Auto-send on" : "Auto-send off");
-      router.refresh();
-    });
-  }
-
-  return (
-    <div className="space-y-3">
-      <label className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-court-fg">
-            Auto-send candidate confirmation after submittal
-          </div>
-          <div className="mt-1 text-xs text-court-fg-muted">
-            When on, the &ldquo;BreakPoint Talent has reviewed&hellip;&rdquo; email is sent immediately after a successful client submittal. When off, it lands in your Gmail Drafts for review.
-          </div>
-        </div>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          onClick={() => onToggle(!enabled)}
-          disabled={pending}
-          className={cn(
-            "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-            enabled ? "bg-brand" : "bg-court-fg-muted/40",
-            pending && "opacity-60",
-          )}
-        >
-          <span
-            className={cn(
-              "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
-              enabled ? "translate-x-5" : "translate-x-0.5",
-            )}
-          />
-        </button>
-      </label>
-    </div>
   );
 }
 

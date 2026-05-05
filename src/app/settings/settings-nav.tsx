@@ -16,7 +16,8 @@ export const SETTINGS_CATEGORIES = [
   { slug: "notifications",     label: "Notifications" },
   { slug: "personal-trainer",  label: "Personal Trainer" },
   { slug: "branding",          label: "Branding" },
-  { slug: "templates",         label: "Templates/Triggers" },
+  { slug: "templates",         label: "Templates" },
+  { slug: "triggers",          label: "Triggers" },
   { slug: "connectors",        label: "Connectors" },
 ] as const;
 
