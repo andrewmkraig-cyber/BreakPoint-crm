@@ -206,6 +206,7 @@ export default async function JobDetailPage({
       location: c.location ?? "",
       score: m.score,
       rationale: m.rationale,
+      scoreBreakdown: m.scoreBreakdown,
     };
   });
 

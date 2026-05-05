@@ -731,6 +731,14 @@ model CandidateMatch {
   candidateId    String
   score          Int
   rationale      String   @db.Text
+  // Per-axis breakdown Claude emitted alongside the score (titleMatch,
+  // locationFit, experienceFit, compensationFit, overallSummary). Stored
+  // so the score popover renders the same explanation everywhere the
+  // score is visible — Find Matches panel today, /jobs/[id] Matched tab
+  // and any future surface that references the row. Nullable for legacy
+  // rows written before this column existed; the popover falls back to
+  // rationale when the JSON blob is null.
+  scoreBreakdown Json?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

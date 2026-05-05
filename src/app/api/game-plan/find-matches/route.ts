@@ -353,8 +353,9 @@ export async function POST(req: NextRequest) {
                   candidateId: c.id,
                   score,
                   rationale,
+                  scoreBreakdown,
                 },
-                update: { score, rationale },
+                update: { score, rationale, scoreBreakdown },
               })
               .then((row) => {
                 // eslint-disable-next-line no-console

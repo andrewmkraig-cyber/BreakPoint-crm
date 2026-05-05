@@ -18,6 +18,7 @@ import { StageBadgeFromName } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/rf-payload-shapes";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 import { useFindMatches } from "@/lib/find-matches-context";
+import { ScoreBadge, normalizeBreakdown } from "@/components/game-plan/score-badge";
 
 export type JobPipelineRow = {
   // Can be either the RF numeric id (RF-imported candidates) or a cuid
@@ -36,6 +37,11 @@ export type JobPipelineRow = {
 // from CandidateMatch (find-matches stream upserts), keyed on the
 // candidate's cuid. Score + rationale are the model's, not a stage —
 // Matched lives parallel to the pipeline buckets, not inside them.
+//
+// scoreBreakdown is whatever Prisma returns from the Json column —
+// new rows carry the per-axis breakdown Claude emitted; legacy rows
+// (written before the column existed) carry null and the popover
+// falls back to rendering the rationale.
 export type JobMatchedRow = {
   candidateId: string;
   candidateRfId: number | null;
@@ -45,6 +51,7 @@ export type JobMatchedRow = {
   location: string;
   score: number;
   rationale: string;
+  scoreBreakdown: unknown;
 };
 
 // "Matched" sits next to the pipeline buckets in the tab UI but is
@@ -356,18 +363,6 @@ export function JobPipelineSummary({
   );
 }
 
-// Score color bands. Mirrors the Find Matches panel's scoreTone() so a
-// candidate that scored 92 in the panel reads with the exact same
-// green when surfaced again on the Matched tab.
-function matchScoreTone(score: number): string {
-  if (score >= 95) return "bg-green-400 text-white";
-  if (score >= 90) return "bg-green-500 text-white";
-  if (score >= 85) return "bg-green-600 text-white";
-  if (score >= 80) return "bg-green-700 text-white";
-  if (score >= 70) return "bg-orange-500 text-white";
-  return "bg-gray-400 text-white";
-}
-
 const MATCHED_PAGE_SIZE = 5;
 
 function MatchedTabContent({
@@ -517,14 +512,10 @@ function MatchedRowItem({
             >
               {row.name}
             </Link>
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                matchScoreTone(row.score),
-              )}
-            >
-              {row.score}
-            </span>
+            <ScoreBadge
+              score={row.score}
+              breakdown={normalizeBreakdown(row.scoreBreakdown, row.rationale)}
+            />
           </div>
           {(row.title || row.employer) && (
             <div className="mt-0.5 truncate text-xs text-court-fg-muted">

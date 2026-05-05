@@ -49,6 +49,10 @@ export async function GET(req: NextRequest) {
       location: c.location ?? "",
       score: m.score,
       rationale: m.rationale,
+      // Json column from Prisma — pass through unchanged so the
+      // pipeline-side row type can run the same shape guard the panel
+      // already uses on streamed events.
+      scoreBreakdown: m.scoreBreakdown ?? null,
     };
   });
 
