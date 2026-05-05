@@ -1,10 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
+  Check,
   ChevronRight,
+  Copy,
   ExternalLink,
   GripVertical,
   Loader2,
@@ -684,19 +686,32 @@ function MatchCard({
   );
 }
 
-// Score color buckets (Prompt 3 Item 1):
-//   85-100 → green
-//   70-84  → orange
-//    < 70  → grey
-// Hardcoded color names per the spec — these are intentional brand
-// signals (green = strong, orange = decent, grey = weak) that should
-// read identically across all six Court modes.
+// Score color bands. Six bands so a 92 reads visibly stronger than
+// an 86 even though both are "green". Hardcoded color names per the
+// spec — these are intentional brand signals that should read
+// identically across all six Court modes.
 function scoreTone(score: number): string {
+  if (score >= 95) return "bg-green-400 text-white";
+  if (score >= 90) return "bg-green-500 text-white";
   if (score >= 85) return "bg-green-600 text-white";
+  if (score >= 80) return "bg-green-700 text-white";
   if (score >= 70) return "bg-orange-500 text-white";
   return "bg-gray-400 text-white";
 }
 
+const POPOVER_W = 280;
+const POPOVER_EST_H = 280;
+const POPOVER_PAD = 8;
+
+type PopoverPlacement = { left: number; top: number };
+
+// Score badge + portal-rendered popover. The popover is anchored to
+// the badge's screen rect (getBoundingClientRect) and rendered into
+// document.body via a portal so it never clips against the Find
+// Matches panel's overflow-hidden container — it can also extend
+// past the panel's right edge if there isn't enough room inside.
+// Position recomputes on scroll/resize so the tooltip tracks the
+// badge as the recruiter scrolls the cards list.
 function ScoreBadge({
   score,
   breakdown,
@@ -705,12 +720,59 @@ function ScoreBadge({
   breakdown: ScoreBreakdown;
 }) {
   const [open, setOpen] = useState(false);
-  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [pos, setPos] = useState<PopoverPlacement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  const computePos = useCallback((): PopoverPlacement | null => {
+    const btn = buttonRef.current;
+    if (!btn || typeof window === "undefined") return null;
+    const r = btn.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    // Right-align the popover with the badge's right edge by
+    // default, then clamp horizontally so it never escapes the
+    // viewport.
+    let left = r.right - POPOVER_W;
+    left = Math.max(POPOVER_PAD, Math.min(left, vw - POPOVER_W - POPOVER_PAD));
+    // Prefer below the badge. If there isn't enough room below AND
+    // there's more room above, flip up.
+    const spaceBelow = vh - r.bottom - POPOVER_PAD;
+    const spaceAbove = r.top - POPOVER_PAD;
+    let top: number;
+    if (spaceBelow >= POPOVER_EST_H || spaceBelow >= spaceAbove) {
+      top = r.bottom + POPOVER_PAD;
+    } else {
+      top = Math.max(POPOVER_PAD, r.top - POPOVER_EST_H - POPOVER_PAD);
+    }
+    return { left, top };
+  }, []);
+
+  useEffect(() => {
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    setPos(computePos());
+    const onUpdate = () => setPos(computePos());
+    // Capture-phase scroll listener so we react to scrolling on any
+    // ancestor (including the panel's internal scroll container, not
+    // just window).
+    window.addEventListener("scroll", onUpdate, true);
+    window.addEventListener("resize", onUpdate);
+    return () => {
+      window.removeEventListener("scroll", onUpdate, true);
+      window.removeEventListener("resize", onUpdate);
+    };
+  }, [open, computePos]);
+
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (buttonRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -722,48 +784,67 @@ function ScoreBadge({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
   return (
-    <div ref={wrapRef} className="relative shrink-0">
+    <>
       <button
+        ref={buttonRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
         aria-label={`Score ${score} - click for breakdown`}
+        aria-expanded={open}
         className={cn(
-          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition focus:outline-none focus:ring-2 focus:ring-court-accent/40",
+          "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition focus:outline-none focus:ring-2 focus:ring-court-accent/40",
           scoreTone(score),
         )}
       >
         {score}
       </button>
-      {open && <ScorePopover score={score} breakdown={breakdown} />}
-    </div>
+      {open && pos && typeof document !== "undefined"
+        ? createPortal(
+            <ScorePopover
+              score={score}
+              breakdown={breakdown}
+              pos={pos}
+              ref={popoverRef}
+            />,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
-function ScorePopover({
-  score,
-  breakdown,
-}: {
-  score: number;
-  breakdown: ScoreBreakdown;
-}) {
+const ScorePopover = forwardRef<
+  HTMLDivElement,
+  { score: number; breakdown: ScoreBreakdown; pos: PopoverPlacement }
+>(function ScorePopover({ score, breakdown, pos }, ref) {
   const rows: Array<{ label: string; value: string }> = [
     { label: "Title match", value: breakdown.titleMatch },
     { label: "Location fit", value: breakdown.locationFit },
     { label: "Experience fit", value: breakdown.experienceFit },
     { label: "Compensation fit", value: breakdown.compensationFit },
   ].filter((r) => r.value);
+  const copyText = formatBreakdownAsText(score, breakdown, rows);
   return (
     <div
+      ref={ref}
       role="dialog"
-      className="absolute right-0 top-full z-30 mt-1 w-72 rounded-lg border border-court-border bg-court-surface p-3 shadow-xl"
+      style={{
+        left: pos.left,
+        top: pos.top,
+        width: POPOVER_W,
+        maxHeight: `calc(100vh - ${pos.top + POPOVER_PAD}px)`,
+      }}
+      className="group fixed z-[2000] overflow-y-auto rounded-lg border border-court-border bg-court-surface p-3 shadow-2xl"
     >
-      <div className="flex items-baseline justify-between gap-2">
+      <ScoreCopyButton text={copyText} />
+      <div className="flex items-center gap-2 pr-7">
         <span className={cn("rounded-full px-2.5 py-1 text-sm font-bold", scoreTone(score))}>
           {score}
-        </span>
-        <span className="text-[10px] uppercase tracking-wider text-court-fg-muted">
-          Why this score
         </span>
       </div>
       {breakdown.overallSummary && (
@@ -786,6 +867,55 @@ function ScorePopover({
         </dl>
       )}
     </div>
+  );
+});
+
+// Render the breakdown as plaintext for the clipboard. Mirrors the
+// display order so what the recruiter copies matches what they see.
+function formatBreakdownAsText(
+  score: number,
+  breakdown: ScoreBreakdown,
+  rows: Array<{ label: string; value: string }>,
+): string {
+  const lines: string[] = [];
+  lines.push(`Score: ${score}`);
+  if (breakdown.overallSummary) lines.push(breakdown.overallSummary);
+  if (rows.length > 0) {
+    lines.push("");
+    for (const r of rows) lines.push(`${r.label}: ${r.value}`);
+  }
+  return lines.join("\n");
+}
+
+function ScoreCopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  async function onCopy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard API can fail in non-secure contexts; silent fail
+      // is fine — Ace runs on HTTPS in production and localhost in dev.
+    }
+  }
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        void onCopy();
+      }}
+      aria-label={copied ? "Copied" : "Copy breakdown"}
+      title={copied ? "Copied" : "Copy"}
+      className="absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-court-fg-muted/70 opacity-0 transition group-hover:opacity-100 hover:bg-court-border/40 hover:text-court-fg focus:opacity-100"
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-emerald-600" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" />
+      )}
+    </button>
   );
 }
 
