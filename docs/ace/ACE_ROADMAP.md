@@ -464,6 +464,7 @@ Stage tag, side tag (candidate-facing vs client-facing), bracket+merge syntax, a
 - Background job queue (Job table + Vercel Cron) for any operation over 60 seconds.
 - Postgres tsvector + GIN indexes for fast Boolean search as DB grows.
 - ZDR (Anthropic Zero Data Retention) request on Andrew's API key.
+- Quo setup wizard - guided in-app flow in Settings to connect Quo, configure webhook URL, verify inbound SMS/call routing, and confirm transcription is live.
 
 ### BD Sequencing
 
