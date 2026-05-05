@@ -119,8 +119,7 @@ export function EditableNotes({
             placeholder="Add a note…"
             className="w-full resize-vertical rounded-md border border-transparent bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           />
-          <div className="mt-2 flex items-center justify-between">
-            <span className="text-[11px] text-court-fg-muted">{newNote.length} chars</span>
+          <div className="mt-2 flex items-center justify-end">
             <button
               type="button"
               onClick={onAdd}
