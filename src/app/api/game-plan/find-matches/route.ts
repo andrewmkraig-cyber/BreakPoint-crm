@@ -212,6 +212,35 @@ export async function POST(req: NextRequest) {
   // candidates each call so subsequent pages don't re-rank already-
   // shown rows.
   const exclude = new Set(excludeIds);
+
+  // Server-side guard: any candidate the recruiter has already acted
+  // on for THIS job (Placement at any stage — applied / submitted /
+  // interviewing / offer / hired / rejected / kept) must never be
+  // re-surfaced as a "new" match. The panel already seeds excludeIds
+  // from existing CandidateMatch rows on its own, but those get
+  // pruned once the candidate moves to a pipeline bucket — without
+  // this server-side union, applying or rejecting a candidate would
+  // cause them to reappear on the next Find Matches run as if they
+  // were brand new. Enforced here so the rule survives any client-
+  // side bug or stale cache.
+  //
+  // Scope: target.jobs[0] is the resolved single job for both job-
+  // target and picked-client-target paths. Client-target without a
+  // pick was already short-circuited above (awaitingPick), so this
+  // path always has a concrete jobId.
+  const targetJobId = target.jobs[0]?.id;
+  if (targetJobId) {
+    const placedRows = await prisma.placement.findMany({
+      where: { jobId: targetJobId, organizationId: org.id },
+      select: { candidateId: true },
+    });
+    for (const p of placedRows) {
+      if (typeof p.candidateId === "string" && p.candidateId.length > 0) {
+        exclude.add(p.candidateId);
+      }
+    }
+  }
+
   const filtered = preFilterPool(pool, target)
     .filter((c) => !exclude.has(c.id))
     .slice(0, PRE_FILTER_CAP);
