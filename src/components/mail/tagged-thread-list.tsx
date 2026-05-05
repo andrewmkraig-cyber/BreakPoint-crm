@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useFloatingThread } from "@/lib/floating-thread-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -58,16 +58,20 @@ function fetchLabels(): Promise<LabelRow[]> {
   return cachedLabels;
 }
 
+const PAGE_SIZE = 5;
+
 export function TaggedThreadList({ url }: { url: string }) {
   const [rows, setRows] = useState<ThreadRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [opening, setOpening] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const floatingThread = useFloatingThread();
 
   useEffect(() => {
     let cancelled = false;
     setRows(null);
     setError(null);
+    setPage(0);
     void (async () => {
       try {
         const res = await fetch(url, { cache: "no-store" });
@@ -134,33 +138,69 @@ export function TaggedThreadList({ url }: { url: string }) {
     return <p className="text-sm text-court-fg-muted">No emails on file</p>;
   }
 
+  const total = rows.length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * PAGE_SIZE;
+  const end = Math.min(start + PAGE_SIZE, total);
+  const visible = rows.slice(start, end);
+
   return (
-    <ul className="space-y-1.5">
-      {rows.map((row) => (
-        <li key={row.threadId}>
-          <button
-            type="button"
-            onClick={() => openThread(row.threadId)}
-            disabled={opening === row.threadId}
-            className="flex w-full items-center gap-3 rounded-md border border-court-border bg-court-surface px-3 py-2 text-left transition hover:border-court-accent hover:shadow-sm disabled:opacity-60"
-          >
-            <span className="min-w-0 max-w-[40%] shrink-0 truncate text-xs font-semibold text-court-fg">
-              {parseFromName(row.from)}
-            </span>
-            <span className="min-w-0 flex-1 truncate text-xs text-court-fg-muted">
-              {row.subject}
-            </span>
-            <span className="shrink-0 text-[10px] text-court-fg-muted">
-              {opening === row.threadId ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                formatShortDate(row.dateIso)
-              )}
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div className="space-y-2">
+      <ul className="space-y-1.5">
+        {visible.map((row) => (
+          <li key={row.threadId}>
+            <button
+              type="button"
+              onClick={() => openThread(row.threadId)}
+              disabled={opening === row.threadId}
+              className="flex w-full items-center gap-3 rounded-md border border-court-border bg-court-surface px-3 py-2 text-left transition hover:border-court-accent hover:shadow-sm disabled:opacity-60"
+            >
+              <span className="min-w-0 max-w-[40%] shrink-0 truncate text-xs font-semibold text-court-fg">
+                {parseFromName(row.from)}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-xs text-court-fg-muted">
+                {row.subject}
+              </span>
+              <span className="shrink-0 text-[10px] text-court-fg-muted">
+                {opening === row.threadId ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  formatShortDate(row.dateIso)
+                )}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-[10px] text-court-fg-muted">
+            {start + 1}-{end} of {total}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.max(0, p - 1))}
+              disabled={safePage === 0}
+              aria-label="Newer emails"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-3 w-3" /> Newer
+            </button>
+            <button
+              type="button"
+              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+              disabled={safePage >= totalPages - 1}
+              aria-label="Older emails"
+              className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Older <ChevronRight className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
