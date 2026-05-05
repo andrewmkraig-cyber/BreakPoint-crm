@@ -4,9 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  ChevronDown,
+  ChevronRight,
   ExternalLink,
   GripVertical,
+  Loader2,
   Minus,
   Send,
   Target,
@@ -34,6 +35,14 @@ import { cn } from "@/lib/utils";
 
 type FetchState =
   | { status: "idle" }
+  // Awaiting the recruiter to pick a job from the client's open
+  // roles. Server emits this for client targets with 2+ open jobs.
+  // Render the picker inside the panel; on pick, kick a new stream
+  // with pickedJobId set.
+  | {
+      status: "awaiting_pick";
+      openJobs: ClientOpenJob[];
+    }
   // Streaming: Claude is mid-response, matches are appearing one at
   // a time. expected = how many slots to render skeletons for; the
   // gap between matches.length and expected paints loading cards.
@@ -41,6 +50,8 @@ type FetchState =
       status: "streaming";
       matches: Match[];
       openJobs: ClientOpenJob[];
+      pickedJob: ClientOpenJob | null;
+      excludeIds: string[];
       expected: number;
       page: number;
     }
@@ -50,6 +61,8 @@ type FetchState =
       hasMore: boolean;
       nextPage: number;
       openJobs: ClientOpenJob[];
+      pickedJob: ClientOpenJob | null;
+      excludeIds: string[];
     }
   // Stream broke mid-way. Carry whatever cards we did receive +
   // surface a retry button.
@@ -58,6 +71,8 @@ type FetchState =
       error: string;
       partialMatches: Match[];
       openJobs: ClientOpenJob[];
+      pickedJob: ClientOpenJob | null;
+      excludeIds: string[];
       lastPage: number;
     };
 
@@ -97,61 +112,107 @@ export function FindMatchesPanel() {
 
   // Run a streaming fetch. Used both for the initial load and for
   // "Show 5 more" pagination — each call is a fresh stream.
-  // excludeIds = candidate IDs already shown in earlier pages, so
-  // the server-side ranker doesn't surface duplicates.
+  // excludeIds = candidate IDs already shown OR dismissed, so neither
+  // pagination nor dismissed candidates ever come back.
   const runStream = useCallback(
     async (args: {
       target: MatchTarget;
+      pickedJobId?: string;
       page: number;
       excludeIds: string[];
       previousMatches: Match[];
       previousOpenJobs: ClientOpenJob[];
+      previousPickedJob: ClientOpenJob | null;
       cacheKey: string;
     }) => {
-      const { target, page, excludeIds, previousMatches, previousOpenJobs, cacheKey } =
-        args;
+      const {
+        target,
+        pickedJobId,
+        page,
+        excludeIds,
+        previousMatches,
+        previousOpenJobs,
+        previousPickedJob,
+        cacheKey,
+      } = args;
       // Optimistic streaming state — render PAGE_SIZE skeletons under
       // the previously-loaded cards while Claude scores the next batch.
       let liveMatches: Match[] = [...previousMatches];
       let liveOpenJobs: ClientOpenJob[] = previousOpenJobs;
+      let livePickedJob: ClientOpenJob | null = previousPickedJob;
+      const seenIds = new Set(excludeIds);
+      let liveExcludeIds: string[] = [...excludeIds];
+      let awaitingPickSeen = false;
       setState({
         status: "streaming",
         matches: liveMatches,
         openJobs: liveOpenJobs,
+        pickedJob: livePickedJob,
+        excludeIds: liveExcludeIds,
         expected: liveMatches.length + PAGE_SIZE,
         page,
       });
-      const result = await streamMatches(target, page, excludeIds, {
-        onMeta: (openJobs) => {
-          if (openJobs.length > 0) liveOpenJobs = openJobs;
+      const result = await streamMatches(
+        target,
+        page,
+        excludeIds,
+        pickedJobId ?? null,
+        {
+          onMeta: ({ openJobs, pickedJobLabel }) => {
+            if (openJobs.length > 0) liveOpenJobs = openJobs;
+            // pickedJobLabel comes back when the server narrowed the
+            // target to a specific job (either auto-picked single-job
+            // client OR an explicit pickedJobId). Reflect it in
+            // pickedJob so the header subtitle updates.
+            if (pickedJobLabel && pickedJobId) {
+              livePickedJob =
+                liveOpenJobs.find((j) => j.jobId === pickedJobId) ?? livePickedJob;
+            } else if (pickedJobLabel && liveOpenJobs.length === 1) {
+              livePickedJob = liveOpenJobs[0];
+            }
+          },
+          onAwaitingPick: () => {
+            awaitingPickSeen = true;
+            setState({ status: "awaiting_pick", openJobs: liveOpenJobs });
+          },
+          onMatch: (m) => {
+            if (seenIds.has(m.candidateId)) return;
+            seenIds.add(m.candidateId);
+            liveMatches = [...liveMatches, m];
+            liveExcludeIds = [...liveExcludeIds, m.candidateId];
+            setState({
+              status: "streaming",
+              matches: liveMatches,
+              openJobs: liveOpenJobs,
+              pickedJob: livePickedJob,
+              excludeIds: liveExcludeIds,
+              expected: previousMatches.length + PAGE_SIZE,
+              page,
+            });
+          },
+          onEnd: ({ hasMore }) => {
+            if (awaitingPickSeen) return; // already in awaiting_pick state
+            const cached: CachedFetchState = {
+              matches: liveMatches,
+              hasMore,
+              nextPage: page + 1,
+              openJobs: liveOpenJobs,
+              pickedJob: livePickedJob,
+              excludeIds: liveExcludeIds,
+            };
+            setCachedFor(cacheKey, cached);
+            setState({ status: "ready", ...cached });
+          },
         },
-        onMatch: (m) => {
-          liveMatches = [...liveMatches, m];
-          setState({
-            status: "streaming",
-            matches: liveMatches,
-            openJobs: liveOpenJobs,
-            expected: previousMatches.length + PAGE_SIZE,
-            page,
-          });
-        },
-        onEnd: ({ hasMore }) => {
-          const cached: CachedFetchState = {
-            matches: liveMatches,
-            hasMore,
-            nextPage: page + 1,
-            openJobs: liveOpenJobs,
-          };
-          setCachedFor(cacheKey, cached);
-          setState({ status: "ready", ...cached });
-        },
-      });
+      );
       if (!result.ok) {
         setState({
           status: "error",
           error: result.error,
           partialMatches: liveMatches,
           openJobs: liveOpenJobs,
+          pickedJob: livePickedJob,
+          excludeIds: liveExcludeIds,
           lastPage: page,
         });
       }
@@ -166,13 +227,7 @@ export function FindMatchesPanel() {
     }
     const cached = getCachedFor(activeRouteKey);
     if (cached) {
-      setState({
-        status: "ready",
-        matches: cached.matches,
-        hasMore: cached.hasMore,
-        nextPage: cached.nextPage,
-        openJobs: cached.openJobs,
-      });
+      setState({ status: "ready", ...cached });
       return;
     }
     void runStream({
@@ -181,6 +236,7 @@ export function FindMatchesPanel() {
       excludeIds: [],
       previousMatches: [],
       previousOpenJobs: [],
+      previousPickedJob: null,
       cacheKey: activeRouteKey,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,10 +246,12 @@ export function FindMatchesPanel() {
     if (!target || !activeRouteKey || state.status !== "ready") return;
     await runStream({
       target,
+      pickedJobId: state.pickedJob?.jobId,
       page: state.nextPage,
-      excludeIds: state.matches.map((m) => m.candidateId),
+      excludeIds: state.excludeIds,
       previousMatches: state.matches,
       previousOpenJobs: state.openJobs,
+      previousPickedJob: state.pickedJob,
       cacheKey: activeRouteKey,
     });
   }
@@ -202,11 +260,72 @@ export function FindMatchesPanel() {
     if (!target || !activeRouteKey || state.status !== "error") return;
     await runStream({
       target,
+      pickedJobId: state.pickedJob?.jobId,
       page: state.lastPage,
-      excludeIds: state.partialMatches.map((m) => m.candidateId),
+      excludeIds: state.excludeIds,
       previousMatches: state.partialMatches,
       previousOpenJobs: state.openJobs,
+      previousPickedJob: state.pickedJob,
       cacheKey: activeRouteKey,
+    });
+  }
+
+  // ITEM 1: pick a job from the awaiting_pick state and re-run the
+  // stream with that pickedJobId. Cache + history reset for this
+  // entity since the picked job changes the search target.
+  async function pickJob(job: ClientOpenJob) {
+    if (!target || !activeRouteKey) return;
+    await runStream({
+      target,
+      pickedJobId: job.jobId,
+      page: 0,
+      excludeIds: [],
+      previousMatches: [],
+      previousOpenJobs: state.status === "awaiting_pick" ? state.openJobs : [],
+      previousPickedJob: job,
+      cacheKey: activeRouteKey,
+    });
+  }
+
+  // ITEM 2: dismiss a card. Removes it from the visible list, adds
+  // it to excludeIds so it never comes back on Show 5 more, and
+  // updates the cache slot for this entity.
+  function dismissMatch(candidateId: string) {
+    if (!activeRouteKey) return;
+    setState((cur) => {
+      if (cur.status === "ready") {
+        const matches = cur.matches.filter((m) => m.candidateId !== candidateId);
+        const excludeIds = cur.excludeIds.includes(candidateId)
+          ? cur.excludeIds
+          : [...cur.excludeIds, candidateId];
+        const next: CachedFetchState = {
+          matches,
+          hasMore: cur.hasMore,
+          nextPage: cur.nextPage,
+          openJobs: cur.openJobs,
+          pickedJob: cur.pickedJob,
+          excludeIds,
+        };
+        setCachedFor(activeRouteKey, next);
+        return { status: "ready", ...next };
+      }
+      if (cur.status === "streaming") {
+        const matches = cur.matches.filter((m) => m.candidateId !== candidateId);
+        const excludeIds = cur.excludeIds.includes(candidateId)
+          ? cur.excludeIds
+          : [...cur.excludeIds, candidateId];
+        return { ...cur, matches, excludeIds };
+      }
+      if (cur.status === "error") {
+        const partialMatches = cur.partialMatches.filter(
+          (m) => m.candidateId !== candidateId,
+        );
+        const excludeIds = cur.excludeIds.includes(candidateId)
+          ? cur.excludeIds
+          : [...cur.excludeIds, candidateId];
+        return { ...cur, partialMatches, excludeIds };
+      }
+      return cur;
     });
   }
 
@@ -329,7 +448,18 @@ export function FindMatchesPanel() {
                 <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
                   Find Matches
                 </div>
-                <div className="truncate text-[11px] text-court-fg-muted">{target.label}</div>
+                <div className="truncate text-[11px] text-court-fg-muted">
+                  {(() => {
+                    // For client targets, prefer the picked-job title
+                    // once one's been selected — that's the actual
+                    // search target the recruiter is looking at.
+                    if (state.status === "ready" || state.status === "streaming" || state.status === "error") {
+                      const picked = state.pickedJob;
+                      if (picked) return picked.title;
+                    }
+                    return target.label;
+                  })()}
+                </div>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1" data-no-drag>
@@ -353,11 +483,20 @@ export function FindMatchesPanel() {
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto bg-court-surface-subtle/30 p-3">
+            {state.status === "awaiting_pick" && (
+              <JobPickPrompt openJobs={state.openJobs} onPick={pickJob} />
+            )}
             {state.status === "streaming" && (
               <ul className="space-y-2">
                 {state.matches.map((m) => (
                   <li key={m.candidateId}>
-                    <MatchCard match={m} target={target} openJobs={state.openJobs} />
+                    <MatchCard
+                      match={m}
+                      target={target}
+                      openJobs={state.openJobs}
+                      pickedJob={state.pickedJob}
+                      onDismiss={dismissMatch}
+                    />
                   </li>
                 ))}
                 {Array.from({
@@ -375,7 +514,13 @@ export function FindMatchesPanel() {
                   <ul className="mb-3 space-y-2">
                     {state.partialMatches.map((m) => (
                       <li key={m.candidateId}>
-                        <MatchCard match={m} target={target} openJobs={state.openJobs} />
+                        <MatchCard
+                          match={m}
+                          target={target}
+                          openJobs={state.openJobs}
+                          pickedJob={state.pickedJob}
+                          onDismiss={dismissMatch}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -410,6 +555,8 @@ export function FindMatchesPanel() {
                       match={m}
                       target={target}
                       openJobs={state.openJobs}
+                      pickedJob={state.pickedJob}
+                      onDismiss={dismissMatch}
                     />
                   </li>
                 ))}
@@ -465,11 +612,16 @@ function MatchCard({
   match,
   target,
   openJobs,
+  pickedJob,
+  onDismiss,
 }: {
   match: Match;
   target: MatchTarget;
   openJobs: ClientOpenJob[];
+  pickedJob: ClientOpenJob | null;
+  onDismiss: (candidateId: string) => void;
 }) {
+  const [applyError, setApplyError] = useState<string | null>(null);
   return (
     <div className="rounded-lg border border-court-border bg-court-surface p-3 shadow-sm">
       <div className="flex items-start justify-between gap-3">
@@ -493,11 +645,35 @@ function MatchCard({
             </div>
           )}
         </div>
+        {/* ITEM 2: dismiss X — removes the card client-side and adds
+            its candidateId to excludeIds so it never resurfaces on
+            "Show 5 more". No API call. */}
+        <button
+          type="button"
+          onClick={() => onDismiss(match.candidateId)}
+          aria-label={`Dismiss ${match.name}`}
+          className="shrink-0 rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
       {match.rationale && (
         <p className="mt-2 text-xs leading-relaxed text-court-fg">{match.rationale}</p>
       )}
-      <ActionRow match={match} target={target} openJobs={openJobs} />
+      {applyError && (
+        <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-800">
+          {applyError}
+        </div>
+      )}
+      <ActionRow
+        match={match}
+        target={target}
+        openJobs={openJobs}
+        pickedJob={pickedJob}
+        onDismiss={onDismiss}
+        onApplyError={(msg) => setApplyError(msg)}
+        clearApplyError={() => setApplyError(null)}
+      />
     </div>
   );
 }
@@ -525,49 +701,85 @@ function ActionRow({
   match,
   target,
   openJobs,
+  pickedJob,
+  onDismiss,
+  onApplyError,
+  clearApplyError,
 }: {
   match: Match;
   target: MatchTarget;
   openJobs: ClientOpenJob[];
+  pickedJob: ClientOpenJob | null;
+  onDismiss: (candidateId: string) => void;
+  onApplyError: (msg: string) => void;
+  clearApplyError: () => void;
 }) {
   const router = useRouter();
-  const [pickerOpen, setPickerOpen] = useState<"apply" | "submit" | null>(null);
+  const [applying, setApplying] = useState(false);
 
-  // For job context: jobRfId is fixed (the page we're on). For client
-  // context: the recruiter picks a job from the panel's inline
-  // dropdown before we route.
-  function navigate(action: "apply" | "submit", jobRfId: number | null) {
-    const candidatePath = `/candidates/${match.candidateRfId ?? match.candidateId}`;
-    if (action === "submit" && jobRfId != null) {
-      router.push(`${candidatePath}?submit=${jobRfId}`);
+  // Resolve the jobId/jobRfId we should target for this card. JOB
+  // context: the page's job. CLIENT context: the picked job (Item 1
+  // gates the panel from streaming until a pick exists; this is
+  // belt-and-suspenders for code paths that might run before pick).
+  const targetJobId =
+    target.kind === "job"
+      ? target.jobId
+      : pickedJob?.jobId ?? (openJobs.length === 1 ? openJobs[0].jobId : null);
+  const targetJobRfId =
+    target.kind === "job"
+      ? target.jobRfId
+      : pickedJob?.jobRfId ?? (openJobs.length === 1 ? openJobs[0].jobRfId : null);
+
+  // ITEM 3: one-click Apply. POSTs directly to /api/placements with
+  // stage APPLIED — no modal, no navigation. Existing Apply to Job
+  // modal elsewhere in the app is intentionally NOT touched.
+  async function onApply() {
+    if (!targetJobId) {
+      onApplyError("No target job — pick a job first.");
       return;
     }
-    if (action === "submit") {
-      router.push(`${candidatePath}?openSubmit=1`);
-      return;
+    clearApplyError();
+    setApplying(true);
+    try {
+      const res = await fetch("/api/placements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: match.candidateId,
+          jobId: targetJobId,
+          stage: "APPLIED",
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || body?.ok === false) {
+        const msg = body?.error ?? `Apply failed (${res.status})`;
+        onApplyError(msg);
+        setApplying(false);
+        return;
+      }
+      // Success: dismiss the card so the panel removes it
+      // immediately. The placement is already in Neon; no further
+      // navigation needed.
+      onDismiss(match.candidateId);
+    } catch (e) {
+      onApplyError(e instanceof Error ? e.message : "Network error");
+      setApplying(false);
     }
-    router.push(`${candidatePath}?openApply=1`);
   }
 
-  function onClickApplyOrSubmit(action: "apply" | "submit") {
-    if (target.kind === "job") {
-      navigate(action, target.jobRfId);
-      return;
+  // Submit (untouched per spec — Prompt 3 work) still routes to the
+  // candidate profile's existing Submit modal via the deep-link
+  // params it already understands.
+  function onSubmit() {
+    const candidatePath = `/candidates/${match.candidateRfId ?? match.candidateId}`;
+    if (targetJobRfId != null) {
+      router.push(`${candidatePath}?submit=${targetJobRfId}`);
+    } else {
+      router.push(`${candidatePath}?openSubmit=1`);
     }
-    // Client context: open the inline picker. If the client only has
-    // one open job, route immediately — picker is just noise.
-    if (openJobs.length === 1) {
-      navigate(action, openJobs[0].jobRfId);
-      return;
-    }
-    if (openJobs.length === 0) {
-      // No open jobs at this client — fall through to the candidate's
-      // generic Apply/Submit modal where the recruiter can pick any
-      // job in the org.
-      navigate(action, null);
-      return;
-    }
-    setPickerOpen(action);
+    // Auto-dismiss after firing — match cards should leave once the
+    // recruiter has acted on them.
+    onDismiss(match.candidateId);
   }
 
   return (
@@ -576,82 +788,76 @@ function ActionRow({
         href={`/candidates/${match.candidateRfId ?? match.candidateId}`}
         target="_blank"
         rel="noreferrer"
+        onClick={() => onDismiss(match.candidateId)}
         className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
       >
         <ExternalLink className="h-3 w-3" /> View Profile
       </a>
-      <AddToListButton candidateId={match.candidateId} candidateName={match.name} />
+      <span onClick={() => onDismiss(match.candidateId)}>
+        <AddToListButton candidateId={match.candidateId} candidateName={match.name} />
+      </span>
       <Button
         type="button"
         size="sm"
         variant="apply"
-        onClick={() => onClickApplyOrSubmit("apply")}
+        onClick={onApply}
+        disabled={applying}
       >
-        <Target className="h-3 w-3" /> Apply
+        {applying ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Target className="h-3 w-3" />
+        )}
+        Apply
       </Button>
-      <Button
-        type="button"
-        size="sm"
-        onClick={() => onClickApplyOrSubmit("submit")}
-      >
+      <Button type="button" size="sm" onClick={onSubmit}>
         <Send className="h-3 w-3" /> Submit
       </Button>
-      {pickerOpen && target.kind === "client" && (
-        <ClientJobPicker
-          openJobs={openJobs}
-          onPick={(j) => {
-            const action = pickerOpen;
-            setPickerOpen(null);
-            navigate(action, j.jobRfId);
-          }}
-          onClose={() => setPickerOpen(null)}
-          action={pickerOpen}
-        />
-      )}
     </div>
   );
 }
 
-function ClientJobPicker({
+// In-panel job picker shown when the panel was opened from a client
+// page that has 2+ open jobs. Search doesn't run until a job is
+// picked — keeping Claude focused on a single role's requirements
+// instead of an undifferentiated union.
+function JobPickPrompt({
   openJobs,
   onPick,
-  onClose,
-  action,
 }: {
   openJobs: ClientOpenJob[];
-  onPick: (j: ClientOpenJob) => void;
-  onClose: () => void;
-  action: "apply" | "submit";
+  onPick: (job: ClientOpenJob) => void;
 }) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!wrapRef.current) return;
-      if (!wrapRef.current.contains(e.target as Node)) onClose();
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [onClose]);
-  return (
-    <div ref={wrapRef} className="basis-full">
-      <div className="mt-2 rounded-md border border-court-border bg-court-surface-subtle/40 p-2">
-        <div className="mb-1 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-          <ChevronDown className="h-3 w-3" /> Pick a job to {action}
-        </div>
-        <ul className="max-h-40 space-y-0.5 overflow-y-auto">
-          {openJobs.map((j) => (
-            <li key={j.jobId}>
-              <button
-                type="button"
-                onClick={() => onPick(j)}
-                className="block w-full truncate rounded-md px-2 py-1 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40"
-              >
-                {j.title}
-              </button>
-            </li>
-          ))}
-        </ul>
+  if (openJobs.length === 0) {
+    return (
+      <div className="rounded-lg border border-court-border bg-court-surface p-5 text-center text-sm text-court-fg-muted">
+        No open jobs at this client. Open a role first, then run Find Matches.
       </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-court-border bg-court-surface p-3">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+        Which job?
+      </div>
+      <p className="mb-3 text-[11px] text-court-fg-muted">
+        Pick a role to score candidates against. The search runs against this
+        single job, not the union of all open roles.
+      </p>
+      <ul className="space-y-1">
+        {openJobs.map((j) => (
+          <li key={j.jobId}>
+            <button
+              type="button"
+              onClick={() => onPick(j)}
+              className="flex w-full items-center justify-between gap-2 rounded-md border border-court-border bg-court-surface-subtle/30 px-3 py-2 text-left text-sm text-court-fg transition hover:border-court-accent hover:bg-court-accent-tint/40"
+            >
+              <span className="truncate font-medium">{j.title}</span>
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -663,8 +869,13 @@ async function streamMatches(
   target: MatchTarget,
   page: number,
   excludeIds: string[],
+  pickedJobId: string | null,
   callbacks: {
-    onMeta: (openJobs: ClientOpenJob[]) => void;
+    onMeta: (info: {
+      openJobs: ClientOpenJob[];
+      pickedJobLabel: string | null;
+    }) => void;
+    onAwaitingPick: () => void;
     onMatch: (match: Match) => void;
     onEnd: (info: { hasMore: boolean; page: number }) => void;
   },
@@ -674,7 +885,15 @@ async function streamMatches(
     const body =
       target.kind === "job"
         ? { jobId: target.jobId, page, excludeIds }
-        : { clientId: target.clientId, page, excludeIds };
+        : {
+            clientId: target.clientId,
+            page,
+            excludeIds,
+            // ITEM 1: pickedJobId narrows the client target to a
+            // specific role server-side. Server emits awaiting_pick
+            // when this is missing AND the client has 2+ open jobs.
+            pickedJobId: pickedJobId ?? undefined,
+          };
     res = await fetch("/api/game-plan/find-matches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -705,6 +924,7 @@ async function streamMatches(
       t?: unknown;
       match?: unknown;
       openJobs?: unknown;
+      pickedJobLabel?: unknown;
       hasMore?: unknown;
       page?: unknown;
       error?: unknown;
@@ -715,7 +935,13 @@ async function streamMatches(
       return; // skip malformed line silently
     }
     if (event.t === "meta") {
-      callbacks.onMeta(Array.isArray(event.openJobs) ? (event.openJobs as ClientOpenJob[]) : []);
+      callbacks.onMeta({
+        openJobs: Array.isArray(event.openJobs) ? (event.openJobs as ClientOpenJob[]) : [],
+        pickedJobLabel:
+          typeof event.pickedJobLabel === "string" ? event.pickedJobLabel : null,
+      });
+    } else if (event.t === "awaiting_pick") {
+      callbacks.onAwaitingPick();
     } else if (event.t === "match" && event.match && typeof event.match === "object") {
       callbacks.onMatch(event.match as Match);
     } else if (event.t === "end") {

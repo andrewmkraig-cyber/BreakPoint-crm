@@ -88,6 +88,12 @@ export async function POST(req: NextRequest) {
     clientId?: string;
     page?: number;
     excludeIds?: string[];
+    // Prompt 2 ITEM 1: when the panel was opened from /clients/[id]
+    // and the client has 2+ open jobs, the panel asks the recruiter
+    // to pick a job before any Claude call fires. The picked jobId
+    // is threaded back here so the actual stream runs against that
+    // single job (jobId path), not the union-of-roles client path.
+    pickedJobId?: string;
   };
   try {
     body = await req.json();
@@ -101,9 +107,82 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "jobId or clientId required" }, { status: 400 });
   }
 
-  const target = await loadTarget(org.id, { jobId: body.jobId, clientId: body.clientId });
-  if (!target) {
+  // Resolve the effective target. Three paths:
+  //   - body.jobId set → straight job target (existing behavior)
+  //   - body.clientId + body.pickedJobId → narrow the client request
+  //     to the picked single job
+  //   - body.clientId only → load client target. If 1 open job,
+  //     auto-pick it (skips the picker UX); if 2+ open jobs and
+  //     no pickedJobId, return awaiting_pick + the open-jobs list
+  //     and stop (no Claude call).
+  const initialTarget = await loadTarget(org.id, {
+    jobId: body.jobId ?? body.pickedJobId,
+    clientId: body.pickedJobId ? undefined : body.clientId,
+  });
+  if (!initialTarget) {
     return NextResponse.json({ error: "Target not found" }, { status: 404 });
+  }
+
+  // For client targets without a pick, decide whether to ask the
+  // panel to pick. We capture the open-jobs list from the client
+  // target before potentially auto-picking.
+  let target = initialTarget;
+  let awaitingPick = false;
+  let pickedJobLabel: string | null = null;
+
+  if (body.clientId && !body.pickedJobId && initialTarget.source === "client") {
+    if (initialTarget.jobs.length === 1) {
+      // Single open job — silently treat as a job target so the
+      // stream runs against that job. No pick needed.
+      const onlyJob = await loadTarget(org.id, { jobId: initialTarget.jobs[0].id });
+      if (onlyJob) {
+        target = onlyJob;
+        pickedJobLabel = onlyJob.label;
+      }
+    } else {
+      // 0 or 2+ jobs — return awaiting_pick + meta and stop.
+      awaitingPick = true;
+    }
+  } else if (body.clientId && body.pickedJobId) {
+    // Picked job target: include the picked job's label so the panel
+    // can display it as the subtitle.
+    pickedJobLabel = initialTarget.label;
+  }
+
+  // Open-jobs list always reflects the ORIGINAL client (so the panel
+  // can render the picker even when we narrowed target to a picked
+  // job). Jobs path uses the empty array.
+  const openJobs =
+    initialTarget.source === "client"
+      ? initialTarget.jobs.map((j) => ({
+          jobId: j.id,
+          jobRfId: j.legacyRfId,
+          title: j.title,
+        }))
+      : [];
+
+  // Awaiting-pick short-circuit: emit meta + awaiting_pick + end and
+  // bail before the candidate pool query so we don't pay Claude or
+  // database cost when the recruiter still needs to pick a job.
+  if (awaitingPick) {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      start(controller) {
+        const send = (obj: object) =>
+          controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+        send({ t: "meta", openJobs });
+        send({ t: "awaiting_pick" });
+        send({ t: "end", hasMore: false, page });
+        controller.close();
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
   }
 
   // Pull the candidate pool, scoped to the org.
@@ -137,15 +216,6 @@ export async function POST(req: NextRequest) {
     .filter((c) => !exclude.has(c.id))
     .slice(0, PRE_FILTER_CAP);
 
-  const openJobs =
-    target.source === "client"
-      ? target.jobs.map((j) => ({
-          jobId: j.id,
-          jobRfId: j.legacyRfId,
-          title: j.title,
-        }))
-      : [];
-
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
@@ -154,7 +224,7 @@ export async function POST(req: NextRequest) {
       };
 
       try {
-        send({ t: "meta", openJobs });
+        send({ t: "meta", openJobs, pickedJobLabel });
 
         if (filtered.length === 0) {
           send({ t: "end", hasMore: false, page });

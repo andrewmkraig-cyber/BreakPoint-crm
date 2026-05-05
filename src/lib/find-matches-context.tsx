@@ -55,6 +55,14 @@ export type CachedFetchState = {
   hasMore: boolean;
   nextPage: number;
   openJobs: ClientOpenJob[];
+  // pickedJob is set on client targets where the recruiter picked a
+  // specific job inside the panel. Null on direct job targets.
+  pickedJob: ClientOpenJob | null;
+  // Every candidate id the server has surfaced to this panel, plus
+  // every id the recruiter dismissed. Sent back as excludeIds on
+  // "Show 5 more" so neither pagination nor dismissed candidates
+  // ever come back.
+  excludeIds: string[];
 };
 
 export type MatchPosition = { x: number; y: number };
