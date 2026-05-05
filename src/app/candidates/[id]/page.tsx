@@ -578,14 +578,11 @@ export default async function CandidateProfilePage({
       </header>
 
       {/* Pipeline section only renders when there are placements.
-          The empty "Pipeline · 0" header that used to print on every
-          new candidate was wasting vertical space and made the page
-          feel half-empty. */}
+          Header was removed — the row card already shows the job +
+          stage chip, and the redundant "Pipeline · N" label above
+          was just visual noise. */}
       {placementJobs.length > 0 && (
-      <section id="pipeline" className="space-y-2">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
-          Pipeline · {placementJobs.length}
-        </h2>
+      <section id="pipeline">
         <PlacementActionsIsland
           candidateRfId={id}
           candidateFirstName={extractedName.firstName}
