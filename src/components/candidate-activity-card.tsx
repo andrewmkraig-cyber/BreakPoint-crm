@@ -5,6 +5,7 @@ import { Mail, MessageSquare, Phone } from "lucide-react";
 import { SmsComposer } from "@/components/sms-composer";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { CallLogs } from "@/components/call-logs";
+import { TaggedThreadList } from "@/components/mail/tagged-thread-list";
 import { cn } from "@/lib/utils";
 
 type SubTab = "email" | "call" | "text";
@@ -63,7 +64,7 @@ export function CandidateActivityCard({
 
       <div className="space-y-3 px-4 py-4">
         {tab === "email" && (
-          <p className="text-sm text-court-fg-muted">Email history coming soon.</p>
+          <TaggedThreadList url={`/api/candidates/${encodeURIComponent(candidateId)}/email-threads`} />
         )}
         {tab === "call" && <CallLogs candidateId={candidateId} defaultOpen />}
         {tab === "text" && (

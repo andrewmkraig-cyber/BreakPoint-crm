@@ -1221,3 +1221,49 @@ export async function getRecentTaggedEmails(
     (r): r is { subject: string; from: string; snippet: string } => r !== null,
   );
 }
+
+// Lighter-weight cousin of getRecentTaggedEmails — pulls just the
+// metadata headers (Subject + From) plus internalDate for each thread,
+// no body, no MIME walk. Used by the candidate Activity tab + client
+// Email tab to render compact row lists. Per-thread failures are
+// swallowed so a single Gmail hiccup doesn't blank the whole list.
+export async function listTaggedThreadSummaries(
+  accessToken: string,
+  threadIds: string[],
+): Promise<{ threadId: string; subject: string; from: string; dateIso: string | null }[]> {
+  if (threadIds.length === 0) return [];
+  const results = await Promise.all(
+    threadIds.map(async (threadId) => {
+      try {
+        const url = new URL(
+          `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}`,
+        );
+        url.searchParams.set("format", "metadata");
+        for (const h of ["From", "Subject", "Date"]) {
+          url.searchParams.append("metadataHeaders", h);
+        }
+        const r = await fetch(url.toString(), {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          cache: "no-store",
+        });
+        if (!r.ok) return null;
+        const j = (await r.json()) as GmailThreadResponse;
+        const messages = j.messages ?? [];
+        if (messages.length === 0) return null;
+        const last = messages[messages.length - 1];
+        const subject = headerValue(last.payload?.headers, "Subject") || "(no subject)";
+        const from = headerValue(last.payload?.headers, "From") || "";
+        const dateIso = last.internalDate
+          ? new Date(Number(last.internalDate)).toISOString()
+          : null;
+        return { threadId: j.id, subject, from, dateIso };
+      } catch {
+        return null;
+      }
+    }),
+  );
+  return results.filter(
+    (r): r is { threadId: string; subject: string; from: string; dateIso: string | null } =>
+      r !== null,
+  );
+}

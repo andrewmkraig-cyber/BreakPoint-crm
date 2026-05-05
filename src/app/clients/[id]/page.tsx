@@ -27,11 +27,12 @@ import AiWorkspace from "@/components/AiWorkspace";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CallLogs } from "@/components/call-logs";
+import { TaggedThreadList } from "@/components/mail/tagged-thread-list";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan" | "notes" | "activity";
+type ClientTab = "overview" | "contacts" | "agreements" | "benefits" | "game-plan" | "notes" | "activity" | "email";
 
 type LocationJson = {
   street_address_1?: string | null;
@@ -60,7 +61,8 @@ export default async function ClientDetailPage({
     searchParams?.tab === "benefits" ||
     searchParams?.tab === "game-plan" ||
     searchParams?.tab === "notes" ||
-    searchParams?.tab === "activity"
+    searchParams?.tab === "activity" ||
+    searchParams?.tab === "email"
       ? searchParams.tab
       : "overview";
 
@@ -539,6 +541,11 @@ export default async function ClientDetailPage({
           <CallLogs clientId={client.id} defaultOpen />
           <ActivityFeed entityType="client" entityId={client.id} />
         </div>
+      ) : tab === "email" ? (
+        <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
+          <h2 className="mb-3 font-serif text-lg font-semibold text-court-fg">Email</h2>
+          <TaggedThreadList url={`/api/clients/${encodeURIComponent(client.id)}/email-threads`} />
+        </section>
       ) : (
         <div className="rounded-xl border border-court-border bg-court-surface p-6 text-sm text-court-fg-muted">
           This tab isn&apos;t available yet for Ace-native clients.
@@ -580,6 +587,7 @@ function Tabs({
       <TabLink label="Game Plan" href={`/clients/${slug}?tab=game-plan`} active={tab === "game-plan"} />
       <TabLink label="Notes" href={`/clients/${slug}?tab=notes`} active={tab === "notes"} />
       <TabLink label="Activity" href={`/clients/${slug}?tab=activity`} active={tab === "activity"} />
+      <TabLink label="Email" href={`/clients/${slug}?tab=email`} active={tab === "email"} />
     </div>
   );
 }
