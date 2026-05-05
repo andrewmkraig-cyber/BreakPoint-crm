@@ -11,7 +11,12 @@ import {
 import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getJobByIdentifier } from "@/lib/jobs";
 import { getPlacementsForOrg } from "@/lib/placements";
-import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import {
+  JobPipelineSummary,
+  type JobMatchedRow,
+  type JobPipelineRow,
+} from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import AiWorkspace from "@/components/AiWorkspace";
@@ -155,6 +160,44 @@ export default async function JobDetailPage({ params }: { params: { id: string }
 
   const pipelineRows: JobPipelineRow[] = [...mainPipelineRows, ...extraRows];
 
+  // Game Plan Phase 2: pull every CandidateMatch row Find Matches has
+  // logged for this job. Tenant-scoped on the resolved org. Joins the
+  // candidate so we can render name + title + employer + location
+  // without a second query per row.
+  const org = await getCurrentOrg();
+  const candidateMatches = await prisma.candidateMatch.findMany({
+    where: { jobId: jobRow.id, organizationId: org.id },
+    orderBy: { score: "desc" },
+    include: {
+      candidate: {
+        select: {
+          id: true,
+          rfId: true,
+          firstName: true,
+          lastName: true,
+          currentDesignation: true,
+          currentOrganization: true,
+          location: true,
+        },
+      },
+    },
+  });
+  const matchedRows: JobMatchedRow[] = candidateMatches.map((m) => {
+    const c = m.candidate;
+    return {
+      candidateId: c.id,
+      candidateRfId: c.rfId,
+      name:
+        [c.firstName, c.lastName].filter(Boolean).join(" ").trim() ||
+        "(no name)",
+      title: c.currentDesignation ?? "",
+      employer: c.currentOrganization ?? "",
+      location: c.location ?? "",
+      score: m.score,
+      rationale: m.rationale,
+    };
+  });
+
   const counts = pipelineRows.reduce(
     (acc, r) => {
       if (r.bucket === "submitted") acc.submitted += 1;
@@ -273,7 +316,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             {pipelineRows.length} {pipelineRows.length === 1 ? "candidate" : "candidates"}
           </div>
         </div>
-        {pipelineRows.length === 0 ? (
+        {pipelineRows.length === 0 && matchedRows.length === 0 ? (
           <div className="py-8 text-center text-sm text-court-fg-muted">
             No candidates have been added to this job yet.
           </div>
@@ -292,6 +335,11 @@ export default async function JobDetailPage({ params }: { params: { id: string }
                 clientCuid: jobRow.clientId ?? null,
                 jobTitle: job.title,
                 clientName: job.company || "",
+              }}
+              matched={{
+                rows: matchedRows,
+                jobId: jobRow.id,
+                jobRfId: rfId,
               }}
             />
           </div>

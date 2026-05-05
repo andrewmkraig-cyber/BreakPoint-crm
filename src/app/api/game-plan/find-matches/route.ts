@@ -310,6 +310,40 @@ export async function POST(req: NextRequest) {
               scoreBreakdown,
             },
           });
+          // Persist to CandidateMatch so the /jobs/[id] Matched tab
+          // survives panel close + page reload. Tenant-scoped on the
+          // resolved org. Only fires for job-scoped streams (single
+          // jobId in target.jobs); client streams without a pick are
+          // short-circuited above and never reach this code path.
+          // Fire-and-forget to avoid stalling the NDJSON flush — a
+          // failed write logs but doesn't break the stream.
+          const matchedJobId = target.jobs[0]?.id;
+          if (matchedJobId) {
+            void prisma.candidateMatch
+              .upsert({
+                where: {
+                  jobId_candidateId: {
+                    jobId: matchedJobId,
+                    candidateId: c.id,
+                  },
+                },
+                create: {
+                  organizationId: org.id,
+                  jobId: matchedJobId,
+                  candidateId: c.id,
+                  score,
+                  rationale,
+                },
+                update: { score, rationale },
+              })
+              .catch((err) => {
+                // eslint-disable-next-line no-console
+                console.warn(
+                  "[find-matches] candidateMatch upsert failed",
+                  err instanceof Error ? err.message : err,
+                );
+              });
+          }
           seen.add(parsed.candidateId);
           emitted++;
           return emitted >= PAGE_SIZE;

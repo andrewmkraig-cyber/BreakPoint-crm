@@ -383,6 +383,7 @@ model Candidate {
   // memberships without affecting the lists themselves.
   listMemberships     CandidateListMembership[]
   gmailTags           GmailThreadTag[]
+  matches             CandidateMatch[]
 
   @@index([email])
   @@index([createdById, createdAt])
@@ -709,10 +710,36 @@ model Job {
   override     JobOverride?
   placements   Placement[]
   interviews   Interview[]
+  matches      CandidateMatch[]
 
   @@index([clientId])
   @@index([isOpen])
   @@index([title])
+  @@index([organizationId])
+}
+
+// Game Plan Phase 2: persistent log of every candidate Find Matches has
+// scored against a job. Lets the /jobs/[id] Matched tab survive page
+// reloads / panel closes — once a candidate has been scored for a job,
+// the row stays until explicitly removed. Unique on (jobId,
+// candidateId) so re-running Find Matches upserts the latest score
+// instead of stacking duplicates.
+model CandidateMatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  jobId          String
+  candidateId    String
+  score          Int
+  rationale      String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidate    Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, candidateId])
+  @@index([jobId, score])
   @@index([organizationId])
 }
 
@@ -780,6 +807,7 @@ model Organization {
   // side so deleting an org tears down its lists too.
   candidateLists      CandidateList[]
   gmailTags           GmailThreadTag[]
+  candidateMatches    CandidateMatch[]
 }
 
 // Phase 5A.4: per-org candidate lists. Recruiter-curated buckets of
