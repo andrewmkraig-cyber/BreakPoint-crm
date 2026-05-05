@@ -161,6 +161,12 @@ type Props = {
   // When true, render as a full-screen modal overlay (click-to-email
   // popup case). When false/absent, render inline (Mail Tab Reply).
   asModal?: boolean;
+  // Inline-only: stretch the composer to fill its flex parent instead
+  // of capping at max-h-65%. Used by FloatingThreadWindow's body-first
+  // layout so the editor is the focal point of the popup. Inline /mail
+  // (composer pinned below the messages list) stays on the capped
+  // sizing.
+  growToFill?: boolean;
   // Header text shown in modal mode.
   modalTitle?: string;
   // When true (modal mode only), skip the dark backdrop and let pointer
@@ -196,6 +202,7 @@ export function MailComposer({
   asModal = false,
   modalTitle = "New email",
   nonBlocking = false,
+  growToFill = false,
   onPopOut,
   onClose,
   onSent,
@@ -1027,16 +1034,21 @@ export function MailComposer({
       className={
         asModal
           ? "flex h-full w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
-          : // Inline mode (Mail Tab Reply / Reply All / Forward + the
-            // Floating Thread Window's reply pane). Same flex-column +
-            // overflow-hidden chassis as the modal so the chrome rows
-            // pin top, the editor scrolls in its own region, and the
-            // footer (Send / Save Draft / Delete) stays glued to the
-            // bottom. Composer is capped at 65% of the parent so the
-            // recruiter has a meaningful body region by default while
-            // still leaving the messages list scrollable above to read
-            // the message they're replying to.
-            "flex max-h-[65%] max-h-[min(72vh,65%)] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
+          : growToFill
+            ? // Floating Thread Window: composer is the popup's focal
+              // point. flex-1 + min-h-0 lets it fill whatever vertical
+              // space the parent yields (paired with a smaller basis on
+              // the messages region), so the editor body lands at
+              // ~60% of the popup instead of the legacy 180px content
+              // height a max-h cap collapsed to.
+              "flex flex-1 min-h-0 flex-col overflow-hidden border-b border-court-border bg-court-surface-subtle/30"
+            : // Inline /mail Reply / Reply All / Forward. Same
+              // flex-column + overflow-hidden chassis as the modal so
+              // the chrome rows pin top, the editor scrolls in its own
+              // region, and the footer (Send / Save Draft / Delete)
+              // stays glued to the bottom. Capped at 65% of the parent
+              // so the messages list above stays readable.
+              "flex max-h-[65%] max-h-[min(72vh,65%)] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
       }
     >
       <div

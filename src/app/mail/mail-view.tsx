@@ -1672,6 +1672,7 @@ export function ThreadDetail({
       }
       defaultBody={composerMode === "forward" ? forwardBody : ""}
       autoFocusBody
+      growToFill={isFloating}
       templates={templates}
       ccPickerOptions={ccPickerOptions}
       mergeContext={{
@@ -1858,8 +1859,12 @@ export function ThreadDetail({
       {isFloating && composerOpen && composerNode}
       <div
         className={
-          "flex-1 overflow-y-auto" +
-          (isFloating && composerOpen ? " border-t border-court-border" : "")
+          isFloating && composerOpen
+            ? // Quoted-history pane in body-first mode: shrink to ~40%
+              // of the popup so the composer above (growToFill) lands
+              // at ~60% — Gmail-style write-first ergonomic.
+              "min-h-0 basis-2/5 shrink overflow-y-auto"
+            : "flex-1 overflow-y-auto"
         }
       >
         {orderedMessages.map((m, i) => (
