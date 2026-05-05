@@ -13,6 +13,7 @@ import { getJobByIdentifier } from "@/lib/jobs";
 import { getPlacementsForOrg } from "@/lib/placements";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
+import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import { prisma } from "@/lib/prisma";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -241,6 +242,25 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             </Link>
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Game Plan</h2>
+            <p className="mt-0.5 text-xs text-court-fg-muted">
+              Surface internal candidates Claude scores as the strongest fits for this role.
+            </p>
+          </div>
+          <FindMatchesButton
+            target={{
+              kind: "job",
+              jobId: jobRow.id,
+              jobRfId: rfId,
+              label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
+            }}
+          />
+        </div>
       </div>
 
       <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">

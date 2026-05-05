@@ -24,6 +24,7 @@ import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-
 import { DeleteClientButton } from "@/app/clients/[id]/delete-client-button";
 import { AddClientNote } from "@/app/clients/[id]/add-client-note";
 import AiWorkspace from "@/components/AiWorkspace";
+import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CallLogs } from "@/components/call-logs";
 
@@ -491,7 +492,21 @@ export default async function ClientDetailPage({
           }))}
         />
       ) : tab === "game-plan" && legacyRfId != null ? (
-        <AiWorkspace entityType="client" entityId={String(legacyRfId)} />
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs uppercase tracking-wider text-court-fg-muted">
+              Game Plan
+            </div>
+            <FindMatchesButton
+              target={{
+                kind: "client",
+                clientId: client.id,
+                label: client.name ?? "Client",
+              }}
+            />
+          </div>
+          <AiWorkspace entityType="client" entityId={String(legacyRfId)} />
+        </div>
       ) : tab === "notes" ? (
         <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
           <header className="border-b border-court-border px-5 py-3">
