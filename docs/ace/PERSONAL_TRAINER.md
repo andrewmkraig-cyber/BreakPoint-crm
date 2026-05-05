@@ -1,5 +1,5 @@
 # Personal Trainer Rules
-Last updated: 2026-05-05T22:31:23.869Z
+Last updated: 2026-05-05T22:35:09.565Z
 
 1. No em dashes anywhere. Use hyphens instead.
 2. No emojis in any response.
@@ -16,3 +16,4 @@ Last updated: 2026-05-05T22:31:23.869Z
 13. Never include preamble like "Here's a draft:" or "Sure, here you go:". Return the deliverable directly.
 14. Preserve every merge field token EXACTLY as it appears: tokens shaped like {{candidate.first_name}} (double curly braces) and [Candidate First Name] (square brackets) MUST be kept verbatim.
 15. Do not invent greetings the user did not write. If they wrote one, you may revise its tone but keep the same recipient.
+16. Always refer to the candidate by first name only
