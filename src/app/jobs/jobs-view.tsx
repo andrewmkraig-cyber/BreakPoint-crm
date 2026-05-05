@@ -174,13 +174,13 @@ export function JobsView(props: JobsViewProps) {
                     {r.lastEditedAt ? new Date(r.lastEditedAt).toLocaleDateString() : "—"}
                   </td>
                   <td className="px-5 py-3 align-top text-right">
-                    <CountPill value={r.submittedCount} tone="submitted" />
+                    <CountPill value={r.submittedCount} />
                   </td>
                   <td className="px-5 py-3 align-top text-right">
-                    <CountPill value={r.interviewingCount} tone="interviewing" />
+                    <CountPill value={r.interviewingCount} />
                   </td>
                   <td className="px-5 py-3 align-top text-right">
-                    <CountPill value={r.hiredCount} tone="hired" />
+                    <CountPill value={r.hiredCount} />
                   </td>
                 </tr>
               ))}
@@ -247,19 +247,18 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
   );
 }
 
-function CountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "hired" }) {
+function CountPill({ value }: { value: number }) {
   if (!value) return <span className="text-court-fg-muted/60">0</span>;
-  // submitted is the only count that follows the per-mode accent (it's
-  // a generic "in your pipeline" signal). interviewing/hired are
-  // intentionally palette-locked — recruiters read blue=interviewing,
-  // green=hired regardless of court mode, so don't mode-shift those.
-  const cls = {
-    submitted: "bg-court-accent-tint text-court-accent-dark",
-    interviewing: "bg-blue-50 text-blue-700",
-    hired: "bg-emerald-50 text-emerald-700",
-  }[tone];
+  // Andrew's call: submitted / interviewing / hired all read with the
+  // same per-mode accent color so the row scans as a single pipeline
+  // signal instead of three competing color codes.
   return (
-    <span className={cn("inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold", cls)}>
+    <span
+      className={cn(
+        "inline-flex min-w-6 items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold",
+        "bg-court-accent-tint text-court-accent-dark",
+      )}
+    >
       {value}
     </span>
   );
