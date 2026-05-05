@@ -40,6 +40,11 @@ type MailContextValue = {
   unreadCount: number;
   latestThreads: UnreadInboxThread[];
   refreshUnread: () => Promise<void>;
+  // Optimistic clear for a single thread. Called when the user opens a
+  // thread inside the Mail tab so the sidebar badge + topbar title
+  // drop the count immediately instead of waiting on the next 30s
+  // poll. Idempotent — calling it twice for the same id is a no-op.
+  markThreadRead: (threadId: string) => void;
 };
 
 const MailContext = createContext<MailContextValue | null>(null);
@@ -113,6 +118,25 @@ export function MailProvider({
     if (summary) apply(summary);
   }, [fetchSummary, apply]);
 
+  // Optimistic mark-read used by the Mail Tab when the recruiter opens
+  // an unread thread. Decrements the badge + title count immediately
+  // and prunes the row from latestThreads. The next poll reconciles
+  // with the real Gmail state — but until then the UI feels instant.
+  const markThreadRead = useCallback((threadId: string) => {
+    setLatestThreads((prev) => {
+      const next = prev.filter((t) => t.id !== threadId);
+      // Only decrement if we were actually tracking the thread as
+      // unread; otherwise the count stays put and the next poll will
+      // correct any drift. Floored at 0 so a stale double-call can't
+      // produce a negative badge.
+      if (next.length !== prev.length) {
+        setUnreadCount((c) => Math.max(0, c - 1));
+      }
+      return next;
+    });
+    if (seenIdsRef.current) seenIdsRef.current.delete(threadId);
+  }, []);
+
   useEffect(() => {
     // Kick off the first poll immediately so the seen-set seeds and
     // the badge reconciles with the actual server state (the SSR
@@ -125,7 +149,7 @@ export function MailProvider({
   }, [refreshUnread]);
 
   return (
-    <MailContext.Provider value={{ unreadCount, latestThreads, refreshUnread }}>
+    <MailContext.Provider value={{ unreadCount, latestThreads, refreshUnread, markThreadRead }}>
       {children}
     </MailContext.Provider>
   );
@@ -142,6 +166,7 @@ export function useMailContext(): MailContextValue {
       unreadCount: 0,
       latestThreads: [],
       refreshUnread: async () => {},
+      markThreadRead: () => {},
     };
   }
   return ctx;

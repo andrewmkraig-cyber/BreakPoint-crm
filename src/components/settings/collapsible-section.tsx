@@ -5,6 +5,10 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LS_PREFIX = "ace-settings-collapsed:";
+// Custom event that the Settings TOC fires when the user clicks a TOC
+// link. Lets a collapsed section auto-expand even when the URL hash
+// already pointed at it (which would otherwise produce no hashchange).
+export const SETTINGS_EXPAND_EVENT = "settings:expand";
 
 function persistKeyFor(title: ReactNode): string | null {
   if (typeof title === "string") return LS_PREFIX + title;
@@ -46,6 +50,40 @@ export function CollapsibleSection({
       window.localStorage.setItem(key, open ? "open" : "closed");
     } catch {}
   }, [title, open]);
+
+  // Auto-expand when the URL hash matches this section. Covers three
+  // entry paths: (1) initial mount with a hash already in the URL,
+  // (2) the browser firing hashchange when the recruiter clicks a TOC
+  // anchor that updates the hash, (3) the TOC's custom event that
+  // fires even when the hash didn't change (clicking the same link
+  // twice). All three converge on a single setOpen(true) so a
+  // collapsed section never blocks scroll-to.
+  useEffect(() => {
+    if (!id) return;
+    const expandIfMatch = (target: string) => {
+      if (target === id) setOpen(true);
+    };
+    if (typeof window !== "undefined") {
+      const initial = window.location.hash.replace(/^#/, "");
+      if (initial) expandIfMatch(initial);
+    }
+    function onHashChange() {
+      expandIfMatch(window.location.hash.replace(/^#/, ""));
+    }
+    function onSettingsExpand(e: Event) {
+      const detail = (e as CustomEvent<string>).detail;
+      if (typeof detail === "string") expandIfMatch(detail);
+    }
+    window.addEventListener("hashchange", onHashChange);
+    window.addEventListener(SETTINGS_EXPAND_EVENT, onSettingsExpand as EventListener);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+      window.removeEventListener(
+        SETTINGS_EXPAND_EVENT,
+        onSettingsExpand as EventListener,
+      );
+    };
+  }, [id]);
 
   return (
     <section

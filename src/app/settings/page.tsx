@@ -11,6 +11,7 @@ import {
 import { CourtModeView } from "@/app/settings/court-mode-view";
 import { BrandingView, type BrandingInitial } from "@/app/settings/branding-view";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
+import { SettingsTocLink } from "@/components/settings/toc-link";
 import { ensureDefaultPreferences, getAppPreferences } from "@/lib/preferences";
 import { getUserBrandingProfile } from "@/lib/signature";
 import { ConnectorsView } from "@/app/settings/connectors-view";
@@ -115,13 +116,13 @@ export default async function SettingsPage() {
         </div>
         <nav className="space-y-0.5">
           {SECTIONS.map((s) => (
-            <a
+            <SettingsTocLink
               key={s.id}
-              href={`#${s.id}`}
+              targetId={s.id}
               className="block rounded-lg px-3 py-2 text-sm font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
             >
               {s.label}
-            </a>
+            </SettingsTocLink>
           ))}
         </nav>
       </aside>

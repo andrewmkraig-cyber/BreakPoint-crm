@@ -198,7 +198,7 @@ export function MailView({
   // Unread inbox count drives the white pill on the premium Inbox card.
   // Same source as the main sidebar's Mail badge — kept in lockstep via
   // the shared MailContext provider in AppShell.
-  const { unreadCount } = useMailContext();
+  const { unreadCount, refreshUnread, markThreadRead } = useMailContext();
   // Bump this to force the thread-list refetch effect to fire even
   // when selectedLabel + searchQuery haven't changed (Refresh button).
   const [refreshTick, setRefreshTick] = useState(0);
@@ -324,6 +324,12 @@ export function MailView({
       setThreads((prev) =>
         prev.map((t) => (t.id === id && t.unread ? { ...t, unread: false } : t)),
       );
+      // Optimistically clear the sidebar/topbar unread badge for this
+      // thread. Without this the badge waits up to 30s for the next
+      // /api/mail/unread poll — the recruiter clicks an email and the
+      // counter visibly lags, which is what made notifications feel
+      // sticky.
+      markThreadRead(id);
       // Dismiss any new-mail toast for this thread now that the user
       // has opened it. Safe to call even when no toast is active —
       // sonner's dismiss is a no-op for unknown ids.
@@ -342,7 +348,7 @@ export function MailView({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [markThreadRead]);
 
   useEffect(() => {
     if (!selected) {
@@ -1023,7 +1029,14 @@ export function MailView({
           </span>
           <button
             type="button"
-            onClick={() => setRefreshTick((n) => n + 1)}
+            onClick={() => {
+              // Refresh both the visible thread list AND the unread
+              // poll so the badge / topbar count reconcile in the
+              // same click. Without the refreshUnread call the badge
+              // would still wait up to 30s for the polling tick.
+              setRefreshTick((n) => n + 1);
+              void refreshUnread();
+            }}
             disabled={threadsLoading}
             aria-label="Refresh thread list"
             className="ml-auto rounded p-1 text-court-fg-muted transition hover:bg-court-fg/5 hover:text-court-fg disabled:opacity-50"
