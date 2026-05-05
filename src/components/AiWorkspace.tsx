@@ -344,7 +344,7 @@ function MessageBubble({
           "relative max-w-[75%] break-words rounded-2xl px-3 py-2 text-sm shadow-sm",
           isUser
             ? "bg-brand text-white"
-            : "bg-court-surface-subtle text-court-fg",
+            : "bg-gray-50 text-court-fg dark:bg-court-surface-subtle",
           // Extra bottom padding on assistant bubbles so the Copy button at
           // absolute bottom-right doesn't overlap the last line of text.
           showCopy && "pb-7",
