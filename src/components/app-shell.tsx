@@ -61,6 +61,19 @@ export function AppShell({
     }
   }, [sidebarWidth]);
 
+  // Publish the live sidebar width as a CSS custom property so other
+  // surfaces (e.g. the bottom-left MinimizedTray) can offset against
+  // it without reading localStorage directly. Without this the tray
+  // pill rail sat over the Settings nav item; now it docks just to
+  // the right of the sidebar.
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.style.setProperty(
+      "--ace-sidebar-w",
+      `${sidebarWidth}px`,
+    );
+  }, [sidebarWidth]);
+
   const [dragging, setDragging] = useState(false);
   const dragStartRef = useRef<{ x: number; w: number } | null>(null);
   useEffect(() => {

@@ -17,7 +17,6 @@ import {
   FIND_MATCHES_MIN_H,
   FIND_MATCHES_MIN_W,
   useFindMatches,
-  targetKey,
   type CachedFetchState,
   type ClientOpenJob,
   type Match,
@@ -48,7 +47,9 @@ type FetchState =
 
 export function FindMatchesPanel() {
   const {
-    target,
+    activeRouteKey,
+    openEntities,
+    targetForKey,
     position,
     size,
     minimized,
@@ -67,16 +68,22 @@ export function FindMatchesPanel() {
   const [state, setState] = useState<FetchState>({ status: "idle" });
   const [paging, setPaging] = useState(false);
 
-  // Per-entity caching: when target changes, look up that target's
-  // slot in the provider cache. Hit → instant restore. Miss → fetch
-  // and write back. Re-keying on `cacheTick` so close() (which wipes
-  // the active entity's slot) drops the stale state immediately.
+  // Resolve the panel's effective target from the route. The render
+  // gate below only paints when openEntities contains activeRouteKey,
+  // and the cache slot used for fetch/display is keyed off the same
+  // key — so navigating between entities flips the panel's contents
+  // wholesale instead of lingering on the previous entity.
+  const target =
+    activeRouteKey && openEntities.has(activeRouteKey)
+      ? targetForKey(activeRouteKey)
+      : null;
+
   useEffect(() => {
-    if (!target) {
+    if (!target || !activeRouteKey) {
       setState({ status: "idle" });
       return;
     }
-    const cached = getCachedFor(target);
+    const cached = getCachedFor(activeRouteKey);
     if (cached) {
       setState({
         status: "ready",
@@ -102,20 +109,17 @@ export function FindMatchesPanel() {
         nextPage: result.page + 1,
         openJobs: result.openJobs,
       };
-      setCachedFor(target, next);
+      setCachedFor(activeRouteKey, next);
       setState({ status: "ready", ...next });
     })();
     return () => {
       cancelled = true;
     };
-    // targetKey() collapses the target object identity to a stable
-    // string so a fresh literal from open() doesn't cause a redundant
-    // refetch on the same entity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target ? targetKey(target) : null, cacheTick]);
+  }, [activeRouteKey, openEntities, cacheTick]);
 
   async function loadMore() {
-    if (!target || state.status !== "ready") return;
+    if (!target || !activeRouteKey || state.status !== "ready") return;
     setPaging(true);
     const result = await fetchMatches(target, state.nextPage);
     setPaging(false);
@@ -126,7 +130,7 @@ export function FindMatchesPanel() {
       nextPage: result.page + 1,
       openJobs: state.openJobs,
     };
-    setCachedFor(target, merged);
+    setCachedFor(activeRouteKey, merged);
     setState({ status: "ready", ...merged });
   }
 

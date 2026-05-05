@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
   type ReactNode,
@@ -16,13 +17,13 @@ import {
 // open() with a target; the portal-rendered FindMatchesPanel
 // subscribes to this context.
 //
-// Per-entity caching: every (kind, id) pair owns its own results
-// cache so switching from Job A to Job B doesn't leak A's matches
-// into B's panel. The cache is intentionally cleared on close() for
-// the active entity — re-opening a previously-closed entity runs a
-// fresh search. Switching to a different entity (without closing)
-// preserves the prior entity's cache so toggling back restores
-// without a re-fetch.
+// Route-aware render gate: each FindMatchesButton announces itself
+// via useFindMatchesActiveRoute(target) on mount, which sets the
+// provider's activeRouteKey. The panel only paints when
+// activeRouteKey === a key that has been opened (openEntities
+// contains it). Navigating to an entity that has never been opened
+// hides the panel; navigating to a previously-opened entity
+// auto-restores its cached results.
 
 export type MatchTarget =
   | { kind: "job"; jobId: string; label: string; jobRfId: number | null }
@@ -71,38 +72,59 @@ export function targetKey(target: MatchTarget): string {
 }
 
 type Ctx = {
-  target: MatchTarget | null;
+  // The route entity currently visible to the user. Set by each
+  // FindMatchesButton via useFindMatchesActiveRoute() on mount and
+  // cleared on unmount, so navigating to a page without a button
+  // resolves to null. The panel render gate compares this against
+  // openEntities + the cache to decide whether to paint.
+  activeRouteKey: string | null;
+  setActiveRouteKey: (
+    next: string | null | ((prev: string | null) => string | null),
+  ) => void;
+  // Set of entity keys that have an open panel. open() adds; close()
+  // removes for the active route entity only.
+  openEntities: Set<string>;
+  // Targets keyed by `${kind}:${id}` so the panel can recover the
+  // full MatchTarget object when rendering for the active route.
+  targetForKey: (key: string) => MatchTarget | null;
   position: MatchPosition | null;
   size: MatchSize;
   minimized: boolean;
   open: (next: MatchTarget) => void;
-  // Closes the panel AND clears the cache for the entity it was
-  // showing. Re-opening that same entity later runs a fresh search.
+  // Closes the panel for the currently-active route entity AND
+  // clears its cache so re-opening that same entity later runs a
+  // fresh search. Other entities' caches stay intact.
   close: () => void;
   setPosition: (next: MatchPosition) => void;
   setSize: (next: MatchSize) => void;
   setMinimized: (next: boolean) => void;
-  // Cache reads + writes used by the panel. `bumpCacheTick` triggers
-  // a re-render so the panel re-reads the cache after a fetch.
-  getCachedFor: (target: MatchTarget) => CachedFetchState | null;
-  setCachedFor: (target: MatchTarget, state: CachedFetchState) => void;
+  // Cache reads + writes used by the panel.
+  getCachedFor: (key: string) => CachedFetchState | null;
+  setCachedFor: (key: string, state: CachedFetchState) => void;
   cacheTick: number;
 };
 
 const Context = createContext<Ctx | null>(null);
 
 export function FindMatchesProvider({ children }: { children: ReactNode }) {
-  const [target, setTarget] = useState<MatchTarget | null>(null);
+  const [activeRouteKey, setActiveRouteKeyState] = useState<string | null>(null);
+  const [openEntities, setOpenEntities] = useState<Set<string>>(new Set());
   const [position, setPositionState] = useState<MatchPosition | null>(null);
   const [size, setSizeState] = useState<MatchSize>({ w: DEFAULT_W, h: DEFAULT_H });
   const [minimized, setMinimizedState] = useState(false);
 
-  // Cache lives in a ref so writes don't recreate every reader;
-  // cacheTick state lets the panel re-render when a cache slot is
-  // populated. Map keyed by `${kind}:${id}` so two open entities
-  // can coexist without trampling each other.
   const cacheRef = useRef<Map<string, CachedFetchState>>(new Map());
+  const targetsRef = useRef<Map<string, MatchTarget>>(new Map());
   const [cacheTick, setCacheTick] = useState(0);
+
+  const setActiveRouteKey = useCallback(
+    (next: string | null | ((prev: string | null) => string | null)) => {
+      setActiveRouteKeyState((prev) =>
+        typeof next === "function" ? (next as (p: string | null) => string | null)(prev) : next,
+      );
+    },
+    [],
+  );
 
   const open = useCallback((next: MatchTarget) => {
     if (typeof window !== "undefined") {
@@ -113,18 +135,33 @@ export function FindMatchesProvider({ children }: { children: ReactNode }) {
         return { x: cx, y: cy };
       });
     }
-    setTarget(next);
+    const key = targetKey(next);
+    targetsRef.current.set(key, next);
+    setOpenEntities((prev) => {
+      if (prev.has(key)) return prev;
+      const copy = new Set(prev);
+      copy.add(key);
+      return copy;
+    });
     setMinimizedState(false);
   }, []);
 
   const close = useCallback(() => {
-    // Clear the active entity's cache so re-opening it runs fresh.
-    // Other entities' caches stay intact (so toggling between
-    // already-searched entities within the same session is
-    // instant).
-    setTarget((current) => {
-      if (current) cacheRef.current.delete(targetKey(current));
-      return null;
+    setActiveRouteKeyState((currentRoute) => {
+      // Close only affects the entity currently in view. If the
+      // active route key isn't set (somehow), bail without mutating
+      // open state — the panel won't paint anyway.
+      if (currentRoute) {
+        cacheRef.current.delete(currentRoute);
+        targetsRef.current.delete(currentRoute);
+        setOpenEntities((prev) => {
+          if (!prev.has(currentRoute)) return prev;
+          const copy = new Set(prev);
+          copy.delete(currentRoute);
+          return copy;
+        });
+      }
+      return currentRoute;
     });
     setMinimizedState(false);
     setCacheTick((n) => n + 1);
@@ -145,22 +182,26 @@ export function FindMatchesProvider({ children }: { children: ReactNode }) {
     setMinimizedState(next);
   }, []);
 
-  const getCachedFor = useCallback(
-    (t: MatchTarget): CachedFetchState | null => {
-      return cacheRef.current.get(targetKey(t)) ?? null;
-    },
-    [],
-  );
+  const getCachedFor = useCallback((key: string): CachedFetchState | null => {
+    return cacheRef.current.get(key) ?? null;
+  }, []);
 
-  const setCachedFor = useCallback((t: MatchTarget, state: CachedFetchState) => {
-    cacheRef.current.set(targetKey(t), state);
+  const setCachedFor = useCallback((key: string, state: CachedFetchState) => {
+    cacheRef.current.set(key, state);
     setCacheTick((n) => n + 1);
+  }, []);
+
+  const targetForKey = useCallback((key: string): MatchTarget | null => {
+    return targetsRef.current.get(key) ?? null;
   }, []);
 
   return (
     <Context.Provider
       value={{
-        target,
+        activeRouteKey,
+        setActiveRouteKey,
+        openEntities,
+        targetForKey,
         position,
         size,
         minimized,
@@ -185,4 +226,20 @@ export function useFindMatches(): Ctx {
     throw new Error("useFindMatches must be used inside FindMatchesProvider");
   }
   return ctx;
+}
+
+// Hook each FindMatchesButton uses to announce its entity as the
+// currently-visible route. Sets activeRouteKey on mount; on
+// unmount, only clears the key if it still matches our own (so a
+// late mid-route-transition unmount can't blow away a freshly-mounted
+// sibling button on the destination page).
+export function useFindMatchesActiveRoute(target: MatchTarget) {
+  const { setActiveRouteKey } = useFindMatches();
+  const key = targetKey(target);
+  useEffect(() => {
+    setActiveRouteKey(key);
+    return () => {
+      setActiveRouteKey((prev) => (prev === key ? null : prev));
+    };
+  }, [key, setActiveRouteKey]);
 }

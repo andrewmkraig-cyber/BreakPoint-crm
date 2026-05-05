@@ -56,22 +56,6 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     el.scrollTop = el.scrollHeight;
   }, [messages.length, loading]);
 
-  // Scroll the page so the AI Workspace card is at the top of the
-  // viewport on mount. The card is `sticky top-4` with viewport-bound
-  // height — once its top is at the viewport top, the input row sits
-  // at viewport bottom and stays there as the user scrolls. Without
-  // this nudge, landing on the Game Plan tab leaves the card below
-  // the fold and the textarea offscreen until the recruiter manually
-  // scrolls down.
-  useEffect(() => {
-    const card = cardRef.current;
-    if (!card) return;
-    const id = window.requestAnimationFrame(() => {
-      card.scrollIntoView({ block: "start", behavior: "auto" });
-    });
-    return () => window.cancelAnimationFrame(id);
-  }, []);
-
   const loadHistory = useCallback(async () => {
     setLoading(true);
     try {
@@ -192,9 +176,16 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     // bottom of the card without ever drifting below the viewport.
     // `sticky top-4` keeps the whole card on-screen while the parent
     // page scrolls behind it.
+    //
+    // Height cap: 100vh minus 20rem (320px). 20rem accounts for the
+    // chrome above the card on the most-cramped Game Plan surface
+    // (/candidates/[id]: topbar ~80px + name+contact header ~80px +
+    // tabs row ~40px + action buttons row ~50px + outer page padding
+    // ~70px). With this cap the composer + Send button stay inside
+    // the viewport at top page scroll, no manual scroll needed.
     <div
       ref={cardRef}
-      className="sticky top-4 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm"
+      className="sticky top-4 flex max-h-[calc(100vh-20rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">

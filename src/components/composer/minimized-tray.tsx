@@ -3,14 +3,23 @@
 import { Mail, X } from "lucide-react";
 import { useMinimizedDrafts } from "@/lib/minimized-drafts-context";
 
-// Bottom-left pill rail for minimized composer drafts. New pills stack
-// to the right. Click the pill body → restore. Click the X → discard
-// the entire draft. Court Mode tokens only — no hardcoded colors.
+// Bottom pill rail for minimized composer drafts. Docks just to the
+// right of the sidebar (using the --ace-sidebar-w custom property
+// AppShell publishes) so the pill never covers the Settings nav
+// button. New pills stack to the right. Click the pill body →
+// restore. Click the X → discard the entire draft. Court Mode tokens
+// only — no hardcoded colors.
 export function MinimizedTray() {
   const { drafts } = useMinimizedDrafts();
   if (drafts.length === 0) return null;
   return (
-    <div className="pointer-events-none fixed bottom-3 left-3 z-[120] flex max-w-[calc(100vw-1.5rem)] flex-wrap gap-2">
+    <div
+      className="pointer-events-none fixed bottom-3 z-[120] flex flex-wrap gap-2"
+      style={{
+        left: "calc(var(--ace-sidebar-w, 240px) + 0.75rem)",
+        maxWidth: "calc(100vw - var(--ace-sidebar-w, 240px) - 1.5rem)",
+      }}
+    >
       {drafts.map((d) => (
         <div
           key={d.id}
