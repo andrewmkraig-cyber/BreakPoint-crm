@@ -3,10 +3,34 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { EditorContent, useEditor } from "@tiptap/react";
+import { Extension } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
+
+// Tab key indents inside lists, otherwise inserts a tab character so
+// hitting Tab in an email body actually indents the line instead of
+// jumping focus out to the Attach button.
+const TabIndent = Extension.create({
+  name: "tabIndent",
+  addKeyboardShortcuts() {
+    return {
+      Tab: () => {
+        if (this.editor.can().sinkListItem("listItem")) {
+          return this.editor.chain().focus().sinkListItem("listItem").run();
+        }
+        return this.editor.chain().focus().insertContent("\t").run();
+      },
+      "Shift-Tab": () => {
+        if (this.editor.can().liftListItem("listItem")) {
+          return this.editor.chain().focus().liftListItem("listItem").run();
+        }
+        return false;
+      },
+    };
+  },
+});
 import {
   Bold,
   Italic,
@@ -545,6 +569,7 @@ export function MailComposer({
       // spliced inline as data: URLs, which is what makes "paste a
       // screenshot in the composer" actually land in the sent email.
       Image.configure({ inline: true, allowBase64: true }),
+      TabIndent,
     ],
     content: defaultBody ?? "",
     onUpdate: () => {
@@ -561,7 +586,12 @@ export function MailComposer({
     editorProps: {
       attributes: {
         class:
-          "min-h-[180px] w-full whitespace-pre-wrap rounded-lg border border-court-border bg-court-surface px-3 py-2 font-sans text-sm leading-relaxed text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 prose prose-sm max-w-none prose-p:my-2 prose-strong:font-semibold",
+          // Explicit list-marker classes — the `prose` plugin isn't
+          // loaded in this project, so without these the bullet /
+          // numbered-list buttons toggle state but render nothing
+          // visible. Mirrors the same pattern used in AiWorkspace +
+          // message-block.
+          "min-h-[180px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
       },
       handlePaste(view, event) {
         const items = event.clipboardData?.items;
@@ -1262,94 +1292,96 @@ export function MailComposer({
         </div>
       )}
 
-      <Toolbar editor={editor} />
-
+      {/* Unified editor pad — toolbar, body, attachments, banners, and
+          footer all live in one rounded card so the reply reads as a
+          single surface instead of three stacked boxes. The card itself
+          is the flex-1 region; the editor scrolls internally while the
+          footer stays pinned at the bottom of the card. */}
       <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragOver(true);
-        }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={async (e) => {
-          e.preventDefault();
-          setDragOver(false);
-          if (e.dataTransfer.files.length > 0) await addFiles(e.dataTransfer.files);
-        }}
-        onFocusCapture={() => (lastFocused.current = "body")}
         className={cn(
-          "mx-5 rounded-lg transition",
-          // Editor body is the only flex-1 region in BOTH inline and
-          // modal modes so the footer (Send / Save Draft / Delete)
-          // stays pinned at the bottom regardless of composer size.
-          // min-h-0 lets the wrapper shrink below the editor's
-          // intrinsic min-height when the wrapper is small.
-          "flex-1 min-h-0 overflow-y-auto",
-          dragOver && "ring-2 ring-brand/50 ring-offset-2 ring-offset-court-surface-subtle",
+          "mx-5 mb-3 flex flex-1 min-h-0 flex-col overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-sm transition",
+          "focus-within:border-brand/40 focus-within:ring-2 focus-within:ring-brand/10",
         )}
       >
-        <EditorContent editor={editor} />
-      </div>
+        <Toolbar editor={editor} />
 
-      {attachments.length > 0 && (
-        <ul className="mx-5 mt-2 shrink-0 space-y-1">
-          {attachments.map((a) => (
-            <li
-              key={a.key}
-              className="flex items-center justify-between rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs text-court-fg"
-            >
-              <span className="truncate">
-                <Paperclip className="mr-1 inline h-3 w-3 text-court-fg-muted" />
-                {a.filename}
-                <span className="ml-2 text-court-fg-muted">{formatBytes(a.sizeBytes)}</span>
-              </span>
-              <button
-                type="button"
-                onClick={() => removeAttachment(a.key)}
-                className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-                aria-label={`Remove ${a.filename}`}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragOver(true);
+          }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={async (e) => {
+            e.preventDefault();
+            setDragOver(false);
+            if (e.dataTransfer.files.length > 0) await addFiles(e.dataTransfer.files);
+          }}
+          onFocusCapture={() => (lastFocused.current = "body")}
+          className={cn(
+            "flex-1 min-h-0 overflow-y-auto",
+            dragOver && "ring-2 ring-brand/50 ring-inset",
+          )}
+        >
+          <EditorContent editor={editor} />
+        </div>
+
+        {attachments.length > 0 && (
+          <ul className="mx-3 mt-2 shrink-0 space-y-1">
+            {attachments.map((a) => (
+              <li
+                key={a.key}
+                className="flex items-center justify-between rounded-md border border-court-border bg-court-surface-subtle/60 px-3 py-1.5 text-xs text-court-fg"
               >
-                <X className="h-3 w-3" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                <span className="truncate">
+                  <Paperclip className="mr-1 inline h-3 w-3 text-court-fg-muted" />
+                  {a.filename}
+                  <span className="ml-2 text-court-fg-muted">{formatBytes(a.sizeBytes)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(a.key)}
+                  className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+                  aria-label={`Remove ${a.filename}`}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
 
-      {/* Phase 5A.2: unresolved merge-field banner. Replaces the old
-          "Send anyway?" confirm() dialog. Shows the user the literal
-          tags that will go through unsubstituted, plus a hint about
-          why ([No active job] / [Pick job above]) when smart context
-          is in play. Court Mode tokens only. */}
-      {allUnresolved.length > 0 && (
-        <div className="mx-5 mt-2 shrink-0 rounded-lg border border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg">
-          <span className="font-medium text-court-fg-muted">
-            {unresolvedNote ? `${unresolvedNote} — ` : ""}
-            These fields will send literally:
-          </span>{" "}
-          {allUnresolved.map((tag, i) => (
-            <span key={tag}>
-              <code className="rounded bg-court-surface px-1 py-0.5 font-mono text-[10px] text-court-fg">
-                {tag}
-              </code>
-              {i < allUnresolved.length - 1 ? " " : ""}
-            </span>
-          ))}
-        </div>
-      )}
+        {/* Phase 5A.2: unresolved merge-field banner. Replaces the old
+            "Send anyway?" confirm() dialog. Shows the user the literal
+            tags that will go through unsubstituted, plus a hint about
+            why ([No active job] / [Pick job above]) when smart context
+            is in play. */}
+        {allUnresolved.length > 0 && (
+          <div className="mx-3 mt-2 shrink-0 rounded-md border border-court-border/60 bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg">
+            <span className="font-medium text-court-fg-muted">
+              {unresolvedNote ? `${unresolvedNote} — ` : ""}
+              These fields will send literally:
+            </span>{" "}
+            {allUnresolved.map((tag, i) => (
+              <span key={tag}>
+                <code className="rounded bg-court-surface px-1 py-0.5 font-mono text-[10px] text-court-fg">
+                  {tag}
+                </code>
+                {i < allUnresolved.length - 1 ? " " : ""}
+              </span>
+            ))}
+          </div>
+        )}
 
-      {error && (
-        <div className="mx-5 mt-2 shrink-0 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-800">
-          {error}
-        </div>
-      )}
+        {error && (
+          <div className="mx-3 mt-2 shrink-0 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+            {error}
+          </div>
+        )}
 
-      <div className="flex shrink-0 items-center justify-between border-t border-court-border bg-court-surface px-5 py-3">
-        {/* Footer pins to the bottom of the composer in BOTH inline
-            and modal modes — shrink-0 prevents the parent flex from
-            collapsing it, so Send / Save Draft / Delete are always
-            visible regardless of how much content sits in the editor
-            above. Court tokens only. */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center justify-between border-t border-court-border/50 bg-court-surface-subtle/40 px-3 py-2">
+          {/* Footer integrated into the editor card so Attach + Send
+              read as part of the same surface as the body. */}
+          <div className="flex items-center gap-2">
           <input
             ref={fileInputRef}
             type="file"
@@ -1420,6 +1452,7 @@ export function MailComposer({
             {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
             Send
           </Button>
+        </div>
         </div>
       </div>
     </div>
@@ -1630,7 +1663,7 @@ function Toolbar({ editor }: { editor: ReturnType<typeof useEditor> }) {
     </button>
   );
   return (
-    <div className="mx-5 flex shrink-0 items-center gap-1 border-b border-court-border py-1">
+    <div className="flex shrink-0 items-center gap-1 border-b border-court-border/50 bg-court-surface-subtle/40 px-3 py-1">
       {btn(
         editor.isActive("bold"),
         () => editor.chain().focus().toggleBold().run(),
