@@ -46,14 +46,40 @@ const config: Config = {
         // using `bg-court-surface` / `text-court-fg` / etc. will re-skin
         // when the Court Mode selector flips the <html> class.
         court: {
+          // Page surfaces
+          bg: "rgb(var(--court-bg) / <alpha-value>)",
           surface: "rgb(var(--court-surface) / <alpha-value>)",
           "surface-subtle": "rgb(var(--court-surface-subtle) / <alpha-value>)",
+          // Borders
+          border: "rgb(var(--court-border) / <alpha-value>)",
+          "border-soft": "rgb(var(--court-border-soft) / <alpha-value>)",
+          // Foreground
           fg: "rgb(var(--court-fg) / <alpha-value>)",
           "fg-muted": "rgb(var(--court-fg-muted) / <alpha-value>)",
-          border: "rgb(var(--court-border) / <alpha-value>)",
+          "fg-dim": "rgb(var(--court-fg-dim) / <alpha-value>)",
+          // Accent / slam
           accent: "rgb(var(--court-accent) / <alpha-value>)",
           "accent-dark": "rgb(var(--court-accent-dark) / <alpha-value>)",
           "accent-tint": "rgb(var(--court-accent-tint) / <alpha-value>)",
+          "accent-border": "rgb(var(--court-accent-border) / <alpha-value>)",
+          // Sidebar (active-bg consumed via bg-[var(--court-sidebar-active-bg)]
+          // because Grass Light stores it as an rgba() literal for translucency)
+          "sidebar-bg": "rgb(var(--court-sidebar-bg) / <alpha-value>)",
+          "sidebar-border": "rgb(var(--court-sidebar-border) / <alpha-value>)",
+          "sidebar-fg": "rgb(var(--court-sidebar-fg) / <alpha-value>)",
+          "sidebar-fg-muted": "rgb(var(--court-sidebar-fg-muted) / <alpha-value>)",
+          "sidebar-fg-dim": "rgb(var(--court-sidebar-fg-dim) / <alpha-value>)",
+          "sidebar-icon": "rgb(var(--court-sidebar-icon) / <alpha-value>)",
+          "sidebar-active-fg": "rgb(var(--court-sidebar-active-fg) / <alpha-value>)",
+          "sidebar-rail": "rgb(var(--court-sidebar-rail) / <alpha-value>)",
+          // Brand green (always available, even in non-grass modes)
+          brand: "rgb(var(--court-brand) / <alpha-value>)",
+          "brand-dark": "rgb(var(--court-brand-dark) / <alpha-value>)",
+          "brand-tint": "rgb(var(--court-brand-tint) / <alpha-value>)",
+          // Badge (Wimbledon purple etc.)
+          badge: "rgb(var(--court-badge) / <alpha-value>)",
+          "badge-fg": "rgb(var(--court-badge-fg) / <alpha-value>)",
+          "badge-bg": "rgb(var(--court-badge-bg) / <alpha-value>)",
         },
       },
       fontFamily: {

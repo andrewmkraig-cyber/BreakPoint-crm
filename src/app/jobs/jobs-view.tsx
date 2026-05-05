@@ -133,7 +133,7 @@ export function JobsView(props: JobsViewProps) {
                 <Th align="right"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody className="divide-y divide-court-border-soft">
               {rows.length === 0 && !error && (
                 <tr>
                   <td colSpan={8} className="px-5 py-12 text-center text-sm text-court-fg-muted">
@@ -145,7 +145,7 @@ export function JobsView(props: JobsViewProps) {
               {rows.map((r) => (
                 <tr
                   key={r.id}
-                  className="cursor-pointer transition hover:bg-brand-tint/40"
+                  className="cursor-pointer transition hover:bg-court-accent-tint/50"
                   onClick={() => router.push(`/jobs/${r.id}`)}
                 >
                   <td className="px-5 py-3 align-top font-medium text-court-fg">
@@ -231,14 +231,14 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
       href={href}
       className={cn(
         "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
+        active ? "bg-court-accent-tint text-court-accent-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
       )}
     >
       <span>{label}</span>
       <span
         className={cn(
           "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          active ? "bg-brand text-white" : "bg-court-surface-subtle text-court-fg-muted",
+          active ? "bg-court-accent text-court-surface" : "bg-court-surface-subtle text-court-fg-muted",
         )}
       >
         {count.toLocaleString()}
@@ -249,8 +249,12 @@ function TabLink({ label, count, active, href }: { label: string; count: number;
 
 function CountPill({ value, tone }: { value: number; tone: "submitted" | "interviewing" | "hired" }) {
   if (!value) return <span className="text-court-fg-muted/60">0</span>;
+  // submitted is the only count that follows the per-mode accent (it's
+  // a generic "in your pipeline" signal). interviewing/hired are
+  // intentionally palette-locked — recruiters read blue=interviewing,
+  // green=hired regardless of court mode, so don't mode-shift those.
   const cls = {
-    submitted: "bg-brand-tint text-brand-dark",
+    submitted: "bg-court-accent-tint text-court-accent-dark",
     interviewing: "bg-blue-50 text-blue-700",
     hired: "bg-emerald-50 text-emerald-700",
   }[tone];

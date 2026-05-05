@@ -547,7 +547,7 @@ export function ComposeFAB() {
         // border, dark text/icon. Header-sized (h-9) so it lives
         // inline with the avatar / sign-out chips in the user
         // cluster.
-        className="group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-emerald-400 bg-emerald-200 text-emerald-900 shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-emerald-300 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-emerald-300/60"
+        className="group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-court-brand bg-court-brand-tint text-court-brand-dark shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 hover:bg-court-brand/30 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40"
         style={{
           transform: open ? "rotate(45deg)" : undefined,
           transitionDuration: "160ms",
@@ -671,7 +671,7 @@ export function ComposeFAB() {
                       className={
                         "mb-1 flex w-full items-center gap-2 rounded-md border px-2 py-1.5 text-left transition " +
                         (pendingContact?.candidateId === phoneNumberMatch.id
-                          ? "border-[#5A9642] bg-[#EAF4E4] text-[#3F7030]"
+                          ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
                           : "border-court-border text-court-fg hover:bg-court-surface-subtle")
                       }
                     >
@@ -756,7 +756,7 @@ export function ComposeFAB() {
                             className={
                               "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition " +
                               (active
-                                ? "bg-[#EAF4E4] text-[#3F7030]"
+                                ? "bg-court-brand-tint text-court-brand-dark"
                                 : "text-court-fg hover:bg-court-surface-subtle")
                             }
                           >
@@ -789,7 +789,7 @@ export function ComposeFAB() {
                     type="button"
                     onClick={commitCall}
                     disabled={!pendingContact}
-                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-court-brand text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <PhoneCall className="h-3.5 w-3.5" />
                     Make call
@@ -798,7 +798,7 @@ export function ComposeFAB() {
                   <button
                     type="button"
                     onClick={commitText}
-                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-[#5A9642] text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030]"
+                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-court-brand text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark"
                   >
                     <MessageSquare className="h-3.5 w-3.5" />
                     Send text
@@ -922,7 +922,7 @@ export function ComposeFAB() {
                     !noteTarget ||
                     !noteText.trim()
                   }
-                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-[#5A9642] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="inline-flex h-9 shrink-0 items-center justify-center gap-1.5 rounded-md bg-court-brand px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {noteSubmitting ? "Adding…" : "Add to profile"}
                 </button>
@@ -985,7 +985,7 @@ function ProfileResultRow({
         className={
           "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition " +
           (selected
-            ? "bg-[#EAF4E4] text-[#3F7030]"
+            ? "bg-court-brand-tint text-court-brand-dark"
             : "text-court-fg hover:bg-court-surface-subtle")
         }
       >
@@ -1001,7 +1001,7 @@ function ProfileResultRow({
           className={
             "shrink-0 rounded-sm px-1 py-0.5 text-[10px] uppercase tracking-wider " +
             (selected
-              ? "bg-[#5A9642]/20 text-[#3F7030]"
+              ? "bg-court-brand/20 text-court-brand-dark"
               : "bg-court-surface-subtle text-court-fg-muted")
           }
         >

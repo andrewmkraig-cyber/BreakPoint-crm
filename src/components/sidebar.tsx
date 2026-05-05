@@ -73,40 +73,25 @@ export function Sidebar({ width }: { width?: number } = {}) {
   const { unreadCount: phoneUnreadCount } = usePhoneContext();
 
   return (
-    // Sidebar background tracks `bg-court-surface` across all four Court
-    // Modes so it reads as one continuous surface with the top bar
-    // (which uses the same token). Earlier the sidebar carried a
-    // hardcoded `grass:bg-[#1F3A1F]` override that left the topbar a
-    // different green in Grass mode — visible vertical seam at the
-    // boundary. Dropping the override + matching brand-mark/nav text
-    // colors back to court-* tokens keeps everything legible across the
-    // four modes without per-class hex overrides.
-    // Sticky positioning + h-screen keeps it visible as the page
-    // content scrolls; self-start bounds its height to the viewport.
-    // Width is driven by the AppShell (drag-resizable + persisted to
-    // localStorage). When no width prop is provided we fall back to
-    // the legacy w-60 (240px) Tailwind class so the component still
-    // renders sanely if used outside AppShell.
+    // Sidebar reads from the dedicated --court-sidebar-* token family
+    // so each Court Mode can pick its own sidebar bg, border, and text
+    // independent of the card surface. In Clay Light the sidebar is tan
+    // (#E8C9B0) while cards stay near-white; in Grass Light the sidebar
+    // is dark Wimbledon green (#1F5638) with white text and a translucent
+    // active-state wash. Sticky positioning + h-screen keeps it visible
+    // as the page content scrolls. Width is driven by the AppShell.
     <aside
+      data-in-sidebar="true"
       style={width ? { width: `${width}px` } : undefined}
       className={
-        "sticky top-0 hidden h-screen shrink-0 self-start border-r border-court-border bg-court-surface md:flex md:flex-col " +
+        "sticky top-0 hidden h-screen shrink-0 self-start border-r border-court-sidebar-border bg-court-sidebar-bg md:flex md:flex-col " +
         (width ? "" : "w-60")
       }
     >
-      {/* Top header carries the full Serve Arc + "Ace · by BreakPoint
-          Talent" lockup. h-20 matches the top bar so the brand mark
-          and the date eyebrow read as one continuous top row. The
-          border-b sits at the bottom of the row — same y where the
-          topbar ends and the page content begins on the right column
-          — so the divider line aligns across both columns. The
-          lockup is a link back to /dashboard so the recruiter can
-          always click the logo to home, the same convention every
-          other web app uses. */}
       <Link
         href="/dashboard"
         aria-label="Ace dashboard"
-        className="flex h-20 shrink-0 items-center border-b border-court-border px-5 transition-opacity hover:opacity-80"
+        className="flex h-20 shrink-0 items-center border-b border-court-sidebar-border px-5 transition-opacity hover:opacity-80"
       >
         <BrandMark withTag />
       </Link>
@@ -114,20 +99,15 @@ export function Sidebar({ width }: { width?: number } = {}) {
         {NAV_GROUPS.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-5"}>
             {group.title && (
-              // Section headliners (ATS / CRM / Inbox) read as
-              // headers, not metadata. Bumped to xs serif, full-strength
-              // text color, separator rule above, and a subtle accent
-              // bar to anchor the eye. Grass mode keeps its lighter
-              // foreground but inherits the same prominence.
               <div className="mb-1.5 flex items-center gap-2 px-3 pt-2">
                 <span
                   aria-hidden="true"
-                  className="h-3 w-0.5 shrink-0 rounded-full bg-court-accent"
+                  className="h-3 w-0.5 shrink-0 rounded-full bg-court-sidebar-rail"
                 />
-                <div className="font-serif text-xs font-bold uppercase tracking-[0.18em] text-court-fg">
+                <div className="font-serif text-xs font-bold uppercase tracking-[0.18em] text-court-sidebar-fg-dim">
                   {group.title}
                 </div>
-                <div className="ml-1 h-px flex-1 bg-court-border/70" />
+                <div className="ml-1 h-px flex-1 bg-court-sidebar-border" />
               </div>
             )}
             <div className="space-y-0.5">
@@ -149,7 +129,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
           </div>
         ))}
       </nav>
-      <nav className="shrink-0 space-y-0.5 border-t border-court-border p-2">
+      <nav className="shrink-0 space-y-0.5 border-t border-court-sidebar-border p-2">
         {FOOTER_NAV.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
@@ -182,22 +162,22 @@ function NavLink({
       className={cn(
         "relative flex h-10 items-center gap-3 rounded-lg pl-4 pr-3 text-sm font-medium transition-colors",
         active
-          ? "bg-court-accent-tint text-court-accent-dark"
-          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
+          ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
+          : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
       )}
     >
       {active && (
         <span
           aria-hidden="true"
-          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-court-accent"
+          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-court-sidebar-rail"
         />
       )}
-      <Icon className={cn("h-4 w-4", active ? "text-court-accent-dark" : "text-court-fg-muted")} />
+      <Icon className={cn("h-4 w-4", active ? "text-court-sidebar-active-fg" : "text-court-sidebar-icon")} />
       <span className="flex-1">{item.label}</span>
       {showBadge && (
         <span
           aria-label={`${badge} unread`}
-          className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-brand grass:bg-grass-purple px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white"
+          className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-court-badge px-1.5 py-0.5 text-[10px] font-semibold leading-none text-court-badge-fg"
         >
           {badge > 99 ? "99+" : badge}
         </span>

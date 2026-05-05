@@ -1,13 +1,13 @@
 import { cn } from "@/lib/utils";
 
 // Sidebar wordmark — Serve Arc mark + "Ace · BreakPoint Talent"
-// lockup. The mark colors (#111111, #7BB85B) are intentionally
-// hard-coded: the brand mark is an asset, not a UI surface, so it
-// reads identically across every Court Mode. Surrounding text DOES
-// follow the Court Mode tokens — court-fg / court-fg-muted /
-// court-accent-dark — so "BreakPoint Talent" lifts to the lifted
-// green in Night and recolors per surface elsewhere without losing
-// brand legibility.
+// lockup. The mark SVG colors (#111111, #7BB85B) are intentionally
+// hard-coded: the mark is an asset, not a UI surface, so it reads
+// identically across every Court Mode. The text uses the
+// court-sidebar-* token family when rendered inside the sidebar
+// (a [data-in-sidebar] ancestor) and the regular court-fg family
+// otherwise — so a future use of this lockup in a non-sidebar
+// surface (login splash, etc.) still inherits sensible defaults.
 export function BrandMark({
   className,
   withTag = false,
@@ -36,13 +36,13 @@ export function BrandMark({
         <circle cx="46" cy="30" r="4.5" fill="#7BB85B" />
       </svg>
       <div className="leading-tight">
-        <div className="font-serif text-[22px] font-bold tracking-tight text-court-fg">
+        <div className="font-serif text-[22px] font-bold tracking-tight text-court-fg [[data-in-sidebar]_&]:text-court-sidebar-fg">
           Ace
         </div>
         {withTag && (
-          <div className="mt-0.5 font-serif text-[12px] italic text-court-fg-muted">
+          <div className="mt-0.5 font-serif text-[12px] italic text-court-fg-muted [[data-in-sidebar]_&]:text-court-sidebar-fg-muted">
             by{" "}
-            <span className="font-semibold text-court-accent-dark">
+            <span className="font-semibold text-court-accent-dark [[data-in-sidebar]_&]:text-court-sidebar-fg">
               BreakPoint Talent
             </span>
           </div>

@@ -107,7 +107,7 @@ export function AppShell({
   // browser's scroll-overflow edges, making the "full page background dark"
   // switch feel broken.
   if (isUnauth) {
-    return <main className="min-h-screen bg-court-surface-subtle">{children}</main>;
+    return <main className="min-h-screen bg-court-bg">{children}</main>;
   }
 
   // MailProvider polls /api/mail/unread every 30s; the SSR count seeds
@@ -118,7 +118,7 @@ export function AppShell({
     <MailProvider initialUnreadCount={unreadMailCount}>
       <PhoneProvider>
         <TextingProvider>
-          <div className="flex min-h-screen bg-court-surface-subtle">
+          <div className="flex min-h-screen bg-court-bg">
             <MailTabTitleSync />
             <Sidebar width={sidebarWidth} />
             {/* Resize handle sits between the sticky sidebar and the
@@ -141,7 +141,7 @@ export function AppShell({
                 // chrome (court-surface) so the strip doesn't expose
                 // the page bg in the brand-mark/topbar row either.
                 // Drag/hover states stay brand-tinted on top.
-                (dragging ? "bg-brand/40" : "bg-court-surface-subtle hover:bg-brand/20")
+                (dragging ? "bg-court-accent/40" : "bg-court-bg hover:bg-court-accent/20")
               }
             >
               {/* Top-row filler: matches the sidebar + topbar's
