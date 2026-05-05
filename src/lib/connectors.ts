@@ -174,34 +174,16 @@ export async function getClaudeStatus(): Promise<ConnectorStatus> {
   }
 }
 
-// Quo (OpenPhone) — health check that answers "is Ace integrated with
-// Quo right now?" rather than just "does Ace have an API key on file".
+// Quo (OpenPhone) — temporarily simplified to "API key valid → connected".
 //
-// Order matters: recent webhook activity is the ground truth (events
-// actually reached Ace), so we trust it OVER OpenPhone's /v1/webhooks
-// list endpoint. That list endpoint historically misses subscriptions
-// (it doesn't enumerate every webhook category) and was reporting
-// "no Ace webhook" against an integration that was demonstrably
-// delivering inbound texts. Letting the list win in that case
-// red-flagged a healthy integration.
-//
-//   1. API key valid?    — GET /v1/phone-numbers
-//   2. Recent activity?  — most recent SmsMessage / CallLog row. Within
-//                          stale threshold → connected, no further calls
-//                          needed (events are arriving, by definition).
-//   3. Webhook list?     — only consulted when there's no recent
-//                          activity to confirm. A missing subscription
-//                          here means the integration probably isn't
-//                          wired up; we surface that as disconnected.
-const QUO_STALE_THRESHOLD_MS = 48 * 60 * 60 * 1000;
-
-type OpenPhoneWebhook = {
-  id?: string;
-  url?: string;
-  status?: string;
-  events?: string[];
-};
-
+// The previous check tried to verify the webhook subscription via
+// OpenPhone's /v1/webhooks list endpoint, which historically misses
+// subscriptions and was reporting "no Ace webhook" against an
+// integration that was demonstrably delivering inbound texts. Until
+// the planned setup-wizard ships and we have a more reliable
+// subscription verifier, we treat a working API key as connected and
+// surface the most recent inbound event time as supporting evidence
+// when one is available.
 export async function getQuoStatus(): Promise<ConnectorStatus> {
   const key = process.env.QUO_API_KEY;
   if (!key) {
@@ -214,7 +196,7 @@ export async function getQuoStatus(): Promise<ConnectorStatus> {
     };
   }
 
-  // Step 1 — API key check.
+  // API key check.
   try {
     const res = await fetch("https://api.openphone.com/v1/phone-numbers", {
       method: "GET",
@@ -243,9 +225,7 @@ export async function getQuoStatus(): Promise<ConnectorStatus> {
     };
   }
 
-  // Step 2 — recent webhook activity is the definitive signal. If
-  // events are arriving, the integration is working regardless of what
-  // /v1/webhooks reports.
+  // Optional supporting evidence: most recent inbound event.
   let lastEventAt: Date | null = null;
   try {
     const [latestSms, latestCall] = await Promise.all([
@@ -260,91 +240,29 @@ export async function getQuoStatus(): Promise<ConnectorStatus> {
     ]);
     lastEventAt = latestestOf(latestSms?.createdAt, latestCall?.createdAt);
   } catch {
-    // DB read fail — diagnostics query shouldn't 500 the status check.
+    // DB read fail — diagnostic query shouldn't 500 the status check.
   }
 
+  let detail = "API key valid.";
   if (lastEventAt) {
     const ageMs = Date.now() - lastEventAt.getTime();
-    if (ageMs <= QUO_STALE_THRESHOLD_MS) {
-      const minutesAgo = Math.round(ageMs / 60_000);
-      const fresh =
-        minutesAgo < 1
-          ? "just now"
-          : minutesAgo < 60
+    const minutesAgo = Math.round(ageMs / 60_000);
+    const fresh =
+      minutesAgo < 1
+        ? "just now"
+        : minutesAgo < 60
           ? `${minutesAgo}m ago`
-          : `${Math.round(minutesAgo / 60)}h ago`;
-      return {
-        id: "quo",
-        label: "Quo",
-        state: "connected",
-        detail: `API healthy. Last inbound event ${fresh}.`,
-        managedIn: "env",
-      };
-    }
-  }
-
-  // Step 3 — no recent activity to confirm. Consult the webhook list
-  // to decide between "subscription missing" (disconnected) and
-  // "probably fine, just quiet" (degraded/connected).
-  try {
-    const res = await fetch("https://api.openphone.com/v1/webhooks", {
-      method: "GET",
-      headers: {
-        Authorization: key,
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const body = (await res.json()) as { data?: OpenPhoneWebhook[] };
-      const hooks = Array.isArray(body?.data) ? body.data : [];
-      const aceHook = hooks.find((h) =>
-        typeof h.url === "string" && h.url.includes("/api/quo/webhook"),
-      );
-      if (!aceHook) {
-        return {
-          id: "quo",
-          label: "Quo",
-          state: "disconnected",
-          detail:
-            "API key works, but no webhook subscription points at Ace. Inbound texts/calls won't be received until the subscription is recreated in Quo.",
-          managedIn: "env",
-        };
-      }
-      const status = (aceHook.status ?? "").toLowerCase();
-      if (status && status !== "enabled" && status !== "active") {
-        return {
-          id: "quo",
-          label: "Quo",
-          state: "disconnected",
-          detail: `Webhook subscription is "${aceHook.status}" — re-enable it in Quo to resume inbound delivery.`,
-          managedIn: "env",
-        };
-      }
-    }
-    // Non-200 → fall through to the tentative connected default below.
-    // OpenPhone rate-limits this endpoint and we don't want a 429 to
-    // red-flag a healthy integration.
-  } catch {
-    // Network blip — same fallback below.
-  }
-
-  if (lastEventAt) {
-    const hours = Math.round((Date.now() - lastEventAt.getTime()) / (60 * 60 * 1000));
-    return {
-      id: "quo",
-      label: "Quo",
-      state: "degraded",
-      detail: `Webhook subscribed, but no events in ${hours}h — confirm Quo is still routing to Ace.`,
-      managedIn: "env",
-    };
+          : minutesAgo < 60 * 24
+            ? `${Math.round(minutesAgo / 60)}h ago`
+            : `${Math.round(minutesAgo / (60 * 24))}d ago`;
+    detail = `API key valid. Last inbound event ${fresh}.`;
   }
 
   return {
     id: "quo",
     label: "Quo",
     state: "connected",
-    detail: "API + webhook healthy. No recent inbound activity to confirm delivery.",
+    detail,
     managedIn: "env",
   };
 }
