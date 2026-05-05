@@ -1654,6 +1654,89 @@ export function ThreadDetail({
   // ThreadDetail's redundant chrome row entirely.
   const renderOwnHeader = !(isFloating && isControlled);
 
+  // Composer node lifted out of JSX so the same instance can render in
+  // one of two layout slots: above the messages region (Gmail-style
+  // body-first reply, used by FloatingThreadWindow) or below it
+  // (legacy inline /mail layout). Computing it once also keeps the
+  // textarea / draft state from getting unmounted-and-remounted just
+  // because we changed where it sits in the tree.
+  const composerNode = composerOpen ? (
+    <MailComposer
+      // Forward starts a new Gmail thread; Reply / Reply All stay
+      // in the existing one so Gmail keeps them threaded.
+      threadId={composerMode === "forward" ? undefined : detail.id}
+      defaultTo={composerMode === "forward" ? "" : defaultTo}
+      defaultCc={composerMode === "replyAll" ? defaultCc : ""}
+      defaultSubject={
+        composerMode === "forward" ? forwardSubject : defaultSubject
+      }
+      defaultBody={composerMode === "forward" ? forwardBody : ""}
+      autoFocusBody
+      templates={templates}
+      ccPickerOptions={ccPickerOptions}
+      mergeContext={{
+        user: {
+          firstName: currentUserFirstName,
+          fullName: currentUserFullName,
+        },
+      }}
+      modalTitle={
+        composerMode === "forward"
+          ? "Forward"
+          : composerMode === "replyAll"
+            ? "Reply All"
+            : "Reply"
+      }
+      onClose={() => setComposerMode(null)}
+      onSent={() => {
+        setComposerMode(null);
+        onSent?.();
+      }}
+      onPopOut={(snapshot: ComposerStateSnapshot) => {
+        // Fix 4b — re-launch the same draft as a modal composer
+        // via the manager. The snapshot carries every field the
+        // recruiter edited (including rich-text body HTML and any
+        // saved Gmail draft id) so the modal opens pre-filled with
+        // exactly what was in the inline pane. We close the inline
+        // pane immediately so there's only one composer on screen.
+        // nonBlocking matches the thread Pop-out behavior — the
+        // user must be able to keep navigating Ace (open another
+        // candidate, switch to /phone, etc.) while the popped-out
+        // composer floats above. Without this the manager renders
+        // a black/40 backdrop that swallows every click on the
+        // page underneath.
+        const popOutTitle =
+          composerMode === "forward"
+            ? "Forward"
+            : composerMode === "replyAll"
+              ? "Reply All"
+              : "Reply";
+        composerManager.open({
+          threadId:
+            composerMode === "forward" ? undefined : detail.id,
+          defaultTo: snapshot.to,
+          defaultCc: snapshot.cc,
+          defaultBcc: snapshot.bcc,
+          defaultSubject: snapshot.subject,
+          defaultBody: snapshot.bodyHtml,
+          defaultAttachments: snapshot.attachments,
+          defaultDraftId: snapshot.draftId,
+          templates,
+          nonBlocking: true,
+          mergeContext: {
+            user: {
+              firstName: currentUserFirstName,
+              fullName: currentUserFullName,
+            },
+          },
+          modalTitle: popOutTitle,
+          onSent: () => onSent?.(),
+        });
+        setComposerMode(null);
+      }}
+    />
+  ) : null;
+
   return (
     <div
       className={
@@ -1766,7 +1849,19 @@ export function ThreadDetail({
         </div>
       </div>
       )}
-      <div className="flex-1 overflow-y-auto">
+      {/* Floating window: Gmail-style body-first layout — composer on
+          top, quoted history scrollable below. Inline /mail keeps the
+          legacy messages-on-top, composer-on-bottom order so the
+          Reply pane stays glued to the bottom of the page like
+          before. The composer node is computed once and rendered in
+          one of two slots depending on which mode we're in. */}
+      {isFloating && composerOpen && composerNode}
+      <div
+        className={
+          "flex-1 overflow-y-auto" +
+          (isFloating && composerOpen ? " border-t border-court-border" : "")
+        }
+      >
         {orderedMessages.map((m, i) => (
           <MessageBlock
             key={m.id}
@@ -1800,82 +1895,7 @@ export function ThreadDetail({
           />
         ))}
       </div>
-      {composerOpen && (
-        <MailComposer
-          // Forward starts a new Gmail thread; Reply / Reply All stay
-          // in the existing one so Gmail keeps them threaded.
-          threadId={composerMode === "forward" ? undefined : detail.id}
-          defaultTo={composerMode === "forward" ? "" : defaultTo}
-          defaultCc={composerMode === "replyAll" ? defaultCc : ""}
-          defaultSubject={
-            composerMode === "forward" ? forwardSubject : defaultSubject
-          }
-          defaultBody={composerMode === "forward" ? forwardBody : ""}
-          autoFocusBody
-          templates={templates}
-          ccPickerOptions={ccPickerOptions}
-          mergeContext={{
-            user: {
-              firstName: currentUserFirstName,
-              fullName: currentUserFullName,
-            },
-          }}
-          modalTitle={
-            composerMode === "forward"
-              ? "Forward"
-              : composerMode === "replyAll"
-                ? "Reply All"
-                : "Reply"
-          }
-          onClose={() => setComposerMode(null)}
-          onSent={() => {
-            setComposerMode(null);
-            onSent?.();
-          }}
-          onPopOut={(snapshot: ComposerStateSnapshot) => {
-            // Fix 4b — re-launch the same draft as a modal composer
-            // via the manager. The snapshot carries every field the
-            // recruiter edited (including rich-text body HTML and any
-            // saved Gmail draft id) so the modal opens pre-filled with
-            // exactly what was in the inline pane. We close the inline
-            // pane immediately so there's only one composer on screen.
-            // nonBlocking matches the thread Pop-out behavior — the
-            // user must be able to keep navigating Ace (open another
-            // candidate, switch to /phone, etc.) while the popped-out
-            // composer floats above. Without this the manager renders
-            // a black/40 backdrop that swallows every click on the
-            // page underneath.
-            const popOutTitle =
-              composerMode === "forward"
-                ? "Forward"
-                : composerMode === "replyAll"
-                  ? "Reply All"
-                  : "Reply";
-            composerManager.open({
-              threadId:
-                composerMode === "forward" ? undefined : detail.id,
-              defaultTo: snapshot.to,
-              defaultCc: snapshot.cc,
-              defaultBcc: snapshot.bcc,
-              defaultSubject: snapshot.subject,
-              defaultBody: snapshot.bodyHtml,
-              defaultAttachments: snapshot.attachments,
-              defaultDraftId: snapshot.draftId,
-              templates,
-              nonBlocking: true,
-              mergeContext: {
-                user: {
-                  firstName: currentUserFirstName,
-                  fullName: currentUserFullName,
-                },
-              },
-              modalTitle: popOutTitle,
-              onSent: () => onSent?.(),
-            });
-            setComposerMode(null);
-          }}
-        />
-      )}
+      {!isFloating && composerOpen && composerNode}
     </div>
   );
 }
