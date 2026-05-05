@@ -1,0 +1,96 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+
+// Inline-edit writes for the Overview sidebar on /jobs/[id]. Each
+// optional field maps to its Job-table column. RF-imported and Ace-
+// native rows take the same write path — Ace-native is the future
+// canonical anyway, and the find-matches / Game Plan readers already
+// pull from these columns directly, so updates surface there
+// immediately. The sidebar component reads straight from the Job row
+// on revalidate, so we don't have to keep Job.raw in sync for this
+// view; the previous /jobs/[id] header read via normalizeJob(raw) was
+// retired in the layout overhaul that introduced this action.
+
+type Result = { ok: true } | { ok: false; error: string };
+
+export type JobOverviewPatch = {
+  // Compensation. Pass numbers (or null to clear). Currency is a 3-letter
+  // ISO code; the form normalizes blank to USD.
+  salaryRangeStart?: number | null;
+  salaryRangeEnd?: number | null;
+  salaryCurrency?: string | null;
+  // Comma-free single value — the form splits multiple locations on the
+  // way in. An empty array clears the field.
+  locations?: string[];
+  numberOfOpenings?: number | null;
+  isOpen?: boolean;
+  employmentType?: string | null;
+};
+
+export async function updateJobOverview(args: {
+  jobRfId?: number | null;
+  jobCuid?: string | null;
+  patch: JobOverviewPatch;
+}): Promise<Result> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+
+  const { jobRfId, jobCuid, patch } = args;
+  if (!jobCuid && jobRfId == null) {
+    return { ok: false, error: "Job id invalid." };
+  }
+
+  // Validate salary inputs before hitting the DB so the user gets a
+  // clean error string instead of a Prisma stack.
+  const lo = patch.salaryRangeStart;
+  const hi = patch.salaryRangeEnd;
+  if (lo != null && lo < 0) return { ok: false, error: "Salary low can't be negative." };
+  if (hi != null && hi < 0) return { ok: false, error: "Salary high can't be negative." };
+  if (lo != null && hi != null && lo > hi) {
+    return { ok: false, error: "Salary low can't be greater than salary high." };
+  }
+  const openings = patch.numberOfOpenings;
+  if (openings != null && (openings < 0 || !Number.isInteger(openings))) {
+    return { ok: false, error: "Openings must be a positive whole number." };
+  }
+
+  try {
+    const job = await prisma.job.findFirst({
+      where: jobCuid ? { id: jobCuid } : { legacyRfId: jobRfId! },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!job) return { ok: false, error: "Job not found." };
+
+    const data: Prisma.JobUpdateInput = {};
+    if (patch.salaryRangeStart !== undefined) data.salaryRangeStart = patch.salaryRangeStart;
+    if (patch.salaryRangeEnd !== undefined) data.salaryRangeEnd = patch.salaryRangeEnd;
+    if (patch.salaryCurrency !== undefined) {
+      const ccy = (patch.salaryCurrency ?? "").trim().toUpperCase().slice(0, 3);
+      data.salaryCurrency = ccy || null;
+    }
+    if (patch.locations !== undefined) {
+      data.locations = patch.locations
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+    }
+    if (patch.numberOfOpenings !== undefined) data.numberOfOpenings = patch.numberOfOpenings;
+    if (patch.isOpen !== undefined) data.isOpen = patch.isOpen;
+    if (patch.employmentType !== undefined) {
+      const et = (patch.employmentType ?? "").trim();
+      data.employmentType = et || null;
+    }
+
+    await prisma.job.update({ where: { id: job.id }, data });
+
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/jobs/${job.id}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}

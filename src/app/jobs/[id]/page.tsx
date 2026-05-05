@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, MapPin, Users, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
   normalizeJob,
   flattenPipeline,
@@ -17,14 +17,26 @@ import {
   type JobPipelineRow,
 } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
+import {
+  EditableJobOverview,
+  type JobOverviewInitial,
+} from "@/app/jobs/[id]/editable-job-overview";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import AiWorkspace from "@/components/AiWorkspace";
 import { prisma } from "@/lib/prisma";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function JobDetailPage({ params }: { params: { id: string } }) {
+type JobTab = "description" | "game-plan";
+
+export default async function JobDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { tab?: string };
+}) {
   // Phase 2: accept both cuid (Ace-native, post-cutover canonical) and
   // legacy numeric RF id (back-compat for existing URLs / external links).
   const jobRow = await getJobByIdentifier(params.id);
@@ -197,20 +209,8 @@ export default async function JobDetailPage({ params }: { params: { id: string }
     };
   });
 
-  const counts = pipelineRows.reduce(
-    (acc, r) => {
-      if (r.bucket === "submitted") acc.submitted += 1;
-      if (r.bucket === "interviewing") acc.interviewing += 1;
-      if (r.bucket === "hired") acc.hired += 1;
-      return acc;
-    },
-    { submitted: 0, interviewing: 0, hired: 0 },
-  );
-
   const customFields = Array.isArray(raw.custom_fields) ? raw.custom_fields : [];
   const billingContact = customFields.find((f) => f.name?.toLowerCase() === "billing contact")?.value as string | undefined;
-  const feePct = customFields.find((f) => f.name?.toLowerCase().includes("client fee"))?.value as number | undefined;
-  const estFee = customFields.find((f) => f.name?.toLowerCase().includes("estimated fee") || f.name?.toLowerCase().includes("etimated fee"))?.value as number | undefined;
 
   // Client slug for the "Client profile" button. Prefer the Client row's
   // legacyRfId (back-compat URLs); fall back to cuid for Ace-native.
@@ -229,8 +229,39 @@ export default async function JobDetailPage({ params }: { params: { id: string }
   // (Ace-native native column) > raw.description (RF payload fallback).
   const rfDescription = typeof raw.description === "string" ? raw.description : null;
 
+  // Tab selection from ?tab=. Default Job Description so the recruiter
+  // lands on the role's content rather than the AI workspace.
+  const tab: JobTab = searchParams?.tab === "game-plan" ? "game-plan" : "description";
+
+  // Overview reads come from the Job table directly so saves through
+  // EditableJobOverview echo on next revalidate without having to keep
+  // Job.raw in sync. RF-imported rows have these columns populated by
+  // the importer; values fall back to the normalized RF shape (used for
+  // very old imports or partial syncs) or — last-resort — to the raw
+  // payload's salary fields.
+  const rawSalaryStart =
+    typeof raw.salary_range_start === "number" ? raw.salary_range_start : null;
+  const rawSalaryEnd =
+    typeof raw.salary_range_end === "number" ? raw.salary_range_end : null;
+  const rawSalaryCcy =
+    typeof raw.salary_range_currency === "string" ? raw.salary_range_currency : null;
+  const overviewInitial: JobOverviewInitial = {
+    salaryRangeStart: jobRow.salaryRangeStart ?? rawSalaryStart,
+    salaryRangeEnd: jobRow.salaryRangeEnd ?? rawSalaryEnd,
+    salaryCurrency: jobRow.salaryCurrency ?? rawSalaryCcy,
+    locations: Array.isArray(jobRow.locations) && jobRow.locations.length > 0
+      ? jobRow.locations
+      : (Array.isArray(raw.locations) ? raw.locations : []),
+    numberOfOpenings: jobRow.numberOfOpenings ?? raw.number_of_openings ?? null,
+    isOpen: jobRow.isOpen,
+    employmentType: jobRow.employmentType ?? raw.employment_type ?? null,
+    billingContact: billingContact || "",
+    lastEditedAt: jobRow.updatedAt.toISOString(),
+    applyLink: typeof raw.apply_link === "string" ? raw.apply_link : null,
+  };
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <Link
         href="/jobs"
         className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg"
@@ -238,177 +269,104 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         <ArrowLeft className="h-3 w-3" /> Back to jobs
       </Link>
 
-      {/* Inline header (PageHeader-shaped but tuned for /jobs/[id]):
-          - eyebrow is the client name and links to the client profile
-            when we have a slug, replacing the standalone "Client
-            profile" pill button
-          - title font dropped one tier (4xl → 3xl) and eyebrow bumped
-            (xs → sm) so the client name reads as a real anchor, not
-            a tiny caption
-          - description row removed because the same job-type / location
-            lives in the Overview card directly below */}
-      <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-        <div>
-          {clientSlug ? (
-            <Link
-              href={`/clients/${clientSlug}`}
-              className="text-sm font-semibold uppercase tracking-widest text-court-accent transition hover:underline"
-            >
-              {job.company || "Client"}
-            </Link>
-          ) : (
-            <div className="text-sm font-semibold uppercase tracking-widest text-court-accent">
-              {job.company || "Client"}
-            </div>
-          )}
-          <h1 className="mt-1 font-serif text-3xl font-bold text-court-fg">{job.title}</h1>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <StatusCard isOpen={job.isOpen} />
-        <Stat label="Submitted" value={counts.submitted} />
-        <Stat label="Interviewing" value={counts.interviewing} />
-        <Stat label="Hired" value={counts.hired} />
-      </div>
-
-      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <h2 className="font-serif text-lg font-semibold text-court-fg">Overview</h2>
-        <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <DT label="Compensation" value={job.compensation || "—"} />
-          <DT label="Openings" value={String(job.openings ?? "—")} />
-          <DT label="Location" value={job.location || "—"} icon={<MapPin className="h-3 w-3" />} />
-          <DT label="Job Type" value={[job.jobType, job.employmentType].filter(Boolean).join(" · ") || "—"} />
-          <DT label={isAceNative ? "Status" : "Status (RF)"} value={job.statusName || (job.isOpen ? "Active" : "Closed")} />
-          <DT label="Last Edited" value={formatDate(job.lastEditedAt)} />
-          <DT label="Billing Contact" value={billingContact || "—"} />
-          <DT label="Fee" value={feePct ? `${feePct}%${estFee ? ` (est. $${estFee.toLocaleString()})` : ""}` : "—"} />
-        </dl>
-        {raw.apply_link && (
-          <div className="mt-5 border-t border-court-border pt-4">
-            <Link
-              href={raw.apply_link}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1 text-xs text-brand-dark hover:underline"
-            >
-              Public apply link <ExternalLink className="h-3 w-3" />
-            </Link>
+      <div className="flex flex-col gap-1">
+        {clientSlug ? (
+          <Link
+            href={`/clients/${clientSlug}`}
+            className="text-sm font-semibold uppercase tracking-widest text-court-accent transition hover:underline"
+          >
+            {job.company || "Client"}
+          </Link>
+        ) : (
+          <div className="text-sm font-semibold uppercase tracking-widest text-court-accent">
+            {job.company || "Client"}
           </div>
         )}
+        <h1 className="font-serif text-3xl font-bold text-court-fg">{job.title}</h1>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-serif text-lg font-semibold text-court-fg">Game Plan</h2>
-            <p className="mt-0.5 text-xs text-court-fg-muted">
-              Ask Claude about this role, or surface internal candidate matches with Find Matches.
-            </p>
+      {/* Compact pipeline strip — single chip row sitting directly above
+          the main content. Click a chip to expand its row table; click
+          Matched to open the (paginated) Matched panel. */}
+      <JobPipelineSummary
+        compact
+        rows={pipelineRows}
+        jobActions={{
+          jobRfId: rfId ?? 0,
+          jobCuid: isAceNative ? jobRow.id : null,
+          clientRfId: job.companyId ?? 0,
+          clientCuid: jobRow.clientId ?? null,
+          jobTitle: job.title,
+          clientName: job.company || "",
+        }}
+        matched={{
+          rows: matchedRows,
+          jobId: jobRow.id,
+          jobRfId: rfId,
+        }}
+      />
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <div className="space-y-4 lg:col-span-7">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <JobTabs slug={isAceNative ? jobRow.id : String(rfId)} tab={tab} />
+            {tab === "game-plan" && (
+              <FindMatchesButton
+                target={{
+                  kind: "job",
+                  jobId: jobRow.id,
+                  jobRfId: rfId,
+                  label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
+                }}
+              />
+            )}
           </div>
-          <FindMatchesButton
-            target={{
-              kind: "job",
-              jobId: jobRow.id,
-              jobRfId: rfId,
-              label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
-            }}
+          {tab === "game-plan" ? (
+            <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />
+          ) : (
+            <EditableJobDescription
+              jobRfId={rfId}
+              jobCuid={isAceNative ? jobRow.id : null}
+              rfDescription={rfDescription}
+              initialOverride={override?.description ?? null}
+            />
+          )}
+        </div>
+        <div className="lg:col-span-3">
+          <EditableJobOverview
+            jobRfId={rfId}
+            jobCuid={isAceNative ? jobRow.id : null}
+            initial={overviewInitial}
           />
         </div>
-        <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />
-      </div>
-
-      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <div className="flex items-center justify-between">
-          <h2 className="font-serif text-lg font-semibold text-court-fg">Pipeline</h2>
-          <div className="inline-flex items-center gap-1 text-xs text-court-fg-muted">
-            <Users className="h-3 w-3" />
-            {pipelineRows.length} {pipelineRows.length === 1 ? "candidate" : "candidates"}
-          </div>
-        </div>
-        {pipelineRows.length === 0 && matchedRows.length === 0 ? (
-          <div className="py-8 text-center text-sm text-court-fg-muted">
-            No candidates have been added to this job yet.
-          </div>
-        ) : (
-          <div className="mt-4">
-            <JobPipelineSummary
-              rows={pipelineRows}
-              jobActions={{
-                // Pre-Phase-2 callers keyed on a single numeric jobRfId.
-                // Ace-native Jobs carry legacyRfId null; pass 0 as a
-                // sentinel and let write paths (placement-actions)
-                // branch on jobCuid when present.
-                jobRfId: rfId ?? 0,
-                jobCuid: isAceNative ? jobRow.id : null,
-                clientRfId: job.companyId ?? 0,
-                clientCuid: jobRow.clientId ?? null,
-                jobTitle: job.title,
-                clientName: job.company || "",
-              }}
-              matched={{
-                rows: matchedRows,
-                jobId: jobRow.id,
-                jobRfId: rfId,
-              }}
-            />
-          </div>
-        )}
-      </div>
-
-      <EditableJobDescription
-        jobRfId={rfId}
-        jobCuid={isAceNative ? jobRow.id : null}
-        rfDescription={rfDescription}
-        initialOverride={override?.description ?? null}
-      />
-    </div>
-  );
-}
-
-function DT({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {
-  return (
-    <div>
-      <dt className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</dt>
-      <dd className="mt-0.5 inline-flex items-center gap-1 text-court-fg">
-        {icon}
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
-      <div className="font-serif text-4xl font-extrabold leading-none tracking-tight text-court-fg">
-        {value}
       </div>
     </div>
   );
 }
 
-function StatusCard({ isOpen }: { isOpen: boolean }) {
+function JobTabs({ slug, tab }: { slug: string; tab: JobTab }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">Status</div>
-      <span
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider",
-          isOpen
-            ? "bg-brand-tint text-brand-dark"
-            : "bg-court-surface-subtle text-court-fg-muted",
-        )}
-      >
-        <span
-          className={cn(
-            "h-1.5 w-1.5 rounded-full",
-            isOpen ? "bg-brand-dark" : "bg-court-fg-muted",
-          )}
-        />
-        {isOpen ? "Active" : "Inactive"}
-      </span>
+    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
+      <JobTabLink label="Job Description" href={`/jobs/${slug}`} active={tab === "description"} />
+      <JobTabLink label="Game Plan" href={`/jobs/${slug}?tab=game-plan`} active={tab === "game-plan"} />
     </div>
   );
 }
+
+function JobTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
+        active
+          ? "bg-court-accent-tint text-court-accent-dark ring-1 ring-court-accent/40"
+          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
+      )}
+    >
+      {label}
+    </Link>
+  );
+}
+

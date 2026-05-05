@@ -3,7 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, ExternalLink, Loader2, Send, Target } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+  Send,
+  Target,
+} from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StageBadgeFromName } from "@/components/stage-badge";
@@ -98,9 +106,16 @@ export function JobPipelineSummary({
   visibleBuckets = STAGE_ORDER,
   jobActions,
   matched,
+  compact = false,
 }: {
   rows: JobPipelineRow[];
   visibleBuckets?: PipelineBucket[];
+  // When true, render a tighter chip row meant to sit above the main
+  // page content rather than inside a Pipeline card. Smaller paddings,
+  // smaller count number, fewer columns at small widths so the row
+  // stays single-line on a normal /jobs/[id] viewport. The expanded
+  // bucket / Matched panels below still render at full size.
+  compact?: boolean;
   // Optional context for inline action buttons. When omitted (e.g. on the
   // global /pipeline page where the same component is reused) the Actions
   // column is suppressed and the table renders read-only.
@@ -190,9 +205,26 @@ export function JobPipelineSummary({
   }, [matchedJobId, tick]);
   const liveMatchedCount = liveMatchedRows.length;
 
+  // Compact variant trims chip padding and count font so the whole row
+  // fits comfortably above the Job Description / Game Plan content area
+  // without taking a full screen of vertical space. Click-to-expand
+  // behavior is unchanged.
+  const chipBoxClass = compact
+    ? "flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-left transition"
+    : "flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition";
+  const chipLabelClass = compact
+    ? "flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider"
+    : "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider";
+  const chipCountClass = compact
+    ? "font-serif text-base font-bold leading-none tabular-nums"
+    : "font-serif text-2xl font-bold leading-none";
+  const chipGridClass = compact
+    ? "flex flex-wrap gap-1.5"
+    : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8";
+
   return (
     <div>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
+      <div className={chipGridClass}>
         {items.map((it) => {
           const active = activeTab === it.bucket;
           const clickable = it.count > 0;
@@ -203,17 +235,17 @@ export function JobPipelineSummary({
               disabled={!clickable}
               onClick={() => setActiveTab(active ? null : it.bucket)}
               className={cn(
-                "flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition",
+                chipBoxClass,
                 STAGE_TONE[it.bucket],
                 active && "ring-2 ring-offset-1 ring-brand/40",
                 !clickable && "opacity-60 cursor-default hover:border-inherit",
               )}
             >
-              <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
+              <span className={chipLabelClass}>
                 {clickable && (active ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />)}
                 {it.label}
               </span>
-              <span className="font-serif text-2xl font-bold leading-none">{it.count}</span>
+              <span className={chipCountClass}>{it.count}</span>
             </button>
           );
         })}
@@ -225,14 +257,14 @@ export function JobPipelineSummary({
               setActiveTab(matchedActive ? null : "matched")
             }
             className={cn(
-              "flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition",
+              chipBoxClass,
               "border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-400",
               matchedActive && "ring-2 ring-offset-1 ring-brand/40",
               liveMatchedCount === 0 &&
                 "opacity-60 cursor-default hover:border-inherit",
             )}
           >
-            <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
+            <span className={chipLabelClass}>
               {liveMatchedCount > 0 &&
                 (matchedActive ? (
                   <ChevronDown className="h-3 w-3" />
@@ -241,9 +273,7 @@ export function JobPipelineSummary({
                 ))}
               Matched
             </span>
-            <span className="font-serif text-2xl font-bold leading-none">
-              {liveMatchedCount}
-            </span>
+            <span className={chipCountClass}>{liveMatchedCount}</span>
           </button>
         )}
       </div>
@@ -338,6 +368,8 @@ function matchScoreTone(score: number): string {
   return "bg-gray-400 text-white";
 }
 
+const MATCHED_PAGE_SIZE = 5;
+
 function MatchedTabContent({
   rows,
   jobId,
@@ -349,6 +381,22 @@ function MatchedTabContent({
   jobRfId: number | null;
   onClose: () => void;
 }) {
+  // Page is 1-indexed for display; reset on every fresh mount of this
+  // component, which already happens when the recruiter opens or
+  // re-opens the Matched tab (the parent gates rendering on
+  // matchedActive, so toggling the tab unmounts/remounts).
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(rows.length / MATCHED_PAGE_SIZE));
+  // If the row set shrinks (a new stream replaces the rows after
+  // /api/game-plan/matched-candidates refetch), clamp the page so a
+  // stale higher page index doesn't strand the user on an empty page.
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
+  const start = (page - 1) * MATCHED_PAGE_SIZE;
+  const visible = rows.slice(start, start + MATCHED_PAGE_SIZE);
+  const showPager = rows.length > MATCHED_PAGE_SIZE;
+
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-court-border bg-court-surface">
       <div className="flex items-center justify-between border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
@@ -364,12 +412,37 @@ function MatchedTabContent({
         </button>
       </div>
       <ul className="divide-y divide-court-border">
-        {rows.map((m) => (
+        {visible.map((m) => (
           <li key={m.candidateId} className="px-4 py-3">
             <MatchedRowItem row={m} jobId={jobId} jobRfId={jobRfId} />
           </li>
         ))}
       </ul>
+      {showPager && (
+        <div className="flex items-center justify-center gap-3 border-t border-court-border bg-court-surface-subtle/30 px-4 py-2 text-[11px] text-court-fg-muted">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            aria-label="Previous page"
+            className="inline-flex items-center rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 transition hover:text-court-fg disabled:opacity-40"
+          >
+            <ChevronLeft className="h-3 w-3" />
+          </button>
+          <span className="font-medium tabular-nums">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            aria-label="Next page"
+            className="inline-flex items-center rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 transition hover:text-court-fg disabled:opacity-40"
+          >
+            <ChevronRight className="h-3 w-3" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
