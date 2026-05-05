@@ -149,40 +149,46 @@ export function JobPipelineSummary({
       : null;
   const matchedActive = activeTab === "matched";
 
-  // Live Matched count. Initial value is the server-rendered row
-  // count; the Find Matches panel bumps `matchesSavedTick[jobId]` in
-  // FindMatchesContext when its stream finishes, and the effect below
-  // refetches the count from /api/game-plan/matched-count without
-  // triggering a server-component reload. Rows themselves stay
-  // server-rendered (refresh on next nav) — only the badge updates
-  // live, which is enough for the recruiter to see "matches saved" as
-  // they run additional Find Matches passes.
+  // Live Matched rows. Seeded from the server-rendered list; the Find
+  // Matches panel bumps `matchesSavedTick[jobId]` in FindMatchesContext
+  // when its stream finishes, and the effect below refetches the full
+  // row set from /api/game-plan/matched-candidates. Both the badge
+  // count and the Matched tab list read from this state, so a stream
+  // landing while the tab is open updates the rows in place — no
+  // page reload needed. Falls back silently on fetch error: the prior
+  // rows stay rendered and the next page nav reconciles.
   const { matchesSavedTick } = useFindMatches();
   const matchedJobId = matched?.jobId ?? null;
   const tick = matchedJobId ? matchesSavedTick[matchedJobId] ?? 0 : 0;
-  const [liveMatchedCount, setLiveMatchedCount] = useState<number>(
-    matched?.rows.length ?? 0,
+  const [liveMatchedRows, setLiveMatchedRows] = useState<JobMatchedRow[]>(
+    matched?.rows ?? [],
   );
+  // Re-seed from server props when the underlying job changes — useState
+  // only captures the first mount, so without this, switching jobs in
+  // the same client navigation would leave stale rows from the prior job.
+  useEffect(() => {
+    setLiveMatchedRows(matched?.rows ?? []);
+  }, [matchedJobId, matched?.rows]);
   useEffect(() => {
     if (!matchedJobId || tick === 0) return;
     let cancelled = false;
     fetch(
-      `/api/game-plan/matched-count?jobId=${encodeURIComponent(matchedJobId)}`,
+      `/api/game-plan/matched-candidates?jobId=${encodeURIComponent(matchedJobId)}`,
       { cache: "no-store" },
     )
       .then((r) => r.json())
       .then((j) => {
         if (cancelled) return;
-        if (typeof j?.count === "number") setLiveMatchedCount(j.count);
+        if (Array.isArray(j?.rows)) setLiveMatchedRows(j.rows as JobMatchedRow[]);
       })
       .catch(() => {
-        // Silent fail — the badge keeps the prior count and the next
-        // page reload will reconcile.
+        // Silent fail — the prior rows stay and the next nav reconciles.
       });
     return () => {
       cancelled = true;
     };
   }, [matchedJobId, tick]);
+  const liveMatchedCount = liveMatchedRows.length;
 
   return (
     <div>
@@ -242,9 +248,9 @@ export function JobPipelineSummary({
         )}
       </div>
 
-      {matchedActive && matched && matched.rows.length > 0 && (
+      {matchedActive && matched && liveMatchedRows.length > 0 && (
         <MatchedTabContent
-          rows={matched.rows}
+          rows={liveMatchedRows}
           jobId={matched.jobId}
           jobRfId={matched.jobRfId}
           onClose={() => setActiveTab(null)}
