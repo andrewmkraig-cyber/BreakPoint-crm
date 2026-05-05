@@ -17,7 +17,10 @@ import {
   FIND_MATCHES_MIN_H,
   FIND_MATCHES_MIN_W,
   useFindMatches,
+  targetKey,
+  type CachedFetchState,
   type ClientOpenJob,
+  type Match,
   type MatchTarget,
 } from "@/lib/find-matches-context";
 import { AddToListButton } from "@/components/lists/add-to-list-button";
@@ -30,18 +33,6 @@ import { cn } from "@/lib/utils";
 // bottom-right, state hoisted to FindMatchesProvider so the window
 // survives navigation. Does NOT block the page underneath — it sits
 // adjacent to the Game Plan chat.
-
-type Match = {
-  candidateId: string;
-  candidateRfId: number | null;
-  name: string;
-  title: string;
-  currentEmployer: string;
-  location: string;
-  comp: string;
-  rationale: string;
-  score: number;
-};
 
 type FetchState =
   | { status: "idle" }
@@ -65,6 +56,9 @@ export function FindMatchesPanel() {
     setPosition,
     setSize,
     setMinimized,
+    getCachedFor,
+    setCachedFor,
+    cacheTick,
   } = useFindMatches();
 
   const [mounted, setMounted] = useState(false);
@@ -73,33 +67,52 @@ export function FindMatchesPanel() {
   const [state, setState] = useState<FetchState>({ status: "idle" });
   const [paging, setPaging] = useState(false);
 
-  // Reset + initial fetch whenever the target changes.
+  // Per-entity caching: when target changes, look up that target's
+  // slot in the provider cache. Hit → instant restore. Miss → fetch
+  // and write back. Re-keying on `cacheTick` so close() (which wipes
+  // the active entity's slot) drops the stale state immediately.
   useEffect(() => {
     if (!target) {
       setState({ status: "idle" });
       return;
     }
+    const cached = getCachedFor(target);
+    if (cached) {
+      setState({
+        status: "ready",
+        matches: cached.matches,
+        hasMore: cached.hasMore,
+        nextPage: cached.nextPage,
+        openJobs: cached.openJobs,
+      });
+      return;
+    }
     let cancelled = false;
+    setState({ status: "loading", page: 0 });
     (async () => {
-      setState({ status: "loading", page: 0 });
       const result = await fetchMatches(target, 0);
       if (cancelled) return;
       if (!result.ok) {
         setState({ status: "error", error: result.error });
         return;
       }
-      setState({
-        status: "ready",
+      const next: CachedFetchState = {
         matches: result.matches,
         hasMore: result.hasMore,
         nextPage: result.page + 1,
         openJobs: result.openJobs,
-      });
+      };
+      setCachedFor(target, next);
+      setState({ status: "ready", ...next });
     })();
     return () => {
       cancelled = true;
     };
-  }, [target]);
+    // targetKey() collapses the target object identity to a stable
+    // string so a fresh literal from open() doesn't cause a redundant
+    // refetch on the same entity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target ? targetKey(target) : null, cacheTick]);
 
   async function loadMore() {
     if (!target || state.status !== "ready") return;
@@ -107,13 +120,14 @@ export function FindMatchesPanel() {
     const result = await fetchMatches(target, state.nextPage);
     setPaging(false);
     if (!result.ok) return;
-    setState({
-      status: "ready",
+    const merged: CachedFetchState = {
       matches: [...state.matches, ...result.matches],
       hasMore: result.hasMore,
       nextPage: result.page + 1,
       openJobs: state.openJobs,
-    });
+    };
+    setCachedFor(target, merged);
+    setState({ status: "ready", ...merged });
   }
 
   // Drag the title bar — shifts the absolute (left, top) coordinates

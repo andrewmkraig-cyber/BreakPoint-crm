@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
-import { buildClientContext, buildCandidateContext } from '@/lib/ai-workspace-context'
+import { buildClientContext, buildCandidateContext, buildJobContext } from '@/lib/ai-workspace-context'
 import { CLAUDE_MODEL } from '@/lib/claude'
 import { extractUrls, verifyUrls } from '@/lib/url-verifier'
 
@@ -29,9 +29,12 @@ export const maxDuration = 300
 export async function POST(req: NextRequest) {
   const { entityType, entityId, userMessage } = await req.json()
 
-  const baseSystemPrompt = entityType === 'client'
-    ? await buildClientContext(entityId)
-    : await buildCandidateContext(entityId)
+  const baseSystemPrompt =
+    entityType === 'client'
+      ? await buildClientContext(entityId)
+      : entityType === 'job'
+        ? await buildJobContext(entityId)
+        : await buildCandidateContext(entityId)
 
   // Formatting rules appended after the entity context so they apply
   // to every Game Plan response without rewriting the per-entity

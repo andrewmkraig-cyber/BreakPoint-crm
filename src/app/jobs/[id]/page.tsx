@@ -14,6 +14,7 @@ import { getPlacementsForOrg } from "@/lib/placements";
 import { JobPipelineSummary, type JobPipelineRow } from "@/app/jobs/[id]/pipeline-summary";
 import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
+import AiWorkspace from "@/components/AiWorkspace";
 import { prisma } from "@/lib/prisma";
 import { cn, formatDate } from "@/lib/utils";
 
@@ -244,12 +245,12 @@ export default async function JobDetailPage({ params }: { params: { id: string }
         )}
       </div>
 
-      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-3">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">Game Plan</h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
-              Surface internal candidates Claude scores as the strongest fits for this role.
+              Ask Claude about this role, or surface internal candidate matches with Find Matches.
             </p>
           </div>
           <FindMatchesButton
@@ -261,6 +262,7 @@ export default async function JobDetailPage({ params }: { params: { id: string }
             }}
           />
         </div>
+        <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />
       </div>
 
       <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">

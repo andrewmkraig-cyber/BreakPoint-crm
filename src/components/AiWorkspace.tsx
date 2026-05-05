@@ -20,7 +20,7 @@ import { useComposerManager } from "@/lib/composer-manager";
 // action color.
 
 export type AiWorkspaceProps = {
-  entityType: "client" | "candidate";
+  entityType: "client" | "candidate" | "job";
   entityId: string;
   title?: string;
   // When provided, assistant bubbles render an "Email" button that
@@ -181,21 +181,22 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
   // Enter sends, Shift+Enter newline.
   const rows = Math.min(6, Math.max(2, input.split("\n").length));
 
-  const emptyLabel = entityType === "client" ? "client" : "candidate";
+  const emptyLabel =
+    entityType === "client" ? "client" : entityType === "job" ? "job" : "candidate";
 
   return (
-    // Card is viewport-bound and pinned with `sticky top-4` so the input
-    // row is always on screen, even when there's a long pre-existing
-    // conversation. Without this, the recruiter had to scroll the page
-    // to find the textarea on the Game Plan tab. Messages live in a
-    // flex-1 internal scroll region so they never push the input off
-    // the bottom of the card.
+    // Sticky-footer chassis pattern-matched to the mail inline
+    // composer: the card is `flex flex-col` with no fixed height,
+    // the messages region caps at 55vh and scrolls internally, and
+    // the composer is shrink-0 so it always stays pinned at the
+    // bottom of the card without ever drifting below the viewport.
+    // `sticky top-4` keeps the whole card on-screen while the parent
+    // page scrolls behind it.
     <div
       ref={cardRef}
-      className="sticky top-4 flex flex-col rounded-xl border border-court-border bg-court-surface shadow-sm"
-      style={{ height: "calc(100vh - 6rem)" }}
+      className="sticky top-4 flex max-h-[calc(100vh-6rem)] flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm"
     >
-      <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
           {title ?? "AI Workspace"}
         </h2>
@@ -212,8 +213,8 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
 
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-5 py-4"
-        style={{ minHeight: "120px" }}
+        className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
+        style={{ minHeight: "120px", maxHeight: "55vh" }}
       >
         {loading ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
@@ -241,7 +242,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
         )}
       </div>
 
-      <div className="border-t border-court-border p-4">
+      <div className="shrink-0 border-t border-court-border bg-court-surface p-4">
         <div className="flex items-end gap-2">
           <textarea
             value={input}
@@ -283,7 +284,7 @@ function MessageBubble({
 }: {
   message: Message;
   recipientEmail: string | null;
-  entityType: "client" | "candidate";
+  entityType: "client" | "candidate" | "job";
   entityId: string;
   candidateRef?: string;
 }) {
@@ -633,7 +634,7 @@ function EmailThisButton({
   content,
 }: {
   email: string;
-  entityType: "client" | "candidate";
+  entityType: "client" | "candidate" | "job";
   entityId: string;
   candidateRef?: string;
   content: string;

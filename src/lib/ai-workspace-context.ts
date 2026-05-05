@@ -635,3 +635,91 @@ function formatMonthYearSingle(my: [number | null, number | null] | null): strin
   const m = my[0] ? String(my[0]).padStart(2, "0") : "";
   return m ? `${m}/${my[1]}` : String(my[1]);
 }
+
+// Job-context Game Plan. Mirrors the client builder's shape so the
+// recruiter can ask Claude job-specific questions (sourcing strategy,
+// interview prep, comp benchmarking) directly from the job page.
+// Tenant-scoped via getCurrentOrg + organizationId in WHERE.
+export async function buildJobContext(jobId: string): Promise<string> {
+  const org = await getCurrentOrg();
+
+  // Accept either a cuid (canonical) or a numeric legacyRfId (back-
+  // compat for older URLs that came through the RF import).
+  const job = /^\d+$/.test(jobId)
+    ? await prisma.job.findFirst({
+        where: { legacyRfId: Number(jobId), organizationId: org.id },
+        include: {
+          client: { select: { id: true, name: true, legacyRfId: true } },
+          override: true,
+        },
+      })
+    : await prisma.job.findFirst({
+        where: { id: jobId, organizationId: org.id },
+        include: {
+          client: { select: { id: true, name: true, legacyRfId: true } },
+          override: true,
+        },
+      });
+
+  if (!job) {
+    return "You are an AI recruiting assistant for BreakPoint Talent. The job referenced was not found.";
+  }
+
+  const description =
+    job.override?.description?.trim() ||
+    job.description?.trim() ||
+    (typeof (job.raw as Record<string, unknown> | null)?.description === "string"
+      ? ((job.raw as Record<string, unknown>).description as string)
+      : "") ||
+    "(no description on file)";
+
+  const compRange =
+    job.salaryRangeStart && job.salaryRangeEnd
+      ? `$${job.salaryRangeStart.toLocaleString()} – $${job.salaryRangeEnd.toLocaleString()}${
+          job.salaryFrequency ? ` ${job.salaryFrequency}` : ""
+        }`
+      : "(unspecified)";
+
+  const placements = await prisma.placement.findMany({
+    where: { jobId: job.id, organizationId: org.id },
+    select: { stage: true, candidateId: true, candidateRfId: true, updatedAt: true },
+    orderBy: { updatedAt: "desc" },
+    take: 25,
+  });
+
+  const stageCounts = new Map<string, number>();
+  for (const p of placements) {
+    const bucket = canonicalStage(p.stage);
+    stageCounts.set(bucket, (stageCounts.get(bucket) ?? 0) + 1);
+  }
+  const stageLine = Array.from(stageCounts.entries())
+    .map(([s, n]) => `${s}: ${n}`)
+    .join(", ");
+
+  const lines: string[] = [];
+  lines.push(`You are an AI recruiting assistant for BreakPoint Talent. Andrew Kraig is the recruiter; he uses you for sourcing strategy, interview prep, comp benchmarking, and outreach drafting on this specific job.`);
+  lines.push("");
+  lines.push("=== JOB ===");
+  lines.push(`Title: ${job.title}`);
+  lines.push(`Client: ${job.client?.name ?? "(unknown client)"}`);
+  if (job.locations.length > 0) lines.push(`Locations: ${job.locations.join(", ")}`);
+  if (job.employmentType) lines.push(`Employment type: ${job.employmentType}`);
+  lines.push(`Comp range: ${compRange}`);
+  lines.push(`Open: ${job.isOpen ? "yes" : "no"}`);
+  if (job.numberOfOpenings) lines.push(`Openings: ${job.numberOfOpenings}`);
+  lines.push("");
+  lines.push("=== JOB DESCRIPTION ===");
+  lines.push(description);
+  lines.push("");
+  lines.push("=== PIPELINE SNAPSHOT ===");
+  if (placements.length === 0) {
+    lines.push("(no candidates in pipeline yet)");
+  } else {
+    lines.push(`Total in pipeline: ${placements.length}`);
+    if (stageLine) lines.push(`Stages: ${stageLine}`);
+  }
+  lines.push("");
+  lines.push("Use this context to answer Andrew's questions about THIS job specifically. When he asks for sourcing ideas, suggest titles, target companies, and search strategies grounded in the JD above. When he asks for interview prep, surface likely competency areas. When he asks for comp benchmarking, ground it in the comp range plus current market data.");
+
+  return lines.join("\n");
+}
