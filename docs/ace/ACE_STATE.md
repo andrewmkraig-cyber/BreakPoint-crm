@@ -1,23 +1,23 @@
 # ACE_STATE.md
-Last updated: 2026-05-05 - Ace 31.0 closed (full session log)
+Last updated: 2026-05-05 - Ace 32.0 closed (full session log)
 
 ## Current Status
-Current Version: Ace 31.0 (complete)
-Last Shipped: Ace 31.0 - May 5, 2026
-Last SHA: f568e04
+Current Version: Ace 32.0 (complete)
+Last Shipped: Ace 32.0 - May 5, 2026
+Last SHA: 2e2faac
 Live at: ace.breakpointtalent.com
-Current Status: Ace 31.0 closed clean. Game Plan Phase 2 complete end-to-end (Find Matches streaming panel with 6-band scoring + per-axis score popover, dismiss + Reject + one-click Apply, job picker on client targets, per-entity panel scoping, persistent CandidateMatch table with scoreBreakdown, /jobs/[id] Matched tab with live refresh + 5/page pagination, server-side exclusion of already-matched + already-pipelined candidates on re-run). Job Game Plan chat live on /jobs/[id]?tab=game-plan. Floating thread reply composer body-first + 60% of popup + auto-focus. Em dash + emoji banned across all 5 Claude routes. AI chat bubble green tint dropped. Minimized-drafts tray docks right of sidebar. Two-column /jobs/[id] layout (Job Description / Game Plan tabs + 30% Overview sidebar with single-Edit-toggle inline editing + hourly/salary frequency toggle). Reject button matches /applicants styling everywhere. Apply / Reject from Matched persists jobRfId so /applicants + pipeline see the row. "Contingent · Full time" subtitle dropped on /jobs listing. Next active task: Ace 32.0 Jobs page layout overhaul. No carry-overs open.
+Current Status: Ace 32.0 closed clean. Game Plan Phase 3 live (last 5 tagged emails injected into the ai-workspace prompt for both candidate and client/job context, silent degrade on miss). Email history surfaces shipped (candidate Activity tab + client Email tab, shared TaggedThreadList component opening the floating thread viewer). Personal Trainer rules engine live: PersonalTrainerRule table seeded with 15 defaults, Settings UI with Trainer + Rules sub-tabs, GitHub sync to docs/ace/PERSONAL_TRAINER.md on every add/update/delete, buildPersonalTrainerBlock injected into every Claude system prompt across Ace. Settings refactored to left-nav + per-category page layout (Appearance, Notifications, Personal Trainer, Branding, Templates, Triggers, Connectors); Email Preferences tab dropped (phone + signature owned by Branding now); Templates split into Active / Inactive sub-tabs; Triggers (auto-send candidate confirmation) on its own page; Branding renders a server-rendered signature preview at the bottom. Quo connector status simplified to "API key valid → connected" until the setup-wizard ships. Phone unread-badge regression fixed (markThreadRead now parses cand:/unk: thread id prefixes). New Text/Call button added to the Phone page header so the dial pad is reachable without deselecting the open thread. Next active task: Ace 33.0 Claude Panel Phase 5 (Phase 1 — shell + persistence). No carry-overs open.
 
-## Known Issues / Still In Progress (carry into Ace 32.0)
-- (none open — Ace 31.0 closed clean)
+## Known Issues / Still In Progress (carry into Ace 33.0)
+- (none open — Ace 32.0 closed clean)
 
-## Next Task for Ace 32.0
-**Jobs page layout overhaul.** Deeper redesign of the /jobs listing surface beyond the salary-range column + condensed Apply-to-Job dropdown shipped in 26.0 / 27.0 and the row-subtitle + hourly/salary cleanup landed in 31.0. Scope to be specified at session open.
+## Next Task for Ace 33.0
+**Claude Panel Phase 5 — Phase 1 (shell + persistence).** Floating, draggable, resizable Claude chat panel triggered from a Claude logo icon in the topbar (next to the + and txt/call buttons). Persists across all pages, minimize keeps the conversation alive, conversation saved to Neon per session. New `/api/claude-panel` route with web search + Personal Trainer rules injected. "This chat is getting long — start a new one?" prompt with optional save-as-summary. Full spec lives in ACE_ROADMAP.md under "Ace 33.0 — Next up".
 
-Remaining Ace 32.0+ sequence after the Jobs page overhaul:
-1. **Game Plan Phase 3** — Feed last 5 tagged emails from candidate / client into the Game Plan prompt as context.
-2. **Game Plan Phase 4** — "My Writing Style" setting in /settings, injected into every Claude API call across Ace (submittals, JDs, email generation, Game Plan).
-3. **Game Plan Phase 5** — Sidebar Claude panel: persistent chat inside Ace with web search + full Ace data access.
+Remaining Ace 33.0+ sequence after Claude Panel Phase 1:
+1. **Claude Panel Phase 2** — Tool calls wired to live Neon (search candidates, look up jobs / clients / pipeline / placements). Web search still available in the same conversation.
+2. **Claude Panel Phase 3** — Action proposals (move stage, send email, add note) gated behind confirm/edit/cancel UI; Claude History tab in Settings; Claude can audit Personal Trainer rules.
+3. **Game Plan Phase 4** — "My Writing Style" setting in /settings, injected into every Claude API call across Ace.
 4. **Game Plan context depth** — Send full resume text + full JD text into the ai-workspace prompt so Claude reasons against the actual content, not just metadata.
 5. **CSV Import/Export** — bulk candidate / contact ingest path.
 6. **Candidates Page UX** — full keyboard nav + prev/next from header search results (partial sweep landed in 27.0).
@@ -26,6 +26,49 @@ Remaining Ace 32.0+ sequence after the Jobs page overhaul:
 9. **Market Insights Tab** — Tab 6 on client detail.
 10. **BD Tab + Prospects Database** + **BD Automation Engine** — `/bd` surface, Prospect table, Indeed + Apollo daily cron, sequence engine via warmed burner domains.
 11. **Docs handoff** — Push ACE docs to GitHub at session end (handoff hygiene).
+
+## What Shipped in Ace 32.0 (2026-05-05)
+Last SHA: 2e2faac
+
+### Game Plan Phase 3 — email context
+- `getRecentTaggedEmails` helper added to `src/lib/gmail.ts` — fetches up to 5 tagged threads in parallel via `format=metadata`, extracts subject / from / snippet, truncates to 400 chars, silent fail per thread so a single 4xx doesn't poison the batch.
+- `/api/ai-workspace` route updated to query `GmailThreadTag` by `candidateId` or `clientId` (org-scoped, 5 most recent), resolve the user's Gmail access token, call the helper, and inject a `Recent Email Context` block into the system prompt before the formatting rules.
+- Job Game Plan inherits client email context automatically via the `clientId` on the job record — no separate code path.
+- Silent degrade if no threads found, no Gmail scope, or the fetch fails — Game Plan still answers without the email context block.
+
+### Email history UI — candidate Activity tab + client Email tab
+- `candidate-activity-card.tsx` — replaced the "Email history coming soon" placeholder with a `TaggedThreadList` component. Fetches `GET /api/candidates/[id]/email-threads`, renders rows with sender / subject / date, clicking opens the floating thread viewer.
+- New route `GET /api/candidates/[id]/email-threads` — org-scoped `GmailThreadTag` query, enriched via `listTaggedThreadSummaries` helper in `gmail.ts` (`format=metadata`, lightweight).
+- Client profile picks up a new **Email** tab after the existing tabs. Fetches `GET /api/clients/[id]/email-threads`, same row design, dedupes by `threadId` so threads sent to multiple contacts at the client show once.
+- New route `GET /api/clients/[id]/email-threads` — org-scoped, deduped by threadId, enriched with Gmail metadata.
+- Shared `TaggedThreadList` component at `src/components/mail/tagged-thread-list.tsx` — skeleton loading, "No emails on file" empty state, opens floating viewer via `useFloatingThread().open()`. Pagination at 5 rows per page (Prev / "Page X of Y" / Next, hidden ≤5 rows).
+- Sort by latest email date (was DB `createdAt` of the GmailThreadTag — surfaced stale rows first).
+
+### Personal Trainer — standing rules injected into every Claude call
+- New `PersonalTrainerRule` model in `prisma/schema.prisma` — `id`, `organizationId`, `text`, `createdAt`, `updatedAt`, indexed on `(organizationId, createdAt)`. `prisma db push` ran clean against Neon.
+- `src/lib/personal-trainer-seed.ts` — 15 default rules extracted from all 5 Claude routes (no em dashes, no emojis, no signoff, freshness mandate, no fabrication, no code fences, no preamble, merge-field preservation, no greeting invention, write-like-a-real-recruiter, paste-ready responses, no bold in outreach, bullet points only when format calls for it, hyphen bullets for lists, descriptive link text).
+- `src/app/settings/personal-trainer-actions.ts` — `seedDefaultRules`, `getRules`, `addRule`, `updateRule`, `deleteRule`. Every mutation fires `syncToGitHub` (silent fail). `seedDefaultRules` is idempotent — no-op when the org already has rules.
+- GitHub sync — reads / writes `docs/ace/PERSONAL_TRAINER.md` via the GitHub Contents API using the `GITHUB_TOKEN` env var. Real-time on every add / update / delete. GET 404 on first run creates the file via PUT 201.
+- `GITHUB_TOKEN` added to `.env.local` (verified at session close); Vercel Production + Preview env vars still need to be set for the prod sync path.
+- All 5 Claude routes updated — `buildPersonalTrainerBlock(orgId)` helper in `src/lib/personal-trainer.ts` queries Neon for the org's rules, builds the numbered "PERSONAL TRAINER RULES (apply to every response without exception)" appendix, and the result is appended to the system prompt on every call. Hardcoded style rules removed from `/api/ai-workspace`, `/api/mail/ai-compose`, `/api/email/edit-with-claude`, `/api/calls/summary`, `/api/clients/new` actions — managed via Personal Trainer now.
+- Personal Trainer UI — Settings section with two sub-tabs: **Trainer** (textarea + Add Rule button, seeds defaults on first load) and **Rules** (list with inline edit + delete, confirm dialog on delete, rule count in tab label).
+- `docs/ace/PERSONAL_TRAINER.md` created live with the 15 seeded rules. Real-time sync confirmed by 3 live commits observed during testing.
+
+### Settings refactor — left-nav + per-category page layout
+- Settings converted from a single scrollable page to a left-nav shell with one route per category. `src/app/settings/layout.tsx` owns the two-column shell; `src/app/settings/settings-nav.tsx` is the active-state nav (border-court-accent + bg-court-surface-subtle + text-court-fg, Court Mode tokens only, no hardcoded colors).
+- `/settings` redirects to `/settings/appearance` (always lands on the first category).
+- Category routes: `appearance`, `notifications`, `personal-trainer`, `branding`, `templates`, `triggers`, `connectors`. Each is a server component fetching only its own data.
+- Email Preferences tab removed — phone + signature owned by Branding now; auto-send toggle moved to Triggers.
+- Branding renders a server-rendered signature preview block at the bottom (uses `renderSignatureHtml` — same path `/reply` and `/send` go through, so what's previewed is what hits the inbox).
+- Templates panel renamed and refactored — segment between Active and Inactive sub-tabs (counts integrated). New-template button surfaces only on the Active sub-tab; toggling active flips a card between buckets via `router.refresh()`.
+- Triggers split out as its own category — currently hosts the auto-send candidate confirmation toggle. Designed to grow as more event-driven sends move out of hardcoded server actions.
+- Quo connector status simplified to "API key valid → connected" until the setup-wizard ships — the `/v1/webhooks` list endpoint was reporting `no Ace webhook` against an integration that was demonstrably delivering inbound texts.
+- Phone unread-badge regression fixed — `markThreadRead` now parses the prefixed thread id shape produced by `/api/phone/threads`. `cand:<cuid>` updates by `candidateId`; `unk:<digits>` raw-SQL matches on the last-10 digits of `fromNumber`. Optimistic local clear in `phone-view` switched from `t.candidateId === selectedId` to `t.id === selectedId` (the canonical thread identity).
+
+### Phone page — New Text/Call button
+- New "+ New Text/Call" button at the top-right of `PhoneView`, same green pill treatment as Create-New buttons on other tabs (Plus icon next to the label).
+- Click opens a centered dial-pad modal so the dial pad is reachable even when a thread is selected. Same number-entry + Text / Call dispatch the empty-state pad uses.
+- Inline empty-state `DialPad` disables its document keystroke listener while the modal is open — prevents double-typing into both surfaces. (The global topbar dial-pad button is NOT yet built — only the Phone-page header version shipped this round.)
 
 ## What Shipped in Ace 31.0 (2026-05-05)
 Last SHA: f568e04
