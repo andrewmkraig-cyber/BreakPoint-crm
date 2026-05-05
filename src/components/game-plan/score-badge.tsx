@@ -220,7 +220,7 @@ const ScorePopover = forwardRef<
         <dl className="mt-3 space-y-2 border-t border-court-border pt-2">
           {rows.map((r) => (
             <div key={r.label}>
-              <dt className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              <dt className="text-[10px] font-bold uppercase tracking-wider text-court-fg">
                 {r.label}
               </dt>
               <dd className="mt-0.5 text-[11px] leading-relaxed text-court-fg">

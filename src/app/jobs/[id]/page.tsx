@@ -175,9 +175,28 @@ export default async function JobDetailPage({
   // logged for this job. Tenant-scoped on the resolved org. Joins the
   // candidate so we can render name + title + employer + location
   // without a second query per row.
+  //
+  // Anyone the recruiter has already acted on (applied / submitted /
+  // interviewing / rejected / etc.) lives in the pipeline buckets
+  // above — exclude them from Matched so the tab stays focused on
+  // candidates that still need a triage decision. The exclusion is
+  // any Placement for this job, regardless of stage.
   const org = await getCurrentOrg();
+  const placedCandidateIds = Array.from(
+    new Set(
+      localPlacements
+        .map((p) => p.candidateId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  );
   const candidateMatches = await prisma.candidateMatch.findMany({
-    where: { jobId: jobRow.id, organizationId: org.id },
+    where: {
+      jobId: jobRow.id,
+      organizationId: org.id,
+      ...(placedCandidateIds.length > 0
+        ? { candidateId: { notIn: placedCandidateIds } }
+        : {}),
+    },
     orderBy: { score: "desc" },
     include: {
       candidate: {

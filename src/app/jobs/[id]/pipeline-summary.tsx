@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
+  Ban,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -453,12 +454,14 @@ function MatchedRowItem({
 }) {
   const router = useRouter();
   const [applying, setApplying] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
   const [applyError, setApplyError] = useState<string | null>(null);
 
   // One-click Apply: same contract as the Find Matches panel's Apply
   // button. POST /api/placements with stage APPLIED, no modal, no nav.
-  // On success the page-level revalidation isn't necessary — the
-  // candidate stays in the Matched tab regardless of pipeline stage.
+  // router.refresh() re-runs the server fetch with the new Placement
+  // in place, which excludes this candidate from Matched on the next
+  // render — so the row visually leaves the tab.
   async function onApply() {
     setApplyError(null);
     setApplying(true);
@@ -483,6 +486,36 @@ function MatchedRowItem({
       setApplyError(e instanceof Error ? e.message : "Network error");
     } finally {
       setApplying(false);
+    }
+  }
+
+  // One-click Reject: same shape as Apply but marks the candidate
+  // rejected for this job. Surfaces the row in the Rejected pipeline
+  // bucket and removes it from Matched on next render.
+  async function onReject() {
+    setApplyError(null);
+    setRejecting(true);
+    try {
+      const res = await fetch("/api/placements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: row.candidateId,
+          jobId,
+          stage: "REJECTED",
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || body?.ok === false) {
+        setApplyError(body?.error ?? `Reject failed (${res.status})`);
+        setRejecting(false);
+        return;
+      }
+      router.refresh();
+    } catch (e) {
+      setApplyError(e instanceof Error ? e.message : "Network error");
+    } finally {
+      setRejecting(false);
     }
   }
 
@@ -551,7 +584,7 @@ function MatchedRowItem({
           size="sm"
           variant="apply"
           onClick={onApply}
-          disabled={applying}
+          disabled={applying || rejecting}
         >
           {applying ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -560,9 +593,23 @@ function MatchedRowItem({
           )}
           Apply
         </Button>
-        <Button type="button" size="sm" onClick={onSubmit}>
+        <Button
+          type="button"
+          size="sm"
+          onClick={onSubmit}
+          disabled={applying || rejecting}
+        >
           <Send className="h-3 w-3" /> Submit
         </Button>
+        <button
+          type="button"
+          onClick={onReject}
+          disabled={applying || rejecting}
+          className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-800 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
+        >
+          {rejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+          Reject
+        </button>
       </div>
     </div>
   );

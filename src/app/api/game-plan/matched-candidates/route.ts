@@ -18,8 +18,30 @@ export async function GET(req: NextRequest) {
   }
 
   const org = await getCurrentOrg();
-  const matches = await prisma.candidateMatch.findMany({
+  // Exclude candidates already pipelined for this job — once the
+  // recruiter has applied / submitted / rejected, they live in a
+  // pipeline bucket and shouldn't double-render in Matched. Mirrors
+  // the same filter the /jobs/[id] server fetch uses on initial
+  // render so refetches stay consistent.
+  const placedRows = await prisma.placement.findMany({
     where: { jobId, organizationId: org.id },
+    select: { candidateId: true },
+  });
+  const placedCandidateIds = Array.from(
+    new Set(
+      placedRows
+        .map((p) => p.candidateId)
+        .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  );
+  const matches = await prisma.candidateMatch.findMany({
+    where: {
+      jobId,
+      organizationId: org.id,
+      ...(placedCandidateIds.length > 0
+        ? { candidateId: { notIn: placedCandidateIds } }
+        : {}),
+    },
     orderBy: { score: "desc" },
     include: {
       candidate: {

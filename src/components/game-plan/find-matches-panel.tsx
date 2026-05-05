@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
+  Ban,
   ChevronRight,
   ExternalLink,
   GripVertical,
@@ -661,38 +662,25 @@ function MatchCard({
   const [applyError, setApplyError] = useState<string | null>(null);
   return (
     <div className="rounded-lg border border-court-border bg-court-surface p-3 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-baseline gap-2">
-            <span className="truncate font-semibold text-court-fg">{match.name}</span>
-            <ScoreBadge score={match.score} breakdown={match.scoreBreakdown} />
-          </div>
-          {(match.title || match.currentEmployer) && (
-            <div className="mt-0.5 truncate text-xs text-court-fg-muted">
-              {match.title}
-              {match.title && match.currentEmployer ? " · " : ""}
-              {match.currentEmployer}
-            </div>
-          )}
-          {(match.location || match.comp) && (
-            <div className="mt-0.5 text-[11px] text-court-fg-muted">
-              {match.location}
-              {match.location && match.comp ? " · " : ""}
-              {match.comp}
-            </div>
-          )}
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2">
+          <span className="truncate font-semibold text-court-fg">{match.name}</span>
+          <ScoreBadge score={match.score} breakdown={match.scoreBreakdown} />
         </div>
-        {/* ITEM 2: dismiss X — removes the card client-side and adds
-            its candidateId to excludeIds so it never resurfaces on
-            "Show 5 more". No API call. */}
-        <button
-          type="button"
-          onClick={() => onDismiss(match.candidateId)}
-          aria-label={`Dismiss ${match.name}`}
-          className="shrink-0 rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+        {(match.title || match.currentEmployer) && (
+          <div className="mt-0.5 truncate text-xs text-court-fg-muted">
+            {match.title}
+            {match.title && match.currentEmployer ? " · " : ""}
+            {match.currentEmployer}
+          </div>
+        )}
+        {(match.location || match.comp) && (
+          <div className="mt-0.5 text-[11px] text-court-fg-muted">
+            {match.location}
+            {match.location && match.comp ? " · " : ""}
+            {match.comp}
+          </div>
+        )}
       </div>
       {match.rationale && (
         <p className="mt-2 text-xs leading-relaxed text-court-fg">{match.rationale}</p>
@@ -733,7 +721,9 @@ function ActionRow({
   clearApplyError: () => void;
 }) {
   const router = useRouter();
+  const { notifyMatchesSaved } = useFindMatches();
   const [applying, setApplying] = useState(false);
+  const [rejecting, setRejecting] = useState(false);
 
   // Resolve the jobId/jobRfId we should target for this card. JOB
   // context: the page's job. CLIENT context: the picked job (Item 1
@@ -775,13 +765,50 @@ function ActionRow({
         setApplying(false);
         return;
       }
-      // Success: dismiss the card so the panel removes it
-      // immediately. The placement is already in Neon; no further
-      // navigation needed.
       onDismiss(match.candidateId);
+      // Tell the /jobs/[id] Matched tab to refetch — the Placement we
+      // just wrote will exclude this candidate from the next read.
+      notifyMatchesSaved(targetJobId);
     } catch (e) {
       onApplyError(e instanceof Error ? e.message : "Network error");
       setApplying(false);
+    }
+  }
+
+  // One-click Reject. Same shape as Apply but writes a Placement
+  // straight to stage=rejected, bypassing the Apply modal. Recruiter
+  // workflow: the Matched tab should only ever show people you
+  // haven't decided on yet — Reject puts the candidate in the
+  // Rejected pipeline bucket and removes them from the panel.
+  async function onReject() {
+    if (!targetJobId) {
+      onApplyError("No target job — pick a job first.");
+      return;
+    }
+    clearApplyError();
+    setRejecting(true);
+    try {
+      const res = await fetch("/api/placements", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          candidateId: match.candidateId,
+          jobId: targetJobId,
+          stage: "REJECTED",
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || body?.ok === false) {
+        const msg = body?.error ?? `Reject failed (${res.status})`;
+        onApplyError(msg);
+        setRejecting(false);
+        return;
+      }
+      onDismiss(match.candidateId);
+      notifyMatchesSaved(targetJobId);
+    } catch (e) {
+      onApplyError(e instanceof Error ? e.message : "Network error");
+      setRejecting(false);
     }
   }
 
@@ -819,7 +846,7 @@ function ActionRow({
         size="sm"
         variant="apply"
         onClick={onApply}
-        disabled={applying}
+        disabled={applying || rejecting}
       >
         {applying ? (
           <Loader2 className="h-3 w-3 animate-spin" />
@@ -828,9 +855,23 @@ function ActionRow({
         )}
         Apply
       </Button>
-      <Button type="button" size="sm" onClick={onSubmit}>
+      <Button
+        type="button"
+        size="sm"
+        onClick={onSubmit}
+        disabled={applying || rejecting}
+      >
         <Send className="h-3 w-3" /> Submit
       </Button>
+      <button
+        type="button"
+        onClick={onReject}
+        disabled={applying || rejecting}
+        className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-800 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
+      >
+        {rejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+        Reject
+      </button>
     </div>
   );
 }
