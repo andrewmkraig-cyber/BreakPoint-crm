@@ -244,15 +244,31 @@ export function FindMatchesPanel() {
       setState({ status: "ready", ...cached });
       return;
     }
-    void runStream({
-      target,
-      page: 0,
-      excludeIds: [],
-      previousMatches: [],
-      previousOpenJobs: [],
-      previousPickedJob: null,
-      cacheKey: activeRouteKey,
-    });
+    let cancelled = false;
+    void (async () => {
+      // Job target: pre-load existing CandidateMatch ids so Claude
+      // doesn't re-score candidates already in the Matched tab on a
+      // re-run. Client targets defer this until pickJob below — we
+      // can't know which job to query until the recruiter picks one
+      // (or the auto-pick path on a single-open-job client, which
+      // skips this seeding by design — rare to have prior matches
+      // there before the very first run).
+      const initialExcludeIds =
+        target.kind === "job" ? await fetchExistingMatchIds(target.jobId) : [];
+      if (cancelled) return;
+      void runStream({
+        target,
+        page: 0,
+        excludeIds: initialExcludeIds,
+        previousMatches: [],
+        previousOpenJobs: [],
+        previousPickedJob: null,
+        cacheKey: activeRouteKey,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRouteKey, openEntities, cacheTick]);
 
@@ -286,14 +302,18 @@ export function FindMatchesPanel() {
 
   // ITEM 1: pick a job from the awaiting_pick state and re-run the
   // stream with that pickedJobId. Cache + history reset for this
-  // entity since the picked job changes the search target.
+  // entity since the picked job changes the search target. Seeded
+  // with the picked job's existing CandidateMatch ids so the recruiter
+  // doesn't get back the same candidates already on /jobs/[id]'s
+  // Matched tab.
   async function pickJob(job: ClientOpenJob) {
     if (!target || !activeRouteKey) return;
+    const initialExcludeIds = await fetchExistingMatchIds(job.jobId);
     await runStream({
       target,
       pickedJobId: job.jobId,
       page: 0,
-      excludeIds: [],
+      excludeIds: initialExcludeIds,
       previousMatches: [],
       previousOpenJobs: state.status === "awaiting_pick" ? state.openJobs : [],
       previousPickedJob: job,
@@ -1093,6 +1113,28 @@ function JobPickPrompt({
       </ul>
     </div>
   );
+}
+
+// Reads the existing CandidateMatch rows for a job and returns their
+// candidateIds, used to seed excludeIds before kicking off a new
+// stream. Returning [] on any failure keeps the stream behavior
+// identical to before this preflight existed — we'd rather show a
+// duplicate occasionally than block the panel on a transient error.
+async function fetchExistingMatchIds(jobId: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      `/api/game-plan/matched-candidates?jobId=${encodeURIComponent(jobId)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    const j = (await res.json()) as { rows?: Array<{ candidateId?: unknown }> };
+    if (!Array.isArray(j?.rows)) return [];
+    return j.rows
+      .map((r) => r?.candidateId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+  } catch {
+    return [];
+  }
 }
 
 // Streaming NDJSON reader. The route emits one JSON object per
