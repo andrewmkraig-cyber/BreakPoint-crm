@@ -75,16 +75,59 @@ export async function matchContactByPhone(phoneNumber: string): Promise<PhoneMat
   return { type: null, id: null, name: null };
 }
 
-// Marks every inbound SMS in a candidate-keyed thread as read. The
-// thread detail in Phone Tab Phase 1 is candidateId-keyed, so the
-// caller passes the same id used to fetch the thread. Outbound rows
-// are ignored (always read by definition). Org-scoped so a forged
-// candidateId from another tenant is a no-op rather than an error.
-export async function markThreadRead(candidateId: string): Promise<{ updated: number }> {
+// Marks every inbound SMS in the opened thread as read. Accepts the
+// prefixed thread id shape produced by /api/phone/threads:
+//   "cand:<candidateId>"  → candidate-matched thread, update by FK
+//   "unk:<10-digit-tail>" → unknown-number thread, update by phone digits
+// Plain (unprefixed) cuids are accepted for back-compat with any
+// remaining callers from before the prefixing rewrite.
+//
+// Outbound rows are ignored (always read by definition). Org-scoped so
+// a forged thread id from another tenant is a no-op rather than an
+// error.
+export async function markThreadRead(threadId: string): Promise<{ updated: number }> {
   const org = await getCurrentOrg();
+
+  if (threadId.startsWith("cand:")) {
+    const candidateId = threadId.slice("cand:".length);
+    if (!candidateId) return { updated: 0 };
+    const res = await prisma.smsMessage.updateMany({
+      where: {
+        candidateId,
+        organizationId: org.id,
+        direction: "inbound",
+        isRead: false,
+      },
+      data: { isRead: true },
+    });
+    return { updated: res.count };
+  }
+
+  if (threadId.startsWith("unk:")) {
+    const digits = threadId.slice("unk:".length).replace(/\D/g, "").slice(-10);
+    if (digits.length !== 10) return { updated: 0 };
+    // No way to express "fromNumber ends with these 10 digits" in
+    // Prisma's typed updateMany — drop to raw SQL. Same WHERE shape
+    // as /api/phone/threads' normalizeOther grouping so the rows we
+    // mark are exactly the rows the thread aggregates.
+    const updated = await prisma.$executeRaw(
+      Prisma.sql`
+        UPDATE "SmsMessage"
+        SET "isRead" = true
+        WHERE "organizationId" = ${org.id}
+          AND direction = 'inbound'
+          AND "isRead" = false
+          AND "candidateId" IS NULL
+          AND right(regexp_replace(COALESCE("fromNumber", ''), '\D', '', 'g'), 10) = ${digits}
+      `,
+    );
+    return { updated };
+  }
+
+  // Back-compat: bare candidateId.
   const res = await prisma.smsMessage.updateMany({
     where: {
-      candidateId,
+      candidateId: threadId,
       organizationId: org.id,
       direction: "inbound",
       isRead: false,

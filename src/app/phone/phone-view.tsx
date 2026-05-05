@@ -246,11 +246,13 @@ export function PhoneView() {
             try {
               await markThreadRead(selectedId);
               // Optimistic local clear so the row's unread badge
-              // disappears immediately. The next /api/phone/threads
-              // refetch will return the same hasUnread=false anyway.
+              // disappears immediately. selectedId is the prefixed
+              // thread id (cand:<cuid> / unk:<digits>) — match it
+              // against the same field to stay aligned with the
+              // server's row identity.
               setThreads((prev) =>
                 prev.map((t) =>
-                  t.candidateId === selectedId ? { ...t, hasUnread: false } : t,
+                  t.id === selectedId ? { ...t, hasUnread: false } : t,
                 ),
               );
               await phoneCtx.refreshUnread();
