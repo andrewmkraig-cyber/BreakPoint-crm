@@ -21,6 +21,7 @@ import {
   type ClientOpenJob,
   type Match,
   type MatchTarget,
+  type ScoreBreakdown,
 } from "@/lib/find-matches-context";
 import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { Button } from "@/components/ui/button";
@@ -433,11 +434,16 @@ export function FindMatchesPanel() {
         style={{ left: position.x, top: position.y, width: size.w, height: size.h }}
         className="pointer-events-auto absolute"
       >
-        <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl">
+        {/* Panel chrome (Prompt 3 Item 3): a 2px Court-token border for
+            clear separation from the page underneath, body in
+            bg-court-surface, header bar in bg-court-surface-subtle so
+            the title strip reads as a slightly recessed band against
+            the body. All tokens — works across all six Court modes. */}
+        <div className="flex h-full w-full flex-col overflow-hidden rounded-xl border-2 border-court-border bg-court-surface shadow-2xl">
           <div
             onMouseDown={onTitleBarMouseDown}
             className={cn(
-              "flex shrink-0 select-none items-center justify-between border-b border-court-border px-4 py-2",
+              "flex shrink-0 select-none items-center justify-between border-b border-court-border bg-court-surface-subtle px-4 py-2",
               isDragging ? "cursor-grabbing" : "cursor-grab",
             )}
           >
@@ -482,7 +488,7 @@ export function FindMatchesPanel() {
             </div>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto bg-court-surface-subtle/30 p-3">
+          <div className="flex-1 min-h-0 overflow-y-auto bg-court-surface p-3">
             {state.status === "awaiting_pick" && (
               <JobPickPrompt openJobs={state.openJobs} onPick={pickJob} />
             )}
@@ -628,7 +634,7 @@ function MatchCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="truncate font-semibold text-court-fg">{match.name}</span>
-            <ScoreBadge score={match.score} />
+            <ScoreBadge score={match.score} breakdown={match.scoreBreakdown} />
           </div>
           {(match.title || match.currentEmployer) && (
             <div className="mt-0.5 truncate text-xs text-court-fg-muted">
@@ -678,22 +684,108 @@ function MatchCard({
   );
 }
 
-function ScoreBadge({ score }: { score: number }) {
-  const tone =
-    score >= 85
-      ? "bg-court-accent-tint text-court-accent-dark"
-      : score >= 70
-        ? "bg-amber-100 text-amber-800"
-        : "bg-court-surface-subtle text-court-fg-muted";
+// Score color buckets (Prompt 3 Item 1):
+//   85-100 → green
+//   70-84  → orange
+//    < 70  → grey
+// Hardcoded color names per the spec — these are intentional brand
+// signals (green = strong, orange = decent, grey = weak) that should
+// read identically across all six Court modes.
+function scoreTone(score: number): string {
+  if (score >= 85) return "bg-green-600 text-white";
+  if (score >= 70) return "bg-orange-500 text-white";
+  return "bg-gray-400 text-white";
+}
+
+function ScoreBadge({
+  score,
+  breakdown,
+}: {
+  score: number;
+  breakdown: ScoreBreakdown;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current) return;
+      if (!wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
   return (
-    <span
-      className={cn(
-        "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-        tone,
-      )}
+    <div ref={wrapRef} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={`Score ${score} - click for breakdown`}
+        className={cn(
+          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition focus:outline-none focus:ring-2 focus:ring-court-accent/40",
+          scoreTone(score),
+        )}
+      >
+        {score}
+      </button>
+      {open && <ScorePopover score={score} breakdown={breakdown} />}
+    </div>
+  );
+}
+
+function ScorePopover({
+  score,
+  breakdown,
+}: {
+  score: number;
+  breakdown: ScoreBreakdown;
+}) {
+  const rows: Array<{ label: string; value: string }> = [
+    { label: "Title match", value: breakdown.titleMatch },
+    { label: "Location fit", value: breakdown.locationFit },
+    { label: "Experience fit", value: breakdown.experienceFit },
+    { label: "Compensation fit", value: breakdown.compensationFit },
+  ].filter((r) => r.value);
+  return (
+    <div
+      role="dialog"
+      className="absolute right-0 top-full z-30 mt-1 w-72 rounded-lg border border-court-border bg-court-surface p-3 shadow-xl"
     >
-      {score}
-    </span>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className={cn("rounded-full px-2.5 py-1 text-sm font-bold", scoreTone(score))}>
+          {score}
+        </span>
+        <span className="text-[10px] uppercase tracking-wider text-court-fg-muted">
+          Why this score
+        </span>
+      </div>
+      {breakdown.overallSummary && (
+        <p className="mt-2 text-xs leading-relaxed text-court-fg">
+          {breakdown.overallSummary}
+        </p>
+      )}
+      {rows.length > 0 && (
+        <dl className="mt-3 space-y-2 border-t border-court-border pt-2">
+          {rows.map((r) => (
+            <div key={r.label}>
+              <dt className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                {r.label}
+              </dt>
+              <dd className="mt-0.5 text-[11px] leading-relaxed text-court-fg">
+                {r.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </div>
   );
 }
 

@@ -38,6 +38,19 @@ export type ClientOpenJob = {
   title: string;
 };
 
+// Per-axis score breakdown returned alongside the headline score.
+// Each field is one short sentence Claude writes per match; the
+// panel renders them as labeled rows in the score popover. All
+// fields can be empty strings when Claude couldn't ground the
+// dimension (e.g. comp not on file) — the popover skips empties.
+export type ScoreBreakdown = {
+  titleMatch: string;
+  locationFit: string;
+  experienceFit: string;
+  compensationFit: string;
+  overallSummary: string;
+};
+
 export type Match = {
   candidateId: string;
   candidateRfId: number | null;
@@ -48,6 +61,7 @@ export type Match = {
   comp: string;
   rationale: string;
   score: number;
+  scoreBreakdown: ScoreBreakdown;
 };
 
 export type CachedFetchState = {

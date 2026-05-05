@@ -257,7 +257,12 @@ export async function POST(req: NextRequest) {
             .replace(/^[\s\[,]+/, "")
             .replace(/[\s\],]+$/, "");
           if (!cleaned.startsWith("{")) return false;
-          let parsed: { candidateId?: unknown; score?: unknown; rationale?: unknown };
+          let parsed: {
+            candidateId?: unknown;
+            score?: unknown;
+            rationale?: unknown;
+            scoreBreakdown?: unknown;
+          };
           try {
             parsed = JSON.parse(cleaned);
           } catch {
@@ -275,6 +280,21 @@ export async function POST(req: NextRequest) {
           const name =
             [c.firstName, c.lastName].filter(Boolean).join(" ").trim() ||
             "(no name)";
+          // Normalize the breakdown — defensive parse since Claude
+          // might omit a field when it can't ground a dimension.
+          const sbRaw =
+            parsed.scoreBreakdown && typeof parsed.scoreBreakdown === "object"
+              ? (parsed.scoreBreakdown as Record<string, unknown>)
+              : {};
+          const pickStr = (v: unknown): string =>
+            typeof v === "string" ? v.trim() : "";
+          const scoreBreakdown = {
+            titleMatch: pickStr(sbRaw.titleMatch),
+            locationFit: pickStr(sbRaw.locationFit),
+            experienceFit: pickStr(sbRaw.experienceFit),
+            compensationFit: pickStr(sbRaw.compensationFit),
+            overallSummary: pickStr(sbRaw.overallSummary) || rationale,
+          };
           send({
             t: "match",
             match: {
@@ -287,6 +307,7 @@ export async function POST(req: NextRequest) {
               comp: formatComp(c.expectedSalary),
               rationale,
               score,
+              scoreBreakdown,
             },
           });
           seen.add(parsed.candidateId);
@@ -568,11 +589,19 @@ function buildStreamingPrompt(
     "Each rationale: 1-2 sentences calling out the specific reason they fit (title overlap, comp alignment, location, domain experience).",
     "Use plain prose. Do NOT use em dashes - use hyphens or commas.",
     "",
+    "Per match, also produce a scoreBreakdown object with EXACTLY these five fields, each ONE short sentence:",
+    "  titleMatch       — how the candidate's current title compares to the role.",
+    "  locationFit      — whether the candidate's location works for this role.",
+    "  experienceFit    — depth of relevant domain / years of experience for this role.",
+    "  compensationFit  — whether candidate comp target fits the role's range (use \"unspecified\" when comp is missing).",
+    "  overallSummary   — one-sentence verdict that rolls the four axes into a recommendation.",
+    "If a dimension can't be grounded in the data, write a short sentence saying so (do NOT leave the field blank or omit it).",
+    "",
     "OUTPUT FORMAT — emit one JSON object per line (newline-delimited JSON). NOT a JSON array. NO markdown fence. NO preamble. NO commentary between objects.",
-    `Each line: {"candidateId":"<id>","score":<int>,"rationale":"<1-2 sentences>"}`,
+    `Each line schema: {"candidateId":"<id>","score":<int>,"rationale":"<1-2 sentences>","scoreBreakdown":{"titleMatch":"...","locationFit":"...","experienceFit":"...","compensationFit":"...","overallSummary":"..."}}`,
     `Example of two lines:`,
-    `{"candidateId":"abc123","score":92,"rationale":"Strong match — current title aligns directly and location is on-site eligible."}`,
-    `{"candidateId":"def456","score":81,"rationale":"Adjacent title with overlapping skills; comp target sits inside the band."}`,
+    `{"candidateId":"abc123","score":92,"rationale":"Strong match - current title aligns directly and location is on-site eligible.","scoreBreakdown":{"titleMatch":"Currently a Senior Tax Manager, exact match for the open Tax Manager role.","locationFit":"Lives in Cleveland, the role is Cleveland on-site, no relocation needed.","experienceFit":"8 years public accounting with audit + tax exposure covers the JD's scope.","compensationFit":"Target $150k sits comfortably inside the role's $140-160k band.","overallSummary":"Top-tier fit on every axis, ready to submit immediately."}}`,
+    `{"candidateId":"def456","score":81,"rationale":"Adjacent title with overlapping skills; comp target sits inside the band.","scoreBreakdown":{"titleMatch":"Tax Senior moving up; the open role is one rung above current title.","locationFit":"Based 90 minutes away, would need hybrid arrangement to be viable.","experienceFit":"5 years in public accounting, slightly light on the leadership scope the JD calls for.","compensationFit":"Target $135k is at the bottom of the range, leaves room to negotiate.","overallSummary":"Solid stretch candidate worth a conversation, not a slam dunk."}}`,
     `Stop after you have emitted every candidate that scores 40 or higher.`,
   ].join("\n");
 }
