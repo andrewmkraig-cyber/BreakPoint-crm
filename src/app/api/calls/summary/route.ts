@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     ],
     messages: [{
       role: 'user',
-      content: `You are a recruiting assistant. Summarize this call transcript in 3-5 bullet points. Focus on: candidate interest level, key skills mentioned, comp expectations, next steps. Be concise.\n\nTranscript:\n${record.transcript}`,
+      content: `You are a recruiting assistant. Summarize this call transcript in 3-5 bullet points. Focus on: candidate interest level, key skills mentioned, comp expectations, next steps. Be concise.\n\nNever use em dashes (—). Use a hyphen (-) instead. Always.\n\nTranscript:\n${record.transcript}`,
     }],
   })
   const summary = message.content[0].type === 'text' ? message.content[0].text : ''

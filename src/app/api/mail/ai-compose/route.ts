@@ -97,6 +97,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
         "Body: plain HTML with <p> paragraphs. No <html>/<body> wrapper, no inline styles.",
         "Do NOT write a signature, closing, or 'Best, Andrew' line in the body. The app auto-appends the signature block.",
         "Do NOT include any greeting line like 'Hi [Name],' UNLESS the user's prompt explicitly addresses a specific person by name; even then, keep it short.",
+        "Never use em dashes (—). Use a hyphen (-) instead. Always.",
         senderName ? `The sender is ${senderName}${senderTitle ? `, ${senderTitle}` : ""}.` : "",
       ]
         .filter(Boolean)
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
         "Do NOT include 'Subject:' — the user sets the subject in a separate field.",
         "Write in plain prose with short paragraphs. Use one blank line between paragraphs.",
         "Return the body formatted as plain HTML with <p> paragraphs. No <html>/<body> wrapper, no inline styles.",
+        "Never use em dashes (—). Use a hyphen (-) instead. Always.",
         senderName ? `The sender is ${senderName}${senderTitle ? `, ${senderTitle}` : ""}.` : "",
       ]
         .filter(Boolean)

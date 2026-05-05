@@ -73,7 +73,8 @@ export async function POST(req: NextRequest) {
     "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
     "hyphen bullets for items, and descriptive link text instead of full URLs. " +
     "Keep responses scannable and well-organized.\n\n" +
-    "Never use emojis anywhere in your response. Never."
+    "Never use emojis anywhere in your response. Never.\n\n" +
+    "Never use em dashes (—). Use a hyphen (-) instead. Always."
 
   // Persist the new user message first so the POST is recoverable if
   // something downstream blows up — the recruiter's question is never lost.

@@ -256,7 +256,8 @@ async function extractFieldsFromHomepage(url: string, pageText: string): Promise
     ],
     system:
       "You extract company fields from a website homepage for a recruiting CRM. " +
-      "You return strict JSON only. You never fabricate fields — if a value isn't clearly present, return null.",
+      "You return strict JSON only. You never fabricate fields — if a value isn't clearly present, return null. " +
+      "Never use em dashes (—). Use a hyphen (-) instead. Always.",
     messages: [
       {
         role: "user",
