@@ -5,17 +5,19 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 // Category list lives here so layout.tsx (server component) and the
-// nav (client component) share the same source of truth. Order +
-// labels mirror the original SECTIONS array on the old single-page
-// Settings — no rename, no reorder.
+// nav (client component) share the same source of truth.
+//
+// Order: setup-y items first, the catch-all live-health Connectors
+// panel last. Email Preferences was removed — phone + signature are
+// owned by Branding now, and the auto-send trigger moved into
+// Templates/Triggers.
 export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
   { slug: "notifications",     label: "Notifications" },
-  { slug: "connectors",        label: "Connectors" },
-  { slug: "email",             label: "Email" },
-  { slug: "branding",          label: "Branding" },
-  { slug: "templates",         label: "Templates" },
   { slug: "personal-trainer",  label: "Personal Trainer" },
+  { slug: "branding",          label: "Branding" },
+  { slug: "templates",         label: "Templates/Triggers" },
+  { slug: "connectors",        label: "Connectors" },
 ] as const;
 
 export function SettingsNav() {

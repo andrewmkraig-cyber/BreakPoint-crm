@@ -2,15 +2,19 @@ import { prisma } from "@/lib/prisma";
 import { ensureDefaultTemplates } from "@/app/settings/templates-actions";
 import { TemplatesView, type TemplateRow } from "@/app/settings/templates-view";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
+import { ensureDefaultPreferences, getAppPreferences } from "@/lib/preferences";
 
 export const dynamic = "force-dynamic";
 
 export default async function TemplatesSettingsPage() {
-  await ensureDefaultTemplates();
+  await Promise.all([ensureDefaultTemplates(), ensureDefaultPreferences()]);
 
-  const templates = await prisma.emailTemplate.findMany({
-    orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
-  });
+  const [templates, prefs] = await Promise.all([
+    prisma.emailTemplate.findMany({
+      orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+    }),
+    getAppPreferences(),
+  ]);
 
   const rows: TemplateRow[] = templates.map((t) => ({
     id: t.id,
@@ -27,10 +31,13 @@ export default async function TemplatesSettingsPage() {
   return (
     <CollapsibleSection
       id="templates"
-      title="Email templates"
-      description="Reusable subject + body. Use the Insert Field picker to add merge fields."
+      title="Templates/Triggers"
+      description="Reusable subject + body, plus the automatic send-on-submittal toggle."
     >
-      <TemplatesView initial={rows} />
+      <TemplatesView
+        initial={rows}
+        autoSendCandidateConfirmation={prefs.autoSendCandidateConfirmation}
+      />
     </CollapsibleSection>
   );
 }

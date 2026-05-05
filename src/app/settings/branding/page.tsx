@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { BrandingView, type BrandingInitial } from "@/app/settings/branding-view";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
-import { getUserBrandingProfile } from "@/lib/signature";
+import { getUserBrandingProfile, renderSignatureHtml } from "@/lib/signature";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +15,7 @@ export default async function BrandingSettingsPage() {
   // omitted when brandingInitial was null.
   const session = await getServerSession(authOptions);
   let brandingInitial: BrandingInitial | null = null;
+  let signaturePreviewHtml = "";
   if (session?.user?.email) {
     const userRow = await prisma.user.findUnique({
       where: { email: session.user.email },
@@ -34,6 +35,10 @@ export default async function BrandingSettingsPage() {
             : "",
         hasCustomLogo: profile.hasCustomLogo,
       };
+      // Render the actual signature HTML on the server using the same
+      // function /reply and /send go through, so the preview block
+      // matches inbox-rendered output exactly.
+      signaturePreviewHtml = renderSignatureHtml(profile);
     }
   }
 
@@ -55,7 +60,7 @@ export default async function BrandingSettingsPage() {
       title="Branding & Signature"
       description="Used on every email you send from Ace."
     >
-      <BrandingView initial={brandingInitial} />
+      <BrandingView initial={brandingInitial} signaturePreviewHtml={signaturePreviewHtml} />
     </CollapsibleSection>
   );
 }
