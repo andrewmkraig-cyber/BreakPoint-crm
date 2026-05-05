@@ -177,7 +177,7 @@ function NavLink({
       {showBadge && (
         <span
           aria-label={`${badge} unread`}
-          className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-court-badge px-1.5 py-0.5 text-[10px] font-semibold leading-none text-court-badge-fg"
+          className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-[var(--court-badge)] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-court-badge-fg"
         >
           {badge > 99 ? "99+" : badge}
         </span>

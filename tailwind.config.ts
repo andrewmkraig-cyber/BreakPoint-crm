@@ -76,8 +76,11 @@ const config: Config = {
           brand: "rgb(var(--court-brand) / <alpha-value>)",
           "brand-dark": "rgb(var(--court-brand-dark) / <alpha-value>)",
           "brand-tint": "rgb(var(--court-brand-tint) / <alpha-value>)",
-          // Badge (Wimbledon purple etc.)
-          badge: "rgb(var(--court-badge) / <alpha-value>)",
+          // Badge — note: --court-badge is stored as a complete CSS color
+          // (rgb() or rgba()) per mode so light modes can use a tinted
+          // accent wash. Consume via bg-[var(--court-badge)] arbitrary
+          // value, NOT bg-court-badge. Only the fg/bg helpers stay as
+          // standard Tailwind utilities since they're always solid.
           "badge-fg": "rgb(var(--court-badge-fg) / <alpha-value>)",
           "badge-bg": "rgb(var(--court-badge-bg) / <alpha-value>)",
         },

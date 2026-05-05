@@ -44,9 +44,9 @@ html[data-surface='hard'][data-theme='light'] {
   --court-brand-dark:                63 112  48; /* #3F7030 */
   --court-brand-tint:               232 240 226; /* #E8F0E2 */
 
-  --court-badge:                     79  45 127; /* #4F2D7F */
-  --court-badge-fg:                 255 255 255; /* #FFFFFF */
-  --court-badge-bg:                 232 222 243; /* #E8DEF3 */
+  --court-badge:                    rgb(232 240 226); /* #E8F0E2 — soft brand-green wash */
+  --court-badge-fg:                  63 112  48; /* #3F7030 */
+  --court-badge-bg:                 232 222 243; /* preserved (unused for sidebar badge) */
 
   --brand:                           90 150  66; /* legacy alias — prefer --court-brand */
 }
@@ -81,9 +81,9 @@ html[data-surface='hard'][data-theme='dark'] {
   --court-brand-dark:               156 214 131; /* #9CD683 */
   --court-brand-tint:                31  42  24; /* #1F2A18 */
 
-  --court-badge:                     79  45 127; /* #4F2D7F */
-  --court-badge-fg:                 255 255 255;
-  --court-badge-bg:                  42  27  58; /* #2A1B3A — derived dark */
+  --court-badge:                    rgba(74, 143, 217, 0.20); /* tinted accent blue */
+  --court-badge-fg:                 125 179 232; /* #7DB3E8 */
+  --court-badge-bg:                  42  27  58; /* preserved (unused) */
 
   --brand:                          123 184  91; /* legacy alias */
   --brand-light:                    156 214 131;
@@ -118,9 +118,9 @@ html[data-surface='clay'][data-theme='light'] {
   --court-brand-dark:                63 112  48; /* #3F7030 */
   --court-brand-tint:               232 240 226; /* #E8F0E2 */
 
-  --court-badge:                     79  45 127; /* #4F2D7F */
-  --court-badge-fg:                 255 255 255;
-  --court-badge-bg:                 232 222 243; /* #E8DEF3 */
+  --court-badge:                    rgb(232 240 226); /* #E8F0E2 — soft brand-green wash */
+  --court-badge-fg:                  63 112  48; /* #3F7030 */
+  --court-badge-bg:                 232 222 243; /* preserved (unused) */
 
   --brand:                           90 150  66; /* legacy alias */
 }
@@ -156,9 +156,9 @@ html[data-surface='clay'][data-theme='dark'] {
   --court-brand-dark:               156 214 131; /* #9CD683 */
   --court-brand-tint:                31  42  24;
 
-  --court-badge:                     79  45 127;
-  --court-badge-fg:                 255 255 255;
-  --court-badge-bg:                  42  27  58;
+  --court-badge:                    rgba(232, 144, 85, 0.30); /* tinted accent peach */
+  --court-badge-fg:                 245 168 120; /* #F5A878 */
+  --court-badge-bg:                  42  27  58; /* preserved (unused) */
 
   --brand:                          123 184  91;
   --brand-light:                    156 214 131;
@@ -193,9 +193,9 @@ html[data-surface='grass'][data-theme='light'] {
   --court-brand-dark:                63 112  48; /* #3F7030 */
   --court-brand-tint:               232 240 226; /* #E8F0E2 */
 
-  --court-badge:                     79  45 127; /* #4F2D7F */
-  --court-badge-fg:                 255 255 255;
-  --court-badge-bg:                 232 222 243; /* #E8DEF3 */
+  --court-badge:                    rgb(79 45 127); /* #4F2D7F — Wimbledon trophy */
+  --court-badge-fg:                 232 222 243; /* #E8DEF3 */
+  --court-badge-bg:                 232 222 243; /* preserved (unused) */
 
   --brand:                           90 150  66;
 }
@@ -230,9 +230,9 @@ html[data-surface='grass'][data-theme='dark'] {
   --court-brand-dark:               156 214 131; /* #9CD683 */
   --court-brand-tint:                31  42  24;
 
-  --court-badge:                     79  45 127; /* #4F2D7F — Wimbledon purple badge */
-  --court-badge-fg:                 255 255 255;
-  --court-badge-bg:                  42  27  58; /* #2A1B3A */
+  --court-badge:                    rgb(79 45 127); /* #4F2D7F — Wimbledon trophy */
+  --court-badge-fg:                 232 222 243; /* #E8DEF3 */
+  --court-badge-bg:                  42  27  58; /* preserved (unused) */
   --court-badge-light:              184 157 224; /* #B89DE0 — preserved */
   --court-badge-tint:               232 222 243; /* #E8DEF3 — preserved */
 
@@ -276,9 +276,9 @@ html[data-surface='night'] {
   --court-brand-dark:               156 214 131; /* #9CD683 */
   --court-brand-tint:                31  42  24;
 
-  --court-badge:                     79  45 127; /* #4F2D7F */
-  --court-badge-fg:                 255 255 255;
-  --court-badge-bg:                  42  27  58;
+  --court-badge:                    rgba(123, 184, 91, 0.18); /* tinted brand-green */
+  --court-badge-fg:                 156 214 131; /* #9CD683 */
+  --court-badge-bg:                  42  27  58; /* preserved (unused) */
 
   --brand:                          123 184  91;
   --brand-light:                    156 214 131;
