@@ -12,6 +12,7 @@ import {
   Phone,
   PhoneCall,
   PhoneMissed,
+  Plus,
   RefreshCw,
   Send,
   User as UserIcon,
@@ -126,6 +127,10 @@ export function PhoneView() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+  // "New Text/Call" header button → modal dial pad. Tracked here so
+  // the inline empty-state DialPad can disable its document keystroke
+  // listener while the modal owns input.
+  const [dialPadOpen, setDialPadOpen] = useState(false);
   // Bump after a send so the detail-load useEffect re-runs and the
   // newly-saved outbound row appears in the thread without a manual
   // refresh.
@@ -305,7 +310,17 @@ export function PhoneView() {
   }, [threads, bucket]);
 
   return (
-    <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12">
+    <>
+    <div className="mb-3 flex items-center justify-end">
+      <button
+        type="button"
+        onClick={() => setDialPadOpen(true)}
+        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-3 py-1.5 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+      >
+        <Plus className="h-3 w-3" /> New Text/Call
+      </button>
+    </div>
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
       {/* LEFT SIDEBAR */}
       <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
         <div className="border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
@@ -435,7 +450,7 @@ export function PhoneView() {
       {/* RIGHT: DETAIL */}
       <section className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
         {!selectedId ? (
-          <EmptyDetail />
+          <EmptyDetail keyboardCapture={!dialPadOpen} />
         ) : detailLoading && !detail ? (
           <div className="flex h-[calc(100vh-240px)] items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading thread…
@@ -452,7 +467,7 @@ export function PhoneView() {
             }}
           />
         ) : (
-          <EmptyDetail />
+          <EmptyDetail keyboardCapture={!dialPadOpen} />
         )}
       </section>
 
@@ -462,6 +477,8 @@ export function PhoneView() {
           while /phone is open trigger loadThreads via the after-send
           callback registered above. */}
     </div>
+    {dialPadOpen && <DialPadModal onClose={() => setDialPadOpen(false)} />}
+    </>
   );
 }
 
@@ -621,16 +638,45 @@ function ThreadRow({
 
 // ---- Right-pane detail ----
 
-// Dial pad shown when no thread is selected. Replaces the previous
-// "Coming in Phase 2" stub. Recruiter can:
+// Dial pad shown when no thread is selected. Wraps the shared
+// DialPad component with the empty-state copy + container.
+//
+// keyboardCapture is gated by the parent: when the New Text/Call
+// modal is open the modal version owns the doc-level keystrokes, so
+// this inline copy bails to avoid double-typing.
+function EmptyDetail({ keyboardCapture }: { keyboardCapture: boolean }) {
+  return (
+    <div className="flex h-[calc(100vh-240px)] flex-col items-center justify-center gap-4 px-6">
+      <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+        Start a new conversation
+      </div>
+      <DialPad keyboardCapture={keyboardCapture} />
+      <p className="max-w-[280px] text-center text-[11px] text-court-fg-muted">
+        Or pick a saved conversation from the list. Type on your
+        keyboard to enter digits without clicking each key.
+      </p>
+    </div>
+  );
+}
+
+// Reusable dial pad. Used by the empty-state right pane AND by the
+// "New Text/Call" header button's modal.
+//
+// Recruiter can:
 //   - click 0-9 / * / # buttons with the mouse
 //   - type the same characters on the keyboard while the pad is
-//     focused (or anywhere on the page when no input is focused)
+//     mounted with keyboardCapture=true (no input focused)
 //   - press Backspace to drop the last digit
 //   - hit Call or Text to dispatch through usePhonePanels with
 //     candidateId=null so the existing new-conversation flow takes
 //     over against the typed number.
-function EmptyDetail() {
+function DialPad({
+  keyboardCapture,
+  onSubmit,
+}: {
+  keyboardCapture: boolean;
+  onSubmit?: () => void;
+}) {
   const phonePanels = usePhonePanels();
   const [number, setNumber] = useState("");
 
@@ -646,8 +692,11 @@ function EmptyDetail() {
   // Keyboard input — listens at the document level so the recruiter
   // doesn't have to click the pad first. Skips when an input /
   // textarea / contenteditable is focused so we don't steal keys
-  // from the search box, composer, etc.
+  // from the search box, composer, etc. The keyboardCapture flag
+  // lets a parent disable this listener when another DialPad
+  // instance owns the keystrokes (e.g. the modal version).
   useEffect(() => {
+    if (!keyboardCapture) return;
     function onKey(e: KeyboardEvent) {
       const target = e.target as HTMLElement | null;
       if (target) {
@@ -670,7 +719,7 @@ function EmptyDetail() {
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [append, backspace]);
+  }, [append, backspace, keyboardCapture]);
 
   function dispatch(action: "call" | "text") {
     const trimmed = number.trim();
@@ -688,6 +737,7 @@ function EmptyDetail() {
     };
     if (action === "call") phonePanels.openCall(contact);
     else phonePanels.openText(contact);
+    onSubmit?.();
   }
 
   const KEYS: Array<{ digit: string; letters: string }> = [
@@ -706,10 +756,7 @@ function EmptyDetail() {
   ];
 
   return (
-    <div className="flex h-[calc(100vh-240px)] flex-col items-center justify-center gap-4 px-6">
-      <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
-        Start a new conversation
-      </div>
+    <div className="flex flex-col items-center gap-4">
       <div className="flex w-full max-w-[280px] items-center gap-2">
         <div className="flex-1 rounded-lg border border-court-border bg-court-surface-subtle px-3 py-3 text-center font-mono text-xl tracking-wider text-court-fg">
           {formatted || (
@@ -764,10 +811,41 @@ function EmptyDetail() {
           Call
         </button>
       </div>
-      <p className="max-w-[280px] text-center text-[11px] text-court-fg-muted">
-        Or pick a saved conversation from the list. Type on your
-        keyboard to enter digits without clicking each key.
-      </p>
+    </div>
+  );
+}
+
+// Modal wrapper around DialPad. Triggered by the page-header
+// "New Text/Call" button so a dial pad is reachable even when a
+// thread is open in the right pane.
+function DialPadModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-6 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            New text or call
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close dial pad"
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <DialPad keyboardCapture={true} onSubmit={onClose} />
+        <p className="mt-4 text-center text-[11px] text-court-fg-muted">
+          Type on your keyboard to enter digits without clicking each key.
+        </p>
+      </div>
     </div>
   );
 }
