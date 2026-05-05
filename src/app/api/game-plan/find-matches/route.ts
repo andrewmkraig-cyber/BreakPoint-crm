@@ -59,11 +59,21 @@ type CandidateRow = {
   experience: unknown;
 };
 
-type ClaudeMatch = {
-  candidateId: string;
-  rationale: string;
-  score: number;
-};
+// Streaming response (NDJSON). Each line is a JSON object:
+//   {"t":"meta","openJobs":[...]}                   — first line, sent
+//                                                     before Claude
+//                                                     starts ranking
+//   {"t":"match","match":{...}}                     — one per scored
+//                                                     candidate, flushed
+//                                                     as Claude scores it
+//   {"t":"end","hasMore":boolean,"page":number}     — final line
+//   {"t":"error","error":"..."}                     — on failure
+//
+// The route asks Claude to emit one JSON object per line (not a JSON
+// array) so we can stream-parse line-by-line as the model writes its
+// response. Each parsed match is hydrated server-side with display
+// fields and forwarded immediately, so the panel paints the first
+// card in ~3-5 seconds instead of waiting for the full batch to land.
 
 export async function POST(req: NextRequest) {
   const org = await getCurrentOrg();
@@ -73,7 +83,12 @@ export async function POST(req: NextRequest) {
   // eslint-disable-next-line no-console
   console.log("[find-matches] org.id =", org.id);
 
-  let body: { jobId?: string; clientId?: string; page?: number };
+  let body: {
+    jobId?: string;
+    clientId?: string;
+    page?: number;
+    excludeIds?: string[];
+  };
   try {
     body = await req.json();
   } catch {
@@ -81,6 +96,7 @@ export async function POST(req: NextRequest) {
   }
 
   const page = Math.max(0, Math.floor(body.page ?? 0));
+  const excludeIds = Array.isArray(body.excludeIds) ? body.excludeIds : [];
   if (!body.jobId && !body.clientId) {
     return NextResponse.json({ error: "jobId or clientId required" }, { status: 400 });
   }
@@ -110,49 +126,17 @@ export async function POST(req: NextRequest) {
     take: 2000,
   });
 
-  const filtered = preFilterPool(pool, target).slice(0, PRE_FILTER_CAP);
+  // Pre-filter, drop any candidates the client has already received
+  // on prior pages, and cap to the prompt budget. excludeIds is the
+  // pagination mechanism — page 0 sends no excludes, page 1 sends
+  // page 0's ids, etc. Server-side ranking sees only fresh
+  // candidates each call so subsequent pages don't re-rank already-
+  // shown rows.
+  const exclude = new Set(excludeIds);
+  const filtered = preFilterPool(pool, target)
+    .filter((c) => !exclude.has(c.id))
+    .slice(0, PRE_FILTER_CAP);
 
-  if (filtered.length === 0) {
-    return NextResponse.json({ matches: [], hasMore: false, page });
-  }
-
-  // Cache the full Claude-ranked list keyed by (target, candidate-set
-  // signature) inside the response — the panel pages through 5 at a
-  // time on the client, but the server still ranks the full filtered
-  // pool every call. Simpler than a Redis layer for v1; the panel's
-  // page param drops the right slice.
-  const ranked = await rankWithClaude(filtered.slice(0, PROMPT_CANDIDATE_CAP), target);
-
-  const start = page * PAGE_SIZE;
-  const end = start + PAGE_SIZE;
-  const slice = ranked.slice(start, end);
-
-  // Hydrate each match with display fields the card needs (we fetched
-  // these already in the pool, no extra round trip).
-  const byId = new Map(filtered.map((c) => [c.id, c]));
-  const matches = slice
-    .map((m) => {
-      const c = byId.get(m.candidateId);
-      if (!c) return null;
-      const compLabel = formatComp(c.expectedSalary);
-      const name = [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || "(no name)";
-      return {
-        candidateId: c.id,
-        candidateRfId: c.rfId,
-        name,
-        title: c.currentDesignation ?? "",
-        currentEmployer: c.currentOrganization ?? "",
-        location: c.location ?? "",
-        comp: compLabel,
-        rationale: m.rationale,
-        score: m.score,
-      };
-    })
-    .filter((m): m is NonNullable<typeof m> => m !== null);
-
-  // For client-target panels, also return the client's open jobs so
-  // the per-card "Apply/Submit → pick a job" dropdown can render
-  // without a second round trip.
   const openJobs =
     target.source === "client"
       ? target.jobs.map((j) => ({
@@ -162,11 +146,129 @@ export async function POST(req: NextRequest) {
         }))
       : [];
 
-  return NextResponse.json({
-    matches,
-    hasMore: end < ranked.length,
-    page,
-    openJobs,
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (obj: object) => {
+        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      };
+
+      try {
+        send({ t: "meta", openJobs });
+
+        if (filtered.length === 0) {
+          send({ t: "end", hasMore: false, page });
+          controller.close();
+          return;
+        }
+
+        const promptCandidates = filtered.slice(0, PROMPT_CANDIDATE_CAP);
+        const byId = new Map(promptCandidates.map((c) => [c.id, c]));
+        const seen = new Set<string>();
+        let emitted = 0;
+
+        const claudeStream = anthropic.messages.stream({
+          model: CLAUDE_MODEL,
+          max_tokens: 4096,
+          messages: [
+            { role: "user", content: buildStreamingPrompt(promptCandidates, target) },
+          ],
+        });
+
+        let buffer = "";
+        const tryEmit = (line: string): boolean => {
+          // Returns true when we've hit PAGE_SIZE and the caller
+          // should stop reading.
+          const trimmed = line.trim();
+          if (!trimmed) return false;
+          // Strip surrounding markdown / array brackets / commas if
+          // Claude slipped any in despite the prompt instruction.
+          const cleaned = trimmed
+            .replace(/^[\s\[,]+/, "")
+            .replace(/[\s\],]+$/, "");
+          if (!cleaned.startsWith("{")) return false;
+          let parsed: { candidateId?: unknown; score?: unknown; rationale?: unknown };
+          try {
+            parsed = JSON.parse(cleaned);
+          } catch {
+            return false;
+          }
+          if (typeof parsed.candidateId !== "string") return false;
+          if (seen.has(parsed.candidateId)) return false;
+          const c = byId.get(parsed.candidateId);
+          if (!c) return false;
+          const score =
+            typeof parsed.score === "number" ? Math.round(parsed.score) : 0;
+          const rationale =
+            typeof parsed.rationale === "string" ? parsed.rationale : "";
+          if (score < 40) return false;
+          const name =
+            [c.firstName, c.lastName].filter(Boolean).join(" ").trim() ||
+            "(no name)";
+          send({
+            t: "match",
+            match: {
+              candidateId: c.id,
+              candidateRfId: c.rfId,
+              name,
+              title: c.currentDesignation ?? "",
+              currentEmployer: c.currentOrganization ?? "",
+              location: c.location ?? "",
+              comp: formatComp(c.expectedSalary),
+              rationale,
+              score,
+            },
+          });
+          seen.add(parsed.candidateId);
+          emitted++;
+          return emitted >= PAGE_SIZE;
+        };
+
+        outer: for await (const event of claudeStream) {
+          if (
+            event.type === "content_block_delta" &&
+            event.delta.type === "text_delta"
+          ) {
+            buffer += event.delta.text;
+            let idx;
+            while ((idx = buffer.indexOf("\n")) !== -1) {
+              const line = buffer.slice(0, idx);
+              buffer = buffer.slice(idx + 1);
+              if (tryEmit(line)) break outer;
+            }
+          }
+        }
+        // Flush any final line that didn't end with a newline.
+        if (emitted < PAGE_SIZE) tryEmit(buffer);
+
+        // hasMore = there are still candidates left in the pre-
+        // filtered pool that this page didn't surface (either
+        // because Claude ranked them low + we cut at PAGE_SIZE, or
+        // because PROMPT_CANDIDATE_CAP < filtered.length).
+        const hasMore =
+          emitted >= PAGE_SIZE ||
+          filtered.length > PROMPT_CANDIDATE_CAP ||
+          (emitted === 0 && filtered.length > 0);
+        send({ t: "end", hasMore, page });
+      } catch (e) {
+        send({
+          t: "error",
+          error: e instanceof Error ? e.message : "Find matches failed",
+        });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      // Defeats nginx-style proxy buffering so the client actually
+      // receives bytes as we flush them, not in a big terminal blob.
+      "X-Accel-Buffering": "no",
+    },
   });
 }
 
@@ -338,19 +440,20 @@ function formatComp(expectedSalary: unknown): string {
   return "";
 }
 
-// Build the Claude prompt and return ranked matches. We ask for JSON
-// directly; the model is reliable enough for this with a strict schema
-// hint. Falls back to an empty list if the response can't be parsed —
-// the panel renders the empty state in that case.
-async function rankWithClaude(
+// Build the streaming prompt. Critical instruction: emit one JSON
+// object per line (NDJSON), NOT a JSON array. That lets the route
+// stream-parse Claude's response line-by-line and forward each
+// scored candidate to the client as it lands, instead of waiting
+// for the whole batch to finish.
+function buildStreamingPrompt(
   candidates: CandidateRow[],
   target: MatchTarget,
-): Promise<ClaudeMatch[]> {
+): string {
   const targetBlock = target.jobs
     .map((j, i) => {
       const sal =
         j.salaryRangeStart && j.salaryRangeEnd
-          ? `\n  Comp range: $${j.salaryRangeStart}–$${j.salaryRangeEnd}`
+          ? `\n  Comp range: $${j.salaryRangeStart}-$${j.salaryRangeEnd}`
           : "";
       const loc = j.locations.length ? `\n  Locations: ${j.locations.join(", ")}` : "";
       const desc = j.description.slice(0, 4000);
@@ -380,7 +483,7 @@ async function rankWithClaude(
     })
     .join("\n\n---\n\n");
 
-  const prompt = [
+  return [
     `You are ranking candidates from BreakPoint Talent's internal database for the following ${target.source === "client" ? "client's open roles" : "job"}.`,
     "",
     "TARGET:",
@@ -390,55 +493,18 @@ async function rankWithClaude(
     candidateBlock,
     "",
     "TASK:",
-    `Score each candidate 1–100 on fit. Order strongest fit first. ${target.source === "client" ? "If the client has multiple roles, score against the candidate's best-fit role across the union." : ""} Drop weak fits (< 40) entirely.`,
-    "Write a 1–2 sentence rationale per candidate that calls out the specific reason they fit (title overlap, comp alignment, location, domain experience).",
-    "Use plain prose. Do NOT use em dashes — use hyphens or commas.",
+    `Score each candidate 1-100 on fit. ${target.source === "client" ? "If the client has multiple roles, score against the candidate's best-fit role across the union." : ""} Drop weak fits (score < 40).`,
+    "Emit your STRONGEST fit FIRST, then the next strongest, etc. Output them as you score them — start writing the first match as soon as you've decided on it. Do NOT pre-rank silently.",
+    "Each rationale: 1-2 sentences calling out the specific reason they fit (title overlap, comp alignment, location, domain experience).",
+    "Use plain prose. Do NOT use em dashes - use hyphens or commas.",
     "",
-    "OUTPUT FORMAT — return ONLY a JSON array, no preamble, no markdown fence:",
-    `[{ "candidateId": "<id>", "score": <int>, "rationale": "<1-2 sentences>" }, ...]`,
+    "OUTPUT FORMAT — emit one JSON object per line (newline-delimited JSON). NOT a JSON array. NO markdown fence. NO preamble. NO commentary between objects.",
+    `Each line: {"candidateId":"<id>","score":<int>,"rationale":"<1-2 sentences>"}`,
+    `Example of two lines:`,
+    `{"candidateId":"abc123","score":92,"rationale":"Strong match — current title aligns directly and location is on-site eligible."}`,
+    `{"candidateId":"def456","score":81,"rationale":"Adjacent title with overlapping skills; comp target sits inside the band."}`,
+    `Stop after you have emitted every candidate that scores 40 or higher.`,
   ].join("\n");
-
-  const resp = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 4096,
-    messages: [{ role: "user", content: prompt }],
-  });
-
-  const text = resp.content
-    .map((b) => (b.type === "text" ? b.text : ""))
-    .join("")
-    .trim();
-
-  return parseClaudeJson(text);
-}
-
-function parseClaudeJson(text: string): ClaudeMatch[] {
-  // Strip optional markdown fence if Claude slips one in despite the
-  // instruction. Then locate the first '[' and last ']' for resilience
-  // against trailing commentary.
-  let body = text;
-  const fence = body.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fence) body = fence[1];
-  const start = body.indexOf("[");
-  const end = body.lastIndexOf("]");
-  if (start === -1 || end === -1 || end < start) return [];
-  try {
-    const arr = JSON.parse(body.slice(start, end + 1)) as Array<{
-      candidateId?: unknown;
-      score?: unknown;
-      rationale?: unknown;
-    }>;
-    return arr
-      .map((row) => {
-        if (typeof row.candidateId !== "string") return null;
-        const score = typeof row.score === "number" ? Math.round(row.score) : 0;
-        const rationale = typeof row.rationale === "string" ? row.rationale : "";
-        return { candidateId: row.candidateId, score, rationale } as ClaudeMatch;
-      })
-      .filter((r): r is ClaudeMatch => r !== null);
-  } catch {
-    return [];
-  }
 }
 
 function formatExperience(experience: unknown): string {

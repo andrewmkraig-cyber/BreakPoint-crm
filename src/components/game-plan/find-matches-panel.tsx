@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   ExternalLink,
   GripVertical,
-  Loader2,
   Minus,
   Send,
   Target,
@@ -35,7 +34,16 @@ import { cn } from "@/lib/utils";
 
 type FetchState =
   | { status: "idle" }
-  | { status: "loading"; page: number }
+  // Streaming: Claude is mid-response, matches are appearing one at
+  // a time. expected = how many slots to render skeletons for; the
+  // gap between matches.length and expected paints loading cards.
+  | {
+      status: "streaming";
+      matches: Match[];
+      openJobs: ClientOpenJob[];
+      expected: number;
+      page: number;
+    }
   | {
       status: "ready";
       matches: Match[];
@@ -43,7 +51,17 @@ type FetchState =
       nextPage: number;
       openJobs: ClientOpenJob[];
     }
-  | { status: "error"; error: string };
+  // Stream broke mid-way. Carry whatever cards we did receive +
+  // surface a retry button.
+  | {
+      status: "error";
+      error: string;
+      partialMatches: Match[];
+      openJobs: ClientOpenJob[];
+      lastPage: number;
+    };
+
+const PAGE_SIZE = 5;
 
 export function FindMatchesPanel() {
   const {
@@ -66,7 +84,6 @@ export function FindMatchesPanel() {
   useEffect(() => setMounted(true), []);
 
   const [state, setState] = useState<FetchState>({ status: "idle" });
-  const [paging, setPaging] = useState(false);
 
   // Resolve the panel's effective target from the route. The render
   // gate below only paints when openEntities contains activeRouteKey,
@@ -77,6 +94,70 @@ export function FindMatchesPanel() {
     activeRouteKey && openEntities.has(activeRouteKey)
       ? targetForKey(activeRouteKey)
       : null;
+
+  // Run a streaming fetch. Used both for the initial load and for
+  // "Show 5 more" pagination — each call is a fresh stream.
+  // excludeIds = candidate IDs already shown in earlier pages, so
+  // the server-side ranker doesn't surface duplicates.
+  const runStream = useCallback(
+    async (args: {
+      target: MatchTarget;
+      page: number;
+      excludeIds: string[];
+      previousMatches: Match[];
+      previousOpenJobs: ClientOpenJob[];
+      cacheKey: string;
+    }) => {
+      const { target, page, excludeIds, previousMatches, previousOpenJobs, cacheKey } =
+        args;
+      // Optimistic streaming state — render PAGE_SIZE skeletons under
+      // the previously-loaded cards while Claude scores the next batch.
+      let liveMatches: Match[] = [...previousMatches];
+      let liveOpenJobs: ClientOpenJob[] = previousOpenJobs;
+      setState({
+        status: "streaming",
+        matches: liveMatches,
+        openJobs: liveOpenJobs,
+        expected: liveMatches.length + PAGE_SIZE,
+        page,
+      });
+      const result = await streamMatches(target, page, excludeIds, {
+        onMeta: (openJobs) => {
+          if (openJobs.length > 0) liveOpenJobs = openJobs;
+        },
+        onMatch: (m) => {
+          liveMatches = [...liveMatches, m];
+          setState({
+            status: "streaming",
+            matches: liveMatches,
+            openJobs: liveOpenJobs,
+            expected: previousMatches.length + PAGE_SIZE,
+            page,
+          });
+        },
+        onEnd: ({ hasMore }) => {
+          const cached: CachedFetchState = {
+            matches: liveMatches,
+            hasMore,
+            nextPage: page + 1,
+            openJobs: liveOpenJobs,
+          };
+          setCachedFor(cacheKey, cached);
+          setState({ status: "ready", ...cached });
+        },
+      });
+      if (!result.ok) {
+        setState({
+          status: "error",
+          error: result.error,
+          partialMatches: liveMatches,
+          openJobs: liveOpenJobs,
+          lastPage: page,
+        });
+      }
+    },
+    [setCachedFor],
+  );
 
   useEffect(() => {
     if (!target || !activeRouteKey) {
@@ -94,44 +175,39 @@ export function FindMatchesPanel() {
       });
       return;
     }
-    let cancelled = false;
-    setState({ status: "loading", page: 0 });
-    (async () => {
-      const result = await fetchMatches(target, 0);
-      if (cancelled) return;
-      if (!result.ok) {
-        setState({ status: "error", error: result.error });
-        return;
-      }
-      const next: CachedFetchState = {
-        matches: result.matches,
-        hasMore: result.hasMore,
-        nextPage: result.page + 1,
-        openJobs: result.openJobs,
-      };
-      setCachedFor(activeRouteKey, next);
-      setState({ status: "ready", ...next });
-    })();
-    return () => {
-      cancelled = true;
-    };
+    void runStream({
+      target,
+      page: 0,
+      excludeIds: [],
+      previousMatches: [],
+      previousOpenJobs: [],
+      cacheKey: activeRouteKey,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRouteKey, openEntities, cacheTick]);
 
   async function loadMore() {
     if (!target || !activeRouteKey || state.status !== "ready") return;
-    setPaging(true);
-    const result = await fetchMatches(target, state.nextPage);
-    setPaging(false);
-    if (!result.ok) return;
-    const merged: CachedFetchState = {
-      matches: [...state.matches, ...result.matches],
-      hasMore: result.hasMore,
-      nextPage: result.page + 1,
-      openJobs: state.openJobs,
-    };
-    setCachedFor(activeRouteKey, merged);
-    setState({ status: "ready", ...merged });
+    await runStream({
+      target,
+      page: state.nextPage,
+      excludeIds: state.matches.map((m) => m.candidateId),
+      previousMatches: state.matches,
+      previousOpenJobs: state.openJobs,
+      cacheKey: activeRouteKey,
+    });
+  }
+
+  async function retryFromError() {
+    if (!target || !activeRouteKey || state.status !== "error") return;
+    await runStream({
+      target,
+      page: state.lastPage,
+      excludeIds: state.partialMatches.map((m) => m.candidateId),
+      previousMatches: state.partialMatches,
+      previousOpenJobs: state.openJobs,
+      cacheKey: activeRouteKey,
+    });
   }
 
   // Drag the title bar — shifts the absolute (left, top) coordinates
@@ -277,11 +353,49 @@ export function FindMatchesPanel() {
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto bg-court-surface-subtle/30 p-3">
-            {state.status === "loading" && <SkeletonList />}
+            {state.status === "streaming" && (
+              <ul className="space-y-2">
+                {state.matches.map((m) => (
+                  <li key={m.candidateId}>
+                    <MatchCard match={m} target={target} openJobs={state.openJobs} />
+                  </li>
+                ))}
+                {Array.from({
+                  length: Math.max(0, state.expected - state.matches.length),
+                }).map((_, i) => (
+                  <li key={`skel-${i}`}>
+                    <SkeletonCard />
+                  </li>
+                ))}
+              </ul>
+            )}
             {state.status === "error" && (
-              <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800">
-                {state.error}
-              </div>
+              <>
+                {state.partialMatches.length > 0 && (
+                  <ul className="mb-3 space-y-2">
+                    {state.partialMatches.map((m) => (
+                      <li key={m.candidateId}>
+                        <MatchCard match={m} target={target} openJobs={state.openJobs} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-800">
+                  <div className="font-semibold">
+                    {state.partialMatches.length > 0
+                      ? "Stream broke after a few matches."
+                      : "Find Matches failed."}
+                  </div>
+                  <div className="mt-0.5 text-red-700">{state.error}</div>
+                  <button
+                    type="button"
+                    onClick={retryFromError}
+                    className="mt-2 inline-flex items-center gap-1 rounded-md border border-red-300 bg-white px-2 py-1 text-[11px] font-semibold text-red-800 transition hover:bg-red-100"
+                  >
+                    Retry
+                  </button>
+                </div>
+              </>
             )}
             {state.status === "ready" && state.matches.length === 0 && (
               <div className="rounded-lg border border-court-border bg-court-surface p-5 text-center text-sm text-court-fg-muted">
@@ -308,10 +422,8 @@ export function FindMatchesPanel() {
               <button
                 type="button"
                 onClick={loadMore}
-                disabled={paging}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-xs font-semibold text-court-fg transition hover:bg-court-surface-subtle disabled:opacity-60"
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-court-border bg-court-surface-subtle/40 px-3 py-1.5 text-xs font-semibold text-court-fg transition hover:bg-court-surface-subtle"
               >
-                {paging ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                 Show 5 more
               </button>
             </div>
@@ -338,21 +450,14 @@ export function FindMatchesPanel() {
   return createPortal(node, document.body);
 }
 
-function SkeletonList() {
+function SkeletonCard() {
   return (
-    <ul className="space-y-2">
-      {Array.from({ length: 5 }).map((_, i) => (
-        <li
-          key={i}
-          className="rounded-lg border border-court-border bg-court-surface p-4"
-        >
-          <div className="h-3 w-1/3 rounded bg-court-surface-subtle" />
-          <div className="mt-2 h-3 w-2/3 rounded bg-court-surface-subtle" />
-          <div className="mt-3 h-2 w-full rounded bg-court-surface-subtle" />
-          <div className="mt-1 h-2 w-5/6 rounded bg-court-surface-subtle" />
-        </li>
-      ))}
-    </ul>
+    <div className="animate-pulse rounded-lg border border-court-border bg-court-surface p-4">
+      <div className="h-3 w-1/3 rounded bg-court-surface-subtle" />
+      <div className="mt-2 h-3 w-2/3 rounded bg-court-surface-subtle" />
+      <div className="mt-3 h-2 w-full rounded bg-court-surface-subtle" />
+      <div className="mt-1 h-2 w-5/6 rounded bg-court-surface-subtle" />
+    </div>
   );
 }
 
@@ -551,41 +656,98 @@ function ClientJobPicker({
   );
 }
 
-async function fetchMatches(
+// Streaming NDJSON reader. The route emits one JSON object per
+// newline; we forward each parsed event to the panel via callbacks
+// so cards paint progressively as Claude scores them.
+async function streamMatches(
   target: MatchTarget,
   page: number,
-): Promise<
-  | {
-      ok: true;
-      matches: Match[];
-      hasMore: boolean;
-      page: number;
-      openJobs: ClientOpenJob[];
-    }
-  | { ok: false; error: string }
-> {
+  excludeIds: string[],
+  callbacks: {
+    onMeta: (openJobs: ClientOpenJob[]) => void;
+    onMatch: (match: Match) => void;
+    onEnd: (info: { hasMore: boolean; page: number }) => void;
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  let res: Response;
   try {
     const body =
       target.kind === "job"
-        ? { jobId: target.jobId, page }
-        : { clientId: target.clientId, page };
-    const res = await fetch("/api/game-plan/find-matches", {
+        ? { jobId: target.jobId, page, excludeIds }
+        : { clientId: target.clientId, page, excludeIds };
+    res = await fetch("/api/game-plan/find-matches", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const json = await res.json().catch(() => null);
-    if (!res.ok) {
-      return { ok: false, error: json?.error ?? `Find matches failed (${res.status})` };
-    }
-    return {
-      ok: true,
-      matches: (json?.matches ?? []) as Match[],
-      hasMore: Boolean(json?.hasMore),
-      page: typeof json?.page === "number" ? json.page : page,
-      openJobs: (json?.openJobs ?? []) as ClientOpenJob[],
-    };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Network error" };
   }
+  if (!res.ok || !res.body) {
+    let err = `Find matches failed (${res.status})`;
+    try {
+      const j = await res.json();
+      if (typeof j?.error === "string") err = j.error;
+    } catch {
+      // body wasn't JSON; keep the status-based error
+    }
+    return { ok: false, error: err };
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let endSeen = false;
+  let streamError: string | null = null;
+  const handleLine = (raw: string) => {
+    const line = raw.trim();
+    if (!line) return;
+    let event: {
+      t?: unknown;
+      match?: unknown;
+      openJobs?: unknown;
+      hasMore?: unknown;
+      page?: unknown;
+      error?: unknown;
+    };
+    try {
+      event = JSON.parse(line);
+    } catch {
+      return; // skip malformed line silently
+    }
+    if (event.t === "meta") {
+      callbacks.onMeta(Array.isArray(event.openJobs) ? (event.openJobs as ClientOpenJob[]) : []);
+    } else if (event.t === "match" && event.match && typeof event.match === "object") {
+      callbacks.onMatch(event.match as Match);
+    } else if (event.t === "end") {
+      endSeen = true;
+      callbacks.onEnd({
+        hasMore: Boolean(event.hasMore),
+        page: typeof event.page === "number" ? event.page : page,
+      });
+    } else if (event.t === "error") {
+      streamError = typeof event.error === "string" ? event.error : "Stream error";
+    }
+  };
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.indexOf("\n")) !== -1) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 1);
+        handleLine(line);
+      }
+    }
+    // Flush any tail without a trailing newline.
+    if (buffer.trim()) handleLine(buffer);
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Stream interrupted" };
+  }
+  if (streamError) return { ok: false, error: streamError };
+  if (!endSeen) {
+    return { ok: false, error: "Stream ended unexpectedly" };
+  }
+  return { ok: true };
 }
