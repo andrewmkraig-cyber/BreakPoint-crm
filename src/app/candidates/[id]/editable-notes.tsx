@@ -107,11 +107,7 @@ export function EditableNotes({
       right={
         isPending ? (
           <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />
-        ) : (
-          <span className="text-[11px] text-court-fg-muted">
-            {notes.length} {notes.length === 1 ? "note" : "notes"}
-          </span>
-        )
+        ) : undefined
       }
     >
       <div className="space-y-3">
@@ -136,9 +132,7 @@ export function EditableNotes({
           </div>
         </div>
 
-        {notes.length === 0 ? (
-          <p className="text-sm text-court-fg-muted">No notes yet.</p>
-        ) : (
+        {notes.length > 0 && (
           <ul className="space-y-3">
             {notes.map((n, i) => {
               const isEditing = editingIndex === i;

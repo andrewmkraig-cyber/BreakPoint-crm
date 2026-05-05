@@ -655,20 +655,7 @@ export default async function CandidateProfilePage({
               recipientEmail={candidate.email ?? null}
             />
           ) : tab === "notes" ? (
-            <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
-              <header className="border-b border-court-border px-5 py-3">
-                <h2 className="font-serif text-base font-semibold text-court-fg">
-                  Notes
-                </h2>
-                <p className="mt-0.5 text-xs text-court-fg-muted">
-                  Recruiter notes attached to this candidate. Pinned at the
-                  top so the latest is always in view.
-                </p>
-              </header>
-              <div className="p-5">
-                <EditableNotes candidateId={id} initial={notesInitial} />
-              </div>
-            </section>
+            <EditableNotes candidateId={id} initial={notesInitial} />
           ) : (
             <div className="space-y-4">
               <EditableResume
