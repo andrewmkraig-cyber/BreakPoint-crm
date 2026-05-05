@@ -96,6 +96,7 @@ export function FindMatchesPanel() {
     getCachedFor,
     setCachedFor,
     cacheTick,
+    notifyMatchesSaved,
   } = useFindMatches();
 
   const [mounted, setMounted] = useState(false);
@@ -205,6 +206,16 @@ export function FindMatchesPanel() {
             };
             setCachedFor(cacheKey, cached);
             setState({ status: "ready", ...cached });
+            // Notify per-job listeners (Matched tab badge on
+            // /jobs/[id]) that another batch of CandidateMatch rows
+            // landed in Neon. Job targets carry the jobId directly;
+            // client targets resolve to the picked job once the
+            // recruiter has selected one.
+            const savedJobId =
+              target.kind === "job"
+                ? target.jobId
+                : pickedJobId ?? livePickedJob?.jobId ?? null;
+            if (savedJobId) notifyMatchesSaved(savedJobId);
           },
         },
       );
@@ -220,7 +231,7 @@ export function FindMatchesPanel() {
         });
       }
     },
-    [setCachedFor],
+    [setCachedFor, notifyMatchesSaved],
   );
 
   useEffect(() => {

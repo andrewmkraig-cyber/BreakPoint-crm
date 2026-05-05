@@ -315,11 +315,31 @@ export async function POST(req: NextRequest) {
           // resolved org. Only fires for job-scoped streams (single
           // jobId in target.jobs); client streams without a pick are
           // short-circuited above and never reach this code path.
-          // Fire-and-forget to avoid stalling the NDJSON flush — a
-          // failed write logs but doesn't break the stream.
+          // Fire-and-forget to avoid stalling the NDJSON flush — but
+          // we surface every error explicitly because earlier silent
+          // failures hid the Matched count from updating.
           const matchedJobId = target.jobs[0]?.id;
-          if (matchedJobId) {
-            void prisma.candidateMatch
+          // eslint-disable-next-line no-console
+          console.log("[find-matches] upsert prep", {
+            organizationId: org.id,
+            jobId: matchedJobId,
+            candidateId: c.id,
+            score,
+          });
+          if (!matchedJobId || !org.id || !c.id) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              "[find-matches] upsert skipped — missing id",
+              {
+                hasJobId: Boolean(matchedJobId),
+                hasOrgId: Boolean(org.id),
+                hasCandidateId: Boolean(c.id),
+                targetSource: target.source,
+                jobsLen: target.jobs.length,
+              },
+            );
+          } else {
+            prisma.candidateMatch
               .upsert({
                 where: {
                   jobId_candidateId: {
@@ -336,12 +356,25 @@ export async function POST(req: NextRequest) {
                 },
                 update: { score, rationale },
               })
+              .then((row) => {
+                // eslint-disable-next-line no-console
+                console.log("[find-matches] upsert ok", {
+                  rowId: row.id,
+                  jobId: matchedJobId,
+                  candidateId: c.id,
+                  score,
+                });
+              })
               .catch((err) => {
                 // eslint-disable-next-line no-console
-                console.warn(
-                  "[find-matches] candidateMatch upsert failed",
-                  err instanceof Error ? err.message : err,
-                );
+                console.error("[find-matches] candidateMatch upsert FAILED", {
+                  organizationId: org.id,
+                  jobId: matchedJobId,
+                  candidateId: c.id,
+                  score,
+                  error: err instanceof Error ? err.message : String(err),
+                  stack: err instanceof Error ? err.stack : undefined,
+                });
               });
           }
           seen.add(parsed.candidateId);

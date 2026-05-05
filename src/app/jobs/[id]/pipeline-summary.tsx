@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, ExternalLink, Loader2, Send, Target } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { StageBadgeFromName } from "@/components/stage-badge";
 import type { PipelineBucket } from "@/lib/rf-payload-shapes";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
+import { useFindMatches } from "@/lib/find-matches-context";
 
 export type JobPipelineRow = {
   // Can be either the RF numeric id (RF-imported candidates) or a cuid
@@ -148,6 +149,41 @@ export function JobPipelineSummary({
       : null;
   const matchedActive = activeTab === "matched";
 
+  // Live Matched count. Initial value is the server-rendered row
+  // count; the Find Matches panel bumps `matchesSavedTick[jobId]` in
+  // FindMatchesContext when its stream finishes, and the effect below
+  // refetches the count from /api/game-plan/matched-count without
+  // triggering a server-component reload. Rows themselves stay
+  // server-rendered (refresh on next nav) — only the badge updates
+  // live, which is enough for the recruiter to see "matches saved" as
+  // they run additional Find Matches passes.
+  const { matchesSavedTick } = useFindMatches();
+  const matchedJobId = matched?.jobId ?? null;
+  const tick = matchedJobId ? matchesSavedTick[matchedJobId] ?? 0 : 0;
+  const [liveMatchedCount, setLiveMatchedCount] = useState<number>(
+    matched?.rows.length ?? 0,
+  );
+  useEffect(() => {
+    if (!matchedJobId || tick === 0) return;
+    let cancelled = false;
+    fetch(
+      `/api/game-plan/matched-count?jobId=${encodeURIComponent(matchedJobId)}`,
+      { cache: "no-store" },
+    )
+      .then((r) => r.json())
+      .then((j) => {
+        if (cancelled) return;
+        if (typeof j?.count === "number") setLiveMatchedCount(j.count);
+      })
+      .catch(() => {
+        // Silent fail — the badge keeps the prior count and the next
+        // page reload will reconcile.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [matchedJobId, tick]);
+
   return (
     <div>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
@@ -178,7 +214,7 @@ export function JobPipelineSummary({
         {matched && (
           <button
             type="button"
-            disabled={matched.rows.length === 0}
+            disabled={liveMatchedCount === 0}
             onClick={() =>
               setActiveTab(matchedActive ? null : "matched")
             }
@@ -186,12 +222,12 @@ export function JobPipelineSummary({
               "flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition",
               "border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-400",
               matchedActive && "ring-2 ring-offset-1 ring-brand/40",
-              matched.rows.length === 0 &&
+              liveMatchedCount === 0 &&
                 "opacity-60 cursor-default hover:border-inherit",
             )}
           >
             <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider">
-              {matched.rows.length > 0 &&
+              {liveMatchedCount > 0 &&
                 (matchedActive ? (
                   <ChevronDown className="h-3 w-3" />
                 ) : (
@@ -200,7 +236,7 @@ export function JobPipelineSummary({
               Matched
             </span>
             <span className="font-serif text-2xl font-bold leading-none">
-              {matched.rows.length}
+              {liveMatchedCount}
             </span>
           </button>
         )}

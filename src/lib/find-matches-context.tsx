@@ -124,6 +124,15 @@ type Ctx = {
   getCachedFor: (key: string) => CachedFetchState | null;
   setCachedFor: (key: string, state: CachedFetchState) => void;
   cacheTick: number;
+  // Per-job tick counter incremented every time a Find Matches stream
+  // finishes for that job and its CandidateMatch rows have been
+  // upserted server-side. Listeners (like the /jobs/[id] Matched tab
+  // badge) watch this tick to re-fetch their count without a full
+  // page reload. Keyed on jobId, not the panel's targetKey, because
+  // client-target streams resolve to a picked job and the job page
+  // cares about the picked job — not the originating client.
+  matchesSavedTick: Record<string, number>;
+  notifyMatchesSaved: (jobId: string) => void;
 };
 
 const Context = createContext<Ctx | null>(null);
@@ -138,6 +147,9 @@ export function FindMatchesProvider({ children }: { children: ReactNode }) {
   const cacheRef = useRef<Map<string, CachedFetchState>>(new Map());
   const targetsRef = useRef<Map<string, MatchTarget>>(new Map());
   const [cacheTick, setCacheTick] = useState(0);
+  const [matchesSavedTick, setMatchesSavedTick] = useState<
+    Record<string, number>
+  >({});
 
   const setActiveRouteKey = useCallback(
     (next: string | null | ((prev: string | null) => string | null)) => {
@@ -217,6 +229,13 @@ export function FindMatchesProvider({ children }: { children: ReactNode }) {
     return targetsRef.current.get(key) ?? null;
   }, []);
 
+  const notifyMatchesSaved = useCallback((jobId: string) => {
+    setMatchesSavedTick((prev) => ({
+      ...prev,
+      [jobId]: (prev[jobId] ?? 0) + 1,
+    }));
+  }, []);
+
   return (
     <Context.Provider
       value={{
@@ -235,6 +254,8 @@ export function FindMatchesProvider({ children }: { children: ReactNode }) {
         getCachedFor,
         setCachedFor,
         cacheTick,
+        matchesSavedTick,
+        notifyMatchesSaved,
       }}
     >
       {children}
