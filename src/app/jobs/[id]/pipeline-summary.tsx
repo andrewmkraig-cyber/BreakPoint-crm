@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  Ban,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -12,6 +11,7 @@ import {
   Loader2,
   Send,
   Target,
+  UserX,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -601,15 +601,16 @@ function MatchedRowItem({
         >
           <Send className="h-3 w-3" /> Submit
         </Button>
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="danger"
           onClick={onReject}
           disabled={applying || rejecting}
-          className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-800 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
         >
-          {rejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+          {rejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
           Reject
-        </button>
+        </Button>
       </div>
     </div>
   );

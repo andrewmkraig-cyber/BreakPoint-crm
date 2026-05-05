@@ -189,14 +189,6 @@ export default async function JobDetailPage({
         .filter((id): id is string => typeof id === "string" && id.length > 0),
     ),
   );
-  // Explicit select (no `include` shorthand) so we can omit
-  // scoreBreakdown — that column was added in the most recent schema
-  // change but the live DB hasn't been `db:push`-ed yet. SELECTing a
-  // non-existent column crashes the entire server render of /jobs/[id]
-  // ("Server Components render" error in production with the message
-  // omitted). Reading just the established columns keeps the page
-  // up; the score popover falls through to rationale via
-  // normalizeBreakdown when scoreBreakdown is null.
   const candidateMatches = await prisma.candidateMatch.findMany({
     where: {
       jobId: jobRow.id,
@@ -209,6 +201,7 @@ export default async function JobDetailPage({
     select: {
       score: true,
       rationale: true,
+      scoreBreakdown: true,
       candidate: {
         select: {
           id: true,
@@ -235,7 +228,7 @@ export default async function JobDetailPage({
       location: c.location ?? "",
       score: m.score,
       rationale: m.rationale,
-      scoreBreakdown: null,
+      scoreBreakdown: m.scoreBreakdown,
     };
   });
 
@@ -338,18 +331,16 @@ export default async function JobDetailPage({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-4 lg:col-span-7">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <JobTabs slug={isAceNative ? jobRow.id : String(rfId)} tab={tab} />
-            {tab === "game-plan" && (
-              <FindMatchesButton
-                target={{
-                  kind: "job",
-                  jobId: jobRow.id,
-                  jobRfId: rfId,
-                  label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
-                }}
-              />
-            )}
+            <FindMatchesButton
+              target={{
+                kind: "job",
+                jobId: jobRow.id,
+                jobRfId: rfId,
+                label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
+              }}
+            />
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />

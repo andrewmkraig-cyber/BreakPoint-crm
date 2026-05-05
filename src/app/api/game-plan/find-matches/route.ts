@@ -347,19 +347,15 @@ export async function POST(req: NextRequest) {
                     candidateId: c.id,
                   },
                 },
-                // scoreBreakdown deliberately omitted until the
-                // live DB has the new column (db:push pending). The
-                // panel still gets the full breakdown live via the
-                // stream event; the persisted row only loses the
-                // per-axis JSON until the migration runs.
                 create: {
                   organizationId: org.id,
                   jobId: matchedJobId,
                   candidateId: c.id,
                   score,
                   rationale,
+                  scoreBreakdown,
                 },
-                update: { score, rationale },
+                update: { score, rationale, scoreBreakdown },
               })
               .then((row) => {
                 // eslint-disable-next-line no-console

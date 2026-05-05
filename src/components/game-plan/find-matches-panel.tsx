@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
-  Ban,
   ChevronRight,
   ExternalLink,
   GripVertical,
@@ -12,6 +11,7 @@ import {
   Minus,
   Send,
   Target,
+  UserX,
   X,
 } from "lucide-react";
 import {
@@ -863,15 +863,16 @@ function ActionRow({
       >
         <Send className="h-3 w-3" /> Submit
       </Button>
-      <button
+      <Button
         type="button"
+        size="sm"
+        variant="danger"
         onClick={onReject}
         disabled={applying || rejecting}
-        className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-50 px-2.5 py-1 text-[11px] font-medium text-red-800 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
       >
-        {rejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Ban className="h-3 w-3" />}
+        {rejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
         Reject
-      </button>
+      </Button>
     </div>
   );
 }
