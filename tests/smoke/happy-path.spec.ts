@@ -58,12 +58,18 @@ test("happy path: create → apply → verify on job page → applicants → sub
     // directly. The form gates Save on a "clean" dedup status check.
     await page.getByLabel("First name").fill(SMOKE_FIRST);
     await page.getByLabel("Last name").fill(SMOKE_LAST);
-    await page.getByLabel("Email").fill(SMOKE_EMAIL);
+    // Target the email input directly: getByLabel("Email") collides
+    // with the global TopBar ComposeFAB (aria-label "New email, text,
+    // call, or note") under Playwright's substring match. The new
+    // candidate form has exactly one input[type=email], so .first()
+    // is unambiguous and stable.
+    const emailInput = page.locator('input[type="email"]').first();
+    await emailInput.fill(SMOKE_EMAIL);
     // Save is gated on the email duplicate-check moving from "idle" to
     // "clean". The check runs on blur of the Email field — tabbing out
     // fires it. Then wait for the inline "Available" hint before
     // clicking Save; the button stays disabled until the status lands.
-    await page.getByLabel("Email").press("Tab");
+    await emailInput.press("Tab");
     await expect(page.getByText(/available/i)).toBeVisible({ timeout: 15_000 });
 
     const saveBtn = page.getByRole("button", { name: /save to ace/i });
@@ -88,11 +94,12 @@ test("happy path: create → apply → verify on job page → applicants → sub
     await page.goto(`/candidates?q=${encodeURIComponent(SMOKE_LAST)}`);
     await expect(page.getByText(`${SMOKE_FIRST} ${SMOKE_LAST}`)).toBeVisible({ timeout: 15_000 });
 
-    // Step 4: open profile + click "Apply to Job" (the LocalCandidateActions
-    // top-level button), pick the first open job in the modal's <select>,
-    // confirm with the modal's "Apply" button.
+    // Step 4: open profile + click "Apply to Job" (the candidate-page
+    // header link — it's a <Link> with role=link, not a button, since
+    // the openApply=1 deep-link refactor), pick the first open job in
+    // the modal's <select>, confirm with the modal's "Apply" button.
     await page.goto(`/candidates/${createdCandidateId}`);
-    await page.getByRole("button", { name: /apply to job/i }).click();
+    await page.getByRole("link", { name: /apply to job/i }).click();
 
     // The JobPicker inside ApplyModal renders a native <select> with
     // label "Open jobs". Enumerate every option + its state before
@@ -148,8 +155,10 @@ test("happy path: create → apply → verify on job page → applicants → sub
     await expect(page.getByText(`${SMOKE_FIRST} ${SMOKE_LAST}`)).toBeVisible({ timeout: 15_000 });
 
     // Step 7-8: open Submit composer + confirm contact picker populates.
+    // Header "Submit to different job" link opens SubmitModal with the
+    // job picker. (Same Link/button shape as Apply.)
     await page.goto(`/candidates/${createdCandidateId}`);
-    await page.getByRole("button", { name: /submit to job/i }).first().click();
+    await page.getByRole("link", { name: /submit to different job/i }).click();
 
     // SubmitModal uses the same <select>-based JobPicker as ApplyModal.
     // Pick the first non-disabled option. The job we just applied to is
