@@ -155,9 +155,6 @@ export function JobsView(props: JobsViewProps) {
                   </td>
                   <td className="px-5 py-3 align-top text-court-fg">
                     <div className="font-medium">{r.title}</div>
-                    <div className="mt-0.5 text-xs text-court-fg-muted">
-                      {[r.jobType, r.employmentType].filter(Boolean).join(" · ")}
-                    </div>
                   </td>
                   <td className="px-5 py-3 align-top text-court-fg-muted">
                     {r.location ? (

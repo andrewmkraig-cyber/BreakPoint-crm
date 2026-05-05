@@ -34,6 +34,10 @@ export type JobOverviewInitial = {
   salaryRangeStart: number | null;
   salaryRangeEnd: number | null;
   salaryCurrency: string | null;
+  // "yearly" or "hourly" — null means unspecified, defaults to yearly
+  // when the recruiter starts editing so the toggle has a sane initial
+  // selection.
+  salaryFrequency: string | null;
   locations: string[];
   numberOfOpenings: number | null;
   isOpen: boolean;
@@ -65,6 +69,7 @@ export function EditableJobOverview({
   const [draftLo, setDraftLo] = useState("");
   const [draftHi, setDraftHi] = useState("");
   const [draftCcy, setDraftCcy] = useState("");
+  const [draftFreq, setDraftFreq] = useState<"yearly" | "hourly">("yearly");
   const [draftLocations, setDraftLocations] = useState("");
   const [draftOpenings, setDraftOpenings] = useState("");
   const [draftIsOpen, setDraftIsOpen] = useState(true);
@@ -75,6 +80,7 @@ export function EditableJobOverview({
     setDraftLo(state.salaryRangeStart != null ? String(state.salaryRangeStart) : "");
     setDraftHi(state.salaryRangeEnd != null ? String(state.salaryRangeEnd) : "");
     setDraftCcy(state.salaryCurrency ?? "USD");
+    setDraftFreq(state.salaryFrequency === "hourly" ? "hourly" : "yearly");
     setDraftLocations(state.locations.join(", "));
     setDraftOpenings(state.numberOfOpenings != null ? String(state.numberOfOpenings) : "");
     setDraftIsOpen(state.isOpen);
@@ -125,6 +131,7 @@ export function EditableJobOverview({
       salaryRangeStart: lo,
       salaryRangeEnd: hi,
       salaryCurrency: ccy,
+      salaryFrequency: draftFreq,
       locations: nextLocations,
       numberOfOpenings: openings,
       isOpen: draftIsOpen,
@@ -143,6 +150,7 @@ export function EditableJobOverview({
         salaryRangeStart: lo,
         salaryRangeEnd: hi,
         salaryCurrency: ccy,
+        salaryFrequency: draftFreq,
         locations: nextLocations,
         numberOfOpenings: openings,
         isOpen: draftIsOpen,
@@ -192,8 +200,28 @@ export function EditableJobOverview({
         <Row icon={<DollarSign className="h-3 w-3" />} label="Compensation">
           {editing ? (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <LabeledField label="Low" value={draftLo} onChange={setDraftLo} placeholder="80000" />
-              <LabeledField label="High" value={draftHi} onChange={setDraftHi} placeholder="120000" />
+              <div className="sm:col-span-2 flex items-center gap-3 text-sm">
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="comp-freq"
+                    checked={draftFreq === "yearly"}
+                    onChange={() => setDraftFreq("yearly")}
+                  />
+                  Salary
+                </label>
+                <label className="inline-flex items-center gap-1">
+                  <input
+                    type="radio"
+                    name="comp-freq"
+                    checked={draftFreq === "hourly"}
+                    onChange={() => setDraftFreq("hourly")}
+                  />
+                  Hourly
+                </label>
+              </div>
+              <LabeledField label="Low" value={draftLo} onChange={setDraftLo} placeholder={draftFreq === "hourly" ? "25" : "80000"} />
+              <LabeledField label="High" value={draftHi} onChange={setDraftHi} placeholder={draftFreq === "hourly" ? "35" : "120000"} />
               <div className="sm:col-span-2">
                 <LabeledField label="Currency" value={draftCcy} onChange={setDraftCcy} placeholder="USD" />
               </div>
@@ -327,14 +355,15 @@ function Row({
 // --- Helpers ---
 
 function formatComp(state: JobOverviewInitial): string {
-  const { salaryRangeStart: lo, salaryRangeEnd: hi, salaryCurrency } = state;
+  const { salaryRangeStart: lo, salaryRangeEnd: hi, salaryCurrency, salaryFrequency } = state;
   if (lo == null && hi == null) return "—";
   const ccy = (salaryCurrency ?? "USD").toUpperCase();
   const symbol = ccy === "USD" ? "$" : `${ccy} `;
   const fmt = (n: number) => `${symbol}${n.toLocaleString()}`;
-  if (lo != null && hi != null && lo !== hi) return `${fmt(lo)} – ${fmt(hi)}`;
+  const suffix = salaryFrequency === "hourly" ? " / hr" : " / yr";
+  if (lo != null && hi != null && lo !== hi) return `${fmt(lo)} – ${fmt(hi)}${suffix}`;
   const only = lo ?? hi!;
-  return fmt(only);
+  return `${fmt(only)}${suffix}`;
 }
 
 // Tolerates "$120,000" / "120k" / "120000" / "" forms. Returns null

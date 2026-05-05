@@ -268,10 +268,13 @@ export default async function JobDetailPage({
     typeof raw.salary_range_end === "number" ? raw.salary_range_end : null;
   const rawSalaryCcy =
     typeof raw.salary_range_currency === "string" ? raw.salary_range_currency : null;
+  const rawSalaryFreq =
+    typeof raw.salary_frequency === "string" ? raw.salary_frequency : null;
   const overviewInitial: JobOverviewInitial = {
     salaryRangeStart: jobRow.salaryRangeStart ?? rawSalaryStart,
     salaryRangeEnd: jobRow.salaryRangeEnd ?? rawSalaryEnd,
     salaryCurrency: jobRow.salaryCurrency ?? rawSalaryCcy,
+    salaryFrequency: jobRow.salaryFrequency ?? rawSalaryFreq,
     locations: Array.isArray(jobRow.locations) && jobRow.locations.length > 0
       ? jobRow.locations
       : (Array.isArray(raw.locations) ? raw.locations : []),

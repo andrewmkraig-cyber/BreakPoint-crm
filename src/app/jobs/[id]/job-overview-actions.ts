@@ -20,10 +20,14 @@ type Result = { ok: true } | { ok: false; error: string };
 
 export type JobOverviewPatch = {
   // Compensation. Pass numbers (or null to clear). Currency is a 3-letter
-  // ISO code; the form normalizes blank to USD.
+  // ISO code; the form normalizes blank to USD. salaryFrequency is
+  // "yearly" or "hourly" — drives the comp display ("$80k–$120k / yr"
+  // vs "$25 – $35 / hr") and any downstream readers (Game Plan
+  // context, find-matches scoring) that already consume the column.
   salaryRangeStart?: number | null;
   salaryRangeEnd?: number | null;
   salaryCurrency?: string | null;
+  salaryFrequency?: string | null;
   // Comma-free single value — the form splits multiple locations on the
   // way in. An empty array clears the field.
   locations?: string[];
@@ -72,6 +76,10 @@ export async function updateJobOverview(args: {
     if (patch.salaryCurrency !== undefined) {
       const ccy = (patch.salaryCurrency ?? "").trim().toUpperCase().slice(0, 3);
       data.salaryCurrency = ccy || null;
+    }
+    if (patch.salaryFrequency !== undefined) {
+      const freq = (patch.salaryFrequency ?? "").trim().toLowerCase();
+      data.salaryFrequency = freq === "hourly" || freq === "yearly" ? freq : null;
     }
     if (patch.locations !== undefined) {
       data.locations = patch.locations
