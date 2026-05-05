@@ -72,7 +72,8 @@ export async function POST(req: NextRequest) {
     "Always format URLs as markdown hyperlinks like [Link Text](url) - never paste raw URLs. " +
     "When returning lists of jobs, companies, or resources, use clean markdown: bold headers for categories, " +
     "hyphen bullets for items, and descriptive link text instead of full URLs. " +
-    "Keep responses scannable and well-organized."
+    "Keep responses scannable and well-organized.\n\n" +
+    "Never use emojis anywhere in your response. Never."
 
   // Persist the new user message first so the POST is recoverable if
   // something downstream blows up — the recruiter's question is never lost.

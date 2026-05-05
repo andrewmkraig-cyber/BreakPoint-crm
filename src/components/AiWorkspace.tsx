@@ -185,7 +185,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     // the viewport at top page scroll, no manual scroll needed.
     <div
       ref={cardRef}
-      className="sticky top-4 flex max-h-[calc(100vh-20rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm"
+      className="sticky top-4 flex max-h-[calc(100vh-20rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
@@ -233,7 +233,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
         )}
       </div>
 
-      <div className="shrink-0 border-t border-court-border bg-court-surface p-4">
+      <div className="shrink-0 border-t border-court-border bg-white p-4 dark:bg-court-surface">
         <div className="flex items-end gap-2">
           <textarea
             value={input}
@@ -417,15 +417,31 @@ function MarkdownContent({ content }: { content: string }) {
   );
 }
 
-// Flatten markdown links to "text - url" so a copy-paste survives into
-// SMS / iMessage / plaintext email, where bare URLs auto-linkify but
-// "[text](url)" syntax shows up as literal punctuation. Bold and list
-// markers stay as-is — they're cosmetically harmless in plaintext.
+// Flatten Game Plan markdown into clean plaintext for the clipboard.
+// Drops `### / ## / #` heading markers, `**bold**` / `*italic*` markers,
+// normalizes bullets (`-`, `*`, `•`) to a clean `- `, collapses blank
+// lines to single newlines, and converts `[text](url)` to `text - url`
+// so a paste into Gmail / iMessage / SMS reads as formatted text and
+// not as raw markdown punctuation.
 function flattenMarkdownForClipboard(input: string): string {
-  return input.replace(
+  let out = input.replace(
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
     (_match, text: string, url: string) => `${text} - ${url}`,
   );
+  // Strip leading heading markers.
+  out = out.replace(/^#{1,6}\s+/gm, "");
+  // Normalize bullets BEFORE italic strip so a "* item" line never
+  // gets eaten by the italic regex.
+  out = out.replace(/^[ \t]*[-*•]\s+/gm, "- ");
+  // Bold before italic so a single `*` inside `**...**` doesn't trigger
+  // the italic rule early.
+  out = out.replace(/\*\*([^*]+)\*\*/g, "$1");
+  // Italic — word-boundary-ish guards stop us from eating stray `*` in
+  // URLs or unmatched single asterisks.
+  out = out.replace(/(^|[^*\w])\*([^*\n]+)\*(?=[^*\w]|$)/g, "$1$2");
+  // Collapse 2+ consecutive newlines (blank lines) to a single newline.
+  out = out.replace(/\n{2,}/g, "\n");
+  return out;
 }
 
 // Lightweight markdown → semantic HTML for clipboard payloads. Handles
