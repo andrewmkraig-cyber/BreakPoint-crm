@@ -292,10 +292,10 @@ export default async function ClientDetailPage({
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Stat label="Submitted" value={counts.submitted} tone="brand" href={`/pipeline?clientId=${client.id}&stage=submitted`} />
-        <Stat label="Interviewing" value={counts.interviewing} tone="blue" href={`/pipeline?clientId=${client.id}&stage=interviewing`} />
-        <Stat label="Offer" value={counts.offer} tone="purple" href={`/pipeline?clientId=${client.id}&stage=offer`} />
-        <Stat label="Pending Start" value={counts.pendingStart} tone="amber" href={`/pipeline?clientId=${client.id}&stage=pending_start`} />
-        <Stat label="Hired" value={counts.hired} tone="emerald" href={`/pipeline?clientId=${client.id}&stage=hired`} />
+        <Stat label="Interviewing" value={counts.interviewing} tone="brand" href={`/pipeline?clientId=${client.id}&stage=interviewing`} />
+        <Stat label="Offer" value={counts.offer} tone="brand" href={`/pipeline?clientId=${client.id}&stage=offer`} />
+        <Stat label="Pending Start" value={counts.pendingStart} tone="brand" href={`/pipeline?clientId=${client.id}&stage=pending_start`} />
+        <Stat label="Hired" value={counts.hired} tone="brand" href={`/pipeline?clientId=${client.id}&stage=hired`} />
       </div>
 
       <Tabs
@@ -648,11 +648,11 @@ function Stat({
   const inner = (
     <>
       <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
-      <div className={cn("font-serif text-4xl font-extrabold leading-none tracking-tight", effective)}>{value}</div>
+      <div className={cn("font-serif text-3xl font-extrabold leading-none tracking-tight", effective)}>{value}</div>
     </>
   );
   const wrapperCls =
-    "flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-2.5 shadow-sm";
+    "flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-3.5 py-2 shadow-sm";
   if (href) {
     return (
       <Link href={href} className={cn(wrapperCls, "transition hover:border-court-accent hover:shadow-md")}>
