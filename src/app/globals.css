@@ -9,113 +9,141 @@
   Values stored as R G B so Tailwind alpha-value placeholder resolves.
 */
 
-/* HARD COURT - LIGHT (default)
-   Pulled the warm cream out and tinted toward US Open blue so Hard is
-   visually distinct from Grass at a glance — both used near-white
-   surfaces with barely-perceptible tints and read as the same mode. */
+/* HARD COURT - LIGHT (default) — palette v5 */
 :root,
 html[data-surface='hard'][data-theme='light'] {
-  --court-surface:        255 255 255;
-  --court-surface-subtle: 240 246 251;
-  --court-fg:              17  17  17;
-  --court-fg-muted:       102 102 102;
-  --court-border:         209 220 234;
-  --court-accent:          90 150  66;
-  --court-accent-dark:     63 112  48;
-  --court-accent-tint:    234 244 228;
+  --court-bg:             255 255 255; /* #FFFFFF */
+  --court-surface:        255 255 255; /* #FFFFFF */
+  --court-surface-subtle: 250 250 251; /* #FAFAFB */
+  --court-border:         229 231 235; /* #E5E7EB */
+  --court-fg:              26  35  50; /* #1A2332 */
+  --court-fg-muted:       107 114 128; /* #6B7280 */
+  --court-accent:          90 150  66; /* #5A9642 — slam IS brand green here */
+  --court-accent-dark:     63 112  48; /* #3F7030 */
+  --court-accent-tint:    232 240 226; /* #E8F0E2 */
+  --brand:                 90 150  66; /* #5A9642 */
 }
 
-/* HARD COURT - DARK (US Open blue) */
+/* HARD COURT - DARK (US Open) — palette v5 */
 html[data-surface='hard'][data-theme='dark'] {
-  --court-surface:         20  58 102;
-  --court-surface-subtle:  14  43  79;
-  --court-fg:             232 238 247;
-  --court-fg-muted:       143 165 196;
-  --court-border:          31  74 128;
-  --court-accent:          90 150  66;
-  --court-accent-dark:    156 214 143;
-  --court-accent-tint:     27  66 117;
+  --court-bg:              14  22  32; /* #0E1620 */
+  --court-surface:         22  32  46; /* #16202E */
+  --court-surface-subtle:  18  27  39; /* #121B27 */
+  --court-border:          31  45  64; /* #1F2D40 */
+  --court-border-soft:     27  38  56; /* #1B2638 */
+  --court-fg:             242 245 249; /* #F2F5F9 */
+  --court-fg-muted:       168 181 200; /* #A8B5C8 */
+  --court-fg-dim:         126 143 165; /* #7E8FA5 */
+  --court-accent:          74 143 217; /* #4A8FD9 — slam blue */
+  --court-accent-light:   125 179 232; /* #7DB3E8 */
+  --court-accent-dark:    125 179 232; /* mirror of accent-light for hover/link compat */
+  --court-accent-tint:     27  66 117; /* preserved — not in spec v5; used for active-nav bg */
+  --brand:                123 184  91; /* #7BB85B */
+  --brand-light:          156 214 131; /* #9CD683 */
 }
 
-/* CLAY COURT - LIGHT (Roland-Garros)
-   Mirrors Hard Light's neutral structure — white surfaces, soft warm
-   subtle for the body, calm fg/muted greys — and lets the orange
-   accent + accent-dark pair carry all the clay personality (CTAs,
-   active nav, focus rings). The previous full-saturation
-   peach/orange surfaces fought every page-content card; this calmer
-   treatment keeps the mode distinct via accents only. */
+/* CLAY COURT - LIGHT (Roland-Garros rust) — palette v5 */
 html[data-surface='clay'][data-theme='light'] {
-  --court-bg:             250 250 249;
-  --court-surface:        255 255 255;
-  --court-surface-subtle: 248 234 218;
-  --court-fg:              17  17  17;
-  --court-fg-muted:       102 102 102;
-  --court-border:         222 192 162;
-  --court-accent:         198 107  61;
-  --court-accent-dark:    160  74  30;
-  --court-accent-tint:    244 232 218;
+  --court-bg:             251 243 236; /* #FBF3EC */
+  --court-surface:        255 250 243; /* #FFFAF3 */
+  --court-surface-subtle: 245 220 196; /* #F5DCC4 */
+  --court-border:         201 154 124; /* #C99A7C */
+  --court-border-soft:    235 210 186; /* #EBD2BA */
+  --court-sidebar-bg:     232 201 176; /* #E8C9B0 */
+  --court-sidebar-border: 201 154 124; /* #C99A7C */
+  --court-fg:              42  20   9; /* #2A1409 */
+  --court-fg-muted:       107  58  32; /* #6B3A20 */
+  --court-accent:         183  65  14; /* #B7410E — slam rust */
+  --court-accent-dark:    139  50   8; /* #8B3208 */
+  --court-accent-tint:    251 228 210; /* #FBE4D2 */
+  --court-accent-border:  232 144  85; /* #E89055 */
+  --brand:                 90 150  66; /* #5A9642 */
 }
 
-/* CLAY COURT - DARK (Roasted Clay) */
+/* CLAY COURT - DARK (Roland-Garros, toned) — palette v5 */
 html[data-surface='clay'][data-theme='dark'] {
-  --court-surface:         42  26  18;
-  --court-surface-subtle:  33  19  12;
-  --court-fg:             240 220 200;
-  --court-fg-muted:       170 130 100;
-  --court-border:          80  48  30;
-  --court-accent:         215 122  79;
-  --court-accent-dark:    240 160 110;
-  --court-accent-tint:     70  38  22;
+  --court-bg:              26  19  16; /* #1A1310 */
+  --court-surface:         42  27  20; /* #2A1B14 */
+  --court-surface-subtle:  34  21  15; /* #22150F */
+  --court-border:          61  40  32; /* #3D2820 */
+  --court-border-soft:     53  35  24; /* #352318 */
+  --court-fg:             248 235 220; /* #F8EBDC */
+  --court-fg-muted:       212 191 174; /* #D4BFAE */
+  --court-fg-dim:         184 152 130; /* #B89882 */
+  --court-accent:         232 144  85; /* #E89055 — slam */
+  --court-accent-light:   245 168 120; /* #F5A878 */
+  --court-accent-dark:    245 168 120; /* mirror of accent-light for hover/link compat */
+  --court-accent-mid:     140 110  92; /* #8C6E5C */
+  --court-accent-tint:     70  38  22; /* preserved — not in spec v5; used for active-nav bg */
+  --brand:                123 184  91; /* #7BB85B */
+  --brand-light:          156 214 131; /* #9CD683 */
 }
 
-/* GRASS COURT - LIGHT (Wimbledon)
-   Mirrors Hard Light's neutral structure — white surfaces, soft cool
-   subtle for the body, calm fg/muted greys — and lets the green
-   accent + accent-dark pair carry all the grass personality (CTAs,
-   active nav, focus rings). Earlier this mode tinted every surface
-   with a fresh-grass green; that fought page-content cards and made
-   the mode unusable for long reading sessions. This calmer
-   treatment keeps Grass distinct via accents only. */
+/* GRASS COURT - LIGHT (Wimbledon Pantone 349 C) — palette v5 */
 html[data-surface='grass'][data-theme='light'] {
-  --court-bg:             250 251 249;
-  --court-surface:        255 255 255;
-  --court-surface-subtle: 230 241 228;
-  --court-fg:              17  17  17;
-  --court-fg-muted:       102 102 102;
-  --court-border:         196 217 194;
-  --court-accent:          31  97  49;
-  --court-accent-dark:     20  70  33;
-  --court-accent-tint:    228 240 226;
+  --court-bg:             244 248 241; /* #F4F8F1 */
+  --court-surface:        255 255 255; /* #FFFFFF */
+  --court-surface-subtle: 234 241 228; /* #EAF1E4 */
+  --court-border:         208 220 200; /* #D0DCC8 */
+  --court-border-soft:    225 235 217; /* #E1EBD9 */
+  --court-sidebar-bg:      31  86  56; /* #1F5638 */
+  --court-sidebar-border:  15  61  36; /* #0F3D24 */
+  --court-fg:              15  36  24; /* #0F2418 */
+  --court-fg-muted:        61  80  70; /* #3D5046 */
+  --court-accent:          31  86  56; /* #1F5638 — slam green */
+  --court-accent-dark:     15  61  36; /* #0F3D24 */
+  --court-accent-tint:    232 240 226; /* #E8F0E2 */
+  --court-accent-border:  168 201 154; /* #A8C99A */
+  --court-badge:           79  45 127; /* #4F2D7F — Wimbledon purple */
+  --brand:                 90 150  66; /* #5A9642 */
 }
 
-/* GRASS COURT - DARK (Wimbledon Midnight) */
+/* GRASS COURT - DARK (Wimbledon) — palette v5
+   Brand green is the accent (CTAs, active nav, focus). Wimbledon
+   purple is reserved for the badge/slam token — used only on the
+   Mail badge and eyebrow labels, never on primary buttons. */
 html[data-surface='grass'][data-theme='dark'] {
-  --court-surface:         18  38  25;
-  --court-surface-subtle:  12  28  18;
-  --court-fg:             220 235 220;
-  --court-fg-muted:       120 155 120;
-  --court-border:          35  65  40;
-  --court-accent:         107 175  80;
-  --court-accent-dark:    160 210 140;
-  --court-accent-tint:     28  58  32;
+  --court-bg:              12  20  16; /* #0C1410 */
+  --court-surface:         17  40  28; /* #11281C */
+  --court-surface-subtle:  14  34  24; /* #0E2218 */
+  --court-border:          26  58  40; /* #1A3A28 */
+  --court-border-soft:     22  51  34; /* #163322 */
+  --court-fg:             240 245 238; /* #F0F5EE */
+  --court-fg-muted:       168 192 176; /* #A8C0B0 */
+  --court-fg-dim:         125 160 138; /* #7DA08A */
+  --court-accent-mid:      85 117 102; /* #557566 */
+  --court-accent:         123 184  91; /* #7BB85B — brand green is the slam */
+  --court-accent-dark:    156 214 131; /* mirror of brand-light for hover/link compat */
+  --court-accent-tint:     28  58  32; /* preserved — not in spec v5; used for active-nav bg */
+  --court-badge:           79  45 127; /* #4F2D7F — Wimbledon purple, badge-only */
+  --court-badge-light:    184 157 224; /* #B89DE0 */
+  --court-badge-tint:     232 222 243; /* #E8DEF3 */
+  --brand:                123 184  91; /* #7BB85B */
+  --brand-light:          156 214 131; /* #9CD683 */
 }
 
 /* ============================================================
-   NIGHT COURT — true dark, charcoal & graphite
-   Neutral surfaces. Brand green ONLY as accent (CTAs, active nav,
-   focus, success). Lifted to #7BB85B for AA contrast on dark.
-   Activated via <html data-surface='night'>; theme attr ignored
-   because Night is inherently dark.
+   NIGHT COURT — true dark, charcoal & graphite — palette v5
+   Neutral surfaces. Brand green is the accent (CTAs, active nav,
+   focus, success). Activated via <html data-surface='night'>;
+   theme attr ignored because Night is inherently dark.
    ============================================================ */
 html[data-surface='night'] {
-  --court-surface:         28  28  28;  /* #1C1C1C card / chrome */
-  --court-surface-subtle:  20  20  20;  /* #141414 page body */
-  --court-fg:             236 237 239;  /* #ECEDEF */
-  --court-fg-muted:       142 144 148;  /* #8E9094 */
-  --court-border:          46  46  46;  /* #2E2E2E warm graphite */
-  --court-accent:         123 184  91;  /* #7BB85B brand green lifted */
-  --court-accent-dark:    156 214 131;  /* #9CD683 hover / link */
-  --court-accent-tint:     31  42  24;  /* #1F2A18 active-nav bg */
+  --court-bg:              15  16  18; /* #0F1012 */
+  --court-surface:         24  25  28; /* #18191C */
+  --court-surface-subtle:  20  21  24; /* #141518 */
+  --court-border:          35  37  42; /* #23252A */
+  --court-border-soft:     31  33  37; /* #1F2125 */
+  --court-border-chip:     43  45  51; /* #2B2D33 */
+  --court-fg:             244 245 247; /* #F4F5F7 */
+  --court-fg-muted:       184 188 194; /* #B8BCC2 */
+  --court-fg-dim:         138 142 150; /* #8A8E96 */
+  --court-accent-mid:     107 111 118; /* #6B6F76 */
+  --court-accent:         123 184  91; /* #7BB85B — brand green is the slam here */
+  --court-accent-dark:    156 214 131; /* mirror of brand-light for hover/link compat */
+  --court-accent-tint:     31  42  24; /* preserved — not in spec v5; used for active-nav bg */
+  --brand:                123 184  91; /* #7BB85B */
+  --brand-light:          156 214 131; /* #9CD683 */
 }
 
 @layer utilities {
