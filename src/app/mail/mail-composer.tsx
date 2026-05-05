@@ -1406,43 +1406,38 @@ export function MailComposer({
           <span className="text-[11px] text-court-fg-muted">or drag files onto the body.</span>
         </div>
         <div className="flex items-center gap-2">
-          {asModal && (
-            <>
-              {/* Fix 4c — Save Draft + Delete sit alongside Send only
-                  in modal mode. Inline reply already commits on
-                  Send and doesn't need draft persistence (Gmail's
-                  inline pane is short-lived; the recruiter pops out
-                  if they want to step away). */}
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={onDelete}
-                disabled={deletingDraft || sending}
-              >
-                {deletingDraft ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Trash2 className="h-3 w-3" />
-                )}
-                Delete
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={onSaveDraft}
-                disabled={savingDraft || sending}
-              >
-                {savingDraft ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Save className="h-3 w-3" />
-                )}
-                Save Draft
-              </Button>
-            </>
-          )}
+          {/* Save Draft + Delete render in BOTH inline and modal modes
+              so the recruiter can stash an in-progress reply without
+              having to pop the composer out into a floating window
+              first. Both handlers are mode-agnostic. */}
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={onDelete}
+            disabled={deletingDraft || sending}
+          >
+            {deletingDraft ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Trash2 className="h-3 w-3" />
+            )}
+            Delete
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={onSaveDraft}
+            disabled={savingDraft || sending}
+          >
+            {savingDraft ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Save className="h-3 w-3" />
+            )}
+            Save Draft
+          </Button>
           <Button
             type="button"
             size="sm"

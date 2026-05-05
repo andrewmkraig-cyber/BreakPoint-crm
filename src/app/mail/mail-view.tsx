@@ -11,6 +11,8 @@ import {
   Forward,
   Loader2,
   Mail as MailIcon,
+  MoreVertical,
+  Pencil,
   Plus,
   SquareArrowOutUpRight,
   RefreshCw,
@@ -18,6 +20,7 @@ import {
   ReplyAll,
   Search,
   Send,
+  Trash2,
   X,
 } from "lucide-react";
 import { useMailContext } from "@/lib/mail-context";
@@ -481,6 +484,77 @@ export function MailView({
     }
   }
 
+  // Rename (or move-via-rename) a Gmail label. Gmail uses "/" inside
+  // the label name as the visual hierarchy separator, so passing
+  // "Done Deals/TSAAdvet" → "Active Clients/TSAAdvet" both renames AND
+  // re-parents the label in one PATCH.
+  async function renameLabel(labelId: string, nextName: string) {
+    const trimmed = nextName.trim();
+    if (!trimmed) {
+      toast.error("Label name can't be empty");
+      return;
+    }
+    try {
+      const res = await fetch(`/api/mail/labels/${encodeURIComponent(labelId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: trimmed }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.label?.id) {
+        toast.error("Couldn't rename label", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const updated = body.label as { id: string; name: string };
+      setLabels((prev) =>
+        prev
+          ? prev.map((l) => (l.id === updated.id ? { ...l, name: updated.name } : l))
+          : prev,
+      );
+      // If the recruiter is currently viewing this label, update the
+      // selectedLabel name so the page header reads correctly without
+      // a refetch.
+      setSelectedLabel((s) => (s && s.id === updated.id ? { ...s, name: updated.name } : s));
+      toast.success(`Renamed to "${updated.name}"`);
+    } catch (e) {
+      toast.error("Couldn't rename label", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    }
+  }
+
+  // DELETE a Gmail label. Gmail removes the label from every message it
+  // was on; messages stay, just lose the label. Bumps the local cache so
+  // the sidebar updates without a full refetch.
+  async function deleteLabel(labelId: string, labelName: string) {
+    const ok = window.confirm(
+      `Delete the label "${labelName}"? Messages with this label will lose it but won't be deleted.`,
+    );
+    if (!ok) return;
+    try {
+      const res = await fetch(`/api/mail/labels/${encodeURIComponent(labelId)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        toast.error("Couldn't delete label", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      setLabels((prev) => (prev ? prev.filter((l) => l.id !== labelId) : prev));
+      // Drop selection if we just deleted what was selected.
+      setSelectedLabel((s) => (s && s.id === labelId ? null : s));
+      toast.success(`Deleted label "${labelName}"`);
+    } catch (e) {
+      toast.error("Couldn't delete label", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    }
+  }
+
   async function archiveThread(id: string) {
     setArchiving(id);
     try {
@@ -822,6 +896,11 @@ export function MailView({
                     onSelect={setSelectedLabel}
                     onDropThread={({ threadId, labelId, labelName }) =>
                       moveThread(threadId, labelId, labelName)
+                    }
+                    onRenameLabel={renameLabel}
+                    onDeleteLabel={deleteLabel}
+                    onAddSublabel={(parentName, child) =>
+                      createLabelStandalone(`${parentName}/${child}`)
                     }
                   />
                 ))}
@@ -2005,6 +2084,9 @@ function LabelTreeNode({
   selectedLabel,
   onSelect,
   onDropThread,
+  onRenameLabel,
+  onDeleteLabel,
+  onAddSublabel,
 }: {
   node: LabelNode;
   depth: number;
@@ -2016,12 +2098,50 @@ function LabelTreeNode({
   // real (non-synthetic) label. The MIME type the dragger sets is
   // "application/x-mail-thread-id" — handled inside the drop handler.
   onDropThread?: (args: { threadId: string; labelId: string; labelName: string }) => void;
+  // Per-label edit affordances. Hover the row → 3-dot button reveals
+  // Rename / Add sublabel / Delete. All three skip when the row is a
+  // synthetic parent (no node.id).
+  onRenameLabel?: (labelId: string, nextName: string) => void | Promise<void>;
+  onDeleteLabel?: (labelId: string, labelName: string) => void | Promise<void>;
+  onAddSublabel?: (parentName: string, childShortName: string) => void | Promise<void>;
 }) {
   const hasChildren = node.children.length > 0;
   const isCollapsed = collapsed.has(node.name);
   const active = node.id !== null && selectedLabel?.id === node.id;
   const [dragOver, setDragOver] = useState(false);
   const droppable = node.id !== null && Boolean(onDropThread);
+
+  // Per-row menu + inline editor state. Renaming uses the full Gmail
+  // path (e.g. "Active Clients/Sheehan Brothers") so the recruiter can
+  // also re-parent by editing the slash-separated segments.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuWrapRef = useRef<HTMLDivElement | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(node.name);
+  const renameInputRef = useRef<HTMLInputElement | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addDraft, setAddDraft] = useState("");
+  const addInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    function onDoc(e: MouseEvent) {
+      if (!menuWrapRef.current) return;
+      if (!menuWrapRef.current.contains(e.target as Node)) setMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (renameOpen) renameInputRef.current?.focus();
+  }, [renameOpen]);
+  useEffect(() => {
+    if (addOpen) addInputRef.current?.focus();
+  }, [addOpen]);
+
+  const editable = node.id !== null && (Boolean(onRenameLabel) || Boolean(onDeleteLabel) || Boolean(onAddSublabel));
+
   return (
     <li>
       <div
@@ -2051,7 +2171,7 @@ function LabelTreeNode({
           });
         }}
         className={
-          "flex min-h-9 items-center gap-0.5 rounded-lg " +
+          "group/label flex min-h-9 items-center gap-0.5 rounded-lg " +
           (dragOver ? "border border-[#5A9642] bg-[#EAF4E4]" : "")
         }
         style={{ paddingLeft: `${depth * 8}px` }}
@@ -2072,32 +2192,158 @@ function LabelTreeNode({
         ) : (
           <span className="inline-block w-[18px] flex-shrink-0" />
         )}
-        <button
-          type="button"
-          onClick={() => {
-            if (node.id) onSelect({ id: node.id, name: node.name });
-          }}
-          disabled={node.id === null}
-          className={
-            "flex h-9 flex-1 items-center truncate rounded-lg pl-1 pr-3 text-left text-[13px] font-medium transition " +
-            (active
-              ? "bg-[#EAF4E4] font-semibold text-[#3F7030]"
-              : node.id === null
-                ? // Synthetic parent (no real Gmail label at this
-                  // path — exists only because a child label nests
-                  // under it, e.g. "Admin/Foo" creates an "Admin"
-                  // intermediate node). Keep the same text weight
-                  // + color as real labels so the tree reads
-                  // uniformly; just drop hover + cursor since
-                  // there's no id to filter the inbox by.
-                  "cursor-default text-court-fg"
-                : "text-court-fg hover:bg-slate-50")
-          }
-          title={node.name}
-        >
-          {node.shortName}
-        </button>
+        {renameOpen ? (
+          <input
+            ref={renameInputRef}
+            value={renameDraft}
+            onChange={(e) => setRenameDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const next = renameDraft.trim();
+                if (next && next !== node.name && node.id) {
+                  void onRenameLabel?.(node.id, next);
+                }
+                setRenameOpen(false);
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setRenameOpen(false);
+                setRenameDraft(node.name);
+              }
+            }}
+            onBlur={() => setRenameOpen(false)}
+            className="h-7 min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 text-[13px] text-court-fg outline-none focus:border-court-accent"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              if (node.id) onSelect({ id: node.id, name: node.name });
+            }}
+            disabled={node.id === null}
+            className={
+              "flex h-9 flex-1 items-center truncate rounded-lg pl-1 pr-1 text-left text-[13px] font-medium transition " +
+              (active
+                ? "bg-[#EAF4E4] font-semibold text-[#3F7030]"
+                : node.id === null
+                  ? // Synthetic parent (no real Gmail label at this
+                    // path — exists only because a child label nests
+                    // under it, e.g. "Admin/Foo" creates an "Admin"
+                    // intermediate node). Keep the same text weight
+                    // + color as real labels so the tree reads
+                    // uniformly; just drop hover + cursor since
+                    // there's no id to filter the inbox by.
+                    "cursor-default text-court-fg"
+                  : "text-court-fg hover:bg-slate-50")
+            }
+            title={node.name}
+          >
+            {node.shortName}
+          </button>
+        )}
+        {editable && !renameOpen && (
+          <div ref={menuWrapRef} className="relative flex-shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen((v) => !v);
+              }}
+              className="rounded-md p-1 text-court-fg-muted opacity-0 transition group-hover/label:opacity-100 hover:bg-slate-100 hover:text-court-fg focus:opacity-100"
+              aria-label={`Edit label ${node.name}`}
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-30 mt-1 w-44 overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg"
+              >
+                {onRenameLabel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setRenameDraft(node.name);
+                      setRenameOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-court-fg hover:bg-slate-50"
+                  >
+                    <Pencil className="h-3 w-3" /> Rename / move
+                  </button>
+                )}
+                {onAddSublabel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setAddDraft("");
+                      setAddOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-court-fg hover:bg-slate-50"
+                  >
+                    <Plus className="h-3 w-3" /> Add sublabel
+                  </button>
+                )}
+                {onDeleteLabel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (node.id) void onDeleteLabel(node.id, node.name);
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-red-700 hover:bg-red-50"
+                  >
+                    <Trash2 className="h-3 w-3" /> Delete label
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+      {addOpen && (
+        <div
+          className="mt-1 flex items-center gap-1 pl-6"
+          style={{ paddingLeft: `${(depth + 1) * 8 + 18}px` }}
+        >
+          <input
+            ref={addInputRef}
+            value={addDraft}
+            onChange={(e) => setAddDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const child = addDraft.trim();
+                if (child && onAddSublabel) {
+                  void onAddSublabel(node.name, child);
+                }
+                setAddOpen(false);
+                setAddDraft("");
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                setAddOpen(false);
+                setAddDraft("");
+              }
+            }}
+            placeholder="Sublabel name"
+            className="h-7 min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 text-[12px] text-court-fg outline-none focus:border-court-accent"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const child = addDraft.trim();
+              if (child && onAddSublabel) void onAddSublabel(node.name, child);
+              setAddOpen(false);
+              setAddDraft("");
+            }}
+            disabled={!addDraft.trim()}
+            className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+          >
+            Add
+          </button>
+        </div>
+      )}
       {hasChildren && !isCollapsed && (
         <ul className="space-y-1">
           {node.children.map((child) => (
@@ -2110,6 +2356,9 @@ function LabelTreeNode({
               selectedLabel={selectedLabel}
               onSelect={onSelect}
               onDropThread={onDropThread}
+              onRenameLabel={onRenameLabel}
+              onDeleteLabel={onDeleteLabel}
+              onAddSublabel={onAddSublabel}
             />
           ))}
         </ul>

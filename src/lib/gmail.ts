@@ -960,6 +960,57 @@ export async function createGmailLabel(
   return { id: j.id, name: j.name };
 }
 
+// PATCH a user label — used by Ace's in-app "Edit label" / "Move to
+// parent" affordance. Caller passes the new full name (e.g. "Active
+// Clients/Renamed Sub" to move + rename in one call). Gmail uses the
+// `/` separator inside `name` as the visual hierarchy marker — the
+// label tree in the sidebar just splits on that.
+export async function patchGmailLabel(
+  userId: string,
+  labelId: string,
+  patch: { name?: string },
+): Promise<{ id: string; name: string }> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/labels/${encodeURIComponent(labelId)}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(patch),
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail labels.patch failed (${res.status}): ${text || "no body"}`);
+  }
+  const j = (await res.json()) as { id?: string; name?: string };
+  if (!j.id || !j.name) throw new Error("Gmail labels.patch returned an incomplete payload");
+  return { id: j.id, name: j.name };
+}
+
+// DELETE a user label. Gmail removes the label from every message it
+// was on, so the messages stay — they just lose the label. System
+// labels (INBOX, SENT, etc.) can't be deleted; the API returns 400.
+export async function deleteGmailLabel(userId: string, labelId: string): Promise<void> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/labels/${encodeURIComponent(labelId)}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      cache: "no-store",
+    },
+  );
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail labels.delete failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
 // "Move to label" = single atomic modify that adds the chosen user
 // label and drops INBOX in one call. Mirrors how Gmail's native "Move
 // to" item behaves in the web UI.
