@@ -84,9 +84,16 @@ export async function POST(req: Request) {
   }
 
   if (stage === "APPLIED") {
+    // Pass the resolved jobRfId (legacyRfId) when the job is RF-imported
+    // so the Placement carries BOTH identity keys. Older callers were
+    // hardcoded to null, which left the Placement unfindable by the
+    // /jobs/[id] pipeline query (which scopes by jobRfId for RF-imported
+    // jobs) and the /applicants list (which renders job info via the
+    // legacy RF lookup) — the row appeared in neither, even though the
+    // database had it.
     const result = await applyLocalCandidateToJob({
       candidateId: candidate.id,
-      jobRfId: null,
+      jobRfId: job.legacyRfId,
       jobId: job.id,
       clientRfId,
       clientId: job.clientId,
@@ -126,11 +133,14 @@ export async function POST(req: Request) {
       });
     }
   } else {
+    // Same dual-identity rule as the APPLIED branch above: carry
+    // job.legacyRfId in jobRfId for RF-imported jobs so the Placement
+    // is findable by callers that filter on either key shape.
     await prisma.placement.create({
       data: {
         candidateId: candidate.id,
         candidateRfId: null,
-        jobRfId: null,
+        jobRfId: job.legacyRfId,
         jobId: job.id,
         clientRfId,
         clientId: job.clientId,
