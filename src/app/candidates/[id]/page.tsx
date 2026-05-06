@@ -16,8 +16,7 @@ import {
   type RFClient,
 } from "@/lib/rf-payload-shapes";
 import { getRfShapedContactsForOrg } from "@/lib/contacts";
-import { EditableContact, type ContactState } from "@/app/candidates/[id]/editable-contact";
-import { EditableEmployment, type EmploymentState } from "@/app/candidates/[id]/editable-employment";
+import { EditableIdentity, type IdentityState } from "@/app/candidates/[id]/editable-identity";
 import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
 import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-notes";
 import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
@@ -247,20 +246,18 @@ export default async function CandidateProfilePage({
   const isKept = tagSet.has("kept") || tagSet.has("keep");
   const displayTags = Array.from(tagSet).filter((t) => t !== "kept" && t !== "keep");
 
-  const contactInitial: ContactState = {
+  const expectedSalary = c.expected_salary as { number?: number | null; currency?: string | null } | null | undefined;
+  const identityInitial: IdentityState = {
     first_name: c.first_name ?? "",
     last_name: c.last_name ?? "",
     email: normalizeEmail(c.email),
     phone: normalizePhone(c.phone_number),
     location: locationLabel ?? "",
     linkedin_profile: c.linkedin_profile ?? "",
-  };
-  const expectedSalary = c.expected_salary as { number?: number | null; currency?: string | null } | null | undefined;
-  const employmentInitial: EmploymentState = {
     current_designation: c.current_designation ?? "",
     current_organization: c.current_organization ?? "",
-    expectedSalary: expectedSalary?.number ? String(expectedSalary.number) : "",
-    expectedCurrency: expectedSalary?.currency ?? "USD",
+    expected_salary: expectedSalary?.number ? String(expectedSalary.number) : "",
+    expected_currency: expectedSalary?.currency ?? "USD",
   };
 
   const skillsInitial = Array.isArray(c.skills)
@@ -603,27 +600,12 @@ export default async function CandidateProfilePage({
           on the right. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <aside className="space-y-4 lg:col-span-3">
-          {/* Identity card. Folds the old standalone header into the
-              top of the sidebar so name + title + employer sit right
-              above the editable Contact + Employment cards. h1 stays
-              for SEO / a11y; the visual treatment is the only change. */}
-          <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-            <h1 className="break-words font-serif text-2xl font-bold leading-tight text-court-fg">
-              {name}
-            </h1>
-            {(c.current_designation || locationLabel) && (
-              <div className="mt-1 text-sm text-court-fg-muted">
-                {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
-              </div>
-            )}
-            {c.current_organization && (
-              <div className="mt-2 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-                Currently at {c.current_organization}
-              </div>
-            )}
-          </div>
-          <EditableContact candidateId={id} initial={contactInitial} />
-          <EditableEmployment candidateId={id} initial={employmentInitial} />
+          {/* Single consolidated identity card: name + contact +
+              employment all editable from one Edit/Save flow. The old
+              standalone header band, the separate Contact card, and
+              the separate Employment card collapsed into this one
+              surface so identity info lives in one place. */}
+          <EditableIdentity candidateId={id} initial={identityInitial} />
           <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
         </aside>
 

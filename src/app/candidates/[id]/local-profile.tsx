@@ -1,19 +1,17 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Link2, Mail, MapPin, Phone, Send, Target } from "lucide-react";
+import { Send, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
-import { LocalEmployment } from "@/app/candidates/[id]/local-employment";
+import { LocalEditableIdentity } from "@/app/candidates/[id]/local-editable-identity";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
-import { formatLocation } from "@/lib/utils";
-import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 // 5A.5.b parity: Ace-native candidates now share the same resume
 // management UI as RF-imported (multi-version dropdown, inline rename,
 // redact, brand). The inline single-resume preview was retired.
@@ -431,8 +429,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
     return { firstName, fullName, email, phone };
   })();
 
-  const locationLabel = formatLocation(candidate.location);
-
   return (
     <div className="space-y-6">
       <CandidateProfileNav currentId={candidate.id} />
@@ -483,64 +479,23 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
           toolbar plus tab content. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <aside className="space-y-4 lg:col-span-3">
-          {/* Identity card. Folds the old standalone header into the
-              top of the sidebar so name + title + employer sit right
-              above Contact / Employment / Activity. h1 stays for SEO
-              / a11y; only the visual treatment changes. */}
-          <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-            <h1 className="break-words font-serif text-2xl font-bold leading-tight text-court-fg">
-              {fullName}
-            </h1>
-            {(candidate.currentDesignation || locationLabel) && (
-              <div className="mt-1 text-sm text-court-fg-muted">
-                {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
-              </div>
-            )}
-            {candidate.currentOrganization && (
-              <div className="mt-2 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-                Currently at {candidate.currentOrganization}
-              </div>
-            )}
-          </div>
-          <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
-            <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
-            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
-              <Row
-                icon={<Mail className="h-3.5 w-3.5" />}
-                label="Email"
-                value={candidate.email}
-                render={(v) =>
-                  candidate.email ? (
-                    <EmailPopupLauncher
-                      email={candidate.email}
-                      className="hover:underline"
-                      candidateRef={candidate.id}
-                      context={{
-                        candidate: {
-                          firstName: candidate.firstName,
-                          lastName: candidate.lastName,
-                          email: candidate.email,
-                          currentTitle: candidate.currentDesignation,
-                          currentCompany: candidate.currentOrganization,
-                        },
-                      }}
-                    >
-                      {v}
-                    </EmailPopupLauncher>
-                  ) : (
-                    <>{v}</>
-                  )
-                }
-              />
-              <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
-              <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={locationLabel || null} />
-              <Row icon={<Link2 className="h-3.5 w-3.5" />} label="LinkedIn" value={candidate.linkedinProfile} href={candidate.linkedinProfile} />
-            </dl>
-          </section>
-          <LocalEmployment
+          {/* Single consolidated identity card: name + contact +
+              employment all editable from one Edit/Save flow. The old
+              standalone header band, the inline Contact dl, and the
+              separate LocalEmployment card collapsed into this one
+              surface so identity info lives in one place. */}
+          <LocalEditableIdentity
             candidateId={candidate.id}
-            initialDesignation={candidate.currentDesignation}
-            initialOrganization={candidate.currentOrganization}
+            initial={{
+              firstName: candidate.firstName ?? "",
+              lastName: candidate.lastName ?? "",
+              email: candidate.email ?? "",
+              phone: candidate.phone ?? "",
+              location: candidate.location ?? "",
+              linkedinProfile: candidate.linkedinProfile ?? "",
+              currentDesignation: candidate.currentDesignation ?? "",
+              currentOrganization: candidate.currentOrganization ?? "",
+            }}
           />
           <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
         </aside>
@@ -728,43 +683,3 @@ function UnderlineTabLink({ label, href, active }: { label: string; href: string
   );
 }
 
-function Row({
-  icon,
-  label,
-  value,
-  href,
-  render,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | null;
-  href?: string | null;
-  // Optional custom render override, used by the email row to inject
-  // the click-to-email popup while keeping the label+dash treatment
-  // consistent with plain rows.
-  render?: (value: string) => React.ReactNode;
-}) {
-  return (
-    <div>
-      <dt className="flex items-center gap-1.5 text-[11px] uppercase tracking-wider text-court-fg-muted">
-        {icon}
-        {label}
-      </dt>
-      <dd className="mt-0.5 truncate text-court-fg">
-        {value ? (
-          render ? (
-            render(value)
-          ) : href ? (
-            <a href={href} className="hover:underline" target={href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined}>
-              {value}
-            </a>
-          ) : (
-            value
-          )
-        ) : (
-          <span className="text-court-fg-muted">—</span>
-        )}
-      </dd>
-    </div>
-  );
-}
