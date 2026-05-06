@@ -645,8 +645,13 @@ function ThreadRow({
 // modal is open the modal version owns the doc-level keystrokes, so
 // this inline copy bails to avoid double-typing.
 function EmptyDetail({ keyboardCapture }: { keyboardCapture: boolean }) {
+  // min-h (not h) so the pane grows with content when the dialpad +
+  // helper text exceed the viewport-derived height. Combined with
+  // overflow-hidden on the parent <section>, a fixed h was clipping
+  // the bottom of the helper text + the rounded section border on
+  // shorter viewports.
   return (
-    <div className="flex h-[calc(100vh-240px)] flex-col items-center justify-center gap-4 px-6">
+    <div className="flex min-h-[calc(100vh-240px)] flex-col items-center justify-center gap-4 px-6 py-8">
       <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
         Start a new conversation
       </div>
