@@ -25,17 +25,26 @@ export function TopBar() {
           </div>
         </div>
         <ComposeFAB />
+        {/* Matches ComposeFAB's icon-button vocabulary: same h-10 w-10
+            footprint, same rounded-full + brand border + brand-tint
+            wash, same hover lift, same focus ring. The "open" state
+            inverts to a filled brand pill so the recruiter can see at
+            a glance whether the panel is mounted, but the closed state
+            is visually identical to the + button so they read as a
+            pair, not a sticker plus a native control. */}
         <button
           type="button"
           onClick={toggleClaude}
           aria-label="Toggle Ace Assistant"
           aria-pressed={claudeOpen}
           className={
-            "inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition hover:bg-court-surface-subtle " +
-            (claudeOpen ? "text-court-brand" : "text-court-fg-muted hover:text-court-fg")
+            "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+            (claudeOpen
+              ? "border-court-brand-dark bg-court-brand text-white hover:bg-court-brand-dark"
+              : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/30")
           }
         >
-          <InConversation size={36} />
+          <InConversation size={22} />
         </button>
       </div>
 

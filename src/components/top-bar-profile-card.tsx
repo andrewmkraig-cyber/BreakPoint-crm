@@ -65,7 +65,7 @@ export function TopBarProfileCard({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Open profile contact card"
-        className="block rounded-full"
+        className="block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg"
       >
         {imageUrl ? (
           <Image

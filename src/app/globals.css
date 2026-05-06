@@ -2,6 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer base {
+  /* Replace the browser-default blue focus ring with a Court Mode
+     accent ring across every interactive element. Component-level
+     focus-visible utilities still win; this is the safety net so any
+     button / link / input that didn't set its own focus styling never
+     paints a stray Chrome-blue outline. Uses outline (not box-shadow)
+     so it sits outside the element's border without shifting layout,
+     and outline-offset pulls it 2px clear so rounded corners read
+     cleanly. */
+  *:focus-visible {
+    outline: 2px solid rgb(var(--court-accent));
+    outline-offset: 2px;
+  }
+}
+
 /*
   Court Mode tokens — 3 surfaces x 2 themes + Night = 7 palettes.
   Selectors target <html data-surface="..." data-theme="...">.
