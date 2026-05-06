@@ -116,7 +116,7 @@ export function SmsComposer({
             disabled={disabled}
             className={cn(
               "inline-flex h-8 items-center gap-1 rounded-lg px-3 text-xs font-semibold text-white shadow-sm transition",
-              "bg-emerald-600 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50",
+              "bg-court-brand hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50",
             )}
             title="Send SMS"
           >

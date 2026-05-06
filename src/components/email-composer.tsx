@@ -824,7 +824,7 @@ export function EmailComposer({
               onClick={onSendClick}
               disabled={isSending || sendDisabled}
               title={sendDisabled ? sendDisabledReason : undefined}
-              className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-4 py-2 text-xs font-semibold text-emerald-900 shadow-sm transition hover:bg-emerald-300 disabled:opacity-60"
+              className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
             >
               {isSending ? (
                 <>

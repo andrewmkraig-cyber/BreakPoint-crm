@@ -642,7 +642,7 @@ export default async function CandidateProfilePage({
               </Link>
               <Link
                 href={`/candidates/${id}?openSubmit=1`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-400 bg-emerald-200 px-2.5 py-1.5 text-xs font-medium text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1.5 text-xs font-medium text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
               >
                 <Send className="h-3 w-3" /> Submit to different job
               </Link>

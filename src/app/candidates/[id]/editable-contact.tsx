@@ -251,7 +251,7 @@ function CallConfirmDialog({
             disabled={busy}
             className={cn(
               "inline-flex items-center gap-1 rounded-md px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition",
-              "bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60",
+              "bg-court-brand hover:bg-court-brand-dark disabled:opacity-60",
             )}
           >
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <PhoneIcon className="h-3 w-3" />}

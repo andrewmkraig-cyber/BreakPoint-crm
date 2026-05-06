@@ -376,7 +376,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
           <Link
             href={`/candidates/${row.candidateId}`}
             onClick={(e) => e.stopPropagation()}
-            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-md border border-emerald-400 bg-emerald-200 px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-emerald-900 shadow-sm transition hover:bg-emerald-300"
+            className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
           >
             Confirm Start
           </Link>
@@ -501,7 +501,7 @@ function StageTab({ label, count, active, href }: { label: string; count: number
           // the app's primary buttons; inactive pill tracks the
           // muted court palette.
           active
-            ? "border border-emerald-400 bg-emerald-200 text-emerald-900"
+            ? "border border-court-brand bg-court-brand-tint text-court-brand-dark"
             : "bg-court-surface-subtle text-court-fg-muted",
         )}
       >
