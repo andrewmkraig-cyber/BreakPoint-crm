@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 export const dynamic = "force-dynamic";
@@ -52,4 +54,23 @@ export async function POST(req: Request) {
     select: { id: true, role: true, content: true, createdAt: true },
   });
   return NextResponse.json(row);
+}
+
+// Wipe the org-scoped Claude Panel transcript. Hard 401 when there's
+// no signed-in recruiter so a leaked URL can't nuke history. Phase 1
+// only blanked the local view, leaving Neon rows that came back on
+// refresh — this DELETE is what makes Clear chat actually clear.
+export async function DELETE() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json(
+      { ok: false, error: "Sign in required" },
+      { status: 401 },
+    );
+  }
+  const org = await getCurrentOrg();
+  await prisma.claudePanelMessage.deleteMany({
+    where: { organizationId: org.id },
+  });
+  return NextResponse.json({ success: true });
 }

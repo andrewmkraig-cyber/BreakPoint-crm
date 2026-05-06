@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { CLAUDE_MODEL } from "@/lib/claude";
+import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
 
 // Live Claude call for the global Claude Panel (Sparkles topbar
 // toggle). Streams text deltas as NDJSON events back to the client so
@@ -24,7 +25,8 @@ const SYSTEM_PROMPT =
   "Never use asterisks or markdown bold in your responses. " +
   "Use plain hyphens for bullet points. " +
   "Write like a sharp recruiter, not an AI. " +
-  "Never end a response with a signoff or signature.";
+  "Never end a response with a signoff or signature. " +
+  "For any external facts, job market data, salaries, companies, people, or URLs - verify with web_search during this turn. Never hedge with 'data may be outdated.' If you cannot verify something, omit it.";
 
 type IncomingMessage = { role: unknown; content: unknown };
 
@@ -83,11 +85,20 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Resolve org for log context only — no DB writes here. Handler
-  // would still throw if the signed-in user has no membership AND no
-  // DEFAULT_ORG_ID, which is the right failure: don't pretend to be
-  // tenant-scoped when we can't resolve a tenant.
-  await getCurrentOrg();
+  // Resolve org so we can append the org-scoped Personal Trainer
+  // rules block to the system prompt. getCurrentOrg() throws if the
+  // signed-in user has no membership AND no DEFAULT_ORG_ID — the right
+  // failure: don't pretend to be tenant-scoped when we can't resolve
+  // a tenant.
+  const org = await getCurrentOrg();
+
+  // Personal Trainer rules — Andrew-curated standing instructions
+  // (no em dashes, no emojis, no signoff, voice rules, etc.) sourced
+  // from Settings > Personal Trainer. Appended last so they sit
+  // closest to the model's response and override any earlier prompt
+  // that drifts. Same pattern as /api/ai-workspace/route.ts.
+  const fullSystemPrompt =
+    SYSTEM_PROMPT + (await buildPersonalTrainerBlock(org.id));
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
@@ -100,12 +111,40 @@ export async function POST(req: NextRequest) {
         const claudeStream = anthropic.messages.stream({
           model: CLAUDE_MODEL,
           max_tokens: 4096,
-          system: SYSTEM_PROMPT,
+          // Server-side web search. Same tool registration as
+          // /api/ai-workspace/route.ts — the response is a multi-block
+          // sequence (text preface, server_tool_use, web_search_tool_result,
+          // text answer). Streaming naturally emits text_deltas for every
+          // text block in order; we insert "\n\n" between consecutive
+          // text blocks so the assembled transcript matches the
+          // .join('\n\n') shape ai-workspace produces from the non-
+          // streaming path. Reading just content[0] would drop the cited
+          // answer and keep only the preface.
+          tools: [
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+            },
+          ],
+          system: fullSystemPrompt,
           messages: cleaned,
         });
 
+        let textBlockSeen = false;
         for await (const event of claudeStream) {
           if (
+            event.type === "content_block_start" &&
+            event.content_block.type === "text"
+          ) {
+            // Boundary between two text blocks (preface vs. cited
+            // answer when web_search fires). Emit a blank-line
+            // separator so the streaming bubble doesn't smash them
+            // together, matching ai-workspace's join('\n\n').
+            if (textBlockSeen) {
+              send({ t: "delta", text: "\n\n" });
+            }
+            textBlockSeen = true;
+          } else if (
             event.type === "content_block_delta" &&
             event.delta.type === "text_delta"
           ) {

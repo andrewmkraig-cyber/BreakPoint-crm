@@ -382,10 +382,15 @@ export function ClaudePanel() {
     if (clearing || messages.length === 0) return;
     setClearing(true);
     try {
-      // Phase 1 has no DELETE endpoint yet — just blank the local view.
-      // The persisted rows remain available; Phase 2 will add a true
-      // clear when the assistant call lands.
+      const res = await fetch("/api/claude-panel/messages", {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setMessages([]);
+    } catch (e) {
+      const message =
+        e instanceof Error ? e.message : "Clear failed unexpectedly";
+      toast.error("Couldn't clear chat", { description: message });
     } finally {
       setClearing(false);
     }
