@@ -19,8 +19,6 @@ import { getRfShapedContactsForOrg } from "@/lib/contacts";
 import { EditableIdentity, type IdentityState } from "@/app/candidates/[id]/editable-identity";
 import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
 import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-notes";
-import { EditableExperience, type ExperienceRow } from "@/app/candidates/[id]/editable-experience";
-import { EditableEducation, type EducationRow } from "@/app/candidates/[id]/editable-education";
 import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editable-resume";
 // BrandResumeButton import removed in 5A.5.a — branding moves into the
 // Edit Resume modal in 5A.5.b. The component itself still exists.
@@ -71,22 +69,6 @@ function normalizeBillingContacts(
   }
   return out;
 }
-
-type ExperienceRaw = {
-  designation?: string | null;
-  organization?: string | null;
-  description?: string | null;
-  from?: [number | null, number | null];
-  to?: [number | null, number | null];
-};
-
-type EducationRaw = {
-  school?: string | null;
-  degree?: string | null;
-  description?: string | null;
-  from?: [number | null, number | null];
-  to?: [number | null, number | null];
-};
 
 type NoteRaw = { id?: number; note?: string; added_time?: string; added_by?: { name?: string } | null };
 
@@ -270,24 +252,6 @@ export default async function CandidateProfilePage({
     note: n.note ?? "",
     addedByName: n.added_by?.name ?? null,
     addedAt: n.added_time ?? null,
-  }));
-
-  const experienceRaw: ExperienceRaw[] = Array.isArray(c.experience) ? (c.experience as ExperienceRaw[]) : [];
-  const experienceInitial: ExperienceRow[] = experienceRaw.map((e) => ({
-    designation: e.designation ?? "",
-    organization: e.organization ?? "",
-    description: e.description ?? "",
-    from: e.from ?? [null, null],
-    to: e.to ?? [null, null],
-  }));
-
-  const educationRaw: EducationRaw[] = Array.isArray(c.education) ? (c.education as EducationRaw[]) : [];
-  const educationInitial: EducationRow[] = educationRaw.map((e) => ({
-    school: e.school ?? "",
-    degree: e.degree ?? "",
-    description: e.description ?? "",
-    from: e.from ?? [null, null],
-    to: e.to ?? [null, null],
   }));
 
   const linkedSubmittals = (Array.isArray(c.jobs) ? c.jobs : []).filter((j) => typeof j?.job_id === "number");
@@ -607,6 +571,9 @@ export default async function CandidateProfilePage({
               surface so identity info lives in one place. */}
           <EditableIdentity candidateId={id} initial={identityInitial} />
           <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
+          <ProfileAccordion title="Skills">
+            <EditableSkills candidateId={id} initial={skillsInitial} />
+          </ProfileAccordion>
         </aside>
 
         <div className="space-y-4 lg:col-span-7">
@@ -655,20 +622,15 @@ export default async function CandidateProfilePage({
             <EditableNotes candidateId={id} initial={notesInitial} />
           ) : (
             <div className="space-y-4">
+              {/* Skills lives on the left sidebar now (below Activity).
+                  Experience / Education accordions were retired - the
+                  resume itself already covers them, and the second
+                  copy under the resume was visual noise. */}
               <EditableResume
                 candidateRfId={id}
                 candidateId={candidate.id}
                 versions={resumeVersions}
               />
-              <ProfileAccordion title="Skills">
-                <EditableSkills candidateId={id} initial={skillsInitial} />
-              </ProfileAccordion>
-              <ProfileAccordion title="Experience">
-                <EditableExperience candidateId={id} initial={experienceInitial} />
-              </ProfileAccordion>
-              <ProfileAccordion title="Education">
-                <EditableEducation candidateId={id} initial={educationInitial} />
-              </ProfileAccordion>
             </div>
           )}
         </div>

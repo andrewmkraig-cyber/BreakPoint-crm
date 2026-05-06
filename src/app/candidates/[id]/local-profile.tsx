@@ -24,8 +24,6 @@ import { getPlacementsForOrg } from "@/lib/placements";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getAppPreferences } from "@/lib/preferences";
 
-type Exp = { designation?: string; organization?: string; from_year?: number | null; to_year?: number | null; description?: string };
-type Edu = { school?: string; degree?: string; from_year?: number | null; to_year?: number | null; description?: string };
 
 type LocalCandidateTab = "profile" | "game-plan" | "notes";
 
@@ -278,8 +276,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
   resumeVersions.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
-  const experience = (candidate.experience as unknown as Exp[] | null) ?? [];
-  const education = (candidate.education as unknown as Edu[] | null) ?? [];
 
   // Two identity keys — RF-imported placements hash by jobRfId (numeric),
   // Ace-native placements hash by jobId (cuid string). The LocalOpenJob
@@ -498,6 +494,17 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             }}
           />
           <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
+          {candidate.skills.length > 0 && (
+            <ProfileAccordion title="Skills">
+              <div className="flex flex-wrap gap-1.5">
+                {candidate.skills.map((s) => (
+                  <span key={s} className="rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-xs text-court-fg">
+                    {s}
+                  </span>
+                ))}
+              </div>
+            </ProfileAccordion>
+          )}
         </aside>
 
         <div className="space-y-4 lg:col-span-7">
@@ -539,57 +546,15 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             />
           ) : (
             <div className="space-y-4">
+              {/* Skills lives on the left sidebar now (below Activity).
+                  Experience / Education accordions were retired - the
+                  resume itself already covers them, and the second
+                  copy under the resume was visual noise. */}
               <EditableResume
                 candidateRfId={null}
                 candidateId={candidate.id}
                 versions={resumeVersions}
               />
-              {candidate.skills.length > 0 && (
-                <ProfileAccordion title="Skills">
-                  <div className="flex flex-wrap gap-1.5">
-                    {candidate.skills.map((s) => (
-                      <span key={s} className="rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-xs text-court-fg">
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                </ProfileAccordion>
-              )}
-              {experience.length > 0 && (
-                <ProfileAccordion title="Experience">
-                  <ul className="space-y-3 text-sm">
-                    {experience.map((r, i) => (
-                      <li key={`exp-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
-                        <div className="font-medium text-court-fg">
-                          {r.designation || "(role)"}{" "}
-                          <span className="font-normal text-court-fg-muted">· {r.organization || "(employer)"}</span>
-                        </div>
-                        <div className="text-[11px] text-court-fg-muted">
-                          {[r.from_year, r.to_year ?? "present"].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
-                        </div>
-                        {r.description && <p className="mt-1 text-xs text-court-fg-muted">{r.description}</p>}
-                      </li>
-                    ))}
-                  </ul>
-                </ProfileAccordion>
-              )}
-              {education.length > 0 && (
-                <ProfileAccordion title="Education">
-                  <ul className="space-y-3 text-sm">
-                    {education.map((r, i) => (
-                      <li key={`edu-${i}`} className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2">
-                        <div className="font-medium text-court-fg">
-                          {r.degree || "(degree)"}{" "}
-                          <span className="font-normal text-court-fg-muted">· {r.school || "(school)"}</span>
-                        </div>
-                        <div className="text-[11px] text-court-fg-muted">
-                          {[r.from_year, r.to_year].filter((x) => x !== null && x !== undefined).join(" – ") || "—"}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                </ProfileAccordion>
-              )}
             </div>
           )}
         </div>
