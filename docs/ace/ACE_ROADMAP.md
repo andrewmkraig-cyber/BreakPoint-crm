@@ -1,5 +1,11 @@
 # Ace Roadmap
 
+## Completed - Ace 34.0b Claude pill consolidation (May 6, 2026)
+
+- New exported CLAUDE_PILL_CLASS constant in src/components/ui/button.tsx — single source of truth for every "ask Claude" affordance (Generate, Parse, Summarize, Find Matches, future Job Description generator).
+- Find Matches button switched from black bg-court-fg pill to CLAUDE_PILL_CLASS — now reads as a Claude action like every other AI affordance.
+- 6 inline hand-coded duplicates migrated to the constant (mail Generate with Claude, email Generate, Generate Submittal, Parse with Claude on candidate intake, Summarize Terms on agreements, Generate Summary on benefits). agreements py-1.5 outlier brought to canonical py-2.
+
 ## Completed - Ace 34.0a Jobs page tab shell + Overview tab (May 6, 2026)
 
 - /jobs/[id] rebuilt around an 8-tab segmented control (Overview default, Job Description, Pipeline, Matches, Game Plan, Promote, Activity, Billing) using Court Mode tokens.

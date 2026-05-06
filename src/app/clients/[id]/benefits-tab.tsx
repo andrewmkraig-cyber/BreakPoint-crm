@@ -13,7 +13,7 @@ import {
 } from "@/app/clients/[id]/actions";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
+import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 
 const UPLOAD_TIMEOUT_MS = 30_000;
 
@@ -243,7 +243,7 @@ function BenefitsTabInner({
               type="button"
               onClick={onSummarize}
               disabled={isSummarizing}
-              className="inline-flex items-center gap-1.5 rounded-md border border-[#2A4D38] bg-[#1F3A29] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#284A36] dark:border-[#3A5944] dark:bg-[#2D4435] dark:hover:bg-[#37533F] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:opacity-60"
+              className={CLAUDE_PILL_CLASS}
             >
               {isSummarizing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
               Generate Summary

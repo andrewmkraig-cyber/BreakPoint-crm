@@ -99,3 +99,21 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
 Button.displayName = "Button";
 export { Button };
+
+// Single source of truth for the Claude / AI affirmative pill across
+// Ace. Every "Generate with Claude" / "Find Matches" / "Summarize with
+// Claude" / "Parse with Claude" affordance imports this so the pill
+// renders identically wherever it lands. Use directly on a <button>:
+//
+//   import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
+//   <button className={CLAUDE_PILL_CLASS}>Generate with Claude</button>
+//
+// Compose with cn() when a caller needs extra modifiers (e.g. w-full):
+//   <button className={cn(CLAUDE_PILL_CLASS, "w-full justify-center")} />
+//
+// Mirrors the ai-primary Button variant's color tokens but bakes in the
+// canonical px-3 py-2 text-xs gap-1.5 sizing so every Claude pill across
+// the app reads as the same height + padding without each caller having
+// to pick the same `size` prop.
+export const CLAUDE_PILL_CLASS =
+  "inline-flex items-center gap-1.5 rounded-md border border-[#2A4D38] bg-[#1F3A29] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#284A36] dark:border-[#3A5944] dark:bg-[#2D4435] dark:hover:bg-[#37533F] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60";

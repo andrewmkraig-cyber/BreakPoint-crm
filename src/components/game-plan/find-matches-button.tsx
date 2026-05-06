@@ -1,6 +1,7 @@
 "use client";
 
 import { Target } from "lucide-react";
+import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import {
   useFindMatches,
   useFindMatchesActiveRoute,
@@ -9,9 +10,9 @@ import {
 
 // Trigger button that lives on the Game Plan surface (job + client
 // pages). On click, opens the global FindMatchesPanel via the shared
-// context. Kept stylistically aligned with the existing
-// "Generate with Claude" black-pill buttons in the AiWorkspace
-// toolbar so the two affordances feel siblings.
+// context. Find Matches is a Claude action under the hood, so it shares
+// the canonical CLAUDE_PILL_CLASS — every "ask Claude" affordance in
+// Ace renders as the same graphite-green pill.
 //
 // Side effect: the button also announces its entity as the current
 // route's Game Plan target (useFindMatchesActiveRoute) so the panel's
@@ -25,9 +26,9 @@ export function FindMatchesButton({ target }: { target: MatchTarget }) {
     <button
       type="button"
       onClick={() => open(target)}
-      className="inline-flex items-center gap-1.5 rounded-lg bg-court-fg px-3 py-2 text-xs font-semibold text-court-surface shadow-sm transition hover:bg-court-fg/85"
+      className={CLAUDE_PILL_CLASS}
     >
-      <Target className="h-3.5 w-3.5" /> Find Matches
+      <Target className="h-3 w-3" /> Find Matches
     </button>
   );
 }

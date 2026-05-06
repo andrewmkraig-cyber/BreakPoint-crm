@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Copy, Pencil, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import type { MatchTarget } from "@/lib/find-matches-context";
 
@@ -64,18 +64,17 @@ export function JobOverviewQuickActions({
       >
         <Copy className="h-3.5 w-3.5" /> Copy Public Apply Link
       </Button>
-      <Button
+      <button
         type="button"
-        variant="ai-primary"
-        size="sm"
         onClick={() =>
           toast.message("Generate Job Description with Claude", {
             description: "Coming soon.",
           })
         }
+        className={CLAUDE_PILL_CLASS}
       >
-        <Sparkles className="h-3.5 w-3.5" /> Generate Job Description with Claude
-      </Button>
+        <Sparkles className="h-3 w-3" /> Generate Job Description with Claude
+      </button>
     </div>
   );
 }

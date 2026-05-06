@@ -1,11 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-05-06 - Ace 34.0a job detail tab shell + Overview tab
+Last updated: 2026-05-06 - Ace 34.0b Claude pill consolidation
 
 ## Current Status
-Current Version: Ace 34.0a (Jobs Page Layout Overhaul - first slice)
-Last Shipped: Ace 34.0a - May 6, 2026
+Current Version: Ace 34.0b (Claude pill standardized across Ace)
+Last Shipped: Ace 34.0b - May 6, 2026
 Live at: ace.breakpointtalent.com
-Current Status: Ace 34.0a opens the Jobs Page Layout Overhaul. /jobs/[id] now renders an 8-tab shell (Overview, Job Description, Pipeline, Matches, Game Plan, Promote, Activity, Billing) using the existing UnderlineTabs segmented control + Court Mode tokens. Overview is the default landing tab. Existing Job Description and Game Plan content was relocated into their new tab slots (no rebuild). Pipeline / Matches / Promote / Activity / Billing render a "Coming soon" stub. Overview body shows snapshot facts (employment, location, status, compensation, fee %, openings, last edited), a stage-count chip row from Neon pipelineRows, four quick-action buttons (Edit Job stub, real Find Matches, Copy Public Apply Link, Generate JD with Claude stub), and a Search Health "Coming soon" placeholder. Right-rail EditableJobOverview stays sticky across tabs.
+Current Status: Ace 34.0b consolidates every "ask Claude" affordance onto a single shared CLAUDE_PILL_CLASS exported from src/components/ui/button.tsx. Find Matches button (was bg-court-fg / black) now renders as the canonical graphite-green pill. Six hand-coded inline duplicates (mail-composer Generate with Claude, email-composer Generate, candidates/[id] Generate Submittal, candidates/new Parse with Claude, clients/[id] Summarize Terms agreements + Generate Summary benefits) all migrated to the constant. Overview tab Generate Job Description with Claude stub also uses the constant so it pre-matches the future job description generator.
+
+## What Shipped in Ace 34.0b (2026-05-06)
+- src/components/ui/button.tsx: new exported CLAUDE_PILL_CLASS constant (single source of truth, mirrors ai-primary colors but bakes in px-3 py-2 text-xs gap-1.5 sizing so every Claude pill renders identically)
+- src/components/game-plan/find-matches-button.tsx: switched from bg-court-fg black pill to CLAUDE_PILL_CLASS — Find Matches now reads as a Claude action like every other AI affordance
+- src/app/jobs/[id]/job-overview-quick-actions.tsx: Generate JD stub now uses CLAUDE_PILL_CLASS directly (was Button variant="ai-primary" size="sm")
+- 6 inline duplicates migrated to CLAUDE_PILL_CLASS: src/app/mail/mail-composer.tsx (Generate with Claude reply), src/components/email-composer.tsx (Generate), src/app/candidates/[id]/local-candidate-actions.tsx (Generate Submittal), src/app/candidates/new/new-candidate-form.tsx (Parse with Claude — uses cn() to keep w-full justify-center), src/app/clients/[id]/agreements-tab.tsx (Summarize Terms — also brought from py-1.5 outlier to canonical py-2), src/app/clients/[id]/benefits-tab.tsx (Generate Summary)
 
 ## What Shipped in Ace 34.0a (2026-05-06)
 - src/app/jobs/[id]/page.tsx: 8-tab JOB_TABS array + parseTab helper, default Overview, JobTabs renders all 8 from one source, TabStub for unbuilt tabs, formatCompSummary + extractFeePct helpers (fee % parsed from Client.customFields, no schema change)
