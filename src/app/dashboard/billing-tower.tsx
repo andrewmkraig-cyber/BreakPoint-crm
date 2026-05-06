@@ -66,9 +66,8 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
   );
 }
 
-// Compact USD: $7.5K for thousands, $1.2M for millions, $750 for sub-1k
-// values. Stripping trailing ".0" so $7000 reads "$7K" instead of "$7.0K".
-// Uppercase K matches the uppercase M and reads as a polished stat label.
+// Compact USD: $7.5k for thousands, $1.2M for millions, $750 for sub-1k
+// values. Stripping trailing ".0" so $7000 reads "$7k" instead of "$7.0k".
 function formatCompactUsd(amount: number): string {
   if (amount === 0) return "$0";
   const abs = Math.abs(amount);
@@ -76,7 +75,7 @@ function formatCompactUsd(amount: number): string {
     return `$${(amount / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   }
   if (abs >= 1_000) {
-    return `$${(amount / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
+    return `$${(amount / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
   }
   return `$${amount}`;
 }
@@ -104,34 +103,13 @@ function Metric({
     ? "text-xs font-semibold tracking-widest uppercase text-court-accent-dark"
     : "text-xs font-semibold tracking-widest uppercase text-court-fg-muted";
   const valueCls = accent
-    ? "mt-2 font-stat text-5xl font-bold leading-none tracking-tight text-court-accent-dark"
-    : "mt-2 font-stat text-5xl font-bold leading-none tracking-tight text-court-fg";
+    ? "mt-2 font-stat text-4xl font-bold leading-none tracking-tight text-court-accent-dark"
+    : "mt-2 font-stat text-4xl font-bold leading-none tracking-tight text-court-fg";
   return (
     <div className={wrapper}>
       <div className={labelCls}>{label}</div>
-      <div className={valueCls}>
-        <StatNumber value={value} />
-      </div>
+      <div className={valueCls}>{value}</div>
       <p className="mt-3 text-sm text-court-fg-muted">{hint}</p>
     </div>
-  );
-}
-
-// Splits a formatted USD string ("$7.5K", "$0", "$1.2M") so the leading
-// dollar sign and the trailing K/M suffix both render smaller than the
-// numeric figure. The number carries the visual weight; the sigils
-// recede so the eye lands on the digits first.
-function StatNumber({ value }: { value: string }) {
-  const match = value.match(/^(\$)([\d.,]+)([KM]?)$/);
-  if (!match) return <>{value}</>;
-  const [, sign, digits, suffix] = match;
-  return (
-    <>
-      <span className="text-[0.55em] font-semibold align-baseline">{sign}</span>
-      {digits}
-      {suffix && (
-        <span className="text-[0.55em] font-semibold align-baseline">{suffix}</span>
-      )}
-    </>
   );
 }
