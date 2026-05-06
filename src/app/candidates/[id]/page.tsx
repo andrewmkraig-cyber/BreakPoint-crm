@@ -549,32 +549,28 @@ export default async function CandidateProfilePage({
   placementJobs.push(...localOnlyJobs);
 
   const phoneValue = normalizePhone(c.phone_number);
-  const initials = initialsFromName(name);
 
   return (
     <CandidateProfileBoundary>
     <div className="space-y-6">
       <CandidateProfileNav currentId={candidate.id} />
 
-      {/* Section 1: Header. Avatar + name only — action buttons moved
-          to a toolbar above the resume column below. */}
-      <header className="flex items-start gap-4 pt-2">
-        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
-          {initials || "?"}
-        </div>
-        <div className="min-w-0">
-          <h1 className="font-serif text-3xl font-bold text-court-fg">{name}</h1>
-          {(c.current_designation || locationLabel) && (
-            <div className="mt-0.5 text-sm text-court-fg-muted">
-              {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
-            </div>
-          )}
-          {c.current_organization && (
-            <div className="mt-1 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-              Currently at {c.current_organization}
-            </div>
-          )}
-        </div>
+      {/* Section 1: Header. Name + meta only - the initials avatar
+          was removed because it competed with the candidate name and
+          added a generic-SaaS look. Initials still appear in tables /
+          lists where they help identify rows. */}
+      <header className="min-w-0 pt-2">
+        <h1 className="font-serif text-3xl font-bold text-court-fg">{name}</h1>
+        {(c.current_designation || locationLabel) && (
+          <div className="mt-0.5 text-sm text-court-fg-muted">
+            {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
+          </div>
+        )}
+        {c.current_organization && (
+          <div className="mt-1 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+            Currently at {c.current_organization}
+          </div>
+        )}
       </header>
 
       {/* Pipeline section only renders when there are placements.
@@ -687,15 +683,6 @@ export default async function CandidateProfilePage({
     </div>
     </CandidateProfileBoundary>
   );
-}
-
-function initialsFromName(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((s) => s[0]?.toUpperCase() ?? "")
-    .join("");
 }
 
 // Native <details> gives free open/close + keyboard a11y. Wrapping each
