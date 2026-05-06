@@ -789,7 +789,7 @@ export function MailView({
 
   return (
     <div
-      className="ace-mail-grid mt-4 grid grid-cols-1 gap-4 lg:gap-0"
+      className="ace-mail-grid mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 lg:gap-0"
       style={
         {
           // CSS vars consumed by the lg+ media query in the inline
@@ -808,8 +808,8 @@ export function MailView({
           }
         }
       `}</style>
-      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
-        <nav className="p-2 text-sm">
+      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <nav className="flex-1 overflow-y-auto p-2 text-sm">
           {/* Inbox entry — the visual anchor of the sidebar but
               proportioned to match the Sent / Drafts / label rows
               below it. Earlier this was a chunky border-2/py-4 card
@@ -988,8 +988,8 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border" />
       </div>
 
-      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
-        <div className="border-b border-court-border bg-court-surface-subtle/60 px-3 py-2">
+      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-3 py-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
             <input
@@ -1012,7 +1012,7 @@ export function MailView({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
+        <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
           <input
             type="checkbox"
             checked={allSelected}
@@ -1047,7 +1047,7 @@ export function MailView({
           </button>
         </div>
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-2 border-b border-court-border bg-court-accent-tint/40 px-3 py-2">
+          <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-accent-tint/40 px-3 py-2">
             <span className="text-[11px] font-medium text-court-fg">
               {selectedIds.size} selected
             </span>
@@ -1093,11 +1093,11 @@ export function MailView({
           </div>
         )}
         {threadsLoading ? (
-          <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-court-fg-muted">
+          <div className="flex flex-1 items-center justify-center gap-2 px-4 py-12 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading threads…
           </div>
         ) : threads.length === 0 ? (
-          <div className="px-4 py-12 text-center text-sm text-court-fg-muted">
+          <div className="flex-1 overflow-y-auto px-4 py-12 text-center text-sm text-court-fg-muted">
             {searchQuery
               ? `No results for "${searchQuery}".`
               : selectedLabel
@@ -1105,7 +1105,7 @@ export function MailView({
                 : "Inbox is empty."}
           </div>
         ) : (
-          <ul className="max-h-[calc(100vh-240px)] divide-y divide-court-border overflow-y-auto">
+          <ul className="flex-1 divide-y divide-court-border overflow-y-auto">
             {threads.map((t) => (
               <li key={t.id}>
                 <ThreadRow
@@ -1139,11 +1139,11 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border" />
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <section className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
-          <div className="flex h-[400px] items-center justify-center gap-2 text-sm text-court-fg-muted">
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading thread…
           </div>
         ) : error ? (
@@ -1281,7 +1281,7 @@ function ThreadRow({
 
 function EmptyRightPane() {
   return (
-    <div className="flex h-[400px] flex-col items-center justify-center gap-2 text-sm text-court-fg-muted">
+    <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-court-fg-muted">
       <MailIcon className="h-6 w-6" />
       Select a thread on the left to read it.
     </div>
@@ -1741,7 +1741,7 @@ export function ThreadDetail({
   return (
     <div
       className={
-        "flex flex-col " + (isFloating ? "h-full" : "h-[calc(100vh-240px)]")
+        "flex flex-col " + (isFloating ? "h-full" : "h-full")
       }
     >
       {renderOwnHeader && (

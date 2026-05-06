@@ -311,7 +311,8 @@ export function PhoneView() {
 
   return (
     <>
-    <div className="mb-3 flex items-center justify-end">
+    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="mb-3 flex shrink-0 items-center justify-end">
       <button
         type="button"
         onClick={() => setDialPadOpen(true)}
@@ -320,13 +321,13 @@ export function PhoneView() {
         <Plus className="h-3 w-3" /> New Text/Call
       </button>
     </div>
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+    <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
       {/* LEFT SIDEBAR */}
-      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
-        <div className="border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
+        <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Phone
         </div>
-        <nav className="p-2 text-sm">
+        <nav className="flex-1 overflow-y-auto p-2 text-sm">
           <BucketSection title="Phone">
             <BucketItem
               icon={<Phone className="h-4 w-4" />}
@@ -401,8 +402,8 @@ export function PhoneView() {
       </aside>
 
       {/* MIDDLE: THREAD LIST */}
-      <aside className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
-        <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
+      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
+        <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
           <span>
             {filteredThreads.length}{" "}
             {filteredThreads.length === 1 ? "thread" : "threads"}
@@ -420,20 +421,20 @@ export function PhoneView() {
           </button>
         </div>
         {listLoading ? (
-          <div className="flex items-center justify-center gap-2 px-4 py-12 text-sm text-court-fg-muted">
+          <div className="flex flex-1 items-center justify-center gap-2 px-4 py-12 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
         ) : listError ? (
-          <div className="px-4 py-12 text-center text-sm text-red-700">
+          <div className="flex-1 overflow-y-auto px-4 py-12 text-center text-sm text-red-700">
             {listError}
           </div>
         ) : filteredThreads.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-court-fg-muted">
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-12 text-center text-sm text-court-fg-muted">
             <Phone className="h-6 w-6 text-court-fg-muted" />
             <span>No conversations yet</span>
           </div>
         ) : (
-          <ul className="max-h-[calc(100vh-240px)] divide-y divide-court-border overflow-y-auto">
+          <ul className="flex-1 divide-y divide-court-border overflow-y-auto">
             {filteredThreads.map((t) => (
               <li key={t.id}>
                 <ThreadRow
@@ -448,11 +449,11 @@ export function PhoneView() {
       </aside>
 
       {/* RIGHT: DETAIL */}
-      <section className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
+      <section className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
         {!selectedId ? (
           <EmptyDetail keyboardCapture={!dialPadOpen} />
         ) : detailLoading && !detail ? (
-          <div className="flex h-[calc(100vh-240px)] items-center justify-center gap-2 text-sm text-court-fg-muted">
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading thread…
           </div>
         ) : detailError ? (
@@ -476,6 +477,7 @@ export function PhoneView() {
           Providers) so the FAB works on every route. Sends fired
           while /phone is open trigger loadThreads via the after-send
           callback registered above. */}
+    </div>
     </div>
     {dialPadOpen && <DialPadModal onClose={() => setDialPadOpen(false)} />}
     </>
@@ -645,13 +647,13 @@ function ThreadRow({
 // modal is open the modal version owns the doc-level keystrokes, so
 // this inline copy bails to avoid double-typing.
 function EmptyDetail({ keyboardCapture }: { keyboardCapture: boolean }) {
-  // min-h (not h) so the pane grows with content when the dialpad +
-  // helper text exceed the viewport-derived height. Combined with
-  // overflow-hidden on the parent <section>, a fixed h was clipping
-  // the bottom of the helper text + the rounded section border on
-  // shorter viewports.
+  // h-full + overflow-y-auto: the parent <section> is sized via the
+  // viewport-bounded flex layout in PhoneView, so the dialer fills
+  // exactly the available height. overflow-y-auto lets the pad
+  // scroll internally on viewports too short for the full pad +
+  // helper text without clipping.
   return (
-    <div className="flex min-h-[calc(100vh-240px)] flex-col items-center justify-center gap-4 px-6 py-8">
+    <div className="flex h-full flex-col items-center justify-center gap-4 overflow-y-auto px-6 py-8">
       <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
         Start a new conversation
       </div>
@@ -881,7 +883,7 @@ function ThreadDetailPane({
   onSent: () => void;
 }) {
   return (
-    <div className="flex h-[calc(100vh-240px)] flex-col">
+    <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
         <div className="min-w-0">

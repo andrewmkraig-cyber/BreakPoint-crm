@@ -70,8 +70,13 @@ export default async function MailPage() {
   const myFullName = userRow?.profile?.fullName?.trim() || userRow?.name?.trim() || "";
   const myFirstName = myFullName.split(/\s+/)[0] ?? "";
 
+  // Viewport-bounded flex column so the inbox sidebar + thread list +
+  // detail pane fit the visible area exactly without the page itself
+  // scrolling. Height is 100vh minus the AppShell's main padding
+  // (p-6 mobile, md:p-8 above md). MailView's internal grid grows via
+  // flex-1, and inner panes own their scroll.
   return (
-    <div>
+    <div className="flex h-[calc(100vh-3rem)] flex-col md:h-[calc(100vh-4rem)]">
       <PageHeader
         eyebrow="Inbox"
         title="Mail"
