@@ -28,7 +28,7 @@ export function TopBar() {
         <button
           type="button"
           onClick={toggleClaude}
-          aria-label="Toggle Claude panel"
+          aria-label="Toggle Ace Assistant"
           aria-pressed={claudeOpen}
           className={
             "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-court-surface-subtle " +

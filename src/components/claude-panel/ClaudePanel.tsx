@@ -347,7 +347,7 @@ export function ClaudePanel() {
       const message =
         e instanceof Error ? e.message : "Chat failed unexpectedly";
       setMessages((prev) => prev.filter((m) => m.id !== STREAMING_ID));
-      toast.error("Claude couldn't respond", { description: message });
+      toast.error("Ace couldn't respond", { description: message });
       setSending(false);
       return;
     }
@@ -397,7 +397,7 @@ export function ClaudePanel() {
     <div
       ref={panelRef}
       role="dialog"
-      aria-label="Claude chat"
+      aria-label="Ace Assistant"
       onPointerDownCapture={bringToFront}
       className="pointer-events-auto fixed flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       style={{
@@ -414,7 +414,7 @@ export function ClaudePanel() {
         className="flex shrink-0 cursor-grab select-none items-center gap-2 border-b border-court-border px-4 py-2 active:cursor-grabbing"
       >
         <div className="flex-1 font-serif text-base font-medium text-court-fg">
-          Claude
+          Ace Assistant
         </div>
         <button
           type="button"
@@ -444,7 +444,7 @@ export function ClaudePanel() {
           </div>
         ) : messages.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-court-fg-muted">
-            <div className="font-serif text-court-fg">Ask Claude anything.</div>
+            <div className="font-serif text-court-fg">Ask Ace anything.</div>
             <div className="text-xs">
               This panel is org-scoped and persists across pages.
             </div>
@@ -515,7 +515,7 @@ export function ClaudePanel() {
                 void send();
               }
             }}
-            placeholder="Message Claude…"
+            placeholder="Message Ace…"
             className="min-h-[44px] flex-1 resize-none rounded-md border border-court-border bg-court-surface-subtle px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none"
           />
           <Button
