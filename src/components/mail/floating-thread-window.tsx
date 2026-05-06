@@ -19,6 +19,7 @@ import {
   FLOATING_THREAD_MIN_W,
   useFloatingThread,
 } from "@/lib/floating-thread-context";
+import { useFloatingZ } from "@/lib/floating-z";
 import {
   messageHasOtherRecipients,
   MoveToMenu,
@@ -50,6 +51,11 @@ export function FloatingThreadWindow() {
     setSize,
     setMinimized,
   } = useFloatingThread();
+  // Click-to-front against Claude Panel and the modal MailComposer.
+  // Active whenever a thread is loaded (threadId !== null) so opening
+  // a popup from a notification toast brings it on top of whatever was
+  // already floating.
+  const { z: floatingZ, bringToFront } = useFloatingZ(threadId !== null);
 
   const [mounted, setMounted] = useState(false);
   const [detail, setDetail] = useState<MailThreadDetail | null>(null);
@@ -68,6 +74,22 @@ export function FloatingThreadWindow() {
   useEffect(() => {
     setComposerMode(null);
   }, [threadId]);
+  // When the user opens Reply / Reply All / Forward, expand the popup
+  // to a height that leaves the editor body as the visual focal point.
+  // The composer's chrome (To/CC/Subject/template+AI bar/format
+  // toolbar/footer) is fixed-height; only height above that footprint
+  // flows into the editor. Defaults at 520 squeezed it to a few lines.
+  // Only bumps; never shrinks a popup the user manually grew.
+  useEffect(() => {
+    if (composerMode === null) return;
+    const TARGET_H = 760;
+    if (size.h < TARGET_H) {
+      setSize({ w: size.w, h: TARGET_H });
+    }
+    // size/setSize are stable enough across renders that retriggering
+    // on every resize would defeat the bump-once intent.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [composerMode]);
   const windowRef = useRef<HTMLDivElement | null>(null);
 
   // createPortal needs document.body; gate until after mount so SSR
@@ -317,12 +339,14 @@ export function FloatingThreadWindow() {
       ref={windowRef}
       role="dialog"
       aria-label="Email thread"
-      className="pointer-events-auto fixed z-[1000] flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+      onPointerDownCapture={bringToFront}
+      className="pointer-events-auto fixed flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       style={{
         left: `${pos.x}px`,
         top: `${pos.y}px`,
         width: `${size.w}px`,
         height: `${effectiveHeight}px`,
+        zIndex: floatingZ,
         // Confine layout/paint cost to inside the popup so a resize
         // doesn't have to consider any ancestor (CSS containment).
         // Big perf win when ThreadDetail's email body is dense.

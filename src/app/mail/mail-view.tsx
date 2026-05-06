@@ -1860,10 +1860,11 @@ export function ThreadDetail({
       <div
         className={
           isFloating && composerOpen
-            ? // Quoted-history pane in body-first mode: shrink to ~40%
-              // of the popup so the composer above (growToFill) lands
-              // at ~60% — Gmail-style write-first ergonomic.
-              "min-h-0 basis-2/5 shrink overflow-y-auto"
+            ? // Quoted-history pane in body-first mode: collapsed to a
+              // compact 160px preview — the editor body above is the
+              // focal point, recruiter scrolls this pane if they need
+              // to re-read context.
+              "max-h-40 shrink-0 overflow-y-auto border-t border-court-border bg-court-surface-subtle/40"
             : "flex-1 overflow-y-auto"
         }
       >
