@@ -16,7 +16,6 @@ import {
   type JobMatchedRow,
   type JobPipelineRow,
 } from "@/app/jobs/[id]/pipeline-summary";
-import { EditableJobDescription } from "@/app/jobs/[id]/editable-job-description";
 import {
   EditableJobOverview,
   type JobOverviewInitial,
@@ -25,7 +24,7 @@ import {
   JobOverviewTab,
   type JobOverviewSnapshot,
 } from "@/app/jobs/[id]/job-overview-tab";
-import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
+import { JobDescriptionTab } from "@/app/jobs/[id]/job-description-tab";
 import AiWorkspace from "@/components/AiWorkspace";
 import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
@@ -394,22 +393,19 @@ export default async function JobDetailPage({
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-4 lg:col-span-7">
-          <div className="flex flex-wrap items-center gap-2">
-            <JobTabs slug={slug} tab={tab} />
-            <FindMatchesButton target={matchTarget} />
-          </div>
+          <JobTabs slug={slug} tab={tab} />
           {tab === "overview" ? (
-            <JobOverviewTab
-              snapshot={overviewSnapshot}
-              pipelineRows={pipelineRows}
-              matchTarget={matchTarget}
-            />
+            <JobOverviewTab snapshot={overviewSnapshot} />
           ) : tab === "description" ? (
-            <EditableJobDescription
+            <JobDescriptionTab
+              jobId={jobRow.id}
               jobRfId={rfId}
               jobCuid={isAceNative ? jobRow.id : null}
               rfDescription={rfDescription}
               initialOverride={override?.description ?? null}
+              initialSourceJobUrl={jobRow.sourceJobUrl ?? null}
+              initialRawJobDescription={jobRow.rawJobDescription ?? null}
+              matchTarget={matchTarget}
             />
           ) : tab === "game-plan" ? (
             <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />

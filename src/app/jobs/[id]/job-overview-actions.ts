@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
 // Inline-edit writes for the Overview sidebar on /jobs/[id]. Each
@@ -94,6 +95,81 @@ export async function updateJobOverview(args: {
     }
 
     await prisma.job.update({ where: { id: job.id }, data });
+
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/jobs/${job.id}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
+// Save the recruiter-pasted source URL onto the Job. Tenant-scoped per
+// CLAUDE.md rule #8 — the lookup filters on organizationId so a stale
+// jobId from another tenant cannot land a write here.
+export async function saveJobSourceUrl(args: {
+  jobId: string;
+  url: string;
+}): Promise<Result> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+
+  const trimmed = args.url.trim();
+  if (trimmed.length > 2000) {
+    return { ok: false, error: "URL too long." };
+  }
+  if (trimmed && !/^https?:\/\//i.test(trimmed)) {
+    return { ok: false, error: "URL must start with http:// or https://." };
+  }
+
+  try {
+    const org = await getCurrentOrg();
+    const job = await prisma.job.findFirst({
+      where: { id: args.jobId, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!job) return { ok: false, error: "Job not found." };
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { sourceJobUrl: trimmed || null },
+    });
+
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/jobs/${job.id}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
+// Save the recruiter's raw paste of the job description onto the Job.
+// Lives next to (not on top of) the cleaned/edited description so the
+// original copy stays intact for re-parsing later.
+export async function saveJobRawDescription(args: {
+  jobId: string;
+  rawDescription: string;
+}): Promise<Result> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+
+  const next = args.rawDescription;
+  if (next.length > 200_000) {
+    return { ok: false, error: "Raw description too long." };
+  }
+
+  try {
+    const org = await getCurrentOrg();
+    const job = await prisma.job.findFirst({
+      where: { id: args.jobId, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!job) return { ok: false, error: "Job not found." };
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { rawJobDescription: next.trim() ? next : null },
+    });
 
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);

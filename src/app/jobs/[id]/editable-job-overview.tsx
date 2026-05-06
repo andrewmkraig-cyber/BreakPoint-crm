@@ -6,6 +6,7 @@ import {
   Briefcase,
   CheckCircle2,
   CircleDashed,
+  Copy,
   DollarSign,
   ExternalLink,
   Loader2,
@@ -317,14 +318,30 @@ export function EditableJobOverview({
         </div>
       )}
       {state.applyLink && (
-        <div className="border-t border-court-border px-4 py-3">
+        <div className="flex items-center gap-1.5 border-t border-court-border px-4 py-3">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(state.applyLink!);
+                toast.success("Apply link copied");
+              } catch {
+                toast.error("Couldn't copy link");
+              }
+            }}
+            title="Copy public apply link"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
           <a
             href={state.applyLink}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-brand-dark hover:underline"
+            title="Open public apply link"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
           >
-            Public apply link <ExternalLink className="h-3 w-3" />
+            <ExternalLink className="h-3.5 w-3.5" />
           </a>
         </div>
       )}
