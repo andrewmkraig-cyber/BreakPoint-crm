@@ -817,6 +817,18 @@ model Organization {
   gmailTags            GmailThreadTag[]
   candidateMatches     CandidateMatch[]
   personalTrainerRules PersonalTrainerRule[]
+  claudePanelMessages  ClaudePanelMessage[]
+}
+
+model ClaudePanelMessage {
+  id             String       @id @default(cuid())
+  organizationId String
+  role           String
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId, createdAt])
 }
 
 // Personal Trainer rules — Andrew-curated standing instructions injected
