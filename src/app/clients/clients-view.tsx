@@ -356,7 +356,7 @@ export function ClientsView({
                   <DataTableHeaderCell align="right" />
                 </tr>
               </DataTableHead>
-              <tbody className="divide-y divide-court-border">
+              <tbody className="divide-y divide-court-border-soft">
                 {filtered.map((c) => (
                   <ClientListRowView key={c.id} card={c} />
                 ))}

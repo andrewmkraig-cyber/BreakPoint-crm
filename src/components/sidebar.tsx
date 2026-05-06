@@ -102,12 +102,12 @@ export function Sidebar({ width }: { width?: number } = {}) {
               <div className="mb-1.5 flex items-center gap-2 px-3 pt-2">
                 <span
                   aria-hidden="true"
-                  className="h-3 w-0.5 shrink-0 rounded-full bg-court-sidebar-rail"
+                  className="h-2.5 w-px shrink-0 rounded-full bg-court-sidebar-rail/60"
                 />
-                <div className="font-serif text-xs font-bold uppercase tracking-[0.18em] text-court-sidebar-fg-dim">
+                <div className="font-serif text-[10px] font-semibold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
                   {group.title}
                 </div>
-                <div className="ml-1 h-px flex-1 bg-court-sidebar-border" />
+                <div className="ml-1 h-px flex-1 bg-court-sidebar-border/60" />
               </div>
             )}
             <div className="space-y-0.5">
@@ -169,7 +169,7 @@ function NavLink({
       {active && (
         <span
           aria-hidden="true"
-          className="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-court-sidebar-rail"
+          className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-court-sidebar-rail/80"
         />
       )}
       <Icon className={cn("h-4 w-4", active ? "text-court-sidebar-active-fg" : "text-court-sidebar-icon")} />

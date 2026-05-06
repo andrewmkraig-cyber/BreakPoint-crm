@@ -186,7 +186,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                 )}
               </tr>
             </DataTableHead>
-            <tbody className="divide-y divide-court-border">
+            <tbody className="divide-y divide-court-border-soft">
               {rows.length === 0 && !error && (
                 <tr>
                   <td

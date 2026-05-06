@@ -305,7 +305,7 @@ export function CandidatesView({
               <DataTableHeaderCell align="center">Last Updated</DataTableHeaderCell>
             </tr>
           </DataTableHead>
-          <tbody className="divide-y divide-court-border">
+          <tbody className="divide-y divide-court-border-soft">
             {candidates.length === 0 && !error && (
               <tr>
                 <td colSpan={6} className="px-5 py-12 text-center text-sm text-court-fg-muted">

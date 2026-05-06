@@ -160,7 +160,7 @@ export function ApplicantsView({
                 <DataTableHeaderCell align="right">Actions</DataTableHeaderCell>
               </tr>
             </DataTableHead>
-            <tbody className="divide-y divide-court-border">
+            <tbody className="divide-y divide-court-border-soft">
               {tab === "applied" ? (
                 sortedApplied.length === 0 ? (
                   <EmptyRow label="No applicants in this view." />

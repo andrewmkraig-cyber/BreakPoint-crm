@@ -104,28 +104,32 @@ html[data-surface='hard'][data-theme='dark'] {
   --brand-light:                    156 214 131;
 }
 
-/* CLAY COURT - LIGHT (Roland-Garros rust) — palette v5 */
+/* CLAY COURT - LIGHT (Roland-Garros rust) — palette v5
+   Polish pass: clay tone-down. Sidebar / borders / surface-subtle /
+   active-nav fills desaturated so the mode reads as warm premium clay
+   instead of a saturated peach/terracotta wash. The slam rust accent
+   (#B7410E) is preserved — only neutrals are softened. */
 html[data-surface='clay'][data-theme='light'] {
   --court-bg:                       251 243 236; /* #FBF3EC */
   --court-surface:                  255 250 243; /* #FFFAF3 */
-  --court-surface-subtle:           245 220 196; /* #F5DCC4 */
-  --court-border:                   201 154 124; /* #C99A7C */
-  --court-border-soft:              235 210 186; /* #EBD2BA */
+  --court-surface-subtle:           244 229 213; /* #F4E5D5 — softer than F5DCC4 */
+  --court-border:                   214 188 163; /* #D6BCA3 — desaturated terracotta */
+  --court-border-soft:              240 223 204; /* #F0DFCC — softer divider */
   --court-fg:                        42  20   9; /* #2A1409 */
   --court-fg-muted:                 107  58  32; /* #6B3A20 */
   --court-fg-dim:                   140  94  63; /* #8C5E3F — derived */
-  --court-accent:                   183  65  14; /* #B7410E — slam rust */
+  --court-accent:                   183  65  14; /* #B7410E — slam rust (unchanged) */
   --court-accent-dark:              139  50   8; /* #8B3208 */
-  --court-accent-tint:              251 228 210; /* #FBE4D2 */
+  --court-accent-tint:              244 226 212; /* #F4E2D4 — softer */
   --court-accent-border:            232 144  85; /* #E89055 */
 
-  --court-sidebar-bg:               232 201 176; /* #E8C9B0 */
-  --court-sidebar-border:           201 154 124; /* #C99A7C */
+  --court-sidebar-bg:               232 210 189; /* #E8D2BD — less peach, more neutral tan */
+  --court-sidebar-border:           214 188 163; /* #D6BCA3 — matches body border */
   --court-sidebar-fg:                42  20   9; /* #2A1409 */
   --court-sidebar-fg-muted:         107  58  32; /* #6B3A20 */
   --court-sidebar-fg-dim:           140  94  63; /* #8C5E3F */
   --court-sidebar-icon:             107  58  32; /* #6B3A20 */
-  --court-sidebar-active-bg:        rgb(251 228 210); /* #FBE4D2 */
+  --court-sidebar-active-bg:        rgb(244 226 212); /* #F4E2D4 — less saturated active wash */
   --court-sidebar-active-fg:        139  50   8; /* #8B3208 */
   --court-sidebar-rail:             183  65  14; /* #B7410E */
 
