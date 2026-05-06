@@ -32,9 +32,9 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
     <section className="rounded-2xl border border-court-border bg-court-surface p-8 shadow-md">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <div className="text-2xl font-black uppercase tracking-tight text-court-fg">
+          <h2 className="text-lg font-semibold uppercase tracking-widest text-court-fg">
             Billing Tower
-          </div>
+          </h2>
           <div className="mt-1 h-0.5 w-12 rounded-full bg-court-accent" />
         </div>
         <div className="relative">
@@ -66,8 +66,9 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
   );
 }
 
-// Compact USD: $7.5k for thousands, $1.2M for millions, $750 for sub-1k
-// values. Stripping trailing ".0" so $7000 reads "$7k" instead of "$7.0k".
+// Compact USD: $7.5K for thousands, $1.2M for millions, $750 for sub-1k
+// values. Stripping trailing ".0" so $7000 reads "$7K" instead of "$7.0K".
+// Uppercase K matches the uppercase M and reads as a polished stat label.
 function formatCompactUsd(amount: number): string {
   if (amount === 0) return "$0";
   const abs = Math.abs(amount);
@@ -75,7 +76,7 @@ function formatCompactUsd(amount: number): string {
     return `$${(amount / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   }
   if (abs >= 1_000) {
-    return `$${(amount / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+    return `$${(amount / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
   }
   return `$${amount}`;
 }
@@ -103,13 +104,30 @@ function Metric({
     ? "text-xs font-semibold tracking-widest uppercase text-court-accent-dark"
     : "text-xs font-semibold tracking-widest uppercase text-court-fg-muted";
   const valueCls = accent
-    ? "mt-2 font-stat text-5xl font-bold leading-none text-court-accent-dark"
-    : "mt-2 font-stat text-5xl font-bold leading-none text-court-fg";
+    ? "mt-2 font-stat text-5xl font-bold leading-none tracking-tight text-court-accent-dark"
+    : "mt-2 font-stat text-5xl font-bold leading-none tracking-tight text-court-fg";
   return (
     <div className={wrapper}>
       <div className={labelCls}>{label}</div>
-      <div className={valueCls}>{value}</div>
+      <div className={valueCls}>
+        <StatNumber value={value} />
+      </div>
       <p className="mt-3 text-sm text-court-fg-muted">{hint}</p>
     </div>
+  );
+}
+
+// Splits a formatted USD string ("$7.5K", "$0", "$1.2M") so the leading
+// dollar sign renders one step smaller than the numeric value. The
+// numeric span carries the visual weight; the sigil stays present but
+// recedes a touch so the eye lands on the figure first.
+function StatNumber({ value }: { value: string }) {
+  const match = value.match(/^(\$)(.*)$/);
+  if (!match) return <>{value}</>;
+  return (
+    <>
+      <span className="text-[0.7em] font-semibold align-baseline">{match[1]}</span>
+      {match[2]}
+    </>
   );
 }

@@ -9,7 +9,7 @@ import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { getEasternWeekBounds } from "@/lib/week";
+import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
 import {
   CalendarCheck2,
   CalendarDays,
@@ -211,7 +211,11 @@ export default async function DashboardPage() {
     // other page. Drop the negative margin so the dashboard inherits
     // the same gutter as /jobs, /candidates, /clients, etc.
     <div className="flex w-full flex-col gap-8">
-      <PageHeader eyebrow="This week" title="Activity Dashboard" />
+      <PageHeader
+        eyebrow="This week"
+        title="Activity Dashboard"
+        description={formatEasternWeekRange(weekStart, weekEnd)}
+      />
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />

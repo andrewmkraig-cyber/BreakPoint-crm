@@ -80,3 +80,33 @@ export function getEasternWeekBounds(now: Date = new Date()): { start: Date; end
 
   return { start, end };
 }
+
+// Format the current ET week as a human-readable label, e.g.
+// "Week of May 4-10, 2026" within a single month, or
+// "Week of Apr 27 - May 3, 2026" when the week straddles months,
+// or "Week of Dec 29, 2025 - Jan 4, 2026" across a year boundary.
+// `end` is the exclusive bound returned by getEasternWeekBounds —
+// the inclusive Sunday is one day earlier.
+export function formatEasternWeekRange(start: Date, end: Date): string {
+  const inclusiveEnd = new Date(end.getTime() - 24 * 60 * 60 * 1000);
+  const partsOf = (instant: Date) => {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: ZONE,
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+    const parts = fmt.formatToParts(instant);
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
+    return { month: get("month"), day: get("day"), year: get("year") };
+  };
+  const a = partsOf(start);
+  const b = partsOf(inclusiveEnd);
+  if (a.year !== b.year) {
+    return `Week of ${a.month} ${a.day}, ${a.year} - ${b.month} ${b.day}, ${b.year}`;
+  }
+  if (a.month !== b.month) {
+    return `Week of ${a.month} ${a.day} - ${b.month} ${b.day}, ${b.year}`;
+  }
+  return `Week of ${a.month} ${a.day}-${b.day}, ${b.year}`;
+}
