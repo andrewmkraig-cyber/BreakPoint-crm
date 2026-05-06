@@ -604,7 +604,7 @@ export function MailComposer({
           // numbered-list buttons toggle state but render nothing
           // visible. Mirrors the same pattern used in AiWorkspace +
           // message-block.
-          "min-h-[240px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
+          "min-h-[200px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
       },
       handlePaste(view, event) {
         const items = event.clipboardData?.items;
@@ -1203,71 +1203,6 @@ export function MailComposer({
         </label>
       </div>
 
-      <ComposerAddonToolbar
-        templates={templates}
-        openTemplate={openTemplateMenu}
-        setOpenTemplate={setOpenTemplateMenu}
-        onPickTemplate={pickTemplate}
-        openField={openFieldMenu}
-        setOpenField={setOpenFieldMenu}
-        onInsertField={insertMergeTag}
-        openAi={openAiPanel}
-        setOpenAi={setOpenAiPanel}
-        editBusy={editBusy}
-        editDisabled={!stripHtml(editor?.getHTML() ?? "").trim()}
-        onEditWithClaude={onEditWithClaude}
-      />
-      {openAiPanel && (
-        <div className="shrink-0 space-y-2 border-b border-court-border bg-court-surface px-5 py-3">
-          <label className="block text-[11px] uppercase tracking-wider text-court-fg-muted">
-            Describe what you want to say
-          </label>
-          <textarea
-            value={aiPrompt}
-            onChange={(e) => setAiPrompt(e.target.value)}
-            rows={3}
-            placeholder="e.g. Tell Linda her interview moved to Monday 10am and apologize for the late notice."
-            className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-          />
-          <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setOpenAiPanel(false);
-                setAiPrompt("");
-              }}
-              disabled={aiBusy}
-              className="rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={onGenerate}
-              disabled={aiBusy || !aiPrompt.trim()}
-              className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
-              data-includes-subject={aiIncludeSubject ? "1" : "0"}
-            >
-              {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-              Generate
-            </button>
-          </div>
-          {/* Opt-in subject-line generation. Sits below the action
-              row so the visual hierarchy is body-first; checking it
-              just adds a subject to the same one Generate click. */}
-          <label className="flex cursor-pointer items-center gap-2 pt-1 text-[11px] text-court-fg-muted">
-            <input
-              type="checkbox"
-              checked={aiIncludeSubject}
-              onChange={(e) => setAiIncludeSubject(e.target.checked)}
-              disabled={aiBusy}
-              className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed"
-            />
-            Generate subject line with Claude
-          </label>
-        </div>
-      )}
-
       {/* Smart-context: show "Which job is this email about?" when
           the candidate has 2+ active applied jobs. The dropdown sits
           right above the rich-text toolbar so the user can resolve
@@ -1315,17 +1250,11 @@ export function MailComposer({
         </div>
       )}
 
-      {/* Unified editor pad — toolbar, body, attachments, banners, and
-          footer all live in one rounded card so the reply reads as a
-          single surface instead of three stacked boxes. The card itself
-          is the flex-1 region; the editor scrolls internally while the
-          footer stays pinned at the bottom of the card. */}
-      <div
-        className={cn(
-          "mx-5 mb-3 flex flex-1 min-h-0 flex-col overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-sm transition",
-          "focus-within:border-brand/40 focus-within:ring-2 focus-within:ring-brand/10",
-        )}
-      >
+      {/* Flat editor surface — body is the dominant element. Rich-text
+          formatting Toolbar pins above the body; ComposerAddonToolbar
+          (Use Template / Insert Field / Generate / Edit) sits below
+          right above Send / Save Draft / Delete. No nested cards. */}
+      <div className="flex flex-1 min-h-0 flex-col overflow-hidden bg-court-surface">
         <Toolbar editor={editor} />
 
         <div
@@ -1398,6 +1327,73 @@ export function MailComposer({
         {error && (
           <div className="mx-3 mt-2 shrink-0 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
             {error}
+          </div>
+        )}
+
+        {/* ComposerAddonToolbar lives below the body — Use Template /
+            Insert Field / Generate with Claude / Edit with Claude in
+            a single tight row right above Send / Save Draft / Delete.
+            Mirrors Gmail's layout where formatting + send sit at the
+            bottom of the compose pane. */}
+        <ComposerAddonToolbar
+          templates={templates}
+          openTemplate={openTemplateMenu}
+          setOpenTemplate={setOpenTemplateMenu}
+          onPickTemplate={pickTemplate}
+          openField={openFieldMenu}
+          setOpenField={setOpenFieldMenu}
+          onInsertField={insertMergeTag}
+          openAi={openAiPanel}
+          setOpenAi={setOpenAiPanel}
+          editBusy={editBusy}
+          editDisabled={!stripHtml(editor?.getHTML() ?? "").trim()}
+          onEditWithClaude={onEditWithClaude}
+        />
+        {openAiPanel && (
+          <div className="shrink-0 space-y-2 border-b border-court-border bg-court-surface px-5 py-2">
+            <label className="block text-[11px] uppercase tracking-wider text-court-fg-muted">
+              Describe what you want to say
+            </label>
+            <textarea
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              rows={3}
+              placeholder="e.g. Tell Linda her interview moved to Monday 10am and apologize for the late notice."
+              className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpenAiPanel(false);
+                  setAiPrompt("");
+                }}
+                disabled={aiBusy}
+                className="rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onGenerate}
+                disabled={aiBusy || !aiPrompt.trim()}
+                className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+                data-includes-subject={aiIncludeSubject ? "1" : "0"}
+              >
+                {aiBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Generate
+              </button>
+            </div>
+            <label className="flex cursor-pointer items-center gap-2 pt-1 text-[11px] text-court-fg-muted">
+              <input
+                type="checkbox"
+                checked={aiIncludeSubject}
+                onChange={(e) => setAiIncludeSubject(e.target.checked)}
+                disabled={aiBusy}
+                className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed"
+              />
+              Generate subject line with Claude
+            </label>
           </div>
         )}
 

@@ -1,11 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Building2, Forward, Reply, ReplyAll } from "lucide-react";
 import type { MailThreadMessage } from "@/lib/gmail";
 
 export type MessageBlockAction = "reply" | "replyAll" | "forward";
+
+// Strip HTML tags + collapse whitespace so we can derive a one-line
+// preview snippet for the collapsed-row state. The body is already
+// sanitized server-side, so we're only concerned with stripping markup
+// for display, not security. Falls back to "(no preview)" when the
+// stripped body is empty (e.g. attachment-only messages).
+function snippetFromBody(html: string, maxLen = 140): string {
+  const stripped = html
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!stripped) return "(no preview)";
+  return stripped.length > maxLen ? `${stripped.slice(0, maxLen)}…` : stripped;
+}
+
+function shortTimestamp(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  // Today → "9:42 AM"; otherwise "May 6"
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
 
 // Single message renderer used by both the inline Mail Tab thread
 // pane and the popped-out FloatingThreadWindow. Body HTML is already
@@ -26,6 +63,7 @@ export function MessageBlock({
   isFirst,
   onAction,
   showReplyAll = true,
+  defaultCollapsed = false,
 }: {
   msg: MailThreadMessage;
   isFirst: boolean;
@@ -42,7 +80,12 @@ export function MessageBlock({
   // Defaults to true so callers that don't compute this still get the
   // legacy three-button layout.
   showReplyAll?: boolean;
+  // Gmail-style: render as a one-line summary row (sender + snippet +
+  // timestamp) until clicked. The latest message in the thread should
+  // pass false (always expanded); older messages pass true.
+  defaultCollapsed?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(!defaultCollapsed);
   // After the dangerouslySetInnerHTML body mounts, attach error
   // handlers to every <img> inside it so a failed remote load
   // collapses the element rather than leaving a broken-image
@@ -74,6 +117,30 @@ export function MessageBlock({
       for (const img of imgs) img.removeEventListener("error", hideBroken);
     };
   }, [msg.bodyHtml]);
+
+  if (!expanded) {
+    return (
+      <button
+        type="button"
+        onClick={() => setExpanded(true)}
+        className={
+          "flex w-full items-baseline gap-3 px-4 py-2 text-left transition hover:bg-court-surface-subtle/60 " +
+          (isFirst ? "" : "border-t border-court-border")
+        }
+        aria-label="Expand message"
+      >
+        <span className="shrink-0 truncate text-sm font-medium text-court-fg">
+          {msg.fromName || msg.fromEmail || "(unknown sender)"}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-xs text-court-fg-muted">
+          {snippetFromBody(msg.bodyHtml)}
+        </span>
+        <span className="shrink-0 text-[11px] text-court-fg-muted">
+          {shortTimestamp(msg.dateIso)}
+        </span>
+      </button>
+    );
+  }
 
   return (
     <article

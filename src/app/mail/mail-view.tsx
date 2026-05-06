@@ -787,6 +787,13 @@ export function MailView({
     [sidebarWidth, listWidth],
   );
 
+  // Gmail-style collapse: when a thread is open, compress the list
+  // column down to a narrow rail so the conversation gets the bulk of
+  // the screen. The recruiter's drag-set width is preserved for when
+  // no thread is selected; on open we just clamp it to ≤240 so the
+  // conversation pane always lands at majority width.
+  const effectiveListWidth = selected ? Math.min(listWidth, 240) : listWidth;
+
   return (
     <div
       className="ace-mail-grid mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 lg:gap-0"
@@ -797,7 +804,7 @@ export function MailView({
           // the grid template react to drag updates without a class
           // swap. Below lg the grid-cols-1 class wins.
           ["--mail-sidebar-w"]: `${sidebarWidth}px`,
-          ["--mail-list-w"]: `${listWidth}px`,
+          ["--mail-list-w"]: `${effectiveListWidth}px`,
         } as React.CSSProperties
       }
     >
@@ -1498,10 +1505,22 @@ export function ThreadDetail({
   composerMode: composerModeProp,
   onComposerModeChange,
 }: ThreadDetailProps) {
-  // Newest-first: show most recent message at the top of the pane so
-  // opening a long thread lands directly on "what just happened."
-  const orderedMessages = useMemo(() => [...detail.messages].reverse(), [detail.messages]);
-  const latest = orderedMessages[0];
+  // Inline /mail mode (Gmail-style): oldest at the top, latest pinned
+  // at the bottom right above the composer, with non-latest messages
+  // collapsed by default so a long thread doesn't read as a wall of
+  // text. Floating mode keeps the legacy newest-first ordering since
+  // the popup's compact body-first layout uses a small history pane
+  // and recruiters expect "what just happened" at the top there.
+  const orderedMessages = useMemo(
+    () => (isFloating ? [...detail.messages].reverse() : detail.messages),
+    [detail.messages, isFloating],
+  );
+  // True latest regardless of display order — used for the reply
+  // recipient defaults + Reply-All visibility, and to decide which
+  // MessageBlock should render expanded vs collapsed.
+  const latest =
+    detail.messages[detail.messages.length - 1] ?? orderedMessages[0];
+  const latestId = latest?.id ?? null;
   const floatingThread = useFloatingThread();
   const composerManager = useComposerManager();
   // Composer mode tracks WHICH button opened the composer so the
@@ -1873,22 +1892,26 @@ export function ThreadDetail({
             key={m.id}
             msg={m}
             isFirst={i === 0}
+            // Gmail-style: every non-latest message starts collapsed
+            // so a long thread reads as one expanded message + a
+            // stack of summary rows. Click any collapsed row to
+            // expand it inline.
+            defaultCollapsed={m.id !== latestId}
             // Per-message Reply / Reply All / Forward buttons render
             // ONLY for older messages in a multi-message inline thread.
             // Suppressed when:
             //   - rendered inside FloatingThreadWindow (isFloating) —
             //     popups opened from notifications get one toolbar only
             //   - a composer is already open
-            //   - the message is the latest one (i === 0 in our newest-
-            //     first ordering) — the top toolbar already handles it,
-            //     so per-message buttons there are pure duplication.
-            //     A single-message thread therefore renders zero
-            //     per-message buttons (the only message IS the latest).
-            //     Older messages in a chain keep their buttons so the
-            //     recruiter can scroll down and reply to a specific
-            //     earlier message in the conversation.
+            //   - the message is the latest one — the top toolbar
+            //     already handles it, so per-message buttons there are
+            //     pure duplication. A single-message thread therefore
+            //     renders zero per-message buttons (the only message
+            //     IS the latest). Older messages in a chain keep their
+            //     buttons so the recruiter can scroll down and reply
+            //     to a specific earlier message in the conversation.
             onAction={
-              isFloating || composerOpen || i === 0
+              isFloating || composerOpen || m.id === latestId
                 ? undefined
                 : (mode) => onMessageAction(m, mode)
             }
