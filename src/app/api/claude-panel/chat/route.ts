@@ -10,6 +10,9 @@ import {
   buildClientContext,
   buildJobContext,
 } from "@/lib/ai-workspace-context";
+import { getClientByIdentifier } from "@/lib/clients";
+import { getCandidateByIdentifier } from "@/lib/candidates";
+import { getJobByIdentifier } from "@/lib/jobs";
 
 // Live Claude call for the global Claude Panel (Sparkles topbar
 // toggle). Streams text deltas as NDJSON events back to the client so
@@ -123,21 +126,37 @@ export async function POST(req: NextRequest) {
   // identifying the record, so we just bracket it with a "currently
   // viewing" framing line that tells Claude to answer about this
   // record without asking the recruiter to clarify.
+  //
+  // Pre-resolution note: live URLs may use the legacy numeric slug
+  // (slugFor still emits legacyRfId when set) but the build*Context
+  // builders are cuid-only. The per-entity getXByIdentifier helpers
+  // accept either form, so we resolve here and hand the builders a
+  // canonical cuid.
   let entityBlock = "";
   if (entityType && entityId) {
     try {
-      const built =
-        entityType === "candidate"
-          ? await buildCandidateContext(entityId)
-          : entityType === "client"
-            ? await buildClientContext(entityId)
-            : await buildJobContext(entityId);
-      entityBlock =
-        built +
-        "\n\nThe recruiter is currently viewing this record. Answer questions about it directly without asking for clarification.\n\n";
+      let resolvedCuid: string | null = null;
+      if (entityType === "candidate") {
+        resolvedCuid = (await getCandidateByIdentifier(entityId))?.id ?? null;
+      } else if (entityType === "client") {
+        resolvedCuid = (await getClientByIdentifier(entityId))?.id ?? null;
+      } else {
+        resolvedCuid = (await getJobByIdentifier(entityId))?.id ?? null;
+      }
+      if (resolvedCuid) {
+        const built =
+          entityType === "candidate"
+            ? await buildCandidateContext(resolvedCuid)
+            : entityType === "client"
+              ? await buildClientContext(resolvedCuid)
+              : await buildJobContext(resolvedCuid);
+        entityBlock =
+          built +
+          "\n\nThe recruiter is currently viewing this record. Answer questions about it directly without asking for clarification.\n\n";
+      }
     } catch {
       // Don't fail the chat just because the page context lookup hit
-      // a snag — fall back to the unscoped prompt and let Claude
+      // a snag - fall back to the unscoped prompt and let Claude
       // answer generically.
       entityBlock = "";
     }

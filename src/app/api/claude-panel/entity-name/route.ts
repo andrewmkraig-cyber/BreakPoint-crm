@@ -2,12 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getEntityDisplayName } from "@/lib/ai-workspace-context";
+import { getClientByIdentifier } from "@/lib/clients";
+import { getCandidateByIdentifier } from "@/lib/candidates";
+import { getJobByIdentifier } from "@/lib/jobs";
 
 // Tiny GET endpoint the Claude Panel calls to populate the header
 // pill ("Ace Assistant · Tom Marek"). The full build*Context payload
 // is far too heavy for a label, so this hits one indexed SELECT and
 // returns just the display name. Org-scoping is enforced inside
 // getEntityDisplayName via getCurrentOrg().
+//
+// Pre-resolution note: live URLs may pass either a cuid or a legacy
+// numeric slug. getEntityDisplayName is cuid-only, so we delegate the
+// dual-key resolution to the per-entity getXByIdentifier helpers.
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -35,6 +42,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const name = await getEntityDisplayName(type, id.trim());
+  const trimmed = id.trim();
+  const resolvedCuid =
+    type === "candidate"
+      ? ((await getCandidateByIdentifier(trimmed))?.id ?? null)
+      : type === "client"
+        ? ((await getClientByIdentifier(trimmed))?.id ?? null)
+        : ((await getJobByIdentifier(trimmed))?.id ?? null);
+  if (!resolvedCuid) {
+    return NextResponse.json({ ok: true, name: null });
+  }
+  const name = await getEntityDisplayName(type, resolvedCuid);
   return NextResponse.json({ ok: true, name });
 }

@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import Anthropic from '@anthropic-ai/sdk'
 import { buildClientContext, buildCandidateContext, buildJobContext } from '@/lib/ai-workspace-context'
+import { getClientByIdentifier } from '@/lib/clients'
+import { getCandidateByIdentifier } from '@/lib/candidates'
+import { getJobByIdentifier } from '@/lib/jobs'
 import { CLAUDE_MODEL } from '@/lib/claude'
 import { extractUrls, verifyUrls } from '@/lib/url-verifier'
 import { authOptions } from '@/lib/auth'
@@ -39,12 +42,23 @@ export async function POST(req: NextRequest) {
   // the end of the system prompt.
   const org = await getCurrentOrg()
 
-  const baseSystemPrompt =
+  // Pre-resolve to a cuid since slugFor still emits legacyRfId for
+  // RF-imported clients (and the existing client page even posts
+  // String(legacyRfId) directly). The build*Context fns are cuid-only;
+  // the per-entity getXByIdentifier helpers accept either form.
+  const resolvedCuid =
     entityType === 'client'
-      ? await buildClientContext(entityId)
+      ? ((await getClientByIdentifier(entityId))?.id ?? null)
       : entityType === 'job'
-        ? await buildJobContext(entityId)
-        : await buildCandidateContext(entityId)
+        ? ((await getJobByIdentifier(entityId))?.id ?? null)
+        : ((await getCandidateByIdentifier(entityId))?.id ?? null)
+  const baseSystemPrompt = resolvedCuid
+    ? entityType === 'client'
+      ? await buildClientContext(resolvedCuid)
+      : entityType === 'job'
+        ? await buildJobContext(resolvedCuid)
+        : await buildCandidateContext(resolvedCuid)
+    : `You are an AI recruiting assistant for BreakPoint Talent. The ${entityType} referenced was not found.`
 
   // Phase 3: pull the last 5 tagged Gmail threads for this entity and
   // surface their last-message subject/from/snippet to Claude. Wrapped
