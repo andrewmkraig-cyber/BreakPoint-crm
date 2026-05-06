@@ -7,6 +7,7 @@ import { Briefcase, Search, Loader2, MapPin } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
+import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 
 export type JobRow = {
   id: number;
@@ -121,18 +122,18 @@ export function JobsView(props: JobsViewProps) {
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
-            <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
+            <DataTableHead>
               <tr>
-                <Th><SortableHeader label="Client" columnKey="client" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></Th>
-                <Th><SortableHeader label="Job Title" columnKey="title" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></Th>
-                <Th><SortableHeader label="Location" columnKey="location" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></Th>
-                <Th><SortableHeader label="Compensation" columnKey="compensation" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></Th>
-                <Th><SortableHeader label="Last Edited" columnKey="lastEdited" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></Th>
-                <Th align="right"><SortableHeader label="Submitted" columnKey="submitted" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></Th>
-                <Th align="right"><SortableHeader label="Interviewing" columnKey="interviewing" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></Th>
-                <Th align="right"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></Th>
+                <DataTableHeaderCell><SortableHeader label="Client" columnKey="client" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Job Title" columnKey="title" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Location" columnKey="location" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Compensation" columnKey="compensation" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell><SortableHeader label="Last Edited" columnKey="lastEdited" activeKey={sort} activeDir={dir} buildHref={buildSortHref} /></DataTableHeaderCell>
+                <DataTableHeaderCell align="right"><SortableHeader label="Submitted" columnKey="submitted" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
+                <DataTableHeaderCell align="right"><SortableHeader label="Interviewing" columnKey="interviewing" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
+                <DataTableHeaderCell align="right"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
               </tr>
-            </thead>
+            </DataTableHead>
             <tbody className="divide-y divide-court-border-soft">
               {rows.length === 0 && !error && (
                 <tr>
@@ -194,12 +195,6 @@ export function JobsView(props: JobsViewProps) {
         />
       </div>
     </div>
-  );
-}
-
-function Th({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" }) {
-  return (
-    <th className={cn("px-5 py-3 font-medium", align === "right" && "text-right")}>{children}</th>
   );
 }
 

@@ -11,6 +11,7 @@ import { StageBadge } from "@/components/stage-badge";
 import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
@@ -156,35 +157,35 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1000px] text-left text-sm">
-            <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
+            <DataTableHead>
               <tr>
-                <th className="px-5 py-3 font-medium">Candidate</th>
-                <th className="px-5 py-3 font-medium">Job</th>
-                <th className="px-5 py-3 font-medium">Client</th>
+                <DataTableHeaderCell>Candidate</DataTableHeaderCell>
+                <DataTableHeaderCell>Job</DataTableHeaderCell>
+                <DataTableHeaderCell>Client</DataTableHeaderCell>
                 {stage === "pending_start" ? (
                   <>
-                    <th className="px-5 py-3 font-medium">Start Date</th>
-                    <th className="px-5 py-3 text-right font-medium">Days Until</th>
-                    <th className="px-5 py-3 font-medium">Action</th>
+                    <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
+                    <DataTableHeaderCell align="center">Days Until</DataTableHeaderCell>
+                    <DataTableHeaderCell align="right">Action</DataTableHeaderCell>
                   </>
                 ) : stage === "hired" ? (
                   <>
-                    <th className="px-5 py-3 font-medium">Salary</th>
-                    <th className="px-5 py-3 font-medium">Fee</th>
-                    <th className="px-5 py-3 font-medium">Start Date</th>
-                    <th className="px-5 py-3 font-medium">Billing Contact</th>
-                    <th className="px-5 py-3 font-medium">Invoicing</th>
+                    <DataTableHeaderCell align="center">Salary</DataTableHeaderCell>
+                    <DataTableHeaderCell align="center">Fee</DataTableHeaderCell>
+                    <DataTableHeaderCell align="center">Start Date</DataTableHeaderCell>
+                    <DataTableHeaderCell>Billing Contact</DataTableHeaderCell>
+                    <DataTableHeaderCell align="center">Invoicing</DataTableHeaderCell>
                   </>
                 ) : (
                   <>
-                    <th className="px-5 py-3 text-center font-medium">Stage</th>
-                    <th className="px-5 py-3 font-medium">Last Action</th>
-                    <th className="px-5 py-3 text-right font-medium">Days in Stage</th>
-                    <th className="px-5 py-3 text-right font-medium">Action</th>
+                    <DataTableHeaderCell align="center">Stage</DataTableHeaderCell>
+                    <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
+                    <DataTableHeaderCell align="center">Days in Stage</DataTableHeaderCell>
+                    <DataTableHeaderCell align="right">Action</DataTableHeaderCell>
                   </>
                 )}
               </tr>
-            </thead>
+            </DataTableHead>
             <tbody className="divide-y divide-court-border">
               {rows.length === 0 && !error && (
                 <tr>
@@ -259,10 +260,10 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                       <td className="px-5 py-3 align-top text-center">
                         <StageChip stageName={r.stageName} bucket={r.bucket} placement={r.placement} />
                       </td>
-                      <td className="px-5 py-3 align-top text-xs text-court-fg-muted">
+                      <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">
                         {formatDate(r.lastActionAt)}
                       </td>
-                      <td className="px-5 py-3 align-top text-right">
+                      <td className="px-5 py-3 align-top text-center">
                         {r.daysInStage == null ? (
                           <span className="text-court-fg-muted">—</span>
                         ) : (
@@ -342,10 +343,10 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
   const soon = daysUntil != null && daysUntil >= 0 && daysUntil <= 7;
   return (
     <>
-      <td className="px-5 py-3 align-top text-sm text-court-fg">
+      <td className="px-5 py-3 align-top text-center text-sm text-court-fg">
         {startDate ? startDate.toLocaleDateString() : <span className="text-court-fg-muted">—</span>}
       </td>
-      <td className="px-5 py-3 align-top text-right">
+      <td className="px-5 py-3 align-top text-center">
         {daysUntil == null ? (
           <span className="text-court-fg-muted">—</span>
         ) : (
@@ -372,7 +373,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
             Edit Placement link deep-links via ?edit=placement&jobId=N —
             the candidate-profile handler reads that and auto-opens the
             PlacementDialog pre-filled for this (candidate, job). */}
-        <div className="flex flex-col items-stretch gap-1.5">
+        <div className="flex flex-col items-end gap-1.5">
           <Link
             href={`/candidates/${row.candidateId}`}
             onClick={(e) => e.stopPropagation()}
@@ -397,14 +398,14 @@ function HiredCells({ row }: { row: PipelineRow }) {
   const p = row.placement;
   return (
     <>
-      <td className="px-5 py-3 align-top text-sm text-court-fg">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
-      <td className="px-5 py-3 align-top text-sm text-court-fg">
+      <td className="px-5 py-3 align-top text-center text-sm text-court-fg">{formatMoney(p?.acceptedSalary ?? null, p?.acceptedCurrency)}</td>
+      <td className="px-5 py-3 align-top text-center text-sm text-court-fg">
         {formatMoney(p?.feeTotal ?? null, p?.acceptedCurrency)}
         {p?.feePercentage != null && (
           <span className="ml-1 text-[11px] text-court-fg-muted">({p.feePercentage}%)</span>
         )}
       </td>
-      <td className="px-5 py-3 align-top text-sm text-court-fg-muted">
+      <td className="px-5 py-3 align-top text-center text-sm text-court-fg-muted">
         {formatDate(p?.expectedStartDate)}
       </td>
       <td className="px-5 py-3 align-top text-xs">
@@ -437,7 +438,7 @@ function HiredCells({ row }: { row: PipelineRow }) {
           <span className="text-court-fg-muted">—</span>
         )}
       </td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-5 py-3 align-top text-center">
         {/* Invoicing-flagged stays amber — status cue that should mean the
             same thing regardless of mode. */}
         {p?.invoicingFlagged ? (

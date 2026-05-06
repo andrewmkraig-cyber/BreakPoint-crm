@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Building2, LayoutGrid, List, Search } from "lucide-react";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
+import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 
 // Existing data shape — unchanged. Owned by the server side; the
 // client-side renderer reads it directly. id is the Neon cuid (for
@@ -182,12 +183,12 @@ function ClientListRowView({ card }: { card: ClientCard }) {
       </td>
       <td className="px-5 py-3 align-middle text-sm text-court-fg-muted">{card.industry || ""}</td>
       <td className="px-5 py-3 align-middle text-sm text-court-fg-muted">{card.location || ""}</td>
-      <td className="px-5 py-3 align-middle text-right text-sm">
+      <td className="px-5 py-3 align-middle text-center text-sm">
         <span className="font-semibold text-court-fg">{card.openJobsCount}</span>
         <span className="text-court-fg-muted"> / {card.openJobsCount + card.closedJobsCount}</span>
       </td>
-      <td className="px-5 py-3 align-middle">
-        <div className="flex flex-wrap gap-1">
+      <td className="px-5 py-3 align-middle text-center">
+        <div className="flex flex-wrap justify-center gap-1">
           {activeStages.length > 0 ? (
             activeStages.map((s) => (
               <PipelinePill
@@ -202,7 +203,7 @@ function ClientListRowView({ card }: { card: ClientCard }) {
           )}
         </div>
       </td>
-      <td className="px-5 py-3 align-middle text-right text-sm">
+      <td className="px-5 py-3 align-middle text-center text-sm">
         {card.feePct != null ? (
           <span className="font-semibold text-court-fg">{card.feePct}%</span>
         ) : (
@@ -344,17 +345,17 @@ export function ClientsView({
         <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-court-border bg-court-surface-subtle text-[11px] uppercase tracking-wider text-court-fg-muted">
+              <DataTableHead>
                 <tr>
-                  <th className="px-5 py-3 font-medium">Client</th>
-                  <th className="px-5 py-3 font-medium">Industry</th>
-                  <th className="px-5 py-3 font-medium">Location</th>
-                  <th className="px-5 py-3 text-right font-medium">Open</th>
-                  <th className="px-5 py-3 font-medium">Pipeline</th>
-                  <th className="px-5 py-3 text-right font-medium">Fee</th>
-                  <th className="px-5 py-3 font-medium" />
+                  <DataTableHeaderCell>Client</DataTableHeaderCell>
+                  <DataTableHeaderCell>Industry</DataTableHeaderCell>
+                  <DataTableHeaderCell>Location</DataTableHeaderCell>
+                  <DataTableHeaderCell align="center">Open</DataTableHeaderCell>
+                  <DataTableHeaderCell align="center">Pipeline</DataTableHeaderCell>
+                  <DataTableHeaderCell align="center">Fee</DataTableHeaderCell>
+                  <DataTableHeaderCell align="right" />
                 </tr>
-              </thead>
+              </DataTableHead>
               <tbody className="divide-y divide-court-border">
                 {filtered.map((c) => (
                   <ClientListRowView key={c.id} card={c} />

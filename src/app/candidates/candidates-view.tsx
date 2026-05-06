@@ -21,6 +21,7 @@ import {
   type BulkPickerJob,
 } from "@/app/candidates/bulk-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
+import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 
 type Candidate = {
   id: string;
@@ -281,9 +282,9 @@ export function CandidatesView({
         }
       >
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
+          <DataTableHead>
             <tr>
-              <th className="w-10 px-3 py-3">
+              <DataTableHeaderCell className="w-10 px-3">
                 <input
                   type="checkbox"
                   aria-label="Select all candidates on this page"
@@ -296,14 +297,14 @@ export function CandidatesView({
                   }
                   className="h-4 w-4 cursor-pointer accent-brand"
                 />
-              </th>
-              <th className="px-5 py-3 font-medium">Name</th>
-              <th className="px-5 py-3 font-medium">Current Title</th>
-              <th className="px-5 py-3 font-medium">Employer</th>
-              <th className="px-5 py-3 font-medium">Location</th>
-              <th className="px-5 py-3 font-medium">Last Updated</th>
+              </DataTableHeaderCell>
+              <DataTableHeaderCell>Name</DataTableHeaderCell>
+              <DataTableHeaderCell>Current Title</DataTableHeaderCell>
+              <DataTableHeaderCell>Employer</DataTableHeaderCell>
+              <DataTableHeaderCell>Location</DataTableHeaderCell>
+              <DataTableHeaderCell align="center">Last Updated</DataTableHeaderCell>
             </tr>
-          </thead>
+          </DataTableHead>
           <tbody className="divide-y divide-court-border">
             {candidates.length === 0 && !error && (
               <tr>
@@ -349,7 +350,7 @@ export function CandidatesView({
                   <td className="px-5 py-3 text-court-fg-muted">{c.title || "—"}</td>
                   <td className="px-5 py-3 text-court-fg-muted">{c.employer || "—"}</td>
                   <td className="px-5 py-3 text-court-fg-muted">{c.location || "—"}</td>
-                  <td className="px-5 py-3 text-court-fg-muted">
+                  <td className="px-5 py-3 text-center text-court-fg-muted">
                     {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "—"}
                   </td>
                 </tr>

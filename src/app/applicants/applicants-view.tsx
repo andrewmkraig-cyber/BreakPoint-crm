@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
+import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import {
   keepCandidateForJob,
@@ -142,7 +143,7 @@ export function ApplicantsView({
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
-            <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
+            <DataTableHead>
               <tr>
                 <ColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
                 <ColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
@@ -151,13 +152,14 @@ export function ApplicantsView({
                   active={sortKey === "when"}
                   dir={sortDir}
                   onClick={() => toggleSort("when")}
+                  align="center"
                 />
                 {tab === "applied" && (
-                  <ColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} />
+                  <ColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} align="center" />
                 )}
-                <th className="px-5 py-3 font-medium">Actions</th>
+                <DataTableHeaderCell align="right">Actions</DataTableHeaderCell>
               </tr>
-            </thead>
+            </DataTableHead>
             <tbody className="divide-y divide-court-border">
               {tab === "applied" ? (
                 sortedApplied.length === 0 ? (
@@ -220,26 +222,28 @@ function ColHeader({
   active,
   dir,
   onClick,
+  align = "left",
 }: {
   label: string;
   active: boolean;
   dir: SortDir;
   onClick: () => void;
+  align?: "left" | "center" | "right";
 }) {
   return (
-    <th className="px-5 py-3 font-medium">
+    <DataTableHeaderCell align={align}>
       <button
         type="button"
         onClick={onClick}
         className={cn(
-          "inline-flex items-center gap-1 uppercase tracking-wider",
+          "inline-flex items-center gap-1 uppercase tracking-wide",
           active ? "text-court-fg" : "text-court-fg-muted hover:text-court-fg",
         )}
       >
         {label}
         {active && (dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
       </button>
-    </th>
+    </DataTableHeaderCell>
   );
 }
 
@@ -274,10 +278,10 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
-      <td className="px-5 py-3 align-top text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
+      <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
+      <td className="px-5 py-3 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
       <td className="px-5 py-3 align-top">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit hands off to the candidate profile's submittal
               composer via the ?compose=submittal&jobId=N deep link.
@@ -400,9 +404,9 @@ function KeptRowView({ row }: { row: KeptRow }) {
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
+      <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
       <td className="px-5 py-3 align-top">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit hands off to the candidate profile's submittal
               composer via the deep link. The Kept row gets cleaned up

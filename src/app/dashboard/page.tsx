@@ -210,7 +210,7 @@ export default async function DashboardPage() {
     // the dashboard cards too far left and broke parity with every
     // other page. Drop the negative margin so the dashboard inherits
     // the same gutter as /jobs, /candidates, /clients, etc.
-    <div className="flex w-full flex-col gap-8">
+    <div className="-mt-4 flex w-full flex-col gap-6 md:-mt-6">
       <PageHeader
         title="Activity Dashboard"
         description={formatEasternWeekRange(weekStart, weekEnd)}
