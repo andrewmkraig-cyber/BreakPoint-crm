@@ -604,7 +604,7 @@ export function MailComposer({
           // numbered-list buttons toggle state but render nothing
           // visible. Mirrors the same pattern used in AiWorkspace +
           // message-block.
-          "min-h-[180px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
+          "min-h-[240px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
       },
       handlePaste(view, event) {
         const items = event.clipboardData?.items;
@@ -1052,9 +1052,14 @@ export function MailComposer({
               // flex-column + overflow-hidden chassis as the modal so
               // the chrome rows pin top, the editor scrolls in its own
               // region, and the footer (Send / Save Draft / Delete)
-              // stays glued to the bottom. Capped at 65% of the parent
-              // so the messages list above stays readable.
-              "flex max-h-[65%] max-h-[min(72vh,65%)] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
+              // stays glued to the bottom. min-h-[50%] floors the
+              // composer at half the thread panel so the body editor
+              // is always large enough to write a real reply without
+              // popping out; no max-h cap so the composer can grow
+              // when the recruiter wants more room (overall layout's
+              // overflow rules still keep the messages list scrollable
+              // above).
+              "flex min-h-[50%] flex-col overflow-hidden border-t border-court-border bg-court-surface-subtle/30"
       }
     >
       <div
@@ -1129,7 +1134,7 @@ export function MailComposer({
           </button>
         </div>
       </div>
-      <div className="shrink-0 space-y-1 px-5 py-1.5">
+      <div className="shrink-0 space-y-1 px-5 py-1">
         <AddressRow
           label="To"
           value={to}
@@ -1764,7 +1769,7 @@ function ComposerAddonToolbar({
   onEditWithClaude: (editType: EditType) => void;
 }) {
   return (
-    <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-court-border px-5 py-2">
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-court-border px-5 py-1">
       {/* Use Template */}
       <div className="relative">
         <button

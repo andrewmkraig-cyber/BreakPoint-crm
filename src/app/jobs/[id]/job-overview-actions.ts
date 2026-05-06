@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getServerSession } from "next-auth";
+import { logActivity } from "@/lib/activity";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
@@ -106,13 +107,16 @@ export async function updateJobOverview(args: {
 
 // Save the recruiter-pasted source URL onto the Job. Tenant-scoped per
 // CLAUDE.md rule #8 — the lookup filters on organizationId so a stale
-// jobId from another tenant cannot land a write here.
+// jobId from another tenant cannot land a write here. Successful saves
+// also write an ActivityLog row so the URL surfaces in the job's
+// activity feed without the recruiter having to open the JD tab.
 export async function saveJobSourceUrl(args: {
   jobId: string;
   url: string;
 }): Promise<Result> {
   const session = await getServerSession(authOptions);
-  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+  const userEmail = session?.user?.email;
+  if (!userEmail) return { ok: false, error: "Not signed in." };
 
   const trimmed = args.url.trim();
   if (trimmed.length > 2000) {
@@ -126,7 +130,7 @@ export async function saveJobSourceUrl(args: {
     const org = await getCurrentOrg();
     const job = await prisma.job.findFirst({
       where: { id: args.jobId, organizationId: org.id },
-      select: { id: true, legacyRfId: true },
+      select: { id: true, legacyRfId: true, title: true },
     });
     if (!job) return { ok: false, error: "Job not found." };
 
@@ -134,6 +138,29 @@ export async function saveJobSourceUrl(args: {
       where: { id: job.id },
       data: { sourceJobUrl: trimmed || null },
     });
+
+    // Skip the audit row when the field is being cleared — "saved an
+    // empty URL" isn't a meaningful event and would clutter the feed.
+    if (trimmed) {
+      const userId =
+        session.user.id ??
+        (
+          await prisma.user.findUnique({
+            where: { email: userEmail },
+            select: { id: true },
+          })
+        )?.id;
+      if (userId) {
+        await logActivity({
+          organizationId: org.id,
+          userId,
+          actionType: "job_source_posting_saved",
+          targetType: "job",
+          targetId: job.id,
+          metadata: { jobTitle: job.title, sourceUrl: trimmed },
+        });
+      }
+    }
 
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);

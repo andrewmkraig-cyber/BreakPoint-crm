@@ -218,6 +218,11 @@ function describeAction(actionType: string, meta: Record<string, unknown> | null
       return `Placement cancelled${reason ? ` — ${reason}` : ""}`;
     case "reject":
       return `Candidate rejected${reason ? ` — ${reason}` : ""}`;
+    case "job_source_posting_saved": {
+      const sourceUrl = readString(meta, "sourceUrl");
+      const titleHead = jobTitle ?? "this job";
+      return `Source posting saved: ${titleHead}${sourceUrl ? ` — ${sourceUrl}` : ""}`;
+    }
     default:
       return titleize(actionType);
   }
