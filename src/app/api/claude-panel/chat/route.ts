@@ -5,6 +5,11 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { CLAUDE_MODEL } from "@/lib/claude";
 import { buildPersonalTrainerBlock } from "@/lib/personal-trainer";
+import {
+  buildCandidateContext,
+  buildClientContext,
+  buildJobContext,
+} from "@/lib/ai-workspace-context";
 
 // Live Claude call for the global Claude Panel (Sparkles topbar
 // toggle). Streams text deltas as NDJSON events back to the client so
@@ -43,7 +48,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: { messages?: unknown };
+  let body: {
+    messages?: unknown;
+    entityType?: unknown;
+    entityId?: unknown;
+  };
   try {
     body = await req.json();
   } catch {
@@ -59,6 +68,22 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+
+  // Phase 3 page-aware context. The panel reports the active record
+  // (candidate / client / job) it's looking at and we prepend the
+  // relevant build*Context block to the system prompt so Claude can
+  // answer "summarize this candidate" without the recruiter pasting
+  // anything. Unknown types fall through to the unscoped prompt.
+  const entityType =
+    body.entityType === "candidate" ||
+    body.entityType === "client" ||
+    body.entityType === "job"
+      ? body.entityType
+      : null;
+  const entityId =
+    typeof body.entityId === "string" && body.entityId.trim().length > 0
+      ? body.entityId.trim()
+      : null;
 
   // Sanitize + collapse same-role runs. Anthropic rejects consecutive
   // user/user or assistant/assistant turns; same defense ai-workspace
@@ -92,13 +117,39 @@ export async function POST(req: NextRequest) {
   // a tenant.
   const org = await getCurrentOrg();
 
+  // Page-aware entity block. Built first so it sits at the top of
+  // the system prompt and Claude reads the record before the global
+  // rules. build*Context already includes its own header sentence
+  // identifying the record, so we just bracket it with a "currently
+  // viewing" framing line that tells Claude to answer about this
+  // record without asking the recruiter to clarify.
+  let entityBlock = "";
+  if (entityType && entityId) {
+    try {
+      const built =
+        entityType === "candidate"
+          ? await buildCandidateContext(entityId)
+          : entityType === "client"
+            ? await buildClientContext(entityId)
+            : await buildJobContext(entityId);
+      entityBlock =
+        built +
+        "\n\nThe recruiter is currently viewing this record. Answer questions about it directly without asking for clarification.\n\n";
+    } catch {
+      // Don't fail the chat just because the page context lookup hit
+      // a snag — fall back to the unscoped prompt and let Claude
+      // answer generically.
+      entityBlock = "";
+    }
+  }
+
   // Personal Trainer rules — Andrew-curated standing instructions
   // (no em dashes, no emojis, no signoff, voice rules, etc.) sourced
   // from Settings > Personal Trainer. Appended last so they sit
   // closest to the model's response and override any earlier prompt
   // that drifts. Same pattern as /api/ai-workspace/route.ts.
   const fullSystemPrompt =
-    SYSTEM_PROMPT + (await buildPersonalTrainerBlock(org.id));
+    entityBlock + SYSTEM_PROMPT + (await buildPersonalTrainerBlock(org.id));
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream({

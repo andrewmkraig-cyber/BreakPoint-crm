@@ -4,9 +4,11 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { usePathname } from "next/navigation";
 
 // Hoists the global Claude Panel's open/closed state up to Providers
 // so it persists across page navigation. Mirrors the FloatingThread
@@ -14,6 +16,10 @@ import {
 // React portal at document.body. TopBar's Sparkles button toggles
 // `open`; closing keeps the panel out of the tree but the next mount
 // rehydrates the transcript from /api/claude-panel/messages.
+//
+// Phase 3: also derives the active page entity (candidate / client /
+// job + id) from usePathname so the panel can pass that record's
+// context to the chat route and show a name pill in the header.
 
 const DEFAULT_W = 420;
 const DEFAULT_H = 560;
@@ -25,16 +31,42 @@ const EDGE_GAP = 24;
 
 export type ClaudePanelPosition = { x: number; y: number };
 export type ClaudePanelSize = { w: number; h: number };
+export type ClaudePanelEntityType = "candidate" | "client" | "job";
 
 type ClaudePanelCtx = {
   open: boolean;
   position: ClaudePanelPosition | null;
   size: ClaudePanelSize;
+  entityType: ClaudePanelEntityType | null;
+  entityId: string | null;
   toggle: () => void;
   close: () => void;
   setPosition: (next: ClaudePanelPosition) => void;
   setSize: (next: ClaudePanelSize) => void;
 };
+
+// Reserved children of /candidates, /clients, /jobs that aren't entity
+// detail pages. Anything else after the section root is treated as an
+// id (cuid or legacy numeric RF id — both shapes pass straight through
+// to the build*Context resolvers).
+const RESERVED_SEGMENTS = new Set(["new", "lists"]);
+
+function deriveEntityFromPath(
+  pathname: string | null,
+): { entityType: ClaudePanelEntityType; entityId: string } | null {
+  if (!pathname) return null;
+  const match = pathname.match(/^\/(candidates|clients|jobs)\/([^\/?#]+)/);
+  if (!match) return null;
+  const [, section, segment] = match;
+  if (RESERVED_SEGMENTS.has(segment)) return null;
+  const entityType: ClaudePanelEntityType =
+    section === "candidates"
+      ? "candidate"
+      : section === "clients"
+        ? "client"
+        : "job";
+  return { entityType, entityId: segment };
+}
 
 const Context = createContext<ClaudePanelCtx | null>(null);
 
@@ -52,6 +84,17 @@ export function ClaudePanelProvider({ children }: { children: ReactNode }) {
     w: DEFAULT_W,
     h: DEFAULT_H,
   });
+
+  // usePathname re-runs on every client navigation, so the derived
+  // entity stays in sync with the URL automatically — no effect needed.
+  const pathname = usePathname();
+  const { entityType, entityId } = useMemo(() => {
+    const derived = deriveEntityFromPath(pathname);
+    return {
+      entityType: derived?.entityType ?? null,
+      entityId: derived?.entityId ?? null,
+    };
+  }, [pathname]);
 
   const toggle = useCallback(() => {
     setOpen((prev) => {
@@ -86,7 +129,17 @@ export function ClaudePanelProvider({ children }: { children: ReactNode }) {
 
   return (
     <Context.Provider
-      value={{ open, position, size, toggle, close, setPosition, setSize }}
+      value={{
+        open,
+        position,
+        size,
+        entityType,
+        entityId,
+        toggle,
+        close,
+        setPosition,
+        setSize,
+      }}
     >
       {children}
     </Context.Provider>

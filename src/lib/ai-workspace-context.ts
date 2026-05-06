@@ -723,3 +723,53 @@ export async function buildJobContext(jobId: string): Promise<string> {
 
   return lines.join("\n");
 }
+
+// Lightweight display-name resolver for the Claude Panel header pill.
+// Doesn't run the full build*Context payload — those queries fan out
+// to RF + a dozen Neon tables to assemble a system prompt, way more
+// work than a name lookup needs. This stays minimal: one indexed
+// SELECT per type, scoped to the current org. Returns null when the
+// id doesn't resolve so the pill can hide instead of showing a stale
+// fallback.
+export async function getEntityDisplayName(
+  type: "candidate" | "client" | "job",
+  id: string,
+): Promise<string | null> {
+  const org = await getCurrentOrg();
+  if (type === "candidate") {
+    const candidate = /^\d+$/.test(id)
+      ? await prisma.candidate.findFirst({
+          where: { rfId: Number(id), organizationId: org.id },
+          select: { firstName: true, lastName: true },
+        })
+      : await prisma.candidate.findFirst({
+          where: { id, organizationId: org.id },
+          select: { firstName: true, lastName: true },
+        });
+    if (!candidate) return null;
+    return [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || null;
+  }
+  if (type === "client") {
+    const client = /^-?\d+$/.test(id)
+      ? await prisma.client.findFirst({
+          where: { legacyRfId: Number(id), organizationId: org.id },
+          select: { name: true },
+        })
+      : await prisma.client.findFirst({
+          where: { id, organizationId: org.id },
+          select: { name: true },
+        });
+    return client?.name || null;
+  }
+  // job
+  const job = /^\d+$/.test(id)
+    ? await prisma.job.findFirst({
+        where: { legacyRfId: Number(id), organizationId: org.id },
+        select: { title: true },
+      })
+    : await prisma.job.findFirst({
+        where: { id, organizationId: org.id },
+        select: { title: true },
+      });
+  return job?.title || null;
+}

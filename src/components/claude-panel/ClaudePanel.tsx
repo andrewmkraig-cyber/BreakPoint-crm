@@ -42,8 +42,16 @@ type Message = {
 const STREAMING_ID = "__streaming__";
 
 export function ClaudePanel() {
-  const { open, position, size, close, setPosition, setSize } =
-    useClaudePanel();
+  const {
+    open,
+    position,
+    size,
+    entityType,
+    entityId,
+    close,
+    setPosition,
+    setSize,
+  } = useClaudePanel();
   const { z, bringToFront } = useFloatingZ(open);
 
   const [mounted, setMounted] = useState(false);
@@ -52,6 +60,7 @@ export function ClaudePanel() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [entityName, setEntityName] = useState<string | null>(null);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +105,35 @@ export function ClaudePanel() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [open, messages]);
+
+  // Resolve the active entity's display name for the header pill.
+  // Runs on every type/id change (i.e. client navigation) so the pill
+  // tracks the URL even when the panel stays open across pages.
+  // Cleared when the route leaves a candidate/client/job page.
+  useEffect(() => {
+    if (!entityType || !entityId) {
+      setEntityName(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/claude-panel/entity-name?type=${encodeURIComponent(entityType)}&id=${encodeURIComponent(entityId)}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = (await res.json()) as { ok?: boolean; name?: string | null };
+        if (cancelled) return;
+        setEntityName(typeof data?.name === "string" ? data.name : null);
+      } catch {
+        if (!cancelled) setEntityName(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [entityType, entityId]);
 
   // Auto-grow the textarea up to ~6 rows. Reset to auto first so
   // shrinking on backspace works.
@@ -288,6 +326,8 @@ export function ClaudePanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages: [...priorHistory, { role: "user", content: text }],
+          entityType,
+          entityId,
         }),
       });
       if (!res.ok || !res.body) {
@@ -418,8 +458,18 @@ export function ClaudePanel() {
         onPointerDown={onHeaderPointerDown}
         className="flex shrink-0 cursor-grab select-none items-center gap-2 border-b border-court-border px-4 py-2 active:cursor-grabbing"
       >
-        <div className="flex-1 font-serif text-base font-medium text-court-fg">
-          Ace Assistant
+        <div className="flex flex-1 items-center gap-2 min-w-0">
+          <span className="font-serif text-base font-medium text-court-fg">
+            Ace Assistant
+          </span>
+          {entityName && (
+            <span
+              title={entityName}
+              className="truncate rounded-full bg-court-surface-subtle px-2 py-0.5 text-xs text-court-fg"
+            >
+              {entityName}
+            </span>
+          )}
         </div>
         <button
           type="button"
