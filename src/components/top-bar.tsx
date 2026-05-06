@@ -31,11 +31,11 @@ export function TopBar() {
           aria-label="Toggle Ace Assistant"
           aria-pressed={claudeOpen}
           className={
-            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-court-surface-subtle " +
+            "inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full transition hover:bg-court-surface-subtle " +
             (claudeOpen ? "text-court-brand" : "text-court-fg-muted hover:text-court-fg")
           }
         >
-          <InConversation size={28} />
+          <InConversation size={36} />
         </button>
       </div>
 
