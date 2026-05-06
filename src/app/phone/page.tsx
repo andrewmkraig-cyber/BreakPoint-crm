@@ -36,11 +36,11 @@ export default async function PhonePage() {
 
   // Viewport-bounded flex column so the threads list + dialer fit the
   // visible area exactly without the page itself scrolling. Height is
-  // 100vh minus the AppShell's main padding (p-6 mobile, md:p-8 above
-  // md). Inner panes (threads list, detail pane) handle their own
-  // overflow.
+  // 100vh minus the AppShell's TopBar (h-20 = 5rem) plus main padding
+  // (p-6 = 3rem combined mobile, md:p-8 = 4rem combined md+). Inner
+  // panes (threads list, detail pane) handle their own overflow.
   return (
-    <div className="flex h-[calc(100vh-3rem)] flex-col md:h-[calc(100vh-4rem)]">
+    <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
       <PageHeader
         eyebrow="Phone"
         title="Calls & Texts"
