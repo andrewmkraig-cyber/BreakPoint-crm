@@ -25,21 +25,21 @@ export function TopBar() {
           </div>
         </div>
         <ComposeFAB />
-      </div>
-
-      <div className="flex items-center gap-1">
         <button
           type="button"
           onClick={toggleClaude}
           aria-label="Toggle Claude panel"
           aria-pressed={claudeOpen}
           className={
-            "rounded-md p-2 transition hover:bg-court-surface-subtle " +
+            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition hover:bg-court-surface-subtle " +
             (claudeOpen ? "text-court-brand" : "text-court-fg-muted hover:text-court-fg")
           }
         >
-          <InConversation size={20} />
+          <InConversation size={28} />
         </button>
+      </div>
+
+      <div className="flex items-center gap-1">
         <TopBarProfileCard name={user?.name ?? null} imageUrl={user?.image ?? null} />
       </div>
     </header>
