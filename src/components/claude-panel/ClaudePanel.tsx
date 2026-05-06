@@ -9,6 +9,7 @@ import {
   CLAUDE_PANEL_MIN_W,
   useClaudePanel,
 } from "@/lib/claude-panel-context";
+import { useFloatingZ } from "@/lib/floating-z";
 import { Button } from "@/components/ui/button";
 import {
   CopyButton,
@@ -43,6 +44,7 @@ const STREAMING_ID = "__streaming__";
 export function ClaudePanel() {
   const { open, position, size, close, setPosition, setSize } =
     useClaudePanel();
+  const { z, bringToFront } = useFloatingZ(open);
 
   const [mounted, setMounted] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -147,41 +149,72 @@ export function ClaudePanel() {
     [position, size, setPosition],
   );
 
-  const onResizePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (e.button !== 0) return;
-      e.stopPropagation();
-      const node = panelRef.current;
-      if (!node) return;
-      const startPx = e.clientX;
-      const startPy = e.clientY;
-      const startW = size.w;
-      const startH = size.h;
-      let nextW = startW;
-      let nextH = startH;
-      let rafId = 0;
-      node.style.willChange = "width, height";
-      const flush = () => {
-        rafId = 0;
-        node.style.width = `${nextW}px`;
-        node.style.height = `${nextH}px`;
-      };
-      const onMove = (ev: PointerEvent) => {
-        nextW = Math.max(CLAUDE_PANEL_MIN_W, startW + ev.clientX - startPx);
-        nextH = Math.max(CLAUDE_PANEL_MIN_H, startH + ev.clientY - startPy);
-        if (rafId === 0) rafId = requestAnimationFrame(flush);
-      };
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
-        if (rafId !== 0) cancelAnimationFrame(rafId);
-        node.style.willChange = "";
-        setSize({ w: nextW, h: nextH });
-      };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
-    },
-    [size, setSize],
+  // Generic corner-resize handler. Each corner pins the OPPOSITE corner
+  // and lets the dragged corner move — so a top-left drag grows the
+  // panel up-and-left while the bottom-right corner stays put. Width
+  // and height (and, for tl/bl, left/top) are mutated directly during
+  // drag for the same GPU-friendly reason the BR-only handler used,
+  // then committed to context state on pointerup so the next render
+  // pins the new geometry via React style props.
+  const onCornerPointerDown = useCallback(
+    (corner: "tl" | "bl" | "br") =>
+      (e: React.PointerEvent<HTMLDivElement>) => {
+        if (e.button !== 0) return;
+        e.stopPropagation();
+        const node = panelRef.current;
+        if (!node || !position) return;
+        const startPx = e.clientX;
+        const startPy = e.clientY;
+        const startW = size.w;
+        const startH = size.h;
+        const startX = position.x;
+        const startY = position.y;
+        let nextW = startW;
+        let nextH = startH;
+        let nextX = startX;
+        let nextY = startY;
+        let rafId = 0;
+        node.style.willChange = "width, height, left, top";
+        const flush = () => {
+          rafId = 0;
+          node.style.width = `${nextW}px`;
+          node.style.height = `${nextH}px`;
+          node.style.left = `${nextX}px`;
+          node.style.top = `${nextY}px`;
+        };
+        const onMove = (ev: PointerEvent) => {
+          const dx = ev.clientX - startPx;
+          const dy = ev.clientY - startPy;
+          if (corner === "br") {
+            nextW = Math.max(CLAUDE_PANEL_MIN_W, startW + dx);
+            nextH = Math.max(CLAUDE_PANEL_MIN_H, startH + dy);
+          } else if (corner === "bl") {
+            nextW = Math.max(CLAUDE_PANEL_MIN_W, startW - dx);
+            nextH = Math.max(CLAUDE_PANEL_MIN_H, startH + dy);
+            // Pin the right edge: left moves only by however much the
+            // width actually changed (which the MIN_W clamp may shrink).
+            nextX = startX + (startW - nextW);
+          } else {
+            // tl: pin the bottom-right corner.
+            nextW = Math.max(CLAUDE_PANEL_MIN_W, startW - dx);
+            nextH = Math.max(CLAUDE_PANEL_MIN_H, startH - dy);
+            nextX = startX + (startW - nextW);
+            nextY = startY + (startH - nextH);
+          }
+          if (rafId === 0) rafId = requestAnimationFrame(flush);
+        };
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+          if (rafId !== 0) cancelAnimationFrame(rafId);
+          node.style.willChange = "";
+          setSize({ w: nextW, h: nextH });
+          setPosition({ x: nextX, y: nextY });
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+      },
+    [position, size, setPosition, setSize],
   );
 
   async function persist(role: "user" | "assistant", content: string) {
@@ -365,12 +398,14 @@ export function ClaudePanel() {
       ref={panelRef}
       role="dialog"
       aria-label="Claude chat"
-      className="pointer-events-auto fixed z-[1000] flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+      onPointerDownCapture={bringToFront}
+      className="pointer-events-auto fixed flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       style={{
         left: `${position.x}px`,
         top: `${position.y}px`,
         width: `${size.w}px`,
         height: `${size.h}px`,
+        zIndex: z,
         contain: "layout paint",
       }}
     >
@@ -501,10 +536,32 @@ export function ClaudePanel() {
         </div>
       </div>
 
+      {/* Corner resize handles. TL pins the bottom-right corner, BL
+          pins the top-right, BR pins the top-left (the original
+          mail-thread behavior). Each handle stops propagation so the
+          header drag handler can't fire from a corner click. */}
       <div
-        onPointerDown={onResizePointerDown}
-        aria-label="Resize"
-        className="absolute bottom-0 right-0 h-4 w-4 cursor-nwse-resize"
+        onPointerDown={onCornerPointerDown("tl")}
+        aria-label="Resize from top-left"
+        className="absolute left-0 top-0 z-10 h-3.5 w-3.5 cursor-nwse-resize"
+        style={{
+          background:
+            "linear-gradient(315deg, transparent 50%, rgba(0,0,0,0.18) 50%)",
+        }}
+      />
+      <div
+        onPointerDown={onCornerPointerDown("bl")}
+        aria-label="Resize from bottom-left"
+        className="absolute bottom-0 left-0 z-10 h-3.5 w-3.5 cursor-nesw-resize"
+        style={{
+          background:
+            "linear-gradient(225deg, transparent 50%, rgba(0,0,0,0.18) 50%)",
+        }}
+      />
+      <div
+        onPointerDown={onCornerPointerDown("br")}
+        aria-label="Resize from bottom-right"
+        className="absolute bottom-0 right-0 z-10 h-4 w-4 cursor-nwse-resize"
         style={{
           background:
             "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.18) 50%)",

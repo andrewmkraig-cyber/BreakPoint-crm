@@ -63,6 +63,7 @@ import {
   type MailMergeContext,
 } from "@/lib/mail-merge-fields";
 import { useMinimizedDrafts } from "@/lib/minimized-drafts-context";
+import { useFloatingZ } from "@/lib/floating-z";
 
 // Inline reply composer for the Mail Tab. Hangs off a thread, sends
 // through /api/mail/threads/[id]/reply, then lets the parent refresh
@@ -207,6 +208,11 @@ export function MailComposer({
   onClose,
   onSent,
 }: Props) {
+  // Click-to-front: bumps this composer above other floating windows
+  // (Claude Panel, peer composers) when the user touches it. Active
+  // only in modal/portal modes — the inline reply path doesn't
+  // overlap other windows.
+  const { z: floatingZ, bringToFront } = useFloatingZ(asModal);
   const [to, setTo] = useState(defaultTo);
   const [cc, setCc] = useState(defaultCc ?? "");
   const [bcc, setBcc] = useState(defaultBcc ?? "");
@@ -1481,8 +1487,9 @@ export function MailComposer({
       <div
         role="dialog"
         aria-modal={nonBlocking ? "false" : "true"}
+        style={{ zIndex: floatingZ }}
         className={cn(
-          "fixed inset-0 z-[100]",
+          "fixed inset-0",
           // In non-blocking mode the wrapper itself must let pointer
           // events through so clicks on the page underneath aren't
           // intercepted. The composer card below re-enables pointer
@@ -1500,6 +1507,7 @@ export function MailComposer({
             top/left/width/height so the user can drag and resize it. */}
         <div
           onClick={(e) => e.stopPropagation()}
+          onPointerDownCapture={bringToFront}
           style={{ left: pos.x, top: pos.y, width: size.w, height: size.h }}
           className={cn("absolute", nonBlocking && "pointer-events-auto")}
         >
