@@ -8,6 +8,7 @@ import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
 import { LocalEditableIdentity } from "@/app/candidates/[id]/local-editable-identity";
+import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import AiWorkspace from "@/components/AiWorkspace";
@@ -494,17 +495,14 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             }}
           />
           <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
-          {candidate.skills.length > 0 && (
-            <ProfileAccordion title="Skills">
-              <div className="flex flex-wrap gap-1.5">
-                {candidate.skills.map((s) => (
-                  <span key={s} className="rounded-full border border-court-border bg-court-surface-subtle/60 px-2.5 py-0.5 text-xs text-court-fg">
-                    {s}
-                  </span>
-                ))}
-              </div>
-            </ProfileAccordion>
-          )}
+          {/* Skills feeds the search + Find Matches surfaces, so it's
+              always editable. The card stays mounted even when empty
+              so a recruiter can add the first skill without needing
+              to re-run a parser. */}
+          <LocalEditableSkills
+            candidateId={candidate.id}
+            initial={candidate.skills ?? []}
+          />
         </aside>
 
         <div className="space-y-4 lg:col-span-7">
@@ -565,19 +563,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
   );
 }
 
-// Native <details> gives free open/close + keyboard a11y. Mirror of the
-// RF-imported page's accordion so both paths use the same shell.
-function ProfileAccordion({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <details className="group rounded-xl border border-court-border bg-court-surface shadow-sm">
-      <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3">
-        <span className="font-serif text-base font-semibold text-court-fg">{title}</span>
-        <span className="text-xs text-court-fg-muted transition-transform group-open:rotate-180">▾</span>
-      </summary>
-      <div className="border-t border-court-border p-5">{children}</div>
-    </details>
-  );
-}
 
 function LocalNotesTab({
   candidateId,

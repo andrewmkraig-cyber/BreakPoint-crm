@@ -25,6 +25,8 @@ export type LocalCandidatePatch = {
   phone?: string | null;
   location?: string | null;
   linkedinProfile?: string | null;
+  // Skills - dedupe + trim is the caller's job; we just write the array.
+  skills?: string[];
 };
 
 export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<Result> {
@@ -36,7 +38,10 @@ export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<
   // every string field; collapse empties to null so the column actually
   // clears when the recruiter erases a value (instead of writing the
   // empty string and leaving "—" rendering as a stray space).
-  const data: Record<string, string | null> = {};
+  // Skills is a Postgres String[] column so it lives in the same data
+  // object but typed as string[] - prisma rejects mixing scalar + array
+  // shapes if we narrow the type, so the data record stays loose.
+  const data: Record<string, string | null | string[]> = {};
   if ("firstName" in patch) {
     data.firstName = patch.firstName?.trim() || "";
     // firstName is required on the schema; refuse a clear that would
@@ -63,6 +68,9 @@ export async function updateLocalCandidate(patch: LocalCandidatePatch): Promise<
   }
   if ("linkedinProfile" in patch) {
     data.linkedinProfile = patch.linkedinProfile?.trim() || null;
+  }
+  if ("skills" in patch && Array.isArray(patch.skills)) {
+    data.skills = patch.skills;
   }
   if (Object.keys(data).length === 0) return { ok: true };
 

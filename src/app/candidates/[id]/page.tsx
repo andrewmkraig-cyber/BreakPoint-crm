@@ -571,9 +571,11 @@ export default async function CandidateProfilePage({
               surface so identity info lives in one place. */}
           <EditableIdentity candidateId={id} initial={identityInitial} />
           <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
-          <ProfileAccordion title="Skills">
-            <EditableSkills candidateId={id} initial={skillsInitial} />
-          </ProfileAccordion>
+          {/* Skills feeds search + Find Matches, so the card is
+              always-on and inline-editable (chips + Add input).
+              EditableSkills ships its own SectionCard shell so we
+              don't double-wrap it in ProfileAccordion. */}
+          <EditableSkills candidateId={id} initial={skillsInitial} />
         </aside>
 
         <div className="space-y-4 lg:col-span-7">
@@ -642,20 +644,6 @@ export default async function CandidateProfilePage({
   );
 }
 
-// Native <details> gives free open/close + keyboard a11y. Wrapping each
-// existing Editable* card in this accordion keeps the edit semantics
-// intact — clicking the summary just shows/hides the form below.
-function ProfileAccordion({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <details className="group rounded-xl border border-court-border bg-court-surface shadow-sm">
-      <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-3">
-        <span className="font-serif text-base font-semibold text-court-fg">{title}</span>
-        <span className="text-xs text-court-fg-muted transition-transform group-open:rotate-180">▾</span>
-      </summary>
-      <div className="border-t border-court-border p-5">{children}</div>
-    </details>
-  );
-}
 
 function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
   // Segmented-control pill row. Active tab is a lifted white pill inside
