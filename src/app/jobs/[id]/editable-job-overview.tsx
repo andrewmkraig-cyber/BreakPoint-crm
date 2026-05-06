@@ -318,31 +318,36 @@ export function EditableJobOverview({
         </div>
       )}
       {state.applyLink && (
-        <div className="flex items-center gap-1.5 border-t border-court-border px-4 py-3">
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                await navigator.clipboard.writeText(state.applyLink!);
-                toast.success("Apply link copied");
-              } catch {
-                toast.error("Couldn't copy link");
-              }
-            }}
-            title="Copy public apply link"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
-          >
-            <Copy className="h-3.5 w-3.5" />
-          </button>
-          <a
-            href={state.applyLink}
-            target="_blank"
-            rel="noreferrer"
-            title="Open public apply link"
-            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </a>
+        <div className="space-y-1.5 border-t border-court-border px-4 py-3">
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+            Public Apply Link
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(state.applyLink!);
+                  toast.success("Apply link copied");
+                } catch {
+                  toast.error("Couldn't copy link");
+                }
+              }}
+              title="Copy public apply link"
+              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+            >
+              <Copy className="h-3.5 w-3.5" /> Copy link
+            </button>
+            <a
+              href={state.applyLink}
+              target="_blank"
+              rel="noreferrer"
+              title="Open public apply link in a new tab"
+              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+            >
+              <ExternalLink className="h-3.5 w-3.5" /> Open
+            </a>
+          </div>
         </div>
       )}
     </aside>
