@@ -392,7 +392,10 @@ function MessageBubble({
 // page never gets navigated away when the recruiter clicks a job
 // listing. Tailwind classes mirror the bubble's existing token palette
 // — no global "prose" plugin needed for this scope.
-function MarkdownContent({ content }: { content: string }) {
+//
+// Exported for reuse in the global Claude Panel so both surfaces render
+// assistant content identically.
+export function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="space-y-2 [&_p]:my-0 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-0.5 [&_strong]:font-semibold [&_h1]:mt-2 [&_h1]:font-semibold [&_h2]:mt-2 [&_h2]:font-semibold [&_h3]:mt-2 [&_h3]:font-semibold [&_code]:rounded [&_code]:bg-court-border/40 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]">
       <ReactMarkdown
@@ -423,7 +426,7 @@ function MarkdownContent({ content }: { content: string }) {
 // lines to single newlines, and converts `[text](url)` to `text - url`
 // so a paste into Gmail / iMessage / SMS reads as formatted text and
 // not as raw markdown punctuation.
-function flattenMarkdownForClipboard(input: string): string {
+export function flattenMarkdownForClipboard(input: string): string {
   let out = input.replace(
     /\[([^\]]+)\]\(([^)\s]+)\)/g,
     (_match, text: string, url: string) => `${text} - ${url}`,
@@ -487,7 +490,7 @@ function renderMarkdownInline(text: string): string {
   return out;
 }
 
-function markdownToCleanHtml(input: string): string {
+export function markdownToCleanHtml(input: string): string {
   const lines = input.split(/\r?\n/);
   const out: string[] = [];
   let listKind: "ul" | "ol" | null = null;
@@ -572,7 +575,7 @@ function markdownToCleanHtml(input: string): string {
 // markers stay as-is — they're cosmetically harmless in plaintext and
 // some clients still highlight them. Shows a checkmark for 2s on
 // success.
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
   async function onCopy() {
@@ -633,7 +636,7 @@ function formatTimestamp(iso: string): string {
 // commentary). Andrew's signature is set up in Ace and is appended on
 // send, so the format endpoint strips any trailing "Talk soon, Andrew
 // Kraig / BreakPoint Talent" the model emitted to avoid double-signing.
-function EmailThisButton({
+export function EmailThisButton({
   email,
   entityType,
   entityId,
@@ -641,7 +644,11 @@ function EmailThisButton({
   content,
 }: {
   email: string;
-  entityType: "client" | "candidate" | "job";
+  // "panel" is the sentinel used by the global Claude Panel — no
+  // entity context, so format-email skips the candidate lookup and
+  // defaults the greeting to "Hi there,". The recruiter retypes the
+  // recipient in the composer's To: field.
+  entityType: "client" | "candidate" | "job" | "panel";
   entityId: string;
   candidateRef?: string;
   content: string;

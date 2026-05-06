@@ -10,6 +10,11 @@ import {
   useClaudePanel,
 } from "@/lib/claude-panel-context";
 import { Button } from "@/components/ui/button";
+import {
+  CopyButton,
+  EmailThisButton,
+  MarkdownContent,
+} from "@/components/AiWorkspace";
 
 // Floating, draggable, resizable Claude chat panel. Mirrors the
 // FloatingThreadWindow pattern: portal to document.body, GPU-composited
@@ -410,27 +415,51 @@ export function ClaudePanel() {
             </div>
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-3">
             {messages.map((m) => {
               const isStreaming = m.id === STREAMING_ID;
+              const isUser = m.role === "user";
+              const showActions = !isUser && !isStreaming && m.content.trim().length > 0;
               return (
                 <div
                   key={m.id}
-                  className={
-                    m.role === "user"
-                      ? "ml-auto max-w-[85%] rounded-2xl bg-court-brand px-3 py-2 text-sm text-white"
-                      : "mr-auto max-w-[85%] rounded-2xl bg-court-surface-subtle px-3 py-2 text-sm text-court-fg"
-                  }
+                  className={isUser ? "flex flex-col items-end" : "flex flex-col items-start"}
                 >
-                  <div className="whitespace-pre-wrap break-words">
-                    {m.content}
-                    {isStreaming && (
-                      <span
-                        aria-hidden="true"
-                        className="ml-0.5 inline-block h-3.5 w-[2px] -translate-y-px animate-pulse bg-court-brand align-middle"
-                      />
+                  <div
+                    className={
+                      (isUser
+                        ? "ml-auto max-w-[85%] rounded-2xl bg-court-brand px-3 py-2 text-sm text-white"
+                        : "relative mr-auto max-w-[85%] rounded-2xl bg-court-surface-subtle px-3 py-2 text-sm text-court-fg") +
+                      (showActions ? " pb-7" : "")
+                    }
+                  >
+                    {isUser ? (
+                      <div className="whitespace-pre-wrap break-words">
+                        {m.content}
+                      </div>
+                    ) : (
+                      <>
+                        <MarkdownContent content={m.content} />
+                        {isStreaming && (
+                          <span
+                            aria-hidden="true"
+                            className="ml-0.5 inline-block h-3.5 w-[2px] -translate-y-px animate-pulse bg-court-brand align-middle"
+                          />
+                        )}
+                      </>
                     )}
+                    {showActions && <CopyButton text={m.content} />}
                   </div>
+                  {showActions && (
+                    <div className="mt-1 flex items-center gap-2">
+                      <EmailThisButton
+                        email=""
+                        entityType="panel"
+                        entityId="global"
+                        content={m.content}
+                      />
+                    </div>
+                  )}
                 </div>
               );
             })}
