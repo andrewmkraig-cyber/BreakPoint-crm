@@ -21,6 +21,10 @@ import {
   EditableJobOverview,
   type JobOverviewInitial,
 } from "@/app/jobs/[id]/editable-job-overview";
+import {
+  JobOverviewTab,
+  type JobOverviewSnapshot,
+} from "@/app/jobs/[id]/job-overview-tab";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import AiWorkspace from "@/components/AiWorkspace";
 import { prisma } from "@/lib/prisma";
@@ -28,7 +32,35 @@ import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-type JobTab = "description" | "game-plan";
+// 8-tab job detail surface. Overview is the default landing tab so the
+// recruiter sees a snapshot + quick actions before drilling into the
+// specific surface. Pipeline / Matches / Promote / Activity / Billing
+// are stubbed until those flows land.
+type JobTab =
+  | "overview"
+  | "description"
+  | "pipeline"
+  | "matches"
+  | "game-plan"
+  | "promote"
+  | "activity"
+  | "billing";
+
+const JOB_TABS: { id: JobTab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "description", label: "Job Description" },
+  { id: "pipeline", label: "Pipeline" },
+  { id: "matches", label: "Matches" },
+  { id: "game-plan", label: "Game Plan" },
+  { id: "promote", label: "Promote" },
+  { id: "activity", label: "Activity" },
+  { id: "billing", label: "Billing" },
+];
+
+function parseTab(raw: string | undefined): JobTab {
+  const found = JOB_TABS.find((t) => t.id === raw);
+  return found ? found.id : "overview";
+}
 
 export default async function JobDetailPage({
   params,
@@ -237,24 +269,28 @@ export default async function JobDetailPage({
 
   // Client slug for the "Client profile" button. Prefer the Client row's
   // legacyRfId (back-compat URLs); fall back to cuid for Ace-native.
-  const clientSlug = jobRow.clientId
-    ? await (async () => {
-        const cl = await prisma.client.findUnique({
-          where: { id: jobRow.clientId! },
-          select: { id: true, legacyRfId: true },
-        });
-        if (!cl) return null;
-        return cl.legacyRfId != null ? String(cl.legacyRfId) : cl.id;
-      })()
+  // Also pulls customFields so the Overview tab can derive fee % (no
+  // dedicated column — same parse the /clients list uses).
+  const clientRow = jobRow.clientId
+    ? await prisma.client.findUnique({
+        where: { id: jobRow.clientId },
+        select: { id: true, legacyRfId: true, customFields: true },
+      })
     : null;
+  const clientSlug = clientRow
+    ? clientRow.legacyRfId != null
+      ? String(clientRow.legacyRfId)
+      : clientRow.id
+    : null;
+  const clientFeePct = extractFeePct(clientRow?.customFields ?? null);
 
   // Description read order: JobOverride (RF-imported only) > Job.description
   // (Ace-native native column) > raw.description (RF payload fallback).
   const rfDescription = typeof raw.description === "string" ? raw.description : null;
 
-  // Tab selection from ?tab=. Default Job Description so the recruiter
-  // lands on the role's content rather than the AI workspace.
-  const tab: JobTab = searchParams?.tab === "game-plan" ? "game-plan" : "description";
+  // Tab selection from ?tab=. Default Overview so the recruiter lands
+  // on a snapshot + quick actions before drilling into a specific surface.
+  const tab: JobTab = parseTab(searchParams?.tab);
 
   // Overview reads come from the Job table directly so saves through
   // EditableJobOverview echo on next revalidate without having to keep
@@ -284,6 +320,30 @@ export default async function JobDetailPage({
     billingContact: billingContact || "",
     lastEditedAt: jobRow.updatedAt.toISOString(),
     applyLink: typeof raw.apply_link === "string" ? raw.apply_link : null,
+  };
+
+  // Tab nav slug — RF-imported jobs keep their numeric URLs for back-
+  // compat; Ace-native jobs route on cuid.
+  const slug = isAceNative ? jobRow.id : String(rfId);
+
+  const matchTarget = {
+    kind: "job" as const,
+    jobId: jobRow.id,
+    jobRfId: rfId,
+    label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
+  };
+
+  const overviewSnapshot: JobOverviewSnapshot = {
+    title: job.title,
+    clientName: job.company || "",
+    locations: overviewInitial.locations,
+    isOpen: overviewInitial.isOpen,
+    employmentType: overviewInitial.employmentType,
+    compensation: formatCompSummary(overviewInitial),
+    feePct: clientFeePct,
+    numberOfOpenings: overviewInitial.numberOfOpenings,
+    lastEditedAt: overviewInitial.lastEditedAt,
+    applyLink: overviewInitial.applyLink,
   };
 
   return (
@@ -335,25 +395,26 @@ export default async function JobDetailPage({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
         <div className="space-y-4 lg:col-span-7">
           <div className="flex flex-wrap items-center gap-2">
-            <JobTabs slug={isAceNative ? jobRow.id : String(rfId)} tab={tab} />
-            <FindMatchesButton
-              target={{
-                kind: "job",
-                jobId: jobRow.id,
-                jobRfId: rfId,
-                label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
-              }}
-            />
+            <JobTabs slug={slug} tab={tab} />
+            <FindMatchesButton target={matchTarget} />
           </div>
-          {tab === "game-plan" ? (
-            <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />
-          ) : (
+          {tab === "overview" ? (
+            <JobOverviewTab
+              snapshot={overviewSnapshot}
+              pipelineRows={pipelineRows}
+              matchTarget={matchTarget}
+            />
+          ) : tab === "description" ? (
             <EditableJobDescription
               jobRfId={rfId}
               jobCuid={isAceNative ? jobRow.id : null}
               rfDescription={rfDescription}
               initialOverride={override?.description ?? null}
             />
+          ) : tab === "game-plan" ? (
+            <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />
+          ) : (
+            <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />
           )}
         </div>
         <div className="lg:col-span-3">
@@ -370,11 +431,64 @@ export default async function JobDetailPage({
 
 function JobTabs({ slug, tab }: { slug: string; tab: JobTab }) {
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      <JobTabLink label="Job Description" href={`/jobs/${slug}`} active={tab === "description"} />
-      <JobTabLink label="Game Plan" href={`/jobs/${slug}?tab=game-plan`} active={tab === "game-plan"} />
+    <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
+      {JOB_TABS.map((t) => (
+        <JobTabLink
+          key={t.id}
+          label={t.label}
+          href={t.id === "overview" ? `/jobs/${slug}` : `/jobs/${slug}?tab=${t.id}`}
+          active={tab === t.id}
+        />
+      ))}
     </div>
   );
+}
+
+function TabStub({ label }: { label: string }) {
+  return (
+    <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/50 p-8 text-center">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+        {label}
+      </div>
+      <div className="mt-1 text-sm text-court-fg-muted">Coming soon.</div>
+    </div>
+  );
+}
+
+// Same fee-% parse the /clients list uses, narrowed to the shape Prisma
+// returns for Client.customFields (Json column). Returns null when the
+// field is missing or unparseable.
+function extractFeePct(raw: unknown): number | null {
+  if (!Array.isArray(raw)) return null;
+  for (const f of raw) {
+    if (!f || typeof f !== "object") continue;
+    const name = (f as { name?: unknown }).name;
+    if (typeof name !== "string") continue;
+    const lower = name.toLowerCase();
+    if (!(lower.includes("avg fee") || lower.includes("fee %") || lower.includes("fee percent"))) continue;
+    const value = (f as { value?: unknown }).value;
+    if (typeof value === "number") return value;
+    if (typeof value === "string") {
+      const n = parseFloat(value);
+      return Number.isFinite(n) ? n : null;
+    }
+  }
+  return null;
+}
+
+// Inline summary string for the Overview snapshot. Mirrors the Compensation
+// formatter on EditableJobOverview but lives here so the server component
+// can render it without pulling the client module.
+function formatCompSummary(state: JobOverviewInitial): string {
+  const { salaryRangeStart: lo, salaryRangeEnd: hi, salaryCurrency, salaryFrequency } = state;
+  if (lo == null && hi == null) return "—";
+  const ccy = (salaryCurrency ?? "USD").toUpperCase();
+  const symbol = ccy === "USD" ? "$" : `${ccy} `;
+  const fmt = (n: number) => `${symbol}${n.toLocaleString()}`;
+  const suffix = salaryFrequency === "hourly" ? " / hr" : " / yr";
+  if (lo != null && hi != null && lo !== hi) return `${fmt(lo)} – ${fmt(hi)}${suffix}`;
+  const only = lo ?? hi!;
+  return `${fmt(only)}${suffix}`;
 }
 
 function JobTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {

@@ -1,5 +1,12 @@
 # Ace Roadmap
 
+## Completed - Ace 34.0a Jobs page tab shell + Overview tab (May 6, 2026)
+
+- /jobs/[id] rebuilt around an 8-tab segmented control (Overview default, Job Description, Pipeline, Matches, Game Plan, Promote, Activity, Billing) using Court Mode tokens.
+- Existing Job Description (EditableJobDescription) and Game Plan (AiWorkspace) relocated into their new slots without rebuild.
+- Overview tab body: snapshot facts (employment / location / status / compensation / fee % / openings / last edited), stage-count chip row pulled from Neon pipelineRows, quick-action row (Edit Job stub, real Find Matches, Copy Public Apply Link with clipboard write, Generate JD with Claude stub), Search Health "Coming soon" placeholder.
+- Pipeline / Matches / Promote / Activity / Billing render a shared TabStub until those bodies land.
+
 ## Completed - Ace 33.1 polish (May 6, 2026)
 
 - Candidate profile job bar restructured to Submit / Schedule Interview / Reject (Schedule renamed; Client Sending Invite gated to Submitted/Interviewing only; Reject added at Applied stage).
