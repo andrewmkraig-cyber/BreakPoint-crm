@@ -50,15 +50,15 @@ export function EditWithClaudeMenu({
     return () => document.removeEventListener("mousedown", onDocMouseDown);
   }, [open]);
 
-  // Both variants now render the same canonical dark button — Claude
-  // surfaces are unified across mail composer, popup composer, candidate
-  // profile, etc. The variant prop is preserved on the type signature
-  // for backward compat with existing call sites; the visual is the
-  // same regardless of value. Icon sizes also unified at h-3 w-3 to
-  // match the client-tab Generate-Summary buttons.
+  // Edit-with-Claude is the AI sibling to the Generate-with-Claude
+  // pill. Renders as the shared ai-secondary variant - graphite outlined
+  // pill that reads as a Claude surface in every Court Mode. The
+  // variant prop is preserved on the type signature for backward
+  // compat with existing call sites; both legacy values map to the
+  // same canonical AI styling now.
   void variant;
   const buttonClass =
-    "inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-ink-600 disabled:opacity-60";
+    "inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface text-court-fg px-3 py-2 text-xs font-semibold shadow-sm transition hover:border-[#2A4D38] hover:bg-court-surface-subtle dark:hover:border-[#3A5944] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:opacity-60";
 
   return (
     <div ref={containerRef} className="relative">

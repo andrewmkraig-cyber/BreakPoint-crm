@@ -140,13 +140,16 @@ html[data-surface='clay'][data-theme='light'] {
   --brand:                           90 150  66; /* legacy alias */
 }
 
-/* CLAY COURT - DARK (Roland-Garros, toned) — palette v5 */
+/* CLAY COURT - DARK (Roland-Garros, toned) — palette v5 (button polish:
+   surfaces desaturated by ~5 channels of green/blue so the page reads as
+   warm charcoal instead of raw brown. Lightness held; only the muddy
+   brown saturation is dialed back) */
 html[data-surface='clay'][data-theme='dark'] {
-  --court-bg:                        26  19  16; /* #1A1310 */
-  --court-surface:                   42  27  20; /* #2A1B14 */
-  --court-surface-subtle:            34  21  15; /* #22150F */
-  --court-border:                    61  40  32; /* #3D2820 */
-  --court-border-soft:               53  35  24; /* #352318 */
+  --court-bg:                        28  22  19; /* #1C1613 */
+  --court-surface:                   46  33  26; /* #2E211A */
+  --court-surface-subtle:            38  27  21; /* #261B15 */
+  --court-border:                    64  46  38; /* #402E26 */
+  --court-border-soft:               55  38  28; /* #37261C */
   --court-fg:                       248 235 220; /* #F8EBDC */
   --court-fg-muted:                 212 191 174; /* #D4BFAE */
   --court-fg-dim:                   184 152 130; /* #B89882 */

@@ -1841,11 +1841,13 @@ function ComposerAddonToolbar({
         )}
       </div>
 
-      {/* Generate with Claude */}
+      {/* Generate with Claude — ai-primary, the canonical Claude
+          affirmative pill. Court-Mode-aware graphite green that
+          stays distinct from primary green in every palette. */}
       <button
         type="button"
         onClick={() => setOpenAi(!openAi)}
-        className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-ink-600 disabled:opacity-60"
+        className="inline-flex items-center gap-1.5 rounded-md border border-[#2A4D38] bg-[#1F3A29] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#284A36] dark:border-[#3A5944] dark:bg-[#2D4435] dark:hover:bg-[#37533F] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:opacity-60"
       >
         <Sparkles className="h-3 w-3" /> Generate with Claude
       </button>
