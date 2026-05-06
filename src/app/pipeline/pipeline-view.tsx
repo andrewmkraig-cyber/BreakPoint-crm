@@ -181,7 +181,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                     <DataTableHeaderCell align="center">Stage</DataTableHeaderCell>
                     <DataTableHeaderCell align="center">Last Action</DataTableHeaderCell>
                     <DataTableHeaderCell align="center">Days in Stage</DataTableHeaderCell>
-                    <DataTableHeaderCell align="right">Action</DataTableHeaderCell>
+                    <DataTableHeaderCell align="right" />
                   </>
                 )}
               </tr>

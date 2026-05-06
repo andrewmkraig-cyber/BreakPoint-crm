@@ -5,12 +5,14 @@ import { cn } from "@/lib/utils";
 // (Pipeline, Jobs, Candidates, Applicants, Clients). Centralized so the
 // next round of tweaks lands in one file instead of five.
 //
-// The header is intentionally quieter than the data rows — muted
-// foreground, soft border, light surface tint — so the eye stops on
+// The header is intentionally quieter than the data rows — soft border,
+// light surface tint, muted foreground — so the eye stops on
 // candidates/jobs/clients first and reads the column labels only when
-// it needs to.
+// it needs to. Surface tint is held at /40 so a narrow column ("Last
+// Updated") stays single-row instead of bulking the header up to a
+// double-line band.
 const HEAD_CLS =
-  "border-b border-court-border-soft bg-court-surface-subtle/60 text-[11px] uppercase tracking-wide text-court-fg-muted";
+  "border-b border-court-border-soft bg-court-surface-subtle/40 text-[11px] uppercase tracking-wide text-court-fg-muted";
 
 export function DataTableHead({
   children,
@@ -38,7 +40,7 @@ export function DataTableHeaderCell({
         ? "text-center"
         : "text-left";
   return (
-    <th className={cn("px-5 py-4 font-semibold", alignCls, className)}>
+    <th className={cn("whitespace-nowrap px-5 py-3 font-semibold", alignCls, className)}>
       {children}
     </th>
   );
