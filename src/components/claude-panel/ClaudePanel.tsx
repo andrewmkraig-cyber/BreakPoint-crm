@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Loader2, Send, X } from "lucide-react";
+import { toast } from "sonner";
 import {
   CLAUDE_PANEL_MIN_H,
   CLAUDE_PANEL_MIN_W,
@@ -16,11 +17,12 @@ import { Button } from "@/components/ui/button";
 // scoped to the panel itself. Default dock is bottom-right of the
 // viewport at 420x560 (set in claude-panel-context).
 //
-// Phase 1 ships persistence + UI only. The send flow appends the user
-// message to /api/claude-panel/messages then a placeholder assistant
-// reply ("Claude integration coming in Phase 2.") so the recruiter can
-// see the round-trip storing both sides cleanly. Phase 2 swaps that
-// placeholder for an actual Anthropic call.
+// Send flow: persist the user turn to /api/claude-panel/messages,
+// append an empty assistant bubble locally, stream tokens from
+// /api/claude-panel/chat into that bubble, then persist the assembled
+// assistant turn. The chat route is computation-only — persistence
+// stays exclusively in /messages so a stream interruption can't leave
+// half a row in Neon.
 
 type Message = {
   id: string;
@@ -29,7 +31,9 @@ type Message = {
   createdAt: string;
 };
 
-const PLACEHOLDER_REPLY = "Claude integration coming in Phase 2.";
+// Sentinel id assigned to the assistant bubble while it's streaming.
+// Replaced with the persisted cuid once the final POST resolves.
+const STREAMING_ID = "__streaming__";
 
 export function ClaudePanel() {
   const { open, position, size, close, setPosition, setSize } =
@@ -190,8 +194,8 @@ export function ClaudePanel() {
     if (!text || sending) return;
     setSending(true);
     setDraft("");
-    // Optimistic user bubble — the persist call replaces the temp id
-    // with the server-assigned cuid once it resolves.
+    // Optimistic user bubble — replaced with the server-assigned cuid
+    // once the /messages POST resolves.
     const tempUserId = `tmp-${Date.now()}`;
     const optimisticUser: Message = {
       id: tempUserId,
@@ -199,19 +203,138 @@ export function ClaudePanel() {
       content: text,
       createdAt: new Date().toISOString(),
     };
+    // Snapshot the prior history BEFORE adding the optimistic user
+    // bubble so we can hand Claude a clean transcript ending in this
+    // turn's user content (built below) without the temp row's
+    // unsaved client-only id.
+    const priorHistory = messages.map((m) => ({
+      role: m.role,
+      content: m.content,
+    }));
     setMessages((prev) => [...prev, optimisticUser]);
+
+    let userRow: Message;
     try {
-      const userRow = await persist("user", text);
+      userRow = await persist("user", text);
       setMessages((prev) =>
         prev.map((m) => (m.id === tempUserId ? userRow : m)),
       );
-      const assistantRow = await persist("assistant", PLACEHOLDER_REPLY);
-      setMessages((prev) => [...prev, assistantRow]);
     } catch {
-      // Roll back the optimistic bubble on failure so the user can retry
-      // without a phantom message hanging in the panel.
+      // /messages POST failed — roll back the optimistic bubble and
+      // restore the draft so the user can retry without losing input.
       setMessages((prev) => prev.filter((m) => m.id !== tempUserId));
       setDraft(text);
+      setSending(false);
+      return;
+    }
+
+    // Append a streaming-placeholder assistant bubble that the NDJSON
+    // deltas accumulate into. The pulsing cursor lives inside this
+    // bubble while id === STREAMING_ID; the swap to the persisted
+    // cuid (or removal on error) hides the cursor.
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: STREAMING_ID,
+        role: "assistant",
+        content: "",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    let assembled = "";
+    let streamErr: string | null = null;
+    try {
+      const res = await fetch("/api/claude-panel/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [...priorHistory, { role: "user", content: text }],
+        }),
+      });
+      if (!res.ok || !res.body) {
+        let err = `Chat failed (${res.status})`;
+        try {
+          const j = await res.json();
+          if (typeof j?.error === "string") err = j.error;
+        } catch {
+          // body wasn't JSON — keep the status-based error
+        }
+        throw new Error(err);
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      const handleLine = (raw: string) => {
+        const line = raw.trim();
+        if (!line) return;
+        let event: { t?: unknown; text?: unknown; error?: unknown };
+        try {
+          event = JSON.parse(line);
+        } catch {
+          return;
+        }
+        if (event.t === "delta" && typeof event.text === "string") {
+          assembled += event.text;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === STREAMING_ID ? { ...m, content: assembled } : m,
+            ),
+          );
+        } else if (event.t === "error") {
+          streamErr =
+            typeof event.error === "string" ? event.error : "Stream error";
+        }
+      };
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let idx;
+        while ((idx = buffer.indexOf("\n")) !== -1) {
+          const line = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 1);
+          handleLine(line);
+        }
+      }
+      if (buffer.trim()) handleLine(buffer);
+      if (streamErr) throw new Error(streamErr);
+    } catch (e) {
+      // Stream blew up — drop the empty assistant bubble and surface
+      // the failure via toast. The user's persisted question stays so
+      // they can retry without retyping; we deliberately don't keep
+      // a partial / errored assistant turn in state because feeding
+      // it back into the next request just makes Claude apologize
+      // for an error it didn't produce.
+      const message =
+        e instanceof Error ? e.message : "Chat failed unexpectedly";
+      setMessages((prev) => prev.filter((m) => m.id !== STREAMING_ID));
+      toast.error("Claude couldn't respond", { description: message });
+      setSending(false);
+      return;
+    }
+
+    // Stream finished cleanly. Persist the full assembled content as
+    // the assistant turn and swap the streaming bubble for the
+    // persisted row so the next render's stable cuid drops the
+    // pulsing cursor.
+    try {
+      const assistantRow = await persist("assistant", assembled);
+      setMessages((prev) =>
+        prev.map((m) => (m.id === STREAMING_ID ? assistantRow : m)),
+      );
+    } catch {
+      // Stream succeeded but persistence failed — keep the bubble
+      // visible with the assembled content but mark it as unsaved by
+      // dropping the streaming sentinel. Next page load won't show
+      // this turn; a subsequent send will continue cleanly.
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === STREAMING_ID
+            ? { ...m, id: `unsaved-${Date.now()}` }
+            : m,
+        ),
+      );
     } finally {
       setSending(false);
     }
@@ -288,20 +411,29 @@ export function ClaudePanel() {
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            {messages.map((m) => (
-              <div
-                key={m.id}
-                className={
-                  m.role === "user"
-                    ? "ml-auto max-w-[85%] rounded-2xl bg-court-brand px-3 py-2 text-sm text-white"
-                    : "mr-auto max-w-[85%] rounded-2xl bg-court-surface-subtle px-3 py-2 text-sm text-court-fg"
-                }
-              >
-                <div className="whitespace-pre-wrap break-words">
-                  {m.content}
+            {messages.map((m) => {
+              const isStreaming = m.id === STREAMING_ID;
+              return (
+                <div
+                  key={m.id}
+                  className={
+                    m.role === "user"
+                      ? "ml-auto max-w-[85%] rounded-2xl bg-court-brand px-3 py-2 text-sm text-white"
+                      : "mr-auto max-w-[85%] rounded-2xl bg-court-surface-subtle px-3 py-2 text-sm text-court-fg"
+                  }
+                >
+                  <div className="whitespace-pre-wrap break-words">
+                    {m.content}
+                    {isStreaming && (
+                      <span
+                        aria-hidden="true"
+                        className="ml-0.5 inline-block h-3.5 w-[2px] -translate-y-px animate-pulse bg-court-brand align-middle"
+                      />
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
