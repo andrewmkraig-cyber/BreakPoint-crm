@@ -6,16 +6,23 @@ import { ComposeFAB } from "@/components/mail/compose-fab";
 import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 import { InConversation } from "@/components/icons/in-conversation";
 import { useClaudePanel } from "@/lib/claude-panel-context";
+import { formatEasternWeekRange, getEasternWeekBounds } from "@/lib/week";
 
 export function TopBar() {
   const { data: session } = useSession();
   const user = session?.user;
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
 
+  // Week range replaces the previous "Wed, May 6" eyebrow — the
+  // dashboard relies on this same Mon–Sun ET window for every activity
+  // count, so the topbar surfaces it as the persistent context strip.
+  const weekBounds = getEasternWeekBounds(new Date());
+  const weekLabel = formatEasternWeekRange(weekBounds.start, weekBounds.end);
+
   return (
     <header className="sticky top-0 z-30 flex h-20 items-center justify-between gap-4 bg-court-surface px-6">
       <div className="hidden min-w-0 items-center text-[11px] font-semibold uppercase tracking-[0.14em] text-court-fg-muted lg:flex">
-        {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
+        {weekLabel}
       </div>
 
       <div className="flex flex-1 items-center justify-end gap-3 md:flex-none md:justify-start">

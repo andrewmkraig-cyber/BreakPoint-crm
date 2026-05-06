@@ -118,16 +118,20 @@ function Metric({
 }
 
 // Splits a formatted USD string ("$7.5K", "$0", "$1.2M") so the leading
-// dollar sign renders one step smaller than the numeric value. The
-// numeric span carries the visual weight; the sigil stays present but
-// recedes a touch so the eye lands on the figure first.
+// dollar sign and the trailing K/M suffix both render smaller than the
+// numeric figure. The number carries the visual weight; the sigils
+// recede so the eye lands on the digits first.
 function StatNumber({ value }: { value: string }) {
-  const match = value.match(/^(\$)(.*)$/);
+  const match = value.match(/^(\$)([\d.,]+)([KM]?)$/);
   if (!match) return <>{value}</>;
+  const [, sign, digits, suffix] = match;
   return (
     <>
-      <span className="text-[0.7em] font-semibold align-baseline">{match[1]}</span>
-      {match[2]}
+      <span className="text-[0.55em] font-semibold align-baseline">{sign}</span>
+      {digits}
+      {suffix && (
+        <span className="text-[0.55em] font-semibold align-baseline">{suffix}</span>
+      )}
     </>
   );
 }
