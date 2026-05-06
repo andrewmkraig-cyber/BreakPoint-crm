@@ -1,10 +1,10 @@
 "use client";
 
 import { useSession } from "next-auth/react";
-import { Sparkles } from "lucide-react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
 import { TopBarProfileCard } from "@/components/top-bar-profile-card";
+import { Strung } from "@/components/icons/strung";
 import { useClaudePanel } from "@/lib/claude-panel-context";
 
 export function TopBar() {
@@ -38,7 +38,7 @@ export function TopBar() {
             (claudeOpen ? "text-court-brand" : "text-court-fg-muted hover:text-court-fg")
           }
         >
-          <Sparkles className="h-5 w-5" />
+          <Strung size={20} />
         </button>
         <TopBarProfileCard name={user?.name ?? null} imageUrl={user?.image ?? null} />
       </div>
