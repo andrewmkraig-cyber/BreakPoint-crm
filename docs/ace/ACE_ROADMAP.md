@@ -1,5 +1,11 @@
 # Ace Roadmap
 
+## Completed - Ace 33.1 polish (May 6, 2026)
+
+- Candidate profile job bar restructured to Submit / Schedule Interview / Reject (Schedule renamed; Client Sending Invite gated to Submitted/Interviewing only; Reject added at Applied stage).
+- Candidate-level resume action row (Add to List / Keep / Apply to Job / Add Note) lifted out of the sticky toolbar and parked above the resume header. Submit-to-different-job button retired.
+- New candidate-level toggleCandidateKept action + KeepCandidateButton component (writes Candidate.tags + mirrors raw.tags).
+
 ## In Progress / Needs Fix (top priority — Ace 33.0 candidate)
 
 Ace 32.0 closed clean (May 5, 2026, last SHA 2e2faac). Game Plan Phase 3 live (last 5 tagged emails injected into the ai-workspace prompt for both candidate and client/job context, silent degrade on miss). Email history surfaces shipped on candidate Activity tab + client Email tab (shared TaggedThreadList opens the floating viewer). Personal Trainer rules engine live: PersonalTrainerRule schema + 15 default rules + Settings UI (Trainer / Rules sub-tabs) + GitHub sync to docs/ace/PERSONAL_TRAINER.md on every mutation + buildPersonalTrainerBlock injected into every Claude system prompt across Ace. Settings refactored to left-nav + per-category page layout (Appearance, Notifications, Personal Trainer, Branding, Templates, Triggers, Connectors); Email Preferences tab dropped; Templates split Active / Inactive; Triggers on its own page; Branding renders a server-rendered signature preview. Quo connector status simplified to "API key valid → connected" pending setup-wizard. Phone unread-badge regression fixed (markThreadRead now parses cand: / unk: id prefixes). New Text/Call button on the Phone page header so the dial pad is reachable from any thread. Open issues for 33.0:

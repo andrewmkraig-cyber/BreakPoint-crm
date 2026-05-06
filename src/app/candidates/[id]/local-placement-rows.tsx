@@ -230,14 +230,23 @@ function LocalJobActionRow({
     normalizedStage === "applied" ||
     normalizedStage === "kept";
 
-  // Reject available on the active mid-pipeline stages. Hired, cancelled,
-  // and already-rejected rows don't show it. Sourced/applied/kept also
-  // hide it — those rows haven't been formally engaged yet.
+  // Reject available on the active mid-pipeline stages plus Applied
+  // so the recruiter can dismiss an applicant who isn't a fit without
+  // having to formally Submit them first. Hired, cancelled, sourced,
+  // kept, and already-rejected rows don't show it.
   const canReject =
+    normalizedStage === "applied" ||
     normalizedStage === "submitted" ||
     normalizedStage === "interviewing" ||
     normalizedStage === "offer" ||
     normalizedStage === "pending_start";
+
+  // Client Sending Invite is a status-specific shortcut: it only
+  // makes sense once the candidate is in a stage where the client is
+  // (or might be) scheduling the interview themselves. Default Applied
+  // rows hide it — recruiters reach for Schedule Interview there.
+  const canClientInvite =
+    normalizedStage === "submitted" || normalizedStage === "interviewing";
 
   function onReject() {
     setRejectOpen(true);
@@ -288,47 +297,49 @@ function LocalJobActionRow({
             <span className="truncate text-xs text-court-fg-muted">{formatNextInterviewLocal(nextInterview)}</span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {canSubmit && (
             <Link
               href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
               title="Open submittal composer"
             >
               <Send className="h-3 w-3" /> Submit
             </Link>
           )}
           {canSchedule && (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                variant="schedule"
-                onClick={onSchedule}
-              >
-                <CalendarClock className="h-3 w-3" /> Schedule
-              </Button>
-              <button
-                type="button"
-                onClick={onClientInvite}
-                className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg-muted shadow-sm transition hover:text-court-fg"
-                title="Log an interview the client is scheduling themselves — adds to your calendar only"
-              >
-                <CalendarPlus className="h-3 w-3" /> Client Sending Invite
-              </button>
-            </>
+            <Button
+              type="button"
+              size="sm"
+              variant="schedule"
+              onClick={onSchedule}
+            >
+              <CalendarClock className="h-3 w-3" /> Schedule Interview
+            </Button>
+          )}
+          {canClientInvite && (
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={onClientInvite}
+              title="Log an interview the client is scheduling themselves — adds to your calendar only"
+            >
+              <CalendarPlus className="h-3 w-3" /> Client Sending Invite
+            </Button>
           )}
           {canReject && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="reject"
               onClick={onReject}
               disabled={isRejecting}
-              className="inline-flex items-center justify-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
               title="Reject this candidate for this job"
             >
               {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
               Reject
-            </button>
+            </Button>
           )}
         </div>
       </div>

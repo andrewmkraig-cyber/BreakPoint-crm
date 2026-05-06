@@ -218,6 +218,10 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
       // when the recruiter hits Send in the composer; the inline-action
       // path here used to write the move directly without showing the
       // email, which was the bug the deep-link fix is correcting.
+      // Schedule Interview is exposed at applied so recruiters can skip
+      // straight to scheduling when the client has already greenlit a
+      // call. Keep was retired from this row in favor of the candidate-
+      // level Keep button on the profile resume action bar.
       return (
         <ActionRow disabled={isPending}>
           <NavButton
@@ -227,7 +231,14 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
             title="Open submittal composer"
           />
-          <ActionButton icon={Bookmark} label="Keep" tone="keep" onClick={onKeep} />
+          <DialogOrNav
+            icon={CalendarClock}
+            label="Schedule Interview"
+            title="Schedule Interview"
+            tone="schedule"
+            onClick={props.onSchedule}
+            href={profileHref}
+          />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
@@ -255,15 +266,15 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         </ActionRow>
       );
     case "submitted":
-      // Schedule / Move to Kept / Reject. Move to Kept lets the
-      // recruiter pull a candidate back out of Submitted (e.g. before
-      // the client sees the submittal, or after silence to re-nurture
-      // for a different role) without rejecting them.
+      // Schedule Interview / Move to Kept / Reject. Move to Kept lets
+      // the recruiter pull a candidate back out of Submitted (e.g.
+      // before the client sees the submittal, or after silence to re-
+      // nurture for a different role) without rejecting them.
       return (
         <ActionRow disabled={isPending}>
           <DialogOrNav
             icon={CalendarClock}
-            label="Schedule"
+            label="Schedule Interview"
             title="Schedule Interview"
             tone="schedule"
             onClick={props.onSchedule}
@@ -280,12 +291,12 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         </ActionRow>
       );
     case "interviewing":
-      // Schedule (next round) / Offer / Reject.
+      // Schedule Interview (next round) / Offer / Reject.
       return (
         <ActionRow disabled={isPending}>
           <DialogOrNav
             icon={CalendarClock}
-            label="Schedule"
+            label="Schedule Interview"
             title="Schedule another interview"
             tone="schedule"
             onClick={props.onSchedule}

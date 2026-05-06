@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bookmark, Send, Target } from "lucide-react";
+import { NotebookPen, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
@@ -23,6 +23,7 @@ import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editab
 // BrandResumeButton import removed in 5A.5.a — branding moves into the
 // Edit Resume modal in 5A.5.b. The component itself still exists.
 import { AddToListButton } from "@/components/lists/add-to-list-button";
+import { KeepCandidateButton } from "@/components/keep-candidate-button";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
@@ -225,6 +226,12 @@ export default async function CandidateProfilePage({
   }
   resumeVersions.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
   const tagSet = collectTags(c);
+  // Merge in the Candidate.tags column so the Keep toggle (which writes
+  // there) shows immediately even when raw.tags hasn't been refreshed.
+  for (const t of candidate.tags ?? []) {
+    const name = t.toLowerCase().trim();
+    if (name) tagSet.add(name);
+  }
   const isKept = tagSet.has("kept") || tagSet.has("keep");
   const displayTags = Array.from(tagSet).filter((t) => t !== "kept" && t !== "keep");
 
@@ -579,40 +586,19 @@ export default async function CandidateProfilePage({
         </aside>
 
         <div className="space-y-4 lg:col-span-7">
-          {/* Sticky tab + actions toolbar. top-20 clears the AppShell
-              h-20 topbar so Submit / Apply / Add to List stay reachable
-              while the recruiter scrolls the resume. backdrop-blur +
-              translucent bg keep the row from looking like a hard
-              banner over the content underneath. */}
-          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
-            <div className="flex flex-wrap items-center gap-3">
-              <UnderlineTabs tab={tab} candidateId={id} />
-              {isKept && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
-                  <Bookmark className="h-3 w-3" /> Kept
-                </span>
-              )}
-              {displayTags.slice(0, 3).map((t) => (
-                <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
-                  {t}
-                </span>
-              ))}
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <AddToListButton candidateId={candidate.id} candidateName={name} />
-              <Link
-                href={`/candidates/${id}?openApply=1`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-800 shadow-sm transition hover:bg-amber-200"
-              >
-                <Target className="h-3 w-3" /> Apply to Job
-              </Link>
-              <Link
-                href={`/candidates/${id}?openSubmit=1`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1.5 text-xs font-medium text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
-              >
-                <Send className="h-3 w-3" /> Submit to different job
-              </Link>
-            </div>
+          {/* Sticky tabs strip. Tabs read as navigation only — the
+              candidate-level action buttons (Add to List / Keep / Apply
+              / Add Note) live in their own row above the resume below
+              so the workspace and the navigation feel distinct. The
+              Submit-to-different-job button was retired in favor of
+              Apply to Job. */}
+          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+            <UnderlineTabs tab={tab} candidateId={id} />
+            {displayTags.slice(0, 3).map((t) => (
+              <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
+                {t}
+              </span>
+            ))}
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace
@@ -623,7 +609,30 @@ export default async function CandidateProfilePage({
           ) : tab === "notes" ? (
             <EditableNotes candidateId={id} initial={notesInitial} />
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
+              {/* Candidate-level action row. Sits directly above the
+                  resume header so the buttons read as part of the
+                  resume workspace rather than the tab navigation.
+                  Keep is a candidate-wide bookmark (not per-job);
+                  Add Note jumps into the Notes tab. flex-wrap so the
+                  row collapses cleanly on narrow viewports without
+                  overlapping the resume header. */}
+              <div className="flex flex-wrap items-center gap-2">
+                <AddToListButton candidateId={candidate.id} candidateName={name} />
+                <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
+                <Link
+                  href={`/candidates/${id}?openApply=1`}
+                  className={APPLY_LINK_CLASS}
+                >
+                  <Target className="h-3 w-3" /> Apply to Job
+                </Link>
+                <Link
+                  href={`/candidates/${id}?tab=notes`}
+                  className={ADD_NOTE_LINK_CLASS}
+                >
+                  <NotebookPen className="h-3 w-3" /> Add Note
+                </Link>
+              </div>
               {/* Skills lives on the left sidebar now (below Activity).
                   Experience / Education accordions were retired - the
                   resume itself already covers them, and the second
@@ -644,6 +653,16 @@ export default async function CandidateProfilePage({
   );
 }
 
+
+// Anchor-shaped twins of the shared Button "apply" / "secondary" variants.
+// Used for the candidate-level action row above the resume so the buttons
+// pick up the same Court Mode tokens as <Button> without nesting a
+// <button> inside an <a> (Link wraps an <a>).
+const APPLY_LINK_CLASS =
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
+
+const ADD_NOTE_LINK_CLASS =
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface";
 
 function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
   // Segmented-control pill row. Active tab is a lifted white pill inside

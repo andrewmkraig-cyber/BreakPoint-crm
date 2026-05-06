@@ -1,11 +1,19 @@
 # ACE_STATE.md
-Last updated: 2026-05-06 - Ace 33.0 closed clean
+Last updated: 2026-05-06 - Ace 33.1 candidate profile action-layout polish
 
 ## Current Status
-Current Version: Ace 33.0 (complete)
-Last Shipped: Ace 33.0 - May 6, 2026
+Current Version: Ace 33.1 (polish on 33.0)
+Last Shipped: Ace 33.1 - May 6, 2026
 Live at: ace.breakpointtalent.com
-Current Status: Ace 33.0 closed clean. Ace Assistant Panel Phases 1-3 shipped (floating panel, streaming Claude, web search, Personal Trainer rules, page-aware context, context pill in header, clear chat wired to Neon DELETE, branded as Ace Assistant). buildClientContext fully rewritten to Neon cuid only - all RF legacy id logic removed codebase-wide. Route boundaries pre-resolve numeric slugs to cuids for RF-imported records. settings.json updated with Bash(git push:*) allowlist. No carry-overs open.
+Current Status: Ace 33.1 polish ships candidate profile action-layout cleanup - job bar now Submit/Schedule Interview/Reject only, Client Sending Invite hidden at Applied stage and only surfaced for Submitted/Interviewing, candidate-level action row (Add to List/Keep/Apply to Job/Add Note) moved above resume header, sticky tabs strip slimmed down. New candidate-level toggleCandidateKept server action + KeepCandidateButton component. No carry-overs open.
+
+## What Shipped in Ace 33.1 (2026-05-06)
+- Candidate profile job bar: Submit / Schedule Interview / Reject ordering, Schedule label renamed (was "Schedule"), Reject added at Applied stage, Client Sending Invite gated to Submitted/Interviewing only
+- Candidate-level resume action row above the resume: Add to List / Keep / Apply to Job / Add Note using shared Button variants secondary/keep/apply/secondary
+- New toggleCandidateKept server action (writes Candidate.tags + mirrors to candidate.raw.tags) and KeepCandidateButton component
+- Submit-to-different-job button retired from sticky toolbar - Apply to Job covers that workflow
+- pipeline-row-actions.tsx Schedule labels renamed to "Schedule Interview" everywhere
+- local-placement-rows.tsx Submit/Schedule/Reject migrated to shared Button variants
 
 ## Known Issues
 None open.
