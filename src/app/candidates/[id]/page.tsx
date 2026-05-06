@@ -555,23 +555,12 @@ export default async function CandidateProfilePage({
     <div className="space-y-6">
       <CandidateProfileNav currentId={candidate.id} />
 
-      {/* Section 1: Header. Name + meta only - the initials avatar
-          was removed because it competed with the candidate name and
-          added a generic-SaaS look. Initials still appear in tables /
-          lists where they help identify rows. */}
-      <header className="min-w-0 pt-2">
-        <h1 className="font-serif text-3xl font-bold text-court-fg">{name}</h1>
-        {(c.current_designation || locationLabel) && (
-          <div className="mt-0.5 text-sm text-court-fg-muted">
-            {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
-          </div>
-        )}
-        {c.current_organization && (
-          <div className="mt-1 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-            Currently at {c.current_organization}
-          </div>
-        )}
-      </header>
+      {/* The standalone name header was folded into the identity card
+          at the top of the left column below so all candidate-identity
+          info lives in one place (name + title + location + employer +
+          contact + employment + activity). The h1 still anchors the
+          page for SEO / a11y - it just renders inside the sidebar
+          card now instead of as a floating header band. */}
 
       {/* Pipeline section only renders when there are placements.
           Header was removed — the row card already shows the job +
@@ -604,17 +593,47 @@ export default async function CandidateProfilePage({
       </section>
       )}
 
-      {/* Section 3: Two-column main. Left (70%) carries Profile/Game
-          Plan tabs + content. Right (30%) sidebar stacks Activity card
-          + Employment + Contact. */}
+      {/* Two-column main. Left (30%) is the consolidated candidate-
+          identity sidebar: name + title + employer + location at the
+          top, then Contact / Employment / Activity stacked below.
+          Right (70%) holds the sticky tab + actions toolbar plus the
+          Profile / Game Plan / Notes content. The column order was
+          flipped so all identity info lives in one place on the
+          left, and the resume + actions read like the work surface
+          on the right. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <aside className="space-y-4 lg:col-span-3">
+          {/* Identity card. Folds the old standalone header into the
+              top of the sidebar so name + title + employer sit right
+              above the editable Contact + Employment cards. h1 stays
+              for SEO / a11y; the visual treatment is the only change. */}
+          <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+            <h1 className="break-words font-serif text-2xl font-bold leading-tight text-court-fg">
+              {name}
+            </h1>
+            {(c.current_designation || locationLabel) && (
+              <div className="mt-1 text-sm text-court-fg-muted">
+                {[c.current_designation, locationLabel].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            {c.current_organization && (
+              <div className="mt-2 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+                Currently at {c.current_organization}
+              </div>
+            )}
+          </div>
+          <EditableContact candidateId={id} initial={contactInitial} />
+          <EditableEmployment candidateId={id} initial={employmentInitial} />
+          <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
+        </aside>
+
         <div className="space-y-4 lg:col-span-7">
-          {/* Single toolbar row — tabs on the left, status chips +
-              action buttons on the right. Combined into one row so the
-              Game Plan textarea sits closer to the top of the viewport
-              (the empty Pipeline header + a separate tab row + a
-              separate actions row was pushing it below the fold). */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Sticky tab + actions toolbar. top-20 clears the AppShell
+              h-20 topbar so Submit / Apply / Add to List stay reachable
+              while the recruiter scrolls the resume. backdrop-blur +
+              translucent bg keep the row from looking like a hard
+              banner over the content underneath. */}
+          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <div className="flex flex-wrap items-center gap-3">
               <UnderlineTabs tab={tab} candidateId={id} />
               {isKept && (
@@ -671,12 +690,6 @@ export default async function CandidateProfilePage({
             </div>
           )}
         </div>
-
-        <aside className="space-y-4 lg:col-span-3">
-          <EditableContact candidateId={id} initial={contactInitial} />
-          <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
-          <EditableEmployment candidateId={id} initial={employmentInitial} />
-        </aside>
       </div>
 
       <DeleteCandidateButton candidateId={candidate.id} candidateName={name} />

@@ -437,23 +437,11 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
     <div className="space-y-6">
       <CandidateProfileNav currentId={candidate.id} />
 
-      {/* Section 1: Header. Name + meta only - the initials avatar
-          was removed because it competed with the candidate name and
-          added a generic-SaaS look. Initials still appear in tables /
-          lists where they help identify rows. */}
-      <header className="min-w-0 pt-2">
-        <h1 className="font-serif text-3xl font-bold text-court-fg">{fullName}</h1>
-        {(candidate.currentDesignation || locationLabel) && (
-          <div className="mt-0.5 text-sm text-court-fg-muted">
-            {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
-          </div>
-        )}
-        {candidate.currentOrganization && (
-          <div className="mt-1 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
-            Currently at {candidate.currentOrganization}
-          </div>
-        )}
-      </header>
+      {/* Standalone name header was folded into the identity card at
+          the top of the left column below so all candidate-identity
+          info lives in one place (name + title + employer + contact +
+          activity). h1 still anchors the page for SEO / a11y - it
+          just renders inside the sidebar card now. */}
 
       {/* Section 2: Pipeline. LocalCandidateActions is rendered with
           hideButtons so its modals stay mounted (so per-row Submit
@@ -489,17 +477,83 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
         </section>
       )}
 
-      {/* Section 3: Two-column main. Same shape as the RF page. */}
+      {/* Two-column main. Same shape as the RF page: left is the
+          consolidated identity sidebar (name + title + employer +
+          contact + activity); right is the sticky tabs / actions
+          toolbar plus tab content. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
+        <aside className="space-y-4 lg:col-span-3">
+          {/* Identity card. Folds the old standalone header into the
+              top of the sidebar so name + title + employer sit right
+              above Contact / Employment / Activity. h1 stays for SEO
+              / a11y; only the visual treatment changes. */}
+          <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+            <h1 className="break-words font-serif text-2xl font-bold leading-tight text-court-fg">
+              {fullName}
+            </h1>
+            {(candidate.currentDesignation || locationLabel) && (
+              <div className="mt-1 text-sm text-court-fg-muted">
+                {[candidate.currentDesignation, locationLabel].filter(Boolean).join(" · ")}
+              </div>
+            )}
+            {candidate.currentOrganization && (
+              <div className="mt-2 text-[11px] font-semibold uppercase tracking-widest text-court-accent-dark">
+                Currently at {candidate.currentOrganization}
+              </div>
+            )}
+          </div>
+          <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
+            <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
+            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
+              <Row
+                icon={<Mail className="h-3.5 w-3.5" />}
+                label="Email"
+                value={candidate.email}
+                render={(v) =>
+                  candidate.email ? (
+                    <EmailPopupLauncher
+                      email={candidate.email}
+                      className="hover:underline"
+                      candidateRef={candidate.id}
+                      context={{
+                        candidate: {
+                          firstName: candidate.firstName,
+                          lastName: candidate.lastName,
+                          email: candidate.email,
+                          currentTitle: candidate.currentDesignation,
+                          currentCompany: candidate.currentOrganization,
+                        },
+                      }}
+                    >
+                      {v}
+                    </EmailPopupLauncher>
+                  ) : (
+                    <>{v}</>
+                  )
+                }
+              />
+              <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
+              <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={locationLabel || null} />
+              <Row icon={<Link2 className="h-3.5 w-3.5" />} label="LinkedIn" value={candidate.linkedinProfile} href={candidate.linkedinProfile} />
+            </dl>
+          </section>
+          <LocalEmployment
+            candidateId={candidate.id}
+            initialDesignation={candidate.currentDesignation}
+            initialOrganization={candidate.currentOrganization}
+          />
+          <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
+        </aside>
+
         <div className="space-y-4 lg:col-span-7">
-          {/* Single toolbar row — tabs on the left, action buttons on
-              the right. Combined into one row so the Game Plan
-              textarea sits closer to the top of the viewport (the
-              empty Pipeline header + a separate tab row + a separate
-              actions row was pushing it below the fold). ?openApply=1 /
-              ?openSubmit=1 deep-link into the LocalCandidateActions
+          {/* Sticky tab + actions toolbar. top-20 clears the AppShell
+              h-20 topbar so Apply / Submit / Add to List stay
+              reachable while the recruiter scrolls the resume.
+              backdrop-blur + translucent bg keeps the row from looking
+              like a hard banner over content underneath. ?openApply=1
+              / ?openSubmit=1 deep-link into the LocalCandidateActions
               modals (mounted with hideButtons). */}
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={candidate.id} />
             <div className="flex shrink-0 items-center gap-2">
               <AddToListButton candidateId={candidate.id} candidateName={fullName} />
@@ -584,50 +638,6 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
             </div>
           )}
         </div>
-
-        <aside className="space-y-4 lg:col-span-3">
-          <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
-            <h2 className="font-serif text-base font-semibold text-court-fg">Contact</h2>
-            <dl className="mt-3 grid grid-cols-1 gap-3 text-sm">
-              <Row
-                icon={<Mail className="h-3.5 w-3.5" />}
-                label="Email"
-                value={candidate.email}
-                render={(v) =>
-                  candidate.email ? (
-                    <EmailPopupLauncher
-                      email={candidate.email}
-                      className="hover:underline"
-                      candidateRef={candidate.id}
-                      context={{
-                        candidate: {
-                          firstName: candidate.firstName,
-                          lastName: candidate.lastName,
-                          email: candidate.email,
-                          currentTitle: candidate.currentDesignation,
-                          currentCompany: candidate.currentOrganization,
-                        },
-                      }}
-                    >
-                      {v}
-                    </EmailPopupLauncher>
-                  ) : (
-                    <>{v}</>
-                  )
-                }
-              />
-              <Row icon={<Phone className="h-3.5 w-3.5" />} label="Phone" value={candidate.phone} href={candidate.phone ? `tel:${candidate.phone}` : null} />
-              <Row icon={<MapPin className="h-3.5 w-3.5" />} label="Location" value={locationLabel || null} />
-              <Row icon={<Link2 className="h-3.5 w-3.5" />} label="LinkedIn" value={candidate.linkedinProfile} href={candidate.linkedinProfile} />
-            </dl>
-          </section>
-          <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
-          <LocalEmployment
-            candidateId={candidate.id}
-            initialDesignation={candidate.currentDesignation}
-            initialOrganization={candidate.currentOrganization}
-          />
-        </aside>
       </div>
 
       <DeleteCandidateButton candidateId={candidate.id} candidateName={fullName} />
