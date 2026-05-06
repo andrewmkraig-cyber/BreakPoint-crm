@@ -221,6 +221,12 @@ export function EditableIdentity({
           </div>
         ) : (
           <dl className="space-y-3 text-sm">
+            <Row label="Current title" icon={<Briefcase className="h-3 w-3" />}>
+              <span>{saved.current_designation || "—"}</span>
+            </Row>
+            <Row label="Location" icon={<MapPin className="h-3 w-3" />}>
+              <span>{formatLocation(saved.location) || "—"}</span>
+            </Row>
             <Row label="Email" icon={<Mail className="h-3 w-3" />}>
               {saved.email ? (
                 <EmailPopupLauncher
@@ -255,26 +261,6 @@ export function EditableIdentity({
                 <span className="text-court-fg-muted">—</span>
               )}
             </Row>
-            <Row label="Location" icon={<MapPin className="h-3 w-3" />}>
-              <span>{formatLocation(saved.location) || "—"}</span>
-            </Row>
-            <Row label="LinkedIn">
-              {saved.linkedin_profile ? (
-                <a
-                  href={saved.linkedin_profile}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-brand-dark hover:underline"
-                >
-                  Profile <ExternalLink className="h-3 w-3" />
-                </a>
-              ) : (
-                <span className="text-court-fg-muted">—</span>
-              )}
-            </Row>
-            <Row label="Current title" icon={<Briefcase className="h-3 w-3" />}>
-              <span>{saved.current_designation || "—"}</span>
-            </Row>
             <Row
               label="Current employer"
               icon={<Building2 className="h-3 w-3" />}
@@ -289,6 +275,23 @@ export function EditableIdentity({
                 ) || "—"}
               </span>
             </Row>
+            {/* LinkedIn only renders when set - empty profiles drop the
+                row entirely instead of showing a dash, since LinkedIn is
+                optional and a "—" placeholder adds noise to the bottom
+                of the card. Edit mode still surfaces the field so the
+                recruiter can add one later. */}
+            {saved.linkedin_profile && (
+              <Row label="LinkedIn">
+                <a
+                  href={saved.linkedin_profile}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-brand-dark hover:underline"
+                >
+                  Profile <ExternalLink className="h-3 w-3" />
+                </a>
+              </Row>
+            )}
           </dl>
         )}
       </div>
