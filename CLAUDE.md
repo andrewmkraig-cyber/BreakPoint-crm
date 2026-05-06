@@ -85,3 +85,11 @@ Austin user: cmo1ufmmn0000ib05eqk6hh32
 - No co-recruiter splits
 - No candidate mood tracker
 - No demo mode or sandbox toggle
+
+## End of Session (Mandatory - No Exceptions)
+Before closing every session:
+1. Update docs/ace/ACE_STATE.md: current version, what shipped, next task
+2. Update docs/ace/ACE_ROADMAP.md: mark completed items, reflect any changes
+3. Update docs/ace/ACE_RULES.md: header date and version
+4. Commit and push: git add -A && git commit -m "docs: update ACE docs to Ace [version] state" && git push origin main
+If docs are not updated and pushed at session end, the handoff failed.
