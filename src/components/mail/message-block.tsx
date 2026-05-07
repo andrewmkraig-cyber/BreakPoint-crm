@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Building2, Forward, Reply, ReplyAll } from "lucide-react";
 import type { MailThreadMessage } from "@/lib/gmail";
+import { EmailHtmlViewer } from "@/components/mail/email-html-viewer";
 
 export type MessageBlockAction = "reply" | "replyAll" | "forward";
 
@@ -79,37 +80,12 @@ export function MessageBlock({
 }) {
   const [showFull, setShowFull] = useState(false);
   const expanded = isLatest || showFull;
-  // After the dangerouslySetInnerHTML body mounts, attach error
-  // handlers to every <img> inside it so a failed remote load
-  // collapses the element rather than leaving a broken-image
-  // placeholder that reserves the image's original `width` /
-  // `height` space. Without this, Quo support emails (and other
-  // templates with a CDN-hosted header banner blocked by the
-  // recipient network) painted a giant empty rectangle above the
-  // body — the avatar reserved its full height even though the
-  // src never loaded.
-  const bodyRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const root = bodyRef.current;
-    if (!root) return;
-    const imgs = Array.from(root.querySelectorAll("img"));
-    function hideBroken(this: HTMLImageElement) {
-      this.style.display = "none";
-    }
-    for (const img of imgs) {
-      // complete + naturalWidth=0 means the image already failed
-      // (cached error) before our listener attached. Hide
-      // synchronously in that case.
-      if (img.complete && img.naturalWidth === 0) {
-        img.style.display = "none";
-      } else {
-        img.addEventListener("error", hideBroken);
-      }
-    }
-    return () => {
-      for (const img of imgs) img.removeEventListener("error", hideBroken);
-    };
-  }, [msg.bodyHtml]);
+  // Body rendering moved out of this component on 2026-05-07: rich
+  // marketing/newsletter emails (Quo dark-themed templates) need their
+  // own <style> sheet + page bgcolor to survive, but inline rendering
+  // forced Ace's app CSS over the email's. EmailHtmlViewer drops the
+  // body into a sandboxed iframe so the email's design renders intact
+  // (and broken-image hiding moves with it into the iframe).
 
   if (!expanded) {
     return (
@@ -214,102 +190,15 @@ export function MessageBlock({
           </span>
         </div>
       </header>
-      <div
-        ref={bodyRef}
-        className={[
-          // Match Gmail's body typography exactly: no whitespace-pre-line
-          // (Gmail uses normal HTML whitespace handling — literal source
-          // newlines between tags collapse to spaces; visible breaks
-          // come from <br> / <div><br></div> structure only). The
-          // earlier pre-line treatment was layered ON TOP of those
-          // structural breaks and produced the 6-line gap-between-
-          // paragraphs problem reported on 2026-04-30. Plain-text
-          // emails still wrap correctly because gmail.ts puts them
-          // inside a <pre class=whitespace-pre-wrap> wrapper that the
-          // [&_pre] rule below preserves.
-          "max-w-none text-sm leading-normal",
-          // Cap the rendered email to its container so wide signature
-          // tables / fixed-width templates can't blow the floating
-          // window apart at narrow sizes. min-w-0 lets the flex
-          // container actually constrain us; overflow-x-auto gives
-          // the user a horizontal scroll within the message instead
-          // of pushing the popup wider than the viewport.
-          "min-w-0 max-w-full overflow-x-auto",
-          // Background guarantees a light surface for the email body
-          // even in dark Court Modes — most HTML emails ship with
-          // dark text and would be unreadable on the dark popup bg
-          // otherwise. We dropped the previous border + shadow + p-4
-          // chrome that wrapped the body in an extra "reading paper"
-          // card; with one short message the card looked like a tiny
-          // bubble inside a giant empty popup. The body now flows
-          // edge-to-edge so the email itself dominates the popup
-          // visually. Anchor + blockquote colors below stay pinned to
-          // fixed slate/green values so they read on either bg.
-          "bg-white py-1 text-slate-900 dark:bg-[#F5F1E8] dark:rounded-md dark:px-3 dark:py-2",
-          // No [&>div+div]:mt-2 here — Gmail emits empty <div><br></div>
-          // spacers between paragraphs already, so adding extra margin
-          // on top doubled the rhythm and was the second contributor
-          // to the over-spacing bug.
-          // Block-level rhythm for proper <p> based emails. Tightened
-          // to match Gmail's own paragraph cadence.
-          "[&_p]:my-1 [&_p]:leading-normal",
-          "[&_h1]:mb-2 [&_h1]:mt-4 [&_h1]:font-serif [&_h1]:text-lg [&_h1]:font-semibold",
-          "[&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:font-serif [&_h2]:text-base [&_h2]:font-semibold",
-          "[&_h3]:mb-1.5 [&_h3]:mt-3 [&_h3]:font-semibold",
-          // Inline emphasis.
-          "[&_strong]:font-semibold [&_b]:font-semibold",
-          "[&_em]:italic [&_i]:italic",
-          // Lists — sanitize-html keeps the markup; we provide bullets.
-          "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
-          "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
-          "[&_li]:my-0.5",
-          // Links pop in the brand green, hardcoded so they read on
-          // the forced-white card in every Court Mode (the
-          // court-accent-dark token shifts to a lifted lighter green
-          // on dark themes and would disappear against white).
-          "[&_a]:text-[#3F7030] [&_a]:underline [&_a:hover]:opacity-80",
-          // Quoted blocks (forwards / inline replies) get a left rule.
-          // Slate fixed-on-white tones — court-fg-muted would invert
-          // to a near-white on dark themes and vanish against the
-          // forced-white background.
-          "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-slate-300 [&_blockquote]:pl-3 [&_blockquote]:text-slate-500",
-          // <pre> is the wrapper for plain-text emails (gmail.ts
-          // wraps text/plain bodies in `<pre class=whitespace-pre-wrap
-          // font-sans>`); keep the wrap behavior + match the body
-          // typography so plain emails read like the rest of the
-          // thread instead of monospace blocks.
-          "[&_pre]:whitespace-pre-wrap [&_pre]:font-sans [&_pre]:text-sm [&_pre]:leading-normal",
-          // Inline images: cap width so wide screenshots don't blow
-          // out the column. Don't impose `h-auto` — the source
-          // height attribute (and the sender's signature template
-          // sizing) needs to stay authoritative, otherwise the logo
-          // grows to its natural size and wrecks the rowspan/cell
-          // alignment in multi-cell signatures. align-middle keeps
-          // inline icons (envelope/phone/web circles) riding the
-          // baseline instead of dropping below it.
-          "[&_img]:max-w-full [&_img]:align-middle",
-          // Tables (Gmail signatures, forwarded confirmations).
-          // Previously every <td> got `py-1 pr-3` which fought the
-          // sender's own cellpadding/style and produced the cracked
-          // signature layout (logo split off from contact rows, Quo
-          // avatar pushed away from its message body). Let the
-          // sender's own table styling drive spacing. We only set
-          // border-collapse + a vertical-align default so multi-row
-          // tables track the original geometry.
-          "[&_table]:border-collapse [&_td]:align-top [&_th]:align-top",
-          // Inside table cells (signatures), kill the body's
-          // default 8px paragraph/div top+bottom margin. Andrew's
-          // BreakPoint signature stacks each contact line as its
-          // own <p> inside a cell — that 8+8 collapsed margin per
-          // row was what pushed his email/phone/web rows so far
-          // apart. Same fix for the empty-block-as-spacer divs
-          // some templates use. Tighter line-height on the table
-          // itself rounds out the compact vertical rhythm Gmail
-          // shows natively for signatures.
-          "[&_table]:leading-snug [&_table_p]:!my-0 [&_table_div]:!my-0",
-        ].join(" ")}
-        dangerouslySetInnerHTML={{ __html: msg.bodyHtml }}
-      />
+      {/* Iframe-isolated email body. The previous inline render layered
+          Ace's typography rules over the email's own design which
+          collapsed dark-themed marketing emails into a flattened
+          single-column light layout. The viewer drops the bodyHtml into
+          a sandboxed iframe so newsletter <style> blocks render against
+          their own document, while Ace's chrome sits cleanly around it. */}
+      <div className="min-w-0 overflow-x-auto">
+        <EmailHtmlViewer html={msg.bodyHtml} />
+      </div>
     </article>
   );
 }

@@ -117,22 +117,48 @@ export async function GET(
             "h3",
             "span",
             "font",
+            // Marketing/newsletter HTML (Quo, MailerLite, Mailchimp, etc.)
+            // ships a full document with a head-level <style> block that
+            // drives the dark-theme background, centered content column,
+            // CTA button geometry, etc. Without these tags whitelisted
+            // sanitize-html flattens the design to body-fragment text and
+            // the layout collapses. Safe to render because the client
+            // viewer drops the result inside a sandboxed iframe (no
+            // allow-scripts) so any inline scripts/event handlers are
+            // inert. <center> is the legacy email-safe centering element
+            // newsletters still use; <u>/<s> for inline emphasis.
+            "html",
+            "head",
+            "body",
+            "style",
+            "meta",
+            "title",
+            "center",
+            "u",
+            "s",
           ],
+          // Required when <style> is in allowedTags — sanitize-html flags
+          // it as vulnerable (CSS expressions in legacy IE), but modern
+          // browsers don't execute CSS expressions, and the iframe sandbox
+          // forbids scripts anyway. Trade is needed to render newsletters.
+          allowVulnerableTags: true,
           allowedAttributes: {
             a: ["href", "name", "target", "rel", "style"],
-            img: ["src", "alt", "width", "height", "style", "align"],
+            img: ["src", "alt", "width", "height", "style", "align", "border"],
             // Email signatures lean heavily on table layout with legacy
             // HTML attrs (cellpadding/cellspacing/align/valign/width).
             // Stripping them collapsed Gmail-shaped signatures into the
             // wrong column structure — the BreakPoint logo split off
             // from the contact rows. Whitelist them so multi-cell
             // signatures + Quo-style avatar+body messages render with
-            // the same geometry the sender designed.
-            table: ["cellpadding", "cellspacing", "border", "align", "width", "height", "style", "class"],
-            tr: ["align", "valign", "style", "class"],
-            td: ["align", "valign", "width", "height", "colspan", "rowspan", "style", "class"],
-            th: ["align", "valign", "width", "height", "colspan", "rowspan", "style", "class"],
-            div: ["style", "class", "align"],
+            // the same geometry the sender designed. bgcolor/background
+            // are the email-safe way to paint section backgrounds (Quo
+            // newsletter dark cards).
+            table: ["cellpadding", "cellspacing", "border", "align", "width", "height", "bgcolor", "background", "style", "class"],
+            tr: ["align", "valign", "bgcolor", "style", "class"],
+            td: ["align", "valign", "width", "height", "colspan", "rowspan", "bgcolor", "background", "style", "class"],
+            th: ["align", "valign", "width", "height", "colspan", "rowspan", "bgcolor", "background", "style", "class"],
+            div: ["style", "class", "align", "bgcolor"],
             p: ["style", "class", "align"],
             span: ["class", "style"],
             pre: ["class", "style"],
@@ -144,6 +170,15 @@ export async function GET(
             ul: ["style", "class"],
             ol: ["style", "class"],
             li: ["style", "class"],
+            // Document chrome — newsletters ship a real <html><head><body>
+            // tree and we want to keep their head-level <style> + body
+            // bgcolor intact for the iframe to render natively.
+            body: ["bgcolor", "style", "class"],
+            html: ["style", "class", "lang"],
+            head: [],
+            style: ["type"],
+            meta: ["charset", "name", "content", "http-equiv"],
+            center: ["style", "class"],
             "*": ["class"],
           },
           // Whitelist the layout/typography props that Gmail-style
@@ -195,6 +230,30 @@ export async function GET(
               "display": [/^(block|inline|inline-block|table|table-cell|table-row|none|flex|inline-flex)$/],
               "float": [/^(left|right|none)$/],
               "clear": [/^(left|right|both|none)$/],
+              // Newsletter-friendly extras: backgrounds (dark Quo theme),
+              // overflow handling, position for sticky CTAs, opacity for
+              // CTA hover states. url(...) values flow through — the
+              // iframe sandbox handles the security boundary.
+              "background": [/^.+$/],
+              "background-image": [/^.+$/],
+              "background-repeat": [/^(no-repeat|repeat|repeat-x|repeat-y|space|round)$/],
+              "background-position": [/^.+$/],
+              "background-size": [/^.+$/],
+              "opacity": [/^[\d.]+$/],
+              "overflow": [/^(visible|hidden|scroll|auto)$/],
+              "overflow-x": [/^(visible|hidden|scroll|auto)$/],
+              "overflow-y": [/^(visible|hidden|scroll|auto)$/],
+              "box-sizing": [/^(content-box|border-box)$/],
+              "white-space": [/^(normal|nowrap|pre|pre-wrap|pre-line)$/],
+              "word-break": [/^(normal|break-all|keep-all|break-word)$/],
+              "word-wrap": [/^(normal|break-word)$/],
+              "list-style": [/^.+$/],
+              "list-style-type": [/^.+$/],
+              "list-style-position": [/^(inside|outside)$/],
+              "table-layout": [/^(auto|fixed)$/],
+              "mso-line-height-rule": [/^.+$/],
+              "-webkit-text-size-adjust": [/^.+$/],
+              "-ms-text-size-adjust": [/^.+$/],
             },
           },
           allowedSchemes: ["http", "https", "mailto", "tel", "cid", "data"],
