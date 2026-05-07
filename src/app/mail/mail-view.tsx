@@ -207,7 +207,6 @@ export function MailView({
   // Same source as the main sidebar's Mail badge — kept in lockstep via
   // the shared MailContext provider in AppShell.
   const { unreadCount, refreshUnread, markThreadRead } = useMailContext();
-  const composer = useComposerManager();
   // Bump this to force the thread-list refetch effect to fire even
   // when selectedLabel + searchQuery haven't changed (Refresh button).
   const [refreshTick, setRefreshTick] = useState(0);
@@ -805,7 +804,7 @@ export function MailView({
 
   return (
     <div
-      className="ace-mail-grid grid min-h-0 flex-1 grid-cols-1 gap-4 lg:gap-0"
+      className="ace-mail-grid grid min-h-0 flex-1 grid-cols-1 gap-4 lg:gap-0 lg:overflow-hidden lg:rounded-lg lg:border lg:border-court-border lg:bg-court-surface lg:shadow-sm"
       style={
         {
           // CSS vars consumed by the lg+ media query in the inline
@@ -824,7 +823,7 @@ export function MailView({
           }
         }
       `}</style>
-      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface">
+      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
         <nav className="flex-1 overflow-y-auto p-2 text-sm">
           {/* Inbox entry — the visual anchor of the sidebar but
               proportioned to match the Sent / Drafts / label rows
@@ -845,28 +844,6 @@ export function MailView({
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              composer.open({
-                defaultTo: "",
-                templates,
-                mergeContext: {
-                  user: {
-                    firstName: currentUserFirstName,
-                    fullName: currentUserFullName,
-                  },
-                },
-                modalTitle: "New email",
-                nonBlocking: true,
-              });
-            }}
-            className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-2 py-1 text-[11px] font-semibold text-court-brand-dark transition hover:bg-court-brand/25"
-          >
-            <Pencil className="h-3 w-3" />
-            Compose new email
           </button>
 
           {parentLabelPaths.length > 0 && (
@@ -1023,20 +1000,20 @@ export function MailView({
           (dragging === "sidebar" ? "bg-brand/20" : "hover:bg-brand/10")
         }
       >
-        <span className="my-2 w-px self-stretch bg-court-border" />
+        <span className="my-2 w-px self-stretch bg-court-border/70" />
       </div>
 
-      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface">
-        <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-3 py-2">
+      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
+        <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-3 py-2.5">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
             <input
               type="search"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search mail (try from:foo@bar.com)"
               aria-label="Search mail"
-              className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-8 pr-8 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              className="h-9 w-full rounded-md border border-court-border bg-court-surface pl-9 pr-9 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
             {searchInput && (
               <button
@@ -1135,12 +1112,24 @@ export function MailView({
             <Loader2 className="h-4 w-4 animate-spin" /> Loading threads…
           </div>
         ) : threads.length === 0 ? (
-          <div className="flex-1 overflow-y-auto px-4 py-12 text-center text-sm text-court-fg-muted">
-            {searchQuery
-              ? `No results for "${searchQuery}".`
-              : selectedLabel
-                ? `No threads in "${selectedLabel.name}".`
-                : "Inbox is empty."}
+          <div className="flex flex-1 flex-col items-center justify-center gap-1.5 overflow-y-auto px-6 py-12 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-court-border bg-court-surface-subtle">
+              <MailIcon className="h-4 w-4 text-court-fg-muted" />
+            </div>
+            <p className="text-sm font-medium text-court-fg">
+              {searchQuery
+                ? "No matches"
+                : selectedLabel
+                  ? "No threads here"
+                  : "No inbox threads"}
+            </p>
+            <p className="text-xs text-court-fg-muted">
+              {searchQuery
+                ? `Nothing matched "${searchQuery}".`
+                : selectedLabel
+                  ? `Nothing in "${selectedLabel.name}" yet.`
+                  : "New messages will appear here."}
+            </p>
           </div>
         ) : (
           <ul className="flex-1 divide-y divide-court-border overflow-y-auto">
@@ -1174,10 +1163,10 @@ export function MailView({
           (dragging === "list" ? "bg-brand/20" : "hover:bg-brand/10")
         }
       >
-        <span className="my-2 w-px self-stretch bg-court-border" />
+        <span className="my-2 w-px self-stretch bg-court-border/70" />
       </div>
 
-      <section className="flex min-h-0 flex-col overflow-hidden border border-court-border bg-court-surface">
+      <section className="flex min-h-0 flex-col overflow-hidden border border-court-border bg-court-surface lg:border-0 lg:bg-transparent">
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
@@ -1319,9 +1308,11 @@ function ThreadRow({
 
 function EmptyRightPane() {
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-court-fg-muted">
-      <MailIcon className="h-6 w-6" />
-      Select a thread on the left to read it.
+    <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center">
+      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-court-border bg-court-surface-subtle">
+        <MailIcon className="h-5 w-5 text-court-fg-muted" />
+      </div>
+      <p className="text-sm font-medium text-court-fg">Select a thread to read it.</p>
     </div>
   );
 }

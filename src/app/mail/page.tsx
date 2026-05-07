@@ -3,6 +3,8 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listGmailThreads, type MailListThread } from "@/lib/gmail";
 import { MailView } from "@/app/mail/mail-view";
+import { PageHeader } from "@/components/page-header";
+import { ComposeNewEmailButton } from "@/components/mail/compose-new-email-button";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { getGmailStatus } from "@/lib/connectors";
 import { ConnectorBanner } from "@/components/connector-banner";
@@ -72,13 +74,22 @@ export default async function MailPage() {
   // detail pane fit the visible area exactly without the page itself
   // scrolling. Height is 100vh minus the AppShell's TopBar (h-20 =
   // 5rem) plus main padding (p-6 = 3rem combined mobile, md:p-8 =
-  // 4rem combined md+), so the mail container is clearly separated
-  // from the TopBar by the page gutter. MailView's internal grid
-  // grows via flex-1, and inner panes own their scroll. The page-
-  // level Compose button now lives inside MailView's labels rail
-  // (under the Inbox row), so there's no header bar above the grid.
+  // 4rem combined md+). PageHeader takes its natural height at the
+  // top; MailView's grid eats remaining space via flex-1, and inner
+  // panes own their scroll.
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
+      <PageHeader
+        title="Mail"
+        description="Gmail inbox and client conversations."
+        actions={
+          <ComposeNewEmailButton
+            templates={templates}
+            currentUserFirstName={myFirstName}
+            currentUserFullName={myFullName}
+          />
+        }
+      />
       {gmailStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="gmail-down"
