@@ -1,34 +1,29 @@
 # ACE_STATE.md
-Last updated: 2026-05-07 · Ace 34.0
+Last updated: 2026-05-07 · Ace 35.0
 
 ## Current Status
-Current Version: Ace 34.0 (Jobs page command center)
-Last Shipped: Ace 34.0 — May 7, 2026
+Current Version: Ace 35.0 (Game Plan depth + Ace Assistant Phase 4/5 + Job lifecycle)
+Last Shipped: Ace 35.0 — May 7, 2026
 Live at: ace.breakpointtalent.com
 
-## Summary — Ace 34.0
-Jobs page command center fully shipped:
-- 6-tab job detail shell on /jobs/[id] (Overview, Job Description, Matches, Game Plan, Promote, Activity). Pipeline tab removed — the chip strip at the top of the page is sufficient. Billing tab removed.
-- Overview tab: facts grid (employment / location / status / compensation / fee % / openings / last edited), search-health placeholder, public apply link copy/open icons.
-- Job Description tab: source URL input with Save URL + Parse Link, raw JD textarea with Save Raw, Parse Link route fetches the page and Claude-extracts to plain text, Generate with Claude produces BreakPoint-format JD (Job Description / A bit about us / Why join us / Job Details / What you'll do / What we're looking for / Nice to have), generated JD preview card with Copy + Last generated timestamp, Internal Recruiter Notes save-on-blur (never fed back into Generate).
-- Matches tab: free-text candidate search across name / title / current employer / skills / location, results table with Apply to Job button, alreadyApplied guard prevents duplicate placements.
-- Promote tab: 6 major boards (LinkedIn, Indeed, ZipRecruiter, Glassdoor, SimplyHired, Monster) with status chip cycle (Not Configured / Ready / Posted / Skipped) + Account Needed indicator + notes + external URL, Local & Niche Boards add/edit/remove, Suggest Boards with Claude stub, JobBoardStatus schema + lazy seed for legacy jobs, Prisma client-side error fixed by splitting @/lib/job-boards into client-safe shared module + server-only helpers.
-- Activity tab wired to ActivityFeed for entityType="job".
-- CLAUDE_PILL_CLASS constant on src/components/ui/button.tsx — single source of truth for every "ask Claude" affordance, emerald/court-token button sweep applied across mail composer, email composer, candidate intake, agreements, benefits, candidate submittal, find matches.
-- Candidate profile rebuild + action cleanup: Submit / Schedule Interview / Reject ordering; Reject available at Applied stage; candidate-level resume action row (Add to List / Keep / Apply to Job / Add Note); toggleCandidateKept action + KeepCandidateButton component.
-- Ace Assistant Phase 3: page-aware context, entity name pill in the panel header, buildCandidateContext / buildClientContext / buildJobContext server-side, getEntityDisplayName helper + /api/claude-panel/entity-name route.
-- Phone / mail viewport fix.
-- Focus-state polish.
-- Mail composer height fix.
-- Mail thread collapse + auto-scroll to top of latest message.
-- Mail header redesign: INBOX eyebrow + large heading removed, compact Inbox header lands directly under the TopBar.
-- Stale placeholder sweep across the Jobs surfaces.
+## Summary — Ace 35.0
+Game Plan context, Ace Assistant data tools + actions, and Job lifecycle controls:
+- Game Plan Context Depth: resume text via pdf-parse, raw JD text, internal recruiter notes, and client pipeline candidate resumes injected into every ai-workspace and Ace Assistant prompt. Applies to candidate, job, and client Game Plans plus Ace Assistant panel everywhere.
+- Ace Assistant Phase 4 Data Access: search_candidates, search_jobs, search_clients, get_pipeline tools wired to live Neon. OR-logic scoring with stop words and plural handling. Historical pipeline queries merging placements and interviews. Clickable candidate and job links in results. Show more when results exceed display limit. Fixed open jobs intent, stage normalization, and conversation memory override bugs.
+- Ace Assistant Phase 5 Actions and History: move_candidate_stage, add_note, draft_email action tools with confirmation card UI showing real entity names. Confirm executes Prisma write, Cancel dismisses. Claude History tab in Settings groups by conversationId, cleared chats preserved in Neon as separate conversation entries.
+- Job Close and Delete: Close Job and Delete Job buttons on job overview page with inline confirmation. Ace Assistant can close or delete jobs via confirmation card with real job and client names.
 
 ## Known Issues
-None open. Browser verification of the new tabs is Andrew's after deploy.
+None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-Continue the Launch Sprint queue in `docs/ace/ACE_ROADMAP.md`. First active item: Game Plan Context Depth — full resume + JD text into every ai-workspace prompt.
+YouTube floating player (15-30 min).
+
+## What Shipped in Ace 35.0 (2026-05-07)
+- Game Plan Context Depth: resume text via pdf-parse, raw JD text, internal recruiter notes, and client pipeline candidate resumes injected into every ai-workspace and Ace Assistant prompt. Applies to candidate, job, and client Game Plans plus Ace Assistant panel everywhere.
+- Ace Assistant Phase 4 Data Access: search_candidates, search_jobs, search_clients, get_pipeline tools wired to live Neon. OR-logic scoring with stop words and plural handling. Historical pipeline queries merging placements and interviews. Clickable candidate and job links in results. Show more when results exceed display limit. Fixed open jobs intent, stage normalization, and conversation memory override bugs.
+- Ace Assistant Phase 5 Actions and History: move_candidate_stage, add_note, draft_email action tools with confirmation card UI showing real entity names. Confirm executes Prisma write, Cancel dismisses. Claude History tab in Settings groups by conversationId, cleared chats preserved in Neon as separate conversation entries.
+- Job Close and Delete: Close Job and Delete Job buttons on job overview page with inline confirmation. Ace Assistant can close or delete jobs via confirmation card with real job and client names.
 
 ## What Shipped in Ace 34.0 (2026-05-07)
 - src/app/jobs/[id]/page.tsx: 6-tab JOB_TABS array (Overview / Job Description / Matches / Game Plan / Promote / Activity) + parseTab helper, default Overview, lazy per-tab data loads, JobTabs renders all from one source. Pipeline + Billing tabs deleted; ?tab=pipeline / ?tab=billing fall back to Overview.
