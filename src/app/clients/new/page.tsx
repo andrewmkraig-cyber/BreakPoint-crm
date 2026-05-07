@@ -13,7 +13,6 @@ export default function NewClientPage() {
       </Link>
 
       <PageHeader
-        eyebrow="Accounts"
         title="New Client"
         description="Paste a company URL to auto-fill, or enter details manually. Every field stays editable."
       />

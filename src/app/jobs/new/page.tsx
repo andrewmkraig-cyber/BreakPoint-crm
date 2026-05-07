@@ -29,7 +29,6 @@ export default async function NewJobPage() {
       </Link>
 
       <PageHeader
-        eyebrow="Requisitions"
         title="New Job"
         description="Create a new job in Ace."
       />

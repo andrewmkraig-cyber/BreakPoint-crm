@@ -306,7 +306,6 @@ export default async function ApplicantsPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        eyebrow="Inbound"
         title="Applicants"
         description="Candidates who applied directly to your open jobs. Submit, Reject, or Keep each for follow-up."
       />

@@ -42,7 +42,6 @@ export default async function PhonePage() {
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
       <PageHeader
-        eyebrow="Phone"
         title="Calls & Texts"
         description="Your Quo texts and calls."
       />

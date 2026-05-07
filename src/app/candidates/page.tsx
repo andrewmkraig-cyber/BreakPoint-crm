@@ -60,7 +60,6 @@ export default async function CandidatesPage({
   return (
     <div>
       <PageHeader
-        eyebrow="Pool"
         title="Candidates"
         description="Sourced and applied candidates — not yet submitted. Full Boolean search is coming Day 5."
         actions={

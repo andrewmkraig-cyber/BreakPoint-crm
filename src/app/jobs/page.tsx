@@ -120,7 +120,6 @@ export default async function JobsPage({
   return (
     <div>
       <PageHeader
-        eyebrow="Requisitions"
         title="Jobs"
         description="Active, private, and inactive requisitions. Counts come from each candidate's pipeline stage."
       />

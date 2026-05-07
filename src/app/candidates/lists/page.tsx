@@ -17,7 +17,6 @@ export default async function CandidateListsPage() {
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
       <PageHeader
-        eyebrow="Pool"
         title="Candidate lists"
         description="Recruiter-curated buckets of candidates. Rename or delete from here. Add candidates from any candidate profile."
       />

@@ -259,20 +259,14 @@ export function ClientsView({
 
   return (
     <div className="mx-auto max-w-[1200px]">
-      {/* Header — owned by ClientsView now (page.tsx no longer renders
-          PageHeader). Eyebrow + serif h1 + subtitle + New Client. */}
-      {/* items-end pulls the action button down to the baseline of
-          the description, putting it just above the search bar —
-          matches PageHeader's behavior on /candidates and /jobs.
-          Sizing also matches those two (px-3 py-1.5 text-xs) so the
-          three create-buttons read as the same height. */}
-      <div className="mb-7 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      {/* Header — matches the global PageHeader compact style (mail-
+          sized serif + tight spacing + claw against gutter). Owned by
+          ClientsView (page.tsx doesn't render PageHeader) so the New
+          Client button can sit alongside the title. */}
+      <div className="-mt-2 mb-3 flex flex-col gap-1 md:-mt-4 md:flex-row md:items-center md:justify-between md:gap-3">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-court-fg-muted">
-            Accounts
-          </div>
-          <h1 className="mt-2 font-serif text-4xl font-semibold text-court-fg">Clients</h1>
-          <p className="mt-2 max-w-xl text-sm text-court-fg-muted">
+          <h1 className="font-serif text-xl font-semibold text-court-fg">Clients</h1>
+          <p className="text-xs text-court-fg-muted">
             Active = an open job or a placement in the last 6 months. Verified shield means a signed fee agreement is on file.
           </p>
         </div>

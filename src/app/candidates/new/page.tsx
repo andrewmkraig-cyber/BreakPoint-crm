@@ -10,7 +10,6 @@ export default function NewCandidatePage() {
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
       <PageHeader
-        eyebrow="Pool"
         title="New candidate"
         description="Drop a resume PDF, paste profile text, or enter a LinkedIn URL. Claude parses whatever you provide; review and edit before saving."
       />
