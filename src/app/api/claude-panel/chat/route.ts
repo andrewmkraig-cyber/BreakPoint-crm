@@ -66,7 +66,7 @@ const SYSTEM_PROMPT =
   "- Specific candidate / role / client lookups (skills, titles, locations, industries) → search_candidates / search_jobs / search_clients with the user's natural phrasing.\n" +
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
   "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record — never strip the link, never paraphrase the URL.\n" +
-  "Action tools — move_candidate_stage / add_note / draft_email / close_job / delete_job — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. delete_job is destructive and cascades — only use it when the recruiter explicitly says 'delete' or 'permanently remove'; routine 'close out' / 'mark done' phrasing routes to close_job. After calling an action tool do not write any more text — the card speaks for itself.";
+  "Action tools — move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job is destructive and cascades — only use it when the recruiter explicitly says 'delete' or 'permanently remove'. After calling an action tool do not write any more text — the card speaks for itself.";
 
 // Custom data tools — exposed to Claude so it can pull live records
 // from Neon. Schemas mirror the parameters Andrew is most likely to ask
@@ -224,9 +224,39 @@ const DATA_TOOLS: Anthropic.Tool[] = [
     },
   },
   {
-    name: "close_job",
+    name: "inactivate_job",
     description:
-      "Propose marking a job as closed (isOpen=false). Use this when the recruiter says 'close out', 'shut down', or 'mark inactive' a job. Resolve the jobId from search_jobs first; cuid OR legacy rfId both resolve.",
+      "Propose moving a job to the Inactive bucket (lifecycle=inactive, isOpen=false). Use this when the recruiter says 'inactivate', 'close out', 'shut down', or 'mark inactive' a job. Resolve the jobId from search_jobs first; cuid OR legacy rfId both resolve.",
+    input_schema: {
+      type: "object",
+      properties: {
+        jobId: {
+          type: "string",
+          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+        },
+      },
+      required: ["jobId"],
+    },
+  },
+  {
+    name: "privatize_job",
+    description:
+      "Propose moving a job to the Private bucket (lifecycle=private, isOpen=true). Private jobs stay searchable / matchable but are hidden from the default Active tab on /jobs. Use when the recruiter says 'make private', 'hide from active', or 'move to private'.",
+    input_schema: {
+      type: "object",
+      properties: {
+        jobId: {
+          type: "string",
+          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+        },
+      },
+      required: ["jobId"],
+    },
+  },
+  {
+    name: "reactivate_job",
+    description:
+      "Propose moving a job back to Active (lifecycle=active, isOpen=true) from Private or Inactive. Use when the recruiter says 'reactivate', 'reopen', or 'bring back to active'.",
     input_schema: {
       type: "object",
       properties: {
@@ -241,7 +271,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "delete_job",
     description:
-      "Propose permanently deleting a job. The recruiter must Confirm before this lands. Use when the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' a job — never for routine 'close out' requests, which use close_job instead. Cascades through Placement / Interview / CandidateMatch rows for the job.",
+      "Propose permanently deleting a job. The recruiter must Confirm before this lands. Use when the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' a job — never for routine 'inactivate' / 'close out' requests, which use inactivate_job instead. Cascades through Placement / Interview / CandidateMatch rows for the job.",
     input_schema: {
       type: "object",
       properties: {
@@ -262,7 +292,9 @@ const ACTION_TOOL_NAMES = new Set([
   "move_candidate_stage",
   "add_note",
   "draft_email",
-  "close_job",
+  "inactivate_job",
+  "privatize_job",
+  "reactivate_job",
   "delete_job",
 ]);
 
@@ -1027,9 +1059,10 @@ async function resolveJob(idOrRfId: string, orgId: string) {
   });
 }
 
-// Same lookup as resolveJob, but carries the client name + the
-// current isOpen flag so the close_job / delete_job action cards can
-// render "Close Senior Engineer at Acme — already closed" without a
+// Same lookup as resolveJob, but carries the client name, the
+// canonical lifecycle (Active / Private / Inactive), and the legacy
+// isOpen flag so lifecycle / delete action cards can render
+// "Inactivate Senior Engineer at Acme — already inactive" without a
 // second round-trip.
 async function resolveJobWithClient(idOrRfId: string, orgId: string) {
   if (!idOrRfId) return null;
@@ -1042,6 +1075,7 @@ async function resolveJobWithClient(idOrRfId: string, orgId: string) {
         id: true,
         title: true,
         isOpen: true,
+        lifecycle: true,
         client: { select: { name: true } },
       },
     });
@@ -1052,9 +1086,20 @@ async function resolveJobWithClient(idOrRfId: string, orgId: string) {
       id: true,
       title: true,
       isOpen: true,
+      lifecycle: true,
       client: { select: { name: true } },
     },
   });
+}
+
+function deriveLifecycle(
+  lifecycle: string | null | undefined,
+  isOpen: boolean | null | undefined,
+): "active" | "private" | "inactive" {
+  if (lifecycle === "private" || lifecycle === "inactive" || lifecycle === "active") {
+    return lifecycle;
+  }
+  return isOpen ? "active" : "inactive";
 }
 
 // Pick the placement we'd move when Claude doesn't pass one. Most
@@ -1111,12 +1156,14 @@ type ActionResolution =
       body: string;
     }
   | {
-      kind: "close_job";
+      kind: "inactivate_job" | "privatize_job" | "reactivate_job";
       description: string;
       jobId: string | null;
       jobTitle: string;
       clientName: string;
-      isAlreadyClosed: boolean;
+      currentLifecycle: "active" | "private" | "inactive" | null;
+      targetLifecycle: "active" | "private" | "inactive";
+      noOp: boolean;            // job is already in the target state
     }
   | {
       kind: "delete_job";
@@ -1234,19 +1281,40 @@ async function describeAction(
       };
     }
 
-    if (name === "close_job") {
+    if (name === "inactivate_job" || name === "privatize_job" || name === "reactivate_job") {
       const jobRef = typeof input.jobId === "string" ? input.jobId : "";
       const job = await resolveJobWithClient(jobRef, orgId);
       const jobTitle = job?.title ?? "(unknown job)";
       const clientName = job?.client?.name ?? "(unknown client)";
-      const isAlreadyClosed = job ? job.isOpen === false : false;
+      const currentLifecycle = job ? deriveLifecycle(job.lifecycle, job.isOpen) : null;
+      const targetLifecycle: "active" | "private" | "inactive" =
+        name === "inactivate_job"
+          ? "inactive"
+          : name === "privatize_job"
+            ? "private"
+            : "active";
+      const noOp = currentLifecycle === targetLifecycle;
+      const verb =
+        name === "inactivate_job"
+          ? "Inactivate"
+          : name === "privatize_job"
+            ? "Move to Private"
+            : "Reactivate";
+      const explainer =
+        name === "inactivate_job"
+          ? "mark inactive and remove from the active pipeline"
+          : name === "privatize_job"
+            ? "hide from the Active tab — still searchable from the Private tab"
+            : "move back to the Active tab";
       return {
-        kind: "close_job",
-        description: `Close ${jobTitle} — mark as inactive and remove from active pipeline.`,
+        kind: name,
+        description: `${verb} ${jobTitle} — ${explainer}.`,
         jobId: job?.id ?? null,
         jobTitle,
         clientName,
-        isAlreadyClosed,
+        currentLifecycle,
+        targetLifecycle,
+        noOp,
       };
     }
 

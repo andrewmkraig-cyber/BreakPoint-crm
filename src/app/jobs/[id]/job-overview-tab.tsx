@@ -3,27 +3,29 @@ import {
   CheckCircle2,
   CircleDashed,
   DollarSign,
+  EyeOff,
   MapPin,
   Percent,
   Users,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
 import { JobOverviewActionButtons } from "@/app/jobs/[id]/job-overview-action-buttons";
+import type { JobLifecycle } from "@/app/jobs/[id]/job-overview-actions";
 
 // Overview tab body. Snapshot of the job's key facts, top-of-tab
-// destructive actions (Close / Delete), plus a Search Health
-// placeholder. Edit-style writes still live on the right-rail
-// EditableJobOverview card so the same sticky surface owns granular
-// field saves; the buttons here are the one-shot lifecycle actions
-// (close out a filled req, nuke a mistake import) that don't fit a
-// per-field edit flow.
+// lifecycle actions (Inactivate / Make Private / Reactivate / Delete),
+// plus a Search Health placeholder. Edit-style writes still live on
+// the right-rail EditableJobOverview card so the same sticky surface
+// owns granular field saves; the buttons here are the one-shot
+// lifecycle actions (move state, nuke a mistake import) that don't
+// fit a per-field edit flow.
 
 export type JobOverviewSnapshot = {
   jobId: string;
   title: string;
   clientName: string;
   locations: string[];
-  isOpen: boolean;
+  lifecycle: JobLifecycle;
   employmentType: string | null;
   compensation: string;
   feePct: number | null;
@@ -36,7 +38,7 @@ export function JobOverviewTab({ snapshot }: { snapshot: JobOverviewSnapshot }) 
   return (
     <div className="space-y-5">
       <section className="flex flex-wrap items-center justify-end">
-        <JobOverviewActionButtons jobId={snapshot.jobId} isOpen={snapshot.isOpen} />
+        <JobOverviewActionButtons jobId={snapshot.jobId} lifecycle={snapshot.lifecycle} />
       </section>
 
       <section className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
@@ -53,8 +55,10 @@ export function JobOverviewTab({ snapshot }: { snapshot: JobOverviewSnapshot }) 
           />
           <SnapshotFact
             icon={
-              snapshot.isOpen ? (
+              snapshot.lifecycle === "active" ? (
                 <CheckCircle2 className="h-3.5 w-3.5" />
+              ) : snapshot.lifecycle === "private" ? (
+                <EyeOff className="h-3.5 w-3.5" />
               ) : (
                 <CircleDashed className="h-3.5 w-3.5" />
               )
@@ -64,12 +68,18 @@ export function JobOverviewTab({ snapshot }: { snapshot: JobOverviewSnapshot }) 
               <span
                 className={cn(
                   "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider",
-                  snapshot.isOpen
+                  snapshot.lifecycle === "active"
                     ? "bg-brand-tint text-brand-dark"
-                    : "bg-red-100 text-red-700",
+                    : snapshot.lifecycle === "private"
+                      ? "bg-court-surface-subtle text-court-fg"
+                      : "bg-red-100 text-red-700",
                 )}
               >
-                {snapshot.isOpen ? "Active" : "Closed"}
+                {snapshot.lifecycle === "active"
+                  ? "Active"
+                  : snapshot.lifecycle === "private"
+                    ? "Private"
+                    : "Inactive"}
               </span>
             }
           />

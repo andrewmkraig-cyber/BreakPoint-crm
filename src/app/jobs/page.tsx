@@ -1,5 +1,5 @@
 import { PageHeader } from "@/components/page-header";
-import { JobsView, type JobRow } from "@/app/jobs/jobs-view";
+import { JobsView, type JobLifecycle, type JobRow } from "@/app/jobs/jobs-view";
 import {
   normalizeJob,
   buildJobCounts,
@@ -37,13 +37,15 @@ export default async function JobsPage({
 }: {
   searchParams?: {
     q?: string;
-    tab?: "active" | "inactive";
+    tab?: JobLifecycle;
     sort?: string;
     dir?: "asc" | "desc";
     page?: string;
   };
 }) {
-  const tab: "active" | "inactive" = searchParams?.tab === "inactive" ? "inactive" : "active";
+  const rawTab = searchParams?.tab;
+  const tab: JobLifecycle =
+    rawTab === "private" || rawTab === "inactive" ? rawTab : "active";
   const q = (searchParams?.q ?? "").trim();
   const rawSort = (searchParams?.sort ?? "lastEdited") as SortKey;
   const sort: SortKey = (SORT_KEYS as string[]).includes(rawSort) ? rawSort : "lastEdited";
@@ -53,6 +55,7 @@ export default async function JobsPage({
 
   let rows: JobRow[] = [];
   let activeCount = 0;
+  let privateCount = 0;
   let inactiveCount = 0;
   let error: string | null = null;
 
@@ -67,16 +70,32 @@ export default async function JobsPage({
     const all: JobRow[] = jobs.map((raw) => {
       const j = normalizeJob(raw);
       const c = counts.get(j.id) ?? emptyJobCounts();
+      // Lifecycle pulls from the shim's `_lifecycle` carry-along (set
+      // straight from the Neon column); legacy rows that haven't been
+      // touched since the migration fall back to the isOpen mapping.
+      const rawLifecycle = (raw as { _lifecycle?: string | null })._lifecycle;
+      const lifecycle: JobLifecycle =
+        rawLifecycle === "private"
+          ? "private"
+          : rawLifecycle === "inactive"
+            ? "inactive"
+            : j.isOpen
+              ? "active"
+              : "inactive";
       return {
         ...j,
+        lifecycle,
         submittedCount: c.submitted,
         interviewingCount: c.interviewing,
         hiredCount: c.hired,
       };
     });
-    activeCount = all.filter((r) => r.isOpen).length;
-    inactiveCount = all.length - activeCount;
-    rows = all.filter((r) => (tab === "active" ? r.isOpen : !r.isOpen));
+    for (const r of all) {
+      if (r.lifecycle === "active") activeCount++;
+      else if (r.lifecycle === "private") privateCount++;
+      else inactiveCount++;
+    }
+    rows = all.filter((r) => r.lifecycle === tab);
 
     if (q) {
       const needle = q.toLowerCase();
@@ -103,7 +122,7 @@ export default async function JobsPage({
       <PageHeader
         eyebrow="Requisitions"
         title="Jobs"
-        description="Active and inactive requisitions. Counts come from each candidate's pipeline stage."
+        description="Active, private, and inactive requisitions. Counts come from each candidate's pipeline stage."
       />
       <JobsView
         rows={pageRows}
@@ -116,6 +135,7 @@ export default async function JobsPage({
         sort={sort}
         dir={dir}
         activeCount={activeCount}
+        privateCount={privateCount}
         inactiveCount={inactiveCount}
         error={error}
       />

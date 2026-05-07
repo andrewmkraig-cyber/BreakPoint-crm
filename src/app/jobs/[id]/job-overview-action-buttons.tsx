@@ -2,56 +2,72 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CircleSlash, Loader2, Trash2 } from "lucide-react";
+import { CircleSlash, EyeOff, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  closeJob,
   deleteJob,
+  inactivateJob,
+  makeJobPrivate,
+  reactivateJob,
+  type JobLifecycle,
 } from "@/app/jobs/[id]/job-overview-actions";
 
-// Close Job + Delete Job affordances on the Overview tab. The Close
-// button is a no-op once isOpen is already false — the disabled state
-// telegraphs "this job's already closed" without the user having to
-// chase the Status chip. Delete is destructive: a single click flips
-// the button into a red Confirm Delete state, second click commits.
-// onBlur resets so an accidental tab-out doesn't leave a primed
-// destructive button sitting on the page.
+// Lifecycle-aware action row on the Job Overview tab. The set of
+// affordances varies by current state:
+//   active   → Make Private, Inactivate, Delete
+//   private  → Reactivate, Inactivate, Delete
+//   inactive → Reactivate, Make Private, Delete
+// Delete is always destructive (two-click confirm) and lives at the
+// far right so the recruiter can't fat-finger it from a state-change
+// flow. onBlur on the destructive button resets the confirm so a
+// stray tab-out doesn't leave a primed action sitting on the page.
 export function JobOverviewActionButtons({
   jobId,
-  isOpen,
+  lifecycle,
 }: {
   jobId: string;
-  isOpen: boolean;
+  lifecycle: JobLifecycle;
 }) {
   const router = useRouter();
-  const [closing, startClose] = useTransition();
-  const [deleting, startDelete] = useTransition();
+  const [pending, startTransition] = useTransition();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [actionLabel, setActionLabel] = useState<string | null>(null);
 
-  function onClose() {
-    if (closing || !isOpen) return;
-    startClose(async () => {
-      const res = await closeJob({ jobId });
+  function run(
+    fn: () => Promise<{ ok: boolean; error?: string }>,
+    successLabel: string,
+    activeLabel: string,
+  ) {
+    if (pending) return;
+    setActionLabel(activeLabel);
+    startTransition(async () => {
+      const res = await fn();
       if (!res.ok) {
-        toast.error("Couldn't close job", { description: res.error });
+        toast.error(`Couldn't ${successLabel.toLowerCase()}`, {
+          description: res.error,
+        });
+        setActionLabel(null);
         return;
       }
-      toast.success("Job closed.");
+      toast.success(`Job ${successLabel}.`);
+      setActionLabel(null);
       router.refresh();
     });
   }
 
   function onDelete() {
-    if (deleting) return;
+    if (pending) return;
     if (!confirmingDelete) {
       setConfirmingDelete(true);
       return;
     }
-    startDelete(async () => {
+    setActionLabel("Deleting");
+    startTransition(async () => {
       const res = await deleteJob({ jobId });
       if (!res.ok) {
         toast.error("Couldn't delete job", { description: res.error });
         setConfirmingDelete(false);
+        setActionLabel(null);
         return;
       }
       toast.success("Job deleted.");
@@ -60,27 +76,89 @@ export function JobOverviewActionButtons({
     });
   }
 
+  const isActive = lifecycle === "active";
+  const isPrivate = lifecycle === "private";
+  const isInactive = lifecycle === "inactive";
+  const showReactivate = isPrivate || isInactive;
+  const showMakePrivate = isActive || isInactive;
+  const showInactivate = isActive || isPrivate;
+
+  const secondary =
+    "inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:cursor-not-allowed disabled:opacity-60";
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        onClick={onClose}
-        disabled={closing || !isOpen}
-        className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {closing ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <CircleSlash className="h-3.5 w-3.5" />
-        )}
-        {isOpen ? "Close Job" : "Closed"}
-      </button>
+    <div className="flex flex-wrap items-center justify-end gap-2">
+      {showReactivate && (
+        <button
+          type="button"
+          onClick={() =>
+            run(
+              () => reactivateJob({ jobId }),
+              "reactivated",
+              "Reactivating",
+            )
+          }
+          disabled={pending}
+          className={secondary}
+        >
+          {pending && actionLabel === "Reactivating" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3.5 w-3.5" />
+          )}
+          Reactivate
+        </button>
+      )}
+
+      {showMakePrivate && (
+        <button
+          type="button"
+          onClick={() =>
+            run(
+              () => makeJobPrivate({ jobId }),
+              "moved to private",
+              "Making private",
+            )
+          }
+          disabled={pending}
+          className={secondary}
+        >
+          {pending && actionLabel === "Making private" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <EyeOff className="h-3.5 w-3.5" />
+          )}
+          Make Private
+        </button>
+      )}
+
+      {showInactivate && (
+        <button
+          type="button"
+          onClick={() =>
+            run(
+              () => inactivateJob({ jobId }),
+              "inactivated",
+              "Inactivating",
+            )
+          }
+          disabled={pending}
+          className={secondary}
+        >
+          {pending && actionLabel === "Inactivating" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <CircleSlash className="h-3.5 w-3.5" />
+          )}
+          Inactivate
+        </button>
+      )}
 
       <button
         type="button"
         onClick={onDelete}
         onBlur={() => setConfirmingDelete(false)}
-        disabled={deleting}
+        disabled={pending}
         className={
           "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold shadow-sm transition disabled:opacity-60 " +
           (confirmingDelete
@@ -88,7 +166,7 @@ export function JobOverviewActionButtons({
             : "border border-red-300 bg-court-surface text-red-600 hover:bg-red-50")
         }
       >
-        {deleting ? (
+        {pending && actionLabel === "Deleting" ? (
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
         ) : (
           <Trash2 className="h-3.5 w-3.5" />
@@ -96,7 +174,7 @@ export function JobOverviewActionButtons({
         {confirmingDelete ? "Confirm Delete" : "Delete Job"}
       </button>
 
-      {confirmingDelete && !deleting && (
+      {confirmingDelete && !pending && (
         <button
           type="button"
           onClick={() => setConfirmingDelete(false)}

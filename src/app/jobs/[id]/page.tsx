@@ -347,12 +347,23 @@ export default async function JobDetailPage({
     label: `${job.title}${job.company ? ` at ${job.company}` : ""}`,
   };
 
+  // Lifecycle derives from the new column, falling back to isOpen for
+  // any legacy row that hasn't been touched since the migration.
+  const lifecycle: "active" | "private" | "inactive" =
+    jobRow.lifecycle === "private"
+      ? "private"
+      : jobRow.lifecycle === "inactive"
+        ? "inactive"
+        : jobRow.isOpen
+          ? "active"
+          : "inactive";
+
   const overviewSnapshot: JobOverviewSnapshot = {
     jobId: jobRow.id,
     title: job.title,
     clientName: job.company || "",
     locations: overviewInitial.locations,
-    isOpen: overviewInitial.isOpen,
+    lifecycle,
     employmentType: overviewInitial.employmentType,
     compensation: formatCompSummary(overviewInitial),
     feePct: clientFeePct,

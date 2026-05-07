@@ -408,7 +408,7 @@ export async function POST(req: Request) {
     });
   }
 
-  if (name === "close_job") {
+  if (name === "inactivate_job" || name === "privatize_job" || name === "reactivate_job") {
     const jobRef = typeof input.jobId === "string" ? input.jobId : "";
     const preResolvedJobId =
       typeof resolved.jobId === "string" ? resolved.jobId : "";
@@ -419,12 +419,19 @@ export async function POST(req: Request) {
       );
     }
 
-    let job: { id: string; legacyRfId: number | null; title: string; isOpen: boolean } | null =
-      null;
+    let job:
+      | { id: string; legacyRfId: number | null; title: string; isOpen: boolean; lifecycle: string | null }
+      | null = null;
     if (preResolvedJobId) {
       job = await prisma.job.findFirst({
         where: { id: preResolvedJobId, organizationId: org.id },
-        select: { id: true, legacyRfId: true, title: true, isOpen: true },
+        select: {
+          id: true,
+          legacyRfId: true,
+          title: true,
+          isOpen: true,
+          lifecycle: true,
+        },
       });
     }
     if (!job && jobRef) {
@@ -432,7 +439,13 @@ export async function POST(req: Request) {
       if (fallback) {
         job = await prisma.job.findFirst({
           where: { id: fallback.id, organizationId: org.id },
-          select: { id: true, legacyRfId: true, title: true, isOpen: true },
+          select: {
+            id: true,
+            legacyRfId: true,
+            title: true,
+            isOpen: true,
+            lifecycle: true,
+          },
         });
       }
     }
@@ -442,31 +455,62 @@ export async function POST(req: Request) {
         { status: 404 },
       );
     }
-    if (!job.isOpen) {
+
+    const target: "active" | "private" | "inactive" =
+      name === "inactivate_job"
+        ? "inactive"
+        : name === "privatize_job"
+          ? "private"
+          : "active";
+    const current: "active" | "private" | "inactive" =
+      job.lifecycle === "private" || job.lifecycle === "inactive" || job.lifecycle === "active"
+        ? job.lifecycle
+        : job.isOpen
+          ? "active"
+          : "inactive";
+    if (current === target) {
       return NextResponse.json({
         ok: true,
-        message: `${job.title} is already closed.`,
+        message: `${job.title} is already ${target}.`,
       });
     }
 
     await prisma.job.update({
       where: { id: job.id },
-      data: { isOpen: false },
+      data: { lifecycle: target, isOpen: target !== "inactive" },
     });
+    const actionType =
+      target === "inactive"
+        ? "job_inactivated"
+        : target === "private"
+          ? "job_made_private"
+          : "job_reactivated";
     await logActivity({
       organizationId: org.id,
       userId: user.id,
-      actionType: "job_closed",
+      actionType,
       targetType: "job",
       targetId: job.id,
-      metadata: { jobTitle: job.title, source: "claude_panel" },
+      metadata: {
+        jobTitle: job.title,
+        fromLifecycle: current,
+        toLifecycle: target,
+        source: "claude_panel",
+      },
     });
     revalidatePath(`/jobs`);
     revalidatePath(`/jobs/${job.id}`);
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/pipeline`);
+    const verb =
+      target === "inactive"
+        ? "Inactivated"
+        : target === "private"
+          ? "Moved to Private"
+          : "Reactivated";
     return NextResponse.json({
       ok: true,
-      message: `Closed ${job.title}.`,
+      message: `${verb} ${job.title}.`,
     });
   }
 

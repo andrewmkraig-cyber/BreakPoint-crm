@@ -79,7 +79,7 @@ export async function updateJobOverview(args: {
   try {
     const job = await prisma.job.findFirst({
       where: jobCuid ? { id: jobCuid } : { legacyRfId: jobRfId! },
-      select: { id: true, legacyRfId: true },
+      select: { id: true, legacyRfId: true, lifecycle: true, isOpen: true },
     });
     if (!job) return { ok: false, error: "Job not found." };
 
@@ -100,7 +100,19 @@ export async function updateJobOverview(args: {
         .filter((l) => l.length > 0);
     }
     if (patch.numberOfOpenings !== undefined) data.numberOfOpenings = patch.numberOfOpenings;
-    if (patch.isOpen !== undefined) data.isOpen = patch.isOpen;
+    if (patch.isOpen !== undefined) {
+      data.isOpen = patch.isOpen;
+      // Keep lifecycle in sync when the right-rail Edit form toggles
+      // isOpen. We don't want a stale "private" label sticking around
+      // after the recruiter's flipped the status to inactive (or
+      // re-opened a previously-inactive private job back to active).
+      // Active / inactive is what the legacy toggle has always meant;
+      // the recruiter who wants Private uses the dedicated button on
+      // the Overview tab.
+      if (patch.isOpen !== job.isOpen) {
+        data.lifecycle = patch.isOpen ? "active" : "inactive";
+      }
+    }
     if (patch.employmentType !== undefined) {
       const et = (patch.employmentType ?? "").trim();
       data.employmentType = et || null;
@@ -116,47 +128,69 @@ export async function updateJobOverview(args: {
   }
 }
 
-// Hard-close a Job from the Overview tab. Sets isOpen=false (canonical
-// "closed" signal — search_jobs / find-matches / pipeline scoring all
-// consume this column), logs an activity row, and revalidates the
-// detail surface. Used by the dedicated Close Job button; the Edit
-// flow on EditableJobOverview also writes isOpen via updateJobOverview
-// but bundles it with other field edits.
-export async function closeJob(args: { jobId: string }): Promise<Result> {
+// Three-state lifecycle transitions for the Overview tab. Each writes
+// both `lifecycle` (canonical /jobs-tab signal) AND `isOpen` (legacy
+// "this job is being worked" signal that 30+ readers — search_jobs,
+// find-matches, pipeline, top-bar-search, etc. — already consume).
+// Mapping: active/private → isOpen=true (still in the pipeline);
+// inactive → isOpen=false (closed out). Activity rows land before
+// each write so a future audit can trace the full lifecycle path.
+
+export type JobLifecycle = "active" | "private" | "inactive";
+
+async function transitionLifecycle(
+  jobId: string,
+  next: JobLifecycle,
+  actionType: string,
+): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
-
   try {
     const org = await getCurrentOrg();
     const job = await prisma.job.findFirst({
-      where: { id: args.jobId, organizationId: org.id },
-      select: { id: true, legacyRfId: true, title: true, isOpen: true },
+      where: { id: jobId, organizationId: org.id },
+      select: { id: true, legacyRfId: true, title: true, lifecycle: true, isOpen: true },
     });
     if (!job) return { ok: false, error: "Job not found." };
-    if (!job.isOpen) {
-      return { ok: false, error: "Job is already closed." };
+
+    const previous = (job.lifecycle as JobLifecycle | null) ?? (job.isOpen ? "active" : "inactive");
+    if (previous === next) {
+      return { ok: false, error: `Job is already ${next}.` };
     }
 
     await prisma.job.update({
       where: { id: job.id },
-      data: { isOpen: false },
+      data: { lifecycle: next, isOpen: next !== "inactive" },
     });
     await logActivity({
       organizationId: org.id,
       userId,
-      actionType: "job_closed",
+      actionType,
       targetType: "job",
       targetId: job.id,
-      metadata: { jobTitle: job.title },
+      metadata: { jobTitle: job.title, fromLifecycle: previous, toLifecycle: next },
     });
 
     if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
     revalidatePath(`/jobs/${job.id}`);
     revalidatePath(`/jobs`);
+    revalidatePath(`/pipeline`);
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : "Close failed." };
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
   }
+}
+
+export async function inactivateJob(args: { jobId: string }): Promise<Result> {
+  return transitionLifecycle(args.jobId, "inactive", "job_inactivated");
+}
+
+export async function makeJobPrivate(args: { jobId: string }): Promise<Result> {
+  return transitionLifecycle(args.jobId, "private", "job_made_private");
+}
+
+export async function reactivateJob(args: { jobId: string }): Promise<Result> {
+  return transitionLifecycle(args.jobId, "active", "job_reactivated");
 }
 
 // Hard-delete a Job. Cascades through the Prisma schema take care of

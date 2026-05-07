@@ -9,6 +9,8 @@ import { SortableHeader, type SortDirection } from "@/components/sortable-header
 import { cn } from "@/lib/utils";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 
+export type JobLifecycle = "active" | "private" | "inactive";
+
 export type JobRow = {
   id: number;
   title: string;
@@ -20,6 +22,7 @@ export type JobRow = {
   jobType: string | null;
   statusName: string | null;
   isOpen: boolean;
+  lifecycle: JobLifecycle;
   openings: number;
   lastEditedAt: string | null;
   createdAt: string | null;
@@ -34,17 +37,18 @@ type JobsViewProps = {
   page: number;
   pageSize: number;
   totalPages: number;
-  tab: "active" | "inactive";
+  tab: JobLifecycle;
   q: string;
   sort: string;
   dir: SortDirection;
   activeCount: number;
+  privateCount: number;
   inactiveCount: number;
   error: string | null;
 };
 
 export function JobsView(props: JobsViewProps) {
-  const { rows, total, page, pageSize, totalPages, tab, q, sort, dir, activeCount, inactiveCount, error } = props;
+  const { rows, total, page, pageSize, totalPages, tab, q, sort, dir, activeCount, privateCount, inactiveCount, error } = props;
   const router = useRouter();
   const params = useSearchParams();
   const [query, setQuery] = useState(q);
@@ -82,7 +86,13 @@ export function JobsView(props: JobsViewProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
-        <Tabs tab={tab} activeCount={activeCount} inactiveCount={inactiveCount} buildHref={buildHref} />
+        <Tabs
+          tab={tab}
+          activeCount={activeCount}
+          privateCount={privateCount}
+          inactiveCount={inactiveCount}
+          buildHref={buildHref}
+        />
         <Link
           href="/jobs/new"
           className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
@@ -138,7 +148,11 @@ export function JobsView(props: JobsViewProps) {
               {rows.length === 0 && !error && (
                 <tr>
                   <td colSpan={8} className="px-5 py-12 text-center text-sm text-court-fg-muted">
-                    {tab === "active" ? "No active jobs" : "No inactive jobs"}
+                    {tab === "active"
+                      ? "No active jobs"
+                      : tab === "private"
+                        ? "No private jobs"
+                        : "No inactive jobs"}
                     {q ? ` matching "${q}"` : ""}.
                   </td>
                 </tr>
@@ -201,17 +215,20 @@ export function JobsView(props: JobsViewProps) {
 function Tabs({
   tab,
   activeCount,
+  privateCount,
   inactiveCount,
   buildHref,
 }: {
-  tab: "active" | "inactive";
+  tab: JobLifecycle;
   activeCount: number;
+  privateCount: number;
   inactiveCount: number;
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
 }) {
   return (
     <div className="inline-flex rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
       <TabLink label="Active" count={activeCount} active={tab === "active"} href={buildHref({ tab: "active", page: 1 })} />
+      <TabLink label="Private" count={privateCount} active={tab === "private"} href={buildHref({ tab: "private", page: 1 })} />
       <TabLink label="Inactive" count={inactiveCount} active={tab === "inactive"} href={buildHref({ tab: "inactive", page: 1 })} />
     </div>
   );

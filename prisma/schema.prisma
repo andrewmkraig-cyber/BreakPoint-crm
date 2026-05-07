@@ -676,7 +676,21 @@ model Job {
   title            String
   clientId         String?
   locations        String[]  @default([])
+  // Canonical "is this job currently active in the pipeline" signal.
+  // Active + Private both stay isOpen=true so search_jobs / find-matches
+  // / pipeline reads keep surfacing private jobs (the recruiter is
+  // still working them — they're just hidden from the default Active
+  // tab on /jobs). Inactive flips this to false.
   isOpen           Boolean   @default(true)
+  // Lifecycle bucket for the /jobs tabs. Three states:
+  //   "active"   — default, surfaces on the Active tab
+  //   "private"  — hidden from Active but still searchable / matchable
+  //                (lives on its own Private tab)
+  //   "inactive" — closed out, lives on the Inactive tab
+  // Nullable for legacy rows; readers fall back to isOpen ? "active"
+  // : "inactive" when null. New writes always set this column so every
+  // post-migration row has an explicit lifecycle.
+  lifecycle        String?   @default("active")
   jobStatus        Json?
   jobType          Json?
   employmentType   String?

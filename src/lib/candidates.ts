@@ -271,6 +271,12 @@ export async function getRfCandidateByRfId(rfId: number): Promise<RFCandidate | 
 export type RFJobWithAce = RFJob & {
   _aceJobId?: string;
   _aceClientId?: string;
+  // Lifecycle bucket from Neon. The shim surfaces it alongside the RF
+  // payload so the /jobs list can filter Active / Private / Inactive
+  // without a second round-trip. "active" | "private" | "inactive" |
+  // null (legacy rows that haven't been touched since the migration —
+  // readers fall back to is_open ? "active" : "inactive").
+  _lifecycle?: string | null;
 };
 
 // djb2 → 31-bit unsigned → negate so Ace-native synthetic ids land in
@@ -293,6 +299,7 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       raw: true,
       title: true,
       isOpen: true,
+      lifecycle: true,
       locations: true,
       description: true,
       clientId: true,
@@ -307,9 +314,14 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       // legacyRfId so every existing indexer (jobs.find(j => j.id === rfId))
       // keeps working unchanged.
       if (raw && typeof raw === "object") {
-        out.push({ ...raw, id: r.legacyRfId });
+        out.push({ ...raw, id: r.legacyRfId, _lifecycle: r.lifecycle ?? null });
       } else {
-        out.push({ id: r.legacyRfId, title: r.title, is_open: r.isOpen });
+        out.push({
+          id: r.legacyRfId,
+          title: r.title,
+          is_open: r.isOpen,
+          _lifecycle: r.lifecycle ?? null,
+        });
       }
       continue;
     }
@@ -332,6 +344,7 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       description: r.description ?? undefined,
       _aceJobId: r.id,
       _aceClientId: r.client && r.client.legacyRfId == null ? r.client.id : undefined,
+      _lifecycle: r.lifecycle ?? null,
     });
   }
   return out;

@@ -71,13 +71,15 @@ type DraftEmailResolved = {
   subject: string;
   body: string;
 };
-type CloseJobResolved = {
-  kind: "close_job";
+type LifecycleJobResolved = {
+  kind: "inactivate_job" | "privatize_job" | "reactivate_job";
   description: string;
   jobId: string | null;
   jobTitle: string;
   clientName: string;
-  isAlreadyClosed: boolean;
+  currentLifecycle: "active" | "private" | "inactive" | null;
+  targetLifecycle: "active" | "private" | "inactive";
+  noOp: boolean;
 };
 type DeleteJobResolved = {
   kind: "delete_job";
@@ -91,7 +93,7 @@ type ActionResolved =
   | MoveResolved
   | NoteResolved
   | DraftEmailResolved
-  | CloseJobResolved
+  | LifecycleJobResolved
   | DeleteJobResolved
   | UnknownResolved;
 
@@ -99,7 +101,9 @@ type ActionToolName =
   | "move_candidate_stage"
   | "add_note"
   | "draft_email"
-  | "close_job"
+  | "inactivate_job"
+  | "privatize_job"
+  | "reactivate_job"
   | "delete_job";
 
 type ActionCard = {
@@ -529,7 +533,9 @@ export function ClaudePanel() {
           (event.name === "move_candidate_stage" ||
             event.name === "add_note" ||
             event.name === "draft_email" ||
-            event.name === "close_job" ||
+            event.name === "inactivate_job" ||
+            event.name === "privatize_job" ||
+            event.name === "reactivate_job" ||
             event.name === "delete_job")
         ) {
           const input =
@@ -1016,9 +1022,13 @@ function ActionConfirmCard({
               ? "Note"
               : card.name === "draft_email"
                 ? "Email draft"
-                : card.name === "close_job"
-                  ? "Close job"
-                  : "Delete job"}
+                : card.name === "inactivate_job"
+                  ? "Inactivate"
+                  : card.name === "privatize_job"
+                    ? "Make private"
+                    : card.name === "reactivate_job"
+                      ? "Reactivate"
+                      : "Delete job"}
         </span>
         <div className="min-w-0 flex-1 text-court-fg">
           <ActionCardLabel card={card} />
@@ -1110,14 +1120,30 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
       </div>
     );
   }
-  if (r.kind === "close_job") {
+  if (
+    r.kind === "inactivate_job" ||
+    r.kind === "privatize_job" ||
+    r.kind === "reactivate_job"
+  ) {
+    const verb =
+      r.kind === "inactivate_job"
+        ? "Inactivate"
+        : r.kind === "privatize_job"
+          ? "Move to Private"
+          : "Reactivate";
+    const explainer =
+      r.kind === "inactivate_job"
+        ? "mark inactive — removes from the Active tab"
+        : r.kind === "privatize_job"
+          ? "hide from the Active tab — still searchable from Private"
+          : "move back to the Active tab";
     return (
       <div className="text-sm leading-snug">
-        Close <span className="font-semibold">{r.jobTitle}</span> — mark as
-        inactive and remove from active pipeline.
-        {r.isAlreadyClosed && (
+        {verb} <span className="font-semibold">{r.jobTitle}</span> at{" "}
+        <span className="font-medium">{r.clientName}</span> — {explainer}.
+        {r.noOp && (
           <span className="ml-1 text-xs italic text-court-fg-muted">
-            (already closed)
+            (already {r.targetLifecycle})
           </span>
         )}
       </div>
