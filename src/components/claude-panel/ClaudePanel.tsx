@@ -10,11 +10,13 @@ import {
   useClaudePanel,
 } from "@/lib/claude-panel-context";
 import { useFloatingZ } from "@/lib/floating-z";
+import { useComposerManager } from "@/lib/composer-manager";
 import { Button } from "@/components/ui/button";
 import {
   CopyButton,
   EmailThisButton,
   MarkdownContent,
+  markdownToCleanHtml,
 } from "@/components/AiWorkspace";
 
 // Floating, draggable, resizable Claude chat panel. Mirrors the
@@ -30,12 +32,25 @@ import {
 // stays exclusively in /messages so a stream interruption can't leave
 // half a row in Neon.
 
-type Message = {
+type ChatMessage = {
+  kind: "message";
   id: string;
   role: "user" | "assistant";
   content: string;
   createdAt: string;
 };
+
+type ActionCard = {
+  kind: "action";
+  id: string;            // tool_use id from Anthropic
+  name: "move_candidate_stage" | "add_note" | "draft_email";
+  input: Record<string, unknown>;
+  description: string;
+  status: "pending" | "running" | "confirmed" | "cancelled";
+  resultMessage?: string;
+};
+
+type RenderItem = ChatMessage | ActionCard;
 
 // Sentinel id assigned to the assistant bubble while it's streaming.
 // Replaced with the persisted cuid once the final POST resolves.
@@ -54,8 +69,9 @@ export function ClaudePanel() {
   } = useClaudePanel();
   const { z, bringToFront } = useFloatingZ(open);
 
+  const composer = useComposerManager();
   const [mounted, setMounted] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [items, setItems] = useState<RenderItem[]>([]);
   const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -83,10 +99,25 @@ export function ClaudePanel() {
           cache: "no-store",
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as Message[];
-        if (!cancelled) setMessages(data);
+        const data = (await res.json()) as Array<{
+          id: string;
+          role: "user" | "assistant";
+          content: string;
+          createdAt: string;
+        }>;
+        if (!cancelled) {
+          setItems(
+            data.map((m) => ({
+              kind: "message" as const,
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              createdAt: m.createdAt,
+            })),
+          );
+        }
       } catch {
-        if (!cancelled) setMessages([]);
+        if (!cancelled) setItems([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -104,7 +135,7 @@ export function ClaudePanel() {
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [open, messages]);
+  }, [open, items]);
 
   // Resolve the active entity's display name for the header pill.
   // Runs on every type/id change (i.e. client navigation) so the pill
@@ -255,14 +286,20 @@ export function ClaudePanel() {
     [position, size, setPosition, setSize],
   );
 
-  async function persist(role: "user" | "assistant", content: string) {
+  async function persist(role: "user" | "assistant", content: string): Promise<ChatMessage> {
     const res = await fetch("/api/claude-panel/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ role, content }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return (await res.json()) as Message;
+    const row = (await res.json()) as {
+      id: string;
+      role: "user" | "assistant";
+      content: string;
+      createdAt: string;
+    };
+    return { kind: "message", ...row };
   }
 
   async function send() {
@@ -273,32 +310,37 @@ export function ClaudePanel() {
     // Optimistic user bubble — replaced with the server-assigned cuid
     // once the /messages POST resolves.
     const tempUserId = `tmp-${Date.now()}`;
-    const optimisticUser: Message = {
+    const optimisticUser: ChatMessage = {
+      kind: "message",
       id: tempUserId,
       role: "user",
       content: text,
       createdAt: new Date().toISOString(),
     };
-    // Snapshot the prior history BEFORE adding the optimistic user
+    // Snapshot the prior chat history BEFORE adding the optimistic user
     // bubble so we can hand Claude a clean transcript ending in this
     // turn's user content (built below) without the temp row's
-    // unsaved client-only id.
-    const priorHistory = messages.map((m) => ({
-      role: m.role,
-      content: m.content,
-    }));
-    setMessages((prev) => [...prev, optimisticUser]);
+    // unsaved client-only id. Action cards aren't part of the API
+    // history — only message rows are.
+    const priorHistory = items
+      .filter((it): it is ChatMessage => it.kind === "message")
+      .map((m) => ({ role: m.role, content: m.content }));
+    setItems((prev) => [...prev, optimisticUser]);
 
-    let userRow: Message;
+    let userRow: ChatMessage;
     try {
       userRow = await persist("user", text);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempUserId ? userRow : m)),
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "message" && it.id === tempUserId ? userRow : it,
+        ),
       );
     } catch {
       // /messages POST failed — roll back the optimistic bubble and
       // restore the draft so the user can retry without losing input.
-      setMessages((prev) => prev.filter((m) => m.id !== tempUserId));
+      setItems((prev) =>
+        prev.filter((it) => !(it.kind === "message" && it.id === tempUserId)),
+      );
       setDraft(text);
       setSending(false);
       return;
@@ -308,9 +350,10 @@ export function ClaudePanel() {
     // deltas accumulate into. The pulsing cursor lives inside this
     // bubble while id === STREAMING_ID; the swap to the persisted
     // cuid (or removal on error) hides the cursor.
-    setMessages((prev) => [
+    setItems((prev) => [
       ...prev,
       {
+        kind: "message",
         id: STREAMING_ID,
         role: "assistant",
         content: "",
@@ -320,6 +363,7 @@ export function ClaudePanel() {
 
     let assembled = "";
     let streamErr: string | null = null;
+    const pendingActions: ActionCard[] = [];
     try {
       const res = await fetch("/api/claude-panel/chat", {
         method: "POST",
@@ -346,7 +390,15 @@ export function ClaudePanel() {
       const handleLine = (raw: string) => {
         const line = raw.trim();
         if (!line) return;
-        let event: { t?: unknown; text?: unknown; error?: unknown };
+        let event: {
+          t?: unknown;
+          text?: unknown;
+          error?: unknown;
+          id?: unknown;
+          name?: unknown;
+          input?: unknown;
+          description?: unknown;
+        };
         try {
           event = JSON.parse(line);
         } catch {
@@ -354,11 +406,35 @@ export function ClaudePanel() {
         }
         if (event.t === "delta" && typeof event.text === "string") {
           assembled += event.text;
-          setMessages((prev) =>
-            prev.map((m) =>
-              m.id === STREAMING_ID ? { ...m, content: assembled } : m,
+          setItems((prev) =>
+            prev.map((it) =>
+              it.kind === "message" && it.id === STREAMING_ID
+                ? { ...it, content: assembled }
+                : it,
             ),
           );
+        } else if (
+          event.t === "action_pending" &&
+          typeof event.id === "string" &&
+          (event.name === "move_candidate_stage" ||
+            event.name === "add_note" ||
+            event.name === "draft_email")
+        ) {
+          const card: ActionCard = {
+            kind: "action",
+            id: event.id,
+            name: event.name,
+            input:
+              event.input && typeof event.input === "object"
+                ? (event.input as Record<string, unknown>)
+                : {},
+            description:
+              typeof event.description === "string"
+                ? event.description
+                : `Confirm action: ${event.name}`,
+            status: "pending",
+          };
+          pendingActions.push(card);
         } else if (event.t === "error") {
           streamErr =
             typeof event.error === "string" ? event.error : "Stream error";
@@ -386,47 +462,161 @@ export function ClaudePanel() {
       // for an error it didn't produce.
       const message =
         e instanceof Error ? e.message : "Chat failed unexpectedly";
-      setMessages((prev) => prev.filter((m) => m.id !== STREAMING_ID));
+      setItems((prev) =>
+        prev.filter((it) => !(it.kind === "message" && it.id === STREAMING_ID)),
+      );
       toast.error("Ace couldn't respond", { description: message });
       setSending(false);
       return;
     }
 
-    // Stream finished cleanly. Persist the full assembled content as
-    // the assistant turn and swap the streaming bubble for the
-    // persisted row so the next render's stable cuid drops the
-    // pulsing cursor.
+    // Stream finished cleanly. Persist whatever assistant text Claude
+    // streamed (often empty when the turn was just a tool_use) and
+    // swap the streaming bubble. If the bubble has no content AND
+    // there's at least one pending action card, drop the empty
+    // bubble entirely — the action card carries the visible meaning.
+    if (assembled.trim().length === 0 && pendingActions.length > 0) {
+      setItems((prev) => [
+        ...prev.filter((it) => !(it.kind === "message" && it.id === STREAMING_ID)),
+        ...pendingActions,
+      ]);
+      setSending(false);
+      return;
+    }
+
     try {
       const assistantRow = await persist("assistant", assembled);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === STREAMING_ID ? assistantRow : m)),
-      );
+      setItems((prev) => [
+        ...prev.map((it) =>
+          it.kind === "message" && it.id === STREAMING_ID ? assistantRow : it,
+        ),
+        ...pendingActions,
+      ]);
     } catch {
       // Stream succeeded but persistence failed — keep the bubble
       // visible with the assembled content but mark it as unsaved by
       // dropping the streaming sentinel. Next page load won't show
       // this turn; a subsequent send will continue cleanly.
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === STREAMING_ID
-            ? { ...m, id: `unsaved-${Date.now()}` }
-            : m,
+      setItems((prev) => [
+        ...prev.map((it) =>
+          it.kind === "message" && it.id === STREAMING_ID
+            ? { ...it, id: `unsaved-${Date.now()}` }
+            : it,
         ),
-      );
+        ...pendingActions,
+      ]);
     } finally {
       setSending(false);
     }
   }
 
+  // Confirm/Cancel handlers for action cards. Both flows persist a
+  // synthetic assistant message describing the outcome so the History
+  // tab and any future page-load shows a complete record. Cancel never
+  // hits /api/claude-panel/action — there's nothing to roll back.
+  async function handleConfirmAction(actionId: string) {
+    const card = items.find(
+      (it): it is ActionCard => it.kind === "action" && it.id === actionId,
+    );
+    if (!card || card.status !== "pending") return;
+    setItems((prev) =>
+      prev.map((it) =>
+        it.kind === "action" && it.id === actionId
+          ? { ...it, status: "running" as const }
+          : it,
+      ),
+    );
+    try {
+      const res = await fetch("/api/claude-panel/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: card.name, input: card.input }),
+      });
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        message?: string;
+        openComposer?: boolean;
+        to?: string;
+        subject?: string;
+        body?: string;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      // draft_email branch: pop the global mail composer with the
+      // pre-filled draft. The recruiter still has to click Send.
+      if (data.openComposer) {
+        composer.open({
+          defaultTo: data.to ?? "",
+          defaultSubject: data.subject ?? "",
+          defaultBody: markdownToCleanHtml(data.body ?? ""),
+          templates: [],
+          mergeContext: { user: { firstName: "", fullName: "" } },
+          nonBlocking: true,
+        });
+      }
+      const resultMessage = data.message ?? "Action completed.";
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "action" && it.id === actionId
+            ? { ...it, status: "confirmed" as const, resultMessage }
+            : it,
+        ),
+      );
+      try {
+        const row = await persist("assistant", resultMessage);
+        setItems((prev) => [...prev, row]);
+      } catch {
+        // Persistence failure is non-fatal — the card already shows
+        // the result inline, and the user's next chat turn will work.
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Action failed";
+      toast.error("Couldn't run action", { description: message });
+      setItems((prev) =>
+        prev.map((it) =>
+          it.kind === "action" && it.id === actionId
+            ? { ...it, status: "pending" as const }
+            : it,
+        ),
+      );
+    }
+  }
+
+  async function handleCancelAction(actionId: string) {
+    const card = items.find(
+      (it): it is ActionCard => it.kind === "action" && it.id === actionId,
+    );
+    if (!card || card.status !== "pending") return;
+    setItems((prev) =>
+      prev.map((it) =>
+        it.kind === "action" && it.id === actionId
+          ? {
+              ...it,
+              status: "cancelled" as const,
+              resultMessage: "Action cancelled.",
+            }
+          : it,
+      ),
+    );
+    try {
+      const row = await persist("assistant", "Action cancelled.");
+      setItems((prev) => [...prev, row]);
+    } catch {
+      // Persistence failure is non-fatal — see handleConfirmAction.
+    }
+  }
+
   async function clearChat() {
-    if (clearing || messages.length === 0) return;
+    if (clearing || items.length === 0) return;
     setClearing(true);
     try {
       const res = await fetch("/api/claude-panel/messages", {
         method: "DELETE",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setMessages([]);
+      setItems([]);
     } catch (e) {
       const message =
         e instanceof Error ? e.message : "Clear failed unexpectedly";
@@ -474,7 +664,7 @@ export function ClaudePanel() {
         <button
           type="button"
           onClick={clearChat}
-          disabled={clearing || messages.length === 0}
+          disabled={clearing || items.length === 0}
           className="rounded-md px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-50"
         >
           Clear chat
@@ -493,11 +683,11 @@ export function ClaudePanel() {
         ref={listRef}
         className="flex-1 overflow-y-auto px-4 py-3"
       >
-        {loading && messages.length === 0 ? (
+        {loading && items.length === 0 ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
             <Loader2 className="h-4 w-4 animate-spin" /> Loading…
           </div>
-        ) : messages.length === 0 ? (
+        ) : items.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-court-fg-muted">
             <div className="font-serif text-court-fg">Ask Ace anything.</div>
             <div className="text-xs">
@@ -506,7 +696,18 @@ export function ClaudePanel() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {messages.map((m) => {
+            {items.map((it) => {
+              if (it.kind === "action") {
+                return (
+                  <ActionConfirmCard
+                    key={it.id}
+                    card={it}
+                    onConfirm={() => void handleConfirmAction(it.id)}
+                    onCancel={() => void handleCancelAction(it.id)}
+                  />
+                );
+              }
+              const m = it;
               const isStreaming = m.id === STREAMING_ID;
               const isUser = m.role === "user";
               const showActions = !isUser && !isStreaming && m.content.trim().length > 0;
@@ -624,5 +825,90 @@ export function ClaudePanel() {
       />
     </div>,
     document.body,
+  );
+}
+
+// Inline confirmation card. Pending state shows green Confirm + grey
+// Cancel; running state disables both and spins; confirmed/cancelled
+// states fade the card and show the result line so the recruiter
+// has a permanent in-thread record of what happened.
+function ActionConfirmCard({
+  card,
+  onConfirm,
+  onCancel,
+}: {
+  card: ActionCard;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const isPending = card.status === "pending";
+  const isRunning = card.status === "running";
+  const isConfirmed = card.status === "confirmed";
+  const isCancelled = card.status === "cancelled";
+  return (
+    <div
+      className={
+        "mr-auto w-full max-w-[95%] rounded-xl border px-3 py-2 text-sm shadow-sm" +
+        (isCancelled
+          ? " border-court-border bg-court-surface-subtle text-court-fg-muted"
+          : isConfirmed
+            ? " border-court-border bg-court-surface text-court-fg"
+            : " border-court-accent/40 bg-court-surface text-court-fg")
+      }
+    >
+      <div className="flex items-start gap-2">
+        <span className="mt-0.5 rounded bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-court-fg-muted">
+          {card.name === "move_candidate_stage"
+            ? "Stage move"
+            : card.name === "add_note"
+              ? "Note"
+              : "Email draft"}
+        </span>
+        <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">
+          {card.description}
+        </div>
+      </div>
+      {card.name === "add_note" && typeof card.input.note === "string" && (
+        <div className="mt-2 rounded-md border border-court-border bg-court-surface-subtle px-2 py-1.5 text-xs text-court-fg-muted">
+          {card.input.note as string}
+        </div>
+      )}
+      {card.name === "draft_email" && typeof card.input.body === "string" && (
+        <div className="mt-2 line-clamp-4 rounded-md border border-court-border bg-court-surface-subtle px-2 py-1.5 text-xs text-court-fg-muted">
+          {(card.input.body as string).slice(0, 400)}
+        </div>
+      )}
+      {(isPending || isRunning) && (
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={isRunning}
+            className="inline-flex items-center gap-1 rounded-md bg-court-brand px-3 py-1 text-xs font-semibold text-white transition hover:bg-brand-dark disabled:opacity-60"
+          >
+            {isRunning ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" /> Running…
+              </>
+            ) : (
+              "Confirm"
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isRunning}
+            className="rounded-md border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface disabled:opacity-60"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+      {(isConfirmed || isCancelled) && card.resultMessage && (
+        <div className="mt-2 text-xs italic text-court-fg-muted">
+          {card.resultMessage}
+        </div>
+      )}
+    </div>
   );
 }

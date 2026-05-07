@@ -15,6 +15,7 @@ export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
   { slug: "notifications",     label: "Notifications" },
   { slug: "personal-trainer",  label: "Personal Trainer" },
+  { slug: "history",           label: "Claude History" },
   { slug: "branding",          label: "Branding" },
   { slug: "templates",         label: "Templates" },
   { slug: "triggers",          label: "Triggers" },

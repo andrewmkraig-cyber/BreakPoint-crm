@@ -65,7 +65,8 @@ const SYSTEM_PROMPT =
   "- 'what jobs are open' / 'show open roles' / 'active jobs' → search_jobs with the literal phrase as the query (the tool detects this intent and lists every open job).\n" +
   "- Specific candidate / role / client lookups (skills, titles, locations, industries) → search_candidates / search_jobs / search_clients with the user's natural phrasing.\n" +
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
-  "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record — never strip the link, never paraphrase the URL.";
+  "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record — never strip the link, never paraphrase the URL.\n" +
+  "Action tools — move_candidate_stage / add_note / draft_email — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. After calling an action tool do not write any more text — the card speaks for itself.";
 
 // Custom data tools — exposed to Claude so it can pull live records
 // from Neon. Schemas mirror the parameters Andrew is most likely to ask
@@ -141,7 +142,95 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       },
     },
   },
+  // Action tools — these never execute server-side. The chat route
+  // intercepts the tool_use, emits an action_pending event back to the
+  // panel, and stops streaming. The recruiter clicks Confirm/Cancel in
+  // the panel; Confirm fires /api/claude-panel/action which performs
+  // the Prisma write or hands the params back to the mail composer.
+  // Cancel just dismisses the card. Andrew is the human-in-the-loop on
+  // every write the assistant proposes, so a hallucinated stage move
+  // never lands in Neon.
+  {
+    name: "move_candidate_stage",
+    description:
+      "Propose moving a candidate's placement to a new pipeline stage. The recruiter must Confirm before this lands. Resolve the candidate via search_candidates and the placement via get_pipeline first so you can pass real ids — never invent ids. newStage must be one of: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
+    input_schema: {
+      type: "object",
+      properties: {
+        candidateId: {
+          type: "string",
+          description: "Candidate cuid (from search_candidates).",
+        },
+        placementId: {
+          type: "string",
+          description: "Placement cuid (from get_pipeline).",
+        },
+        newStage: {
+          type: "string",
+          description:
+            "Target stage. Allowed: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
+        },
+      },
+      required: ["candidateId", "placementId", "newStage"],
+    },
+  },
+  {
+    name: "add_note",
+    description:
+      "Propose appending a note to a candidate, client, or job activity log. The recruiter must Confirm before this lands. Use this for 'leave a note that…' / 'log a follow-up…' / 'remember that…' style requests. Resolve the entity id via the search tools first.",
+    input_schema: {
+      type: "object",
+      properties: {
+        entityType: {
+          type: "string",
+          enum: ["candidate", "client", "job"],
+          description: "Which record the note attaches to.",
+        },
+        entityId: {
+          type: "string",
+          description: "cuid of the candidate / client / job.",
+        },
+        note: {
+          type: "string",
+          description: "The note text.",
+        },
+      },
+      required: ["entityType", "entityId", "note"],
+    },
+  },
+  {
+    name: "draft_email",
+    description:
+      "Propose opening Ace's mail composer pre-filled with a draft. Never sends — the recruiter reviews and sends from the composer. Use this when the recruiter asks you to 'draft', 'write', 'compose', or 'send' an email; the recruiter still has to click Send themselves after Confirm.",
+    input_schema: {
+      type: "object",
+      properties: {
+        to: {
+          type: "string",
+          description: "Recipient email address.",
+        },
+        subject: {
+          type: "string",
+          description: "Email subject line.",
+        },
+        body: {
+          type: "string",
+          description: "Email body. Plain text or markdown — the composer cleans it up.",
+        },
+      },
+      required: ["to", "subject", "body"],
+    },
+  },
 ];
+
+// Names of the client-managed action tools. The streaming loop matches
+// against this set to decide between executeTool() and emitting an
+// action_pending event.
+const ACTION_TOOL_NAMES = new Set([
+  "move_candidate_stage",
+  "add_note",
+  "draft_email",
+]);
 
 const MAX_TOOL_ROUNDS = 4;
 
@@ -850,6 +939,82 @@ function log(
   console.log("[claude-panel.tool]", tool, safeInput, "rows=" + rowCount, note ?? "");
 }
 
+// Resolve a plain-English description for the confirmation card. We
+// look up display names server-side so the panel doesn't need a second
+// round of fetches just to render "Move Sara Johnson to interviewing
+// for Senior Tax Manager." Failures fall through to a generic label
+// rather than blocking the proposal — the recruiter can still inspect
+// the raw input on the card.
+async function describeAction(
+  name: string,
+  rawInput: unknown,
+  orgId: string,
+): Promise<string> {
+  const input = (rawInput && typeof rawInput === "object" ? rawInput : {}) as Record<
+    string,
+    unknown
+  >;
+  try {
+    if (name === "move_candidate_stage") {
+      const candidateId = typeof input.candidateId === "string" ? input.candidateId : "";
+      const placementId = typeof input.placementId === "string" ? input.placementId : "";
+      const newStage = typeof input.newStage === "string" ? input.newStage : "";
+      if (!candidateId || !placementId || !newStage) {
+        return `Move candidate to ${newStage || "(unknown stage)"}.`;
+      }
+      const [candidate, placement] = await Promise.all([
+        prisma.candidate.findFirst({
+          where: { id: candidateId, organizationId: orgId },
+          select: { firstName: true, lastName: true },
+        }),
+        prisma.placement.findFirst({
+          where: { id: placementId, organizationId: orgId },
+          select: { stage: true, job: { select: { title: true } } },
+        }),
+      ]);
+      const candName = candidate ? joinName(candidate.firstName, candidate.lastName) : "(unknown candidate)";
+      const jobTitle = placement?.job?.title ?? "(unknown job)";
+      const fromStage = placement?.stage ?? "(unknown)";
+      return `Move ${candName} from ${fromStage} → ${newStage} on ${jobTitle}.`;
+    }
+    if (name === "add_note") {
+      const entityType = typeof input.entityType === "string" ? input.entityType : "";
+      const entityId = typeof input.entityId === "string" ? input.entityId : "";
+      const note = typeof input.note === "string" ? input.note : "";
+      const preview = note.length > 80 ? note.slice(0, 77) + "…" : note;
+      let entityName = "(unknown)";
+      if (entityType === "candidate") {
+        const c = await prisma.candidate.findFirst({
+          where: { id: entityId, organizationId: orgId },
+          select: { firstName: true, lastName: true },
+        });
+        if (c) entityName = joinName(c.firstName, c.lastName);
+      } else if (entityType === "client") {
+        const cl = await prisma.client.findFirst({
+          where: { id: entityId, organizationId: orgId },
+          select: { name: true },
+        });
+        if (cl) entityName = cl.name;
+      } else if (entityType === "job") {
+        const j = await prisma.job.findFirst({
+          where: { id: entityId, organizationId: orgId },
+          select: { title: true },
+        });
+        if (j) entityName = j.title;
+      }
+      return `Add note to ${entityType} ${entityName}: "${preview}"`;
+    }
+    if (name === "draft_email") {
+      const to = typeof input.to === "string" ? input.to : "";
+      const subject = typeof input.subject === "string" ? input.subject : "";
+      return `Open mail composer to ${to || "(no recipient)"} — subject: "${subject || "(no subject)"}"`;
+    }
+  } catch {
+    // fall through
+  }
+  return `Confirm action: ${name}`;
+}
+
 async function executeTool(
   name: string,
   rawInput: unknown,
@@ -1084,6 +1249,35 @@ export async function POST(req: NextRequest) {
             (b): b is Extract<typeof b, { type: "tool_use" }> => b.type === "tool_use",
           );
           if (toolUses.length === 0) break;
+
+          // Action tools end the turn — Claude is proposing a write the
+          // recruiter must Confirm before it lands. We emit an
+          // action_pending event per call (with a plain-English label
+          // so the panel doesn't have to re-resolve names) and stop
+          // the loop. Search tools called in the same turn are still
+          // run, but we don't continue the conversation back to Claude
+          // because the next assistant turn shouldn't speak until the
+          // human has decided yes/no on the proposal.
+          const actionUses = toolUses.filter((tu) => ACTION_TOOL_NAMES.has(tu.name));
+          if (actionUses.length > 0) {
+            conversation.push({ role: "assistant", content: finalMsg.content });
+            for (const tu of actionUses) {
+              const description = await describeAction(tu.name, tu.input, org.id);
+              send({
+                t: "action_pending",
+                id: tu.id,
+                name: tu.name,
+                input: tu.input,
+                description,
+              });
+              log(
+                "action_pending",
+                { name: tu.name, ...(tu.input as Record<string, unknown>) },
+                0,
+              );
+            }
+            break;
+          }
 
           // Record the assistant's tool-call turn verbatim, then run
           // every tool in parallel and feed the results back as a
