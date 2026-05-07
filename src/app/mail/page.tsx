@@ -3,7 +3,6 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listGmailThreads, type MailListThread } from "@/lib/gmail";
 import { MailView } from "@/app/mail/mail-view";
-import { PageHeader } from "@/components/page-header";
 import { ComposeNewEmailButton } from "@/components/mail/compose-new-email-button";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { getGmailStatus } from "@/lib/connectors";
@@ -72,24 +71,25 @@ export default async function MailPage() {
 
   // Viewport-bounded flex column so the inbox sidebar + thread list +
   // detail pane fit the visible area exactly without the page itself
-  // scrolling. Height is 100vh minus the AppShell's TopBar (h-20 =
-  // 5rem) plus main padding (p-6 = 3rem combined mobile, md:p-8 =
-  // 4rem combined md+). PageHeader takes its natural height at the
-  // top; MailView's grid eats remaining space via flex-1, and inner
-  // panes own their scroll.
+  // scrolling. A small negative top margin claws back part of the
+  // AppShell gutter so the compact mail header sits closer to the
+  // TopBar without going flush; height adds the same amount back so
+  // the bottom edge stays inside the gutter. The mail page uses an
+  // inline compact header (smaller than the global PageHeader) since
+  // Mail is a workspace tool, not a content page.
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
-      <PageHeader
-        title="Mail"
-        description="Gmail inbox and client conversations."
-        actions={
-          <ComposeNewEmailButton
-            templates={templates}
-            currentUserFirstName={myFirstName}
-            currentUserFullName={myFullName}
-          />
-        }
-      />
+    <div className="-mt-2 flex h-[calc(100vh-7.5rem)] flex-col md:-mt-4 md:h-[calc(100vh-8rem)]">
+      <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-3">
+        <div>
+          <h1 className="font-serif text-xl font-semibold text-court-fg">Mail</h1>
+          <p className="text-xs text-court-fg-muted">Gmail inbox and client conversations.</p>
+        </div>
+        <ComposeNewEmailButton
+          templates={templates}
+          currentUserFirstName={myFirstName}
+          currentUserFullName={myFullName}
+        />
+      </div>
       {gmailStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="gmail-down"
