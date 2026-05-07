@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
+import { WordOfDayCard } from "@/components/word-of-day-card";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
@@ -212,13 +213,23 @@ export default async function DashboardPage() {
         {formatEasternWeekRange(weekStart, weekEnd)}
       </p>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
-        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
-        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
-        <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
-        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
-        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
+      {/* KPI strip + Word of Day share a row at xl. The KPI grid takes
+          flex-1 on the left so the existing 6-tile layout continues to
+          stretch the available width, while the Word of Day card sits
+          fixed-width on the right. Below xl the two stack and the card
+          falls beneath the strip. */}
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:flex-1 xl:grid-cols-6">
+          <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
+          <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
+          <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
+          <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
+          <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
+          <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
+        </div>
+        <div className="xl:w-72 xl:shrink-0">
+          <WordOfDayCard />
+        </div>
       </div>
 
       <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />

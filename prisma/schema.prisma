@@ -888,6 +888,7 @@ model Organization {
   personalTrainerRules PersonalTrainerRule[]
   claudePanelMessages  ClaudePanelMessage[]
   jobBoardStatuses     JobBoardStatus[]
+  wordsOfDay           WordOfDay[]
 }
 
 model ClaudePanelMessage {
@@ -1042,5 +1043,26 @@ model GmailThreadTag {
   @@unique([threadId, clientId])
   @@index([candidateId])
   @@index([clientId])
+  @@index([organizationId])
+}
+
+// One row per org per day. The /api/word-of-day route checks for an
+// existing row keyed on (organizationId, generatedDate) before calling
+// Claude — so subsequent loads on the same ET day reuse the cached
+// payload instead of spinning the model. generatedDate is @db.Date so
+// the unique constraint compares calendar days, not instants.
+model WordOfDay {
+  id              String   @id @default(cuid())
+  organizationId  String
+  word            String
+  partOfSpeech    String
+  definition      String   @db.Text
+  exampleSentence String   @db.Text
+  generatedDate   DateTime @db.Date
+  createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, generatedDate])
   @@index([organizationId])
 }
