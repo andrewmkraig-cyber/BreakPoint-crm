@@ -1571,32 +1571,23 @@ export function ThreadDetail({
   composerMode: composerModeProp,
   onComposerModeChange,
 }: ThreadDetailProps) {
-  // Sort messages chronologically (oldest → newest) by their dateIso
-  // field BEFORE rendering. The Gmail API usually returns chronological,
-  // but "usually" isn't safe enough for the index-based isLatest check
-  // — a single out-of-order reply was enough to render the wrong
-  // message expanded. Messages with no dateIso fall to position 0
-  // so they don't accidentally claim the latest slot.
-  const sortedMessages = useMemo(() => {
+  // Gmail layout: render messages oldest → newest by dateIso so the
+  // first message is at the top, the latest sits at the bottom, and
+  // the auto-scroll below drops the viewport to the latest on open.
+  // Older messages render as one-line collapsed rows above; clicking
+  // any expands inline. Messages without a dateIso sort to position
+  // 0 so they can't accidentally claim the latest slot.
+  const orderedMessages = useMemo(() => {
     return [...detail.messages].sort((a, b) => {
       const ta = a.dateIso ? new Date(a.dateIso).getTime() : 0;
       const tb = b.dateIso ? new Date(b.dateIso).getTime() : 0;
       return ta - tb;
     });
   }, [detail.messages]);
-
-  // Inline /mail mode (Gmail-style): oldest at the top, latest pinned
-  // at the bottom right above the composer, with non-latest messages
-  // collapsed by default so a long thread doesn't read as a wall of
-  // text. Floating mode reverses (newest first) since the popup's
-  // compact body-first layout expects "what just happened" at the top.
-  const orderedMessages = useMemo(
-    () => (isFloating ? [...sortedMessages].reverse() : sortedMessages),
-    [sortedMessages, isFloating],
-  );
   // True latest = last item in chronological order. Used for reply
   // recipient defaults + Reply-All visibility.
-  const latest = sortedMessages[sortedMessages.length - 1] ?? undefined;
+  const latest =
+    orderedMessages[orderedMessages.length - 1] ?? undefined;
 
   // Gmail-style auto-scroll: when a thread is opened (detail.id
   // changes), drop the inline message pane to its bottom on a 300ms
