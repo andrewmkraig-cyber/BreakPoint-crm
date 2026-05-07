@@ -20,7 +20,9 @@ const CSP = [
   "img-src 'self' data: blob: https: http:",
   "font-src 'self' data:",
   "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com",
-  "frame-src 'self' https://vercel.live https://*.amazonaws.com",
+  // youtube.com + youtube-nocookie.com are allowlisted so the floating
+  // YouTube panel can embed the standard /embed/{videoId} player.
+  "frame-src 'self' https://vercel.live https://*.amazonaws.com https://www.youtube.com https://www.youtube-nocookie.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
