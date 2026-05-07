@@ -1589,69 +1589,88 @@ export function ThreadDetail({
   const latestId = latest?.id ?? null;
 
   // Gmail-style auto-scroll: when a thread is opened (detail.id
-  // changes), drop the inline message pane to its bottom so the most
-  // recent message is visible immediately. Skipped in floating mode
-  // because that path renders newest-first — the latest is already at
-  // the top there.
+  // changes), drop the inline message pane to the latest message so
+  // it's visible immediately. Skipped in floating mode because that
+  // path renders newest-first — the latest is already at the top.
   //
-  // We use TWO complementary techniques because either one alone has
-  // failed in production:
-  //   1. scrollIntoView({ block: "end" }) on the latest <article> —
-  //      bubbles up the closest scrollable ancestor and works even if
-  //      messagesScrollRef isn't actually the element that scrolls
-  //      (e.g. a flex-1 child without min-h-0 grew past its parent
-  //      and a higher ancestor is the real scroll container).
-  //   2. scrollTop = scrollHeight on the messages container as a
-  //      backup for cases where scrollIntoView under-shoots because
-  //      content is still loading.
-  // Both fire on initial render, again inside two stacked animation
-  // frames so layout settles, on every <img> load/error event inside
-  // the container (HTML-email signatures load late and push content
-  // down), and once more on a 600ms timeout fallback for web fonts.
+  // Implementation uses a ResizeObserver on the latest message + the
+  // messages container. Whenever either resizes (signature image
+  // loads late, web font swaps, the user expands an older collapsed
+  // row, etc), we re-call scrollIntoView({ block: "end" }) on the
+  // latest message so it stays pinned to the bottom of the viewport.
+  // The observer auto-disconnects 3s after thread open OR on the
+  // first user-initiated scroll, whichever comes first — after that
+  // the user is in control. A querySelector('[data-latest-message]')
+  // fallback handles the case where the React ref hasn't attached
+  // yet on the first synchronous call.
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   const latestMessageRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (isFloating) return;
 
-    let cancelled = false;
+    let stopped = false;
     const scrollToLatest = () => {
-      if (cancelled) return;
-      const latestNode = latestMessageRef.current;
-      if (latestNode) {
-        latestNode.scrollIntoView({ block: "end", behavior: "auto" });
+      if (stopped) return;
+      const target =
+        latestMessageRef.current ??
+        (document.querySelector(
+          '[data-latest-message="true"]',
+        ) as HTMLElement | null);
+      if (target) {
+        target.scrollIntoView({ block: "end", behavior: "auto" });
       }
-      const containerNode = messagesScrollRef.current;
-      if (containerNode) {
-        containerNode.scrollTop = containerNode.scrollHeight;
-      }
+      // Belt-and-suspenders: also drop the container's scrollTop to
+      // its scrollHeight in case scrollIntoView resolved to a higher
+      // ancestor (e.g. the page) and left the messages container
+      // mid-scroll.
+      const c = messagesScrollRef.current;
+      if (c) c.scrollTop = c.scrollHeight;
     };
 
+    // Initial pin + one frame later (lets layout settle before final pin).
     scrollToLatest();
     const raf = requestAnimationFrame(() => {
       scrollToLatest();
       requestAnimationFrame(scrollToLatest);
     });
 
-    const containerEl = messagesScrollRef.current;
-    const imgs = containerEl
-      ? Array.from(containerEl.querySelectorAll("img"))
-      : [];
-    for (const img of imgs) {
-      if (img.complete) continue;
-      img.addEventListener("load", scrollToLatest, { once: true });
-      img.addEventListener("error", scrollToLatest, { once: true });
+    // ResizeObserver re-pins on any layout change — the strongest
+    // signal we have for "content shifted, re-scroll please".
+    const ro =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(scrollToLatest)
+        : null;
+    if (ro) {
+      const c = messagesScrollRef.current;
+      if (c) ro.observe(c);
+      const m = latestMessageRef.current;
+      if (m) ro.observe(m);
     }
 
-    const fallbackId = window.setTimeout(scrollToLatest, 600);
+    // Stop auto-scrolling as soon as the user starts scrolling so we
+    // don't fight them when they're reading older messages.
+    const onUserScroll = () => {
+      stopped = true;
+      ro?.disconnect();
+    };
+    const c = messagesScrollRef.current;
+    c?.addEventListener("wheel", onUserScroll, { passive: true });
+    c?.addEventListener("touchmove", onUserScroll, { passive: true });
+
+    // Hard cap: 3s after open we stop fighting layout and let the
+    // page settle wherever it landed.
+    const offTimer = window.setTimeout(() => {
+      stopped = true;
+      ro?.disconnect();
+    }, 3000);
 
     return () => {
-      cancelled = true;
+      stopped = true;
       cancelAnimationFrame(raf);
-      window.clearTimeout(fallbackId);
-      for (const img of imgs) {
-        img.removeEventListener("load", scrollToLatest);
-        img.removeEventListener("error", scrollToLatest);
-      }
+      window.clearTimeout(offTimer);
+      ro?.disconnect();
+      c?.removeEventListener("wheel", onUserScroll);
+      c?.removeEventListener("touchmove", onUserScroll);
     };
   }, [detail.id, isFloating]);
 
@@ -2033,6 +2052,7 @@ export function ThreadDetail({
             <div
               key={m.id}
               ref={isLatest && !isFloating ? latestMessageRef : undefined}
+              data-latest-message={isLatest && !isFloating ? "true" : undefined}
             >
               <MessageBlock
                 msg={m}
