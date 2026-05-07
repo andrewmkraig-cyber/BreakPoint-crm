@@ -1521,6 +1521,20 @@ export function ThreadDetail({
   const latest =
     detail.messages[detail.messages.length - 1] ?? orderedMessages[0];
   const latestId = latest?.id ?? null;
+
+  // Gmail-style auto-scroll: when a thread is opened (detail.id
+  // changes), drop the inline message pane to its bottom so the most
+  // recent message is visible immediately. Skipped in floating mode
+  // because that path renders newest-first — the latest is already at
+  // the top there.
+  const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (isFloating) return;
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [detail.id, isFloating]);
+
   const floatingThread = useFloatingThread();
   const composerManager = useComposerManager();
   // Composer mode tracks WHICH button opened the composer so the
@@ -1877,6 +1891,7 @@ export function ThreadDetail({
           one of two slots depending on which mode we're in. */}
       {isFloating && composerOpen && composerNode}
       <div
+        ref={messagesScrollRef}
         className={
           isFloating && composerOpen
             ? // Quoted-history pane in body-first mode: collapsed to a
