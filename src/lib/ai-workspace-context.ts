@@ -6,16 +6,18 @@ import { canonicalStage } from "@/lib/rf-payload-shapes";
 // Panel chats. Every read is Neon-cuid-keyed: RecruiterFlow was retired
 // at the Phase 1 cutover, so context is sourced exclusively from the
 // Ace-native tables (Candidate, Client, Job, Placement, Contact,
-// ClientAgreement, ClientBenefits, JobOverride). Callers are expected
-// to pre-resolve any legacy numeric URL segment to a cuid before
-// invoking these builders (see getClientByIdentifier / getJobByIdentifier
-// / getCandidateByIdentifier in the per-entity lib files).
+// ClientAgreement, ClientBenefits, JobOverride, CandidateResume).
+// Callers are expected to pre-resolve any legacy numeric URL segment
+// to a cuid before invoking these builders (see getClientByIdentifier
+// / getJobByIdentifier / getCandidateByIdentifier in the per-entity
+// lib files).
 //
-// Resume text note: the schema does not store parsed resume text. The
-// "Resume" block below is assembled from the candidate's structured
-// columns (notes + experience[] + education[] + skills) so the
-// assistant has a near-resume narrative without parsing the PDF on
-// every POST.
+// Resume text: the schema doesn't store parsed PDF text, so this
+// module pdf-parses the most-recent CandidateResume blob on demand
+// (extractResumeTextForCandidate). The structured "RESUME:" block
+// stays in candidate context as a fallback for candidates with no
+// uploaded PDF — together they give Claude either the actual resume
+// narrative or the structured profile, never neither.
 
 // Candidate-context Game Plan sends the full resume + full JDs so
 // Claude gets the whole story, not a 3k-char summary. Client-context
@@ -277,6 +279,64 @@ export async function buildClientContext(clientId: string): Promise<string> {
     }
   }
 
+  // ACTIVE JOBS: original JD pastes for up-to-5 open roles. Sits next
+  // to the JOBS block above (which lists titles + override
+  // descriptions + pipeline counts) so Claude can ground answers in
+  // the unmodified rawJobDescription text the recruiter saved.
+  const activeJobsForJD = activeJobs
+    .filter((j) => j.rawJobDescription?.trim())
+    .slice(0, 5);
+  if (activeJobsForJD.length > 0) {
+    lines.push("");
+    lines.push("ACTIVE JOBS (raw description):");
+    for (const j of activeJobsForJD) {
+      lines.push(`  ${j.title}`);
+      const capped = truncate(j.rawJobDescription!.trim(), 2000);
+      for (const dLine of capped.split("\n")) lines.push(`    ${dLine}`);
+      lines.push("");
+    }
+  }
+
+  // PIPELINE CANDIDATES: pdf-parsed resume text for the 10 most-
+  // recently-updated placements. Distinct from CANDIDATE DETAILS
+  // (which renders the structured assemble-from-Ace narrative) — this
+  // surfaces the actual uploaded resume so Claude reads the recruiter's
+  // submittals in the candidate's own words. Capped at 3k/candidate to
+  // keep total payload under the 60s function budget for wide
+  // pipelines. pdf-parse runs in parallel; silent fallback on any
+  // failure (drops that candidate from the section).
+  const recentPlacements = [...placements]
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .slice(0, 10);
+  const pipelineResumes = await Promise.all(
+    recentPlacements.map(async (p) => {
+      if (!p.candidate) return null;
+      const name =
+        [p.candidate.firstName, p.candidate.lastName]
+          .filter(Boolean)
+          .join(" ") || "(unnamed)";
+      const text = await extractResumeTextForCandidate(
+        p.candidate.id,
+        org.id,
+        3000,
+      );
+      if (!text) return null;
+      return { name, stage: p.stage, text };
+    }),
+  );
+  const pipelineResumesFiltered = pipelineResumes.filter(
+    (x): x is { name: string; stage: string; text: string } => x !== null,
+  );
+  if (pipelineResumesFiltered.length > 0) {
+    lines.push("");
+    lines.push("PIPELINE CANDIDATES (uploaded resume text):");
+    for (const e of pipelineResumesFiltered) {
+      lines.push(`  ${e.name} (${e.stage})`);
+      for (const rLine of e.text.split("\n")) lines.push(`    ${rLine}`);
+      lines.push("");
+    }
+  }
+
   return lines.join("\n");
 }
 
@@ -347,6 +407,11 @@ export async function buildCandidateContext(
   }
 
   const resumeText = assembleResumeFromAce(candidate);
+  const uploadedResumeText = await extractResumeTextForCandidate(
+    candidate.id,
+    org.id,
+    6000,
+  );
 
   const lines: string[] = [];
   lines.push(
@@ -366,10 +431,19 @@ export async function buildCandidateContext(
     );
   lines.push("");
 
-  // Full resume content for this candidate. No truncation: Game Plan
-  // on a single candidate profile gets the complete resume so Claude
-  // can reason over the whole document (multi-role history, detailed
-  // bullets, reference sections, etc.).
+  // Resume sections. UPLOADED RESUME is the pdf-parsed text from the
+  // most-recent CandidateResume blob (capped at 6k chars). RESUME is
+  // the structured fallback assembled from notes/experience/education
+  // — kept so candidates without a PDF upload still surface a
+  // near-resume narrative. Both can be present.
+  lines.push("UPLOADED RESUME:");
+  if (uploadedResumeText.trim()) {
+    for (const rLine of uploadedResumeText.split("\n")) lines.push(`  ${rLine}`);
+  } else {
+    lines.push("  No resume on file");
+  }
+  lines.push("");
+
   lines.push("RESUME:");
   if (resumeText.trim()) {
     for (const rLine of resumeText.split("\n")) lines.push(`  ${rLine}`);
@@ -551,6 +625,37 @@ function truncate(s: string, max: number): string {
   return `${s.slice(0, max)}…`;
 }
 
+// Pulls the most-recent CandidateResume blob for a candidate, runs
+// pdf-parse on it, and returns up to `maxChars` of plain text. Silent
+// on every failure path (no upload, non-PDF mime, parse error, empty
+// text) so the caller can drop the result into the prompt without a
+// guard. Tenant-scoped via organizationId.
+async function extractResumeTextForCandidate(
+  candidateId: string,
+  organizationId: string,
+  maxChars: number,
+): Promise<string> {
+  try {
+    const resume = await prisma.candidateResume.findFirst({
+      where: { candidateId, organizationId, uploadComplete: true },
+      orderBy: { uploadedAt: "desc" },
+      select: { data: true, mimeType: true },
+    });
+    if (!resume?.data) return "";
+    if (!resume.mimeType?.toLowerCase().includes("pdf")) return "";
+    const mod = (await import("pdf-parse")) as unknown as
+      | { default: (buf: Buffer) => Promise<{ text: string }> }
+      | ((buf: Buffer) => Promise<{ text: string }>);
+    const parse = typeof mod === "function" ? mod : mod.default;
+    const out = await parse(resume.data as Buffer);
+    const text = (out.text ?? "").trim();
+    if (!text) return "";
+    return truncate(text, maxChars);
+  } catch {
+    return "";
+  }
+}
+
 // Job-context Game Plan. Mirrors the client builder's shape so the
 // recruiter can ask Claude job-specific questions (sourcing strategy,
 // interview prep, comp benchmarking) directly from the job page.
@@ -617,6 +722,18 @@ export async function buildJobContext(jobId: string): Promise<string> {
   lines.push("=== JOB DESCRIPTION ===");
   lines.push(description);
   lines.push("");
+  const rawJd = job.rawJobDescription?.trim();
+  if (rawJd) {
+    lines.push("=== RAW JOB DESCRIPTION (original paste) ===");
+    lines.push(rawJd);
+    lines.push("");
+  }
+  const internalNotes = job.internalRecruiterNotes?.trim();
+  if (internalNotes) {
+    lines.push("=== INTERNAL RECRUITER NOTES ===");
+    lines.push(internalNotes);
+    lines.push("");
+  }
   lines.push("=== PIPELINE SNAPSHOT ===");
   if (placements.length === 0) {
     lines.push("(no candidates in pipeline yet)");
