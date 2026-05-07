@@ -12,9 +12,11 @@ import type { PlacementStage } from "@/lib/placements";
 // add_note / draft_email, the panel renders a Confirm/Cancel card
 // and POSTs here on Confirm. Cancel never reaches this route.
 //
-// Every branch revalidates the URLs the recruiter is most likely to
-// have open after a stage move (pipeline, candidate profile) so the
-// page they navigate to next reflects the write.
+// Identifier policy: callers may send cuid OR legacy numeric rfId
+// for candidate / client / job ids — search_candidates and friends
+// surface whichever shape the row carries, so Claude often hands the
+// numeric form back. Resolution is org-scoped, so a leaked id from
+// another tenant 404s instead of mutating the wrong row.
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,76 @@ function isAllowedStage(s: string): s is PlacementStage {
   return (ALLOWED_STAGES as ReadonlyArray<string>).includes(s);
 }
 
+async function resolveCandidate(idOrRfId: string, orgId: string) {
+  if (!idOrRfId) return null;
+  if (/^\d+$/.test(idOrRfId)) {
+    const rfId = Number(idOrRfId);
+    if (!Number.isFinite(rfId)) return null;
+    return prisma.candidate.findFirst({
+      where: { rfId, organizationId: orgId },
+      select: { id: true, rfId: true, firstName: true, lastName: true },
+    });
+  }
+  return prisma.candidate.findFirst({
+    where: { id: idOrRfId, organizationId: orgId },
+    select: { id: true, rfId: true, firstName: true, lastName: true },
+  });
+}
+
+async function resolveClient(idOrRfId: string, orgId: string) {
+  if (!idOrRfId) return null;
+  if (/^\d+$/.test(idOrRfId)) {
+    const legacyRfId = Number(idOrRfId);
+    if (!Number.isFinite(legacyRfId)) return null;
+    return prisma.client.findFirst({
+      where: { legacyRfId, organizationId: orgId },
+      select: { id: true, name: true },
+    });
+  }
+  return prisma.client.findFirst({
+    where: { id: idOrRfId, organizationId: orgId },
+    select: { id: true, name: true },
+  });
+}
+
+async function resolveJob(idOrRfId: string, orgId: string) {
+  if (!idOrRfId) return null;
+  if (/^\d+$/.test(idOrRfId)) {
+    const legacyRfId = Number(idOrRfId);
+    if (!Number.isFinite(legacyRfId)) return null;
+    return prisma.job.findFirst({
+      where: { legacyRfId, organizationId: orgId },
+      select: { id: true, title: true },
+    });
+  }
+  return prisma.job.findFirst({
+    where: { id: idOrRfId, organizationId: orgId },
+    select: { id: true, title: true },
+  });
+}
+
+// Most-recent non-rejected, non-cancelled placement for a candidate.
+// Used when Claude proposes a stage move without naming a specific
+// placementId — typical for a recruiter saying "move Sara to
+// interviewing" where there's only one live req in flight.
+async function pickActivePlacement(candidateCuid: string, orgId: string) {
+  return prisma.placement.findFirst({
+    where: {
+      candidateId: candidateCuid,
+      organizationId: orgId,
+      stage: { notIn: ["rejected", "cancelled"] },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      stage: true,
+      candidateRfId: true,
+      job: { select: { title: true } },
+      candidate: { select: { firstName: true, lastName: true } },
+    },
+  });
+}
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
@@ -44,7 +116,7 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { name?: unknown; input?: unknown };
+  let body: { name?: unknown; input?: unknown; resolved?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -59,6 +131,13 @@ export async function POST(req: Request) {
     string,
     unknown
   >;
+  // The chat route ships its server-resolved cuids alongside Claude's
+  // raw input. Trust them when present — the lookup already happened
+  // there and re-doing it here just multiplies failure modes. Falls
+  // back to fresh resolution from `input` when missing.
+  const resolved = (body.resolved && typeof body.resolved === "object"
+    ? body.resolved
+    : {}) as Record<string, unknown>;
 
   const org = await getCurrentOrg();
   const user = await prisma.user.findUnique({
@@ -73,12 +152,17 @@ export async function POST(req: Request) {
   }
 
   if (name === "move_candidate_stage") {
-    const candidateId = typeof input.candidateId === "string" ? input.candidateId : "";
-    const placementId = typeof input.placementId === "string" ? input.placementId : "";
+    const candidateRef = typeof input.candidateId === "string" ? input.candidateId : "";
+    const placementRef = typeof input.placementId === "string" ? input.placementId : "";
     const newStage = typeof input.newStage === "string" ? input.newStage : "";
-    if (!candidateId || !placementId || !newStage) {
+    const preResolvedCandidateId =
+      typeof resolved.candidateId === "string" ? resolved.candidateId : "";
+    const preResolvedPlacementId =
+      typeof resolved.placementId === "string" ? resolved.placementId : "";
+
+    if (!candidateRef || !newStage) {
       return NextResponse.json(
-        { ok: false, error: "candidateId, placementId, and newStage are required" },
+        { ok: false, error: "candidateId and newStage are required" },
         { status: 400 },
       );
     }
@@ -88,29 +172,85 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    // Confirm the placement belongs to this org AND ties to the
-    // candidate Claude named. Both checks happen in a single query so
-    // a leaked id from another tenant or a mismatched candidate-vs-
-    // placement pair both 404 cleanly.
-    const placement = await prisma.placement.findFirst({
-      where: { id: placementId, organizationId: org.id, candidateId },
-      select: {
-        id: true,
-        stage: true,
-        candidateRfId: true,
-        job: { select: { title: true } },
-        candidate: { select: { firstName: true, lastName: true } },
-      },
-    });
-    if (!placement) {
+
+    // Resolve the candidate (cuid or rfId). The pre-resolved cuid from
+    // the chat route is preferred, but we re-verify it belongs to the
+    // org so a forged client payload can't bypass the tenant guard.
+    let candidate: { id: string; rfId: number | null; firstName: string | null; lastName: string | null } | null = null;
+    if (preResolvedCandidateId) {
+      candidate = await prisma.candidate.findFirst({
+        where: { id: preResolvedCandidateId, organizationId: org.id },
+        select: { id: true, rfId: true, firstName: true, lastName: true },
+      });
+    }
+    if (!candidate) {
+      candidate = await resolveCandidate(candidateRef, org.id);
+    }
+    if (!candidate) {
       return NextResponse.json(
-        { ok: false, error: "Placement not found for this candidate." },
+        { ok: false, error: "Candidate not found." },
         { status: 404 },
       );
     }
+
+    // Resolve the placement: prefer the pre-resolved cuid (org-checked
+    // again), fall back to whatever Claude passed (cuid only — we
+    // don't accept rfId for placements; they're Ace-native), and
+    // finally fall back to the candidate's most recent active
+    // placement so a "move Sara to interviewing" with no placementId
+    // still lands.
+    let placement: {
+      id: string;
+      stage: string;
+      candidateRfId: number | null;
+      job: { title: string } | null;
+      candidate: { firstName: string | null; lastName: string | null } | null;
+    } | null = null;
+    if (preResolvedPlacementId) {
+      placement = await prisma.placement.findFirst({
+        where: {
+          id: preResolvedPlacementId,
+          organizationId: org.id,
+          candidateId: candidate.id,
+        },
+        select: {
+          id: true,
+          stage: true,
+          candidateRfId: true,
+          job: { select: { title: true } },
+          candidate: { select: { firstName: true, lastName: true } },
+        },
+      });
+    }
+    if (!placement && placementRef) {
+      placement = await prisma.placement.findFirst({
+        where: {
+          id: placementRef,
+          organizationId: org.id,
+          candidateId: candidate.id,
+        },
+        select: {
+          id: true,
+          stage: true,
+          candidateRfId: true,
+          job: { select: { title: true } },
+          candidate: { select: { firstName: true, lastName: true } },
+        },
+      });
+    }
+    if (!placement) {
+      placement = await pickActivePlacement(candidate.id, org.id);
+    }
+    if (!placement) {
+      return NextResponse.json(
+        { ok: false, error: "No active placement found for this candidate." },
+        { status: 404 },
+      );
+    }
+
     const fromStage = placement.stage;
     await prisma.placement.update({
-      where: { id: placementId },
+      where: { id: placement.id },
       data: { stage: newStage, syncedToRf: false },
     });
     await logActivity({
@@ -118,11 +258,16 @@ export async function POST(req: Request) {
       userId: user.id,
       actionType: "claude_move_stage",
       targetType: "placement",
-      targetId: placementId,
-      metadata: { fromStage, toStage: newStage, candidateId, source: "claude_panel" },
+      targetId: placement.id,
+      metadata: {
+        fromStage,
+        toStage: newStage,
+        candidateId: candidate.id,
+        source: "claude_panel",
+      },
     });
     revalidatePath("/pipeline");
-    revalidatePath(`/candidates/${candidateId}`);
+    revalidatePath(`/candidates/${candidate.id}`);
     if (placement.candidateRfId) {
       revalidatePath(`/candidates/${placement.candidateRfId}`);
     }
@@ -139,9 +284,12 @@ export async function POST(req: Request) {
 
   if (name === "add_note") {
     const entityType = typeof input.entityType === "string" ? input.entityType : "";
-    const entityId = typeof input.entityId === "string" ? input.entityId : "";
+    const entityRef = typeof input.entityId === "string" ? input.entityId : "";
     const note = typeof input.note === "string" ? input.note.trim() : "";
-    if (!entityType || !entityId || !note) {
+    const preResolvedEntityId =
+      typeof resolved.entityId === "string" ? resolved.entityId : "";
+
+    if (!entityType || !entityRef || !note) {
       return NextResponse.json(
         { ok: false, error: "entityType, entityId, and note are required" },
         { status: 400 },
@@ -153,57 +301,85 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
-    // Verify the target exists in this org so we don't end up with
-    // dangling activity-log rows pointing at a phantom id Claude made
-    // up. logActivity itself swallows DB failures, so the check here
-    // is the only authoritative org-scope guard for this branch.
-    let entityName = "";
+
+    // Resolve the target. Pre-resolved cuid from the chat route is
+    // verified against the org (defense in depth — never trust a
+    // client-provided id without a fresh org-scoped lookup), then
+    // falls back to the cuid-or-rfId resolver if the pre-resolved id
+    // is missing or stale.
+    let entityCuid: string | null = null;
+    let entityName = "(unnamed)";
+
     if (entityType === "candidate") {
-      const c = await prisma.candidate.findFirst({
-        where: { id: entityId, organizationId: org.id },
-        select: { firstName: true, lastName: true },
-      });
-      if (!c) {
+      let row: { id: string; firstName: string | null; lastName: string | null } | null = null;
+      if (preResolvedEntityId) {
+        row = await prisma.candidate.findFirst({
+          where: { id: preResolvedEntityId, organizationId: org.id },
+          select: { id: true, firstName: true, lastName: true },
+        });
+      }
+      if (!row) {
+        row = await resolveCandidate(entityRef, org.id);
+      }
+      if (!row) {
         return NextResponse.json(
           { ok: false, error: "Candidate not found." },
           { status: 404 },
         );
       }
-      entityName = [c.firstName, c.lastName].filter(Boolean).join(" ") || "(unnamed)";
+      entityCuid = row.id;
+      entityName = [row.firstName, row.lastName].filter(Boolean).join(" ") || "(unnamed)";
     } else if (entityType === "client") {
-      const cl = await prisma.client.findFirst({
-        where: { id: entityId, organizationId: org.id },
-        select: { name: true },
-      });
-      if (!cl) {
+      let row: { id: string; name: string } | null = null;
+      if (preResolvedEntityId) {
+        row = await prisma.client.findFirst({
+          where: { id: preResolvedEntityId, organizationId: org.id },
+          select: { id: true, name: true },
+        });
+      }
+      if (!row) {
+        row = await resolveClient(entityRef, org.id);
+      }
+      if (!row) {
         return NextResponse.json(
           { ok: false, error: "Client not found." },
           { status: 404 },
         );
       }
-      entityName = cl.name;
+      entityCuid = row.id;
+      entityName = row.name;
     } else {
-      const j = await prisma.job.findFirst({
-        where: { id: entityId, organizationId: org.id },
-        select: { title: true },
-      });
-      if (!j) {
+      let row: { id: string; title: string } | null = null;
+      if (preResolvedEntityId) {
+        row = await prisma.job.findFirst({
+          where: { id: preResolvedEntityId, organizationId: org.id },
+          select: { id: true, title: true },
+        });
+      }
+      if (!row) {
+        row = await resolveJob(entityRef, org.id);
+      }
+      if (!row) {
         return NextResponse.json(
           { ok: false, error: "Job not found." },
           { status: 404 },
         );
       }
-      entityName = j.title;
+      entityCuid = row.id;
+      entityName = row.title;
     }
+
     await logActivity({
       organizationId: org.id,
       userId: user.id,
-      actionType: "note_added",
+      actionType: "note",
       targetType: entityType,
-      targetId: entityId,
+      targetId: entityCuid,
       metadata: { note, source: "claude_panel" },
     });
-    revalidatePath(`/${entityType === "candidate" ? "candidates" : entityType === "client" ? "clients" : "jobs"}/${entityId}`);
+    revalidatePath(
+      `/${entityType === "candidate" ? "candidates" : entityType === "client" ? "clients" : "jobs"}/${entityCuid}`,
+    );
     return NextResponse.json({
       ok: true,
       message: `Note added to ${entityType} ${entityName}.`,

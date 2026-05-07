@@ -6,40 +6,66 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { DeleteConversationButton } from "../delete-button";
 
-// Read-only thread view for one day's bucket of Claude Panel
-// messages. Same render shape as the live panel — user bubbles right-
-// aligned with the brand colour, assistant bubbles left-aligned in
-// surface-subtle — but stripped of compose/copy chrome since this is
-// archive view, not chat.
+// Read-only thread view for one conversation. `key` is either a
+// conversationId or a "legacy-YYYY-MM-DD" synthetic that targets the
+// pre-conversationId NULL bucket for that day.
 
 export const dynamic = "force-dynamic";
+
+type ConversationRow = {
+  id: string;
+  role: string;
+  content: string;
+  createdAt: Date;
+};
+
+async function loadConversation(
+  orgId: string,
+  key: string,
+): Promise<ConversationRow[] | null> {
+  const legacyMatch = /^legacy-(\d{4}-\d{2}-\d{2})$/.exec(key);
+  if (legacyMatch) {
+    const date = legacyMatch[1];
+    const start = new Date(`${date}T00:00:00.000Z`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    return prisma.claudePanelMessage.findMany({
+      where: {
+        organizationId: orgId,
+        conversationId: null,
+        createdAt: { gte: start, lt: end },
+      },
+      orderBy: { createdAt: "asc" },
+      select: { id: true, role: true, content: true, createdAt: true },
+    });
+  }
+  return prisma.claudePanelMessage.findMany({
+    where: { organizationId: orgId, conversationId: key },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, role: true, content: true, createdAt: true },
+  });
+}
 
 export default async function HistoryDetailPage({
   params,
 }: {
-  params: Promise<{ date: string }>;
+  params: Promise<{ key: string }>;
 }) {
-  const { date } = await params;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) notFound();
-  const start = new Date(`${date}T00:00:00.000Z`);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  const org = await getCurrentOrg();
-  const rows = await prisma.claudePanelMessage.findMany({
-    where: {
-      organizationId: org.id,
-      createdAt: { gte: start, lt: end },
-    },
-    orderBy: { createdAt: "asc" },
-    select: { id: true, role: true, content: true, createdAt: true },
-  });
+  const { key: rawKey } = await params;
+  const key = decodeURIComponent(rawKey);
+  if (!key) notFound();
 
-  if (rows.length === 0) notFound();
+  const org = await getCurrentOrg();
+  const rows = await loadConversation(org.id, key);
+  if (!rows || rows.length === 0) notFound();
+
+  const isLegacy = key.startsWith("legacy-");
+  const dateLabel = rows[0].createdAt.toISOString().slice(0, 10);
 
   return (
     <CollapsibleSection
-      id={`history-${date}`}
-      title={`Conversation · ${date}`}
-      description={`${rows.length} message${rows.length === 1 ? "" : "s"} archived from this day.`}
+      id={`history-${key}`}
+      title={`Conversation · ${dateLabel}`}
+      description={`${rows.length} message${rows.length === 1 ? "" : "s"} archived.${isLegacy ? " (Legacy bucket — predates conversation ids.)" : ""}`}
     >
       <div className="mb-4 flex items-center justify-between">
         <Link
@@ -48,7 +74,7 @@ export default async function HistoryDetailPage({
         >
           <ChevronLeft className="h-3 w-3" /> Back to history
         </Link>
-        <DeleteConversationButton date={date} />
+        <DeleteConversationButton conversationKey={key} />
       </div>
 
       <div className="flex flex-col gap-3 rounded-md border border-court-border bg-court-surface px-4 py-4">

@@ -4,40 +4,58 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { DeleteConversationButton } from "./delete-button";
 
-// Claude Panel chat history, bucketed by calendar day per org. The
-// schema doesn't carry a conversationId column — instead we derive it
-// at read time from createdAt's date portion (UTC). One day per row
-// keeps the list tractable without forcing a migration; if Andrew
-// later wants explicit conversation boundaries we can layer a
-// nullable conversationId on top.
+// Claude Panel chat history, grouped by conversationId. Clear Chat
+// rotates the conversationId on the panel side instead of deleting
+// rows — every prior conversation surfaces here as a separate entry.
+//
+// Rows that predate the conversationId column have NULL ids; we
+// bucket those by calendar day so the legacy transcript still shows
+// up cleanly. New buckets keyed by conversationId.
 
 export const dynamic = "force-dynamic";
 
 type ConversationSummary = {
-  date: string; // YYYY-MM-DD (UTC)
+  // URL-safe key — for legacy NULL rows we synthesize "legacy-<date>",
+  // for new rows the actual conversationId.
+  key: string;
+  // Display label: ISO date for new buckets (most-recent message
+  // timestamp), or YYYY-MM-DD for legacy buckets.
+  dateLabel: string;
   count: number;
   firstUserMessage: string;
   latestAt: Date;
+  isLegacy: boolean;
 };
 
-function summarizeConversations(
-  rows: { role: string; content: string; createdAt: Date }[],
+function summarize(
+  rows: {
+    role: string;
+    content: string;
+    conversationId: string | null;
+    createdAt: Date;
+  }[],
 ): ConversationSummary[] {
   const buckets = new Map<string, ConversationSummary>();
   for (const r of rows) {
     const date = r.createdAt.toISOString().slice(0, 10);
-    let entry = buckets.get(date);
+    const key = r.conversationId ?? `legacy-${date}`;
+    let entry = buckets.get(key);
     if (!entry) {
       entry = {
-        date,
+        key,
+        dateLabel: date,
         count: 0,
         firstUserMessage: "",
         latestAt: r.createdAt,
+        isLegacy: r.conversationId == null,
       };
-      buckets.set(date, entry);
+      buckets.set(key, entry);
     }
     entry.count++;
-    if (r.createdAt > entry.latestAt) entry.latestAt = r.createdAt;
+    if (r.createdAt > entry.latestAt) {
+      entry.latestAt = r.createdAt;
+      entry.dateLabel = r.createdAt.toISOString().slice(0, 10);
+    }
     if (!entry.firstUserMessage && r.role === "user") {
       const t = r.content.trim();
       entry.firstUserMessage = t.length > 100 ? t.slice(0, 97) + "…" : t;
@@ -47,28 +65,27 @@ function summarizeConversations(
   for (const entry of entries) {
     if (!entry.firstUserMessage) entry.firstUserMessage = "(no user messages)";
   }
-  return entries.sort((a, b) => b.date.localeCompare(a.date));
+  return entries.sort((a, b) => b.latestAt.getTime() - a.latestAt.getTime());
 }
 
 export default async function HistorySettingsPage() {
   const org = await getCurrentOrg();
-  // Pull rows in createdAt asc so the per-day "first user message"
-  // walk picks the actual earliest user turn of the day. We cap at
-  // 5000 rows — well above realistic single-org Panel volume but
-  // bounded enough to keep this query cheap.
+  // 5000 rows is well above realistic single-org Panel volume but
+  // bounded enough to keep this query cheap. asc so the per-bucket
+  // "first user message" walk picks the actual earliest user turn.
   const rows = await prisma.claudePanelMessage.findMany({
     where: { organizationId: org.id },
-    select: { role: true, content: true, createdAt: true },
+    select: { role: true, content: true, conversationId: true, createdAt: true },
     orderBy: { createdAt: "asc" },
     take: 5000,
   });
-  const conversations = summarizeConversations(rows);
+  const conversations = summarize(rows);
 
   return (
     <CollapsibleSection
       id="history"
       title="Claude History"
-      description="Past Ace Assistant conversations grouped by day."
+      description="Past Ace Assistant conversations. Cleared chats are preserved here as separate entries."
     >
       {conversations.length === 0 ? (
         <div className="rounded-md border border-court-border bg-court-surface-subtle px-4 py-6 text-center text-sm text-court-fg-muted">
@@ -78,24 +95,31 @@ export default async function HistorySettingsPage() {
         <ul className="divide-y divide-court-border rounded-md border border-court-border bg-court-surface">
           {conversations.map((c) => (
             <li
-              key={c.date}
+              key={c.key}
               className="flex items-center gap-3 px-4 py-3"
             >
               <Link
-                href={`/settings/history/${c.date}`}
+                href={`/settings/history/${encodeURIComponent(c.key)}`}
                 className="min-w-0 flex-1 transition hover:opacity-80"
               >
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium text-court-fg">{c.date}</span>
+                  <span className="font-medium text-court-fg">
+                    {c.dateLabel}
+                  </span>
                   <span className="text-xs text-court-fg-muted">
                     · {c.count} message{c.count === 1 ? "" : "s"}
                   </span>
+                  {c.isLegacy && (
+                    <span className="rounded bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-court-fg-muted">
+                      legacy
+                    </span>
+                  )}
                 </div>
                 <div className="mt-0.5 truncate text-xs text-court-fg-muted">
                   {c.firstUserMessage}
                 </div>
               </Link>
-              <DeleteConversationButton date={c.date} />
+              <DeleteConversationButton conversationKey={c.key} />
             </li>
           ))}
         </ul>

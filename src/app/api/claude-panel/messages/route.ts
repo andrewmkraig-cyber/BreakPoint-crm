@@ -7,23 +7,72 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 export const dynamic = "force-dynamic";
 
 // Persistent transcript for the global Claude Panel (Sparkles icon in
-// the topbar). Single org-scoped log — every recruiter on the org sees
-// the same chat. Phase 1 ships persistence only; the assistant call
-// lands in Phase 2.
+// the topbar). Single org-scoped log. Each row carries a
+// conversationId so Clear Chat can rotate the active conversation
+// (preserving prior chats) rather than deleting Neon rows.
+//
+// GET semantics:
+//   - ?conversationId=<id>   → returns that conversation's rows
+//   - no param               → returns the most recent conversation's
+//                              rows (max createdAt wins). Lets a fresh
+//                              page load resume the in-progress chat.
+//   - returns { conversationId, messages: [...] } so the client can
+//     remember the active id across reloads even when no rows exist
+//     yet (Clear Chat → reopen panel → new conversation, no rows yet).
 
-export async function GET() {
-  const org = await getCurrentOrg();
-  const rows = await prisma.claudePanelMessage.findMany({
-    where: { organizationId: org.id },
-    orderBy: { createdAt: "asc" },
-    take: 100,
-    select: { id: true, role: true, content: true, createdAt: true },
+type LatestConv = { conversationId: string | null; createdAt: Date } | null;
+
+async function findLatestConversationId(orgId: string): Promise<LatestConv> {
+  // Most recent message wins. Falls through to NULL when no rows
+  // exist, in which case the client treats it as "start a fresh
+  // conversation locally".
+  return prisma.claudePanelMessage.findFirst({
+    where: { organizationId: orgId },
+    orderBy: { createdAt: "desc" },
+    select: { conversationId: true, createdAt: true },
   });
-  return NextResponse.json(rows);
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const requestedConvId = url.searchParams.get("conversationId");
+  const org = await getCurrentOrg();
+
+  let conversationId: string | null = requestedConvId;
+  if (!conversationId) {
+    const latest = await findLatestConversationId(org.id);
+    conversationId = latest?.conversationId ?? null;
+  }
+
+  // Two filter shapes — by explicit conversationId, or by NULL when
+  // the latest row predates this column (legacy bucket). Prisma
+  // requires the right shape per case; mode: 'insensitive' isn't
+  // applicable here since the column is a plain string.
+  const where = conversationId
+    ? { organizationId: org.id, conversationId }
+    : { organizationId: org.id, conversationId: null };
+
+  const rows = await prisma.claudePanelMessage.findMany({
+    where,
+    orderBy: { createdAt: "asc" },
+    take: 200,
+    select: {
+      id: true,
+      role: true,
+      content: true,
+      conversationId: true,
+      createdAt: true,
+    },
+  });
+
+  return NextResponse.json({
+    conversationId,
+    messages: rows,
+  });
 }
 
 export async function POST(req: Request) {
-  let body: { role?: unknown; content?: unknown };
+  let body: { role?: unknown; content?: unknown; conversationId?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -49,17 +98,32 @@ export async function POST(req: Request) {
   }
 
   const org = await getCurrentOrg();
+  // conversationId on POST is required for new rows so Clear Chat's
+  // rotation actually creates a separate bucket. The client manages
+  // the active id (localStorage); we accept whatever it sends.
+  const conversationId =
+    typeof body.conversationId === "string" && body.conversationId.trim().length > 0
+      ? body.conversationId.trim()
+      : null;
+
   const row = await prisma.claudePanelMessage.create({
-    data: { organizationId: org.id, role, content },
-    select: { id: true, role: true, content: true, createdAt: true },
+    data: { organizationId: org.id, role, content, conversationId },
+    select: {
+      id: true,
+      role: true,
+      content: true,
+      conversationId: true,
+      createdAt: true,
+    },
   });
   return NextResponse.json(row);
 }
 
-// Wipe the org-scoped Claude Panel transcript. Hard 401 when there's
-// no signed-in recruiter so a leaked URL can't nuke history. Phase 1
-// only blanked the local view, leaving Neon rows that came back on
-// refresh — this DELETE is what makes Clear chat actually clear.
+// Legacy DELETE — kept for callers (CLI tests, etc.) that wipe the
+// org's transcript. The Panel UI no longer hits this route on Clear
+// Chat; instead it rotates the active conversationId so the prior
+// chat survives in History. Hard 401 when there's no signed-in
+// recruiter so a leaked URL can't nuke history.
 export async function DELETE() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {

@@ -6,11 +6,14 @@ import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { deleteConversationAction } from "./actions";
 
-// Confirm-on-click delete for one day's bucket of Claude Panel
-// messages. No modal — a single inline confirm is enough for an
-// internal admin surface, and matches how other Settings actions
-// (template delete, trigger delete) handle destructive ops.
-export function DeleteConversationButton({ date }: { date: string }) {
+// Confirm-on-click delete for one Claude Panel conversation. The
+// `conversationKey` is the conversationId or a "legacy-YYYY-MM-DD"
+// synthetic for old NULL rows.
+export function DeleteConversationButton({
+  conversationKey,
+}: {
+  conversationKey: string;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [confirming, setConfirming] = useState(false);
@@ -21,7 +24,7 @@ export function DeleteConversationButton({ date }: { date: string }) {
       return;
     }
     startTransition(async () => {
-      const res = await deleteConversationAction({ date });
+      const res = await deleteConversationAction({ conversationKey });
       if (!res.ok) {
         toast.error("Couldn't delete", {
           description: res.error ?? "Unknown error",
@@ -29,8 +32,9 @@ export function DeleteConversationButton({ date }: { date: string }) {
         setConfirming(false);
         return;
       }
-      toast.success(`Deleted ${date} conversation.`);
+      toast.success("Conversation deleted.");
       router.refresh();
+      router.push("/settings/history");
     });
   }
 

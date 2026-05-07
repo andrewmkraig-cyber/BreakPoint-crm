@@ -153,17 +153,19 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "move_candidate_stage",
     description:
-      "Propose moving a candidate's placement to a new pipeline stage. The recruiter must Confirm before this lands. Resolve the candidate via search_candidates and the placement via get_pipeline first so you can pass real ids — never invent ids. newStage must be one of: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
+      "Propose moving a candidate's placement to a new pipeline stage. The recruiter must Confirm before this lands. Pass the id you got back from search_candidates (the bracketed slug — cuid or numeric rfId, both work). placementId is OPTIONAL; if you skip it the server picks the candidate's most recent non-rejected placement automatically. newStage must be one of: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
     input_schema: {
       type: "object",
       properties: {
         candidateId: {
           type: "string",
-          description: "Candidate cuid (from search_candidates).",
+          description:
+            "Candidate id from search_candidates — cuid OR numeric rfId, both resolve.",
         },
         placementId: {
           type: "string",
-          description: "Placement cuid (from get_pipeline).",
+          description:
+            "Placement cuid from get_pipeline. Optional — the server falls back to the candidate's most recent non-rejected placement.",
         },
         newStage: {
           type: "string",
@@ -171,13 +173,13 @@ const DATA_TOOLS: Anthropic.Tool[] = [
             "Target stage. Allowed: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
         },
       },
-      required: ["candidateId", "placementId", "newStage"],
+      required: ["candidateId", "newStage"],
     },
   },
   {
     name: "add_note",
     description:
-      "Propose appending a note to a candidate, client, or job activity log. The recruiter must Confirm before this lands. Use this for 'leave a note that…' / 'log a follow-up…' / 'remember that…' style requests. Resolve the entity id via the search tools first.",
+      "Propose appending a note to a candidate, client, or job activity log. The recruiter must Confirm before this lands. Use this for 'leave a note that…' / 'log a follow-up…' / 'remember that…' style requests. Resolve the entity id via the search tools first; cuid OR legacy rfId both resolve.",
     input_schema: {
       type: "object",
       properties: {
@@ -188,7 +190,7 @@ const DATA_TOOLS: Anthropic.Tool[] = [
         },
         entityId: {
           type: "string",
-          description: "cuid of the candidate / client / job.",
+          description: "Identifier of the candidate / client / job — cuid OR numeric rfId.",
         },
         note: {
           type: "string",
@@ -939,80 +941,228 @@ function log(
   console.log("[claude-panel.tool]", tool, safeInput, "rows=" + rowCount, note ?? "");
 }
 
-// Resolve a plain-English description for the confirmation card. We
-// look up display names server-side so the panel doesn't need a second
-// round of fetches just to render "Move Sara Johnson to interviewing
-// for Senior Tax Manager." Failures fall through to a generic label
-// rather than blocking the proposal — the recruiter can still inspect
-// the raw input on the card.
+// Resolve a candidate by cuid OR legacy numeric rfId, scoped to the
+// caller's tenant. search_candidates surfaces results via markdown
+// links shaped /candidates/{rfId-or-cuid}, so Claude often passes the
+// numeric form back here — accepting both keeps the action card from
+// reading "(unknown candidate)" just because Claude picked the wrong
+// identifier shape.
+async function resolveCandidate(idOrRfId: string, orgId: string) {
+  if (!idOrRfId) return null;
+  if (/^\d+$/.test(idOrRfId)) {
+    const rfId = Number(idOrRfId);
+    if (!Number.isFinite(rfId)) return null;
+    return prisma.candidate.findFirst({
+      where: { rfId, organizationId: orgId },
+      select: { id: true, rfId: true, firstName: true, lastName: true },
+    });
+  }
+  return prisma.candidate.findFirst({
+    where: { id: idOrRfId, organizationId: orgId },
+    select: { id: true, rfId: true, firstName: true, lastName: true },
+  });
+}
+
+async function resolveClient(idOrRfId: string, orgId: string) {
+  if (!idOrRfId) return null;
+  if (/^\d+$/.test(idOrRfId)) {
+    const legacyRfId = Number(idOrRfId);
+    if (!Number.isFinite(legacyRfId)) return null;
+    return prisma.client.findFirst({
+      where: { legacyRfId, organizationId: orgId },
+      select: { id: true, name: true },
+    });
+  }
+  return prisma.client.findFirst({
+    where: { id: idOrRfId, organizationId: orgId },
+    select: { id: true, name: true },
+  });
+}
+
+async function resolveJob(idOrRfId: string, orgId: string) {
+  if (!idOrRfId) return null;
+  if (/^\d+$/.test(idOrRfId)) {
+    const legacyRfId = Number(idOrRfId);
+    if (!Number.isFinite(legacyRfId)) return null;
+    return prisma.job.findFirst({
+      where: { legacyRfId, organizationId: orgId },
+      select: { id: true, title: true },
+    });
+  }
+  return prisma.job.findFirst({
+    where: { id: idOrRfId, organizationId: orgId },
+    select: { id: true, title: true },
+  });
+}
+
+// Pick the placement we'd move when Claude doesn't pass one. Most
+// recent updatedAt wins, rejected/cancelled rows are excluded so the
+// recruiter doesn't accidentally re-stage a closed placement when
+// asking "move Sara to interviewing". Tied to the candidate cuid
+// (already resolved) AND organizationId so cross-tenant ids 404
+// instead of mutating the wrong row.
+async function pickActivePlacement(candidateCuid: string, orgId: string) {
+  return prisma.placement.findFirst({
+    where: {
+      candidateId: candidateCuid,
+      organizationId: orgId,
+      stage: { notIn: ["rejected", "cancelled"] },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      stage: true,
+      job: { select: { title: true } },
+    },
+  });
+}
+
+// Structured payload the panel renders verbatim into the confirmation
+// card. The previous shape was a single description string, which the
+// card had no way to break apart — names ended up "(unknown)" any
+// time the lookup couldn't reconcile a numeric rfId vs a cuid. Now we
+// resolve everything server-side and ship the parts the card needs.
+type ActionResolution =
+  | {
+      kind: "move_candidate_stage";
+      description: string;
+      candidateName: string;
+      fromStage: string;
+      toStage: string;
+      jobTitle: string;
+      candidateId: string | null;     // resolved cuid for the action POST
+      placementId: string | null;     // resolved cuid for the action POST
+    }
+  | {
+      kind: "add_note";
+      description: string;
+      entityType: "candidate" | "client" | "job";
+      entityId: string | null;        // resolved cuid for the action POST
+      entityName: string;
+      note: string;
+    }
+  | {
+      kind: "draft_email";
+      description: string;
+      to: string;
+      subject: string;
+      body: string;
+    }
+  | {
+      kind: "unknown";
+      description: string;
+    };
+
 async function describeAction(
   name: string,
   rawInput: unknown,
   orgId: string,
-): Promise<string> {
+): Promise<ActionResolution> {
   const input = (rawInput && typeof rawInput === "object" ? rawInput : {}) as Record<
     string,
     unknown
   >;
   try {
     if (name === "move_candidate_stage") {
-      const candidateId = typeof input.candidateId === "string" ? input.candidateId : "";
+      const candidateRef = typeof input.candidateId === "string" ? input.candidateId : "";
       const placementId = typeof input.placementId === "string" ? input.placementId : "";
       const newStage = typeof input.newStage === "string" ? input.newStage : "";
-      if (!candidateId || !placementId || !newStage) {
-        return `Move candidate to ${newStage || "(unknown stage)"}.`;
-      }
-      const [candidate, placement] = await Promise.all([
-        prisma.candidate.findFirst({
-          where: { id: candidateId, organizationId: orgId },
-          select: { firstName: true, lastName: true },
-        }),
-        prisma.placement.findFirst({
+      const candidate = await resolveCandidate(candidateRef, orgId);
+      const candidateName = candidate
+        ? joinName(candidate.firstName, candidate.lastName)
+        : "(unknown candidate)";
+
+      // Prefer the placement Claude pointed us at, but fall back to
+      // the candidate's most recent active placement when Claude
+      // skipped placementId or named one in a different tenant.
+      let placement: { id: string; stage: string; job: { title: string } | null } | null = null;
+      if (placementId) {
+        placement = await prisma.placement.findFirst({
           where: { id: placementId, organizationId: orgId },
-          select: { stage: true, job: { select: { title: true } } },
-        }),
-      ]);
-      const candName = candidate ? joinName(candidate.firstName, candidate.lastName) : "(unknown candidate)";
+          select: { id: true, stage: true, job: { select: { title: true } } },
+        });
+      }
+      if (!placement && candidate?.id) {
+        placement = await pickActivePlacement(candidate.id, orgId);
+      }
+
+      const fromStage = placement?.stage ?? "(no active placement)";
       const jobTitle = placement?.job?.title ?? "(unknown job)";
-      const fromStage = placement?.stage ?? "(unknown)";
-      return `Move ${candName} from ${fromStage} → ${newStage} on ${jobTitle}.`;
+      const description = `Move ${candidateName} from ${fromStage} → ${newStage || "(unknown stage)"} on ${jobTitle}.`;
+
+      return {
+        kind: "move_candidate_stage",
+        description,
+        candidateName,
+        fromStage,
+        toStage: newStage,
+        jobTitle,
+        candidateId: candidate?.id ?? null,
+        placementId: placement?.id ?? null,
+      };
     }
+
     if (name === "add_note") {
-      const entityType = typeof input.entityType === "string" ? input.entityType : "";
-      const entityId = typeof input.entityId === "string" ? input.entityId : "";
+      const entityTypeRaw = typeof input.entityType === "string" ? input.entityType : "";
+      const entityType =
+        entityTypeRaw === "candidate" || entityTypeRaw === "client" || entityTypeRaw === "job"
+          ? entityTypeRaw
+          : "candidate";
+      const entityRef = typeof input.entityId === "string" ? input.entityId : "";
       const note = typeof input.note === "string" ? input.note : "";
       const preview = note.length > 80 ? note.slice(0, 77) + "…" : note;
+
       let entityName = "(unknown)";
+      let resolvedId: string | null = null;
       if (entityType === "candidate") {
-        const c = await prisma.candidate.findFirst({
-          where: { id: entityId, organizationId: orgId },
-          select: { firstName: true, lastName: true },
-        });
-        if (c) entityName = joinName(c.firstName, c.lastName);
+        const c = await resolveCandidate(entityRef, orgId);
+        if (c) {
+          entityName = joinName(c.firstName, c.lastName);
+          resolvedId = c.id;
+        }
       } else if (entityType === "client") {
-        const cl = await prisma.client.findFirst({
-          where: { id: entityId, organizationId: orgId },
-          select: { name: true },
-        });
-        if (cl) entityName = cl.name;
-      } else if (entityType === "job") {
-        const j = await prisma.job.findFirst({
-          where: { id: entityId, organizationId: orgId },
-          select: { title: true },
-        });
-        if (j) entityName = j.title;
+        const cl = await resolveClient(entityRef, orgId);
+        if (cl) {
+          entityName = cl.name;
+          resolvedId = cl.id;
+        }
+      } else {
+        const j = await resolveJob(entityRef, orgId);
+        if (j) {
+          entityName = j.title;
+          resolvedId = j.id;
+        }
       }
-      return `Add note to ${entityType} ${entityName}: "${preview}"`;
+
+      return {
+        kind: "add_note",
+        description: `Add note to ${entityType} ${entityName}: "${preview}"`,
+        entityType,
+        entityId: resolvedId,
+        entityName,
+        note,
+      };
     }
+
     if (name === "draft_email") {
       const to = typeof input.to === "string" ? input.to : "";
       const subject = typeof input.subject === "string" ? input.subject : "";
-      return `Open mail composer to ${to || "(no recipient)"} — subject: "${subject || "(no subject)"}"`;
+      const body = typeof input.body === "string" ? input.body : "";
+      return {
+        kind: "draft_email",
+        description: `Open mail composer to ${to || "(no recipient)"} — subject: "${subject || "(no subject)"}"`,
+        to,
+        subject,
+        body,
+      };
     }
   } catch {
     // fall through
   }
-  return `Confirm action: ${name}`;
+  return {
+    kind: "unknown",
+    description: `Confirm action: ${name}`,
+  };
 }
 
 async function executeTool(
@@ -1262,13 +1412,18 @@ export async function POST(req: NextRequest) {
           if (actionUses.length > 0) {
             conversation.push({ role: "assistant", content: finalMsg.content });
             for (const tu of actionUses) {
-              const description = await describeAction(tu.name, tu.input, org.id);
+              const resolved = await describeAction(tu.name, tu.input, org.id);
+              // We ship the original tool input AND the server-resolved
+              // fields. The card renders from `resolved` so display
+              // names are accurate; the action POST uses `resolved`'s
+              // canonical cuids so the eventual Prisma write doesn't
+              // re-do the rfId↔cuid dance from raw tool input.
               send({
                 t: "action_pending",
                 id: tu.id,
                 name: tu.name,
                 input: tu.input,
-                description,
+                resolved,
               });
               log(
                 "action_pending",

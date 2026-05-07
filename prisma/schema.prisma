@@ -881,10 +881,17 @@ model ClaudePanelMessage {
   organizationId String
   role           String
   content        String       @db.Text
+  // Groups messages into a single Claude Panel "conversation". Clear
+  // Chat rotates the active conversationId on the client rather than
+  // deleting Neon rows, so cleared sessions are preserved as their own
+  // entry on the Settings → Claude History tab. Nullable for the rows
+  // that predate this column; History bucketed those by createdAt date.
+  conversationId String?
   createdAt      DateTime     @default(now())
   organization   Organization @relation(fields: [organizationId], references: [id])
 
   @@index([organizationId, createdAt])
+  @@index([organizationId, conversationId])
 }
 
 // Personal Trainer rules — Andrew-curated standing instructions injected

@@ -40,12 +40,49 @@ type ChatMessage = {
   createdAt: string;
 };
 
+// Server-resolved fields the card renders verbatim. The chat route
+// looks up display names + canonical cuids before emitting so the
+// card always shows real names ("Move Lesley Snell from Interviewing
+// → Kept on Operations Administrator") instead of falling back to
+// "(unknown)" when Claude hands us a numeric rfId.
+type MoveResolved = {
+  kind: "move_candidate_stage";
+  description: string;
+  candidateName: string;
+  fromStage: string;
+  toStage: string;
+  jobTitle: string;
+  candidateId: string | null;
+  placementId: string | null;
+};
+type NoteResolved = {
+  kind: "add_note";
+  description: string;
+  entityType: "candidate" | "client" | "job";
+  entityId: string | null;
+  entityName: string;
+  note: string;
+};
+type DraftEmailResolved = {
+  kind: "draft_email";
+  description: string;
+  to: string;
+  subject: string;
+  body: string;
+};
+type UnknownResolved = { kind: "unknown"; description: string };
+type ActionResolved =
+  | MoveResolved
+  | NoteResolved
+  | DraftEmailResolved
+  | UnknownResolved;
+
 type ActionCard = {
   kind: "action";
   id: string;            // tool_use id from Anthropic
   name: "move_candidate_stage" | "add_note" | "draft_email";
   input: Record<string, unknown>;
-  description: string;
+  resolved: ActionResolved;
   status: "pending" | "running" | "confirmed" | "cancelled";
   resultMessage?: string;
 };
@@ -55,6 +92,17 @@ type RenderItem = ChatMessage | ActionCard;
 // Sentinel id assigned to the assistant bubble while it's streaming.
 // Replaced with the persisted cuid once the final POST resolves.
 const STREAMING_ID = "__streaming__";
+
+// Fresh conversationId generator. crypto.randomUUID is available in
+// every browser the panel runs in (Next.js targets ES2020+); the
+// time-prefix fallback is only there to satisfy TS narrowing in
+// non-DOM rendering paths and shouldn't ever fire in production.
+function newConversationId(): string {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return `conv-${globalThis.crypto.randomUUID()}`;
+  }
+  return `conv-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 export function ClaudePanel() {
   const {
@@ -77,6 +125,12 @@ export function ClaudePanel() {
   const [sending, setSending] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [entityName, setEntityName] = useState<string | null>(null);
+  // Active Claude Panel conversation id. Persisted to localStorage so
+  // a Clear-then-close-then-reopen cycle still shows the empty new
+  // bucket (and the cleared transcript stays parked in History).
+  // null on first mount before hydration; Clear Chat rotates it to a
+  // fresh uuid so subsequent posts tag the new conversation.
+  const [conversationId, setConversationId] = useState<string | null>(null);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -86,36 +140,53 @@ export function ClaudePanel() {
     setMounted(true);
   }, []);
 
-  // Hydrate transcript on first open. Cheap GET, no pagination — the
-  // route caps at 100 rows. Re-running on every open keeps the panel in
-  // sync if another tab on the same org has been chatting.
+  // Hydrate transcript on first open. Resolves the active
+  // conversationId from localStorage (or whatever the server says is
+  // latest if there's no client-side override yet) and pulls the rows
+  // for that conversation. Re-running on every open keeps the panel
+  // in sync if another tab on the same org has been chatting.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     setLoading(true);
     void (async () => {
       try {
-        const res = await fetch("/api/claude-panel/messages", {
-          cache: "no-store",
-        });
+        const stored =
+          typeof window !== "undefined"
+            ? window.localStorage.getItem("claude-panel-conv-id")
+            : null;
+        const url = stored
+          ? `/api/claude-panel/messages?conversationId=${encodeURIComponent(stored)}`
+          : "/api/claude-panel/messages";
+        const res = await fetch(url, { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = (await res.json()) as Array<{
-          id: string;
-          role: "user" | "assistant";
-          content: string;
-          createdAt: string;
-        }>;
-        if (!cancelled) {
-          setItems(
-            data.map((m) => ({
-              kind: "message" as const,
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              createdAt: m.createdAt,
-            })),
-          );
+        const data = (await res.json()) as {
+          conversationId: string | null;
+          messages: Array<{
+            id: string;
+            role: "user" | "assistant";
+            content: string;
+            createdAt: string;
+          }>;
+        };
+        if (cancelled) return;
+        // Resolve the active conversation id: client override wins,
+        // then the server's "latest" wins, finally a freshly minted
+        // id when there's no history at all.
+        const resolvedId = stored ?? data.conversationId ?? newConversationId();
+        setConversationId(resolvedId);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("claude-panel-conv-id", resolvedId);
         }
+        setItems(
+          data.messages.map((m) => ({
+            kind: "message" as const,
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            createdAt: m.createdAt,
+          })),
+        );
       } catch {
         if (!cancelled) setItems([]);
       } finally {
@@ -287,10 +358,23 @@ export function ClaudePanel() {
   );
 
   async function persist(role: "user" | "assistant", content: string): Promise<ChatMessage> {
+    // Lazily mint a conversationId if the user types into the panel
+    // before the hydrate effect has resolved one (e.g. a fresh page
+    // load with localStorage cleared). Without this, the first
+    // message of a brand-new conversation lands as NULL and joins the
+    // legacy bucket on the History tab — surprising for the user.
+    let convId = conversationId;
+    if (!convId) {
+      convId = newConversationId();
+      setConversationId(convId);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("claude-panel-conv-id", convId);
+      }
+    }
     const res = await fetch("/api/claude-panel/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ role, content }),
+      body: JSON.stringify({ role, content, conversationId: convId }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const row = (await res.json()) as {
@@ -397,7 +481,7 @@ export function ClaudePanel() {
           id?: unknown;
           name?: unknown;
           input?: unknown;
-          description?: unknown;
+          resolved?: unknown;
         };
         try {
           event = JSON.parse(line);
@@ -420,18 +504,24 @@ export function ClaudePanel() {
             event.name === "add_note" ||
             event.name === "draft_email")
         ) {
+          const input =
+            event.input && typeof event.input === "object"
+              ? (event.input as Record<string, unknown>)
+              : {};
+          const resolvedRaw = event.resolved;
+          const resolved: ActionResolved =
+            resolvedRaw && typeof resolvedRaw === "object"
+              ? (resolvedRaw as ActionResolved)
+              : {
+                  kind: "unknown",
+                  description: `Confirm action: ${event.name}`,
+                };
           const card: ActionCard = {
             kind: "action",
             id: event.id,
             name: event.name,
-            input:
-              event.input && typeof event.input === "object"
-                ? (event.input as Record<string, unknown>)
-                : {},
-            description:
-              typeof event.description === "string"
-                ? event.description
-                : `Confirm action: ${event.name}`,
+            input,
+            resolved,
             status: "pending",
           };
           pendingActions.push(card);
@@ -527,10 +617,18 @@ export function ClaudePanel() {
       ),
     );
     try {
+      // Send `resolved` alongside `input` — the action route prefers
+      // resolved.candidateId/placementId because those are already
+      // canonical cuids in this org, sidestepping a second rfId↔cuid
+      // round trip server-side.
       const res = await fetch("/api/claude-panel/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: card.name, input: card.input }),
+        body: JSON.stringify({
+          name: card.name,
+          input: card.input,
+          resolved: card.resolved,
+        }),
       });
       const data = (await res.json()) as {
         ok?: boolean;
@@ -612,10 +710,15 @@ export function ClaudePanel() {
     if (clearing || items.length === 0) return;
     setClearing(true);
     try {
-      const res = await fetch("/api/claude-panel/messages", {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Rotate the active conversationId rather than DELETE'ing rows.
+      // Old messages stay in Neon under the old conversationId and
+      // surface as their own entry on Settings → Claude History; the
+      // new id starts a fresh bucket once the user types again.
+      const next = newConversationId();
+      setConversationId(next);
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("claude-panel-conv-id", next);
+      }
       setItems([]);
     } catch (e) {
       const message =
@@ -864,18 +967,18 @@ function ActionConfirmCard({
               ? "Note"
               : "Email draft"}
         </span>
-        <div className="min-w-0 flex-1 whitespace-pre-wrap break-words">
-          {card.description}
+        <div className="min-w-0 flex-1 text-court-fg">
+          <ActionCardLabel card={card} />
         </div>
       </div>
-      {card.name === "add_note" && typeof card.input.note === "string" && (
+      {card.resolved.kind === "add_note" && (
         <div className="mt-2 rounded-md border border-court-border bg-court-surface-subtle px-2 py-1.5 text-xs text-court-fg-muted">
-          {card.input.note as string}
+          {card.resolved.note}
         </div>
       )}
-      {card.name === "draft_email" && typeof card.input.body === "string" && (
+      {card.resolved.kind === "draft_email" && card.resolved.body && (
         <div className="mt-2 line-clamp-4 rounded-md border border-court-border bg-court-surface-subtle px-2 py-1.5 text-xs text-court-fg-muted">
-          {(card.input.body as string).slice(0, 400)}
+          {card.resolved.body.slice(0, 400)}
         </div>
       )}
       {(isPending || isRunning) && (
@@ -911,4 +1014,48 @@ function ActionConfirmCard({
       )}
     </div>
   );
+}
+
+// Headline for the confirmation card. Renders the resolved fields
+// directly (candidate name, from/to stages, job title) instead of a
+// pre-baked sentence so the layout can emphasize the parts that
+// matter — the recruiter's eye lands on names and the destination
+// stage, not on grammar filler.
+function ActionCardLabel({ card }: { card: ActionCard }) {
+  const r = card.resolved;
+  if (r.kind === "move_candidate_stage") {
+    return (
+      <div className="text-sm leading-snug">
+        Move{" "}
+        <span className="font-semibold">{r.candidateName}</span> from{" "}
+        <span className="rounded bg-court-surface-subtle px-1 text-xs">
+          {r.fromStage}
+        </span>{" "}
+        →{" "}
+        <span className="rounded bg-court-brand-tint px-1 text-xs font-semibold text-court-brand-dark">
+          {r.toStage || "(unknown stage)"}
+        </span>{" "}
+        on <span className="font-medium">{r.jobTitle}</span>.
+      </div>
+    );
+  }
+  if (r.kind === "add_note") {
+    return (
+      <div className="text-sm leading-snug">
+        Add note to {r.entityType}{" "}
+        <span className="font-semibold">{r.entityName}</span>.
+      </div>
+    );
+  }
+  if (r.kind === "draft_email") {
+    return (
+      <div className="text-sm leading-snug">
+        Open mail composer to{" "}
+        <span className="font-semibold">{r.to || "(no recipient)"}</span>{" "}
+        — subject:{" "}
+        <span className="italic">{r.subject || "(no subject)"}</span>
+      </div>
+    );
+  }
+  return <div className="text-sm leading-snug">{r.description}</div>;
 }

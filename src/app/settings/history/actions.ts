@@ -7,15 +7,14 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
 // Server actions for the Claude History tab. Conversations bucket by
-// calendar day per org, so deleting a "conversation" means deleting
-// every ClaudePanelMessage row from that org with createdAt in the
-// [day, day+1) window.
+// conversationId; legacy NULL rows fall back to a per-day bucket
+// keyed "legacy-YYYY-MM-DD". Delete by either shape.
 //
 // Auth posture mirrors the panel routes: a hard 401 when there's no
 // signed-in recruiter so a leaked URL can't wipe history.
 
 export type DeleteConversationInput = {
-  date: string; // YYYY-MM-DD
+  conversationKey: string;
 };
 
 export async function deleteConversationAction(
@@ -25,20 +24,32 @@ export async function deleteConversationAction(
   if (!session?.user?.email) {
     return { ok: false, error: "Sign in required" };
   }
-  const date = input.date;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return { ok: false, error: "Invalid date" };
-  }
-  const start = new Date(`${date}T00:00:00.000Z`);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  const key = input.conversationKey;
+  if (!key) return { ok: false, error: "Missing conversation key" };
+
   const org = await getCurrentOrg();
-  await prisma.claudePanelMessage.deleteMany({
-    where: {
-      organizationId: org.id,
-      createdAt: { gte: start, lt: end },
-    },
-  });
+
+  // Legacy bucket: "legacy-YYYY-MM-DD" → delete NULL-conversationId
+  // rows from that calendar day.
+  const legacyMatch = /^legacy-(\d{4}-\d{2}-\d{2})$/.exec(key);
+  if (legacyMatch) {
+    const date = legacyMatch[1];
+    const start = new Date(`${date}T00:00:00.000Z`);
+    const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    await prisma.claudePanelMessage.deleteMany({
+      where: {
+        organizationId: org.id,
+        conversationId: null,
+        createdAt: { gte: start, lt: end },
+      },
+    });
+  } else {
+    await prisma.claudePanelMessage.deleteMany({
+      where: { organizationId: org.id, conversationId: key },
+    });
+  }
+
   revalidatePath("/settings/history");
-  revalidatePath(`/settings/history/${date}`);
+  revalidatePath(`/settings/history/${key}`);
   return { ok: true };
 }
