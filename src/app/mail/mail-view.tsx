@@ -1571,26 +1571,37 @@ export function ThreadDetail({
   composerMode: composerModeProp,
   onComposerModeChange,
 }: ThreadDetailProps) {
+  // Sort messages chronologically (oldest → newest) by their dateIso
+  // field BEFORE rendering. The Gmail API usually returns chronological,
+  // but "usually" isn't safe enough for the index-based isLatest check
+  // — a single out-of-order reply was enough to render the wrong
+  // message expanded. Messages with no dateIso fall to position 0
+  // so they don't accidentally claim the latest slot.
+  const sortedMessages = useMemo(() => {
+    return [...detail.messages].sort((a, b) => {
+      const ta = a.dateIso ? new Date(a.dateIso).getTime() : 0;
+      const tb = b.dateIso ? new Date(b.dateIso).getTime() : 0;
+      return ta - tb;
+    });
+  }, [detail.messages]);
+
   // Inline /mail mode (Gmail-style): oldest at the top, latest pinned
   // at the bottom right above the composer, with non-latest messages
   // collapsed by default so a long thread doesn't read as a wall of
-  // text. Floating mode keeps the legacy newest-first ordering since
-  // the popup's compact body-first layout uses a small history pane
-  // and recruiters expect "what just happened" at the top there.
+  // text. Floating mode reverses (newest first) since the popup's
+  // compact body-first layout expects "what just happened" at the top.
   const orderedMessages = useMemo(
-    () => (isFloating ? [...detail.messages].reverse() : detail.messages),
-    [detail.messages, isFloating],
+    () => (isFloating ? [...sortedMessages].reverse() : sortedMessages),
+    [sortedMessages, isFloating],
   );
-  // True latest regardless of display order — used for the reply
-  // recipient defaults + Reply-All visibility. (MessageBlock's
-  // expanded-vs-collapsed decision is made at render time off the
-  // map index, not this variable.)
-  const latest =
-    detail.messages[detail.messages.length - 1] ?? orderedMessages[0];
+  // True latest = last item in chronological order. Used for reply
+  // recipient defaults + Reply-All visibility.
+  const latest = sortedMessages[sortedMessages.length - 1] ?? undefined;
 
   // Gmail-style auto-scroll: when a thread is opened (detail.id
-  // changes), drop the inline message pane to its bottom on a 100ms
-  // delay so images / signatures have time to lay out before we scroll.
+  // changes), drop the inline message pane to its bottom on a 300ms
+  // delay so the full thread (collapsed rows + the latest message's
+  // body + any inline images) has time to lay out before we scroll.
   // Skipped in floating mode (newest-first there, latest already on top).
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1599,7 +1610,7 @@ export function ThreadDetail({
       const el = messagesScrollRef.current;
       if (!el) return;
       el.scrollTop = el.scrollHeight;
-    }, 100);
+    }, 300);
     return () => window.clearTimeout(id);
   }, [detail.id, isFloating]);
 
