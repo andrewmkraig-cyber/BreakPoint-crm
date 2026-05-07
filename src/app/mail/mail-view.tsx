@@ -1147,7 +1147,7 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border" />
       </div>
 
-      <section className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
@@ -1589,20 +1589,41 @@ export function ThreadDetail({
   const latest =
     orderedMessages[orderedMessages.length - 1] ?? undefined;
 
-  // Gmail-style auto-scroll: when a thread is opened (detail.id
-  // changes), drop the inline message pane to its bottom on a 300ms
-  // delay so the full thread (collapsed rows + the latest message's
-  // body + any inline images) has time to lay out before we scroll.
-  // Skipped in floating mode (newest-first there, latest already on top).
+  // Gmail-style auto-scroll. Multiple things have failed in production
+  // — either the messages container wasn't actually the scroll surface
+  // (a higher ancestor was), or the scroll fired before late-loading
+  // signature images shifted the layout. So we do all four at multiple
+  // delays:
+  //   1. scrollIntoView({ block: "end" }) on the latest message —
+  //      scrollIntoView walks up the DOM until it finds a scrollable
+  //      ancestor, so we don't have to know which element is the
+  //      scroll surface.
+  //   2. scrollTop = scrollHeight on the messages container as backup.
+  //   3. Fire at 0ms, 100ms, 500ms, and 1500ms so late images don't
+  //      leave us stranded mid-thread.
+  // Targets the latest by data-attribute selector so we don't depend
+  // on a React ref staying attached.
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (isFloating) return;
-    const id = window.setTimeout(() => {
-      const el = messagesScrollRef.current;
-      if (!el) return;
-      el.scrollTop = el.scrollHeight;
-    }, 300);
-    return () => window.clearTimeout(id);
+    const scrollToLatest = () => {
+      const target = document.querySelector(
+        '[data-latest-message="true"]',
+      ) as HTMLElement | null;
+      if (target) target.scrollIntoView({ block: "end", behavior: "auto" });
+      const c = messagesScrollRef.current;
+      if (c) c.scrollTop = c.scrollHeight;
+    };
+    const t1 = window.setTimeout(scrollToLatest, 0);
+    const t2 = window.setTimeout(scrollToLatest, 100);
+    const t3 = window.setTimeout(scrollToLatest, 500);
+    const t4 = window.setTimeout(scrollToLatest, 1500);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      window.clearTimeout(t4);
+    };
   }, [detail.id, isFloating]);
 
   const floatingThread = useFloatingThread();
@@ -1978,13 +1999,18 @@ export function ThreadDetail({
         }
       >
         {orderedMessages.map((m, i) => {
-          // Inline mode: orderedMessages == detail.messages (oldest →
-          // newest), so the latest sits at the last index. Floating
-          // mode reverses, putting latest at index 0.
-          const latestIndex = isFloating ? 0 : orderedMessages.length - 1;
+          // Inline mode: orderedMessages is sorted oldest → newest, so
+          // the latest sits at the last index. Floating mode (legacy)
+          // doesn't auto-scroll and renders the same order.
+          const latestIndex = orderedMessages.length - 1;
           const isLatest = i === latestIndex;
           return (
-            <div key={m.id}>
+            <div
+              key={m.id}
+              data-latest-message={
+                isLatest && !isFloating ? "true" : undefined
+              }
+            >
               <MessageBlock
                 msg={m}
                 isFirst={i === 0}
