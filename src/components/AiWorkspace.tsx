@@ -169,23 +169,35 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     entityType === "client" ? "client" : entityType === "job" ? "job" : "candidate";
 
   return (
-    // Sticky-footer chassis pattern-matched to the mail inline
-    // composer: the card is `flex flex-col` with no fixed height,
-    // the messages region caps at 55vh and scrolls internally, and
-    // the composer is shrink-0 so it always stays pinned at the
-    // bottom of the card without ever drifting below the viewport.
-    // `sticky top-4` keeps the whole card on-screen while the parent
-    // page scrolls behind it.
+    // Sticky-footer chassis: the card is a fixed-height flex column
+    // sized to the visible viewport minus the page chrome above it
+    // (app header + profile header + tabs + outer padding). The
+    // messages region is `flex-1 min-h-0 overflow-y-auto` so it
+    // claims all leftover height inside the card and scrolls
+    // internally. The composer is `shrink-0` so it always anchors
+    // the bottom of the card. `sticky top-4` keeps the card pinned
+    // while the parent page scrolls behind it.
     //
-    // Height cap: 100vh minus 20rem (320px). 20rem accounts for the
-    // chrome above the card on the most-cramped Game Plan surface
-    // (/candidates/[id]: topbar ~80px + name+contact header ~80px +
-    // tabs row ~40px + action buttons row ~50px + outer page padding
-    // ~70px). With this cap the composer + Send button stay inside
-    // the viewport at top page scroll, no manual scroll needed.
+    // Height = 100dvh − 20rem (320px). `dvh` (dynamic viewport
+    // height) tracks the actually-visible viewport on mobile when
+    // the URL bar collapses, so the composer doesn't fall off the
+    // bottom there. The 20rem chrome accounts for the most-cramped
+    // surface (/candidates/[id]: topbar ~80px + identity header
+    // ~80px + tabs ~40px + action row ~50px + outer padding ~70px).
+    // `min-h-[360px]` is a floor for very small viewports so the
+    // card doesn't collapse below usable size; on those screens the
+    // composer may sit a hair below the fold but the layout stays
+    // coherent.
+    //
+    // Why a single `h-` instead of the prior `min-h` + `max-h`
+    // pair: a min/max range produced an indeterminate intrinsic
+    // height that, combined with an inner `maxHeight: 55vh` cap on
+    // the messages region, let the composer slide below the
+    // viewport on shorter screens. A single resolved height makes
+    // the flex math deterministic.
     <div
       ref={cardRef}
-      className="sticky top-4 flex max-h-[calc(100vh-20rem)] min-h-[420px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
+      className="sticky top-4 flex h-[calc(100dvh-20rem)] min-h-[360px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
@@ -205,7 +217,6 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
       <div
         ref={scrollRef}
         className="flex-1 min-h-0 overflow-y-auto px-5 py-4"
-        style={{ minHeight: "120px", maxHeight: "55vh" }}
       >
         {loading ? (
           <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
