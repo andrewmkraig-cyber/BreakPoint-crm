@@ -1,56 +1,26 @@
-import type { JobBoardStatus, JobBoardStatusValue } from "@prisma/client";
+import type { JobBoardStatus } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { MAJOR_BOARDS } from "@/lib/job-boards-shared";
 
-// Static catalog for the Promote tab. The 6 majors are seeded as
-// JobBoardStatus rows on Job creation; the strings here drive the UI
-// (account-needed indicator, default external URL placeholder) without
-// needing a corresponding DB column. Adding a new major in the future:
-// append to MAJOR_BOARDS, then bump existing rows on first read of
-// Promote so they pick up the new entry (the lazy backfill below).
-export type MajorBoardName =
-  | "LinkedIn"
-  | "Indeed"
-  | "ZipRecruiter"
-  | "Glassdoor"
-  | "SimplyHired"
-  | "Monster";
+// Server-only helpers for the JobBoardStatus table. Re-exports the
+// client-safe constants from `@/lib/job-boards-shared` so callers that
+// only need MAJOR_BOARDS / nextStatusValue can keep importing from
+// here, but client components MUST import from `@/lib/job-boards-shared`
+// directly — pulling this module into the client bundle drags
+// PrismaClient with it.
 
-export type MajorBoardDef = {
-  name: MajorBoardName;
-  // True when posting to this board requires the recruiter to set up
-  // an account / billing relationship first. Surfaces as the "Account
-  // Needed" indicator on the row.
-  accountNeeded: boolean;
-  // Linked from the row when a recruiter doesn't have an external URL
-  // saved yet — points at the board's job-poster home.
-  posterHomeUrl: string;
-};
-
-export const MAJOR_BOARDS: MajorBoardDef[] = [
-  { name: "LinkedIn", accountNeeded: true, posterHomeUrl: "https://www.linkedin.com/talent/post-a-job" },
-  { name: "Indeed", accountNeeded: true, posterHomeUrl: "https://employers.indeed.com/p/post-a-job" },
-  { name: "ZipRecruiter", accountNeeded: true, posterHomeUrl: "https://www.ziprecruiter.com/employer" },
-  { name: "Glassdoor", accountNeeded: true, posterHomeUrl: "https://employers.glassdoor.com/post-a-job/" },
-  { name: "SimplyHired", accountNeeded: false, posterHomeUrl: "https://www.simplyhired.com/employer" },
-  { name: "Monster", accountNeeded: true, posterHomeUrl: "https://hiring.monster.com/" },
-];
-
-export const MAJOR_BOARD_NAMES: readonly MajorBoardName[] = MAJOR_BOARDS.map((b) => b.name);
-
-// Status cycle for the chip click. Ordered so the recruiter taps from
-// "haven't touched it yet" through to a terminal state and wraps.
-export const STATUS_ORDER: JobBoardStatusValue[] = [
-  "NOT_CONFIGURED",
-  "READY",
-  "POSTED",
-  "SKIPPED",
-];
-
-export function nextStatusValue(current: JobBoardStatusValue): JobBoardStatusValue {
-  const idx = STATUS_ORDER.indexOf(current);
-  return STATUS_ORDER[(idx + 1) % STATUS_ORDER.length];
-}
+export {
+  MAJOR_BOARDS,
+  MAJOR_BOARD_NAMES,
+  STATUS_ORDER,
+  nextStatusValue,
+} from "@/lib/job-boards-shared";
+export type {
+  MajorBoardName,
+  MajorBoardDef,
+  JobBoardStatusValueShared,
+} from "@/lib/job-boards-shared";
 
 // Idempotent. Used both from createJob (one-shot at create time) and
 // the Promote tab's first render for jobs that predate this table.

@@ -13,10 +13,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
-import type { JobBoardStatus, JobBoardStatusValue } from "@prisma/client";
+import type { JobBoardStatus } from "@prisma/client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { MAJOR_BOARDS, nextStatusValue } from "@/lib/job-boards";
+import {
+  MAJOR_BOARDS,
+  nextStatusValue,
+  type JobBoardStatusValueShared,
+} from "@/lib/job-boards-shared";
 import {
   addLocalNicheBoard,
   removeJobBoard,
@@ -36,14 +40,14 @@ import {
 // roadmap memory) — disabled stub button with a tooltip pointing at the
 // future capability.
 
-const STATUS_LABELS: Record<JobBoardStatusValue, string> = {
+const STATUS_LABELS: Record<JobBoardStatusValueShared, string> = {
   NOT_CONFIGURED: "Not Configured",
   READY: "Ready",
   POSTED: "Posted",
   SKIPPED: "Skipped",
 };
 
-const STATUS_TONE: Record<JobBoardStatusValue, string> = {
+const STATUS_TONE: Record<JobBoardStatusValueShared, string> = {
   NOT_CONFIGURED:
     "border-court-border bg-court-surface-subtle text-court-fg-muted hover:border-court-fg-muted/40",
   READY: "border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300",
@@ -205,7 +209,7 @@ function BoardRow({
   kind: "major" | "local";
 }) {
   const router = useRouter();
-  const [status, setStatus] = useState<JobBoardStatusValue>(row.status);
+  const [status, setStatus] = useState<JobBoardStatusValueShared>(row.status);
   const [notes, setNotes] = useState<string>(row.notes ?? "");
   const [url, setUrl] = useState<string>(row.externalUrl ?? "");
   const [boardName, setBoardName] = useState<string>(row.boardName);

@@ -25,25 +25,24 @@ import {
   type JobOverviewSnapshot,
 } from "@/app/jobs/[id]/job-overview-tab";
 import { JobDescriptionTab } from "@/app/jobs/[id]/job-description-tab";
-import { PipelineTab } from "@/app/jobs/[id]/pipeline-tab";
 import { PromoteTab } from "@/app/jobs/[id]/promote-tab";
+import { MatchesTab } from "@/app/jobs/[id]/matches-tab";
 import AiWorkspace from "@/components/AiWorkspace";
 import { ActivityFeed } from "@/components/activity-feed";
 import { ensureMajorBoardsSeeded, listJobBoardStatuses } from "@/lib/job-boards";
-import { loadPipelineTabRows } from "@/lib/job-pipeline-rows";
 import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-// 7-tab job detail surface. Overview is the default landing tab so the
+// 6-tab job detail surface. Overview is the default landing tab so the
 // recruiter sees a snapshot + quick actions before drilling into the
-// specific surface. Matches lives on the cross-tab chip strip + the
-// Job Description tab; the Matches tab itself is just a signpost.
+// specific surface. Pipeline is intentionally not its own tab — the
+// cross-tab chip strip rendered above the tabs already surfaces the
+// staged candidate list with Submit / Reject inline actions.
 type JobTab =
   | "overview"
   | "description"
-  | "pipeline"
   | "matches"
   | "game-plan"
   | "promote"
@@ -52,7 +51,6 @@ type JobTab =
 const JOB_TABS: { id: JobTab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "description", label: "Job Description" },
-  { id: "pipeline", label: "Pipeline" },
   { id: "matches", label: "Matches" },
   { id: "game-plan", label: "Game Plan" },
   { id: "promote", label: "Promote" },
@@ -299,13 +297,6 @@ export default async function JobDetailPage({
   // the recruiter is on that tab. Promote also lazy-seeds the 6 majors
   // for jobs that predate the JobBoardStatus table — first render is
   // slightly slower for legacy jobs, every subsequent render is cached.
-  let pipelineTabRows: Awaited<ReturnType<typeof loadPipelineTabRows>> = [];
-  if (tab === "pipeline") {
-    pipelineTabRows = await loadPipelineTabRows({
-      jobCuid: jobRow.id,
-      jobLegacyRfId: rfId,
-    });
-  }
   let promoteRows: Awaited<ReturnType<typeof listJobBoardStatuses>> = [];
   if (tab === "promote") {
     await ensureMajorBoardsSeeded({ jobId: jobRow.id, organizationId: org.id });
@@ -444,12 +435,6 @@ export default async function JobDetailPage({
               }}
               matchTarget={matchTarget}
             />
-          ) : tab === "pipeline" ? (
-            <PipelineTab
-              rows={pipelineTabRows}
-              jobCuid={jobRow.id}
-              jobRfId={rfId}
-            />
           ) : tab === "promote" ? (
             <PromoteTab
               jobId={jobRow.id}
@@ -461,7 +446,11 @@ export default async function JobDetailPage({
           ) : tab === "activity" ? (
             <ActivityFeed entityType="job" entityId={jobRow.id} />
           ) : tab === "matches" ? (
-            <MatchesTabPointer />
+            <MatchesTab
+              jobCuid={jobRow.id}
+              jobRfId={rfId}
+              jobTitle={job.title}
+            />
           ) : (
             <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />
           )}
@@ -500,24 +489,6 @@ function TabStub({ label }: { label: string }) {
         {label}
       </div>
       <div className="mt-1 text-sm text-court-fg-muted">Coming soon.</div>
-    </div>
-  );
-}
-
-// The Matches surface lives on the cross-tab strip at the top of the
-// page (JobPipelineSummary's Matched chip) and inside the Job
-// Description tab (Find Matches button). Keep this tab as a styled
-// signpost rather than a stub so a recruiter who clicks it knows where
-// to go.
-function MatchesTabPointer() {
-  return (
-    <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/50 p-8 text-center">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-        Matches
-      </div>
-      <div className="mt-1 text-sm text-court-fg-muted">
-        Find Matches is available from the Job Description tab.
-      </div>
     </div>
   );
 }
