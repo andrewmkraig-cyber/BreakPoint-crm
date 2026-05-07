@@ -4,6 +4,20 @@ Long-form history archive. Started 2026-05-07 when ACE_STATE.md was trimmed to t
 
 ---
 
+## Completed - Ace 35.0 (May 7, 2026)
+
+- Game Plan Context Depth: extractResumeTextForCandidate helper in ai-workspace-context.ts. pdf-parse via dynamic import. Candidate context gets UPLOADED RESUME section (6k char cap) or "No resume on file". Job context gets RAW JOB DESCRIPTION and INTERNAL RECRUITER NOTES sections, skipped silently if null. Client context gets ACTIVE JOBS (up to 5 open jobs, 2k cap each) and PIPELINE CANDIDATES (10 most recent placements, 3k cap each, parallel pdf-parse).
+
+- Ace Assistant Phase 4 Data Access: four tool definitions in /api/claude-panel/chat/route.ts. search_candidates: OR-logic tokenized scoring across name/title/employer/location/skills/tags, plural singularization, stop word removal, JS scoring with title=3/employer=2.5/location=2/skills=1.5/tags=1/name=1, top 15 returned with markdown links [Name](/candidates/id), show more line when total exceeds display. search_jobs: isOpenJobsIntent pre-pass returns all isOpen=true jobs when broad intent detected, temporal adverbs added to stop words, OR broad + ranked otherwise. search_clients: OR broad across name/industry/domain/tags with second pass over 200 rows for location JSON. get_pipeline: normalizeStage maps any phrasing to canonical, interviewing queries Interview table (all dates), offer/pending_start/hired query Placement table, clientName contains insensitive, historical flag merges all placements + all interviews sorted by date desc capped at 30. Tool-call loop caps at 4 rounds. Per-call audit log emitted to Vercel function logs.
+
+- Ace Assistant Phase 5 Actions and History: three action tools (move_candidate_stage, add_note, draft_email) in chat route emit action_pending events instead of executing. /api/claude-panel/action route executes on confirm. ActionConfirmCard component in ClaudePanel.tsx with confirm/cancel handlers. Resolved payload includes candidateName, fromStage, toStage, jobTitle so card shows real names. placementId optional on move_candidate_stage, falls back to most recent non-rejected placement. add_note writes to ActivityLog with actionType note. draft_email opens Ace mail composer pre-filled, does not send. conversationId nullable column added to ClaudePanelMessage. Clear Chat rotates conversationId in localStorage instead of deleting rows. /settings/history groups by conversationId with legacy NULL rows bucketed by date. /settings/history/[key] thread view with delete per conversation.
+
+- Job Close and Delete: closeJob and deleteJob server actions in job-overview-actions.ts, both org-scoped. Close Job sets isOpen=false, revalidates. Delete Job hard deletes and redirects to /jobs. UI buttons on job overview tab with inline confirmation for delete. close_job and delete_job action tools added to Ace Assistant with confirmation cards showing real job and client names.
+
+- Manual cleanup: RECRUITERFLOW_API_KEY deleted from .env.local and Vercel. RECRUITERFLOW_BASE_URL deleted from .env.local. GITHUB_TOKEN deduplicated in .env.local.
+
+---
+
 ## ACE_STATE history (pre-Ace 32.0)
 
 ### What Shipped in Ace 31.0 (2026-05-05)
