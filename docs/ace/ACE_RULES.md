@@ -30,6 +30,7 @@ At the start of every session, before any other work:
 
 ## Doc Update Cadence (Added 2026-05-07 · Ace 34.0)
 Doc updates happen once at end of session only. Do not update ACE docs on every commit. Each commit edits product code or schema, never the four canonical docs (ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, ACE_DESIGN.md). At session close, do one consolidated doc-update commit that reflects everything that shipped.
+All time estimates calibrated against actual build pace: Game Plan Context Depth = 20-30 min, Ace Assistant Phase 4 = ~1 hr. Use these as baseline when estimating future prompts.
 
 ## Code Prompt Rules
 - Max 3 items per prompt. No exceptions.
