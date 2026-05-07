@@ -1589,24 +1589,18 @@ export function ThreadDetail({
   const latest =
     orderedMessages[orderedMessages.length - 1] ?? undefined;
 
-  // Gmail-style auto-scroll. Multiple things have failed in production
-  // — either the messages container wasn't actually the scroll surface
-  // (a higher ancestor was), or the scroll fired before late-loading
-  // signature images shifted the layout. So we do all four at multiple
-  // delays:
-  //   1. scrollIntoView({ block: "end" }) on the latest message —
-  //      scrollIntoView walks up the DOM until it finds a scrollable
-  //      ancestor, so we don't have to know which element is the
-  //      scroll surface.
-  //   2. scrollTop = scrollHeight on the messages container as backup.
-  //   3. Fire at 0ms, 100ms, 500ms, and 1500ms so late images don't
-  //      leave us stranded mid-thread.
-  // Targets the latest by data-attribute selector so we don't depend
-  // on a React ref staying attached.
+  // Gmail-style auto-scroll. Diagnostic in the browser confirmed the
+  // scrollable container resolves correctly and scrollIntoView works
+  // when called manually — so the only thing that should matter is
+  // making sure the call actually fires after the DOM is committed.
+  // Use a rAF loop that re-pins for ~1s, stops on first user scroll.
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (isFloating) return;
-    const scrollToLatest = () => {
+
+    let stopped = false;
+    const pin = () => {
+      if (stopped) return;
       const target = document.querySelector(
         '[data-latest-message="true"]',
       ) as HTMLElement | null;
@@ -1614,15 +1608,35 @@ export function ThreadDetail({
       const c = messagesScrollRef.current;
       if (c) c.scrollTop = c.scrollHeight;
     };
-    const t1 = window.setTimeout(scrollToLatest, 0);
-    const t2 = window.setTimeout(scrollToLatest, 100);
-    const t3 = window.setTimeout(scrollToLatest, 500);
-    const t4 = window.setTimeout(scrollToLatest, 1500);
+
+    // Re-pin every animation frame for 1s after thread open. Any
+    // late-loading signature image that shifts content during this
+    // window gets caught on the next frame. Cheap — rAF is throttled
+    // and pin() is just two property assignments.
+    const start = performance.now();
+    let raf = requestAnimationFrame(function tick() {
+      pin();
+      if (!stopped && performance.now() - start < 1000) {
+        raf = requestAnimationFrame(tick);
+      }
+    });
+
+    // Hand control back to the user as soon as they scroll. Use the
+    // capture-phase wheel listener on document so we catch scrolls on
+    // any nested element.
+    const onUserScroll = () => {
+      stopped = true;
+    };
+    document.addEventListener("wheel", onUserScroll, { passive: true });
+    document.addEventListener("touchmove", onUserScroll, { passive: true });
+    document.addEventListener("keydown", onUserScroll);
+
     return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
-      window.clearTimeout(t4);
+      stopped = true;
+      cancelAnimationFrame(raf);
+      document.removeEventListener("wheel", onUserScroll);
+      document.removeEventListener("touchmove", onUserScroll);
+      document.removeEventListener("keydown", onUserScroll);
     };
   }, [detail.id, isFloating]);
 
