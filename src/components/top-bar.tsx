@@ -59,6 +59,13 @@ export function TopBar() {
           </span>
           <InConversation size={22} />
         </button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        {/* YouTube button parked next to the profile card so it reads
+            as a "personal" utility rather than part of the + / Ace
+            Assistant action cluster on the left. Same icon-button
+            footprint as the rest of the topbar controls. */}
         <button
           type="button"
           onClick={toggleYouTube}
@@ -79,9 +86,6 @@ export function TopBar() {
           </span>
           <Play className="h-5 w-5" fill="currentColor" />
         </button>
-      </div>
-
-      <div className="flex items-center gap-1">
         <TopBarProfileCard name={user?.name ?? null} imageUrl={user?.image ?? null} />
       </div>
     </header>
