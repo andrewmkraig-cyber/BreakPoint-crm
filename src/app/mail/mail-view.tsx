@@ -1594,51 +1594,63 @@ export function ThreadDetail({
   // because that path renders newest-first — the latest is already at
   // the top there.
   //
-  // The naive "scrollTop = scrollHeight" once on mount loses the race
-  // against HTML-email inline images: the effect fires before <img>
-  // tags inside dangerouslySetInnerHTML have loaded, so scrollHeight
-  // measures a shorter document; once a logo / signature image lands
-  // the body grows but scrollTop has already been set, leaving the
-  // recruiter mid-thread. We re-fire on next animation frame, on each
-  // image's load/error event, and once more on a 600ms timeout (web
-  // fonts + late-loading remote images). Cancellation guards prevent
-  // a stale effect from yanking the next thread back to the bottom.
+  // We use TWO complementary techniques because either one alone has
+  // failed in production:
+  //   1. scrollIntoView({ block: "end" }) on the latest <article> —
+  //      bubbles up the closest scrollable ancestor and works even if
+  //      messagesScrollRef isn't actually the element that scrolls
+  //      (e.g. a flex-1 child without min-h-0 grew past its parent
+  //      and a higher ancestor is the real scroll container).
+  //   2. scrollTop = scrollHeight on the messages container as a
+  //      backup for cases where scrollIntoView under-shoots because
+  //      content is still loading.
+  // Both fire on initial render, again inside two stacked animation
+  // frames so layout settles, on every <img> load/error event inside
+  // the container (HTML-email signatures load late and push content
+  // down), and once more on a 600ms timeout fallback for web fonts.
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+  const latestMessageRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (isFloating) return;
-    const el = messagesScrollRef.current;
-    if (!el) return;
 
     let cancelled = false;
-    const scrollToBottom = () => {
+    const scrollToLatest = () => {
       if (cancelled) return;
-      const node = messagesScrollRef.current;
-      if (!node) return;
-      node.scrollTop = node.scrollHeight;
+      const latestNode = latestMessageRef.current;
+      if (latestNode) {
+        latestNode.scrollIntoView({ block: "end", behavior: "auto" });
+      }
+      const containerNode = messagesScrollRef.current;
+      if (containerNode) {
+        containerNode.scrollTop = containerNode.scrollHeight;
+      }
     };
 
-    scrollToBottom();
+    scrollToLatest();
     const raf = requestAnimationFrame(() => {
-      scrollToBottom();
-      requestAnimationFrame(scrollToBottom);
+      scrollToLatest();
+      requestAnimationFrame(scrollToLatest);
     });
 
-    const imgs = Array.from(el.querySelectorAll("img"));
+    const containerEl = messagesScrollRef.current;
+    const imgs = containerEl
+      ? Array.from(containerEl.querySelectorAll("img"))
+      : [];
     for (const img of imgs) {
       if (img.complete) continue;
-      img.addEventListener("load", scrollToBottom, { once: true });
-      img.addEventListener("error", scrollToBottom, { once: true });
+      img.addEventListener("load", scrollToLatest, { once: true });
+      img.addEventListener("error", scrollToLatest, { once: true });
     }
 
-    const fallbackId = window.setTimeout(scrollToBottom, 600);
+    const fallbackId = window.setTimeout(scrollToLatest, 600);
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       window.clearTimeout(fallbackId);
       for (const img of imgs) {
-        img.removeEventListener("load", scrollToBottom);
-        img.removeEventListener("error", scrollToBottom);
+        img.removeEventListener("load", scrollToLatest);
+        img.removeEventListener("error", scrollToLatest);
       }
     };
   }, [detail.id, isFloating]);
@@ -2007,45 +2019,58 @@ export function ThreadDetail({
               // focal point, recruiter scrolls this pane if they need
               // to re-read context.
               "max-h-40 shrink-0 overflow-y-auto border-t border-court-border bg-court-surface-subtle/40"
-            : "flex-1 overflow-y-auto"
+            : // min-h-0 forces this flex child to actually constrain
+              // to the parent's height so overflow-y-auto kicks in;
+              // without it, a long thread can grow the child past the
+              // parent and the page scrolls instead, which made the
+              // earlier scrollTop = scrollHeight a no-op.
+              "min-h-0 flex-1 overflow-y-auto"
         }
       >
-        {orderedMessages.map((m, i) => (
-          <MessageBlock
-            key={m.id}
-            msg={m}
-            isFirst={i === 0}
-            // Gmail-style: every non-latest message starts collapsed
-            // so a long thread reads as one expanded message + a
-            // stack of summary rows. Click any collapsed row to
-            // expand it inline.
-            defaultCollapsed={m.id !== latestId}
-            // Per-message Reply / Reply All / Forward buttons render
-            // ONLY for older messages in a multi-message inline thread.
-            // Suppressed when:
-            //   - rendered inside FloatingThreadWindow (isFloating) —
-            //     popups opened from notifications get one toolbar only
-            //   - a composer is already open
-            //   - the message is the latest one — the top toolbar
-            //     already handles it, so per-message buttons there are
-            //     pure duplication. A single-message thread therefore
-            //     renders zero per-message buttons (the only message
-            //     IS the latest). Older messages in a chain keep their
-            //     buttons so the recruiter can scroll down and reply
-            //     to a specific earlier message in the conversation.
-            onAction={
-              isFloating || composerOpen || m.id === latestId
-                ? undefined
-                : (mode) => onMessageAction(m, mode)
-            }
-            // Per-message Reply All only renders when this specific
-            // message had multiple recipients — DM-style messages
-            // (one sender, only me on To) collapse to Reply so the
-            // toolbar doesn't offer two buttons that produce
-            // identical sends.
-            showReplyAll={hasMultipleRecipients(m)}
-          />
-        ))}
+        {orderedMessages.map((m, i) => {
+          const isLatest = m.id === latestId;
+          return (
+            <div
+              key={m.id}
+              ref={isLatest && !isFloating ? latestMessageRef : undefined}
+            >
+              <MessageBlock
+                msg={m}
+                isFirst={i === 0}
+                // Gmail-style: every non-latest message starts collapsed
+                // so a long thread reads as one expanded message + a
+                // stack of summary rows. Click any collapsed row to
+                // expand it inline.
+                defaultCollapsed={!isLatest}
+                // Per-message Reply / Reply All / Forward buttons
+                // render ONLY for older messages in a multi-message
+                // inline thread. Suppressed when:
+                //   - rendered inside FloatingThreadWindow (isFloating) —
+                //     popups opened from notifications get one toolbar only
+                //   - a composer is already open
+                //   - the message is the latest one — the top toolbar
+                //     already handles it, so per-message buttons there
+                //     are pure duplication. A single-message thread
+                //     therefore renders zero per-message buttons (the
+                //     only message IS the latest). Older messages in a
+                //     chain keep their buttons so the recruiter can
+                //     scroll down and reply to a specific earlier
+                //     message in the conversation.
+                onAction={
+                  isFloating || composerOpen || isLatest
+                    ? undefined
+                    : (mode) => onMessageAction(m, mode)
+                }
+                // Per-message Reply All only renders when this specific
+                // message had multiple recipients — DM-style messages
+                // (one sender, only me on To) collapse to Reply so the
+                // toolbar doesn't offer two buttons that produce
+                // identical sends.
+                showReplyAll={hasMultipleRecipients(m)}
+              />
+            </div>
+          );
+        })}
       </div>
       {!isFloating && composerOpen && composerNode}
     </div>
