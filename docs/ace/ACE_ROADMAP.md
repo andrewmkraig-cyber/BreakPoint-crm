@@ -1,71 +1,70 @@
 # Ace Roadmap
-Last updated: 2026-05-07 · Ace 34.0
+Last updated: 2026-05-07 · Ace 35.0
 
-## Active Next Tasks (priority order)
+## Active Build Sequence
+In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
-### Launch Sprint (ship before May 15)
-1. **Game Plan Context Depth** — full resume + JD text into every ai-workspace prompt so Claude reasons against the actual content, not just metadata.
-2. **Ace Assistant Phase 4** — data access tool calls (search candidates, jobs, clients, pipeline from the floating panel).
-3. **Ace Assistant Phase 5** — actions + Claude history tab in Settings (propose move, send email, add note with confirm/edit/cancel UI; saved past conversations with summaries in Settings).
-4. **RF string sweep** — 17 RecruiterFlow visible strings still in UI (includes the public apply link showing the RF URL).
-5. **CSV candidate import** — bulk upload candidates from CSV into Ace.
-6. **Boolean candidate search** — AND/OR/NOT operators on the Matches tab and global candidate search (extends the text-only search shipped in Ace 34.0).
+1. **YouTube floating player** — 15-30 min.
+2. **Word of Day card** — 15-30 min standalone, separate from the full Market Insights bundle.
+3. **CSV candidate import** — 1-2 hr.
+4. **Postgres search indexes** — 30-60 min. Build immediately after CSV import so indexes are present before bulk loads.
+5. **Candidate Sourcing Surface** — 4-6 hr combined effort. Full redesign of `/candidates` to match the Jobot Jax Quick Search layout. Left-rail faceted filter sidebar (keyword/Boolean search, skills, job titles, min/max comp, locations with distance, current employer, employer tenure, work auth, last apply date, last action date). Results table with checkbox, name, title, employer with tenure, location, salary, last apply, last action, candidate score, eye icon. All columns sortable. Split-view: clicking a candidate opens the profile as a slide-over overlay, list stays visible behind it, independent scroll regions. Same split-view pattern applied to `/pipeline`. Boolean search with AND/OR/NOT/parens/quoted phrases. Live filter updates debounced 300 ms. Total candidate count displayed. Apply `ACE_DESIGN.md` rules throughout.
+6. **PWA conversion** — 1.5-3 hr. Manifest, service worker, push notifications.
+7. **Quiet Clients tab** — 1-2 hr. New tab on `/clients`. Lists clients where the last touchpoint exceeded threshold (default 21 days, configurable in Settings). Columns: client name, days since last activity, last activity type, last activity date. Sortable by days, default longest first. Tiers: Check in soon 14-30 days / Going cold 30-60 / Cold 60+. Optional Claude summary at tab open. Reads from existing ActivityLog, no new schema.
+8. **BD Engine block** — 12-19 hr total. Claude Design pass first (1-2 hr) for BD tab + BD Settings + Sequence builder UI before any code. Then in order: Scheduled email send (Gmail API send-at), Background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (6 AM scan Indeed API for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect table, deduplicates), Sequence engine + BD Settings (outbound sequences from Ace using warmed domains, Settings for keywords/titles/limit/cadence).
+9. **APRO / job order worksheet** — 2-3 hr. Structured intake form.
+10. **Client preference learning system + Personal Trainer suggestions** — 6.5-9 hr combined. Replaces the killed auto-updating client preference memory and Ace learning layer Phase 1. Phases: Phase 0a client-side email thread tagging (1.5-2 hr prereq), Phase 0b client-side Quo call/SMS tagging (1-1.5 hr prereq), Phase 1 email preference scan + propose UI with daily cron and dashboard card (2-3 hr), Phase 2 Quo transcript preference scan (1.5-2 hr), Phase 3 note-write inline extraction (30-45 min), Personal Trainer rule suggestions bundled (1-1.5 hr). ClientPreference schema + right rail on client profile + submittal composer right rail. Monthly drift review first Monday of each month.
+11. **Interview scheduler enhancements** — 1-2 hr. Edit/cancel/reschedule flows.
+12. **One-click interview prep packet** — 1-2 hr. PDF for candidate pre-interview.
+13. **Calendar tab** — 2-4 hr. Month/week/day, Google Calendar read-write sync, create-meeting modal.
+14. **Market Insights + daily brief** — 2-4 hr. Word of day already built separately.
 
-### BD Engine (highest revenue impact)
-7. **Scheduled email send prerequisite** — Gmail API send-at timestamp.
-8. **Background job queue prerequisite** — Job table + Vercel Cron.
-9. **BD tab surface** — /bd page, Prospect table, BD feed.
-10. **BD daily cron + Apollo pipeline** — daily 6 AM cron scans Indeed for last-24hr public-accounting jobs (filter by company name + JD signals; discard staffing agencies + corporate in-house), Apollo enriches one best contact per company, writes to Prospect table, auto-enrolls in sequence.
-11. **Sequence engine + BD Settings screen** — sending + tracking inside Ace, not Apollo. Settings for keywords / titles / limit / sequence cadence.
+## Queued From Session
+Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
-### Platform Depth
-12. **Submittal tracker with read receipts** — invisible to client; if implementation would notify recipient, kill the feature.
-13. **Candidate re-engagement engine** — flag candidates placed/cold 12-18 months ago; auto-draft re-engagement email for review.
-14. **One-click interview prep packet** — PDF for candidate (company background, role summary, likely questions, Andrew's coaching notes). Coexists with the rich-text editor on the scheduler.
-15. **Interview scheduler enhancements** — edit + cancel/reschedule (date / time / interviewers / location, refresh Calendar event, re-send notifications, optional cancel reason).
-16. **Calendar tab** — dedicated /calendar surface (month / week / day, Google Calendar read-write sync, create-meeting modal).
-17. **Market Insights tab + daily industry briefing + word of the day** — market briefs per client + Vercel Cron 6 AM EST daily public-accounting brief + vocabulary card on the dashboard.
+- **Master-detail candidates layout** — list pane stays visible on the left while the candidate profile loads on the right; both panes scroll independently. Mirrors the Jobot Jax pattern. Will land naturally inside the Candidate Sourcing Surface (item 5) — track here so it isn't lost if priorities shift.
+- **Tighter applied-jobs strip** — PlacementActionsIsland refactor required first; needs its own scoped prompt.
+- **Skills/keywords field on Job Description tab** — feeds Find Matches scoring and Boolean search. Add to the Boolean search prompt when that ships.
 
-### Ace Intelligence
-18. **Job fillability score** — per-job scoring blending market, client, and pipeline signals.
-19. **APRO / job order worksheet** — structured intake form populated from call transcription auto-fill.
-20. **Ace learning layer Phase 1** — captures the patterns Ace observes across recruiter actions.
-21. **Auto-updating client preference memory** — surfaces sticky preferences (comp ranges, interviewer cadence, must-haves) on each client profile.
-22. **Relationship graph + placement pattern learning** — visualize candidate / client / placement edges to surface hidden BD opportunities.
+## Non-Urgent
+Build soon, lower priority than the active sequence above.
 
-### Proprietary Differentiators
-23. **Live placement probability score** — 1-100 score per pipeline candidate, updated real-time from response time, interview progression, comp alignment, time-in-stage. Red/yellow/green on pipeline + candidate profile.
-24. **Counteroffer risk flag** — at offer stage, pulls tenure, comp jump %, employer size, flags high counteroffer risk automatically.
-25. **Client heat map** — clients active / going cold / overdue for touchpoint based on last activity. Red/yellow/green. Lives on the dashboard or `/clients/heat-map`.
-26. **Fee tracker with Austin auto-notify** — confirmed-start placement calculates gross fee + Andrew 75% / Austin 25% split, Slacks Austin (`U0AJB4AM631`) the breakdown when start date is confirmed. Triggers off the `placement_confirmed` ActivityLog event.
-27. **BD trigger alerts** — monitor LinkedIn + Indeed for job postings from existing clients; alert when an existing client posts a role Andrew isn't engaged on.
+- **RF string sweep** — 17 RecruiterFlow visible strings still in UI.
+- **Invite flow in Settings** — reuses OrganizationMembership; invite + role chip + revoke.
+- **Quo setup wizard** — guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
+- **Slack sidebar panel**.
+- **DocuSign auto-import** — ~2-3 hr via DocuSign Connect webhook.
+- **Invoicing + QuickBooks + Mercury** — invoicing workflow, QuickBooks sync, Mercury account integration.
+- **GPT as second AI provider** behind Ace Assistant.
 
-### Cleanup (do alongside other work)
-28. **Sentry N+1 fixes** — ACE-CRM-5 (37 events), ACE-CRM-6 (28), ACE-CRM-7 (2), ACE-CRM-9 (1), ACE-CRM-A (1). Fix via Prisma include eager-loading.
-29. **Compound-unique widening** — 3 Placement compound uniques missing organizationId.
-30. **SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping**.
-31. **MANUAL** — delete `RECRUITERFLOW_API_KEY` from `.env.local` and GitHub Actions secrets.
-32. **MANUAL** — delete `src/lib/recruiterflow/` directory entirely.
-33. **Invite flow in Settings** for adding team members (reuses existing OrganizationMembership table; invite + role chip + revoke).
-34. **Quo setup wizard** — guided in-app flow in Settings to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
+## Cleanup
+Do alongside other work.
 
-### Post-launch
-35. **GPT as second AI provider behind Ace Assistant**.
-36. **YouTube floating player**.
-37. **DocuSign auto-import**.
-38. **Invoicing + QuickBooks + Mercury** — invoicing workflow, QuickBooks sync, Mercury account integration.
-39. **Slack sidebar panel**.
-40. **PWA conversion** — manifest, service worker, push notifications.
-41. **Activity-to-revenue analytics**.
-42. **Vercel Blob migration** — CandidateResume audit + migrate file bytes from Postgres to Vercel Blob.
-43. **Postgres search indexes** — tsvector + GIN for fast Boolean search as DB grows.
-44. **MPC feature** — Most Placeable Candidates surfacing.
-45. **Settings fix generator** — small Settings utility to repair common data issues without touching the DB by hand.
+- **Sentry N+1 fixes** — ACE-CRM-5 (37 events), ACE-CRM-6 (28), ACE-CRM-7 (2), ACE-CRM-9 (1), ACE-CRM-A (1). Fix via Prisma include eager-loading.
+- **Compound-unique widening** — 3 Placement compound uniques missing organizationId.
+- **SmsMessage / CallLog / CallTranscript / AiWorkspaceMessage tenant-scoping**.
+- **MANUAL** — delete `RECRUITERFLOW_API_KEY` from `.env.local` and GitHub Actions secrets.
+- **MANUAL** — delete `src/lib/recruiterflow/` directory entirely.
+- **Vercel Blob migration** — CandidateResume audit + migrate file bytes from Postgres to Vercel Blob.
+- **Postgres search indexes** — already in active sequence above; listed here for completeness.
 
-### Deferred
-46. **Multi-recruiter permissions** — build when team grows. Schema (`ownerId` on Client + Job, CandidateAccessGrant join), invite flow + manage team page in Settings, per-row permission checks on every server action.
-47. **Candidate profile full redesign** — Jobot-style three-column layout. Killed earlier; revisit if recruiter feedback warrants.
-48. **Job order + ARPO templates with call transcription auto-fill** — Krispcall / Google Meet / Teams transcripts feed structured worksheet.
+## Future Ideas
+Revisit at scale or workflow change — do not build now.
+
+- Submittal tracker with read receipts.
+- Counteroffer risk flag.
+- Live placement probability score.
+- Fee tracker with Austin auto-notify.
+- Job fillability score.
+- BD trigger alerts.
+- Candidate re-engagement engine.
+- Ace learning layer Phase 1 (replaced by client preference learning).
+- Relationship graph + placement pattern learning.
+- Settings fix generator.
+- Activity-to-revenue analytics.
+- Multi-recruiter permissions.
+- Candidate profile full redesign.
+- ARPO with call transcription auto-fill.
 
 ## Explicitly Killed — Do Not Build
 - Stage-Triggered Template Actions System.
