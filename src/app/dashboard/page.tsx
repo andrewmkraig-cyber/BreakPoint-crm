@@ -213,28 +213,25 @@ export default async function DashboardPage() {
         {formatEasternWeekRange(weekStart, weekEnd)}
       </p>
 
-      {/* KPI strip + Word of Day share a row at xl. The KPI grid takes
-          flex-1 on the left so the existing 6-tile layout continues to
-          stretch the available width, while the Word of Day card sits
-          fixed-width on the right. Below xl the two stack and the card
-          falls beneath the strip. */}
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-stretch">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:flex-1 xl:grid-cols-6">
-          <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
-          <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
-          <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
-          <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
-          <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
-          <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
-        </div>
-        <div className="xl:w-72 xl:shrink-0">
-          <WordOfDayCard />
-        </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
+        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
+        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
+        <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
+        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
+        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
 
       <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
 
       <UpcomingInterviews rows={upcoming} />
+
+      {/* Bottom-right pill — sits inline at the end of the dashboard
+          column and right-aligns. Popover opens upward so it never
+          spills off the page bottom. */}
+      <div className="flex justify-end">
+        <WordOfDayCard />
+      </div>
     </div>
   );
 }

@@ -1,13 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 
-// Daily vocabulary card for the dashboard. Mounts on the client so the
-// /api/word-of-day call doesn't block server-side dashboard render —
-// the card shows a skeleton, then swaps in the JSON when the route
-// resolves. Same row as the KPI tiles at xl; stacks below on smaller
-// breakpoints (handled by the parent layout).
+// Compact "Word of the Day" pill that lives at the bottom-right of the
+// dashboard column. Renders a single-line chip ("Word of the Day:
+// suborn →"); clicking expands a popover above the pill with the part
+// of speech, definition, and example sentence. Outside-click closes
+// the popover.
+//
+// The /api/word-of-day route caches one row per (org, ET day), so this
+// component fetches once on mount and reuses the cached payload on
+// subsequent loads — only the first call of the ET day costs a Claude
+// roundtrip.
 
 type WordPayload = {
   word: string;
@@ -23,6 +28,9 @@ type ApiResponse =
 export function WordOfDayCard() {
   const [data, setData] = useState<WordPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,15 +60,62 @@ export function WordOfDayCard() {
     };
   }, []);
 
+  // Outside-click + Escape close the popover. mousedown (rather than
+  // click) so a press-and-drag away still dismisses cleanly.
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      const node = containerRef.current;
+      if (!node) return;
+      if (!node.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Nothing to show until the API resolves; we deliberately render
+  // nothing rather than a skeleton because the pill lives in the
+  // dashboard's empty corner and a flickering skeleton there is more
+  // distracting than a brief blank.
+  if (!data) {
+    if (error) return null;
+    return null;
+  }
+
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
-      <div className="text-[11px] font-semibold uppercase tracking-widest text-court-fg-muted">
-        Word of the Day
-      </div>
-      {data ? (
-        <>
-          <div className="mt-2 flex items-baseline gap-2">
-            <div className="font-stat text-2xl font-bold leading-tight text-court-fg">
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        className="inline-flex items-center gap-1.5 rounded-full border border-court-border px-3 py-1 text-xs text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
+      >
+        <span className="uppercase tracking-wider text-[10px]">
+          Word of the Day:
+        </span>
+        <span className="font-medium text-court-fg">{data.word}</span>
+        <span aria-hidden="true">→</span>
+      </button>
+
+      {open && (
+        <div
+          role="dialog"
+          aria-label="Word of the Day"
+          className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
+        >
+          <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
+            Word of the Day
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <div className="font-stat text-xl font-bold leading-tight text-court-fg">
               {data.word}
             </div>
             <div className="text-xs italic text-court-fg-muted">
@@ -71,23 +126,11 @@ export function WordOfDayCard() {
           <div className="mt-2 text-xs italic leading-relaxed text-court-fg-muted">
             &ldquo;{data.exampleSentence}&rdquo;
           </div>
-        </>
-      ) : error ? (
-        <div className="mt-2 text-xs text-court-fg-muted">
-          Couldn&apos;t load today&apos;s word.
-        </div>
-      ) : (
-        // Skeleton — three pulsing bars sized like word/definition/example.
-        <div className="mt-3 flex flex-1 flex-col gap-2">
-          <div className="h-6 w-2/3 animate-pulse rounded bg-court-surface-subtle" />
-          <div className="h-3 w-full animate-pulse rounded bg-court-surface-subtle" />
-          <div className="h-3 w-5/6 animate-pulse rounded bg-court-surface-subtle" />
-          <div className="h-3 w-3/4 animate-pulse rounded bg-court-surface-subtle" />
+          <div className="mt-3 flex items-center gap-1 text-[10px] uppercase tracking-wider text-court-fg-muted">
+            <Sparkles className="h-3 w-3" /> Generated by Ace
+          </div>
         </div>
       )}
-      <div className="mt-auto flex items-center gap-1 pt-3 text-[10px] uppercase tracking-wider text-court-fg-muted">
-        <Sparkles className="h-3 w-3" /> Generated by Ace
-      </div>
     </div>
   );
 }
