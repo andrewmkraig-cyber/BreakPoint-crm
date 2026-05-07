@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-06 · Ace 34.0b
+Last updated: 2026-05-07 · Ace 34.0
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
@@ -27,6 +27,9 @@ At the start of every session, before any other work:
 - Pull ACE_STATE.md and identify stale rules, superseded plans, completed items still in active lists.
 - Clean in one pass. When a plan changes, replace - do not append.
 - Completed items move to log only.
+
+## Doc Update Cadence (Added 2026-05-07 · Ace 34.0)
+Doc updates happen once at end of session only. Do not update ACE docs on every commit. Each commit edits product code or schema, never the four canonical docs (ACE_RULES.md, ACE_STATE.md, ACE_ROADMAP.md, ACE_DESIGN.md). At session close, do one consolidated doc-update commit that reflects everything that shipped.
 
 ## Code Prompt Rules
 - Max 3 items per prompt. No exceptions.
