@@ -442,7 +442,7 @@ export default async function JobDetailPage({
               rows={promoteRows}
             />
           ) : tab === "game-plan" ? (
-            <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />
+            <AiWorkspace entityType="job" entityId={jobRow.id} />
           ) : tab === "activity" ? (
             <ActivityFeed entityType="job" entityId={jobRow.id} />
           ) : tab === "matches" ? (

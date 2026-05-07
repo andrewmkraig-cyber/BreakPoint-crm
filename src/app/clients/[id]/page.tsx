@@ -495,10 +495,7 @@ export default async function ClientDetailPage({
         />
       ) : tab === "game-plan" && legacyRfId != null ? (
         <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-xs uppercase tracking-wider text-court-fg-muted">
-              Game Plan
-            </div>
+          <div className="flex items-center justify-end gap-3">
             <FindMatchesButton
               target={{
                 kind: "client",
