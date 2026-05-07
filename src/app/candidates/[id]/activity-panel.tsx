@@ -77,9 +77,9 @@ export function ActivityPanel({ interviews }: { interviews: ActivityInterview[] 
               </ul>
             )}
           </ActivitySection>
-          <ActivitySection title="Calls" emptyText="Call logging arrives with the Krispcall integration." />
-          <ActivitySection title="Emails sent" emptyText="Email send history will land here." />
-          <ActivitySection title="Notes & stage changes" emptyText="Manual notes + auto stage history coming soon." />
+          <ActivitySection title="Calls" emptyText="No calls logged for this candidate yet." />
+          <ActivitySection title="Emails sent" emptyText="No emails sent to this candidate yet." />
+          <ActivitySection title="Notes & stage changes" emptyText="No notes or stage changes recorded yet." />
         </div>
       )}
     </section>

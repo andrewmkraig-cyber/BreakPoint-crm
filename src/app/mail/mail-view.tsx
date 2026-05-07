@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Archive,
   ChevronDown,
@@ -1299,6 +1300,11 @@ function EmptyRightPane() {
 // bulk toolbar. Click-outside closes the menu. The button itself is
 // disabled until labels finish loading and there's at least one user
 // label to pick from.
+//
+// Menu is portal-rendered to document.body with fixed coords computed
+// from the button's bounding rect — escapes the threads-list column's
+// overflow-hidden which used to clip the menu's left edge when long
+// label names + the bulk toolbar's offset combined.
 export function MoveToMenu({
   labels,
   busy,
@@ -1319,19 +1325,63 @@ export function MoveToMenu({
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState("");
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Menu width in px — used both for inline visual sizing and for
+  // computing how far left to anchor the portal'd menu so the right
+  // edge still aligns with the button's right edge (mirrors the old
+  // `right-0` visual on a relative parent).
+  const MENU_WIDTH = 240;
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setPos(null);
+      return;
+    }
+    function reposition() {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      // Right-align the menu to the button, but clamp inside the
+      // viewport with an 8px margin so labels never get clipped at
+      // either edge regardless of where the bulk toolbar sits.
+      const desiredLeft = rect.right - MENU_WIDTH;
+      const left = Math.max(
+        8,
+        Math.min(desiredLeft, window.innerWidth - MENU_WIDTH - 8),
+      );
+      setPos({ top: rect.bottom + 4, left });
+    }
+    reposition();
     function onDocClick(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        !wrapRef.current?.contains(target) &&
+        !menuRef.current?.contains(target)
+      ) {
         setOpen(false);
         setCreating(false);
         setDraft("");
       }
     }
+    function onScrollOrResize() {
+      // Scroll inside the page rearranges the button — close so the
+      // menu doesn't dangle at a stale position.
+      setOpen(false);
+      setCreating(false);
+      setDraft("");
+    }
     document.addEventListener("mousedown", onDocClick);
-    return () => document.removeEventListener("mousedown", onDocClick);
+    window.addEventListener("resize", onScrollOrResize);
+    window.addEventListener("scroll", onScrollOrResize, true);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      window.removeEventListener("resize", onScrollOrResize);
+      window.removeEventListener("scroll", onScrollOrResize, true);
+    };
   }, [open]);
 
   // Auto-focus the inline input the moment it appears so the user can
@@ -1357,8 +1407,9 @@ export function MoveToMenu({
   // empty label set still disables the button.
   const buttonDisabled = busy || (noLabels && !onCreateAndApply);
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={wrapRef}>
       <button
+        ref={buttonRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={buttonDisabled}
@@ -1375,69 +1426,84 @@ export function MoveToMenu({
       >
         {buttonContent}
       </button>
-      {open && (hasLabels || onCreateAndApply) && (
-        <div className="absolute right-0 top-full z-20 mt-1 w-56 overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg">
-          {hasLabels && (
-            <div className="max-h-60 overflow-y-auto py-1">
-              {labels!.map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    onPick(l.id, l.name);
-                  }}
-                  className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
-                >
-                  {l.name}
-                </button>
-              ))}
-            </div>
-          )}
-          {onCreateAndApply && (
-            <div className="border-t border-court-border bg-court-bg/40">
-              {creating ? (
-                <div className="flex items-center gap-1 px-2 py-1.5">
-                  <input
-                    ref={inputRef}
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        submitNewLabel();
-                      } else if (e.key === "Escape") {
-                        e.preventDefault();
-                        setCreating(false);
-                        setDraft("");
-                      }
+      {open &&
+        pos &&
+        (hasLabels || onCreateAndApply) &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={menuRef}
+            style={{
+              position: "fixed",
+              top: pos.top,
+              left: pos.left,
+              width: MENU_WIDTH,
+              zIndex: 50,
+            }}
+            className="overflow-hidden rounded-md border border-court-border bg-court-surface shadow-lg"
+          >
+            {hasLabels && (
+              <div className="max-h-72 overflow-y-auto py-1">
+                {labels!.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      onPick(l.id, l.name);
                     }}
-                    placeholder="Label name"
-                    className="min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-court-accent"
-                  />
+                    className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40"
+                  >
+                    {l.name}
+                  </button>
+                ))}
+              </div>
+            )}
+            {onCreateAndApply && (
+              <div className="border-t border-court-border bg-court-bg/40">
+                {creating ? (
+                  <div className="flex items-center gap-1 px-2 py-1.5">
+                    <input
+                      ref={inputRef}
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          submitNewLabel();
+                        } else if (e.key === "Escape") {
+                          e.preventDefault();
+                          setCreating(false);
+                          setDraft("");
+                        }
+                      }}
+                      placeholder="Label name"
+                      className="min-w-0 flex-1 rounded border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-court-accent"
+                    />
+                    <button
+                      type="button"
+                      onClick={submitNewLabel}
+                      disabled={!draft.trim()}
+                      className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                    >
+                      Create
+                    </button>
+                  </div>
+                ) : (
                   <button
                     type="button"
-                    onClick={submitNewLabel}
-                    disabled={!draft.trim()}
-                    className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                    onClick={() => setCreating(true)}
+                    className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-court-fg-muted hover:bg-court-accent-tint/40 hover:text-court-fg"
                   >
-                    Create
+                    <Plus className="h-3 w-3" />
+                    New label…
                   </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setCreating(true)}
-                  className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left text-xs text-court-fg-muted hover:bg-court-accent-tint/40 hover:text-court-fg"
-                >
-                  <Plus className="h-3 w-3" />
-                  New label…
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                )}
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

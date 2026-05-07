@@ -81,7 +81,6 @@ export default async function MailPage() {
       <PageHeader
         eyebrow="Inbox"
         title="Mail"
-        description="Your Gmail inbox — read-only for now. Reply composer ships next."
         actions={
           <ComposeNewEmailButton
             templates={templates}
