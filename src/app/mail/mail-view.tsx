@@ -1582,11 +1582,11 @@ export function ThreadDetail({
     [detail.messages, isFloating],
   );
   // True latest regardless of display order — used for the reply
-  // recipient defaults + Reply-All visibility, and to decide which
-  // MessageBlock should render expanded vs collapsed.
+  // recipient defaults + Reply-All visibility. (MessageBlock's
+  // expanded-vs-collapsed decision is made at render time off the
+  // map index, not this variable.)
   const latest =
     detail.messages[detail.messages.length - 1] ?? orderedMessages[0];
-  const latestId = latest?.id ?? null;
 
   // Gmail-style auto-scroll: when a thread is opened (detail.id
   // changes), drop the inline message pane to its bottom on a 100ms
@@ -1976,17 +1976,17 @@ export function ThreadDetail({
         }
       >
         {orderedMessages.map((m, i) => {
-          const isLatest = m.id === latestId;
+          // Inline mode: orderedMessages == detail.messages (oldest →
+          // newest), so the latest sits at the last index. Floating
+          // mode reverses, putting latest at index 0.
+          const latestIndex = isFloating ? 0 : orderedMessages.length - 1;
+          const isLatest = i === latestIndex;
           return (
             <div key={m.id}>
               <MessageBlock
                 msg={m}
                 isFirst={i === 0}
-                // Gmail-style: every non-latest message starts collapsed
-                // so a long thread reads as one expanded message + a
-                // stack of summary rows. Click any collapsed row to
-                // expand it inline.
-                defaultCollapsed={!isLatest}
+                isLatest={isLatest}
                 // Per-message Reply / Reply All / Forward buttons
                 // render ONLY for older messages in a multi-message
                 // inline thread. Suppressed when:

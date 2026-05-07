@@ -12,7 +12,7 @@ export type MessageBlockAction = "reply" | "replyAll" | "forward";
 // sanitized server-side, so we're only concerned with stripping markup
 // for display, not security. Falls back to "(no preview)" when the
 // stripped body is empty (e.g. attachment-only messages).
-function snippetFromBody(html: string, maxLen = 140): string {
+function snippetFromBody(html: string, maxLen = 100): string {
   const stripped = html
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -58,43 +58,27 @@ function shortTimestamp(iso: string | null): string {
 // the API sanitizer lets through (p / br / ul / ol / li / strong /
 // em / a / blockquote / pre / h1-3 / img). Court tokens drive every
 // color so the body tracks the active mode.
+//
+// Gmail-style collapse rule:
+//   isLatest=true  → always render the full body, no toggle.
+//   isLatest=false → render a single one-line summary div (sender,
+//                    100-char snippet, short date). Click expands it
+//                    via local showFull state.
 export function MessageBlock({
   msg,
   isFirst,
   onAction,
   showReplyAll = true,
-  defaultCollapsed = false,
+  isLatest,
 }: {
   msg: MailThreadMessage;
   isFirst: boolean;
-  // When provided, each MessageBlock renders its own Reply / Reply
-  // All / Forward buttons. The parent ThreadDetail wires the handler
-  // so the composer opens with THIS message's recipients + quoted
-  // body — lets the recruiter reply to any message in a long thread,
-  // not just the latest one. Omit (or pass undefined) to hide the
-  // per-message buttons (e.g. while the composer is already open).
   onAction?: (mode: MessageBlockAction) => void;
-  // When false, the Reply All button is hidden — the parent computes
-  // this from the message's recipient set (true when the message has
-  // any addresses besides the current user; false when it's a DM).
-  // Defaults to true so callers that don't compute this still get the
-  // legacy three-button layout.
   showReplyAll?: boolean;
-  // Gmail-style: render as a one-line summary row (sender + snippet +
-  // timestamp) until clicked. The latest message in the thread should
-  // pass false (always expanded); older messages pass true.
-  defaultCollapsed?: boolean;
+  isLatest: boolean;
 }) {
-  // Track manual expansion separately from the prop-driven default so
-  // we never desync. `manuallyExpanded === null` means "follow the
-  // prop": defaultCollapsed=true → collapsed, defaultCollapsed=false
-  // → expanded. Clicking the collapsed summary row sets it to true,
-  // overriding to expanded for that one message. Resetting the prop
-  // doesn't undo the user's click.
-  const [manuallyExpanded, setManuallyExpanded] = useState<boolean | null>(
-    null,
-  );
-  const expanded = manuallyExpanded ?? !defaultCollapsed;
+  const [showFull, setShowFull] = useState(false);
+  const expanded = isLatest || showFull;
   // After the dangerouslySetInnerHTML body mounts, attach error
   // handlers to every <img> inside it so a failed remote load
   // collapses the element rather than leaving a broken-image
@@ -131,7 +115,7 @@ export function MessageBlock({
     return (
       <button
         type="button"
-        onClick={() => setManuallyExpanded(true)}
+        onClick={() => setShowFull(true)}
         className={
           "flex w-full items-baseline gap-3 px-4 py-2 text-left transition hover:bg-court-surface-subtle/60 " +
           (isFirst ? "" : "border-t border-court-border")
