@@ -1,6 +1,5 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { PageHeader } from "@/components/page-header";
 import { PhoneView } from "@/app/phone/phone-view";
 import { getQuoStatus } from "@/lib/connectors";
 import { ConnectorBanner } from "@/components/connector-banner";
@@ -35,16 +34,12 @@ export default async function PhonePage() {
   const quoStatus = await getQuoStatus();
 
   // Viewport-bounded flex column so the threads list + dialer fit the
-  // visible area exactly without the page itself scrolling. Height is
-  // 100vh minus the AppShell's TopBar (h-20 = 5rem) plus main padding
-  // (p-6 = 3rem combined mobile, md:p-8 = 4rem combined md+). Inner
-  // panes (threads list, detail pane) handle their own overflow.
+  // visible area exactly without the page itself scrolling. Negative
+  // top margin claws against the AppShell gutter so the inline header
+  // PhoneView renders sits flush with the topbar — matches /mail's
+  // pattern. Height accounts for the slimmer h-16 topbar.
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
-      <PageHeader
-        title="Calls & Texts"
-        description="Your Quo texts and calls."
-      />
+    <div className="-mt-2 flex h-[calc(100vh-7rem)] flex-col md:-mt-4 md:h-[calc(100vh-8rem)]">
       {quoStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="quo-down"

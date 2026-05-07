@@ -204,13 +204,11 @@ export default async function DashboardPage() {
   });
 
   return (
-    // Was using negative horizontal margins to pull the dashboard
-    // closer to the sidebar than other pages. After AppShell tightened
-    // its left padding to pl-3 / md:pl-4, the negative margin pulled
-    // the dashboard cards too far left and broke parity with every
-    // other page. Drop the negative margin so the dashboard inherits
-    // the same gutter as /jobs, /candidates, /clients, etc.
-    <div className="-mt-4 flex w-full flex-col gap-6 md:-mt-6">
+    // PageHeader owns its own claw-against-the-gutter negative margin
+    // (-mt-2 md:-mt-4). The wrapper used to layer another -mt-4 / -mt-6
+    // on top, which pulled the title up under the sticky topbar and
+    // overlapped the search bar. Wrapper now just holds gap spacing.
+    <div className="flex w-full flex-col gap-6">
       <PageHeader
         title="Activity Dashboard"
         description={formatEasternWeekRange(weekStart, weekEnd)}

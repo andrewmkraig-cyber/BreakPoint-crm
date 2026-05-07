@@ -312,11 +312,20 @@ export function PhoneView() {
   return (
     <>
     <div className="flex min-h-0 flex-1 flex-col">
-    <div className="mb-3 flex shrink-0 items-center justify-end">
+    {/* Inline header — mirrors /mail's pattern. Title sits inline with
+        the action button in a single row (md and up) so the threads
+        grid starts right under the title with no dead vertical space.
+        Stacks on narrow screens. Page-level PageHeader was dropped so
+        this component owns its own title rendering. */}
+    <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-3">
+      <div>
+        <h1 className="font-serif text-xl font-semibold text-court-fg">Calls &amp; Texts</h1>
+        <p className="text-xs text-court-fg-muted">Your Quo texts and calls.</p>
+      </div>
       <button
         type="button"
         onClick={() => setDialPadOpen(true)}
-        className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
       >
         <Plus className="h-3 w-3" /> New Text/Call
       </button>

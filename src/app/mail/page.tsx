@@ -78,7 +78,7 @@ export default async function MailPage() {
   // inline compact header (smaller than the global PageHeader) since
   // Mail is a workspace tool, not a content page.
   return (
-    <div className="-mt-2 flex h-[calc(100vh-7.5rem)] flex-col md:-mt-4 md:h-[calc(100vh-8rem)]">
+    <div className="-mt-2 flex h-[calc(100vh-6.5rem)] flex-col md:-mt-4 md:h-[calc(100vh-7rem)]">
       <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-3">
         <div>
           <h1 className="font-serif text-xl font-semibold text-court-fg">Mail</h1>

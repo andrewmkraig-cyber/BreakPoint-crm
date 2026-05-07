@@ -258,11 +258,14 @@ export function ClientsView({
   }, [cards, query]);
 
   return (
-    <div className="mx-auto max-w-[1200px]">
+    <div>
       {/* Header — matches the global PageHeader compact style (mail-
           sized serif + tight spacing + claw against gutter). Owned by
           ClientsView (page.tsx doesn't render PageHeader) so the New
-          Client button can sit alongside the title. */}
+          Client button can sit alongside the title. The previous
+          mx-auto + max-w-[1200px] wrapper centered the title and made
+          /clients read shifted right vs every other page; drop it so
+          Clients lines up with Jobs, Candidates, etc. */}
       <div className="-mt-2 mb-3 flex flex-col gap-1 md:-mt-4 md:flex-row md:items-center md:justify-between md:gap-3">
         <div>
           <h1 className="font-serif text-xl font-semibold text-court-fg">Clients</h1>

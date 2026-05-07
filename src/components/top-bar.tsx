@@ -13,7 +13,7 @@ export function TopBar() {
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
 
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center justify-between gap-4 bg-court-surface px-6">
+    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 bg-court-surface px-6">
       {/* Reserved slot — previously held the "Wed, May 6" eyebrow.
           Left intentionally blank so the topbar grid stays balanced
           while we figure out what (if anything) belongs here. */}
