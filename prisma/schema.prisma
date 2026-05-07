@@ -728,11 +728,49 @@ model Job {
   placements   Placement[]
   interviews   Interview[]
   matches      CandidateMatch[]
+  boardStatuses JobBoardStatus[]
 
   @@index([clientId])
   @@index([isOpen])
   @@index([title])
   @@index([organizationId])
+}
+
+// Per-job posting status across job boards. Powers the Promote tab on
+// /jobs/[id]. The 6 major boards (LinkedIn, Indeed, ZipRecruiter,
+// Glassdoor, SimplyHired, Monster) are seeded with NOT_CONFIGURED rows
+// when a Job is created so the Promote tab always has a baseline; any
+// extra rows the recruiter adds are local / niche boards and live with
+// category="local_niche". boardName is unique per job so the seed +
+// any later upsert calls don't stack duplicates.
+enum JobBoardStatusValue {
+  NOT_CONFIGURED
+  READY
+  POSTED
+  SKIPPED
+}
+
+model JobBoardStatus {
+  id             String              @id @default(cuid())
+  organizationId String
+  jobId          String
+  boardName      String
+  status         JobBoardStatusValue @default(NOT_CONFIGURED)
+  notes          String?             @db.Text
+  externalUrl    String?
+  // "major" for the 6 seeded boards; "local_niche" for recruiter-added
+  // rows. Kept loose (string) so a future "regional" / "industry" tier
+  // doesn't require a schema migration.
+  category       String              @default("major")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  job          Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, boardName])
+  @@index([organizationId])
+  @@index([jobId])
 }
 
 // Game Plan Phase 2: persistent log of every candidate Find Matches has
@@ -835,6 +873,7 @@ model Organization {
   candidateMatches     CandidateMatch[]
   personalTrainerRules PersonalTrainerRule[]
   claudePanelMessages  ClaudePanelMessage[]
+  jobBoardStatuses     JobBoardStatus[]
 }
 
 model ClaudePanelMessage {

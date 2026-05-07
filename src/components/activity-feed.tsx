@@ -18,7 +18,7 @@ export function ActivityFeed({
   entityType,
   entityId,
 }: {
-  entityType: "candidate" | "client";
+  entityType: "candidate" | "client" | "job";
   entityId: string;
 }) {
   const [rows, setRows] = useState<Activity[] | null>(null);

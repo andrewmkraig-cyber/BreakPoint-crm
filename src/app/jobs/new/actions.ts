@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { generateJobDescription } from "@/lib/claude";
+import { ensureMajorBoardsSeeded } from "@/lib/job-boards";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -159,6 +160,12 @@ export async function createJob(
       },
       select: { id: true, legacyRfId: true },
     });
+
+    // Seed the 6 majors so the Promote tab has rows to render the
+    // moment the recruiter opens it. Idempotent — the unique
+    // (jobId, boardName) constraint plus skipDuplicates means a
+    // retried create-call won't stack duplicates.
+    await ensureMajorBoardsSeeded({ jobId: job.id, organizationId: org.id });
 
     const slug = job.legacyRfId != null ? String(job.legacyRfId) : job.id;
     revalidatePath("/jobs");

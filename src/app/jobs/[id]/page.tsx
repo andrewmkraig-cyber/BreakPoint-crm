@@ -25,16 +25,21 @@ import {
   type JobOverviewSnapshot,
 } from "@/app/jobs/[id]/job-overview-tab";
 import { JobDescriptionTab } from "@/app/jobs/[id]/job-description-tab";
+import { PipelineTab } from "@/app/jobs/[id]/pipeline-tab";
+import { PromoteTab } from "@/app/jobs/[id]/promote-tab";
 import AiWorkspace from "@/components/AiWorkspace";
+import { ActivityFeed } from "@/components/activity-feed";
+import { ensureMajorBoardsSeeded, listJobBoardStatuses } from "@/lib/job-boards";
+import { loadPipelineTabRows } from "@/lib/job-pipeline-rows";
 import { prisma } from "@/lib/prisma";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-// 8-tab job detail surface. Overview is the default landing tab so the
+// 7-tab job detail surface. Overview is the default landing tab so the
 // recruiter sees a snapshot + quick actions before drilling into the
-// specific surface. Pipeline / Matches / Promote / Activity / Billing
-// are stubbed until those flows land.
+// specific surface. Matches lives on the cross-tab chip strip + the
+// Job Description tab; the Matches tab itself is just a signpost.
 type JobTab =
   | "overview"
   | "description"
@@ -42,8 +47,7 @@ type JobTab =
   | "matches"
   | "game-plan"
   | "promote"
-  | "activity"
-  | "billing";
+  | "activity";
 
 const JOB_TABS: { id: JobTab; label: string }[] = [
   { id: "overview", label: "Overview" },
@@ -53,7 +57,6 @@ const JOB_TABS: { id: JobTab; label: string }[] = [
   { id: "game-plan", label: "Game Plan" },
   { id: "promote", label: "Promote" },
   { id: "activity", label: "Activity" },
-  { id: "billing", label: "Billing" },
 ];
 
 function parseTab(raw: string | undefined): JobTab {
@@ -291,6 +294,27 @@ export default async function JobDetailPage({
   // on a snapshot + quick actions before drilling into a specific surface.
   const tab: JobTab = parseTab(searchParams?.tab);
 
+  // Lazy per-tab loads. Keep the eager queries above lean (the same
+  // payload every tab needs) and only fetch tab-specific shapes when
+  // the recruiter is on that tab. Promote also lazy-seeds the 6 majors
+  // for jobs that predate the JobBoardStatus table — first render is
+  // slightly slower for legacy jobs, every subsequent render is cached.
+  let pipelineTabRows: Awaited<ReturnType<typeof loadPipelineTabRows>> = [];
+  if (tab === "pipeline") {
+    pipelineTabRows = await loadPipelineTabRows({
+      jobCuid: jobRow.id,
+      jobLegacyRfId: rfId,
+    });
+  }
+  let promoteRows: Awaited<ReturnType<typeof listJobBoardStatuses>> = [];
+  if (tab === "promote") {
+    await ensureMajorBoardsSeeded({ jobId: jobRow.id, organizationId: org.id });
+    promoteRows = await listJobBoardStatuses({
+      jobId: jobRow.id,
+      organizationId: org.id,
+    });
+  }
+
   // Overview reads come from the Job table directly so saves through
   // EditableJobOverview echo on next revalidate without having to keep
   // Job.raw in sync. RF-imported rows have these columns populated by
@@ -420,8 +444,24 @@ export default async function JobDetailPage({
               }}
               matchTarget={matchTarget}
             />
+          ) : tab === "pipeline" ? (
+            <PipelineTab
+              rows={pipelineTabRows}
+              jobCuid={jobRow.id}
+              jobRfId={rfId}
+            />
+          ) : tab === "promote" ? (
+            <PromoteTab
+              jobId={jobRow.id}
+              applyLink={overviewInitial.applyLink}
+              rows={promoteRows}
+            />
           ) : tab === "game-plan" ? (
             <AiWorkspace entityType="job" entityId={jobRow.id} title="Game Plan" />
+          ) : tab === "activity" ? (
+            <ActivityFeed entityType="job" entityId={jobRow.id} />
+          ) : tab === "matches" ? (
+            <MatchesTabPointer />
           ) : (
             <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />
           )}
@@ -460,6 +500,24 @@ function TabStub({ label }: { label: string }) {
         {label}
       </div>
       <div className="mt-1 text-sm text-court-fg-muted">Coming soon.</div>
+    </div>
+  );
+}
+
+// The Matches surface lives on the cross-tab strip at the top of the
+// page (JobPipelineSummary's Matched chip) and inside the Job
+// Description tab (Find Matches button). Keep this tab as a styled
+// signpost rather than a stub so a recruiter who clicks it knows where
+// to go.
+function MatchesTabPointer() {
+  return (
+    <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/50 p-8 text-center">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+        Matches
+      </div>
+      <div className="mt-1 text-sm text-court-fg-muted">
+        Find Matches is available from the Job Description tab.
+      </div>
     </div>
   );
 }

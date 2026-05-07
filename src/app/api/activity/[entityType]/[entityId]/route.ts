@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 // possible (e.g., a Placement created before a Candidate row in test
 // fixtures); we don't filter by createdAt.
 
-type EntityType = "candidate" | "client";
+type EntityType = "candidate" | "client" | "job";
 
 type ActivityRow = {
   id: string;
@@ -39,7 +39,7 @@ export async function GET(
 ) {
   const entityType = params.entityType;
   const entityId = params.entityId;
-  if (entityType !== "candidate" && entityType !== "client") {
+  if (entityType !== "candidate" && entityType !== "client" && entityType !== "job") {
     return NextResponse.json({ error: "Unsupported entityType" }, { status: 400 });
   }
   if (!entityId) {
@@ -52,18 +52,26 @@ export async function GET(
   // returning anything. ActivityLog rows are organizationId-scoped by
   // construction, but the entity gate keeps a stranger from probing by
   // cuid for cross-tenant existence.
+  let jobLegacyRfId: number | null = null;
   if (entityType === "candidate") {
     const exists = await prisma.candidate.findFirst({
       where: { id: entityId, organizationId: org.id },
       select: { id: true },
     });
     if (!exists) return NextResponse.json({ activities: [] });
-  } else {
+  } else if (entityType === "client") {
     const exists = await prisma.client.findFirst({
       where: { id: entityId, organizationId: org.id },
       select: { id: true },
     });
     if (!exists) return NextResponse.json({ activities: [] });
+  } else {
+    const exists = await prisma.job.findFirst({
+      where: { id: entityId, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!exists) return NextResponse.json({ activities: [] });
+    jobLegacyRfId = exists.legacyRfId;
   }
 
   // Build the set of placement / interview ids that live under this
@@ -71,20 +79,31 @@ export async function GET(
   // entity's feed. For clients we also pull placements/interviews
   // joined through Job (Job.clientId == entity) so a stage transition
   // logged against a placement still surfaces on the client's feed.
-  const placementWhere: Prisma.PlacementWhereInput =
-    entityType === "candidate"
-      ? { candidateId: entityId, organizationId: org.id }
-      : {
-          organizationId: org.id,
-          OR: [{ clientId: entityId }, { job: { clientId: entityId } }],
-        };
-  const interviewWhere: Prisma.InterviewWhereInput =
-    entityType === "candidate"
-      ? { candidateId: entityId, organizationId: org.id }
-      : {
-          organizationId: org.id,
-          OR: [{ clientId: entityId }, { job: { clientId: entityId } }],
-        };
+  // For jobs, placements/interviews can be matched by the cuid jobId
+  // (Ace-native) OR the numeric jobRfId (RF-imported), so the OR
+  // clause covers both identity shapes.
+  let placementWhere: Prisma.PlacementWhereInput;
+  let interviewWhere: Prisma.InterviewWhereInput;
+  if (entityType === "candidate") {
+    placementWhere = { candidateId: entityId, organizationId: org.id };
+    interviewWhere = { candidateId: entityId, organizationId: org.id };
+  } else if (entityType === "client") {
+    placementWhere = {
+      organizationId: org.id,
+      OR: [{ clientId: entityId }, { job: { clientId: entityId } }],
+    };
+    interviewWhere = {
+      organizationId: org.id,
+      OR: [{ clientId: entityId }, { job: { clientId: entityId } }],
+    };
+  } else {
+    const jobMatch: Prisma.PlacementWhereInput["OR"] = [{ jobId: entityId }];
+    if (jobLegacyRfId != null) jobMatch.push({ jobRfId: jobLegacyRfId });
+    placementWhere = { organizationId: org.id, OR: jobMatch };
+    const interviewMatch: Prisma.InterviewWhereInput["OR"] = [{ jobId: entityId }];
+    if (jobLegacyRfId != null) interviewMatch.push({ jobRfId: jobLegacyRfId });
+    interviewWhere = { organizationId: org.id, OR: interviewMatch };
+  }
 
   const [placementIds, interviewIds] = await Promise.all([
     prisma.placement.findMany({ where: placementWhere, select: { id: true } }),
@@ -162,19 +181,23 @@ function resolveIds(
   const jobId = readString(meta, "jobId");
   let clientId = readString(meta, "clientId");
 
+  let resolvedJobId = jobId;
   if (targetType === "candidate") {
     candidateId = candidateId ?? targetId;
   } else if (targetType === "client") {
     clientId = clientId ?? targetId;
+  } else if (targetType === "job") {
+    resolvedJobId = resolvedJobId ?? targetId;
   }
 
   // If the request scope is the entity itself and the row didn't
   // expose its id any other way, anchor it. Keeps the response
   // shape consistent: candidate-feed rows always carry candidateId.
   if (entityType === "candidate") candidateId = candidateId ?? entityId;
-  else clientId = clientId ?? entityId;
+  else if (entityType === "client") clientId = clientId ?? entityId;
+  else if (entityType === "job") resolvedJobId = resolvedJobId ?? entityId;
 
-  return { candidateId, jobId, clientId };
+  return { candidateId, jobId: resolvedJobId, clientId };
 }
 
 // Plain-English renderer for the activity feed. Falls back to a
@@ -223,6 +246,8 @@ function describeAction(actionType: string, meta: Record<string, unknown> | null
       const titleHead = jobTitle ?? "this job";
       return `Source posting saved: ${titleHead}${sourceUrl ? ` — ${sourceUrl}` : ""}`;
     }
+    case "job_description_generated":
+      return `Job description generated${jobTitle ? ` for ${jobTitle}` : ""}`;
     default:
       return titleize(actionType);
   }
