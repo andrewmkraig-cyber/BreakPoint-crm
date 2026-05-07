@@ -1527,12 +1527,54 @@ export function ThreadDetail({
   // recent message is visible immediately. Skipped in floating mode
   // because that path renders newest-first — the latest is already at
   // the top there.
+  //
+  // The naive "scrollTop = scrollHeight" once on mount loses the race
+  // against HTML-email inline images: the effect fires before <img>
+  // tags inside dangerouslySetInnerHTML have loaded, so scrollHeight
+  // measures a shorter document; once a logo / signature image lands
+  // the body grows but scrollTop has already been set, leaving the
+  // recruiter mid-thread. We re-fire on next animation frame, on each
+  // image's load/error event, and once more on a 600ms timeout (web
+  // fonts + late-loading remote images). Cancellation guards prevent
+  // a stale effect from yanking the next thread back to the bottom.
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (isFloating) return;
     const el = messagesScrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+
+    let cancelled = false;
+    const scrollToBottom = () => {
+      if (cancelled) return;
+      const node = messagesScrollRef.current;
+      if (!node) return;
+      node.scrollTop = node.scrollHeight;
+    };
+
+    scrollToBottom();
+    const raf = requestAnimationFrame(() => {
+      scrollToBottom();
+      requestAnimationFrame(scrollToBottom);
+    });
+
+    const imgs = Array.from(el.querySelectorAll("img"));
+    for (const img of imgs) {
+      if (img.complete) continue;
+      img.addEventListener("load", scrollToBottom, { once: true });
+      img.addEventListener("error", scrollToBottom, { once: true });
+    }
+
+    const fallbackId = window.setTimeout(scrollToBottom, 600);
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      window.clearTimeout(fallbackId);
+      for (const img of imgs) {
+        img.removeEventListener("load", scrollToBottom);
+        img.removeEventListener("error", scrollToBottom);
+      }
+    };
   }, [detail.id, isFloating]);
 
   const floatingThread = useFloatingThread();
