@@ -1596,57 +1596,50 @@ export function ThreadDetail({
   const latest =
     orderedMessages[orderedMessages.length - 1] ?? undefined;
 
-  // Gmail-style auto-scroll. The browser diagnostic confirmed the
-  // scrollable container resolves correctly and scrollIntoView works
-  // manually — so the only question is whether our scroll calls are
-  // firing at the right time. Two-pronged approach:
-  //   1. useLayoutEffect runs synchronously after DOM commit, BEFORE
-  //      paint. Sets scrollTop in the same frame the layout was
-  //      built, so the user never sees the page in the wrong scroll
-  //      position.
-  //   2. useEffect rAF loop re-pins every frame for the first ~1s
-  //      to catch late-loading signature images that shift content
-  //      after the initial paint. Bails on first user scroll.
-  // Console logs labelled [autoscroll] make it easy to verify the
-  // code is firing — paste them back if it's still not landing.
+  // Gmail-style auto-scroll: land on the TOP of the latest message
+  // so the actual reply text ("Morning Jeannie, Appreciate the
+  // update here!") is what shows on open — not the signature /
+  // quoted history at the BOTTOM of the message body.
+  //
+  // Earlier attempts used scrollTop = scrollHeight, which dropped
+  // the viewport to the absolute bottom of the document = the end
+  // of the latest message's body = its signature. Andrew was seeing
+  // signature + quoted content and had to scroll UP to find the
+  // actual new content.
+  //
+  // Now: compute the latest message's position relative to the
+  // scroll container and set scrollTop so the message's TOP aligns
+  // with the container's TOP. useLayoutEffect for synchronous
+  // initial scroll, rAF loop for late-loading content shifts,
+  // bails on first user scroll.
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const pinLatestToTop = useCallback(() => {
+    const c = messagesScrollRef.current;
+    const target = document.querySelector(
+      '[data-latest-message="true"]',
+    ) as HTMLElement | null;
+    if (!c || !target) return;
+    const containerRect = c.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    c.scrollTop = c.scrollTop + (targetRect.top - containerRect.top);
+  }, []);
 
   useLayoutEffect(() => {
     if (isFloating) return;
-    const c = messagesScrollRef.current;
-    if (!c) {
-      // eslint-disable-next-line no-console
-      console.log("[autoscroll] layoutEffect: no container ref");
-      return;
-    }
-    c.scrollTop = c.scrollHeight;
-    // eslint-disable-next-line no-console
-    console.log("[autoscroll] layoutEffect pinned", {
-      scrollTop: c.scrollTop,
-      scrollHeight: c.scrollHeight,
-      clientHeight: c.clientHeight,
-    });
-  }, [detail.id, isFloating]);
+    pinLatestToTop();
+  }, [detail.id, isFloating, pinLatestToTop]);
 
   useEffect(() => {
     if (isFloating) return;
     let stopped = false;
     let frame = 0;
     const start = performance.now();
-    const pin = () => {
-      const c = messagesScrollRef.current;
-      if (!c) return;
-      c.scrollTop = c.scrollHeight;
-    };
     const tick = () => {
       if (stopped) return;
-      pin();
+      pinLatestToTop();
       if (performance.now() - start < 1000) {
         frame = requestAnimationFrame(tick);
-      } else {
-        // eslint-disable-next-line no-console
-        console.log("[autoscroll] rAF window ended, final pin");
-        pin();
       }
     };
     frame = requestAnimationFrame(tick);
@@ -1663,7 +1656,7 @@ export function ThreadDetail({
       document.removeEventListener("touchmove", onUserScroll);
       document.removeEventListener("keydown", onUserScroll);
     };
-  }, [detail.id, isFloating]);
+  }, [detail.id, isFloating, pinLatestToTop]);
 
   const floatingThread = useFloatingThread();
   const composerManager = useComposerManager();
