@@ -708,6 +708,15 @@ model Job {
   // recruiter-facing description so we can later diff / re-parse without
   // losing the original copy.
   rawJobDescription String?  @db.Text
+  // Set whenever the recruiter-facing description was produced by the
+  // BreakPoint Generate flow. Powers the "Last generated" timestamp on
+  // the JD preview card; null means description was hand-edited or
+  // imported, not Claude-generated.
+  descriptionGeneratedAt DateTime?
+  // Recruiter-only context (compensation flexibility, client quirks,
+  // dealbreakers, etc.). Never rendered to candidates and never fed back
+  // into the JD Generate prompt — read-only sidekick to description.
+  internalRecruiterNotes String? @db.Text
   raw              Json?
   organizationId   String
   createdAt        DateTime  @default(now())

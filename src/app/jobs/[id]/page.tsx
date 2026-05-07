@@ -405,6 +405,19 @@ export default async function JobDetailPage({
               initialOverride={override?.description ?? null}
               initialSourceJobUrl={jobRow.sourceJobUrl ?? null}
               initialRawJobDescription={jobRow.rawJobDescription ?? null}
+              initialDescription={jobRow.description ?? null}
+              initialDescriptionGeneratedAt={
+                jobRow.descriptionGeneratedAt
+                  ? jobRow.descriptionGeneratedAt.toISOString()
+                  : null
+              }
+              initialInternalRecruiterNotes={jobRow.internalRecruiterNotes ?? null}
+              jobMeta={{
+                title: job.title,
+                clientName: job.company || "",
+                location: overviewSnapshot.locations.join(", "),
+                compensation: overviewSnapshot.compensation,
+              }}
               matchTarget={matchTarget}
             />
           ) : tab === "game-plan" ? (

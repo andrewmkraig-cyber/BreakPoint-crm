@@ -170,6 +170,42 @@ export async function saveJobSourceUrl(args: {
   }
 }
 
+// Recruiter-only context kept alongside the candidate-facing description.
+// Save-on-blur from the JD tab. Capped to the same 200k budget as the
+// raw paste so a stray multi-MB clipboard dump doesn't land in the row.
+export async function saveJobInternalRecruiterNotes(args: {
+  jobId: string;
+  notes: string;
+}): Promise<Result> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+
+  const next = args.notes;
+  if (next.length > 200_000) {
+    return { ok: false, error: "Internal notes too long." };
+  }
+
+  try {
+    const org = await getCurrentOrg();
+    const job = await prisma.job.findFirst({
+      where: { id: args.jobId, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!job) return { ok: false, error: "Job not found." };
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { internalRecruiterNotes: next.trim() ? next : null },
+    });
+
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/jobs/${job.id}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
 // Save the recruiter's raw paste of the job description onto the Job.
 // Lives next to (not on top of) the cleaned/edited description so the
 // original copy stays intact for re-parsing later.
