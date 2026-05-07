@@ -1,7 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   Archive,
@@ -1589,51 +1596,69 @@ export function ThreadDetail({
   const latest =
     orderedMessages[orderedMessages.length - 1] ?? undefined;
 
-  // Gmail-style auto-scroll. Diagnostic in the browser confirmed the
+  // Gmail-style auto-scroll. The browser diagnostic confirmed the
   // scrollable container resolves correctly and scrollIntoView works
-  // when called manually — so the only thing that should matter is
-  // making sure the call actually fires after the DOM is committed.
-  // Use a rAF loop that re-pins for ~1s, stops on first user scroll.
+  // manually — so the only question is whether our scroll calls are
+  // firing at the right time. Two-pronged approach:
+  //   1. useLayoutEffect runs synchronously after DOM commit, BEFORE
+  //      paint. Sets scrollTop in the same frame the layout was
+  //      built, so the user never sees the page in the wrong scroll
+  //      position.
+  //   2. useEffect rAF loop re-pins every frame for the first ~1s
+  //      to catch late-loading signature images that shift content
+  //      after the initial paint. Bails on first user scroll.
+  // Console logs labelled [autoscroll] make it easy to verify the
+  // code is firing — paste them back if it's still not landing.
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
+
+  useLayoutEffect(() => {
+    if (isFloating) return;
+    const c = messagesScrollRef.current;
+    if (!c) {
+      // eslint-disable-next-line no-console
+      console.log("[autoscroll] layoutEffect: no container ref");
+      return;
+    }
+    c.scrollTop = c.scrollHeight;
+    // eslint-disable-next-line no-console
+    console.log("[autoscroll] layoutEffect pinned", {
+      scrollTop: c.scrollTop,
+      scrollHeight: c.scrollHeight,
+      clientHeight: c.clientHeight,
+    });
+  }, [detail.id, isFloating]);
+
   useEffect(() => {
     if (isFloating) return;
-
     let stopped = false;
-    const pin = () => {
-      if (stopped) return;
-      const target = document.querySelector(
-        '[data-latest-message="true"]',
-      ) as HTMLElement | null;
-      if (target) target.scrollIntoView({ block: "end", behavior: "auto" });
-      const c = messagesScrollRef.current;
-      if (c) c.scrollTop = c.scrollHeight;
-    };
-
-    // Re-pin every animation frame for 1s after thread open. Any
-    // late-loading signature image that shifts content during this
-    // window gets caught on the next frame. Cheap — rAF is throttled
-    // and pin() is just two property assignments.
+    let frame = 0;
     const start = performance.now();
-    let raf = requestAnimationFrame(function tick() {
+    const pin = () => {
+      const c = messagesScrollRef.current;
+      if (!c) return;
+      c.scrollTop = c.scrollHeight;
+    };
+    const tick = () => {
+      if (stopped) return;
       pin();
-      if (!stopped && performance.now() - start < 1000) {
-        raf = requestAnimationFrame(tick);
+      if (performance.now() - start < 1000) {
+        frame = requestAnimationFrame(tick);
+      } else {
+        // eslint-disable-next-line no-console
+        console.log("[autoscroll] rAF window ended, final pin");
+        pin();
       }
-    });
-
-    // Hand control back to the user as soon as they scroll. Use the
-    // capture-phase wheel listener on document so we catch scrolls on
-    // any nested element.
+    };
+    frame = requestAnimationFrame(tick);
     const onUserScroll = () => {
       stopped = true;
     };
     document.addEventListener("wheel", onUserScroll, { passive: true });
     document.addEventListener("touchmove", onUserScroll, { passive: true });
     document.addEventListener("keydown", onUserScroll);
-
     return () => {
       stopped = true;
-      cancelAnimationFrame(raf);
+      cancelAnimationFrame(frame);
       document.removeEventListener("wheel", onUserScroll);
       document.removeEventListener("touchmove", onUserScroll);
       document.removeEventListener("keydown", onUserScroll);
