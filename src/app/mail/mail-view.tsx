@@ -207,6 +207,7 @@ export function MailView({
   // Same source as the main sidebar's Mail badge — kept in lockstep via
   // the shared MailContext provider in AppShell.
   const { unreadCount, refreshUnread, markThreadRead } = useMailContext();
+  const composer = useComposerManager();
   // Bump this to force the thread-list refetch effect to fire even
   // when selectedLabel + searchQuery haven't changed (Refresh button).
   const [refreshTick, setRefreshTick] = useState(0);
@@ -844,6 +845,28 @@ export function MailView({
                 {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              composer.open({
+                defaultTo: "",
+                templates,
+                mergeContext: {
+                  user: {
+                    firstName: currentUserFirstName,
+                    fullName: currentUserFullName,
+                  },
+                },
+                modalTitle: "New email",
+                nonBlocking: true,
+              });
+            }}
+            className="mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-2 py-1 text-[11px] font-semibold text-court-brand-dark transition hover:bg-court-brand/25"
+          >
+            <Pencil className="h-3 w-3" />
+            Compose new email
           </button>
 
           {parentLabelPaths.length > 0 && (
