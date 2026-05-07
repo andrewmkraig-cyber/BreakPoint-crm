@@ -348,6 +348,7 @@ export default async function JobDetailPage({
   };
 
   const overviewSnapshot: JobOverviewSnapshot = {
+    jobId: jobRow.id,
     title: job.title,
     clientName: job.company || "",
     locations: overviewInitial.locations,

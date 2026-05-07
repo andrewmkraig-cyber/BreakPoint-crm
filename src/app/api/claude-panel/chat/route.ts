@@ -66,7 +66,7 @@ const SYSTEM_PROMPT =
   "- Specific candidate / role / client lookups (skills, titles, locations, industries) → search_candidates / search_jobs / search_clients with the user's natural phrasing.\n" +
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
   "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record — never strip the link, never paraphrase the URL.\n" +
-  "Action tools — move_candidate_stage / add_note / draft_email — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. After calling an action tool do not write any more text — the card speaks for itself.";
+  "Action tools — move_candidate_stage / add_note / draft_email / close_job / delete_job — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. delete_job is destructive and cascades — only use it when the recruiter explicitly says 'delete' or 'permanently remove'; routine 'close out' / 'mark done' phrasing routes to close_job. After calling an action tool do not write any more text — the card speaks for itself.";
 
 // Custom data tools — exposed to Claude so it can pull live records
 // from Neon. Schemas mirror the parameters Andrew is most likely to ask
@@ -223,6 +223,36 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       required: ["to", "subject", "body"],
     },
   },
+  {
+    name: "close_job",
+    description:
+      "Propose marking a job as closed (isOpen=false). Use this when the recruiter says 'close out', 'shut down', or 'mark inactive' a job. Resolve the jobId from search_jobs first; cuid OR legacy rfId both resolve.",
+    input_schema: {
+      type: "object",
+      properties: {
+        jobId: {
+          type: "string",
+          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+        },
+      },
+      required: ["jobId"],
+    },
+  },
+  {
+    name: "delete_job",
+    description:
+      "Propose permanently deleting a job. The recruiter must Confirm before this lands. Use when the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' a job — never for routine 'close out' requests, which use close_job instead. Cascades through Placement / Interview / CandidateMatch rows for the job.",
+    input_schema: {
+      type: "object",
+      properties: {
+        jobId: {
+          type: "string",
+          description: "Job id from search_jobs — cuid OR numeric legacyRfId, both resolve.",
+        },
+      },
+      required: ["jobId"],
+    },
+  },
 ];
 
 // Names of the client-managed action tools. The streaming loop matches
@@ -232,6 +262,8 @@ const ACTION_TOOL_NAMES = new Set([
   "move_candidate_stage",
   "add_note",
   "draft_email",
+  "close_job",
+  "delete_job",
 ]);
 
 const MAX_TOOL_ROUNDS = 4;
@@ -995,6 +1027,36 @@ async function resolveJob(idOrRfId: string, orgId: string) {
   });
 }
 
+// Same lookup as resolveJob, but carries the client name + the
+// current isOpen flag so the close_job / delete_job action cards can
+// render "Close Senior Engineer at Acme — already closed" without a
+// second round-trip.
+async function resolveJobWithClient(idOrRfId: string, orgId: string) {
+  if (!idOrRfId) return null;
+  if (/^\d+$/.test(idOrRfId)) {
+    const legacyRfId = Number(idOrRfId);
+    if (!Number.isFinite(legacyRfId)) return null;
+    return prisma.job.findFirst({
+      where: { legacyRfId, organizationId: orgId },
+      select: {
+        id: true,
+        title: true,
+        isOpen: true,
+        client: { select: { name: true } },
+      },
+    });
+  }
+  return prisma.job.findFirst({
+    where: { id: idOrRfId, organizationId: orgId },
+    select: {
+      id: true,
+      title: true,
+      isOpen: true,
+      client: { select: { name: true } },
+    },
+  });
+}
+
 // Pick the placement we'd move when Claude doesn't pass one. Most
 // recent updatedAt wins, rejected/cancelled rows are excluded so the
 // recruiter doesn't accidentally re-stage a closed placement when
@@ -1047,6 +1109,21 @@ type ActionResolution =
       to: string;
       subject: string;
       body: string;
+    }
+  | {
+      kind: "close_job";
+      description: string;
+      jobId: string | null;
+      jobTitle: string;
+      clientName: string;
+      isAlreadyClosed: boolean;
+    }
+  | {
+      kind: "delete_job";
+      description: string;
+      jobId: string | null;
+      jobTitle: string;
+      clientName: string;
     }
   | {
       kind: "unknown";
@@ -1154,6 +1231,36 @@ async function describeAction(
         to,
         subject,
         body,
+      };
+    }
+
+    if (name === "close_job") {
+      const jobRef = typeof input.jobId === "string" ? input.jobId : "";
+      const job = await resolveJobWithClient(jobRef, orgId);
+      const jobTitle = job?.title ?? "(unknown job)";
+      const clientName = job?.client?.name ?? "(unknown client)";
+      const isAlreadyClosed = job ? job.isOpen === false : false;
+      return {
+        kind: "close_job",
+        description: `Close ${jobTitle} — mark as inactive and remove from active pipeline.`,
+        jobId: job?.id ?? null,
+        jobTitle,
+        clientName,
+        isAlreadyClosed,
+      };
+    }
+
+    if (name === "delete_job") {
+      const jobRef = typeof input.jobId === "string" ? input.jobId : "";
+      const job = await resolveJobWithClient(jobRef, orgId);
+      const jobTitle = job?.title ?? "(unknown job)";
+      const clientName = job?.client?.name ?? "(unknown client)";
+      return {
+        kind: "delete_job",
+        description: `Permanently delete ${jobTitle} at ${clientName}. This cannot be undone.`,
+        jobId: job?.id ?? null,
+        jobTitle,
+        clientName,
       };
     }
   } catch {

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { Loader2, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -70,17 +71,41 @@ type DraftEmailResolved = {
   subject: string;
   body: string;
 };
+type CloseJobResolved = {
+  kind: "close_job";
+  description: string;
+  jobId: string | null;
+  jobTitle: string;
+  clientName: string;
+  isAlreadyClosed: boolean;
+};
+type DeleteJobResolved = {
+  kind: "delete_job";
+  description: string;
+  jobId: string | null;
+  jobTitle: string;
+  clientName: string;
+};
 type UnknownResolved = { kind: "unknown"; description: string };
 type ActionResolved =
   | MoveResolved
   | NoteResolved
   | DraftEmailResolved
+  | CloseJobResolved
+  | DeleteJobResolved
   | UnknownResolved;
+
+type ActionToolName =
+  | "move_candidate_stage"
+  | "add_note"
+  | "draft_email"
+  | "close_job"
+  | "delete_job";
 
 type ActionCard = {
   kind: "action";
   id: string;            // tool_use id from Anthropic
-  name: "move_candidate_stage" | "add_note" | "draft_email";
+  name: ActionToolName;
   input: Record<string, unknown>;
   resolved: ActionResolved;
   status: "pending" | "running" | "confirmed" | "cancelled";
@@ -118,6 +143,7 @@ export function ClaudePanel() {
   const { z, bringToFront } = useFloatingZ(open);
 
   const composer = useComposerManager();
+  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [items, setItems] = useState<RenderItem[]>([]);
   const [draft, setDraft] = useState("");
@@ -502,7 +528,9 @@ export function ClaudePanel() {
           typeof event.id === "string" &&
           (event.name === "move_candidate_stage" ||
             event.name === "add_note" ||
-            event.name === "draft_email")
+            event.name === "draft_email" ||
+            event.name === "close_job" ||
+            event.name === "delete_job")
         ) {
           const input =
             event.input && typeof event.input === "object"
@@ -638,6 +666,7 @@ export function ClaudePanel() {
         to?: string;
         subject?: string;
         body?: string;
+        redirect?: string;
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -653,6 +682,19 @@ export function ClaudePanel() {
           mergeContext: { user: { firstName: "", fullName: "" } },
           nonBlocking: true,
         });
+      }
+      // delete_job (and any future redirect-bearing action) sends the
+      // recruiter off the now-deleted detail page back to the list.
+      // Use router.push so Next preserves panel + composer state, then
+      // refresh so the /jobs list reflects the missing row.
+      if (typeof data.redirect === "string" && data.redirect.length > 0) {
+        router.push(data.redirect);
+        router.refresh();
+      } else {
+        // Non-redirecting actions (close_job, move_candidate_stage,
+        // add_note) still need a refresh so the page the recruiter is
+        // currently on shows the change.
+        router.refresh();
       }
       const resultMessage = data.message ?? "Action completed.";
       setItems((prev) =>
@@ -960,12 +1002,23 @@ function ActionConfirmCard({
       }
     >
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 rounded bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-court-fg-muted">
+        <span
+          className={
+            "mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider " +
+            (card.name === "delete_job"
+              ? "bg-red-100 text-red-700"
+              : "bg-court-surface-subtle text-court-fg-muted")
+          }
+        >
           {card.name === "move_candidate_stage"
             ? "Stage move"
             : card.name === "add_note"
               ? "Note"
-              : "Email draft"}
+              : card.name === "draft_email"
+                ? "Email draft"
+                : card.name === "close_job"
+                  ? "Close job"
+                  : "Delete job"}
         </span>
         <div className="min-w-0 flex-1 text-court-fg">
           <ActionCardLabel card={card} />
@@ -1054,6 +1107,31 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
         <span className="font-semibold">{r.to || "(no recipient)"}</span>{" "}
         — subject:{" "}
         <span className="italic">{r.subject || "(no subject)"}</span>
+      </div>
+    );
+  }
+  if (r.kind === "close_job") {
+    return (
+      <div className="text-sm leading-snug">
+        Close <span className="font-semibold">{r.jobTitle}</span> — mark as
+        inactive and remove from active pipeline.
+        {r.isAlreadyClosed && (
+          <span className="ml-1 text-xs italic text-court-fg-muted">
+            (already closed)
+          </span>
+        )}
+      </div>
+    );
+  }
+  if (r.kind === "delete_job") {
+    return (
+      <div className="text-sm leading-snug">
+        Permanently delete{" "}
+        <span className="font-semibold">{r.jobTitle}</span> at{" "}
+        <span className="font-medium">{r.clientName}</span>.{" "}
+        <span className="text-xs italic text-red-600">
+          This cannot be undone.
+        </span>
       </div>
     );
   }

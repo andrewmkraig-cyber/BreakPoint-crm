@@ -408,6 +408,135 @@ export async function POST(req: Request) {
     });
   }
 
+  if (name === "close_job") {
+    const jobRef = typeof input.jobId === "string" ? input.jobId : "";
+    const preResolvedJobId =
+      typeof resolved.jobId === "string" ? resolved.jobId : "";
+    if (!jobRef && !preResolvedJobId) {
+      return NextResponse.json(
+        { ok: false, error: "jobId is required" },
+        { status: 400 },
+      );
+    }
+
+    let job: { id: string; legacyRfId: number | null; title: string; isOpen: boolean } | null =
+      null;
+    if (preResolvedJobId) {
+      job = await prisma.job.findFirst({
+        where: { id: preResolvedJobId, organizationId: org.id },
+        select: { id: true, legacyRfId: true, title: true, isOpen: true },
+      });
+    }
+    if (!job && jobRef) {
+      const fallback = await resolveJob(jobRef, org.id);
+      if (fallback) {
+        job = await prisma.job.findFirst({
+          where: { id: fallback.id, organizationId: org.id },
+          select: { id: true, legacyRfId: true, title: true, isOpen: true },
+        });
+      }
+    }
+    if (!job) {
+      return NextResponse.json(
+        { ok: false, error: "Job not found." },
+        { status: 404 },
+      );
+    }
+    if (!job.isOpen) {
+      return NextResponse.json({
+        ok: true,
+        message: `${job.title} is already closed.`,
+      });
+    }
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { isOpen: false },
+    });
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "job_closed",
+      targetType: "job",
+      targetId: job.id,
+      metadata: { jobTitle: job.title, source: "claude_panel" },
+    });
+    revalidatePath(`/jobs`);
+    revalidatePath(`/jobs/${job.id}`);
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    return NextResponse.json({
+      ok: true,
+      message: `Closed ${job.title}.`,
+    });
+  }
+
+  if (name === "delete_job") {
+    const jobRef = typeof input.jobId === "string" ? input.jobId : "";
+    const preResolvedJobId =
+      typeof resolved.jobId === "string" ? resolved.jobId : "";
+    if (!jobRef && !preResolvedJobId) {
+      return NextResponse.json(
+        { ok: false, error: "jobId is required" },
+        { status: 400 },
+      );
+    }
+
+    let job: { id: string; legacyRfId: number | null; title: string; clientId: string | null } | null =
+      null;
+    if (preResolvedJobId) {
+      job = await prisma.job.findFirst({
+        where: { id: preResolvedJobId, organizationId: org.id },
+        select: { id: true, legacyRfId: true, title: true, clientId: true },
+      });
+    }
+    if (!job && jobRef) {
+      const fallback = await resolveJob(jobRef, org.id);
+      if (fallback) {
+        job = await prisma.job.findFirst({
+          where: { id: fallback.id, organizationId: org.id },
+          select: { id: true, legacyRfId: true, title: true, clientId: true },
+        });
+      }
+    }
+    if (!job) {
+      return NextResponse.json(
+        { ok: false, error: "Job not found." },
+        { status: 404 },
+      );
+    }
+
+    // Activity log lands BEFORE the delete so the audit row survives
+    // the cascade. ActivityLog.targetId is a polymorphic string FK
+    // with no DB-level tie back to Job, so a deleted job doesn't take
+    // its history with it.
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "job_deleted",
+      targetType: "job",
+      targetId: job.id,
+      metadata: {
+        jobTitle: job.title,
+        clientId: job.clientId,
+        legacyRfId: job.legacyRfId,
+        source: "claude_panel",
+      },
+    });
+    await prisma.job.delete({ where: { id: job.id } });
+
+    revalidatePath(`/jobs`);
+    revalidatePath(`/jobs/${job.id}`);
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/pipeline`);
+    if (job.clientId) revalidatePath(`/clients/${job.clientId}`);
+
+    return NextResponse.json({
+      ok: true,
+      message: `Deleted ${job.title}.`,
+      redirect: "/jobs",
+    });
+  }
+
   return NextResponse.json(
     { ok: false, error: `Unknown action: ${name}` },
     { status: 400 },

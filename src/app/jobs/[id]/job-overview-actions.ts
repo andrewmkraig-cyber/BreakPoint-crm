@@ -8,6 +8,17 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 
+async function requireUserId(): Promise<string | null> {
+  const s = await getServerSession(authOptions);
+  if (!s?.user?.email) return null;
+  if (s.user.id) return s.user.id;
+  const u = await prisma.user.findUnique({
+    where: { email: s.user.email },
+    select: { id: true },
+  });
+  return u?.id ?? null;
+}
+
 // Inline-edit writes for the Overview sidebar on /jobs/[id]. Each
 // optional field maps to its Job-table column. RF-imported and Ace-
 // native rows take the same write path — Ace-native is the future
@@ -102,6 +113,93 @@ export async function updateJobOverview(args: {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
+// Hard-close a Job from the Overview tab. Sets isOpen=false (canonical
+// "closed" signal — search_jobs / find-matches / pipeline scoring all
+// consume this column), logs an activity row, and revalidates the
+// detail surface. Used by the dedicated Close Job button; the Edit
+// flow on EditableJobOverview also writes isOpen via updateJobOverview
+// but bundles it with other field edits.
+export async function closeJob(args: { jobId: string }): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const org = await getCurrentOrg();
+    const job = await prisma.job.findFirst({
+      where: { id: args.jobId, organizationId: org.id },
+      select: { id: true, legacyRfId: true, title: true, isOpen: true },
+    });
+    if (!job) return { ok: false, error: "Job not found." };
+    if (!job.isOpen) {
+      return { ok: false, error: "Job is already closed." };
+    }
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { isOpen: false },
+    });
+    await logActivity({
+      organizationId: org.id,
+      userId,
+      actionType: "job_closed",
+      targetType: "job",
+      targetId: job.id,
+      metadata: { jobTitle: job.title },
+    });
+
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/jobs/${job.id}`);
+    revalidatePath(`/jobs`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Close failed." };
+  }
+}
+
+// Hard-delete a Job. Cascades through the Prisma schema take care of
+// Placement / Interview / CandidateMatch / JobBoardStatus / JobOverride
+// rows that point at this Job — every relation declares onDelete:
+// Cascade. Org-scoped lookup so a leaked id from another tenant 404s
+// instead of nuking the wrong row. Activity log lands BEFORE the
+// delete so the audit row survives the cascade (ActivityLog has no FK
+// to Job; targetId is a polymorphic string).
+export async function deleteJob(args: { jobId: string }): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+
+  try {
+    const org = await getCurrentOrg();
+    const job = await prisma.job.findFirst({
+      where: { id: args.jobId, organizationId: org.id },
+      select: { id: true, legacyRfId: true, title: true, clientId: true },
+    });
+    if (!job) return { ok: false, error: "Job not found." };
+
+    await logActivity({
+      organizationId: org.id,
+      userId,
+      actionType: "job_deleted",
+      targetType: "job",
+      targetId: job.id,
+      metadata: {
+        jobTitle: job.title,
+        clientId: job.clientId,
+        legacyRfId: job.legacyRfId,
+      },
+    });
+    await prisma.job.delete({ where: { id: job.id } });
+
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/jobs/${job.id}`);
+    revalidatePath(`/jobs`);
+    revalidatePath(`/pipeline`);
+    if (job.clientId) revalidatePath(`/clients/${job.clientId}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Delete failed." };
   }
 }
 

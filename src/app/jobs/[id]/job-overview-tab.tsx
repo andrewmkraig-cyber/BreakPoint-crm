@@ -8,14 +8,18 @@ import {
   Users,
 } from "lucide-react";
 import { cn, formatDate } from "@/lib/utils";
+import { JobOverviewActionButtons } from "@/app/jobs/[id]/job-overview-action-buttons";
 
-// Overview tab body. Snapshot of the job's key facts plus a Search
-// Health placeholder. Action buttons live on the Job Description tab —
-// Overview is read-only context. Right-rail summary card
-// (EditableJobOverview) is rendered by the parent so it stays sticky
-// across tab switches.
+// Overview tab body. Snapshot of the job's key facts, top-of-tab
+// destructive actions (Close / Delete), plus a Search Health
+// placeholder. Edit-style writes still live on the right-rail
+// EditableJobOverview card so the same sticky surface owns granular
+// field saves; the buttons here are the one-shot lifecycle actions
+// (close out a filled req, nuke a mistake import) that don't fit a
+// per-field edit flow.
 
 export type JobOverviewSnapshot = {
+  jobId: string;
   title: string;
   clientName: string;
   locations: string[];
@@ -31,6 +35,10 @@ export type JobOverviewSnapshot = {
 export function JobOverviewTab({ snapshot }: { snapshot: JobOverviewSnapshot }) {
   return (
     <div className="space-y-5">
+      <section className="flex flex-wrap items-center justify-end">
+        <JobOverviewActionButtons jobId={snapshot.jobId} isOpen={snapshot.isOpen} />
+      </section>
+
       <section className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <SnapshotFact
@@ -58,10 +66,10 @@ export function JobOverviewTab({ snapshot }: { snapshot: JobOverviewSnapshot }) 
                   "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider",
                   snapshot.isOpen
                     ? "bg-brand-tint text-brand-dark"
-                    : "bg-court-surface-subtle text-court-fg-muted",
+                    : "bg-red-100 text-red-700",
                 )}
               >
-                {snapshot.isOpen ? "Active" : "Inactive"}
+                {snapshot.isOpen ? "Active" : "Closed"}
               </span>
             }
           />
