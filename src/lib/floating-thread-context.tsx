@@ -36,13 +36,26 @@ export type FloatingThreadToolkit = {
   currentUserFullName: string;
 };
 
+export type FloatingThreadOpenOptions = {
+  // When true, the popup renders only the latest message — used by the
+  // new-mail notification toast so clicking View previews just the new
+  // message, not the full thread history. Older messages stay queryable
+  // for reply-target resolution but don't render.
+  previewLatestOnly?: boolean;
+};
+
 type FloatingThreadCtx = {
   threadId: string | null;
   toolkit: FloatingThreadToolkit | null;
   position: FloatingPosition | null;
   size: FloatingSize;
   minimized: boolean;
-  open: (threadId: string, toolkit: FloatingThreadToolkit) => void;
+  previewLatestOnly: boolean;
+  open: (
+    threadId: string,
+    toolkit: FloatingThreadToolkit,
+    options?: FloatingThreadOpenOptions,
+  ) => void;
   close: () => void;
   setPosition: (next: FloatingPosition) => void;
   setSize: (next: FloatingSize) => void;
@@ -63,24 +76,34 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
     h: DEFAULT_H,
   });
   const [minimized, setMinimizedState] = useState(false);
+  const [previewLatestOnly, setPreviewLatestOnly] = useState(false);
 
-  const open = useCallback((id: string, kit: FloatingThreadToolkit) => {
-    if (typeof window !== "undefined") {
-      setPositionState((prev) => {
-        if (prev) return prev;
-        const cx = Math.max(0, (window.innerWidth - DEFAULT_W) / 2);
-        const cy = Math.max(0, (window.innerHeight - DEFAULT_H) / 2);
-        return { x: cx, y: cy };
-      });
-    }
-    setToolkit(kit);
-    setThreadId(id);
-    setMinimizedState(false);
-  }, []);
+  const open = useCallback(
+    (
+      id: string,
+      kit: FloatingThreadToolkit,
+      options?: FloatingThreadOpenOptions,
+    ) => {
+      if (typeof window !== "undefined") {
+        setPositionState((prev) => {
+          if (prev) return prev;
+          const cx = Math.max(0, (window.innerWidth - DEFAULT_W) / 2);
+          const cy = Math.max(0, (window.innerHeight - DEFAULT_H) / 2);
+          return { x: cx, y: cy };
+        });
+      }
+      setToolkit(kit);
+      setThreadId(id);
+      setMinimizedState(false);
+      setPreviewLatestOnly(options?.previewLatestOnly ?? false);
+    },
+    [],
+  );
 
   const close = useCallback(() => {
     setThreadId(null);
     setMinimizedState(false);
+    setPreviewLatestOnly(false);
   }, []);
 
   const setPosition = useCallback((next: FloatingPosition) => {
@@ -106,6 +129,7 @@ export function FloatingThreadProvider({ children }: { children: ReactNode }) {
         position,
         size,
         minimized,
+        previewLatestOnly,
         open,
         close,
         setPosition,

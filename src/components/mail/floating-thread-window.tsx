@@ -46,6 +46,7 @@ export function FloatingThreadWindow() {
     position,
     size,
     minimized,
+    previewLatestOnly,
     close,
     setPosition,
     setSize,
@@ -471,6 +472,7 @@ export function FloatingThreadWindow() {
                   setReloadTick((n) => n + 1);
                 }}
                 isFloating
+                previewLatestOnly={previewLatestOnly}
                 composerMode={composerMode}
                 onComposerModeChange={setComposerMode}
               />

@@ -1565,6 +1565,11 @@ export type ThreadDetailProps = {
   // hides the Pop-out button. Also drops the inline-only viewport
   // height calc so the component fills the floating frame.
   isFloating?: boolean;
+  // When true (notification toast → popup), render only the latest
+  // message instead of the full thread history. Reply / Reply All /
+  // Forward still target the latest message; older messages just don't
+  // visually clutter the preview.
+  previewLatestOnly?: boolean;
   // Controlled-mode props. When provided (FloatingThreadWindow does
   // this so the Reply / Reply All / Forward buttons can live in its
   // own title bar instead of duplicating chrome), composerMode is
@@ -1589,6 +1594,7 @@ export function ThreadDetail({
   onCreateAndApplyLabel,
   onSent,
   isFloating = false,
+  previewLatestOnly = false,
   composerMode: composerModeProp,
   onComposerModeChange,
 }: ThreadDetailProps) {
@@ -2044,11 +2050,11 @@ export function ThreadDetail({
               "min-h-0 flex-1 overflow-y-auto"
         }
       >
-        {orderedMessages.map((m, i) => {
+        {(previewLatestOnly && latest ? [latest] : orderedMessages).map((m, i, arr) => {
           // Inline mode: orderedMessages is sorted oldest → newest, so
           // the latest sits at the last index. Floating mode (legacy)
           // doesn't auto-scroll and renders the same order.
-          const latestIndex = orderedMessages.length - 1;
+          const latestIndex = arr.length - 1;
           const isLatest = i === latestIndex;
           return (
             <div

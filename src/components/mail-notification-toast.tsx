@@ -90,13 +90,21 @@ function NewMailToast({
         fetchComposeInit(),
         fetchLabels().catch(() => [] as LabelRow[]),
       ]);
-      floatingThread.open(thread.id, {
-        labels: labels.length > 0 ? labels : null,
-        templates: init.templates,
-        currentUserEmail: init.user.email,
-        currentUserFirstName: init.user.firstName,
-        currentUserFullName: init.user.fullName,
-      });
+      floatingThread.open(
+        thread.id,
+        {
+          labels: labels.length > 0 ? labels : null,
+          templates: init.templates,
+          currentUserEmail: init.user.email,
+          currentUserFirstName: init.user.firstName,
+          currentUserFullName: init.user.fullName,
+        },
+        // Notification opens preview the new message only — full thread
+        // history would force the recruiter to scroll past months of
+        // older messages to reach the message they were just notified
+        // about. Pop-out from the inline thread keeps the full history.
+        { previewLatestOnly: true },
+      );
       toast.dismiss(toastId);
     } catch (err) {
       toast.error("Couldn't open thread", {
