@@ -24,12 +24,24 @@ import { formatLocation } from "@/lib/utils";
 // transcript rows separately via /api/claude-panel/messages — this
 // route is computation only, no DB writes.
 //
-// Phase 4: data-access tools. Claude can now call search_candidates,
-// search_jobs, search_clients, and get_pipeline to query Neon directly,
-// in addition to the page-aware build*Context blocks already injected
-// into the system prompt. Tool calls are executed server-side, results
-// fed back as tool_result, and the stream resumed until Claude stops
-// asking for tools (capped at 4 rounds to avoid runaway loops).
+// Phase 4 (initial): exposed search_candidates / search_jobs /
+// search_clients / get_pipeline as tool calls. The first version used
+// strict tokenized AND-of-OR search which silently zeroed out natural-
+// language queries — "tax managers in ohio" tokenizes to four pieces,
+// "in" never matches anything, "managers" doesn't substring-match
+// "Manager" cleanly, and the AND requires every token to land. The
+// pipeline tool also assumed Placement.stage covered "interviewing",
+// but interviews live in their own table and Placement.stage only
+// stores offer / pending_start / hired.
+//
+// Phase 4 (this rev): split each tool's logic by intent. Queries are
+// lowercased, stripped of stop words, simply singularized, then matched
+// with OR semantics; results are scored in JS so true matches still
+// rank ahead of incidental hits. search_jobs detects "all open jobs"
+// intent and bypasses keyword scoring entirely. get_pipeline detects
+// stage intent and routes interviewing reads to the Interview table
+// instead of Placement. Every tool call logs its routing decision so
+// we can prove the assistant is actually hitting the database.
 
 export const maxDuration = 300;
 
@@ -45,7 +57,13 @@ const SYSTEM_PROMPT =
   "Write like a sharp recruiter, not an AI. " +
   "Never end a response with a signoff or signature. " +
   "For any external facts, job market data, salaries, companies, people, or URLs - verify with web_search during this turn. Never hedge with 'data may be outdated.' If you cannot verify something, omit it. " +
-  "When the recruiter asks about candidates, jobs, clients, or the pipeline in their CRM, call the matching data tool (search_candidates, search_jobs, search_clients, get_pipeline) before answering — never invent records. If a tool returns no results, say so plainly.";
+  "Tool routing for CRM data — call these tools, never invent records:\n" +
+  "- 'who is interviewing at <client>' or 'upcoming interviews for <client>' → get_pipeline({ clientName: '<client>', stage: 'interviewing' }).\n" +
+  "- 'who is in offer / pending start / hired (at <client>)' → get_pipeline with the matching stage and optional clientName.\n" +
+  "- General pipeline questions without a stage → get_pipeline({ clientName? }).\n" +
+  "- 'what jobs are open' / 'show open roles' / 'active jobs' → search_jobs with the literal phrase as the query (the tool detects this intent and lists every open job).\n" +
+  "- Specific candidate / role / client lookups (skills, titles, locations, industries) → search_candidates / search_jobs / search_clients with the user's natural phrasing.\n" +
+  "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.";
 
 // Custom data tools — exposed to Claude so it can pull live records
 // from Neon. Schemas mirror the parameters Andrew is most likely to ask
@@ -55,14 +73,13 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "search_candidates",
     description:
-      "Search candidates in the recruiter's CRM by free-text query. Matches against name, current title, current employer, location, skills, and tags. Tokens are AND-combined and case-insensitive. Returns up to 10 matches.",
+      "Search candidates in the recruiter's CRM. Pass the user's natural-language query; the tool lowercases, strips stop words, singularizes plurals, then OR-matches against name, current title, current employer, location, skills, tags, and email. Results are scored (title and employer hits weigh more than name hits) and the top ~15 ranked matches are returned.",
     input_schema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description:
-            "Free-text query, e.g. 'tax manager Ohio' or 'Sara Johnson'.",
+          description: "Natural-language query, e.g. 'tax managers in Ohio' or 'Sara Johnson'.",
         },
       },
       required: ["query"],
@@ -71,14 +88,13 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "search_jobs",
     description:
-      "Search jobs in the recruiter's CRM by free-text query. Matches against title, client name, location, and status. Tokens are AND-combined and case-insensitive. Returns up to 10 matches.",
+      "Search jobs in the recruiter's CRM. If the query is a broad 'list my open / active jobs' intent, the tool ignores keyword scoring and returns every open job across every client (top 30, most recently updated first). Otherwise it OR-matches the query tokens against title, client name, location, employmentType, and department, scores them, and returns the top ~10.",
     input_schema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description:
-            "Free-text query, e.g. 'senior accountant Cleveland' or 'open Sheehan roles'.",
+          description: "Natural-language query, e.g. 'open jobs', 'senior accountant Cleveland'.",
         },
       },
       required: ["query"],
@@ -87,13 +103,13 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "search_clients",
     description:
-      "Search clients (companies) in the recruiter's CRM by free-text query. Matches against name, industry, and location. Tokens are AND-combined and case-insensitive. Returns up to 10 matches.",
+      "Search clients (companies) in the recruiter's CRM. OR-matches against name, industry, domain, tags, and the formatted city/state location. Tokens are lowercased, stop-word stripped, and singularized. Returns the top ~10 ranked matches.",
     input_schema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Free-text query, e.g. 'Sheehan Brothers' or 'public accounting Ohio'.",
+          description: "Natural-language query, e.g. 'Sheehan Brothers' or 'public accounting Ohio'.",
         },
       },
       required: ["query"],
@@ -102,17 +118,18 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "get_pipeline",
     description:
-      "Return active pipeline placements (offer / pending_start / hired). Optional filters: clientName (substring, case-insensitive) and stage (exact: offer, pending_start, hired). Returns up to 20 most-recently-updated rows.",
+      "Pipeline lookup. `stage` is one of: interviewing, offer, pending_start, hired, submitted (any reasonable phrasing — 'interview', 'offered', 'placed' — is normalized server-side). 'interviewing' reads upcoming Interview rows; offer/pending_start/hired read the Placement table; 'submitted' is not tracked in Ace's Placement table and the tool will say so. `clientName` does a forgiving substring match against the client (so 'Sheehan' matches 'Sheehan Brothers Vending'). Returns up to 20 rows.",
     input_schema: {
       type: "object",
       properties: {
         clientName: {
           type: "string",
-          description: "Substring match against client name. Optional.",
+          description: "Substring of the client name. Optional.",
         },
         stage: {
           type: "string",
-          description: "Exact stage: 'offer', 'pending_start', or 'hired'. Optional.",
+          description:
+            "Pipeline stage. Accepts: interviewing, offer, pending_start, hired, submitted (and reasonable synonyms). Optional.",
         },
       },
     },
@@ -120,28 +137,133 @@ const DATA_TOOLS: Anthropic.Tool[] = [
 ];
 
 const MAX_TOOL_ROUNDS = 4;
-const PIPELINE_STAGES = new Set(["offer", "pending_start", "hired"]);
+
+// Grammatical filler we strip before searching. Meaningful filter words
+// (open, active, current, remote, hired, etc.) intentionally aren't in
+// the list — those are signal, not noise.
+const STOP_WORDS = new Set([
+  "a", "an", "and", "are", "as", "at", "be", "been", "by", "did", "do",
+  "does", "for", "from", "get", "got", "has", "have", "i", "if", "in",
+  "into", "is", "it", "its", "me", "my", "of", "on", "or", "our", "out",
+  "right", "show", "tell", "that", "the", "their", "them", "then",
+  "there", "these", "this", "those", "to", "us", "was", "we", "were",
+  "what", "when", "where", "which", "who", "whom", "with", "would", "you",
+  "your", "find", "search", "list", "any", "all", "give", "want", "need",
+  "looking", "look",
+]);
+
+// Lightweight singularizer. Doesn't try to handle every English edge
+// case — just the recruiting-vocab plurals (managers, engineers,
+// accountants, candidates, jobs, roles…) and the obvious -ies / -sses
+// patterns. Names will sometimes get over-stripped ("james" → "jame");
+// that's fine because OR-search just over-matches a hair, and scoring
+// keeps the actually-relevant rows on top.
+function singularize(word: string): string {
+  if (word.length < 4) return word;
+  if (word.endsWith("ies") && word.length > 4) return word.slice(0, -3) + "y";
+  if (/(sses|shes|ches|xes|oes|zes)$/.test(word)) return word.slice(0, -2);
+  if (word.endsWith("ss")) return word;
+  if (word.endsWith("s")) return word.slice(0, -1);
+  return word;
+}
+
+// Lowercase, drop punctuation, split, strip stop words, singularize.
+// Returns deduped tokens preserving first-seen order.
+function normalizeQuery(query: string): string[] {
+  if (!query) return [];
+  const raw = query
+    .toLowerCase()
+    .replace(/[^\w\s\-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .filter((t) => !STOP_WORDS.has(t))
+    .map(singularize);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const t of raw) {
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+// Tokens that, when normalized, indicate a "show me my open jobs"
+// intent rather than a keyword search. If every normalized token in
+// the user's query is in this set, search_jobs bypasses keyword
+// scoring and just lists isOpen=true jobs.
+const OPEN_JOB_INTENT_TOKENS = new Set([
+  "job", "role", "open", "opening", "active", "current", "available",
+]);
+
+function isOpenJobsIntent(tokens: string[]): boolean {
+  if (tokens.length === 0) return false;
+  return tokens.every((t) => OPEN_JOB_INTENT_TOKENS.has(t));
+}
+
+// Map any reasonable phrasing of a pipeline stage to the canonical
+// values the data layer understands. Returns null if we can't make
+// sense of it; the tool falls back to "no stage filter" in that case.
+type StageId = "interviewing" | "offer" | "pending_start" | "hired" | "submitted";
+function normalizeStage(input: string | undefined): StageId | null {
+  if (!input) return null;
+  const t = input.toLowerCase().replace(/[\s_]+/g, " ").trim();
+  if (/^(interview|interviewing|interviews|interviewed)$/.test(t)) return "interviewing";
+  if (/^(offer|offers|offered|offering)$/.test(t)) return "offer";
+  if (/^(pending start|pending|start|to start|starting)$/.test(t)) return "pending_start";
+  if (/^(hired|placed|placement|placements|start confirmed)$/.test(t)) return "hired";
+  if (/^(submit|submitted|submission|submissions|applied|application)$/.test(t)) return "submitted";
+  return null;
+}
 
 type IncomingMessage = { role: unknown; content: unknown };
-
-function tokenize(query: string): string[] {
-  return query.trim().split(/\s+/).filter(Boolean);
-}
 
 function joinName(first: string | null | undefined, last: string | null | undefined): string {
   const parts = [first, last].map((p) => (p ?? "").trim()).filter(Boolean);
   return parts.length ? parts.join(" ") : "(unnamed)";
 }
 
-// Tool: search_candidates — tokenized AND-of-OR across the headline
-// candidate columns, mirrors /api/search/profiles semantics so Andrew's
-// CRM searches and Claude's tool calls return the same shape of hits.
-async function runSearchCandidates(query: string, orgId: string): Promise<string> {
-  const tokens = tokenize(query);
-  if (tokens.length === 0) return "No query provided.";
+// Per-token, per-field substring score — case-insensitive. Returns 0
+// when the haystack doesn't contain the token; 1 (token-only line) up
+// to a small bonus when the haystack equals the token (exact match).
+function scoreToken(haystack: string | null | undefined, token: string): number {
+  if (!haystack) return 0;
+  const h = haystack.toLowerCase();
+  if (!h.includes(token)) return 0;
+  // Exact match (whole field equals token, or token is a stand-alone
+  // word in the field) ranks higher than a noisy substring hit.
+  const wordRe = new RegExp(`\\b${token.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&")}\\b`);
+  if (h === token) return 2;
+  if (wordRe.test(h)) return 1.5;
+  return 1;
+}
 
-  const and: Prisma.CandidateWhereInput[] = tokens.map((t) => ({
-    OR: [
+function scoreArrayToken(haystack: string[] | null | undefined, token: string): number {
+  if (!haystack || haystack.length === 0) return 0;
+  let best = 0;
+  for (const item of haystack) {
+    const s = scoreToken(item, token);
+    if (s > best) best = s;
+  }
+  return best;
+}
+
+// Tool: search_candidates — broad OR pull, JS scoring, top 15.
+// Field weights: title and employer matter more than a name fragment;
+// location helps; tags and skills are lower-weight signal.
+async function runSearchCandidates(query: string, orgId: string): Promise<string> {
+  const tokens = normalizeQuery(query);
+  if (tokens.length === 0) {
+    log("search_candidates", { query }, 0, "no-meaningful-tokens");
+    return `No meaningful search terms in "${query}" after stripping stop words.`;
+  }
+
+  // OR across (token × field). Any single token-field hit qualifies the
+  // row; ranking happens in JS so we don't lose true positives to the
+  // strict AND we shipped in the first cut.
+  const or: Prisma.CandidateWhereInput[] = [];
+  for (const t of tokens) {
+    or.push(
       { firstName: { contains: t, mode: "insensitive" } },
       { lastName: { contains: t, mode: "insensitive" } },
       { currentDesignation: { contains: t, mode: "insensitive" } },
@@ -150,11 +272,11 @@ async function runSearchCandidates(query: string, orgId: string): Promise<string
       { email: { contains: t, mode: "insensitive" } },
       { skills: { has: t } },
       { tags: { has: t } },
-    ],
-  }));
+    );
+  }
 
-  const rows = await prisma.candidate.findMany({
-    where: { organizationId: orgId, AND: and },
+  const broad = await prisma.candidate.findMany({
+    where: { organizationId: orgId, OR: or },
     select: {
       id: true,
       firstName: true,
@@ -163,107 +285,202 @@ async function runSearchCandidates(query: string, orgId: string): Promise<string
       currentOrganization: true,
       location: true,
       tags: true,
+      skills: true,
+      updatedAt: true,
     },
     orderBy: { updatedAt: "desc" },
-    take: 10,
+    take: 75,
   });
 
-  if (rows.length === 0) return `No candidates found for "${query}".`;
-  const lines = rows.map((c, i) => {
+  type Row = (typeof broad)[number];
+  const W = { title: 3, employer: 2.5, location: 2, name: 1, skills: 1.5, tags: 1 };
+  const ranked = broad
+    .map((c: Row) => {
+      let score = 0;
+      let hits = 0;
+      const name = joinName(c.firstName, c.lastName).toLowerCase();
+      for (const t of tokens) {
+        let perToken = 0;
+        perToken += W.title * scoreToken(c.currentDesignation, t);
+        perToken += W.employer * scoreToken(c.currentOrganization, t);
+        perToken += W.location * scoreToken(c.location, t);
+        perToken += W.name * scoreToken(name, t);
+        perToken += W.skills * scoreArrayToken(c.skills, t);
+        perToken += W.tags * scoreArrayToken(c.tags, t);
+        if (perToken > 0) hits++;
+        score += perToken;
+      }
+      // Multi-token rows beat single-token rows of the same per-token
+      // score: doubling up on signal beats one isolated keyword hit.
+      score += hits * 1.5;
+      return { c, score };
+    })
+    .filter((r) => r.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.c.updatedAt.getTime() - a.c.updatedAt.getTime();
+    })
+    .slice(0, 15);
+
+  log("search_candidates", { query, tokens }, ranked.length);
+
+  if (ranked.length === 0) return `No candidates matched "${query}".`;
+  const lines = ranked.map(({ c }, i) => {
     const name = joinName(c.firstName, c.lastName);
     const title = c.currentDesignation || "—";
     const employer = c.currentOrganization || "—";
     const loc = c.location || "—";
-    const tags = c.tags && c.tags.length > 0 ? ` — tags: ${c.tags.join(", ")}` : "";
+    const tags = c.tags?.length ? ` — tags: ${c.tags.slice(0, 4).join(", ")}` : "";
     return `${i + 1}. ${name} — ${title} at ${employer} — ${loc} — id: ${c.id}${tags}`;
   });
-  return `Found ${rows.length} candidate(s) for "${query}":\n${lines.join("\n")}`;
+  return `Top ${ranked.length} candidate match${ranked.length === 1 ? "" : "es"} for "${query}":\n${lines.join("\n")}`;
 }
 
-// Tool: search_jobs — tokens AND across title / location array / client
-// name / employmentType / department. locations is a String[] so we use
-// `has` for an exact element match per token (Prisma has no substring
-// operator inside arrays); the title/department fields cover the
-// substring case for most token shapes.
+// Tool: search_jobs — intent-aware. "what jobs do I have open" / "show
+// active roles" / "any current openings" all dispatch to the open-jobs
+// branch which lists every isOpen=true row regardless of keyword
+// matching. Anything more specific falls through to the scored search.
 async function runSearchJobs(query: string, orgId: string): Promise<string> {
-  const tokens = tokenize(query);
-  if (tokens.length === 0) return "No query provided.";
+  const tokens = normalizeQuery(query);
 
-  const and: Prisma.JobWhereInput[] = tokens.map((t) => ({
-    OR: [
+  if (isOpenJobsIntent(tokens)) {
+    const rows = await prisma.job.findMany({
+      where: { organizationId: orgId, isOpen: true },
+      select: {
+        id: true,
+        title: true,
+        locations: true,
+        client: { select: { name: true } },
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 30,
+    });
+    log("search_jobs", { query, intent: "open_jobs" }, rows.length);
+    if (rows.length === 0) return "No open jobs in the CRM right now.";
+    const lines = rows.map((j, i) => {
+      const loc = j.locations?.length ? j.locations.join("; ") : "—";
+      const clientName = j.client?.name ?? "—";
+      return `${i + 1}. ${j.title} — ${clientName} — ${loc} — id: ${j.id}`;
+    });
+    return `Open jobs (${rows.length}):\n${lines.join("\n")}`;
+  }
+
+  if (tokens.length === 0) {
+    log("search_jobs", { query }, 0, "no-meaningful-tokens");
+    return `No meaningful search terms in "${query}" after stripping stop words.`;
+  }
+
+  const or: Prisma.JobWhereInput[] = [];
+  for (const t of tokens) {
+    or.push(
       { title: { contains: t, mode: "insensitive" } },
       { employmentType: { contains: t, mode: "insensitive" } },
       { department: { contains: t, mode: "insensitive" } },
       { locations: { has: t } },
       { client: { is: { name: { contains: t, mode: "insensitive" } } } },
-    ],
-  }));
+    );
+  }
 
-  const rows = await prisma.job.findMany({
-    where: { organizationId: orgId, AND: and },
+  const broad = await prisma.job.findMany({
+    where: { organizationId: orgId, OR: or },
     select: {
       id: true,
       title: true,
       isOpen: true,
+      employmentType: true,
+      department: true,
       locations: true,
       client: { select: { name: true } },
+      updatedAt: true,
     },
     orderBy: { updatedAt: "desc" },
-    take: 10,
+    take: 75,
   });
 
-  if (rows.length === 0) return `No jobs found for "${query}".`;
-  const lines = rows.map((j, i) => {
+  type Row = (typeof broad)[number];
+  const W = { title: 3, client: 3, location: 2, dept: 1.5, type: 1 };
+  const ranked = broad
+    .map((j: Row) => {
+      let score = 0;
+      let hits = 0;
+      for (const t of tokens) {
+        let per = 0;
+        per += W.title * scoreToken(j.title, t);
+        per += W.client * scoreToken(j.client?.name, t);
+        per += W.location * scoreArrayToken(j.locations, t);
+        per += W.dept * scoreToken(j.department, t);
+        per += W.type * scoreToken(j.employmentType, t);
+        if (per > 0) hits++;
+        score += per;
+      }
+      score += hits * 1.5;
+      // Open jobs rank slightly above closed ones at equal score so a
+      // fresh "Senior Tax Manager" search doesn't bury the live req
+      // under last quarter's identical title.
+      if (j.isOpen) score += 0.5;
+      return { j, score };
+    })
+    .filter((r) => r.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.j.updatedAt.getTime() - a.j.updatedAt.getTime();
+    })
+    .slice(0, 10);
+
+  log("search_jobs", { query, tokens }, ranked.length);
+
+  if (ranked.length === 0) return `No jobs matched "${query}".`;
+  const lines = ranked.map(({ j }, i) => {
     const status = j.isOpen ? "open" : "closed";
-    const loc = j.locations && j.locations.length > 0 ? j.locations.join("; ") : "—";
+    const loc = j.locations?.length ? j.locations.join("; ") : "—";
     const clientName = j.client?.name ?? "—";
     return `${i + 1}. ${j.title} — ${clientName} — ${loc} — ${status} — id: ${j.id}`;
   });
-  return `Found ${rows.length} job(s) for "${query}":\n${lines.join("\n")}`;
+  return `Top ${ranked.length} job match${ranked.length === 1 ? "" : "es"} for "${query}":\n${lines.join("\n")}`;
 }
 
-// Tool: search_clients — tokens AND across name / industry / domain /
-// tags. Client.location is a Json blob ({ city, state, country }) and
-// Prisma can't substring-match inside it without raw SQL, so we
-// post-filter: any token that didn't already match a row's name /
-// industry / domain / tags has to substring-match the formatted
-// location string. We over-fetch a bit so the post-filter still has
-// 10 hits to work with.
+// Tool: search_clients — broad pull + JS scoring. Client.location is
+// a Json blob so we read it post-fetch via formatLocation rather than
+// filter-time JSON path matching (which Prisma would force into raw
+// SQL). Tokens AND-rank against name, industry, domain, tags, and the
+// flattened location string.
 async function runSearchClients(query: string, orgId: string): Promise<string> {
-  const tokens = tokenize(query);
-  if (tokens.length === 0) return "No query provided.";
+  const tokens = normalizeQuery(query);
+  if (tokens.length === 0) {
+    log("search_clients", { query }, 0, "no-meaningful-tokens");
+    return `No meaningful search terms in "${query}" after stripping stop words.`;
+  }
 
-  const and: Prisma.ClientWhereInput[] = tokens.map((t) => ({
-    OR: [
+  // Two-source fetch: text-column matches (Prisma-side OR) plus a
+  // recent slice (so location-only matches still get reached). The
+  // recent slice is bounded to 200 — large enough to cover Andrew's
+  // current client list but small enough not to scan the whole table.
+  const or: Prisma.ClientWhereInput[] = [];
+  for (const t of tokens) {
+    or.push(
       { name: { contains: t, mode: "insensitive" } },
       { industry: { contains: t, mode: "insensitive" } },
       { domain: { contains: t, mode: "insensitive" } },
       { tags: { has: t } },
-    ],
-  }));
-
-  // Broad pass: rows where every token matches at least one of the
-  // text columns above.
-  const broad = await prisma.client.findMany({
-    where: { organizationId: orgId, AND: and },
-    select: {
-      id: true,
-      name: true,
-      industry: true,
-      location: true,
-      domain: true,
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 10,
-  });
-
-  // Location-included pass: same tokenization but each token can also
-  // match the formatted location string. Run when the broad pass came
-  // up short so a query like "Sheehan Ohio" still works even if Ohio
-  // only appears in the location JSON.
-  let combined = broad;
-  if (broad.length < 10) {
-    const recent = await prisma.client.findMany({
+    );
+  }
+  const [textHits, recent] = await Promise.all([
+    prisma.client.findMany({
+      where: { organizationId: orgId, OR: or },
+      select: {
+        id: true,
+        name: true,
+        industry: true,
+        location: true,
+        domain: true,
+        tags: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 75,
+    }),
+    prisma.client.findMany({
       where: { organizationId: orgId },
       select: {
         id: true,
@@ -271,54 +488,123 @@ async function runSearchClients(query: string, orgId: string): Promise<string> {
         industry: true,
         location: true,
         domain: true,
+        tags: true,
         updatedAt: true,
       },
       orderBy: { updatedAt: "desc" },
       take: 200,
-    });
-    const seen = new Set(broad.map((r) => r.id));
-    const lowerTokens = tokens.map((t) => t.toLowerCase());
-    const extras = recent.filter((r) => {
-      if (seen.has(r.id)) return false;
-      const haystack = [
-        r.name,
-        r.industry ?? "",
-        r.domain ?? "",
-        formatLocation(r.location as Parameters<typeof formatLocation>[0]),
-      ]
-        .join(" ")
-        .toLowerCase();
-      return lowerTokens.every((t) => haystack.includes(t));
-    });
-    combined = [...broad, ...extras].slice(0, 10);
+    }),
+  ]);
+  const seen = new Set<string>();
+  const candidates: typeof textHits = [];
+  for (const r of [...textHits, ...recent]) {
+    if (seen.has(r.id)) continue;
+    seen.add(r.id);
+    candidates.push(r);
   }
 
-  if (combined.length === 0) return `No clients found for "${query}".`;
-  const lines = combined.map((c, i) => {
+  type Row = (typeof candidates)[number];
+  const W = { name: 3, industry: 2, location: 2, domain: 1.5, tags: 1 };
+  const ranked = candidates
+    .map((c: Row) => {
+      const locStr = formatLocation(c.location as Parameters<typeof formatLocation>[0]) || "";
+      let score = 0;
+      let hits = 0;
+      for (const t of tokens) {
+        let per = 0;
+        per += W.name * scoreToken(c.name, t);
+        per += W.industry * scoreToken(c.industry, t);
+        per += W.location * scoreToken(locStr, t);
+        per += W.domain * scoreToken(c.domain, t);
+        per += W.tags * scoreArrayToken(c.tags, t);
+        if (per > 0) hits++;
+        score += per;
+      }
+      score += hits * 1.5;
+      return { c, locStr, score };
+    })
+    .filter((r) => r.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return b.c.updatedAt.getTime() - a.c.updatedAt.getTime();
+    })
+    .slice(0, 10);
+
+  log("search_clients", { query, tokens }, ranked.length);
+
+  if (ranked.length === 0) return `No clients matched "${query}".`;
+  const lines = ranked.map(({ c, locStr }, i) => {
     const industry = c.industry || "—";
-    const loc =
-      formatLocation(c.location as Parameters<typeof formatLocation>[0]) || "—";
+    const loc = locStr || "—";
     return `${i + 1}. ${c.name} — ${industry} — ${loc} — id: ${c.id}`;
   });
-  return `Found ${combined.length} client(s) for "${query}":\n${lines.join("\n")}`;
+  return `Top ${ranked.length} client match${ranked.length === 1 ? "" : "es"} for "${query}":\n${lines.join("\n")}`;
 }
 
-// Tool: get_pipeline — pipeline.stage is canonical (rule 13). Filters
-// by client substring + exact stage when provided. Includes candidate /
-// job / client relations and falls back to "(unknown)" for legacy RF
-// rows whose Ace cuid columns are still null.
+// Tool: get_pipeline — stage-aware routing. "interviewing" reads
+// upcoming Interview rows; offer / pending_start / hired hit Placement
+// (rule 13: placement.stage is canonical); "submitted" doesn't have an
+// authoritative source in Neon (it's RF flat-pipeline data) so we say
+// so plainly instead of inventing rows. clientName is a forgiving
+// substring match — "Sheehan" matches "Sheehan Brothers Vending".
 async function runGetPipeline(
   args: { clientName?: string; stage?: string },
   orgId: string,
 ): Promise<string> {
-  const where: Prisma.PlacementWhereInput = { organizationId: orgId };
-  if (args.stage && PIPELINE_STAGES.has(args.stage)) {
-    where.stage = args.stage;
+  const clientName = args.clientName?.trim() || "";
+  const stage = normalizeStage(args.stage);
+
+  if (stage === "submitted") {
+    log("get_pipeline", { clientName, stage: args.stage }, 0, "submitted-not-tracked");
+    return (
+      "Submitted-stage candidates aren't tracked directly in Ace's Placement table — that stage lives in the candidate's RF pipeline data. " +
+      "Use search_candidates with the relevant client/job context, or ask about a stage that Ace tracks (interviewing, offer, pending_start, hired)."
+    );
   }
-  if (args.clientName && args.clientName.trim()) {
-    where.client = {
-      is: { name: { contains: args.clientName.trim(), mode: "insensitive" } },
+
+  if (stage === "interviewing") {
+    const where: Prisma.InterviewWhereInput = {
+      organizationId: orgId,
+      status: "scheduled",
+      scheduledAt: { gte: new Date() },
     };
+    if (clientName) {
+      where.client = { is: { name: { contains: clientName, mode: "insensitive" } } };
+    }
+    const rows = await prisma.interview.findMany({
+      where,
+      select: {
+        id: true,
+        scheduledAt: true,
+        type: true,
+        candidate: { select: { firstName: true, lastName: true } },
+        job: { select: { title: true } },
+        client: { select: { name: true } },
+      },
+      orderBy: { scheduledAt: "asc" },
+      take: 20,
+    });
+    log("get_pipeline", { clientName, stage: "interviewing" }, rows.length);
+    if (rows.length === 0) {
+      return clientName
+        ? `No upcoming interviews scheduled for "${clientName}".`
+        : "No upcoming interviews scheduled.";
+    }
+    const lines = rows.map((iv, i) => {
+      const cand = iv.candidate ? joinName(iv.candidate.firstName, iv.candidate.lastName) : "(unknown candidate)";
+      const job = iv.job?.title ?? "(unknown job)";
+      const cl = iv.client?.name ?? "(unknown client)";
+      const when = iv.scheduledAt.toISOString().replace("T", " ").slice(0, 16);
+      return `${i + 1}. ${cand} — ${job} — ${cl} — ${iv.type} — ${when} UTC — id: ${iv.id}`;
+    });
+    return `Upcoming interviews${clientName ? ` for "${clientName}"` : ""} (${rows.length}):\n${lines.join("\n")}`;
+  }
+
+  // offer / pending_start / hired / no-stage-filter — Placement model.
+  const where: Prisma.PlacementWhereInput = { organizationId: orgId };
+  if (stage) where.stage = stage;
+  if (clientName) {
+    where.client = { is: { name: { contains: clientName, mode: "insensitive" } } };
   }
 
   const rows = await prisma.placement.findMany({
@@ -335,10 +621,12 @@ async function runGetPipeline(
     take: 20,
   });
 
+  log("get_pipeline", { clientName, stage: stage ?? null }, rows.length);
+
   if (rows.length === 0) {
     const filterDesc = [
-      args.clientName ? `client="${args.clientName}"` : null,
-      args.stage ? `stage="${args.stage}"` : null,
+      clientName ? `client="${clientName}"` : null,
+      stage ? `stage="${stage}"` : null,
     ]
       .filter(Boolean)
       .join(", ");
@@ -346,15 +634,38 @@ async function runGetPipeline(
   }
 
   const lines = rows.map((p, i) => {
-    const cand = p.candidate
-      ? joinName(p.candidate.firstName, p.candidate.lastName)
-      : "(unknown candidate)";
+    const cand = p.candidate ? joinName(p.candidate.firstName, p.candidate.lastName) : "(unknown candidate)";
     const job = p.job?.title ?? "(unknown job)";
-    const clientName = p.client?.name ?? "(unknown client)";
+    const cl = p.client?.name ?? "(unknown client)";
     const updated = p.updatedAt.toISOString().slice(0, 10);
-    return `${i + 1}. ${cand} — ${job} — ${clientName} — stage: ${p.stage} — updated: ${updated}`;
+    return `${i + 1}. ${cand} — ${job} — ${cl} — stage: ${p.stage} — updated: ${updated}`;
   });
-  return `Pipeline (${rows.length} row${rows.length === 1 ? "" : "s"}):\n${lines.join("\n")}`;
+  return `Pipeline${clientName ? ` for "${clientName}"` : ""}${stage ? ` (stage=${stage})` : ""} — ${rows.length} row${rows.length === 1 ? "" : "s"}:\n${lines.join("\n")}`;
+}
+
+// Single point of tool-call telemetry. One line per call so the Vercel
+// function logs read like a routing decision audit trail. We log the
+// tool name, sanitized inputs, normalized tokens (when relevant), and
+// the row count returned to Claude — never email bodies, resumes, or
+// other PII payloads.
+function log(
+  tool: string,
+  input: Record<string, unknown>,
+  rowCount: number,
+  note?: string,
+): void {
+  const safeInput: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (typeof v === "string") {
+      safeInput[k] = v.length > 120 ? v.slice(0, 117) + "…" : v;
+    } else if (Array.isArray(v)) {
+      safeInput[k] = v.slice(0, 12);
+    } else {
+      safeInput[k] = v;
+    }
+  }
+  // eslint-disable-next-line no-console
+  console.log("[claude-panel.tool]", tool, safeInput, "rows=" + rowCount, note ?? "");
 }
 
 async function executeTool(
@@ -380,19 +691,14 @@ async function executeTool(
       return await runSearchClients(query, orgId);
     }
     if (name === "get_pipeline") {
-      const clientName =
-        typeof input.clientName === "string" ? input.clientName : undefined;
+      const clientName = typeof input.clientName === "string" ? input.clientName : undefined;
       const stage = typeof input.stage === "string" ? input.stage : undefined;
       return await runGetPipeline({ clientName, stage }, orgId);
     }
     return "No results found";
   } catch (err) {
-    // Silent error per Phase 4 spec — Claude gets a graceful empty so
-    // the conversation keeps moving instead of bubbling a 500 to the
-    // panel UI. The recruiter would rather see "no matches" than a
-    // red error card mid-stream.
     // eslint-disable-next-line no-console
-    console.error("[claude-panel] tool error", name, err);
+    console.error("[claude-panel.tool] error", name, err);
     return "No results found";
   }
 }
