@@ -1,5 +1,6 @@
 "use client";
 
+import { Play } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
@@ -7,11 +8,13 @@ import { TopBarPageTitle } from "@/components/top-bar-page-title";
 import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 import { InConversation } from "@/components/icons/in-conversation";
 import { useClaudePanel } from "@/lib/claude-panel-context";
+import { useYouTubePanel } from "@/components/youtube-panel/YouTubePanelProvider";
 
 export function TopBar() {
   const { data: session } = useSession();
   const user = session?.user;
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
+  const { open: youtubeOpen, toggle: toggleYouTube } = useYouTubePanel();
 
   return (
     <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between gap-4 bg-court-surface px-6">
@@ -55,6 +58,26 @@ export function TopBar() {
             Ace Assistant
           </span>
           <InConversation size={22} />
+        </button>
+        <button
+          type="button"
+          onClick={toggleYouTube}
+          aria-label="YouTube"
+          aria-pressed={youtubeOpen}
+          className={
+            "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+            (youtubeOpen
+              ? "border-court-brand-dark bg-court-brand text-white hover:bg-court-brand-dark"
+              : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/30")
+          }
+        >
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute right-full mr-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
+          >
+            YouTube
+          </span>
+          <Play className="h-5 w-5" fill="currentColor" />
         </button>
       </div>
 
