@@ -85,7 +85,16 @@ export function MessageBlock({
   // pass false (always expanded); older messages pass true.
   defaultCollapsed?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(!defaultCollapsed);
+  // Track manual expansion separately from the prop-driven default so
+  // we never desync. `manuallyExpanded === null` means "follow the
+  // prop": defaultCollapsed=true → collapsed, defaultCollapsed=false
+  // → expanded. Clicking the collapsed summary row sets it to true,
+  // overriding to expanded for that one message. Resetting the prop
+  // doesn't undo the user's click.
+  const [manuallyExpanded, setManuallyExpanded] = useState<boolean | null>(
+    null,
+  );
+  const expanded = manuallyExpanded ?? !defaultCollapsed;
   // After the dangerouslySetInnerHTML body mounts, attach error
   // handlers to every <img> inside it so a failed remote load
   // collapses the element rather than leaving a broken-image
@@ -122,7 +131,7 @@ export function MessageBlock({
     return (
       <button
         type="button"
-        onClick={() => setExpanded(true)}
+        onClick={() => setManuallyExpanded(true)}
         className={
           "flex w-full items-baseline gap-3 px-4 py-2 text-left transition hover:bg-court-surface-subtle/60 " +
           (isFirst ? "" : "border-t border-court-border")

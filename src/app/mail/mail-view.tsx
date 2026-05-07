@@ -1589,89 +1589,18 @@ export function ThreadDetail({
   const latestId = latest?.id ?? null;
 
   // Gmail-style auto-scroll: when a thread is opened (detail.id
-  // changes), drop the inline message pane to the latest message so
-  // it's visible immediately. Skipped in floating mode because that
-  // path renders newest-first — the latest is already at the top.
-  //
-  // Implementation uses a ResizeObserver on the latest message + the
-  // messages container. Whenever either resizes (signature image
-  // loads late, web font swaps, the user expands an older collapsed
-  // row, etc), we re-call scrollIntoView({ block: "end" }) on the
-  // latest message so it stays pinned to the bottom of the viewport.
-  // The observer auto-disconnects 3s after thread open OR on the
-  // first user-initiated scroll, whichever comes first — after that
-  // the user is in control. A querySelector('[data-latest-message]')
-  // fallback handles the case where the React ref hasn't attached
-  // yet on the first synchronous call.
+  // changes), drop the inline message pane to its bottom on a 100ms
+  // delay so images / signatures have time to lay out before we scroll.
+  // Skipped in floating mode (newest-first there, latest already on top).
   const messagesScrollRef = useRef<HTMLDivElement | null>(null);
-  const latestMessageRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (isFloating) return;
-
-    let stopped = false;
-    const scrollToLatest = () => {
-      if (stopped) return;
-      const target =
-        latestMessageRef.current ??
-        (document.querySelector(
-          '[data-latest-message="true"]',
-        ) as HTMLElement | null);
-      if (target) {
-        target.scrollIntoView({ block: "end", behavior: "auto" });
-      }
-      // Belt-and-suspenders: also drop the container's scrollTop to
-      // its scrollHeight in case scrollIntoView resolved to a higher
-      // ancestor (e.g. the page) and left the messages container
-      // mid-scroll.
-      const c = messagesScrollRef.current;
-      if (c) c.scrollTop = c.scrollHeight;
-    };
-
-    // Initial pin + one frame later (lets layout settle before final pin).
-    scrollToLatest();
-    const raf = requestAnimationFrame(() => {
-      scrollToLatest();
-      requestAnimationFrame(scrollToLatest);
-    });
-
-    // ResizeObserver re-pins on any layout change — the strongest
-    // signal we have for "content shifted, re-scroll please".
-    const ro =
-      typeof ResizeObserver !== "undefined"
-        ? new ResizeObserver(scrollToLatest)
-        : null;
-    if (ro) {
-      const c = messagesScrollRef.current;
-      if (c) ro.observe(c);
-      const m = latestMessageRef.current;
-      if (m) ro.observe(m);
-    }
-
-    // Stop auto-scrolling as soon as the user starts scrolling so we
-    // don't fight them when they're reading older messages.
-    const onUserScroll = () => {
-      stopped = true;
-      ro?.disconnect();
-    };
-    const c = messagesScrollRef.current;
-    c?.addEventListener("wheel", onUserScroll, { passive: true });
-    c?.addEventListener("touchmove", onUserScroll, { passive: true });
-
-    // Hard cap: 3s after open we stop fighting layout and let the
-    // page settle wherever it landed.
-    const offTimer = window.setTimeout(() => {
-      stopped = true;
-      ro?.disconnect();
-    }, 3000);
-
-    return () => {
-      stopped = true;
-      cancelAnimationFrame(raf);
-      window.clearTimeout(offTimer);
-      ro?.disconnect();
-      c?.removeEventListener("wheel", onUserScroll);
-      c?.removeEventListener("touchmove", onUserScroll);
-    };
+    const id = window.setTimeout(() => {
+      const el = messagesScrollRef.current;
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    }, 100);
+    return () => window.clearTimeout(id);
   }, [detail.id, isFloating]);
 
   const floatingThread = useFloatingThread();
@@ -2049,11 +1978,7 @@ export function ThreadDetail({
         {orderedMessages.map((m, i) => {
           const isLatest = m.id === latestId;
           return (
-            <div
-              key={m.id}
-              ref={isLatest && !isFloating ? latestMessageRef : undefined}
-              data-latest-message={isLatest && !isFloating ? "true" : undefined}
-            >
+            <div key={m.id}>
               <MessageBlock
                 msg={m}
                 isFirst={i === 0}
