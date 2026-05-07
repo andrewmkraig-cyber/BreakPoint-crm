@@ -1,7 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { PageHeader } from "@/components/page-header";
 import { listGmailThreads, type MailListThread } from "@/lib/gmail";
 import { MailView } from "@/app/mail/mail-view";
 import { ComposeNewEmailButton } from "@/components/mail/compose-new-email-button";
@@ -72,23 +71,21 @@ export default async function MailPage() {
 
   // Viewport-bounded flex column so the inbox sidebar + thread list +
   // detail pane fit the visible area exactly without the page itself
-  // scrolling. Height is 100vh minus the AppShell's TopBar (h-20 =
-  // 5rem) plus main padding (p-6 = 3rem combined mobile, md:p-8 =
-  // 4rem combined md+). MailView's internal grid grows via flex-1,
-  // and inner panes own their scroll.
+  // scrolling. Negative top margin cancels the AppShell main padding
+  // so the compact mail header sits flush against the TopBar; height
+  // subtracts only the TopBar (5rem) and the remaining bottom padding
+  // (1.5rem mobile / 2rem md+). MailView's internal grid grows via
+  // flex-1, and inner panes own their scroll.
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
-      <PageHeader
-        eyebrow="Inbox"
-        title="Mail"
-        actions={
-          <ComposeNewEmailButton
-            templates={templates}
-            currentUserFirstName={myFirstName}
-            currentUserFullName={myFullName}
-          />
-        }
-      />
+    <div className="-mt-6 flex h-[calc(100vh-6.5rem)] flex-col md:-mt-8 md:h-[calc(100vh-7rem)]">
+      <div className="flex shrink-0 items-center justify-between border-b border-court-border bg-court-surface px-4 py-2.5">
+        <h1 className="text-base font-medium text-court-fg">Inbox</h1>
+        <ComposeNewEmailButton
+          templates={templates}
+          currentUserFirstName={myFirstName}
+          currentUserFullName={myFullName}
+        />
+      </div>
       {gmailStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="gmail-down"

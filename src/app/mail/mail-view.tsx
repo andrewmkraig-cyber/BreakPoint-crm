@@ -804,7 +804,7 @@ export function MailView({
 
   return (
     <div
-      className="ace-mail-grid mt-4 grid min-h-0 flex-1 grid-cols-1 gap-4 lg:gap-0"
+      className="ace-mail-grid grid min-h-0 flex-1 grid-cols-1 gap-4 lg:gap-0"
       style={
         {
           // CSS vars consumed by the lg+ media query in the inline
@@ -823,7 +823,7 @@ export function MailView({
           }
         }
       `}</style>
-      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface">
         <nav className="flex-1 overflow-y-auto p-2 text-sm">
           {/* Inbox entry — the visual anchor of the sidebar but
               proportioned to match the Sent / Drafts / label rows
@@ -1003,7 +1003,7 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border" />
       </div>
 
-      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <aside className="flex flex-col overflow-hidden border border-court-border bg-court-surface">
         <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-3 py-2">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
@@ -1154,7 +1154,7 @@ export function MailView({
         <span className="my-2 w-px self-stretch bg-court-border" />
       </div>
 
-      <section className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <section className="flex min-h-0 flex-col overflow-hidden border border-court-border bg-court-surface">
         {!selected ? (
           <EmptyRightPane />
         ) : loading ? (
