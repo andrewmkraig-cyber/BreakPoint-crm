@@ -129,7 +129,7 @@ export function EditableJobDescription({
           )}
           {rfDescription && draft.trim() === "" && (
             <p className="text-[11px] text-court-fg-muted">
-              Saving an empty description clears the local override and reverts to the RF text below.
+              Saving an empty description clears the local override and reverts to the imported text below.
             </p>
           )}
           {rfDescription && (
