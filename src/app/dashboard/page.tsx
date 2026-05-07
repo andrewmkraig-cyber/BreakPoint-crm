@@ -1,6 +1,5 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { PageHeader } from "@/components/page-header";
 import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
@@ -204,15 +203,14 @@ export default async function DashboardPage() {
   });
 
   return (
-    // PageHeader owns its own claw-against-the-gutter negative margin
-    // (-mt-2 md:-mt-4). The wrapper used to layer another -mt-4 / -mt-6
-    // on top, which pulled the title up under the sticky topbar and
-    // overlapped the search bar. Wrapper now just holds gap spacing.
+    // Title moved into the global TopBar. Dashboard is the one page
+    // where Andrew explicitly wants a subtitle preserved ("Week of
+    // May 4–10, 2026"), so it renders here as a small line just
+    // above the KPI grid.
     <div className="flex w-full flex-col gap-6">
-      <PageHeader
-        title="Activity Dashboard"
-        description={formatEasternWeekRange(weekStart, weekEnd)}
-      />
+      <p className="text-xs text-court-fg-muted">
+        {formatEasternWeekRange(weekStart, weekEnd)}
+      </p>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />

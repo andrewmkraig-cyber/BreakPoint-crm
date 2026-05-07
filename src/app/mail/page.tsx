@@ -3,7 +3,6 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listGmailThreads, type MailListThread } from "@/lib/gmail";
 import { MailView } from "@/app/mail/mail-view";
-import { ComposeNewEmailButton } from "@/components/mail/compose-new-email-button";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import { getGmailStatus } from "@/lib/connectors";
 import { ConnectorBanner } from "@/components/connector-banner";
@@ -71,25 +70,13 @@ export default async function MailPage() {
 
   // Viewport-bounded flex column so the inbox sidebar + thread list +
   // detail pane fit the visible area exactly without the page itself
-  // scrolling. A small negative top margin claws back part of the
-  // AppShell gutter so the compact mail header sits closer to the
-  // TopBar without going flush; height adds the same amount back so
-  // the bottom edge stays inside the gutter. The mail page uses an
-  // inline compact header (smaller than the global PageHeader) since
-  // Mail is a workspace tool, not a content page.
+  // scrolling. Title + Compose button now live in the global TopBar
+  // via TopBarPageTitle, so /mail starts directly with the connector
+  // banner (when present) and the inbox layout. The negative top
+  // margin claws against the AppShell gutter; height accounts for
+  // both that claw-up and the slim h-[72px] topbar.
   return (
-    <div className="-mt-2 flex h-[calc(100vh-6.5rem)] flex-col md:-mt-4 md:h-[calc(100vh-7rem)]">
-      <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-3">
-        <div>
-          <h1 className="font-serif text-xl font-semibold text-court-fg">Mail</h1>
-          <p className="text-xs text-court-fg-muted">Gmail inbox and client conversations.</p>
-        </div>
-        <ComposeNewEmailButton
-          templates={templates}
-          currentUserFirstName={myFirstName}
-          currentUserFullName={myFullName}
-        />
-      </div>
+    <div className="-mt-2 flex h-[calc(100vh-7rem)] flex-col md:-mt-4 md:h-[calc(100vh-7.5rem)]">
       {gmailStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="gmail-down"

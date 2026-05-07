@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Building2, LayoutGrid, List, Search } from "lucide-react";
+import { LayoutGrid, List, Search } from "lucide-react";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
@@ -259,27 +259,9 @@ export function ClientsView({
 
   return (
     <div>
-      {/* Header — matches the global PageHeader compact style (mail-
-          sized serif + tight spacing + claw against gutter). Owned by
-          ClientsView (page.tsx doesn't render PageHeader) so the New
-          Client button can sit alongside the title. The previous
-          mx-auto + max-w-[1200px] wrapper centered the title and made
-          /clients read shifted right vs every other page; drop it so
-          Clients lines up with Jobs, Candidates, etc. */}
-      <div className="-mt-2 mb-3 flex flex-col gap-1 md:-mt-4 md:flex-row md:items-center md:justify-between md:gap-3">
-        <div>
-          <h1 className="font-serif text-xl font-semibold text-court-fg">Clients</h1>
-          <p className="text-xs text-court-fg-muted">
-            Active = an open job or a placement in the last 6 months. Verified shield means a signed fee agreement is on file.
-          </p>
-        </div>
-        <Link
-          href="/clients/new"
-          className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
-        >
-          <Building2 className="h-3 w-3" /> Create New Client
-        </Link>
-      </div>
+      {/* Title + New Client button now live in the global TopBar via
+          TopBarPageTitle, so the Clients view starts directly with
+          the tab strip. */}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface p-1">

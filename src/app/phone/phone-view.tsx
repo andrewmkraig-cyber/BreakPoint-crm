@@ -12,7 +12,6 @@ import {
   Phone,
   PhoneCall,
   PhoneMissed,
-  Plus,
   RefreshCw,
   Send,
   User as UserIcon,
@@ -127,10 +126,6 @@ export function PhoneView() {
   const [detail, setDetail] = useState<ThreadDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
-  // "New Text/Call" header button → modal dial pad. Tracked here so
-  // the inline empty-state DialPad can disable its document keystroke
-  // listener while the modal owns input.
-  const [dialPadOpen, setDialPadOpen] = useState(false);
   // Bump after a send so the detail-load useEffect re-runs and the
   // newly-saved outbound row appears in the thread without a manual
   // refresh.
@@ -146,6 +141,12 @@ export function PhoneView() {
   // send the global panel can refresh this page's thread list — see
   // the setAfterSend useEffect below.
   const phonePanels = usePhonePanels();
+  // Dial-pad modal state lives on the global PhonePanelsContext so
+  // the topbar's "+ New Text/Call" button can trigger the same modal
+  // that PhoneView used to own internally. We only read dialPadOpen
+  // here for the EmptyDetail keyboard-capture behavior; the open and
+  // close handlers fire from the topbar button + the modal itself.
+  const dialPadOpen = phonePanels.dialPadOpen;
   // Sidebar unread badge polling. Triggering refreshUnread() inside
   // loadThreads keeps the sidebar in lockstep with the threads list
   // when the user clicks Refresh.
@@ -312,24 +313,10 @@ export function PhoneView() {
   return (
     <>
     <div className="flex min-h-0 flex-1 flex-col">
-    {/* Inline header — mirrors /mail's pattern. Title sits inline with
-        the action button in a single row (md and up) so the threads
-        grid starts right under the title with no dead vertical space.
-        Stacks on narrow screens. Page-level PageHeader was dropped so
-        this component owns its own title rendering. */}
-    <div className="mb-3 flex flex-col gap-1 md:flex-row md:items-center md:justify-between md:gap-3">
-      <div>
-        <h1 className="font-serif text-xl font-semibold text-court-fg">Calls &amp; Texts</h1>
-        <p className="text-xs text-court-fg-muted">Your Quo texts and calls.</p>
-      </div>
-      <button
-        type="button"
-        onClick={() => setDialPadOpen(true)}
-        className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
-      >
-        <Plus className="h-3 w-3" /> New Text/Call
-      </button>
-    </div>
+    {/* Title + action button now live in the global TopBar via
+        TopBarPageTitle, so PhoneView starts directly with the threads
+        grid and reclaims the row of vertical space the inline header
+        used to occupy. */}
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
       {/* LEFT SIDEBAR */}
       <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
@@ -488,7 +475,9 @@ export function PhoneView() {
           callback registered above. */}
     </div>
     </div>
-    {dialPadOpen && <DialPadModal onClose={() => setDialPadOpen(false)} />}
+    {/* DialPadModal mounts globally via GlobalPhonePanels so the
+        topbar's "+ New Text/Call" button can pop the modal from any
+        route, not just /phone. */}
     </>
   );
 }
@@ -834,7 +823,7 @@ function DialPad({
 // Modal wrapper around DialPad. Triggered by the page-header
 // "New Text/Call" button so a dial pad is reachable even when a
 // thread is open in the right pane.
-function DialPadModal({ onClose }: { onClose: () => void }) {
+export function DialPadModal({ onClose }: { onClose: () => void }) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"

@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/page-header";
 import { JobsView, type JobLifecycle, type JobRow } from "@/app/jobs/jobs-view";
 import {
   normalizeJob,
@@ -119,10 +118,6 @@ export default async function JobsPage({
 
   return (
     <div>
-      <PageHeader
-        title="Jobs"
-        description="Active, private, and inactive requisitions. Counts come from each candidate's pipeline stage."
-      />
       <JobsView
         rows={pageRows}
         total={total}

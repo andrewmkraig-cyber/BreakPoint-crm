@@ -1,7 +1,7 @@
 "use client";
 
 import { usePhonePanels } from "@/lib/phone-panels-context";
-import { NewTextPanel, CallPanel } from "@/app/phone/phone-view";
+import { NewTextPanel, CallPanel, DialPadModal } from "@/app/phone/phone-view";
 
 // Global mount for the floating New-Text and Call panels. Lives in
 // Providers (above the route tree) so the Compose FAB — which fires
@@ -31,6 +31,9 @@ export function GlobalPhonePanels() {
           onClose={phonePanels.closeCall}
           onSwitchToText={phonePanels.switchToText}
         />
+      )}
+      {phonePanels.dialPadOpen && (
+        <DialPadModal onClose={phonePanels.closeDialPad} />
       )}
     </>
   );

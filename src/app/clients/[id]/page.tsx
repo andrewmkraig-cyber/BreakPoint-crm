@@ -151,7 +151,6 @@ export default async function ClientDetailPage({
   ]);
 
   const location = (client.location as LocationJson) ?? null;
-  const cityState = [location?.city, location?.state].filter(Boolean).join(", ");
   const displayName = client.name || "(unnamed)";
 
   // Custom-field scraping from raw — only meaningful for RF-imported rows.
@@ -271,8 +270,6 @@ export default async function ClientDetailPage({
     country: location?.country ?? "",
   };
 
-  const industryAndLoc = [client.industry, cityState].filter(Boolean).join(" · ");
-
   return (
     <div className="space-y-6">
       <Link href="/clients" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
@@ -280,9 +277,7 @@ export default async function ClientDetailPage({
       </Link>
 
       <PageHeader
-        eyebrow="Client"
         title={displayName}
-        description={industryAndLoc || undefined}
         actions={
           agreements.length > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-3 py-1 text-xs font-semibold text-brand-dark">

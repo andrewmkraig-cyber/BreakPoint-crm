@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { PipelineView, type NextInterview, type PipelineRow, type PlacementDetails } from "@/app/pipeline/pipeline-view";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -292,10 +291,6 @@ export default async function PipelinePage({
           <ArrowLeft className="h-3.5 w-3.5" /> Back to {backToClient.name}
         </Link>
       )}
-      <PageHeader
-        title="Pipeline"
-        description="Every active submittal across your open jobs. One row per candidate-per-job. Kept candidates are tagged, not bucketed as their own stage."
-      />
       <PipelineView
         rows={pageRows}
         total={total}

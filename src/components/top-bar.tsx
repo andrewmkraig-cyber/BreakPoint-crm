@@ -3,6 +3,7 @@
 import { useSession } from "next-auth/react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
+import { TopBarPageTitle } from "@/components/top-bar-page-title";
 import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 import { InConversation } from "@/components/icons/in-conversation";
 import { useClaudePanel } from "@/lib/claude-panel-context";
@@ -13,11 +14,13 @@ export function TopBar() {
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 bg-court-surface px-6">
-      {/* Reserved slot — previously held the "Wed, May 6" eyebrow.
-          Left intentionally blank so the topbar grid stays balanced
-          while we figure out what (if anything) belongs here. */}
-      <div className="hidden min-w-0 items-center lg:flex" />
+    <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between gap-4 bg-court-surface px-6">
+      {/* Page title + inline action button — pathname-driven. Replaces
+          the previous in-page PageHeader pattern; pages render their
+          content flush with the topbar now. */}
+      <div className="hidden min-w-0 items-center lg:flex">
+        <TopBarPageTitle />
+      </div>
 
       <div className="flex flex-1 items-center justify-end gap-3 md:flex-none md:justify-start">
         <div className="flex-1 md:flex-none md:w-96">

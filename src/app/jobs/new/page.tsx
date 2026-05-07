@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { getClientsForOrg } from "@/lib/clients";
 import { NewJobForm } from "@/app/jobs/new/new-job-form";
 
@@ -27,11 +26,6 @@ export default async function NewJobPage() {
       <Link href="/jobs" className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg">
         <ArrowLeft className="h-3 w-3" /> Back to jobs
       </Link>
-
-      <PageHeader
-        title="New Job"
-        description="Create a new job in Ace."
-      />
 
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">

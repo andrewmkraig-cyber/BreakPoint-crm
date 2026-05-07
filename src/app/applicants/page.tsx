@@ -1,4 +1,3 @@
-import { PageHeader } from "@/components/page-header";
 import {
   ApplicantsView,
   type AppliedRow,
@@ -305,11 +304,6 @@ export default async function ApplicantsPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader
-        title="Applicants"
-        description="Candidates who applied directly to your open jobs. Submit, Reject, or Keep each for follow-up."
-      />
-
       {error && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <div className="font-semibold">Couldn&apos;t load applicants.</div>

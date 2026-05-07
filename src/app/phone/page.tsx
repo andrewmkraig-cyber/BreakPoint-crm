@@ -39,7 +39,7 @@ export default async function PhonePage() {
   // PhoneView renders sits flush with the topbar — matches /mail's
   // pattern. Height accounts for the slimmer h-16 topbar.
   return (
-    <div className="-mt-2 flex h-[calc(100vh-7rem)] flex-col md:-mt-4 md:h-[calc(100vh-8rem)]">
+    <div className="-mt-2 flex h-[calc(100vh-7.5rem)] flex-col md:-mt-4 md:h-[calc(100vh-8.5rem)]">
       {quoStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="quo-down"

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { NewClientForm } from "@/app/clients/new/new-client-form";
 
 export const dynamic = "force-dynamic";
@@ -11,12 +10,6 @@ export default function NewClientPage() {
       <Link href="/clients" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-ink">
         <ArrowLeft className="h-3 w-3" /> Back to clients
       </Link>
-
-      <PageHeader
-        title="New Client"
-        description="Paste a company URL to auto-fill, or enter details manually. Every field stays editable."
-      />
-
       <NewClientForm />
     </div>
   );

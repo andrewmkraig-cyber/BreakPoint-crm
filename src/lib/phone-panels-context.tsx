@@ -46,6 +46,12 @@ type PhonePanelsCtx = {
   // Stored in a ref so registering doesn't re-render every consumer.
   setAfterSend: (cb: (() => void) | null) => void;
   triggerAfterSend: () => void;
+  // Dial-pad modal state. Owned by this context so the topbar's
+  // page-specific "+ New Text/Call" button on /phone can trigger the
+  // same modal that PhoneView used to own internally.
+  dialPadOpen: boolean;
+  openDialPad: () => void;
+  closeDialPad: () => void;
 };
 
 const Context = createContext<PhonePanelsCtx | null>(null);
@@ -53,8 +59,12 @@ const Context = createContext<PhonePanelsCtx | null>(null);
 export function PhonePanelsProvider({ children }: { children: ReactNode }) {
   const [textOpen, setTextOpen] = useState(false);
   const [callOpen, setCallOpen] = useState(false);
+  const [dialPadOpen, setDialPadOpen] = useState(false);
   const [contact, setContact] = useState<PhoneContact | null>(null);
   const afterSendRef = useRef<(() => void) | null>(null);
+
+  const openDialPad = useCallback(() => setDialPadOpen(true), []);
+  const closeDialPad = useCallback(() => setDialPadOpen(false), []);
 
   const openText = useCallback((c?: PhoneContact | null) => {
     if (c !== undefined) setContact(c ?? null);
@@ -108,6 +118,9 @@ export function PhonePanelsProvider({ children }: { children: ReactNode }) {
         switchToCall,
         setAfterSend,
         triggerAfterSend,
+        dialPadOpen,
+        openDialPad,
+        closeDialPad,
       }}
     >
       {children}

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { PageHeader } from "@/components/page-header";
 import { listCandidateLists } from "@/app/candidates/lists-actions";
 import { ListsManagementView } from "@/app/candidates/lists/lists-management-view";
 
@@ -16,10 +15,6 @@ export default async function CandidateListsPage() {
       >
         <ArrowLeft className="h-3 w-3" /> Back to candidates
       </Link>
-      <PageHeader
-        title="Candidate lists"
-        description="Recruiter-curated buckets of candidates. Rename or delete from here. Add candidates from any candidate profile."
-      />
       <ListsManagementView initial={lists} />
     </div>
   );
