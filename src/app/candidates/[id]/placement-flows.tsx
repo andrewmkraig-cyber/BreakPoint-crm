@@ -310,6 +310,28 @@ export function PlacementActions({
     router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
   }, [searchParams, pathname, router, jobs]);
 
+  // Deep-link for the Pipeline page's Confirm Start button. Format is
+  // ?confirmStart=1&jobId=NN — finds the matching pending_start row
+  // (which always has a Placement attached) and auto-opens the
+  // ConfirmStartDialog so Andrew doesn't have to click Confirm Start a
+  // second time on the candidate profile. Same param-strip pattern as
+  // the placement edit deep-link so refreshes / back-nav don't re-fire.
+  useEffect(() => {
+    const flag = searchParams?.get("confirmStart");
+    const jobIdRaw = searchParams?.get("jobId");
+    if (flag !== "1" || !jobIdRaw) return;
+    const jobId = Number(jobIdRaw);
+    if (!Number.isFinite(jobId)) return;
+    const target = jobs.find((j) => j.jobRfId === jobId);
+    if (!target || !target.placement) return;
+    setConfirmFor(target);
+    const next = new URLSearchParams(searchParams?.toString() ?? "");
+    next.delete("confirmStart");
+    next.delete("jobId");
+    const queryString = next.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+  }, [searchParams, pathname, router, jobs]);
+
   // Deep-link for the Dashboard's per-row interview edit icon. Format
   // is ?edit=interview&interviewId=<cuid>. Finds the matching
   // InterviewSummary across every job linked to this candidate and
@@ -1070,7 +1092,7 @@ function PlacementDialog({
           </div>
         </div>
       </div>
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <LabeledField
           label="Accepted salary"
           value={acceptedSalary}
@@ -1098,7 +1120,7 @@ function PlacementDialog({
         <LabeledField label="Expected start date" type="date" value={startDate} onChange={setStartDate} />
       </div>
 
-      <div className="mt-4 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3">
+      <div className="mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3">
         <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           {usedOverride ? "Fee (flat override)" : "Calculated fee"}
         </div>
@@ -1122,7 +1144,7 @@ function PlacementDialog({
         )}
       </div>
 
-      <div className="mt-5 flex items-end justify-between gap-3">
+      <div className="mt-4 flex items-end justify-between gap-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Billing contacts
         </h3>
@@ -1138,74 +1160,79 @@ function PlacementDialog({
         {billingContacts.map((row) => (
           <div
             key={row.key}
-            className="grid grid-cols-1 items-end gap-2 rounded-lg border border-court-border bg-court-surface-subtle/30 p-3 sm:grid-cols-[1fr_1fr_auto]"
+            className="rounded-lg border border-court-border bg-court-surface-subtle/30 p-2"
           >
-            <div>
-              <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Name</label>
-              <input
-                type="text"
-                value={row.name}
-                onChange={(e) => setContactField(row.key, "name", e.target.value)}
-                placeholder="Contact name"
-                list={`billing-contact-suggestions-${row.key}`}
-                className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-              />
-              {/* Native datalist mirrors the candidate's known client contacts
-                  so typing offers quick-fill. Picking via onChange of a
-                  nearby button would be heavier; keeping the input free-text
-                  with suggestions is the simplest surface that still lets
-                  Andrew add someone not in the client contacts list. */}
-              <datalist id={`billing-contact-suggestions-${row.key}`}>
-                {job.clientContacts.map((c) => (
-                  <option key={c.id} value={c.name} />
-                ))}
-              </datalist>
-              {job.clientContacts.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
+            {/* Name + Email + Remove on a single row so the two inputs
+                stay visually aligned. Suggestion chips ride below in a
+                full-width sub-row instead of pushing the name column
+                taller than the email column (the prior items-end layout
+                made the inputs appear staggered). */}
+            <div className="grid grid-cols-1 items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Name</label>
+                <input
+                  type="text"
+                  value={row.name}
+                  onChange={(e) => setContactField(row.key, "name", e.target.value)}
+                  placeholder="Contact name"
+                  list={`billing-contact-suggestions-${row.key}`}
+                  className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+                {/* Native datalist mirrors the candidate's known client contacts
+                    so typing offers quick-fill. The visible chip row below is
+                    the explicit one-click affordance for Andrew. */}
+                <datalist id={`billing-contact-suggestions-${row.key}`}>
                   {job.clientContacts.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => pickKnownContact(row.key, String(c.id))}
-                      className="rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[10px] text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
-                      title={`Fill from ${c.name}`}
-                    >
-                      {c.name.split(/\s+/)[0]}
-                    </button>
+                    <option key={c.id} value={c.name} />
                   ))}
-                </div>
-              )}
+                </datalist>
+              </div>
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email</label>
+                <input
+                  type="email"
+                  value={row.email}
+                  onChange={(e) => setContactField(row.key, "email", e.target.value)}
+                  placeholder="name@client.com"
+                  className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => removeContactRow(row.key)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
+                title="Remove this contact"
+                aria-label="Remove contact"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
-            <div>
-              <label className="text-[11px] uppercase tracking-wider text-court-fg-muted">Email</label>
-              <input
-                type="email"
-                value={row.email}
-                onChange={(e) => setContactField(row.key, "email", e.target.value)}
-                placeholder="name@client.com"
-                className="mt-1 w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => removeContactRow(row.key)}
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted transition hover:border-red-300 hover:bg-red-50 hover:text-red-700"
-              title="Remove this contact"
-              aria-label="Remove contact"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            {job.clientContacts.length > 0 && (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {job.clientContacts.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => pickKnownContact(row.key, String(c.id))}
+                    className="rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[10px] text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
+                    title={`Fill from ${c.name}`}
+                  >
+                    {c.name.split(/\s+/)[0]}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
-      <h3 className="mt-5 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">Hiring manager</h3>
+      <h3 className="mt-4 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">Hiring manager</h3>
       <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <LabeledField label="Name" value={hiringName} onChange={setHiringName} />
         <LabeledField label="Email" type="email" value={hiringEmail} onChange={setHiringEmail} />
       </div>
 
-      <div className="mt-5">
-        <LabeledTextarea label="Placement notes" value={notes} onChange={setNotes} rows={3} />
+      <div className="mt-4">
+        <LabeledTextarea label="Placement notes" value={notes} onChange={setNotes} rows={2} />
       </div>
 
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
@@ -1398,13 +1425,13 @@ function ConfirmStartDialog({
         </div>
       )}
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Confirm start" />
-      {/* Third location for the Edit Placement affordance (candidate profile
-          + pipeline row are the other two). Sits below the primary Confirm
-          Start footer so it never competes with the main action; distinctly
-          outlined so it reads as secondary navigation, not a destructive
-          button. Closes Confirm and hands off to the parent, which opens
-          the pre-filled PlacementDialog for the same (candidate, job). */}
+      {/* Edit Placement prompt sits ABOVE the Cancel / Confirm Start
+          footer so the recruiter sees the "fix something first?" escape
+          hatch BEFORE committing — flipped from the prior order on
+          2026-05-07 because the buried prompt below the footer was easy
+          to miss. Closes Confirm and hands off to the parent, which
+          opens the pre-filled PlacementDialog for the same (candidate,
+          job). */}
       <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs">
         <span className="text-court-fg-muted">
           Need to fix the fee, start date, or billing contacts first?
@@ -1421,6 +1448,7 @@ function ConfirmStartDialog({
           <Edit3 className="h-3 w-3" /> Edit Placement
         </button>
       </div>
+      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Confirm start" />
     </Modal>
   );
 }
@@ -2651,7 +2679,11 @@ function Modal({
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto p-5">{children}</div>
+        {/* Wider modals (placement editor) carry several sections, so
+            give them more vertical room before scrolling kicks in.
+            Narrow modals stay at 70vh — they're typically single-purpose
+            forms that fit comfortably. */}
+        <div className={cn("overflow-y-auto p-5", wide ? "max-h-[85vh]" : "max-h-[70vh]")}>{children}</div>
       </div>
     </div>
   );

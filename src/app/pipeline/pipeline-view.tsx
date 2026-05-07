@@ -375,7 +375,7 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
             PlacementDialog pre-filled for this (candidate, job). */}
         <div className="flex flex-col items-end gap-1.5">
           <Link
-            href={`/candidates/${row.candidateId}`}
+            href={`/candidates/${row.candidateId}?confirmStart=1&jobId=${row.jobId}`}
             onClick={(e) => e.stopPropagation()}
             className="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-4 text-[10px] font-bold uppercase leading-none tracking-wide text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
           >
