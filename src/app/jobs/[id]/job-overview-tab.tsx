@@ -71,7 +71,7 @@ export function JobOverviewTab({ snapshot }: { snapshot: JobOverviewSnapshot }) 
                   snapshot.lifecycle === "active"
                     ? "bg-brand-tint text-brand-dark"
                     : snapshot.lifecycle === "private"
-                      ? "bg-court-surface-subtle text-court-fg"
+                      ? "bg-amber-50 text-amber-700"
                       : "bg-red-100 text-red-700",
                 )}
               >

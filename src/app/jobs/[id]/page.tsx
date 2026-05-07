@@ -20,6 +20,7 @@ import {
   EditableJobOverview,
   type JobOverviewInitial,
 } from "@/app/jobs/[id]/editable-job-overview";
+import { DeleteJobButton } from "@/app/jobs/[id]/delete-job-button";
 import {
   JobOverviewTab,
   type JobOverviewSnapshot,
@@ -475,6 +476,8 @@ export default async function JobDetailPage({
           />
         </div>
       </div>
+
+      <DeleteJobButton jobId={jobRow.id} jobTitle={job.title} />
     </div>
   );
 }
