@@ -56,6 +56,15 @@ function formatToday(): string {
 export function NewsFeed() {
   const [active, setActive] = useState<TabKey>("general");
   const [collapsed, setCollapsed] = useState(false);
+  // formatToday() reads new Date(), which can resolve to slightly
+  // different millisecond instants on the server vs. on hydration —
+  // enough to cross a date boundary and trip React #418. Compute it
+  // after mount so SSR and the first client render produce identical
+  // markup (empty), then fill in.
+  const [todayLabel, setTodayLabel] = useState<string>("");
+  useEffect(() => {
+    setTodayLabel(formatToday());
+  }, []);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
@@ -152,7 +161,7 @@ export function NewsFeed() {
   return (
     <section
       id="todays-briefing"
-      className="scroll-mt-24 rounded-3xl bg-white p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface"
+      className="scroll-mt-24 rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -164,9 +173,10 @@ export function NewsFeed() {
           </h2>
           <p
             className="mt-0.5 text-court-fg-muted"
-            style={{ fontSize: "12px" }}
+            style={{ fontSize: "12px", minHeight: "14px" }}
+            suppressHydrationWarning
           >
-            {formatToday()}
+            {todayLabel}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5">

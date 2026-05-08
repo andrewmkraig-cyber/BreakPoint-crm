@@ -29,7 +29,7 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       : "Fees earned on placements that hit start date.";
 
   return (
-    <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface">
+    <section className="rounded-3xl bg-court-surface p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2
@@ -104,8 +104,8 @@ function Metric({
   // pair reads as primary + secondary instead of two equal weights.
   const accent = tone === "accent";
   const wrapper = accent
-    ? "rounded-2xl bg-[#F3F8EF] p-5 dark:bg-court-accent-tint"
-    : "rounded-2xl bg-white p-5 ring-1 ring-inset ring-court-border-soft dark:bg-court-surface dark:ring-court-border";
+    ? "rounded-2xl bg-court-accent-tint p-5"
+    : "rounded-2xl bg-court-surface p-5 ring-1 ring-inset ring-court-border-soft";
   const labelCls =
     "text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted";
   const valueCls = accent

@@ -10,7 +10,7 @@ export function KpiTile({
   icon: LucideIcon;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)] dark:bg-court-surface">
+    <div className="flex flex-col gap-3 rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
       <div
         className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#EFF5EB] text-[#1F6A3A] dark:bg-court-accent-tint dark:text-court-accent"
         aria-hidden

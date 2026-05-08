@@ -221,7 +221,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                               palette. */}
                           {r.isKept && (
                             <span
-                              className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800"
+                              className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-amber-800 dark:bg-amber-950/50 dark:text-amber-200"
                               title="Kept candidate"
                             >
                               <Bookmark className="h-2.5 w-2.5" /> Kept
@@ -275,9 +275,9 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                               // three modes. The "under 7 days" neutral pill
                               // tracks the theme.
                               r.daysInStage >= 14
-                                ? "bg-red-50 text-red-700"
+                                ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200"
                                 : r.daysInStage >= 7
-                                  ? "bg-amber-50 text-amber-700"
+                                  ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
                                   : "bg-court-surface-subtle text-court-fg-muted",
                             )}
                           >
@@ -366,10 +366,10 @@ function PendingStartCells({ row }: { row: PipelineRow }) {
               // semantic palette in every mode — overdue always reads red,
               // soon always reads amber, on-track always reads green.
               overdue
-                ? "bg-red-50 text-red-700"
+                ? "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200"
                 : soon
-                  ? "bg-amber-50 text-amber-700"
-                  : "bg-emerald-50 text-emerald-700",
+                  ? "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+                  : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200",
             )}
           >
             {overdue ? `${Math.abs(daysUntil)}d late` : daysUntil === 0 ? "Today" : `${daysUntil}d`}
@@ -451,7 +451,7 @@ function HiredCells({ row }: { row: PipelineRow }) {
         {/* Invoicing-flagged stays amber — status cue that should mean the
             same thing regardless of mode. */}
         {p?.invoicingFlagged ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
             Flagged
           </span>
         ) : (

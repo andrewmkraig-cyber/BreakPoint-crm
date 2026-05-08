@@ -5,20 +5,36 @@ import { canonicalStage, PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-p
 // where it renders — the candidate-profile pipeline, the Pipeline page,
 // and any future surface read this map. Court tokens for neutral
 // stages so the palette tracks Hard/Clay/Grass mode; Tailwind palette
-// tokens for the typed stages (red/blue/amber/emerald) so the semantic
-// meaning is unambiguous regardless of theme.
+// tokens for the typed stages (red/blue/amber/emerald/purple) so the
+// semantic meaning is unambiguous regardless of theme.
+//
+// Each typed stage carries a dark variant — bg-X-950/40 + text-X-200 +
+// border-X-900 — so on Hard/Clay/Grass dark and Night the chips
+// don't pop bright off the page. Mirrors the row-action chip
+// treatment so the whole pipeline reads consistently in dark mode.
 const BUCKET_CLASS: Record<PipelineBucket, string> = {
-  sourced: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
-  applied: "bg-amber-50 text-amber-700 border border-amber-200",
-  kept: "bg-amber-100 text-amber-800 border border-amber-300",
-  submitted: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  interviewing: "bg-blue-50 text-blue-700 border border-blue-200",
-  offer: "bg-purple-50 text-purple-700 border border-purple-200",
-  pending_start: "bg-purple-50 text-purple-700 border border-purple-200",
-  hired: "bg-emerald-100 text-emerald-800 border border-emerald-300",
-  rejected: "bg-red-50 text-red-700 border border-red-200",
-  cancelled: "bg-red-50 text-red-700 border border-red-200",
-  other: "bg-court-surface-subtle text-court-fg-muted border border-court-border",
+  sourced:
+    "bg-court-surface-subtle text-court-fg-muted border border-court-border",
+  applied:
+    "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
+  kept:
+    "bg-amber-100 text-amber-800 border border-amber-300 dark:bg-amber-950/50 dark:text-amber-200 dark:border-amber-800",
+  submitted:
+    "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-900",
+  interviewing:
+    "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+  offer:
+    "bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-900",
+  pending_start:
+    "bg-purple-50 text-purple-700 border border-purple-200 dark:bg-purple-950/40 dark:text-purple-200 dark:border-purple-900",
+  hired:
+    "bg-emerald-100 text-emerald-800 border border-emerald-300 dark:bg-emerald-950/50 dark:text-emerald-200 dark:border-emerald-800",
+  rejected:
+    "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
+  cancelled:
+    "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
+  other:
+    "bg-court-surface-subtle text-court-fg-muted border border-court-border",
 };
 
 const BUCKET_LABEL: Record<PipelineBucket, string> = {

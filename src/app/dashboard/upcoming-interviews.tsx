@@ -34,7 +34,7 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
   // goes to the candidate page (reschedule / cancel flow lives there).
   const [popupRow, setPopupRow] = useState<UpcomingInterviewRow | null>(null);
   return (
-    <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface">
+    <section className="rounded-3xl bg-court-surface p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div className="flex items-center justify-between">
         <div>
           <h2
