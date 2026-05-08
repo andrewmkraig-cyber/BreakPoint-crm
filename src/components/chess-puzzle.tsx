@@ -43,6 +43,43 @@ type Status = "playing" | "wrong" | "solved";
 
 type UciMove = { from: Square; to: Square; promotion?: string };
 
+// Streak state persists across reloads so the day count survives a
+// hard refresh. failedDate stops a same-day re-solve from un-doing a
+// wrong move's reset — once you blow it for the day, you're at 0
+// until tomorrow.
+const STREAK_KEY = "ace.chess.streak";
+const LAST_SOLVED_KEY = "ace.chess.lastSolvedDate";
+const FAILED_DATE_KEY = "ace.chess.failedDate";
+
+function todayET(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
+function yesterdayET(): string {
+  const todayUtcStr = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  const [y, m, d] = todayUtcStr.split("-").map(Number);
+  const utc = new Date(Date.UTC(y, m - 1, d));
+  utc.setUTCDate(utc.getUTCDate() - 1);
+  return utc.toISOString().slice(0, 10);
+}
+
+function readStreak(): number {
+  if (typeof window === "undefined") return 0;
+  const raw = window.localStorage.getItem(STREAK_KEY);
+  const parsed = raw ? Number.parseInt(raw, 10) : 0;
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+}
+
 function parseUci(uci: string): UciMove {
   return {
     from: uci.slice(0, 2) as Square,
@@ -165,6 +202,38 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   const [status, setStatus] = useState<Status>("playing");
   const [flash, setFlash] = useState<"green" | "red" | null>(null);
   const [hintActive, setHintActive] = useState<boolean>(false);
+  const [streak, setStreak] = useState<number>(0);
+
+  // Hydrate streak after mount — reading localStorage during initial
+  // state would trip Next's SSR mismatch warning.
+  useEffect(() => {
+    setStreak(readStreak());
+  }, []);
+
+  // Effect-driven streak updates: status is the only signal, so the
+  // useEffect runs once per transition into "wrong" or "solved".
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (status === "wrong") {
+      window.localStorage.setItem(STREAK_KEY, "0");
+      window.localStorage.setItem(FAILED_DATE_KEY, todayET());
+      setStreak(0);
+      return;
+    }
+    if (status === "solved") {
+      const today = todayET();
+      const failedToday =
+        window.localStorage.getItem(FAILED_DATE_KEY) === today;
+      if (failedToday) return; // wrong move earlier today — no credit
+      const lastSolved = window.localStorage.getItem(LAST_SOLVED_KEY);
+      if (lastSolved === today) return; // already credited today
+      const next =
+        lastSolved === yesterdayET() ? readStreak() + 1 : 1;
+      window.localStorage.setItem(STREAK_KEY, String(next));
+      window.localStorage.setItem(LAST_SOLVED_KEY, today);
+      setStreak(next);
+    }
+  }, [status]);
 
   // User's color comes from the initial side-to-move; orient the
   // board that way so up-the-board attacks always read intuitively.
@@ -304,13 +373,25 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between">
+      <div className="flex items-baseline justify-between gap-2">
         <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
           Chess Puzzle
         </div>
-        <div className="inline-flex items-baseline gap-1 rounded-full bg-court-accent-tint px-2 py-0.5 text-[11px] font-semibold text-court-accent-dark">
-          <span className="font-stat tabular-nums">{puzzle.rating}</span>
-          <span className="font-normal opacity-80">rating</span>
+        <div className="flex items-center gap-1.5">
+          <div
+            className="inline-flex items-baseline gap-1 rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-medium text-court-fg-muted"
+            title={`${streak} day${streak === 1 ? "" : "s"} solved in a row`}
+          >
+            <span aria-hidden>🔥</span>
+            <span className="font-stat tabular-nums text-court-fg">
+              {streak}
+            </span>
+            <span>day{streak === 1 ? "" : "s"}</span>
+          </div>
+          <div className="inline-flex items-baseline gap-1 rounded-full bg-court-accent-tint px-2 py-0.5 text-[11px] font-semibold text-court-accent-dark">
+            <span className="font-stat tabular-nums">{puzzle.rating}</span>
+            <span className="font-normal opacity-80">rating</span>
+          </div>
         </div>
       </div>
       <div className="mt-1 text-sm font-semibold text-court-fg">{heading}</div>

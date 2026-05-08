@@ -141,13 +141,13 @@ export function NewsFeed() {
   return (
     <section
       id="todays-briefing"
-      className="scroll-mt-24 rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface"
+      className="scroll-mt-24 rounded-3xl bg-white p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface"
     >
       <div className="flex items-baseline justify-between gap-4">
         <div>
           <h2
             className="font-semibold tracking-[-0.035em] text-court-fg"
-            style={{ fontSize: "20px", lineHeight: 1.15 }}
+            style={{ fontSize: "18px", lineHeight: 1.15 }}
           >
             Today&apos;s Briefing
           </h2>
@@ -187,7 +187,7 @@ export function NewsFeed() {
           <div
             role="tablist"
             aria-label="Briefing topics"
-            className="mt-4 mb-4 flex gap-1 border-b border-court-border"
+            className="mt-3 mb-3 flex gap-1 border-b border-court-border"
           >
             {TABS.map((t) => {
               const selected = t.key === active;
@@ -233,7 +233,7 @@ export function NewsFeed() {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => markRead(lead)}
-                    className="group mb-2 block cursor-pointer border-b border-court-border pb-4"
+                    className="group mb-2 block cursor-pointer border-b border-court-border pb-3"
                   >
                     <h3
                       className={
@@ -241,8 +241,8 @@ export function NewsFeed() {
                         (isRead(lead) ? "text-court-fg-muted" : "text-court-fg")
                       }
                       style={{
-                        fontSize: "19px",
-                        lineHeight: 1.25,
+                        fontSize: "16px",
+                        lineHeight: 1.3,
                         maxWidth: "36ch",
                       }}
                     >
@@ -251,10 +251,10 @@ export function NewsFeed() {
                     {lead.summary ? (
                       <p
                         className={
-                          "mt-2 leading-relaxed [text-wrap:pretty] " +
+                          "mt-1.5 leading-relaxed [text-wrap:pretty] " +
                           (isRead(lead) ? "text-court-fg-dim" : "text-court-fg-muted")
                         }
-                        style={{ fontSize: "13px", maxWidth: "60ch" }}
+                        style={{ fontSize: "12px", maxWidth: "60ch" }}
                       >
                         {lead.summary}
                       </p>
@@ -277,19 +277,20 @@ export function NewsFeed() {
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={() => markRead(story)}
-                          className="group block cursor-pointer py-2.5"
+                          className="group block cursor-pointer py-2"
                         >
                           <h4
                             className={
-                              "m-0 text-sm leading-snug group-hover:text-court-accent-dark " +
+                              "m-0 leading-snug group-hover:text-court-accent-dark " +
                               (isRead(story)
                                 ? "font-medium text-court-fg-muted"
                                 : "font-semibold text-court-fg")
                             }
+                            style={{ fontSize: "13px" }}
                           >
                             {story.headline}
                           </h4>
-                          <div className="mt-1 text-xs text-court-fg-muted">
+                          <div className="mt-0.5 text-[11px] text-court-fg-muted">
                             {story.source}
                           </div>
                         </a>
