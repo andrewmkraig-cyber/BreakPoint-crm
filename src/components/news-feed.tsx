@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExternalLink, Loader2 } from "lucide-react";
 
 // Tabbed daily briefing for the dashboard. Five topic tabs; each tab
@@ -57,10 +57,18 @@ export function NewsFeed() {
     general: { status: "idle" },
     cleveland: { status: "idle" },
   });
+  // Tracks which tabs already kicked off a fetch. Lives outside React
+  // state so the effect below depends only on `active`. Subscribing to
+  // `byTab` would cancel the in-flight fetch the moment we set it to
+  // "loading" — the dependency change triggers cleanup (cancelled =
+  // true) before the response lands, which is why headlines used to
+  // never render. On error we drop the entry so navigating away and
+  // back retries.
+  const initiatedRef = useRef<Set<TabKey>>(new Set());
 
   useEffect(() => {
-    const current = byTab[active];
-    if (current.status !== "idle") return;
+    if (initiatedRef.current.has(active)) return;
+    initiatedRef.current.add(active);
     setByTab((prev) => ({ ...prev, [active]: { status: "loading" } }));
     let cancelled = false;
     void (async () => {
@@ -86,6 +94,7 @@ export function NewsFeed() {
             ...prev,
             [active]: { status: "error", error },
           }));
+          initiatedRef.current.delete(active);
           return;
         }
         setByTab((prev) => ({
@@ -105,12 +114,13 @@ export function NewsFeed() {
             error: e instanceof Error ? e.message : "Failed to load",
           },
         }));
+        initiatedRef.current.delete(active);
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [active, byTab]);
+  }, [active]);
 
   const current = byTab[active];
 
