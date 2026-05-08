@@ -278,7 +278,7 @@ export function NewsFeed() {
                         {lead.summary}
                       </p>
                     ) : null}
-                    <div className="mt-2 text-xs text-court-fg-muted">
+                    <div className="mt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
                       {lead.source}
                     </div>
                   </a>
@@ -309,7 +309,7 @@ export function NewsFeed() {
                           >
                             {story.headline}
                           </h4>
-                          <div className="mt-0.5 text-[11px] text-court-fg-muted">
+                          <div className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
                             {story.source}
                           </div>
                         </a>

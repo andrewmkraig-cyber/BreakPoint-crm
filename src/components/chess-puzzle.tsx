@@ -583,7 +583,10 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
 
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-2">
+      {/* pr-7 reserves clearance on the right edge for the absolute-
+          positioned X close button (right-2 + 14px icon + padding) so
+          the rating chip doesn't tuck behind it. */}
+      <div className="flex items-baseline justify-between gap-2 pr-7">
         <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
           Chess Puzzle
         </div>
