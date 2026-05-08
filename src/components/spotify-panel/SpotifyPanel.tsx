@@ -339,6 +339,16 @@ export function SpotifyPanel() {
   const [mounted, setMounted] = useState(false);
   const [authState, setAuthState] = useState<AuthState>({ status: "checking" });
   const [minimized, setMinimized] = useState(false);
+  // Separate position for the minimized dock pill. The full panel's
+  // `position` is the un-minimized location and survives across the
+  // minimize/restore round-trip, so we can't reuse it for the dock —
+  // dragging the dock would corrupt the saved restore position. Null
+  // means "use the default bottom-right anchor"; the drag handler
+  // stamps absolute left/top coordinates here once the recruiter
+  // moves it.
+  const [dockPosition, setDockPosition] = useState<{ x: number; y: number } | null>(
+    null,
+  );
 
   // View navigation stack — top of stack is the visible view.
   const [stack, setStack] = useState<View[]>([{ kind: "home" }]);
@@ -836,7 +846,25 @@ export function SpotifyPanel() {
       if ((e.target as HTMLElement).closest("button")) return;
       if ((e.target as HTMLElement).closest("input")) return;
       const node = panelRef.current;
-      if (!node || !position) return;
+      if (!node) return;
+      // Branch on minimized vs full-panel drag. When minimized we
+      // operate on the dock's local position (pill is 320×52 anchored
+      // bottom-right by default) and write the result to dockPosition;
+      // when not minimized we operate on the full panel's `position`
+      // from the provider. Sharing a single position state was the
+      // bug — the minimized pill's drag was writing the un-minimized
+      // location, so on release the pill snapped back to the dock
+      // anchor and looked stuck.
+      const isMin = minimized;
+      const dragW = isMin ? DOCK_W : size.w;
+      const dragH = isMin ? DOCK_H : size.h;
+      const startRect = node.getBoundingClientRect();
+      const startX = isMin
+        ? dockPosition?.x ?? startRect.left
+        : position?.x ?? startRect.left;
+      const startY = isMin
+        ? dockPosition?.y ?? startRect.top
+        : position?.y ?? startRect.top;
       const handle = e.currentTarget;
       const pointerId = e.pointerId;
       try {
@@ -844,8 +872,6 @@ export function SpotifyPanel() {
       } catch {}
       const startPx = e.clientX;
       const startPy = e.clientY;
-      const startX = position.x;
-      const startY = position.y;
       let dx = 0;
       let dy = 0;
       let rafId = 0;
@@ -857,8 +883,8 @@ export function SpotifyPanel() {
       const onMove = (ev: PointerEvent) => {
         const rawX = startX + (ev.clientX - startPx);
         const rawY = startY + (ev.clientY - startPy);
-        const maxX = Math.max(0, window.innerWidth - size.w);
-        const maxY = Math.max(0, window.innerHeight - size.h);
+        const maxX = Math.max(0, window.innerWidth - dragW);
+        const maxY = Math.max(0, window.innerHeight - dragH);
         const clampedX = Math.max(0, Math.min(maxX, rawX));
         const clampedY = Math.max(0, Math.min(maxY, rawY));
         dx = clampedX - startX;
@@ -875,18 +901,21 @@ export function SpotifyPanel() {
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.transform = "";
         node.style.willChange = "";
-        const maxX = Math.max(0, window.innerWidth - size.w);
-        const maxY = Math.max(0, window.innerHeight - size.h);
-        setPosition({
-          x: Math.max(0, Math.min(maxX, startX + dx)),
-          y: Math.max(0, Math.min(maxY, startY + dy)),
-        });
+        const maxX = Math.max(0, window.innerWidth - dragW);
+        const maxY = Math.max(0, window.innerHeight - dragH);
+        const nextX = Math.max(0, Math.min(maxX, startX + dx));
+        const nextY = Math.max(0, Math.min(maxY, startY + dy));
+        if (isMin) {
+          setDockPosition({ x: nextX, y: nextY });
+        } else {
+          setPosition({ x: nextX, y: nextY });
+        }
       };
       handle.addEventListener("pointermove", onMove);
       handle.addEventListener("pointerup", onUp);
       handle.addEventListener("pointercancel", onUp);
     },
-    [position, size, setPosition],
+    [minimized, position, dockPosition, size, setPosition],
   );
 
   const onCornerPointerDown = useCallback(
@@ -1108,18 +1137,34 @@ export function SpotifyPanel() {
 
   if (!mounted || !open || !position) return null;
 
+  // Minimized pill styling: if the recruiter has dragged the dock
+  // somewhere, honor those left/top coordinates. Otherwise fall back
+  // to the bottom-right anchor (right/bottom = DOCK_EDGE_GAP) so the
+  // first-time view is identical to the previous behavior.
   const rootStyle: React.CSSProperties = minimized
-    ? {
-        left: "auto",
-        top: "auto",
-        right: `${DOCK_EDGE_GAP}px`,
-        bottom: `${DOCK_EDGE_GAP}px`,
-        width: `${DOCK_W}px`,
-        height: `${DOCK_H}px`,
-        zIndex: z,
-        contain: "layout paint",
-        backgroundColor: COLOR_BG,
-      }
+    ? dockPosition
+      ? {
+          left: `${dockPosition.x}px`,
+          top: `${dockPosition.y}px`,
+          right: "auto",
+          bottom: "auto",
+          width: `${DOCK_W}px`,
+          height: `${DOCK_H}px`,
+          zIndex: z,
+          contain: "layout paint",
+          backgroundColor: COLOR_BG,
+        }
+      : {
+          left: "auto",
+          top: "auto",
+          right: `${DOCK_EDGE_GAP}px`,
+          bottom: `${DOCK_EDGE_GAP}px`,
+          width: `${DOCK_W}px`,
+          height: `${DOCK_H}px`,
+          zIndex: z,
+          contain: "layout paint",
+          backgroundColor: COLOR_BG,
+        }
     : {
         left: `${position.x}px`,
         top: `${position.y}px`,

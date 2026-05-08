@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { signIn, signOut } from "next-auth/react";
-import { ExternalLink, RefreshCw } from "lucide-react";
+import { ExternalLink, Loader2, Music, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import type { ConnectorStatus, ConnectorState } from "@/lib/connectors";
 
 // Ace 28.0 Connectors panel — three rows showing the live health of
@@ -75,6 +77,72 @@ export function ConnectorsView({
           </div>
         }
       />
+      <SpotifyConnectorRow />
+    </div>
+  );
+}
+
+// Spotify connector lives client-side because its session is cookie-
+// only (no Neon row, no Google/Quo-style server health check). The
+// Disconnect button hits DELETE /api/auth/spotify which expires the
+// access / refresh / expires-at cookies; the floating panel's next
+// /api/spotify/token call then returns 401 and renders the
+// Connect-Spotify CTA. Anchor the row visually like the other
+// ConnectorRow entries — same surface, dot, label — without piping a
+// real status check up through getAllConnectorStatuses since this
+// row's value is mostly the disconnect action.
+function SpotifyConnectorRow() {
+  const [busy, setBusy] = useState(false);
+
+  async function disconnect() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/auth/spotify", { method: "DELETE" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      toast.success("Spotify disconnected", {
+        description:
+          "Open the floating Spotify panel to reconnect when you're ready.",
+      });
+    } catch (e) {
+      toast.error("Couldn't disconnect Spotify", {
+        description: e instanceof Error ? e.message : "Try again in a moment.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Music className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+          <span className="text-sm font-semibold text-court-fg">Spotify</span>
+        </div>
+        <div className="mt-1 truncate text-xs text-court-fg-muted">
+          Floating Spotify panel session. Disconnecting clears the
+          access + refresh tokens; reconnect from the panel itself.
+        </div>
+      </div>
+      <div className="shrink-0">
+        <button
+          type="button"
+          onClick={() => void disconnect()}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+        >
+          {busy ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          Disconnect Spotify
+        </button>
+      </div>
     </div>
   );
 }

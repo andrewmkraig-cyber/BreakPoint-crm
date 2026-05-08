@@ -1,10 +1,14 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.7
+Last updated: 2026-05-08 · Ace 36.8
 
 ## Current Status
-Current Version: Ace 36.7 (Wide-screen content cap at 1600px)
-Last Shipped: Ace 36.7 — May 8, 2026
+Current Version: Ace 36.8 (Spotify minimized-pill drag fix + Disconnect Spotify)
+Last Shipped: Ace 36.8 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.8
+- Spotify minimized pill is draggable across the whole viewport again. The drag handler used to write coordinates into the un-minimized panel `position` while the pill was rendered with `right`/`bottom` anchors — release "snapped" the pill back to its dock corner. Added a separate local `dockPosition` state and branched the drag handler on `minimized`: when minimized we read/write the dock's local left/top with DOCK_W/DOCK_H clamping; when not minimized the original behavior is preserved. Pill now stays where the recruiter drops it.
+- Disconnect Spotify: new `DELETE /api/auth/spotify` route expires the access / refresh / expires-at / state cookies (maxAge:0). Added a "Disconnect Spotify" row to Settings → Connectors with a button that hits the new route and toasts success. The floating panel's next `/api/spotify/token` call returns 401 and falls back to the Connect-Spotify CTA exactly like a fresh user.
 
 ## Summary — Ace 36.7
 Re-applied the wide-screen breathing room on the AppShell `<main>` after the 36.6 revert. Andrew specified `max-w-[1600px]` (slightly wider than 36.6's `max-w-screen-2xl` = 1536px) as the cap so wide monitors get more table real estate before centering kicks in. Audited tables and grids:

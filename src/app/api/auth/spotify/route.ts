@@ -7,8 +7,30 @@ import { SPOTIFY_COOKIE, SPOTIFY_SCOPES, spotifyCookieOpts } from "@/lib/spotify
 // redirect URI, then 302s the recruiter over there. A random `state`
 // token is dropped in a short-lived cookie so the callback can verify
 // the response wasn't initiated by a third party.
+//
+// DELETE clears the cached Spotify session — it expires the access /
+// refresh / expires-at cookies so the next /api/spotify/token call
+// returns 401 and the panel falls back to the Connect-Spotify CTA.
+// Used by the Settings → Connectors "Disconnect Spotify" button.
 
 export const dynamic = "force-dynamic";
+
+// Cookie max-age 0 with the same path the cookies were originally
+// set on — anything else and the browser keeps the old cookie around.
+function expireCookie(res: NextResponse, name: string) {
+  res.cookies.set(name, "", { ...spotifyCookieOpts(0), maxAge: 0 });
+}
+
+export async function DELETE() {
+  const res = NextResponse.json({ ok: true });
+  expireCookie(res, SPOTIFY_COOKIE.access);
+  expireCookie(res, SPOTIFY_COOKIE.refresh);
+  expireCookie(res, SPOTIFY_COOKIE.expires);
+  // Also clear any lingering OAuth state cookie so a stale value
+  // can't trip up a subsequent reconnect attempt.
+  expireCookie(res, SPOTIFY_COOKIE.state);
+  return res;
+}
 
 export async function GET() {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
