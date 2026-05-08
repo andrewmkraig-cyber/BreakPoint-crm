@@ -29,18 +29,18 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       : "Fees earned on placements that hit start date.";
 
   return (
-    <section className="rounded-[32px] bg-white p-10 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_16px_40px_rgba(16,36,24,0.04)] dark:bg-court-surface">
+    <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2
-            className="font-semibold tracking-[-0.04em] text-court-fg"
-            style={{ fontSize: "28px", lineHeight: 1.1 }}
+            className="font-semibold tracking-[-0.035em] text-court-fg"
+            style={{ fontSize: "20px", lineHeight: 1.15 }}
           >
             Billing Tower
           </h2>
           <p
-            className="mt-1 text-court-fg-muted"
-            style={{ fontSize: "14px" }}
+            className="mt-0.5 text-court-fg-muted"
+            style={{ fontSize: "13px" }}
           >
             Revenue and collections overview
           </p>
@@ -61,7 +61,7 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
         </div>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
         <Metric
           label="Cash Collected"
@@ -104,20 +104,20 @@ function Metric({
   // pair reads as primary + secondary instead of two equal weights.
   const accent = tone === "accent";
   const wrapper = accent
-    ? "rounded-3xl bg-[#F3F8EF] p-8 dark:bg-court-accent-tint"
-    : "rounded-3xl bg-white p-8 ring-1 ring-inset ring-court-border-soft dark:bg-court-surface dark:ring-court-border";
+    ? "rounded-2xl bg-[#F3F8EF] p-5 dark:bg-court-accent-tint"
+    : "rounded-2xl bg-white p-5 ring-1 ring-inset ring-court-border-soft dark:bg-court-surface dark:ring-court-border";
   const labelCls =
-    "text-[12px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted";
+    "text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted";
   const valueCls = accent
-    ? "mt-3 font-stat font-semibold leading-none tracking-[-0.07em] tabular-nums text-court-fg dark:text-court-accent-dark"
-    : "mt-3 font-stat font-semibold leading-none tracking-[-0.07em] tabular-nums text-court-fg";
+    ? "mt-2 font-stat font-semibold leading-none tracking-[-0.05em] tabular-nums text-court-fg dark:text-court-accent-dark"
+    : "mt-2 font-stat font-semibold leading-none tracking-[-0.05em] tabular-nums text-court-fg";
   return (
     <div className={wrapper}>
       <div className={labelCls}>{label}</div>
-      <div className={valueCls} style={{ fontSize: "58px" }}>
+      <div className={valueCls} style={{ fontSize: "32px" }}>
         {value}
       </div>
-      <p className="mt-3 text-sm text-court-fg-muted">{hint}</p>
+      <p className="mt-2 text-xs text-court-fg-muted">{hint}</p>
     </div>
   );
 }

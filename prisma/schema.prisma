@@ -889,6 +889,7 @@ model Organization {
   claudePanelMessages  ClaudePanelMessage[]
   jobBoardStatuses     JobBoardStatus[]
   wordsOfDay           WordOfDay[]
+  quotesOfDay          QuoteOfDay[]
   dailyNewsFeeds       DailyNewsFeed[]
 }
 
@@ -1061,6 +1062,26 @@ model WordOfDay {
   exampleSentence String   @db.Text
   generatedDate   DateTime @db.Date
   createdAt       DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, generatedDate])
+  @@index([organizationId])
+}
+
+// Companion to WordOfDay — one row per (org, ET day) carrying a curated
+// quote from a respected business leader, athlete, philosopher, or
+// historical figure. /api/quote-of-day reuses the same cache-then-call
+// pattern: today's row is returned without touching Claude on every
+// load except the first of the ET day.
+model QuoteOfDay {
+  id             String   @id @default(cuid())
+  organizationId String
+  quote          String   @db.Text
+  author         String
+  context        String   @db.Text
+  generatedDate  DateTime @db.Date
+  createdAt      DateTime @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 

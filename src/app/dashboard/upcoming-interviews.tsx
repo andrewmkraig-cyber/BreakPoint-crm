@@ -34,18 +34,18 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
   // goes to the candidate page (reschedule / cancel flow lives there).
   const [popupRow, setPopupRow] = useState<UpcomingInterviewRow | null>(null);
   return (
-    <section className="rounded-[32px] bg-white p-10 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_16px_40px_rgba(16,36,24,0.04)] dark:bg-court-surface">
+    <section className="rounded-3xl bg-white p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface">
       <div className="flex items-center justify-between">
         <div>
           <h2
-            className="font-semibold tracking-[-0.04em] text-court-fg"
-            style={{ fontSize: "28px", lineHeight: 1.1 }}
+            className="font-semibold tracking-[-0.035em] text-court-fg"
+            style={{ fontSize: "20px", lineHeight: 1.15 }}
           >
             Upcoming interviews
           </h2>
           <p
-            className="mt-1 text-court-fg-muted"
-            style={{ fontSize: "14px" }}
+            className="mt-0.5 text-court-fg-muted"
+            style={{ fontSize: "13px" }}
           >
             Scheduled in the next 7 days
           </p>

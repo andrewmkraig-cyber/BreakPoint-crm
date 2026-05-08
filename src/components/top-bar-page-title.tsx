@@ -109,16 +109,16 @@ export function TopBarPageTitle() {
 
   if (!spec.title.label) return null;
 
-  // Dashboard gets the larger sans-serif treatment per the premium
-  // dashboard pass; every other page keeps the existing serif chrome
-  // so the topbar reads consistently across Jobs / Candidates / Mail.
-  const isDashboard = pathname === "/dashboard";
-  const titleClass = isDashboard
-    ? "font-sans font-semibold text-court-fg"
-    : "font-serif text-2xl font-semibold text-court-fg";
-  const titleStyle = isDashboard
-    ? { fontSize: "34px", letterSpacing: "-0.035em", lineHeight: 1.1 }
-    : undefined;
+  // Every page uses the same premium sans-serif treatment introduced
+  // on the dashboard pass — Jobs / Candidates / Mail / etc. read with
+  // the same weight and letter-spacing as the dashboard title so the
+  // topbar feels consistent across the app.
+  const titleClass = "font-sans font-semibold text-court-fg";
+  const titleStyle = {
+    fontSize: "26px",
+    letterSpacing: "-0.035em",
+    lineHeight: 1.15,
+  };
 
   return (
     <div className="flex min-w-0 items-center gap-3">

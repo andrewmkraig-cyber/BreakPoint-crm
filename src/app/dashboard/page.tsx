@@ -3,8 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
-import { WordOfDayCard } from "@/components/word-of-day-card";
-import { ChessPuzzle } from "@/components/chess-puzzle";
+import { DashboardBottomBar } from "@/components/dashboard-bottom-bar";
 import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
@@ -215,7 +214,7 @@ export default async function DashboardPage() {
         {formatEasternWeekRange(weekStart, weekEnd)}
       </p>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
         <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
@@ -230,15 +229,11 @@ export default async function DashboardPage() {
 
       <UpcomingInterviews rows={upcoming} />
 
-      {/* Bottom-right pills — sit inline at the end of the dashboard
-          column and right-align. Popovers open upward so they never
-          spill off the page bottom. Chess puzzle sits to the right of
-          Word of the Day; both render null until their data lands so
-          the row stays stable. */}
-      <div className="flex items-center justify-end gap-2">
-        <WordOfDayCard />
-        <ChessPuzzle />
-      </div>
+      {/* Bottom bar consolidates the daily-companion chips (Word /
+          Quote / Chess) plus a scroll-back-up affordance for the
+          briefing. Popovers open upward from each chip so they never
+          spill off the page bottom. */}
+      <DashboardBottomBar />
     </div>
   );
 }
