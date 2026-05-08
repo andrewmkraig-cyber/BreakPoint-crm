@@ -9,6 +9,7 @@ import {
   useState,
   useTransition,
   type ChangeEvent,
+  type DragEvent,
 } from "react";
 import { Search, Loader2, Settings, X, ListPlus, Send, Upload } from "lucide-react";
 import { toast } from "sonner";
@@ -688,13 +689,20 @@ function ImportCsvDialog({
   const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
-  async function onPick(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null;
+  async function loadFile(f: File | null) {
     setFile(f);
     setPreviewRows([]);
     setPreviewError(null);
     if (!f) return;
+    if (!/\.csv$/i.test(f.name) && f.type !== "text/csv") {
+      setPreviewError("File must be a .csv");
+      setFile(null);
+      return;
+    }
     try {
       const text = await f.text();
       const Papa = (await import("papaparse")).default;
@@ -710,6 +718,37 @@ function ImportCsvDialog({
         err instanceof Error ? err.message : "Couldn't read CSV file.",
       );
     }
+  }
+
+  function onPick(e: ChangeEvent<HTMLInputElement>) {
+    void loadFile(e.target.files?.[0] ?? null);
+  }
+
+  // dragenter/dragleave fire for every nested element, so the depth
+  // counter is what keeps the highlight steady while dragging over
+  // the inner table preview.
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragOver(true);
+  }
+  function onDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  }
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragOver(false);
+    if (busy) return;
+    const f = e.dataTransfer.files?.[0] ?? null;
+    if (inputRef.current) inputRef.current.value = "";
+    void loadFile(f);
   }
 
   async function onImport() {
@@ -756,13 +795,34 @@ function ImportCsvDialog({
       <p className="mb-3 text-xs text-court-fg-muted">
         Pin export format. Duplicates (matched by email) are skipped automatically.
       </p>
-      <input
-        type="file"
-        accept=".csv,text/csv"
-        onChange={onPick}
-        disabled={busy}
-        className="block w-full text-xs text-court-fg file:mr-3 file:rounded-md file:border file:border-court-border file:bg-court-surface-subtle file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-court-fg hover:file:bg-court-accent-tint"
-      />
+      <div
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={
+          "rounded-lg border-2 border-dashed p-4 transition " +
+          (dragOver
+            ? "border-court-accent bg-court-accent-tint"
+            : "border-court-border bg-court-surface-subtle")
+        }
+      >
+        <p className="mb-2 text-center text-xs text-court-fg-muted">
+          {file
+            ? <span className="text-court-fg">{file.name}</span>
+            : dragOver
+              ? "Drop CSV to load preview"
+              : "Drag a .csv here, or pick a file"}
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv,text/csv"
+          onChange={onPick}
+          disabled={busy}
+          className="block w-full text-xs text-court-fg file:mr-3 file:rounded-md file:border file:border-court-border file:bg-court-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-court-fg hover:file:bg-court-accent-tint"
+        />
+      </div>
       {previewError && (
         <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
           {previewError}
