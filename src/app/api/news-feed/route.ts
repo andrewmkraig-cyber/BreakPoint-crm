@@ -61,18 +61,39 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  const FALLBACK_HEADLINES = [
+    {
+      headline: "News unavailable — try again shortly",
+      source: "Ace",
+      url: "#",
+      summary: "Could not load headlines. Will retry on next visit.",
+    },
+  ];
+  const fallbackResponse = () =>
+    NextResponse.json({
+      ok: true,
+      cached: false,
+      fallback: true,
+      tab,
+      generatedDate: generatedDate.toISOString().slice(0, 10),
+      headlines: FALLBACK_HEADLINES,
+    });
+
   let headlines;
   try {
-    headlines = await generateHeadlinesForTab(tab, generatedDate);
+    headlines = await Promise.race([
+      generateHeadlinesForTab(tab, generatedDate),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("News feed timed out after 25s")), 25_000),
+      ),
+    ]);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Claude call failed";
-    return NextResponse.json({ ok: false, error: msg }, { status: 502 });
+    console.error("[news-feed] generation failed, serving fallback:", e);
+    return fallbackResponse();
   }
   if (!headlines) {
-    return NextResponse.json(
-      { ok: false, error: "Claude returned no parseable headlines" },
-      { status: 502 },
-    );
+    console.error("[news-feed] no parseable headlines, serving fallback");
+    return fallbackResponse();
   }
 
   // Upsert in case a concurrent request beat us to the insert — the
