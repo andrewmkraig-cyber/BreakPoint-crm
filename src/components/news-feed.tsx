@@ -3,21 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 
-// Editorial briefing layout: header, five tabs, one lead story, three
+// Editorial briefing layout: header, four tabs, one lead story, three
 // list rows. Per-tab fetch wiring is unchanged — /api/news-feed?tab=...
-// still backs general/accounting/recruiting/ai. The "local" tab is
-// presentation-only for now and renders an empty state without firing
-// a request (the API would 400 on an unknown tab).
+// backs all four tabs.
 
-type DataTabKey = "general" | "accounting" | "recruiting" | "ai";
-type TabKey = DataTabKey | "local";
+type TabKey = "general" | "accounting" | "recruiting" | "ai";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "general", label: "Front Page" },
   { key: "accounting", label: "Public Accounting" },
   { key: "recruiting", label: "Recruiting" },
   { key: "ai", label: "AI & Tech" },
-  { key: "local", label: "Local News" },
 ];
 
 type Headline = {
@@ -50,14 +46,10 @@ export function NewsFeed() {
     accounting: { status: "idle" },
     recruiting: { status: "idle" },
     ai: { status: "idle" },
-    // Local News is UI-only; seed as ready+empty so the empty-state
-    // copy renders without firing a request that would 400.
-    local: { status: "ready", headlines: [], generatedDate: "" },
   });
   // initiatedRef lives outside React state so the fetch effect depends
-  // only on `active`. Pre-seed "local" so its idle slot never triggers
-  // a request.
-  const initiatedRef = useRef<Set<TabKey>>(new Set<TabKey>(["local"]));
+  // only on `active`.
+  const initiatedRef = useRef<Set<TabKey>>(new Set<TabKey>());
   // Read state is local-only (no persistence). Keyed by
   // `${activeTab}::${headline}` so the same article in two tabs tracks
   // independently.
