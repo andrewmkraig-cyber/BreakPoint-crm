@@ -45,6 +45,8 @@ type ChannelView = {
   info: ChannelResult;
   videos: VideoResult[];
   loading: boolean;
+  nextPageToken: string | null;
+  loadingMore: boolean;
 };
 
 const DOCK_W = 320;
@@ -67,6 +69,14 @@ export function YouTubePanel() {
   const [videoResults, setVideoResults] = useState<VideoResult[]>([]);
   const [channelResults, setChannelResults] = useState<ChannelResult[]>([]);
   const [searching, setSearching] = useState(false);
+  // Pagination cursor for the active free-text search. null = no more
+  // pages (or no search yet); string = pass to /api/youtube/search to
+  // fetch the next 50 items.
+  const [searchNextToken, setSearchNextToken] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  // Last query that produced the current results — used by Load More
+  // so a stale token doesn't fetch against an unrelated query.
+  const [lastSearchedQuery, setLastSearchedQuery] = useState("");
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState<string>("");
   const [minimized, setMinimized] = useState(false);
@@ -247,6 +257,9 @@ export function YouTubePanel() {
     setActiveVideoId(null);
     setActiveVideoTitle("");
     setChannelView(null);
+    setVideoResults([]);
+    setChannelResults([]);
+    setSearchNextToken(null);
     try {
       const res = await fetch(
         `/api/youtube/search?q=${encodeURIComponent(q)}`,
@@ -256,6 +269,7 @@ export function YouTubePanel() {
         ok?: boolean;
         error?: string;
         results?: ApiResult[];
+        nextPageToken?: string | null;
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -267,6 +281,8 @@ export function YouTubePanel() {
       setChannelResults(
         items.filter((r): r is ChannelResult => r.type === "channel"),
       );
+      setSearchNextToken(data.nextPageToken ?? null);
+      setLastSearchedQuery(q);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Search failed";
       toast.error("YouTube search failed", { description: message });
@@ -275,13 +291,58 @@ export function YouTubePanel() {
     }
   }
 
-  // Click a channel card → fetch that channel's latest 10 uploads via
+  // Append the next page of search results onto the existing lists.
+  // Uses the lastSearchedQuery instead of the live input so the
+  // recruiter can keep typing a new query without breaking pagination
+  // of the visible results.
+  async function loadMoreSearch() {
+    if (!searchNextToken || loadingMore || !lastSearchedQuery) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetch(
+        `/api/youtube/search?q=${encodeURIComponent(lastSearchedQuery)}&pageToken=${encodeURIComponent(searchNextToken)}`,
+        { cache: "no-store" },
+      );
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        results?: ApiResult[];
+        nextPageToken?: string | null;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      const items = data.results ?? [];
+      setVideoResults((prev) => [
+        ...prev,
+        ...items.filter((r): r is VideoResult => r.type === "video"),
+      ]);
+      setChannelResults((prev) => [
+        ...prev,
+        ...items.filter((r): r is ChannelResult => r.type === "channel"),
+      ]);
+      setSearchNextToken(data.nextPageToken ?? null);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Load more failed";
+      toast.error("Couldn't load more results", { description: message });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  // Click a channel card → fetch that channel's latest uploads via
   // the same route's channelId mode and switch the body to channel
   // view. Optimistic render: set channelView with loading=true so the
   // recruiter sees the channel header immediately while the fetch
   // resolves.
   async function openChannel(c: ChannelResult) {
-    setChannelView({ info: c, videos: [], loading: true });
+    setChannelView({
+      info: c,
+      videos: [],
+      loading: true,
+      nextPageToken: null,
+      loadingMore: false,
+    });
     try {
       const res = await fetch(
         `/api/youtube/search?channelId=${encodeURIComponent(c.channelId)}`,
@@ -291,6 +352,7 @@ export function YouTubePanel() {
         ok?: boolean;
         error?: string;
         results?: ApiResult[];
+        nextPageToken?: string | null;
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -298,11 +360,60 @@ export function YouTubePanel() {
       const videos = (data.results ?? []).filter(
         (r): r is VideoResult => r.type === "video",
       );
-      setChannelView({ info: c, videos, loading: false });
+      setChannelView({
+        info: c,
+        videos,
+        loading: false,
+        nextPageToken: data.nextPageToken ?? null,
+        loadingMore: false,
+      });
     } catch (e) {
       const message = e instanceof Error ? e.message : "Channel load failed";
       toast.error("Couldn't load channel", { description: message });
       setChannelView(null);
+    }
+  }
+
+  // Append the next page of a channel's uploads to the channel view.
+  async function loadMoreChannel() {
+    if (
+      !channelView ||
+      !channelView.nextPageToken ||
+      channelView.loadingMore ||
+      channelView.loading
+    ) {
+      return;
+    }
+    const cv = channelView;
+    setChannelView({ ...cv, loadingMore: true });
+    try {
+      const res = await fetch(
+        `/api/youtube/search?channelId=${encodeURIComponent(cv.info.channelId)}&pageToken=${encodeURIComponent(cv.nextPageToken!)}`,
+        { cache: "no-store" },
+      );
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        results?: ApiResult[];
+        nextPageToken?: string | null;
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      const more = (data.results ?? []).filter(
+        (r): r is VideoResult => r.type === "video",
+      );
+      setChannelView({
+        info: cv.info,
+        videos: [...cv.videos, ...more],
+        loading: false,
+        nextPageToken: data.nextPageToken ?? null,
+        loadingMore: false,
+      });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Load more failed";
+      toast.error("Couldn't load more videos", { description: message });
+      setChannelView({ ...cv, loadingMore: false });
     }
   }
 
@@ -437,6 +548,7 @@ export function YouTubePanel() {
                 view={channelView}
                 onBack={backFromChannel}
                 onPlay={playVideo}
+                onLoadMore={() => void loadMoreChannel()}
               />
             ) : searching && videoResults.length === 0 && channelResults.length === 0 ? (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
@@ -475,6 +587,12 @@ export function YouTubePanel() {
                       ))}
                     </ul>
                   </ResultSection>
+                )}
+                {searchNextToken && (
+                  <LoadMoreButton
+                    loading={loadingMore}
+                    onClick={() => void loadMoreSearch()}
+                  />
                 )}
               </div>
             )}
@@ -647,8 +765,9 @@ function ChannelViewBody(props: {
   view: ChannelView;
   onBack: () => void;
   onPlay: (v: VideoResult) => void;
+  onLoadMore: () => void;
 }) {
-  const { info, videos, loading } = props.view;
+  const { info, videos, loading, nextPageToken, loadingMore } = props.view;
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle px-2 py-2">
@@ -687,14 +806,41 @@ function ChannelViewBody(props: {
           No videos for this channel.
         </div>
       ) : (
-        <ul className="flex flex-col">
-          {videos.map((v) => (
-            <li key={`channel-vid-${v.videoId}`}>
-              <VideoRow video={v} onClick={() => props.onPlay(v)} />
-            </li>
-          ))}
-        </ul>
+        <>
+          <ul className="flex flex-col">
+            {videos.map((v) => (
+              <li key={`channel-vid-${v.videoId}`}>
+                <VideoRow video={v} onClick={() => props.onPlay(v)} />
+              </li>
+            ))}
+          </ul>
+          {nextPageToken && (
+            <LoadMoreButton loading={loadingMore} onClick={props.onLoadMore} />
+          )}
+        </>
       )}
+    </div>
+  );
+}
+
+function LoadMoreButton(props: { loading: boolean; onClick: () => void }) {
+  return (
+    <div className="flex items-center justify-center px-3 py-3">
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={props.loading}
+        onClick={props.onClick}
+      >
+        {props.loading ? (
+          <>
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+          </>
+        ) : (
+          "Load more"
+        )}
+      </Button>
     </div>
   );
 }

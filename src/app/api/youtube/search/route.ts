@@ -41,6 +41,7 @@ type YouTubeSearchItem = {
 
 type YouTubeSearchResponse = {
   items?: YouTubeSearchItem[];
+  nextPageToken?: string;
 };
 
 type ResultItem =
@@ -107,24 +108,31 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
   const channelId = (url.searchParams.get("channelId") ?? "").trim();
+  const pageToken = (url.searchParams.get("pageToken") ?? "").trim();
 
   if (!q && !channelId) {
-    return NextResponse.json({ ok: true, results: [] });
+    return NextResponse.json({ ok: true, results: [], nextPageToken: null });
   }
 
   const yt = new URL("https://www.googleapis.com/youtube/v3/search");
   yt.searchParams.set("part", "snippet");
-  yt.searchParams.set("maxResults", "10");
+  // 50 is YouTube's per-request maximum for search.list. Combined
+  // with the panel's "Load more" button (uses nextPageToken below)
+  // the recruiter can scroll through hundreds of results without
+  // running into a hard cap.
+  yt.searchParams.set("maxResults", "50");
   yt.searchParams.set("key", apiKey);
+  if (pageToken) yt.searchParams.set("pageToken", pageToken);
 
   if (channelId) {
-    // Channel-uploads mode: latest 10 videos from the channel.
+    // Channel-uploads mode: latest videos from a single channel,
+    // newest first.
     yt.searchParams.set("type", "video");
     yt.searchParams.set("channelId", channelId);
     yt.searchParams.set("order", "date");
     if (q) yt.searchParams.set("q", q);
   } else {
-    // Free-text mode: videos + channels.
+    // Free-text mode: videos + channels interleaved.
     yt.searchParams.set("type", "video,channel");
     yt.searchParams.set("q", q);
   }
@@ -149,5 +157,9 @@ export async function GET(req: NextRequest) {
     .map(projectItem)
     .filter((r): r is ResultItem => r !== null);
 
-  return NextResponse.json({ ok: true, results });
+  return NextResponse.json({
+    ok: true,
+    results,
+    nextPageToken: data.nextPageToken ?? null,
+  });
 }
