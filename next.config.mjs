@@ -32,7 +32,10 @@ const CSP = [
   // endpoint — fetched directly from the browser since the response
   // is identical for everyone all day and a server proxy would just
   // add latency.
-  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.open-meteo.com https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co https://lichess.org",
+  // en.wikipedia.org is the "On This Day" pill's REST source — fetched
+  // straight from the browser since the response is identical for
+  // every recruiter and a server proxy would only add latency.
+  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.open-meteo.com https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co https://lichess.org https://en.wikipedia.org",
   // media-src defaults to default-src ('self'), which would block the
   // Spotify SDK's MSE-backed audio streams from *.scdn.co.
   "media-src 'self' https://*.scdn.co https://*.spotify.com",
