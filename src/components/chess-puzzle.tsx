@@ -4,13 +4,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Chess, type Square } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-// Interactive Lichess daily puzzle. Pulls /api/puzzle/daily, renders
+// Interactive Lichess puzzle in the 800-1200 rating band. Pulls a
+// random easy puzzle from /api/puzzle/next?difficulty=easiest, renders
 // the position with react-chessboard, and validates each user move
-// against the published solution. Convention: solution[0] is the
-// user's first move (FEN side-to-move == user's color); odd-indexed
-// moves are auto-played by the opponent.
+// against the published solution. The daily endpoint trends 1800-2200
+// rating which is too sharp for a quick dashboard distraction; the
+// `easiest` difficulty band on the `next` endpoint tops out around
+// 1200, which is the level Andrew asked for. The endpoint ships
+// initialPly without an explicit fen, so deriveFen() replays the PGN.
+//
+// Convention: solution[0] is the user's first move (FEN side-to-move
+// == user's color); odd-indexed moves are auto-played by the opponent.
 
-type LichessDailyResponse = {
+type LichessPuzzleResponse = {
   puzzle?: {
     id?: string;
     rating?: number;
@@ -47,7 +53,7 @@ function parseUci(uci: string): UciMove {
 
 // Lichess daily endpoint sometimes ships only a PGN — derive the FEN
 // by replaying the game up to initialPly when puzzle.fen is missing.
-function deriveFen(payload: LichessDailyResponse): string | null {
+function deriveFen(payload: LichessPuzzleResponse): string | null {
   const fen = payload.puzzle?.fen;
   if (fen) return fen;
   const pgn = payload.game?.pgn;
@@ -77,11 +83,12 @@ export function ChessPuzzle() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("https://lichess.org/api/puzzle/daily", {
-          cache: "no-store",
-        });
+        const res = await fetch(
+          "https://lichess.org/api/puzzle/next?difficulty=easiest",
+          { cache: "no-store" },
+        );
         if (!res.ok) return;
-        const json = (await res.json()) as LichessDailyResponse;
+        const json = (await res.json()) as LichessPuzzleResponse;
         if (cancelled) return;
         const id = json.puzzle?.id;
         const solution = json.puzzle?.solution ?? [];
@@ -139,7 +146,7 @@ export function ChessPuzzle() {
       {open && (
         <div
           role="dialog"
-          aria-label="Today's chess puzzle"
+          aria-label="Chess puzzle"
           className="absolute bottom-full left-0 z-20 mb-2 w-[360px] rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
           <PuzzleBoard puzzle={puzzle} />
@@ -299,13 +306,11 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
     <div>
       <div className="flex items-baseline justify-between">
         <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
-          Today&apos;s Puzzle
+          Chess Puzzle
         </div>
-        <div className="text-xs text-court-fg-muted">
-          <span className="font-stat font-semibold text-court-fg">
-            {puzzle.rating}
-          </span>{" "}
-          rating
+        <div className="inline-flex items-baseline gap-1 rounded-full bg-court-accent-tint px-2 py-0.5 text-[11px] font-semibold text-court-accent-dark">
+          <span className="font-stat tabular-nums">{puzzle.rating}</span>
+          <span className="font-normal opacity-80">rating</span>
         </div>
       </div>
       <div className="mt-1 text-sm font-semibold text-court-fg">{heading}</div>
