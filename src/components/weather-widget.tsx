@@ -3,11 +3,10 @@
 import { useEffect, useState } from "react";
 import {
   Cloud,
-  CloudFog,
   CloudLightning,
   CloudRain,
   CloudSnow,
-  CloudSun,
+  Moon,
   Sun,
   type LucideIcon,
 } from "lucide-react";
@@ -37,20 +36,22 @@ type Weather = {
   code: number;
   hourly: Hourly[];
   daily: Daily[];
+  isCurrentDay: boolean;
 };
 
 // Open-Meteo follows WMO weather codes. Buckets:
-//   0           — clear
-//   1–3         — partly cloudy / overcast
+//   0, 1        — clear / mainly clear
+//   2           — partly cloudy (2-tone glyph)
+//   3           — overcast
 //   45, 48      — fog
 //   51–67       — drizzle / rain
 //   71–77, 85–86 — snow
 //   80–82       — rain showers
 //   95–99       — thunderstorm
-function iconFor(code: number): LucideIcon {
-  if (code === 0) return Sun;
-  if (code <= 3) return CloudSun;
-  if (code === 45 || code === 48) return CloudFog;
+function iconFor(code: number, isDay: boolean): LucideIcon {
+  if (code === 0 || code === 1) return isDay ? Sun : Moon;
+  if (code === 3) return Cloud;
+  if (code === 45 || code === 48) return Cloud;
   if (code >= 95) return CloudLightning;
   if ((code >= 71 && code <= 77) || code === 85 || code === 86) return CloudSnow;
   if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return CloudRain;
@@ -58,11 +59,11 @@ function iconFor(code: number): LucideIcon {
 }
 
 // Tailwind classes per weather bucket. Used for single-tone icons —
-// partly-cloudy buckets (codes 1–2) bypass this and render via
-// PartlyCloudyIcon below so the sun and cloud halves can carry
-// different colors.
-function colorFor(code: number): string {
-  if (code === 0) return "text-amber-400";
+// code 2 (partly cloudy) bypasses this and renders via the 2-tone
+// PartlyCloudy{Day,Night}Icon glyphs below so the celestial body and
+// cloud halves can carry different colors.
+function colorFor(code: number, isDay: boolean): string {
+  if (code === 0 || code === 1) return isDay ? "text-amber-400" : "text-slate-300";
   if (code === 3) return "text-court-fg-muted";
   if (code === 45 || code === 48) return "text-court-fg-muted";
   if (code >= 95) return "text-purple-500";
@@ -71,13 +72,11 @@ function colorFor(code: number): string {
   return "text-court-fg-muted";
 }
 
-// Custom 2-tone partly-cloudy glyph. Lucide's CloudSun renders all
-// paths in `currentColor`, which makes the cloud body and the sun rays
-// share a single tint — visually it always reads as either "all yellow"
-// or "all grey" depending on which bucket we apply. Splitting the paths
-// into two <g> groups lets the sun half stay amber while the cloud body
-// stays muted grey.
-function PartlyCloudyIcon({ className }: { className?: string }) {
+// Day 2-tone partly-cloudy glyph: amber sun + muted-grey cloud.
+// Lucide's CloudSun renders all paths in `currentColor`, so we split
+// the sun rays and cloud body into separate <g> groups to tint each
+// half independently.
+function PartlyCloudyDayIcon({ className }: { className?: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -103,24 +102,67 @@ function PartlyCloudyIcon({ className }: { className?: string }) {
   );
 }
 
-// Single dispatch point for every weather-icon render in the widget.
-// Codes 1–2 (mainly clear / partly cloudy) get the 2-tone glyph; every
-// other bucket falls back to the matching Lucide icon plus a single
-// tint from colorFor.
+// Night counterpart: slate moon + muted-grey cloud. Paths copied from
+// Lucide's CloudMoon icon and split so the moon and cloud carry
+// different tints.
+function PartlyCloudyNightIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <g className="text-slate-300" stroke="currentColor">
+        <path d="M18.376 14.512a6 6 0 0 0 3.461-4.127c.148-.625-.659-.97-1.248-.714a4 4 0 0 1-5.259-5.26c.255-.589-.09-1.395-.716-1.248a6 6 0 0 0-4.594 5.36" />
+      </g>
+      <g className="text-court-fg-muted" stroke="currentColor">
+        <path d="M13 16a3 3 0 0 1 0 6H7a5 5 0 1 1 4.9-6z" />
+      </g>
+    </svg>
+  );
+}
+
+// Single dispatch point for every weather-icon render. Code 2 (partly
+// cloudy) gets the 2-tone glyph; every other bucket falls back to the
+// matching Lucide icon plus a single tint from colorFor. The same
+// (code, isDay) pair always produces the same icon and color so the
+// current, hourly, and daily views stay visually consistent.
 function WeatherIcon({
   code,
+  isDay,
   sizeClass,
 }: {
   code: number;
+  isDay: boolean;
   sizeClass: string;
 }) {
-  if (code === 1 || code === 2) {
-    return <PartlyCloudyIcon className={sizeClass} />;
+  if (code === 2) {
+    return isDay ? (
+      <PartlyCloudyDayIcon className={sizeClass} />
+    ) : (
+      <PartlyCloudyNightIcon className={sizeClass} />
+    );
   }
-  const Icon = iconFor(code);
+  const Icon = iconFor(code, isDay);
   return (
-    <Icon className={`${sizeClass} ${colorFor(code)}`} aria-hidden="true" />
+    <Icon
+      className={`${sizeClass} ${colorFor(code, isDay)}`}
+      aria-hidden="true"
+    />
   );
+}
+
+// Hour-of-day daylight check for the hourly strip: night runs from
+// 8pm through 5:59am local time. Cheap and predictable — we don't try
+// to thread per-hour sunrise/sunset through every cell.
+function isHourDay(iso: string): boolean {
+  const h = new Date(iso).getHours();
+  return h >= 6 && h < 20;
 }
 
 // Day-of-month with English ordinal suffix ("7th", "1st", "22nd").
@@ -223,7 +265,7 @@ export function WeatherWidget() {
         `?latitude=${lat}&longitude=${lon}` +
         `&current=temperature_2m,apparent_temperature,weather_code` +
         `&hourly=temperature_2m,precipitation_probability,weather_code` +
-        `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max` +
+        `&daily=temperature_2m_max,temperature_2m_min,weather_code,precipitation_probability_max,sunrise,sunset` +
         `&temperature_unit=fahrenheit&wind_speed_unit=mph` +
         `&timezone=auto&forecast_days=${DAYS_AHEAD}`;
       try {
@@ -250,6 +292,8 @@ export function WeatherWidget() {
             temperature_2m_min?: number[];
             weather_code?: number[];
             precipitation_probability_max?: number[];
+            sunrise?: string[];
+            sunset?: string[];
           };
         };
         console.log("[weather] open-meteo response", json);
@@ -313,8 +357,22 @@ export function WeatherWidget() {
           });
         }
 
+        // Current day/night derived from today's sunrise/sunset. Both
+        // come back in the local timezone (timezone=auto on the
+        // request) so a plain Date() comparison against the wall-clock
+        // works without any extra TZ math.
+        const sunriseIso = json.daily?.sunrise?.[0];
+        const sunsetIso = json.daily?.sunset?.[0];
+        let isCurrentDay = true;
+        if (sunriseIso && sunsetIso) {
+          const nowMs = Date.now();
+          const sunriseMs = new Date(sunriseIso).getTime();
+          const sunsetMs = new Date(sunsetIso).getTime();
+          isCurrentDay = nowMs >= sunriseMs && nowMs < sunsetMs;
+        }
+
         if (!cancelled) {
-          setData({ tempF, apparentF, code, hourly, daily });
+          setData({ tempF, apparentF, code, hourly, daily, isCurrentDay });
         }
       } catch (e) {
         console.warn("[weather] open-meteo fetch threw", e);
@@ -359,7 +417,11 @@ export function WeatherWidget() {
         className="inline-flex cursor-default items-center gap-1 text-court-fg"
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
       >
-        <WeatherIcon code={data.code} sizeClass="h-4 w-4" />
+        <WeatherIcon
+          code={data.code}
+          isDay={data.isCurrentDay}
+          sizeClass="h-4 w-4"
+        />
         <span className="text-sm font-medium tabular-nums">{rounded}°</span>
       </div>
 
@@ -379,7 +441,11 @@ export function WeatherWidget() {
               the dashboard. */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <WeatherIcon code={data.code} sizeClass="h-10 w-10" />
+              <WeatherIcon
+                code={data.code}
+                isDay={data.isCurrentDay}
+                sizeClass="h-10 w-10"
+              />
               <div className="flex flex-col">
                 <div className="flex items-baseline gap-2">
                   <span className="font-stat text-3xl font-bold leading-none text-court-fg">
@@ -416,7 +482,11 @@ export function WeatherWidget() {
                       <div className="text-[10px] text-court-fg-muted">
                         {i === 0 ? "Now" : formatHour(h.time)}
                       </div>
-                      <WeatherIcon code={h.code} sizeClass="h-4 w-4" />
+                      <WeatherIcon
+                        code={h.code}
+                        isDay={isHourDay(h.time)}
+                        sizeClass="h-4 w-4"
+                      />
                       <div className="text-xs font-medium tabular-nums text-court-fg">
                         {Math.round(h.tempF)}°
                       </div>
@@ -430,7 +500,8 @@ export function WeatherWidget() {
             </div>
           )}
 
-          {/* DAILY */}
+          {/* DAILY — forecast tiles always render the daytime icon
+              since each row represents a whole day, not a moment. */}
           {data.daily.length > 0 && (
             <div className="mt-4">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
@@ -447,7 +518,11 @@ export function WeatherWidget() {
                       <span className="w-12 text-court-fg-muted">
                         {formatDayShort(d.date, i)}
                       </span>
-                      <WeatherIcon code={d.code} sizeClass="h-4 w-4" />
+                      <WeatherIcon
+                        code={d.code}
+                        isDay={true}
+                        sizeClass="h-4 w-4"
+                      />
                       <span className="w-10 tabular-nums text-court-accent">
                         {showRain ? `${d.precipPctMax}%` : ""}
                       </span>
