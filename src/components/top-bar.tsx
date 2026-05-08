@@ -9,6 +9,7 @@ import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 import { InConversation } from "@/components/icons/in-conversation";
 import { useClaudePanel } from "@/lib/claude-panel-context";
 import { useYouTubePanel } from "@/components/youtube-panel/YouTubePanelProvider";
+import { WeatherWidget } from "@/components/weather-widget";
 
 export function TopBar() {
   const { data: session } = useSession();
@@ -81,7 +82,8 @@ export function TopBar() {
         </button>
       </div>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-3">
+        <WeatherWidget />
         <TopBarProfileCard name={user?.name ?? null} imageUrl={user?.image ?? null} />
       </div>
     </header>
