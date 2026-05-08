@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Inter } from "next/font/google";
+import { Bricolage_Grotesque, Inter } from "next/font/google";
 import { getServerSession } from "next-auth";
 import "./globals.css";
 import { Providers } from "@/components/providers";
@@ -12,10 +12,14 @@ import {
   CourtModeProvider,
 } from "@/lib/court-mode";
 
-const playfair = Playfair_Display({
+// Bricolage Grotesque is a chunky modern grotesque — heavy weights
+// land in the same "friendly premium display sans" register as
+// Yahoo's wordmark, which the recruiter pointed at as the look they
+// wanted for the Ace mark and page headers.
+const bricolage = Bricolage_Grotesque({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-playfair",
+  variable: "--font-display",
 });
 
 const inter = Inter({
@@ -60,7 +64,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={`${playfair.variable} ${inter.variable}`}>
+    <html lang="en" className={`${bricolage.variable} ${inter.variable}`}>
       <body className="font-sans">
         {/* Runs before React hydrates and stamps data-surface +
             data-theme onto <html> based on the persisted court mode.

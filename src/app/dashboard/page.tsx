@@ -209,17 +209,22 @@ export default async function DashboardPage() {
     // May 4–10, 2026"), so it renders here as a small line just
     // above the KPI grid.
     <div className="flex w-full flex-col gap-6">
-      <p className="text-xs text-court-fg-muted">
-        {formatEasternWeekRange(weekStart, weekEnd)}
-      </p>
+      {/* Week label sits tight against the KPI grid (gap-2) instead
+          of inheriting the page's gap-6 — at gap-6 it floated in
+          dead space and read like its own row. */}
+      <div className="flex flex-col gap-2">
+        <p className="font-serif text-[13px] font-semibold tracking-tight text-court-fg-muted">
+          Activity for {formatEasternWeekRange(weekStart, weekEnd)}
+        </p>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
         <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
         <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
         <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
+        </div>
       </div>
 
       <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />

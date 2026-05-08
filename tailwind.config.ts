@@ -87,7 +87,12 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        serif: ["var(--font-playfair)", "Georgia", "serif"],
+        // `serif` historically meant Playfair Display. We swapped to
+        // Bricolage Grotesque (a heavy modern grotesque) for the Ace
+        // wordmark + page headers — the family name stays `serif` so
+        // every existing `font-serif` callsite picks it up without an
+        // app-wide rename, even though the font is technically a sans.
+        serif: ["var(--font-display)", "system-ui", "sans-serif"],
       },
       borderRadius: {
         lg: "0.75rem",

@@ -36,13 +36,16 @@ export function BrandMark({
         <circle cx="46" cy="30" r="4.5" fill="#7BB85B" />
       </svg>
       <div className="leading-tight">
-        <div className="font-serif text-[22px] font-bold tracking-tight text-court-fg [[data-in-sidebar]_&]:text-court-sidebar-fg">
+        <div
+          className="font-serif text-[24px] font-extrabold leading-none text-court-fg [[data-in-sidebar]_&]:text-court-sidebar-fg"
+          style={{ letterSpacing: "-0.03em" }}
+        >
           Ace
         </div>
         {withTag && (
-          <div className="mt-0.5 font-serif text-[12px] italic text-court-fg-muted [[data-in-sidebar]_&]:text-court-sidebar-fg-muted">
+          <div className="mt-1 font-serif text-[12px] font-medium text-court-fg-muted [[data-in-sidebar]_&]:text-court-sidebar-fg-muted">
             by{" "}
-            <span className="font-semibold text-court-accent-dark [[data-in-sidebar]_&]:text-court-sidebar-fg">
+            <span className="font-bold text-court-accent-dark [[data-in-sidebar]_&]:text-court-sidebar-fg">
               BreakPoint Talent
             </span>
           </div>
