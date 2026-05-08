@@ -57,6 +57,62 @@ function iconFor(code: number): LucideIcon {
   return Cloud;
 }
 
+// Tailwind classes per weather bucket. Sun = amber, partly sunny = amber
+// (still sun visible), overcast / fog = muted grey (court token), rain
+// = blue, snow = sky, thunder = purple. Strings are returned (not
+// concatenated inline) so Tailwind's static analyzer keeps the classes
+// in the production bundle.
+function colorFor(code: number): string {
+  if (code === 0) return "text-amber-400";
+  if (code === 1 || code === 2) return "text-amber-400";
+  if (code === 3) return "text-court-fg-muted";
+  if (code === 45 || code === 48) return "text-court-fg-muted";
+  if (code >= 95) return "text-purple-500";
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "text-sky-300";
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "text-blue-500";
+  return "text-court-fg-muted";
+}
+
+// Day-of-month with English ordinal suffix ("7th", "1st", "22nd").
+// Intl.DateTimeFormat doesn't surface ordinals, so we fold this in by
+// hand for the "Thursday, May 7th, 2026" header in the popover.
+function ordinalSuffix(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return "th";
+  switch (n % 10) {
+    case 1:
+      return "st";
+    case 2:
+      return "nd";
+    case 3:
+      return "rd";
+    default:
+      return "th";
+  }
+}
+
+function formatTodayLong(): string {
+  const d = new Date();
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    weekday: "long",
+    timeZone: "America/New_York",
+  }).format(d);
+  const month = new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    timeZone: "America/New_York",
+  }).format(d);
+  const dayParts = new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    timeZone: "America/New_York",
+  }).format(d);
+  const day = Number(dayParts);
+  const year = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    timeZone: "America/New_York",
+  }).format(d);
+  return `${weekday}, ${month} ${day}${ordinalSuffix(day)}, ${year}`;
+}
+
 function descriptionFor(code: number): string {
   if (code === 0) return "Clear";
   if (code === 1) return "Mainly Clear";
@@ -254,7 +310,7 @@ export function WeatherWidget() {
         className="inline-flex cursor-default items-center gap-1 text-court-fg"
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
       >
-        <Icon className="h-4 w-4 text-court-fg-muted" aria-hidden="true" />
+        <Icon className={`h-4 w-4 ${colorFor(data.code)}`} aria-hidden="true" />
         <span className="text-sm font-medium tabular-nums">{rounded}°</span>
       </div>
 
@@ -269,20 +325,32 @@ export function WeatherWidget() {
           aria-label="Forecast"
           className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
-          {/* CURRENT */}
-          <div className="flex items-center gap-3">
-            <Icon className="h-10 w-10 text-court-fg-muted" aria-hidden="true" />
-            <div className="flex flex-col">
-              <div className="flex items-baseline gap-2">
-                <span className="font-stat text-3xl font-bold leading-none text-court-fg">
-                  {rounded}°
-                </span>
-                <span className="text-[11px] text-court-fg-muted">
-                  Feels {apparentRounded}°
+          {/* CURRENT — left: icon + temp + description; right: today's
+              full date so the recruiter can read it without leaving
+              the dashboard. */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <Icon
+                className={`h-10 w-10 ${colorFor(data.code)}`}
+                aria-hidden="true"
+              />
+              <div className="flex flex-col">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-stat text-3xl font-bold leading-none text-court-fg">
+                    {rounded}°
+                  </span>
+                  <span className="text-[11px] text-court-fg-muted">
+                    Feels {apparentRounded}°
+                  </span>
+                </div>
+                <span className="mt-1 text-sm text-court-fg">
+                  {description}
                 </span>
               </div>
-              <span className="mt-1 text-sm text-court-fg">{description}</span>
             </div>
+            <span className="max-w-[8rem] text-right text-[11px] leading-snug text-court-fg-muted">
+              {formatTodayLong()}
+            </span>
           </div>
 
           {/* HOURLY */}
@@ -304,7 +372,7 @@ export function WeatherWidget() {
                         {i === 0 ? "Now" : formatHour(h.time)}
                       </div>
                       <HIcon
-                        className="h-4 w-4 text-court-fg-muted"
+                        className={`h-4 w-4 ${colorFor(h.code)}`}
                         aria-hidden="true"
                       />
                       <div className="text-xs font-medium tabular-nums text-court-fg">
@@ -339,7 +407,7 @@ export function WeatherWidget() {
                         {formatDayShort(d.date, i)}
                       </span>
                       <DIcon
-                        className="h-4 w-4 text-court-fg-muted"
+                        className={`h-4 w-4 ${colorFor(d.code)}`}
                         aria-hidden="true"
                       />
                       <span className="w-10 tabular-nums text-court-accent">
