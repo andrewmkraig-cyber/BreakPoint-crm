@@ -29,13 +29,21 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       : "Fees earned on placements that hit start date.";
 
   return (
-    <section className="rounded-2xl border border-court-border bg-court-surface p-8 shadow-md">
+    <section className="rounded-[32px] bg-white p-10 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_16px_40px_rgba(16,36,24,0.04)] dark:bg-court-surface">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold uppercase tracking-widest text-court-fg">
+          <h2
+            className="font-semibold tracking-[-0.04em] text-court-fg"
+            style={{ fontSize: "28px", lineHeight: 1.1 }}
+          >
             Billing Tower
           </h2>
-          <div className="mt-1 h-0.5 w-12 rounded-full bg-court-accent" />
+          <p
+            className="mt-1 text-court-fg-muted"
+            style={{ fontSize: "14px" }}
+          >
+            Revenue and collections overview
+          </p>
         </div>
         <div className="relative">
           <select
@@ -53,7 +61,7 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
         </div>
       </div>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
         <Metric
           label="Cash Collected"
@@ -91,24 +99,24 @@ function Metric({
   hint: string;
   tone: "accent" | "neutral";
 }) {
-  // Accent card carries the headline metric (Q2 Billed Revenue) — court-tint
-  // background + court-accent-dark text pulls the eye to it. Neutral card
-  // (Cash Collected) sits in surface tone so the pair reads as primary +
-  // secondary instead of two equal-weight numbers.
+  // Headline metric (Q2 Billed Revenue) sits on a soft sage tint;
+  // Cash Collected stays on white with a subtle inset border so the
+  // pair reads as primary + secondary instead of two equal weights.
   const accent = tone === "accent";
   const wrapper = accent
-    ? "rounded-2xl border border-court-accent/20 bg-court-accent-tint p-6"
-    : "rounded-2xl border border-court-border bg-court-surface p-6";
-  const labelCls = accent
-    ? "text-xs font-semibold tracking-widest uppercase text-court-accent-dark"
-    : "text-xs font-semibold tracking-widest uppercase text-court-fg-muted";
+    ? "rounded-3xl bg-[#F3F8EF] p-8 dark:bg-court-accent-tint"
+    : "rounded-3xl bg-white p-8 ring-1 ring-inset ring-court-border-soft dark:bg-court-surface dark:ring-court-border";
+  const labelCls =
+    "text-[12px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted";
   const valueCls = accent
-    ? "mt-2 font-stat text-4xl font-bold leading-none tracking-tight text-court-accent-dark"
-    : "mt-2 font-stat text-4xl font-bold leading-none tracking-tight text-court-fg";
+    ? "mt-3 font-stat font-semibold leading-none tracking-[-0.07em] tabular-nums text-court-fg dark:text-court-accent-dark"
+    : "mt-3 font-stat font-semibold leading-none tracking-[-0.07em] tabular-nums text-court-fg";
   return (
     <div className={wrapper}>
       <div className={labelCls}>{label}</div>
-      <div className={valueCls}>{value}</div>
+      <div className={valueCls} style={{ fontSize: "58px" }}>
+        {value}
+      </div>
       <p className="mt-3 text-sm text-court-fg-muted">{hint}</p>
     </div>
   );

@@ -109,17 +109,29 @@ export function TopBarPageTitle() {
 
   if (!spec.title.label) return null;
 
+  // Dashboard gets the larger sans-serif treatment per the premium
+  // dashboard pass; every other page keeps the existing serif chrome
+  // so the topbar reads consistently across Jobs / Candidates / Mail.
+  const isDashboard = pathname === "/dashboard";
+  const titleClass = isDashboard
+    ? "font-sans font-semibold text-court-fg"
+    : "font-serif text-2xl font-semibold text-court-fg";
+  const titleStyle = isDashboard
+    ? { fontSize: "34px", letterSpacing: "-0.035em", lineHeight: 1.1 }
+    : undefined;
+
   return (
     <div className="flex min-w-0 items-center gap-3">
       {spec.title.href ? (
         <Link
           href={spec.title.href}
-          className="font-serif text-2xl font-semibold text-court-fg transition hover:text-brand-dark"
+          className={`${titleClass} transition hover:text-brand-dark`}
+          style={titleStyle}
         >
           {spec.title.label}
         </Link>
       ) : (
-        <h1 className="font-serif text-2xl font-semibold text-court-fg">
+        <h1 className={titleClass} style={titleStyle}>
           {spec.title.label}
         </h1>
       )}

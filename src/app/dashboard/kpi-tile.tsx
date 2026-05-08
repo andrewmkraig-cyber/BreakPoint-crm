@@ -10,13 +10,20 @@ export function KpiTile({
   icon: LucideIcon;
 }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm transition hover:border-court-accent/40">
-      <div className="inline-flex shrink-0 rounded-xl bg-court-accent-tint p-2">
-        <Icon className="h-5 w-5 text-court-accent" />
+    <div className="flex flex-col gap-5 rounded-3xl bg-white p-8 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.03)] dark:bg-court-surface">
+      <div
+        className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EFF5EB] text-[#1F6A3A] dark:bg-court-accent-tint dark:text-court-accent"
+        aria-hidden
+      >
+        <Icon className="h-5 w-5" />
       </div>
-      <div className="min-w-0 flex-1">
-        <div className="text-[11px] font-semibold uppercase tracking-widest text-court-fg-muted">{label}</div>
-        <div className="font-stat text-4xl font-bold leading-tight text-court-fg">{value}</div>
+      <div className="flex flex-col gap-2">
+        <div className="text-[12px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+          {label}
+        </div>
+        <div className="font-stat text-[56px] font-semibold leading-none tracking-[-0.06em] tabular-nums text-court-fg">
+          {value}
+        </div>
       </div>
     </div>
   );
