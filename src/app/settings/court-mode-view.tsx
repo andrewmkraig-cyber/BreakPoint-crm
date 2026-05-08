@@ -18,25 +18,101 @@ import { cn } from "@/lib/utils";
 // Night is selected because Night is inherently dark — flipping
 // the theme attr is a no-op there and would mislead the recruiter.
 
+// Palette mirrors the real --court-* tokens for that (surface, theme)
+// pair, pulled directly from globals.css so each preview thumbnail
+// looks like the surface actually does. sidebarFg / sidebarMark
+// exist because the sidebar can carry a different bg from the main
+// area (Grass light is dark green, Clay light is tan), so its text
+// and brand-dot need their own contrast-aware values.
 type Palette = {
   bg: string;
   sidebar: string;
+  sidebarFg: string;
+  sidebarMark?: string; // brand dot on sidebar; defaults to `accent`
   fg: string;
   fgMuted: string;
   accent: string;
   border: string;
 };
 
+const HARD_LIGHT: Palette = {
+  bg: "#FFFFFF",
+  sidebar: "#FAFAFB",
+  sidebarFg: "#1A2332",
+  fg: "#1A2332",
+  fgMuted: "#6B7280",
+  accent: "#5A9642",
+  border: "#E5E7EB",
+};
+const HARD_DARK: Palette = {
+  bg: "#0E1620",
+  sidebar: "#16202E",
+  sidebarFg: "#F2F5F9",
+  fg: "#F2F5F9",
+  fgMuted: "#A8B5C8",
+  accent: "#4A8FD9",
+  border: "#1F2D40",
+};
+const CLAY_LIGHT: Palette = {
+  bg: "#FBF3EC",
+  sidebar: "#E8D2BD",
+  sidebarFg: "#2A1409",
+  fg: "#2A1409",
+  fgMuted: "#6B3A20",
+  accent: "#B7410E",
+  border: "#D6BCA3",
+};
+const CLAY_DARK: Palette = {
+  bg: "#1C1613",
+  sidebar: "#2A1B14",
+  sidebarFg: "#F8EBDC",
+  fg: "#F8EBDC",
+  fgMuted: "#D4BFAE",
+  accent: "#E89055",
+  border: "#402E26",
+};
+const GRASS_LIGHT: Palette = {
+  bg: "#F4F8F1",
+  sidebar: "#1F5638",
+  sidebarFg: "#FFFFFF",
+  // Sidebar bg matches accent in Grass light, so the brand dot needs
+  // a lighter green to stay visible.
+  sidebarMark: "#7BB85B",
+  fg: "#0F2418",
+  fgMuted: "#3D5046",
+  accent: "#1F5638",
+  border: "#D0DCC8",
+};
+const GRASS_DARK: Palette = {
+  bg: "#0C1410",
+  sidebar: "#11281C",
+  sidebarFg: "#F0F5EE",
+  fg: "#F0F5EE",
+  fgMuted: "#A8C0B0",
+  accent: "#7BB85B",
+  border: "#1A3A28",
+};
+const NIGHT: Palette = {
+  bg: "#0F1012",
+  sidebar: "#18191C",
+  sidebarFg: "#F4F5F7",
+  fg: "#F4F5F7",
+  fgMuted: "#B8BCC2",
+  accent: "#7BB85B",
+  border: "#23252A",
+};
+
 const SURFACES: Array<{
   id: CourtSurface;
   label: string;
-  palette: Palette;
+  palettes: { light: Palette; dark: Palette };
   accentDot?: string;
 }> = [
-  { id: "hard",  label: "Hard Court",  palette: { bg: "#F0F6FB", sidebar: "#FFFFFF", fg: "#111111", fgMuted: "#666666", accent: "#5A9642", border: "#D1DCEA" } },
-  { id: "clay",  label: "Clay Court",  palette: { bg: "#F8EADA", sidebar: "#FFFFFF", fg: "#111111", fgMuted: "#666666", accent: "#C66B3D", border: "#DEC0A2" } },
-  { id: "grass", label: "Grass Court", palette: { bg: "#E6F1E4", sidebar: "#FFFFFF", fg: "#111111", fgMuted: "#666666", accent: "#1F6131", border: "#C4D9C2" } },
-  { id: "night", label: "Night Court", palette: { bg: "#141414", sidebar: "#1C1C1C", fg: "#ECEDEF", fgMuted: "#8E9094", accent: "#7BB85B", border: "#2E2E2E" }, accentDot: "#7BB85B" },
+  { id: "hard",  label: "Hard Court",  palettes: { light: HARD_LIGHT,  dark: HARD_DARK  } },
+  { id: "clay",  label: "Clay Court",  palettes: { light: CLAY_LIGHT,  dark: CLAY_DARK  } },
+  { id: "grass", label: "Grass Court", palettes: { light: GRASS_LIGHT, dark: GRASS_DARK } },
+  // Night is inherently dark — same palette regardless of theme.
+  { id: "night", label: "Night Court", palettes: { light: NIGHT,       dark: NIGHT      }, accentDot: "#7BB85B" },
 ];
 
 export function CourtModeView() {
@@ -95,7 +171,13 @@ export function CourtModeView() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {SURFACES.map((s) => {
           const active = surface === s.id;
-          const p = s.palette;
+          // Night ignores the theme attr (always dark); other surfaces
+          // pick their palette by the toggled theme so the swatch
+          // reflects what the recruiter would actually see.
+          const previewTheme: CourtTheme =
+            s.id === "night" ? "dark" : theme;
+          const p = s.palettes[previewTheme];
+          const sidebarMark = p.sidebarMark ?? p.accent;
           return (
             <button
               key={s.id}
@@ -115,13 +197,13 @@ export function CourtModeView() {
                   style={{ background: p.sidebar, borderColor: p.border }}
                 >
                   <div className="mt-2.5 ml-2 flex items-center gap-1">
-                    <div className="h-2 w-2 rounded-full" style={{ background: p.accent }} />
-                    <div className="h-1.5 w-7 rounded-sm" style={{ background: p.fg, opacity: 0.85 }} />
+                    <div className="h-2 w-2 rounded-full" style={{ background: sidebarMark }} />
+                    <div className="h-1.5 w-7 rounded-sm" style={{ background: p.sidebarFg, opacity: 0.85 }} />
                   </div>
                   <div className="mt-3 ml-2 space-y-1.5">
-                    <div className="h-1.5 w-12 rounded-sm" style={{ background: p.accent, opacity: 0.85 }} />
-                    <div className="h-1.5 w-10 rounded-sm" style={{ background: p.fg, opacity: 0.3 }} />
-                    <div className="h-1.5 w-11 rounded-sm" style={{ background: p.fg, opacity: 0.3 }} />
+                    <div className="h-1.5 w-12 rounded-sm" style={{ background: sidebarMark, opacity: 0.85 }} />
+                    <div className="h-1.5 w-10 rounded-sm" style={{ background: p.sidebarFg, opacity: 0.35 }} />
+                    <div className="h-1.5 w-11 rounded-sm" style={{ background: p.sidebarFg, opacity: 0.35 }} />
                   </div>
                 </div>
                 <div className="absolute bottom-0 left-[36%] right-0 top-0 p-2.5">
