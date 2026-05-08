@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { applyRefreshedSpotifyCookies, spotifyApiProxy } from "@/lib/spotify";
 
-// GET /v1/playlists/{id} — full playlist payload (header + tracks).
-// Caller can pass ?kind=album to route through /v1/albums/{id}
-// instead so the panel's playlist view component can reuse the same
-// fetch contract for both resource types.
+// Playlist / album detail fetch.
+//
+// The original implementation pulled everything from /v1/playlists/{id}
+// (header + embedded tracks). That endpoint started returning empty
+// tracks for plenty of legitimate user-saved playlists after Spotify's
+// late-2025 changes — the panel showed "0 songs" even with market=US.
+//
+// We now fetch metadata and tracks in parallel through the dedicated
+// sub-endpoint:
+//   /v1/playlists/{id}                — header (name, owner, image, total)
+//   /v1/playlists/{id}/tracks         — actual tracks
+// Same split for albums via /v1/albums/{id} + /v1/albums/{id}/tracks.
+// market=US on every call so region-restricted tracks still come
+// through.
 
 export const dynamic = "force-dynamic";
 
@@ -15,20 +25,54 @@ type Track = {
   name?: string;
   uri?: string;
   duration_ms?: number;
-  artists?: ArtistRef[];
-  album?: { name?: string; images?: Image[] };
+  artists?: (ArtistRef | null)[];
+  album?: { name?: string; images?: Image[] } | null;
 };
-type PlaylistTrack = { track?: Track | null };
+type PlaylistTrackEntry = { track?: Track | null };
 
 function pickImage(images: Image[] | undefined, preferred: number): string {
   if (!images || images.length === 0) return "";
-  return [...images]
-    .filter((i) => i.url)
-    .sort(
-      (a, b) =>
-        Math.abs((a.width ?? 0) - preferred) -
-        Math.abs((b.width ?? 0) - preferred),
-    )[0]?.url ?? "";
+  return (
+    [...images]
+      .filter((i) => i && i.url)
+      .sort(
+        (a, b) =>
+          Math.abs((a.width ?? 0) - preferred) -
+          Math.abs((b.width ?? 0) - preferred),
+      )[0]?.url ?? ""
+  );
+}
+
+function projectTrack(
+  t: Track | null | undefined,
+  idx: number,
+  fallbackName: string,
+  fallbackImages: Image[] | undefined,
+): {
+  index: number;
+  id: string;
+  uri: string;
+  name: string;
+  artist: string;
+  albumName: string;
+  albumArt: string;
+  durationMs: number;
+} | null {
+  if (!t || !t.id || !t.uri || !t.name) return null;
+  const artist = (t.artists ?? [])
+    .map((a) => a?.name)
+    .filter((n): n is string => Boolean(n))
+    .join(", ");
+  return {
+    index: idx,
+    id: t.id,
+    uri: t.uri,
+    name: t.name,
+    artist,
+    albumName: t.album?.name ?? fallbackName ?? "",
+    albumArt: pickImage(t.album?.images, 64) || pickImage(fallbackImages, 64),
+    durationMs: t.duration_ms ?? 0,
+  };
 }
 
 export async function GET(
@@ -38,25 +82,37 @@ export async function GET(
   const id = params.id;
   const kind = (new URL(req.url).searchParams.get("kind") ?? "playlist").trim();
   const isAlbum = kind === "album";
-  // market=US is mandatory for /v1/playlists/{id} — without it
-  // Spotify returns every tracks.items[*].track as null and the
-  // panel renders "0 songs" even for fully-populated playlists.
-  // Same fix for /v1/albums/{id} so locked / market-restricted
-  // tracks still come through.
-  const path = isAlbum
+
+  const headerPath = isAlbum
     ? `/v1/albums/${id}?market=US`
     : `/v1/playlists/${id}?market=US`;
+  const tracksPath = isAlbum
+    ? `/v1/albums/${id}/tracks?market=US&limit=50`
+    : `/v1/playlists/${id}/tracks?market=US&limit=100`;
 
-  const result = await spotifyApiProxy(path);
-  if (!result.ok) {
-    const res = NextResponse.json(
-      { ok: false, error: result.error },
-      { status: result.status === 401 ? 401 : 502 },
+  const [headerRes, tracksRes] = await Promise.all([
+    spotifyApiProxy(headerPath),
+    spotifyApiProxy(tracksPath),
+  ]);
+
+  // Whichever sub-call refreshed (at most one will, since both share
+  // the cookie state at request entry).
+  const refreshed = headerRes.refreshed ?? tracksRes.refreshed;
+
+  if (!headerRes.ok) {
+    console.error(
+      "[spotify-playlist-tracks] header fetch failed",
+      headerRes.status,
+      headerRes.error,
     );
-    return applyRefreshedSpotifyCookies(res, result.refreshed);
+    const res = NextResponse.json(
+      { ok: false, error: headerRes.error },
+      { status: headerRes.status === 401 ? 401 : 502 },
+    );
+    return applyRefreshedSpotifyCookies(res, refreshed);
   }
 
-  const data = result.data as {
+  const header = headerRes.data as {
     id?: string;
     name?: string;
     uri?: string;
@@ -65,42 +121,57 @@ export async function GET(
     artists?: ArtistRef[];
     release_date?: string;
     owner?: { display_name?: string };
-    tracks?: { items?: (PlaylistTrack | Track)[]; total?: number };
+    tracks?: { total?: number };
   };
 
-  const tracksRaw = (data.tracks?.items ?? []) as Array<PlaylistTrack | Track>;
-  const tracks = tracksRaw
-    .map((entry, idx) => {
-      const t = "track" in entry ? entry.track : (entry as Track);
-      if (!t || !t.id || !t.uri || !t.name) return null;
-      return {
-        index: idx,
-        id: t.id,
-        uri: t.uri,
-        name: t.name,
-        artist: (t.artists ?? []).map((a) => a.name).filter(Boolean).join(", "),
-        albumName: t.album?.name ?? data.name ?? "",
-        albumArt:
-          pickImage(t.album?.images, 64) || pickImage(data.images, 64),
-        durationMs: t.duration_ms ?? 0,
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+  let tracks: ReturnType<typeof projectTrack>[] = [];
+  let totalFromTracks = 0;
+  if (tracksRes.ok) {
+    const tracksData = tracksRes.data as {
+      items?: (PlaylistTrackEntry | Track | null)[];
+      total?: number;
+    };
+    totalFromTracks = tracksData.total ?? 0;
+    const fallbackImages = header.images;
+    const fallbackName = header.name ?? "";
+    tracks = (tracksData.items ?? [])
+      .map((entry, idx) => {
+        if (!entry) return null;
+        // Playlist tracks: { track: {...} }. Album tracks: bare Track.
+        const t =
+          "track" in (entry as PlaylistTrackEntry)
+            ? (entry as PlaylistTrackEntry).track
+            : (entry as Track);
+        return projectTrack(t, idx, fallbackName, fallbackImages);
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+  } else {
+    console.error(
+      "[spotify-playlist-tracks] tracks fetch failed",
+      tracksRes.status,
+      tracksRes.error,
+    );
+  }
 
   const res = NextResponse.json({
     ok: true,
     kind: isAlbum ? "album" : "playlist",
-    id: data.id ?? id,
-    uri: data.uri ?? (isAlbum ? `spotify:album:${id}` : `spotify:playlist:${id}`),
-    name: data.name ?? "",
-    description: data.description ?? "",
-    image: pickImage(data.images, 600),
+    id: header.id ?? id,
+    uri:
+      header.uri ??
+      (isAlbum ? `spotify:album:${id}` : `spotify:playlist:${id}`),
+    name: header.name ?? "",
+    description: header.description ?? "",
+    image: pickImage(header.images, 600),
     owner: isAlbum
-      ? (data.artists ?? []).map((a) => a.name).filter(Boolean).join(", ")
-      : data.owner?.display_name ?? "",
-    year: isAlbum && data.release_date ? data.release_date.slice(0, 4) : "",
-    trackCount: data.tracks?.total ?? tracks.length,
+      ? (header.artists ?? [])
+          .map((a) => a?.name)
+          .filter((n): n is string => Boolean(n))
+          .join(", ")
+      : header.owner?.display_name ?? "",
+    year: isAlbum && header.release_date ? header.release_date.slice(0, 4) : "",
+    trackCount: header.tracks?.total ?? totalFromTracks ?? tracks.length,
     tracks,
   });
-  return applyRefreshedSpotifyCookies(res, result.refreshed);
+  return applyRefreshedSpotifyCookies(res, refreshed);
 }

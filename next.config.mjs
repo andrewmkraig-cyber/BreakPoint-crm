@@ -17,7 +17,12 @@ const CSP = [
   "default-src 'self'",
   // sdk.scdn.co hosts the Spotify Web Playback SDK script that the
   // floating Spotify panel loads on first authenticated open.
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://vercel.live https://sdk.scdn.co",
+  // youtube.com + ytimg.com host the YouTube IFrame Player API
+  // (iframe_api → www-widgetapi.js) the floating panel uses for
+  // programmatic seek + setPlaybackRate. Without them, the API
+  // script is blocked and the iframe never instantiates, so the
+  // recruiter sees a black square where the video should be.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://vercel.live https://sdk.scdn.co https://www.youtube.com https://s.ytimg.com",
   // worker-src must be set explicitly — when omitted it falls back to
   // script-src, which lacks `blob:` and so blocks every Web Worker
   // bundled by Next/Sentry/the Spotify SDK that loads from a Blob URL.
