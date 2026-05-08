@@ -87,6 +87,33 @@ export async function GET(
     );
   }
 
+  // Server-side raw-response logs. Truncated to 600 chars per shape so
+  // Vercel logs don't get flooded but we can still see followers,
+  // top-tracks count, and the first album. Used to diagnose the
+  // "0 followers / no top tracks / no discography" reports — if the
+  // panel comes up empty we need to know whether Spotify returned
+  // an empty payload or our parser dropped it.
+  console.log(
+    "[spotify-artist] raw artist:",
+    JSON.stringify(artistRes.data ?? null).slice(0, 600),
+  );
+  console.log(
+    "[spotify-artist] raw top-tracks:",
+    topRes.status,
+    JSON.stringify(topRes.ok ? topRes.data : { error: topRes.error }).slice(
+      0,
+      600,
+    ),
+  );
+  console.log(
+    "[spotify-artist] raw albums:",
+    albumsRes.status,
+    JSON.stringify(albumsRes.ok ? albumsRes.data : { error: albumsRes.error }).slice(
+      0,
+      600,
+    ),
+  );
+
   const artist = artistRes.data as {
     id?: string;
     name?: string;
@@ -140,6 +167,35 @@ export async function GET(
   // of pretending Spotify reported zero followers.
   const followers =
     typeof artist.followers?.total === "number" ? artist.followers.total : null;
+
+  // Debug envelope so the panel can log + render a visible empty-
+  // state message when sub-calls fail or come back empty. Never
+  // contains secrets — just statuses + counts + the upstream error
+  // string — so it's safe to ship to the client.
+  const debug = {
+    headerStatus: artistRes.status,
+    topTracksStatus: topRes.status,
+    topTracksError: topRes.ok ? null : topRes.error,
+    rawTopTracksCount:
+      topRes.ok && Array.isArray((topRes.data as { tracks?: Track[] })?.tracks)
+        ? (topRes.data as { tracks?: Track[] }).tracks!.length
+        : 0,
+    albumsStatus: albumsRes.status,
+    albumsError: albumsRes.ok ? null : albumsRes.error,
+    rawAlbumsCount:
+      albumsRes.ok && Array.isArray((albumsRes.data as { items?: Album[] })?.items)
+        ? (albumsRes.data as { items?: Album[] }).items!.length
+        : 0,
+    followersField:
+      artist.followers === undefined
+        ? "missing"
+        : artist.followers === null
+          ? "null"
+          : typeof artist.followers.total === "number"
+            ? "ok"
+            : "no-total",
+  };
+
   const res = NextResponse.json({
     ok: true,
     id: artist.id ?? id,
@@ -153,6 +209,7 @@ export async function GET(
     genres: (artist.genres ?? []).slice(0, 3),
     topTracks,
     albums,
+    debug,
   });
   return applyRefreshedSpotifyCookies(res, refreshed);
 }

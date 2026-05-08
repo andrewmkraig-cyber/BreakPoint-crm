@@ -202,6 +202,19 @@ type ArtistPayload = {
     year: string;
     albumArt: string;
   }[];
+  // Debug envelope from the route — used to log the raw API decision
+  // and render a visible empty-state when sub-calls fail or come back
+  // empty. See /api/spotify/artist/[id]/route.ts for the field shapes.
+  debug?: {
+    headerStatus?: number;
+    topTracksStatus?: number;
+    topTracksError?: string | null;
+    rawTopTracksCount?: number;
+    albumsStatus?: number;
+    albumsError?: string | null;
+    rawAlbumsCount?: number;
+    followersField?: "missing" | "null" | "ok" | "no-total";
+  };
 };
 
 type View =
@@ -721,6 +734,31 @@ export function SpotifyPanel() {
           error?: string;
         };
         if (cancelled) return;
+        // Log the full raw response so the recruiter can read top
+        // tracks + discography decisions in the console without
+        // needing to inspect Vercel logs. The route's `debug` field
+        // carries the upstream HTTP statuses + pre-projection counts
+        // so we can tell whether tracks vanished at Spotify or in our
+        // mapper.
+        console.log(
+          "[spotify-artist] response:",
+          res.status,
+          {
+            ok: json.ok,
+            error: json.error,
+            id: json.id,
+            name: json.name,
+            followers: json.followers,
+            topTracksCount: Array.isArray(json.topTracks)
+              ? json.topTracks.length
+              : "(missing)",
+            albumsCount: Array.isArray(json.albums)
+              ? json.albums.length
+              : "(missing)",
+            debug: json.debug,
+          },
+          { fullResponse: json },
+        );
         if (res.status === 401) {
           setAuthState({ status: "unauthenticated" });
           return;
@@ -2216,6 +2254,52 @@ function ArtistView(props: {
       >
         <Play className="h-4 w-4" fill="currentColor" /> Play
       </button>
+
+      {/* Visible error state when sub-calls fail or come back empty.
+          Was previously a silent "no Popular section + no Discography
+          section" render that hid the cause from the recruiter. The
+          debug envelope from /api/spotify/artist/[id] carries the
+          actual upstream HTTP status + the raw count BEFORE our
+          projection, so we can tell whether Spotify denied the call
+          (e.g. 401 / 403 / 404) or returned zero items. */}
+      {(() => {
+        const dbg = a.debug;
+        if (!dbg) return null;
+        const topFailed =
+          typeof dbg.topTracksStatus === "number" &&
+          dbg.topTracksStatus >= 400;
+        const albumsFailed =
+          typeof dbg.albumsStatus === "number" && dbg.albumsStatus >= 400;
+        const topEmpty =
+          !topFailed && a.topTracks.length === 0 && (dbg.rawTopTracksCount ?? 0) === 0;
+        const albumsEmpty =
+          !albumsFailed && a.albums.length === 0 && (dbg.rawAlbumsCount ?? 0) === 0;
+        if (!topFailed && !albumsFailed && !topEmpty && !albumsEmpty) return null;
+        const lines: string[] = [];
+        if (topFailed) {
+          lines.push(
+            `Top tracks: Spotify returned ${dbg.topTracksStatus}${dbg.topTracksError ? ` — ${dbg.topTracksError}` : ""}.`,
+          );
+        } else if (topEmpty) {
+          lines.push("Top tracks: Spotify returned an empty list for this artist.");
+        }
+        if (albumsFailed) {
+          lines.push(
+            `Discography: Spotify returned ${dbg.albumsStatus}${dbg.albumsError ? ` — ${dbg.albumsError}` : ""}.`,
+          );
+        } else if (albumsEmpty) {
+          lines.push("Discography: Spotify returned an empty album list.");
+        }
+        return (
+          <div className="rounded-lg border border-[#3D3D3D] bg-[#1F1F1F] p-3 text-xs text-[#B3B3B3]">
+            {lines.map((l, i) => (
+              <p key={i} className={i > 0 ? "mt-1" : ""}>
+                {l}
+              </p>
+            ))}
+          </div>
+        );
+      })()}
 
       {a.topTracks.length > 0 && (
         <Section title="Popular">

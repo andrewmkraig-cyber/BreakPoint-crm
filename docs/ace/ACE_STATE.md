@@ -1,10 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.8
+Last updated: 2026-05-08 · Ace 36.9
 
 ## Current Status
-Current Version: Ace 36.8 (Spotify minimized-pill drag fix + Disconnect Spotify)
-Last Shipped: Ace 36.8 — May 8, 2026
+Current Version: Ace 36.9 (Spotify artist diagnostics)
+Last Shipped: Ace 36.9 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.9
+Andrew was still seeing 0 followers / no Popular / no Discography on artist pages even after 36.5's followers/null fix and 36.7's market=US revert. Added diagnostics (no behavior changes to playlist code or playback):
+- /api/spotify/artist/[id] logs the raw artist + top-tracks + albums responses (truncated to 600 chars each) to Vercel server logs and ships a `debug` envelope on the response with `headerStatus`, `topTracksStatus`, `topTracksError`, `rawTopTracksCount`, `albumsStatus`, `albumsError`, `rawAlbumsCount`, and a `followersField` tag of `missing | null | ok | no-total`.
+- Panel artist fetcher now `console.log`s the response with the debug envelope so the recruiter can read what Spotify actually returned without going to Vercel logs.
+- ArtistView renders an inline error block above the Popular / Discography sections when sub-calls returned >=400 OR came back empty (raw count == 0 AND projected count == 0). Distinguishes "Spotify returned X status" from "Spotify returned an empty list" so we can tell the difference between dev-mode denial and a genuinely empty response.
+- Followers handling unchanged from 36.5 — already correctly returns `number | null` and the panel hides the row when null. Logs will show whether Spotify actually returned `followers.total` or stripped the field.
 
 ## Summary — Ace 36.8
 - Spotify minimized pill is draggable across the whole viewport again. The drag handler used to write coordinates into the un-minimized panel `position` while the pill was rendered with `right`/`bottom` anchors — release "snapped" the pill back to its dock corner. Added a separate local `dockPosition` state and branched the drag handler on `minimized`: when minimized we read/write the dock's local left/top with DOCK_W/DOCK_H clamping; when not minimized the original behavior is preserved. Pill now stays where the recruiter drops it.
