@@ -294,7 +294,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                             <Link
                               href={`/candidates/${r.candidateId}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center justify-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100"
+                              className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                               title="Schedule interview on candidate profile"
                             >
                               <CalendarClock className="h-3 w-3" /> Schedule
@@ -304,7 +304,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                             <Link
                               href={`/candidates/${r.candidateId}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="inline-flex items-center justify-center gap-1 rounded-full border border-purple-200 bg-purple-50 px-2.5 py-0.5 text-[11px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100"
+                              className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
                               title="Record offer on candidate profile"
                             >
                               <DollarSign className="h-3 w-3" /> Offer
@@ -560,7 +560,7 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
         type="button"
         onClick={onClick}
         disabled={isPending}
-        className="inline-flex items-center justify-center gap-1 rounded-full border border-red-200 bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60"
+        className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-red-200 bg-red-50 px-2.5 text-[11px] font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
         title="Reject this candidate for this job"
       >
         {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}

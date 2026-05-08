@@ -407,15 +407,27 @@ type Tone =
 // keep   = teal — calm "save for later"
 // offer  = purple — matches OFFER stage chip + /pipeline page Offer button
 // unreject = indigo — distinct restore action, neither red (Reject) nor green (Submit)
+//
+// Each tone carries a dark variant that drops the saturated bg-X-50
+// tile down to bg-X-950/40 with a softer text color, so on dark mode
+// the action chips don't pop bright off the page. Mirrors the dark
+// treatment on the shared Button primitive.
 const TONE_CLASS: Record<Tone, string> = {
-  default: "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200",
+  default:
+    "border-slate-200 bg-slate-100 text-slate-600 hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-800",
   primary: "border-brand bg-brand text-white hover:bg-brand-dark",
-  danger: "border-red-200 bg-red-50 text-red-600 hover:bg-red-100",
-  schedule: "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100",
-  apply: "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100",
-  keep: "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100",
-  offer: "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100",
-  unreject: "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100",
+  danger:
+    "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
+  schedule:
+    "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
+  apply:
+    "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60",
+  keep:
+    "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200 dark:hover:bg-teal-950/60",
+  offer:
+    "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60",
+  unreject:
+    "border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-200 dark:hover:bg-indigo-950/60",
 };
 
 function ActionButton({

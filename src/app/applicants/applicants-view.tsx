@@ -7,7 +7,6 @@ import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX } from "lucide-r
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
-import { Button } from "@/components/ui/button";
 import {
   keepCandidateForJob,
   keepLocalCandidateForJob,
@@ -281,30 +280,30 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
       <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
       <td className="px-5 py-3 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
       <td className="px-5 py-3 align-top">
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="flex flex-nowrap items-center justify-end gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
-          {/* Submit hands off to the candidate profile's submittal
-              composer via the ?compose=submittal&jobId=N deep link.
-              The actual stage move to "submitted" happens when the
-              recruiter hits Send in the composer — clicking Submit
-              here used to move the candidate without ever showing
-              the email. */}
+          {/* Submit / Keep / Reject share the row-action chip style
+              (rounded-md, tinted bg with proper dark variants, label
+              hidden below sm so the three buttons never wrap into an
+              ugly stack on narrow viewports). Submit is a Link because
+              it deep-links to the candidate profile's submittal
+              composer; the actual stage move to "submitted" happens
+              when the recruiter hits Send in the composer. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+            className={ROW_ACTION_CLASS.primary}
+            title="Submit candidate"
           >
             <Send className="h-3 w-3" />
-            Submit
+            <span className="hidden sm:inline">Submit</span>
           </Link>
           {/* Phase 4b: Keep / Reject fire inline regardless of job
               identity shape. The server actions accept either a numeric
               jobRfId (RF-imported) or a cuid jobId (Ace-native); clients
-              pick the right field here. Identical UX for both shapes —
-              user stays on /applicants, row hops to the Kept tab (or
-              disappears on Reject). Icons match the pipeline-row Submit/
-              Keep/Reject set on the candidate profile so the same verbs
-              read identically across surfaces. */}
-          <ActionButton
+              pick the right field here. */}
+          <RowActionButton
+            tone="keep"
+            label="Keep"
             icon={<Bookmark className="h-3 w-3" />}
             disabled={isPending}
             onClick={() => {
@@ -330,11 +329,10 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
                 "Kept",
               );
             }}
-          >
-            Keep
-          </ActionButton>
-          <ActionButton
-            destructive
+          />
+          <RowActionButton
+            tone="reject"
+            label="Reject"
             icon={<UserX className="h-3 w-3" />}
             disabled={isPending}
             onClick={() => {
@@ -364,9 +362,7 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
                 "Rejected",
               );
             }}
-          >
-            Reject
-          </ActionButton>
+          />
         </div>
       </td>
     </tr>
@@ -406,22 +402,24 @@ function KeptRowView({ row }: { row: KeptRow }) {
       </td>
       <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
       <td className="px-5 py-3 align-top">
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="flex flex-nowrap items-center justify-end gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
-          {/* Submit hands off to the candidate profile's submittal
-              composer via the deep link. The Kept row gets cleaned up
-              after the recruiter sends — the composer's onSend path
-              moves the placement to "submitted" which itself excludes
-              the row from the Kept query on next refresh. */}
+          {/* Submit / Remove share the row-action chip style — same
+              tinted rounded-md treatment as the Applied tab so the two
+              tabs read as a matched pair. Submit deep-links to the
+              candidate profile's submittal composer; the placement
+              transitions to "submitted" when the recruiter hits Send. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className="inline-flex items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+            className={ROW_ACTION_CLASS.primary}
+            title="Submit candidate"
           >
             <Send className="h-3 w-3" />
-            Submit
+            <span className="hidden sm:inline">Submit</span>
           </Link>
-          <ActionButton
-            destructive
+          <RowActionButton
+            tone="reject"
+            label="Remove"
             icon={<UserX className="h-3 w-3" />}
             disabled={isPending}
             onClick={() => {
@@ -444,81 +442,61 @@ function KeptRowView({ row }: { row: KeptRow }) {
                 "Removed",
               );
             }}
-          >
-            Remove
-          </ActionButton>
+          />
         </div>
       </td>
     </tr>
   );
 }
 
-function ActionButton({
-  children,
+// Shared row-action chip styles. All three tones (primary/keep/reject)
+// share the same shape, padding, and font so Submit/Keep/Reject read
+// as one button family. Each tone carries its own light + dark
+// palette — the dark variants drop the saturated bg-X-50 tiles down
+// to bg-X-950/40 so they don't pop on a dark page. Submit uses court-
+// brand tokens because primary action color follows whichever Court
+// Mode is active.
+const ROW_ACTION_BASE =
+  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
+
+const ROW_ACTION_CLASS = {
+  primary: cn(
+    ROW_ACTION_BASE,
+    "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/25",
+  ),
+  keep: cn(
+    ROW_ACTION_BASE,
+    "border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-100 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-200 dark:hover:bg-cyan-950/60",
+  ),
+  reject: cn(
+    ROW_ACTION_BASE,
+    "border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
+  ),
+};
+
+function RowActionButton({
+  tone,
+  label,
+  icon,
   onClick,
   disabled,
-  primary,
-  destructive,
-  icon,
 }: {
-  children: React.ReactNode;
+  tone: "primary" | "keep" | "reject";
+  label: string;
+  icon: React.ReactNode;
   onClick: () => void;
   disabled?: boolean;
-  primary?: boolean;
-  destructive?: boolean;
-  // Optional leading icon — rendered to the left of `children`. Used
-  // by the Submit/Keep/Reject row actions so they match the icon set
-  // the candidate profile pipeline rows render.
-  icon?: React.ReactNode;
 }) {
-  // Primary (rare here) and Destructive route through the shared
-  // Button primitive so the visual hierarchy stays in lockstep with
-  // the rest of the app. Neutral (Keep) is a teal chip matching the
-  // Keep tone in pipeline-row-actions.tsx so the same action reads
-  // identically across /applicants, /jobs/[id]/pipeline, and the
-  // candidate profile pipeline rows.
-  if (primary) {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        variant="primary"
-        onClick={onClick}
-        disabled={disabled}
-        className="h-7 text-[11px] font-bold"
-      >
-        {icon}
-        {children}
-      </Button>
-    );
-  }
-  if (destructive) {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        variant="danger"
-        onClick={onClick}
-        disabled={disabled}
-        className="h-7 text-[11px] font-bold"
-      >
-        {icon}
-        {children}
-      </Button>
-    );
-  }
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={cn(
-        "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-full px-3 text-[11px] font-bold shadow-sm transition disabled:opacity-60",
-        "border border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100",
-      )}
+      title={label}
+      className={ROW_ACTION_CLASS[tone]}
     >
       {icon}
-      {children}
+      <span className="hidden sm:inline">{label}</span>
     </button>
   );
 }
