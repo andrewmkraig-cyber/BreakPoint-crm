@@ -435,6 +435,22 @@ export function SpotifyPanel() {
   const playerRef = useRef<SpotifyPlayer | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
+  // Auto-skip bookkeeping. The Web Playback SDK fires
+  // player_state_changed with `paused === true && position === 0`
+  // when a track ends — but ALSO on initial connect, on user pause,
+  // and after a successful /next acks back. To distinguish "track
+  // ended" from those false positives we remember the previous
+  // state's trackUri + paused-ness and only auto-skip when the
+  // previous state was actively playing a track and the new state
+  // matches the end-of-track shape. autoSkipInFlightRef debounces
+  // back-to-back fires (the next-track success will itself trigger
+  // a player_state_changed event).
+  const prevPlayerStateRef = useRef<{
+    trackUri: string | null;
+    paused: boolean;
+    position: number;
+  } | null>(null);
+  const autoSkipInFlightRef = useRef(false);
 
   // ────────────────────────────────────────────────────────────────
   // Mount / auth
@@ -506,6 +522,54 @@ export function SpotifyPanel() {
             albumArt: albumImage,
             durationMs: t.duration_ms ?? state.duration ?? 0,
           });
+        }
+
+        // Auto-skip on track end. The Web Playback SDK doesn't reliably
+        // advance through a context_uri on its own — for an artist or
+        // playlist we have to detect the end and call /v1/me/player/next
+        // ourselves. End-of-track shape per Spotify: `paused === true`
+        // and `position === 0`. To avoid false positives on initial
+        // connect / user pause / mid-track seek-to-zero, we require
+        // that the PREVIOUS state was actively playing a track
+        // (paused=false with a current_track uri). Once we fire the
+        // skip we set autoSkipInFlightRef so the player_state_changed
+        // event the /next call itself triggers doesn't re-fire.
+        const newTrackUri = t?.uri ?? null;
+        const newPaused = Boolean(state.paused);
+        const newPosition = typeof state.position === "number" ? state.position : 0;
+        const prev = prevPlayerStateRef.current;
+        const trackEnded =
+          !!prev &&
+          !prev.paused &&
+          !!prev.trackUri &&
+          newPaused &&
+          newPosition === 0;
+        prevPlayerStateRef.current = {
+          trackUri: newTrackUri,
+          paused: newPaused,
+          position: newPosition,
+        };
+        if (trackEnded && !autoSkipInFlightRef.current) {
+          autoSkipInFlightRef.current = true;
+          const deviceId = deviceIdRef.current;
+          const url = deviceId
+            ? `/api/spotify/next?device_id=${encodeURIComponent(deviceId)}`
+            : "/api/spotify/next";
+          void fetch(url, { method: "POST" })
+            .catch((e) => {
+              console.error("[spotify] auto-skip failed:", e);
+            })
+            .finally(() => {
+              // Release the lock on the next event-loop tick. The
+              // /next call itself fires another player_state_changed
+              // with the new track playing (paused=false), and that
+              // event won't satisfy the trackEnded check anyway, but
+              // the lock guards against bursts of end-of-track events
+              // landing in the same microtask.
+              window.setTimeout(() => {
+                autoSkipInFlightRef.current = false;
+              }, 0);
+            });
         }
       });
       player.addListener("authentication_error", (...args: unknown[]) => {

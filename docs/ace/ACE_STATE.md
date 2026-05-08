@@ -1,10 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 37.1
+Last updated: 2026-05-08 · Ace 37.2
 
 ## Current Status
-Current Version: Ace 37.1 (Playlist tracks diagnostics + embedded fallback)
-Last Shipped: Ace 37.1 — May 8, 2026
+Current Version: Ace 37.2 (Spotify auto-skip on track end)
+Last Shipped: Ace 37.2 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 37.2
+Web Playback SDK doesn't reliably auto-advance through a context_uri (artist / playlist) on its own — playback would just stop after each track. Wired track-end detection into the existing `player_state_changed` listener:
+- Remember the previous state's trackUri + paused via `prevPlayerStateRef` so we can distinguish "track ended" from initial connect / user pause / seek-to-zero.
+- When prev state was actively playing a track (paused=false + trackUri) and the new state matches end-of-track shape (paused=true + position=0), POST /api/spotify/next with the current device_id.
+- `autoSkipInFlightRef` debounces the burst of player_state_changed events the /next call itself triggers so we never double-skip.
+- No changes to artist/playlist fetch code or auth code.
 
 ## Summary — Ace 37.1
 After 37.0 Andrew confirmed artists work, but his "Lifting" playlist (which he owns) renders 0 songs with no error message. Added two things to /api/spotify/playlist-tracks/[id] without touching playback or YouTube:
