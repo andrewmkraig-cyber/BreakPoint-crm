@@ -10,12 +10,16 @@ import { ExternalLink, Loader2 } from "lucide-react";
 
 type TabKey = "accounting" | "recruiting" | "ai" | "general" | "cleveland";
 
+// Display order for the tab strip. Tab *keys* match the cached row's
+// `tab` column and the API's per-tab search prompts — never rename
+// them; only the label changes here. Keys: general → "Front Page",
+// cleveland → "Local News".
 const TABS: Array<{ key: TabKey; label: string }> = [
+  { key: "general", label: "Front Page" },
   { key: "accounting", label: "Public Accounting" },
   { key: "recruiting", label: "Recruiting" },
   { key: "ai", label: "AI & Tech" },
-  { key: "general", label: "General" },
-  { key: "cleveland", label: "Cleveland" },
+  { key: "cleveland", label: "Local News" },
 ];
 
 type Headline = {
