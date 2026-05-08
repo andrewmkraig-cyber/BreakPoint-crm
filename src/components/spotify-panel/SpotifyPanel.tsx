@@ -131,6 +131,11 @@ type DetailPayload = {
   year: string;
   trackCount: number;
   tracks: DetailTrack[];
+  // Set when the /tracks subcall failed but the header succeeded — used
+  // to render an inline "Spotify dev-mode restricted" message and an
+  // Open-in-Spotify CTA in place of the empty track list.
+  tracksError?: string | null;
+  externalUrl?: string;
 };
 
 type LikedPayload = {
@@ -1886,6 +1891,27 @@ function PlaylistView(props: {
       >
         <Play className="h-4 w-4" fill="currentColor" /> Play
       </button>
+
+      {d.tracksError && d.tracks.length === 0 && (
+        // Spotify dev-mode block: header loads but /tracks 403s on
+        // editorial / algorithmic playlists. Surface the reason inline
+        // alongside an Open-in-Spotify CTA instead of leaving the panel
+        // empty. Open-in-Spotify uses the spotify: URI so it deep-links
+        // straight into the desktop app when installed and otherwise
+        // falls through to open.spotify.com.
+        <div className="rounded-lg border border-[#3D3D3D] bg-[#1F1F1F] p-3 text-xs text-[#B3B3B3]">
+          <p>{d.tracksError}</p>
+          <a
+            href={d.externalUrl || d.uri}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-white underline-offset-2 hover:underline"
+            style={{ color: COLOR_GREEN }}
+          >
+            Open in Spotify →
+          </a>
+        </div>
+      )}
 
       <ul className="flex flex-col">
         {d.tracks.map((t) => (

@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.1
+Last updated: 2026-05-08 · Ace 36.2
 
 ## Current Status
-Current Version: Ace 36.1 (Floating-panel + dashboard regression sweep)
-Last Shipped: Ace 36.1 — May 8, 2026
+Current Version: Ace 36.2 (Floating-panel regression sweep — round 2)
+Last Shipped: Ace 36.2 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.2
+Follow-up after Andrew confirmed the 36.1 fixes only partially solved things:
+- YouTube panel chrome lifted out of the iframe entirely. Our header bar (back / title / rewind / forward / speed / minimize / close) now lives ABOVE the iframe in a real flex slot at the top of the panel; the iframe occupies the area below `top-9`. Volume / CC / Settings (which YouTube actually places at the top-right of the iframe, not the bottom) are no longer obscured by our chrome. The legacy h-12 w-[160px] click-blocker that was sitting on top of those native buttons is removed; a smaller 200x64 click-blocker now covers the bottom-left Share + Watch-Later pills since YouTube doesn't expose params to remove them. The iframe is forced to 100%/100% via getIframe in onReady so the wrapper resize is honored.
+- Spotify playlist/album detail route stops hard-failing on tracks-subcall errors. The header still loads; `tracksError` is included in the response and the panel renders a friendly "Spotify restricts API access to its editorial / algorithmic playlists" message + an Open-in-Spotify CTA in place of the empty list. This addresses the actual root cause of the recurring 0-tracks bug: Spotify's Nov 2024 dev-mode restrictions on API access to Spotify-owned playlists.
+- CSP `connect-src` adds `https://api-bdc.io` (the BigDataCloud short-form host the SDK actually requests) alongside the existing bigdatacloud.net entry so the weather widget reverse-geocode lookup stops being blocked.
 
 ## Summary — Ace 36.1
 Regression sweep on the floating panels and dashboard cards reported after the Ace 36.0 deploy:

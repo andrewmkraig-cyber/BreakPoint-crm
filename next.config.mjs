@@ -40,10 +40,13 @@ const CSP = [
   // en.wikipedia.org is the "On This Day" pill's REST source — fetched
   // straight from the browser since the response is identical for
   // every recruiter and a server proxy would only add latency.
-  // api.bigdatacloud.net is the weather widget's free reverse-geocode
-  // endpoint (lat/lng → city) — called client-side after geolocation
-  // resolves so the header pill shows "City, ST" not raw coordinates.
-  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.open-meteo.com https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co https://lichess.org https://en.wikipedia.org https://api.bigdatacloud.net",
+  // api.bigdatacloud.net + api-bdc.io are the weather widget's free
+  // reverse-geocode endpoint (lat/lng → city). BDC accepts requests on
+  // either host and the client library has been seen to issue against
+  // the short-form `api-bdc.io` host even when our code targets the
+  // long form, so both must be in connect-src or the widget falls back
+  // to raw coordinates.
+  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.open-meteo.com https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co https://lichess.org https://en.wikipedia.org https://api.bigdatacloud.net https://api-bdc.io",
   // media-src defaults to default-src ('self'), which would block the
   // Spotify SDK's MSE-backed audio streams from *.scdn.co.
   "media-src 'self' https://*.scdn.co https://*.spotify.com",

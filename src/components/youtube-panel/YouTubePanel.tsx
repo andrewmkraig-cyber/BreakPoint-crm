@@ -78,6 +78,7 @@ type YTPlayer = {
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   setPlaybackRate(rate: number): void;
   getPlaybackRate(): number;
+  getIframe(): HTMLIFrameElement;
   destroy(): void;
 };
 
@@ -171,6 +172,19 @@ export function YouTubePanel() {
             onReady: () => {
               if (cancelled) return;
               try {
+                // YT.Player can set fixed-pixel width/height on the
+                // iframe based on its construction defaults (640x390),
+                // which leaves the player visually pinned to that size
+                // even when its parent wrapper is sized differently.
+                // Force 100%/100% so the iframe always fills the
+                // positioning wrapper around it.
+                const iframe = playerRef.current?.getIframe();
+                if (iframe) {
+                  iframe.style.width = "100%";
+                  iframe.style.height = "100%";
+                  iframe.removeAttribute("width");
+                  iframe.removeAttribute("height");
+                }
                 const r = playerRef.current?.getPlaybackRate() ?? 1;
                 setPlaybackRate(r);
               } catch {}
@@ -648,30 +662,46 @@ export function YouTubePanel() {
       }
       style={rootStyle}
     >
-      {/* YT.Player swaps this div for its own iframe at runtime. We
-          re-key on activeVideoId so the player effect tears down and
-          rebuilds cleanly on every track switch. The div absolute-
-          fills the panel root; in minimized mode that's 320x52 and
-          the dock UI on top covers it visually. */}
+      {/* YT.Player swaps the inner div for its own iframe at runtime.
+          The wrapper is React-controlled and changes positioning based
+          on minimized state; the inner div is keyed on activeVideoId
+          so the YT effect tears down + rebuilds on each track switch
+          but otherwise stays put. When playing-not-minimized the iframe
+          sits BELOW our 36px header bar (top-9) so YouTube's native
+          chrome — title, channel avatar, volume, CC, settings at the
+          top-right — has its full vertical band back; previously our
+          overlay sat directly on top of those native buttons. When
+          minimized, the wrapper goes back to absolute inset-0 and the
+          dock UI (z-10) covers it visually. */}
       {playing && (
         <div
-          key={activeVideoId}
-          ref={playerContainerRef}
-          title={activeVideoTitle || "YouTube player"}
-          className="absolute inset-0 h-full w-full border-0 bg-black"
-        />
+          className={
+            minimized
+              ? "absolute inset-0 bg-black"
+              : "absolute inset-x-0 bottom-0 top-9 bg-black"
+          }
+        >
+          <div
+            key={activeVideoId}
+            ref={playerContainerRef}
+            title={activeVideoTitle || "YouTube player"}
+            className="h-full w-full border-0"
+          />
+        </div>
       )}
 
-      {/* Transparent click blocker over the top-right corner of the
-          iframe, sized to cover YouTube's native "Save / Share" pill.
-          Sitting at z-[5] (above iframe, below our hover overlay at
-          z-10) it absorbs any taps on those buttons so the recruiter
-          can't accidentally pop YouTube's share dialog from inside
-          our panel. */}
+      {/* Bottom click-blocker pinned to the lower-left of the iframe
+          area, sized to cover YouTube's native Share + Watch-Later
+          pills (the row below the progress bar). z-[5] sits above the
+          iframe but below the resize handle (z-20) so taps land here
+          and dead-end. We can't strip those buttons via player params,
+          so absorbing the click is the closest we get to "remove" them.
+          Width keeps the bar narrow enough to leave the YouTube logo
+          and "More videos" pill at the right untouched. */}
       {playing && !minimized && (
         <div
           aria-hidden
-          className="pointer-events-auto absolute right-0 top-0 z-[5] h-12 w-[160px]"
+          className="pointer-events-auto absolute bottom-0 left-0 z-[5] h-[64px] w-[200px]"
         />
       )}
 
@@ -818,72 +848,73 @@ export function YouTubePanel() {
           </button>
         </div>
       ) : (
-        // PLAYING STATE — iframe is full bleed underneath. Our chrome
-        // is split into two compact pills anchored to the top corners
-        // so YouTube's native controls + popup menus (volume, CC,
-        // settings) along the bottom-right have an unobstructed
-        // vertical channel up the middle to expand into. Both pills
-        // hover-reveal and disable pointer events when hidden so
-        // invisible chrome can't swallow clicks meant for the iframe.
-        <>
-          <div
-            onPointerDown={onHeaderPointerDown}
-            className="pointer-events-none absolute left-2 top-2 z-10 flex cursor-grab select-none items-center gap-0.5 rounded-md bg-black/70 px-1.5 py-1 text-white opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 active:cursor-grabbing"
+        // PLAYING STATE — our chrome lives in a real 36px header bar
+        // ABOVE the iframe (which is offset top-9 in the wrapper above)
+        // so it never overlaps YouTube's native controls. The header
+        // is always visible, doubles as the drag handle, and uses the
+        // app's surface tokens so it reads as window chrome rather
+        // than a floating overlay.
+        <div
+          onPointerDown={onHeaderPointerDown}
+          className="absolute inset-x-0 top-0 z-10 flex h-9 cursor-grab select-none items-center gap-1 border-b border-court-border bg-court-surface-subtle px-2 active:cursor-grabbing"
+        >
+          <button
+            type="button"
+            onClick={backToSearch}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
           >
-            <button
-              type="button"
-              onClick={backToSearch}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
-            >
-              <ArrowLeft className="h-3 w-3" /> Search
-            </button>
-            <button
-              type="button"
-              onClick={rewind}
-              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-              aria-label="Rewind 15 seconds"
-              title="Rewind 15s"
-            >
-              <Rewind className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={fastForward}
-              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-              aria-label="Forward 15 seconds"
-              title="Forward 15s"
-            >
-              <FastForward className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={cycleSpeed}
-              className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white/80 transition hover:bg-white/10 hover:text-white"
-              aria-label={`Playback speed ${playbackRate}x — click to change`}
-              title="Playback speed"
-            >
-              {playbackRate}x
-            </button>
-          </div>
-          <div className="pointer-events-none absolute right-2 top-2 z-10 flex select-none items-center gap-0.5 rounded-md bg-black/70 px-1.5 py-1 text-white opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
-            <button
-              type="button"
-              onClick={() => setMinimized(true)}
-              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-              aria-label="Minimize"
-            >
-              <Minimize2 className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={close}
-              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-              aria-label="Close panel"
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </>
+            <ArrowLeft className="h-3 w-3" /> Search
+          </button>
+          <span
+            title={activeVideoTitle}
+            className="ml-1 min-w-0 flex-1 truncate text-xs font-medium text-court-fg"
+          >
+            {activeVideoTitle}
+          </span>
+          <button
+            type="button"
+            onClick={rewind}
+            className="rounded p-1 text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+            aria-label="Rewind 15 seconds"
+            title="Rewind 15s"
+          >
+            <Rewind className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={fastForward}
+            className="rounded p-1 text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+            aria-label="Forward 15 seconds"
+            title="Forward 15s"
+          >
+            <FastForward className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={cycleSpeed}
+            className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+            aria-label={`Playback speed ${playbackRate}x — click to change`}
+            title="Playback speed"
+          >
+            {playbackRate}x
+          </button>
+          <button
+            type="button"
+            onClick={() => setMinimized(true)}
+            className="rounded p-1 text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+            aria-label="Minimize"
+          >
+            <Minimize2 className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={close}
+            className="rounded p-1 text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+            aria-label="Close panel"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
 
       {/* Resize is meaningless on the fixed-size mini dock, so the

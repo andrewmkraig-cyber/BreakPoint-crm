@@ -117,23 +117,6 @@ export async function GET(
     return applyRefreshedSpotifyCookies(res, refreshed);
   }
 
-  // Tracks fetch failure used to silently return ok with empty tracks,
-  // which surfaced as the unactionable "0 songs" the recruiter kept
-  // seeing — no toast, no clue. Now we hard-fail so the upstream error
-  // reaches the panel and the user sees what Spotify actually said.
-  if (!tracksRes.ok) {
-    console.error(
-      "[spotify-playlist-tracks] tracks fetch failed",
-      tracksRes.status,
-      tracksRes.error,
-    );
-    const res = NextResponse.json(
-      { ok: false, error: `Tracks: ${tracksRes.error}` },
-      { status: tracksRes.status === 401 ? 401 : 502 },
-    );
-    return applyRefreshedSpotifyCookies(res, refreshed);
-  }
-
   const header = headerRes.data as {
     id?: string;
     name?: string;
@@ -144,26 +127,51 @@ export async function GET(
     release_date?: string;
     owner?: { display_name?: string };
     tracks?: { total?: number };
+    external_urls?: { spotify?: string };
   };
 
-  const tracksData = tracksRes.data as {
-    items?: (PlaylistTrackEntry | Track | null)[];
-    total?: number;
-  };
-  const totalFromTracks = tracksData.total ?? 0;
-  const fallbackImages = header.images;
-  const fallbackName = header.name ?? "";
-  const tracks = (tracksData.items ?? [])
-    .map((entry, idx) => {
-      if (!entry) return null;
-      // Playlist tracks: { track: {...} }. Album tracks: bare Track.
-      const t =
-        "track" in (entry as PlaylistTrackEntry)
-          ? (entry as PlaylistTrackEntry).track
-          : (entry as Track);
-      return projectTrack(t, idx, fallbackName, fallbackImages);
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+  // 403 on /v1/playlists/{id}/tracks (and increasingly /albums/{id}/tracks)
+  // is the post-Nov-2024 Spotify dev-mode restriction: apps that aren't in
+  // "Extended Quota" mode lose API access to Spotify-owned editorial /
+  // algorithmic playlists (Made For You, Daily Mix, Today's Top Hits,
+  // etc.). Andrew's user-owned playlists still resolve. Rather than
+  // strand the panel on a toast and "Loading…" we render the header we
+  // *did* get plus a `tracksError` the panel can show inline next to an
+  // Open-in-Spotify CTA. Other tracks failures (network, 401, 5xx) take
+  // the same code path so the user always sees the upstream reason.
+  let tracks: ReturnType<typeof projectTrack>[] = [];
+  let totalFromTracks = 0;
+  let tracksError: string | null = null;
+  if (tracksRes.ok) {
+    const tracksData = tracksRes.data as {
+      items?: (PlaylistTrackEntry | Track | null)[];
+      total?: number;
+    };
+    totalFromTracks = tracksData.total ?? 0;
+    const fallbackImages = header.images;
+    const fallbackName = header.name ?? "";
+    tracks = (tracksData.items ?? [])
+      .map((entry, idx) => {
+        if (!entry) return null;
+        // Playlist tracks: { track: {...} }. Album tracks: bare Track.
+        const t =
+          "track" in (entry as PlaylistTrackEntry)
+            ? (entry as PlaylistTrackEntry).track
+            : (entry as Track);
+        return projectTrack(t, idx, fallbackName, fallbackImages);
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+  } else {
+    console.error(
+      "[spotify-playlist-tracks] tracks fetch failed",
+      tracksRes.status,
+      tracksRes.error,
+    );
+    tracksError =
+      tracksRes.status === 403
+        ? "Spotify restricts API access to its editorial and algorithmic playlists. Open the playlist in Spotify to listen."
+        : `Spotify ${tracksRes.status}: ${tracksRes.error}`;
+  }
 
   const res = NextResponse.json({
     ok: true,
@@ -184,6 +192,8 @@ export async function GET(
     year: isAlbum && header.release_date ? header.release_date.slice(0, 4) : "",
     trackCount: header.tracks?.total ?? totalFromTracks ?? tracks.length,
     tracks,
+    tracksError,
+    externalUrl: header.external_urls?.spotify ?? "",
   });
   return applyRefreshedSpotifyCookies(res, refreshed);
 }
