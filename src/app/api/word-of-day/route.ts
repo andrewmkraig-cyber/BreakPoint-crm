@@ -93,9 +93,27 @@ export async function GET() {
     });
   }
 
+  // Pass the last 14 days of words back to Claude as a do-not-repeat
+  // list. Without this Claude has no memory across calls and can pick
+  // the same word two days in a row by chance — Andrew caught it
+  // serving "suborn" on consecutive ET days.
+  const recent = await prisma.wordOfDay.findMany({
+    where: {
+      organizationId: org.id,
+      generatedDate: { lt: generatedDate },
+    },
+    orderBy: { generatedDate: "desc" },
+    take: 14,
+    select: { word: true },
+  });
+  const recentWords = recent.map((r) => r.word);
+
   const system =
-    "You are a vocabulary curator. Return a single sophisticated, uncommon English word that a sharp business professional would find useful. Pick a different word each day so that repeated calls on different dates produce different words. Respond with raw JSON only, no prose, no code fences. Schema: {\"word\": string, \"partOfSpeech\": string, \"definition\": string, \"exampleSentence\": string}.";
-  const userMessage = `Today's date is ${generatedDate.toISOString().slice(0, 10)}. Return today's word.`;
+    "You are a vocabulary curator. Return a single sophisticated, uncommon English word that a sharp business professional would find useful. Respond with raw JSON only, no prose, no code fences. Schema: {\"word\": string, \"partOfSpeech\": string, \"definition\": string, \"exampleSentence\": string}.";
+  const userMessage =
+    recentWords.length > 0
+      ? `Today's date is ${generatedDate.toISOString().slice(0, 10)}. The following words have been used in the last ${recentWords.length} days — do NOT repeat any of them: ${recentWords.join(", ")}. Return a new word.`
+      : `Today's date is ${generatedDate.toISOString().slice(0, 10)}. Return today's word.`;
 
   let payload: WordPayload | null;
   try {
