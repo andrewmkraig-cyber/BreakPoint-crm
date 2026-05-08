@@ -17,6 +17,12 @@ export const SPOTIFY_SCOPES = [
   "user-read-private",
   "user-modify-playback-state",
   "user-read-playback-state",
+  "user-library-read",
+  "user-library-modify",
+  "playlist-read-private",
+  "playlist-read-collaborative",
+  "user-read-recently-played",
+  "user-top-read",
 ].join(" ");
 
 export const SPOTIFY_COOKIE = {
