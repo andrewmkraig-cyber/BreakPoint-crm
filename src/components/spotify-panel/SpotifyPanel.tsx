@@ -165,7 +165,8 @@ type View =
   | { kind: "search" }
   | { kind: "playlist"; id: string; isAlbum?: boolean }
   | { kind: "liked" }
-  | { kind: "artist"; id: string };
+  | { kind: "artist"; id: string }
+  | { kind: "nowplaying" };
 
 type ActiveTrack = {
   uri: string;
@@ -804,6 +805,16 @@ export function SpotifyPanel() {
         });
         return;
       }
+      // Optimistically jump to the now-playing view as soon as the
+      // recruiter clicks a track. This is the natural moment they
+      // want to see the cover; if the play call fails (Premium 403,
+      // device gone, etc.) the toast surfaces it and they can hit
+      // Home from BottomNav to navigate back.
+      setStack((prev) => {
+        const top = prev[prev.length - 1];
+        if (top && top.kind === "nowplaying") return prev;
+        return [...prev, { kind: "nowplaying" }];
+      });
       try {
         const res = await fetch(
           `/api/spotify/play?device_id=${encodeURIComponent(deviceId)}`,
@@ -1160,6 +1171,14 @@ export function SpotifyPanel() {
               goTo({ kind: "playlist", id, isAlbum: true })
             }
           />
+        ) : view.kind === "nowplaying" ? (
+          activeTrack ? (
+            <NowPlayingView track={activeTrack} />
+          ) : (
+            <div className="flex h-full items-center justify-center gap-2 text-sm text-[#B3B3B3]">
+              <Loader2 className="h-4 w-4 animate-spin" /> Starting playback…
+            </div>
+          )
         ) : null}
       </div>
 
@@ -1170,6 +1189,7 @@ export function SpotifyPanel() {
       {authState.status === "authenticated" && (
         <BottomNav
           view={view}
+          hasActiveTrack={Boolean(activeTrack)}
           onHome={goHome}
           onSearch={() => goTo({ kind: "search" })}
         />
@@ -1856,6 +1876,7 @@ function ArtistView(props: {
 
 function BottomNav(props: {
   view: View;
+  hasActiveTrack: boolean;
   onHome: () => void;
   onSearch: () => void;
 }) {
@@ -1873,7 +1894,16 @@ function BottomNav(props: {
         }}
         aria-label="Home"
       >
-        <Music className="h-4 w-4" />
+        <span className="relative inline-flex">
+          <Music className="h-4 w-4" />
+          {props.hasActiveTrack && (
+            <span
+              aria-label="Now playing"
+              className="absolute -right-1 -top-1 h-2 w-2 rounded-full ring-2 ring-[#121212]"
+              style={{ backgroundColor: COLOR_GREEN }}
+            />
+          )}
+        </span>
         Home
       </button>
       <button
@@ -1895,12 +1925,47 @@ function BottomNav(props: {
 // ──────────────────────────────────────────────────────────────────
 // Now Playing Bar
 
-// Now Playing surface — when a track is loaded, the bottom of the
-// panel turns into a Spotify-mobile-style "now playing" view: the
-// album art takes the full panel width, the track name and artist
-// are centered below it, then the scrubber, transport controls, and
-// volume. The body content above scrolls under this; the recruiter
-// can resize the panel taller to see more of it at once.
+// Full-panel Now Playing surface — rendered as a body view (not at
+// the panel chrome) so it lives between the header and the BottomNav
+// and the recruiter can leave it via Home/Search like any other
+// view. The square art uses object-contain + aspectRatio so it
+// scales with whatever vertical space is available without ever
+// cropping or pushing the centered title/artist out of frame.
+function NowPlayingView(props: { track: ActiveTrack }) {
+  return (
+    <div className="flex h-full flex-col px-4 py-4">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+        {props.track.albumArt ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={props.track.albumArt}
+            alt=""
+            className="block max-h-full max-w-full rounded object-contain shadow-2xl"
+            style={{ aspectRatio: "1 / 1" }}
+          />
+        ) : (
+          <div
+            className="rounded bg-[#282828]"
+            style={{ aspectRatio: "1 / 1", maxHeight: "100%", maxWidth: "100%" }}
+          />
+        )}
+      </div>
+      <div className="mt-4 shrink-0 text-center">
+        <div className="truncate text-lg font-bold text-white">
+          {props.track.name}
+        </div>
+        <div className="mt-1 truncate text-sm text-[#B3B3B3]">
+          {props.track.artist}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Controls-only bottom bar — pinned at the very bottom of the panel
+// regardless of which view is in the body. Holds the scrubber and
+// transport buttons; the big album art / track name now live in
+// NowPlayingView so they don't double up.
 function NowPlayingBar(props: {
   track: ActiveTrack;
   paused: boolean;
@@ -1922,103 +1987,74 @@ function NowPlayingBar(props: {
   }
 
   return (
-    // flex-[2_1_0] makes NowPlayingBar grow twice as fast as the body
-    // above when the panel has spare height, so the album art gets
-    // most of the room. min-h-[120px] keeps the controls block always
-    // visible — at extreme small panel heights the album-art slot
-    // collapses to 0 instead of pushing play/pause off the bottom.
     <div
-      className="flex min-h-[120px] flex-[2_1_0] flex-col border-t border-white/10"
+      className="shrink-0 border-t border-white/10"
       style={{ backgroundColor: COLOR_BG }}
     >
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black">
-        {props.track.albumArt ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={props.track.albumArt}
-            alt=""
-            className="block max-h-full max-w-full object-contain"
-            style={{ aspectRatio: "1 / 1" }}
-          />
-        ) : (
+      <div className="flex items-center gap-2 px-3 pt-2">
+        <span className="w-[34px] shrink-0 text-right text-[10px] tabular-nums text-[#B3B3B3]">
+          {formatDuration(props.positionMs)}
+        </span>
+        <div
+          onClick={onProgressClick}
+          className="group relative h-1 flex-1 cursor-pointer rounded-full bg-[#4D4D4D]"
+        >
           <div
-            className="bg-[#282828]"
-            style={{ aspectRatio: "1 / 1", height: "100%", maxWidth: "100%" }}
+            className="h-full rounded-full transition-[width] duration-100 group-hover:bg-[#1ED760]"
+            style={{ width: `${pct}%`, backgroundColor: "#FFFFFF" }}
           />
-        )}
+        </div>
+        <span className="w-[34px] shrink-0 text-[10px] tabular-nums text-[#B3B3B3]">
+          {formatDuration(props.track.durationMs)}
+        </span>
       </div>
 
-      <div className="shrink-0 px-4 pb-3 pt-3">
-        <div className="truncate text-center text-base font-semibold text-white">
-          {props.track.name}
+      <div className="flex items-center justify-between gap-2 px-3 pb-2 pt-1">
+        <div className="flex items-center gap-1">
+          <Volume2 className="h-3.5 w-3.5 shrink-0 text-[#B3B3B3]" />
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={props.volume}
+            onChange={(e) => props.onVolume(Number(e.target.value))}
+            aria-label="Volume"
+            className="h-1 w-[72px] shrink-0 cursor-pointer accent-white"
+          />
         </div>
-        <div className="mt-0.5 truncate text-center text-xs text-[#B3B3B3]">
-          {props.track.artist}
-        </div>
-
-        <div className="mt-3 flex items-center gap-2">
-          <span className="w-[34px] shrink-0 text-right text-[10px] tabular-nums text-[#B3B3B3]">
-            {formatDuration(props.positionMs)}
-          </span>
-          <div
-            onClick={onProgressClick}
-            className="group relative h-1 flex-1 cursor-pointer rounded-full bg-[#4D4D4D]"
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={props.onPrev}
+            className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
+            aria-label="Previous"
           >
-            <div
-              className="h-full rounded-full transition-[width] duration-100 group-hover:bg-[#1ED760]"
-              style={{ width: `${pct}%`, backgroundColor: "#FFFFFF" }}
-            />
-          </div>
-          <span className="w-[34px] shrink-0 text-[10px] tabular-nums text-[#B3B3B3]">
-            {formatDuration(props.track.durationMs)}
-          </span>
+            <SkipBack className="h-5 w-5" fill="currentColor" />
+          </button>
+          <button
+            type="button"
+            onClick={props.onTogglePlay}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-black transition hover:scale-105"
+            aria-label={props.paused ? "Play" : "Pause"}
+          >
+            {props.paused ? (
+              <Play className="h-4 w-4" fill="currentColor" />
+            ) : (
+              <Pause className="h-4 w-4" fill="currentColor" />
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={props.onNext}
+            className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
+            aria-label="Next"
+          >
+            <SkipForward className="h-5 w-5" fill="currentColor" />
+          </button>
         </div>
-
-        <div className="mt-2 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1">
-            <Volume2 className="h-3.5 w-3.5 shrink-0 text-[#B3B3B3]" />
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={props.volume}
-              onChange={(e) => props.onVolume(Number(e.target.value))}
-              aria-label="Volume"
-              className="h-1 w-[72px] shrink-0 cursor-pointer accent-white"
-            />
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={props.onPrev}
-              className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
-              aria-label="Previous"
-            >
-              <SkipBack className="h-5 w-5" fill="currentColor" />
-            </button>
-            <button
-              type="button"
-              onClick={props.onTogglePlay}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-black transition hover:scale-105"
-              aria-label={props.paused ? "Play" : "Pause"}
-            >
-              {props.paused ? (
-                <Play className="h-4 w-4" fill="currentColor" />
-              ) : (
-                <Pause className="h-4 w-4" fill="currentColor" />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={props.onNext}
-              className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
-              aria-label="Next"
-            >
-              <SkipForward className="h-5 w-5" fill="currentColor" />
-            </button>
-          </div>
-          <div className="w-[88px]" />
-        </div>
+        {/* spacer to balance the volume slider so the transport
+            controls land visually centered */}
+        <div className="w-[88px]" />
       </div>
     </div>
   );
