@@ -72,11 +72,12 @@ export default async function MailPage() {
   // detail pane fit the visible area exactly without the page itself
   // scrolling. Title + Compose button now live in the global TopBar
   // via TopBarPageTitle, so /mail starts directly with the connector
-  // banner (when present) and the inbox layout. The negative top
-  // margin claws against the AppShell gutter; height accounts for
-  // both that claw-up and the slim h-[72px] topbar.
+  // banner (when present) and the inbox layout. AppShell's top
+  // padding is now pt-4 globally so the page already starts 16px
+  // below the topbar; no claw-up needed. Height accounts for the
+  // h-[72px] topbar plus the AppShell's pt-4 + pb-6/8 gutters.
   return (
-    <div className="-mt-2 flex h-[calc(100vh-7rem)] flex-col md:-mt-4 md:h-[calc(100vh-7.5rem)]">
+    <div className="flex h-[calc(100vh-7rem)] flex-col md:h-[calc(100vh-7.5rem)]">
       {gmailStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="gmail-down"

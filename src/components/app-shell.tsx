@@ -183,9 +183,12 @@ export function AppShell({
                   sides — the resize handle already provides visual
                   separation from the sidebar, so a full p-8 gutter
                   on the left wasted ~16px of horizontal real estate
-                  before the page content even started. Right / top /
-                  bottom keep their original p-6/md:p-8 generosity. */}
-              <main className="min-w-0 flex-1 p-6 pl-3 md:p-8 md:pl-4">{children}</main>
+                  before the page content even started. Top is also
+                  tighter (pt-4 = 16px) so every page sits the same
+                  16px below the topbar that Mail/Phone already used
+                  via their custom -mt-2/-mt-4 pull-up. Right / bottom
+                  keep their original p-6 / md:p-8 generosity. */}
+              <main className="min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4">{children}</main>
             </div>
           </div>
         </TextingProvider>

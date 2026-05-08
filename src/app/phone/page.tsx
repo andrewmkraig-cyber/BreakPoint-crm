@@ -35,11 +35,12 @@ export default async function PhonePage() {
 
   // Viewport-bounded flex column so the threads list + dialer fit the
   // visible area exactly without the page itself scrolling. Negative
-  // top margin claws against the AppShell gutter so the inline header
-  // PhoneView renders sits flush with the topbar — matches /mail's
-  // pattern. Height accounts for the slimmer h-16 topbar.
+  // AppShell's top padding is now pt-4 globally so /phone matches
+  // every other page's 16px-below-topbar position without needing a
+  // negative-margin claw-up. Height accounts for the h-[72px] topbar
+  // plus the AppShell's pt-4 + pb gutters.
   return (
-    <div className="-mt-2 flex h-[calc(100vh-7.5rem)] flex-col md:-mt-4 md:h-[calc(100vh-8.5rem)]">
+    <div className="flex h-[calc(100vh-7.5rem)] flex-col md:h-[calc(100vh-8.5rem)]">
       {quoStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="quo-down"
