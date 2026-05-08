@@ -81,6 +81,49 @@ export function YouTubePanel() {
     if (!open) setMinimized(false);
   }, [open]);
 
+  // On open, if the saved position would put any part of the panel off-
+  // screen (window resized smaller while panel was closed, monitor
+  // unplugged, etc.), recenter so the recruiter can always see and
+  // interact with it.
+  useEffect(() => {
+    if (!open || !position) return;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const offScreen =
+      position.x < 0 ||
+      position.y < 0 ||
+      position.x + size.w > w ||
+      position.y + size.h > h;
+    if (offScreen) {
+      setPosition({
+        x: Math.max(0, Math.floor((w - size.w) / 2)),
+        y: Math.max(0, Math.floor((h - size.h) / 2)),
+      });
+    }
+    // Intentionally only react to `open` flipping — running on every
+    // position commit would fight the recruiter's drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Re-clamp the panel into the viewport whenever the window resizes
+  // while the panel is open. Skips the minimized dock — its position is
+  // pinned bottom-right via inline style and doesn't need clamping.
+  useEffect(() => {
+    if (!open || minimized) return;
+    function onResize() {
+      if (!position) return;
+      const maxX = Math.max(0, window.innerWidth - size.w);
+      const maxY = Math.max(0, window.innerHeight - size.h);
+      const clampedX = Math.max(0, Math.min(maxX, position.x));
+      const clampedY = Math.max(0, Math.min(maxY, position.y));
+      if (clampedX !== position.x || clampedY !== position.y) {
+        setPosition({ x: clampedX, y: clampedY });
+      }
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open, minimized, position, size, setPosition]);
+
   const onHeaderPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -99,9 +142,20 @@ export function YouTubePanel() {
         rafId = 0;
         node.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       };
+      // Clamp dx/dy on every move so the visible panel never crosses a
+      // viewport edge during the drag. We compute the desired absolute
+      // position, clamp it into [0, viewport - size], then back-derive
+      // the translate delta. Maxes are recomputed each move so a window
+      // resize mid-drag is honoured immediately.
       const onMove = (ev: PointerEvent) => {
-        dx = ev.clientX - startPx;
-        dy = ev.clientY - startPy;
+        const rawX = startX + (ev.clientX - startPx);
+        const rawY = startY + (ev.clientY - startPy);
+        const maxX = Math.max(0, window.innerWidth - size.w);
+        const maxY = Math.max(0, window.innerHeight - size.h);
+        const clampedX = Math.max(0, Math.min(maxX, rawX));
+        const clampedY = Math.max(0, Math.min(maxY, rawY));
+        dx = clampedX - startX;
+        dy = clampedY - startY;
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
       const onUp = () => {
@@ -110,6 +164,9 @@ export function YouTubePanel() {
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.transform = "";
         node.style.willChange = "";
+        // dx/dy are already clamped by onMove, but re-clamp here in case
+        // the user released without moving (no onMove fired) or the
+        // window resized between the last move and pointerup.
         const maxX = Math.max(0, window.innerWidth - size.w);
         const maxY = Math.max(0, window.innerHeight - size.h);
         setPosition({
