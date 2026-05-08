@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft } from "lucide-react";
 import { Chess, type Square } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
@@ -203,6 +204,21 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   const [flash, setFlash] = useState<"green" | "red" | null>(null);
   const [hintActive, setHintActive] = useState<boolean>(false);
   const [streak, setStreak] = useState<number>(0);
+  // History stack of pre-move FEN snapshots (paired with moveIdx) so
+  // the Back button can step the recruiter back one move-pair at a
+  // time when they lose track of where they are mid-puzzle.
+  const [history, setHistory] = useState<{ fen: string; moveIdx: number }[]>(
+    [],
+  );
+  // Click-to-move support: track which square was tapped first so the
+  // next click on a legal target completes the move. Drag still works
+  // independently of this state.
+  const [selectedSquare, setSelectedSquare] = useState<Square | null>(null);
+  // Pending timers — opponent's 500ms reply and the showAnswer
+  // animation step. Tracked so Back can cancel them and avoid
+  // racing a stale move into a rolled-back position.
+  const oppTimeoutRef = useRef<number | null>(null);
+  const answerTimeoutRef = useRef<number | null>(null);
 
   // Hydrate streak after mount — reading localStorage during initial
   // state would trip Next's SSR mismatch warning.
@@ -252,7 +268,8 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
       return;
     }
     const opp = parseUci(puzzle.solution[idx]);
-    window.setTimeout(() => {
+    oppTimeoutRef.current = window.setTimeout(() => {
+      oppTimeoutRef.current = null;
       try {
         gameRef.current.move(opp);
         setFen(gameRef.current.fen());
@@ -272,6 +289,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   function onPieceDrop(source: string, target: string): boolean {
     if (status === "solved") return false;
     setHintActive(false);
+    setSelectedSquare(null);
 
     const expected = parseUci(puzzle.solution[moveIdx]);
     const promotion = expected.from === source && expected.to === target
@@ -300,6 +318,14 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
       return false;
     }
 
+    // Snapshot the pre-move state before committing so Back can
+    // restore exactly where the recruiter was, including the moveIdx
+    // pointer into the solution array.
+    setHistory((h) => [
+      ...h,
+      { fen: gameRef.current.fen(), moveIdx },
+    ]);
+
     // Match — commit on the real game and advance the index.
     gameRef.current.move({ from: source, to: target, promotion });
     setFen(gameRef.current.fen());
@@ -315,6 +341,57 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
     return true;
   }
 
+  // Tap-to-select then tap-to-move. Mirrors the drag flow through
+  // onPieceDrop so validation/snapshot/auto-reply logic stays in one
+  // place. Tapping the same square twice clears the selection;
+  // tapping an empty/opponent square either re-selects (if it's the
+  // recruiter's piece) or just clears.
+  function onSquareClick(square: string) {
+    if (status === "solved") return;
+    const sq = square as Square;
+    if (selectedSquare && selectedSquare !== sq) {
+      const moved = onPieceDrop(selectedSquare, sq);
+      if (moved) return;
+      // Drop failed (illegal or wrong solution move). Fall through so
+      // a click on another own-piece reselects instead of leaving
+      // them stuck on the prior selection.
+    }
+    if (selectedSquare === sq) {
+      setSelectedSquare(null);
+      return;
+    }
+    const piece = gameRef.current.get(sq);
+    if (piece && piece.color === gameRef.current.turn()) {
+      setSelectedSquare(sq);
+    } else {
+      setSelectedSquare(null);
+    }
+  }
+
+  // Step back one move-pair: pop the latest snapshot, reload the
+  // chess.js game, and cancel any pending opponent / show-answer
+  // timer so it can't race a move onto the rolled-back board.
+  function goBack() {
+    if (history.length === 0) return;
+    if (oppTimeoutRef.current !== null) {
+      window.clearTimeout(oppTimeoutRef.current);
+      oppTimeoutRef.current = null;
+    }
+    if (answerTimeoutRef.current !== null) {
+      window.clearTimeout(answerTimeoutRef.current);
+      answerTimeoutRef.current = null;
+    }
+    const prev = history[history.length - 1];
+    setHistory((h) => h.slice(0, -1));
+    gameRef.current = new Chess(prev.fen);
+    setFen(prev.fen);
+    setMoveIdx(prev.moveIdx);
+    setStatus("playing");
+    setHintActive(false);
+    setSelectedSquare(null);
+    setFlash(null);
+  }
+
   function showHint() {
     setHintActive(true);
     setStatus("playing");
@@ -324,8 +401,10 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   // a small delay between each move so the sequence is readable.
   function showAnswer() {
     setHintActive(false);
+    setSelectedSquare(null);
     let idx = moveIdx;
     const step = () => {
+      answerTimeoutRef.current = null;
       if (idx >= puzzle.solution.length) {
         setStatus("solved");
         return;
@@ -340,7 +419,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
       }
       idx += 1;
       setMoveIdx(idx);
-      window.setTimeout(step, 550);
+      answerTimeoutRef.current = window.setTimeout(step, 550);
     };
     step();
   }
@@ -353,6 +432,31 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
     customSquareStyles[expected.from] = {
       boxShadow: "inset 0 0 0 4px rgba(234, 179, 8, 0.85)",
     };
+  }
+  // Click-to-move highlights: blue ring on the selected source plus
+  // soft dots on every legal destination so the recruiter can see
+  // where the piece can land before committing.
+  if (selectedSquare && status !== "solved") {
+    customSquareStyles[selectedSquare] = {
+      ...(customSquareStyles[selectedSquare] ?? {}),
+      boxShadow: "inset 0 0 0 4px rgba(59, 130, 246, 0.7)",
+    };
+    let legal: { to: string }[] = [];
+    try {
+      legal = gameRef.current.moves({
+        square: selectedSquare,
+        verbose: true,
+      }) as { to: string }[];
+    } catch {
+      legal = [];
+    }
+    for (const m of legal) {
+      customSquareStyles[m.to] = {
+        ...(customSquareStyles[m.to] ?? {}),
+        background:
+          "radial-gradient(circle, rgba(59,130,246,0.35) 22%, transparent 23%)",
+      };
+    }
   }
 
   const ringClass =
@@ -394,7 +498,19 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
           </div>
         </div>
       </div>
-      <div className="mt-1 text-sm font-semibold text-court-fg">{heading}</div>
+      <div className="mt-1 flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-court-fg">{heading}</div>
+        {history.length > 0 && status !== "solved" ? (
+          <button
+            type="button"
+            onClick={goBack}
+            aria-label="Step back one move"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
+          >
+            <ArrowLeft className="h-3 w-3" /> Back
+          </button>
+        ) : null}
+      </div>
 
       <div
         className={`mt-3 overflow-hidden rounded-md transition ${ringClass}`}
@@ -402,6 +518,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
         <Chessboard
           position={fen}
           onPieceDrop={onPieceDrop}
+          onSquareClick={onSquareClick}
           boardWidth={320}
           boardOrientation={userColor}
           arePiecesDraggable={status !== "solved"}
