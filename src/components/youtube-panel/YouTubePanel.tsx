@@ -155,12 +155,24 @@ export function YouTubePanel() {
     return () => window.removeEventListener("resize", onResize);
   }, [open, minimized, position, size, setPosition]);
 
+  // setPointerCapture on the handle element forces every subsequent
+  // pointermove / pointerup / pointercancel for this pointerId to fire
+  // on the handle, even if the cursor drifts over the YouTube iframe.
+  // window listeners alone weren't enough — the iframe absorbed the
+  // up event and the panel kept tracking the cursor until the next
+  // click. pointercancel is added as belt-and-suspenders for the
+  // case where the OS / browser cancels the gesture.
   const onHeaderPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       if ((e.target as HTMLElement).closest("button")) return;
       const node = panelRef.current;
       if (!node || !position) return;
+      const handle = e.currentTarget;
+      const pointerId = e.pointerId;
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {}
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startX = position.x;
@@ -173,11 +185,6 @@ export function YouTubePanel() {
         rafId = 0;
         node.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       };
-      // Clamp dx/dy on every move so the visible panel never crosses a
-      // viewport edge during the drag. We compute the desired absolute
-      // position, clamp it into [0, viewport - size], then back-derive
-      // the translate delta. Maxes are recomputed each move so a window
-      // resize mid-drag is honoured immediately.
       const onMove = (ev: PointerEvent) => {
         const rawX = startX + (ev.clientX - startPx);
         const rawY = startY + (ev.clientY - startPy);
@@ -190,14 +197,15 @@ export function YouTubePanel() {
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
       const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        try {
+          handle.releasePointerCapture(pointerId);
+        } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.transform = "";
         node.style.willChange = "";
-        // dx/dy are already clamped by onMove, but re-clamp here in case
-        // the user released without moving (no onMove fired) or the
-        // window resized between the last move and pointerup.
         const maxX = Math.max(0, window.innerWidth - size.w);
         const maxY = Math.max(0, window.innerHeight - size.h);
         setPosition({
@@ -205,20 +213,28 @@ export function YouTubePanel() {
           y: Math.max(0, Math.min(maxY, startY + dy)),
         });
       };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
     },
     [position, size, setPosition],
   );
 
-  // Bottom-right corner resize handle. Mutates width/height directly during
-  // drag for GPU-friendly perf, then commits to context state on pointerup.
+  // Bottom-right corner resize handle. Same pointer-capture pattern as
+  // the header drag — without it, dragging across the YouTube iframe
+  // swallowed the pointerup and the panel resized forever until the
+  // next click.
   const onCornerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       const node = panelRef.current;
       if (!node) return;
+      const handle = e.currentTarget;
+      const pointerId = e.pointerId;
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {}
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startW = size.w;
@@ -238,14 +254,19 @@ export function YouTubePanel() {
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
       const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        try {
+          handle.releasePointerCapture(pointerId);
+        } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.willChange = "";
         setSize({ w: nextW, h: nextH });
       };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
     },
     [size, setSize],
   );

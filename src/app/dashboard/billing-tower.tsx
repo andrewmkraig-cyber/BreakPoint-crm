@@ -74,8 +74,9 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
   );
 }
 
-// Compact USD: $7.5k for thousands, $1.2M for millions, $750 for sub-1k
-// values. Stripping trailing ".0" so $7000 reads "$7k" instead of "$7.0k".
+// Compact USD: $7.5K for thousands, $1.2M for millions, $750 for sub-1K
+// values. Stripping trailing ".0" so $7000 reads "$7K" instead of "$7.0K".
+// Capital K matches the M case so the suffix reads consistently.
 function formatCompactUsd(amount: number): string {
   if (amount === 0) return "$0";
   const abs = Math.abs(amount);
@@ -83,7 +84,7 @@ function formatCompactUsd(amount: number): string {
     return `$${(amount / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   }
   if (abs >= 1_000) {
-    return `$${(amount / 1_000).toFixed(1).replace(/\.0$/, "")}k`;
+    return `$${(amount / 1_000).toFixed(1).replace(/\.0$/, "")}K`;
   }
   return `$${amount}`;
 }

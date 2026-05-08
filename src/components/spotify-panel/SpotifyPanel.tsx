@@ -780,6 +780,13 @@ export function SpotifyPanel() {
     return () => window.removeEventListener("resize", onResize);
   }, [open, minimized, position, size, setPosition]);
 
+  // setPointerCapture on the handle element forces every subsequent
+  // pointer event for this pointerId to fire on the handle, even if
+  // the cursor drifts over the album-art img or any nested overflow
+  // container that would otherwise swallow pointerup. Without this
+  // the panel would keep tracking the cursor after release until the
+  // next click. pointercancel is wired as belt-and-suspenders for
+  // OS / browser-level gesture cancellation.
   const onHeaderPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -787,6 +794,11 @@ export function SpotifyPanel() {
       if ((e.target as HTMLElement).closest("input")) return;
       const node = panelRef.current;
       if (!node || !position) return;
+      const handle = e.currentTarget;
+      const pointerId = e.pointerId;
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {}
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startX = position.x;
@@ -811,8 +823,12 @@ export function SpotifyPanel() {
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
       const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        try {
+          handle.releasePointerCapture(pointerId);
+        } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.transform = "";
         node.style.willChange = "";
@@ -823,8 +839,9 @@ export function SpotifyPanel() {
           y: Math.max(0, Math.min(maxY, startY + dy)),
         });
       };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
     },
     [position, size, setPosition],
   );
@@ -835,6 +852,11 @@ export function SpotifyPanel() {
       e.stopPropagation();
       const node = panelRef.current;
       if (!node) return;
+      const handle = e.currentTarget;
+      const pointerId = e.pointerId;
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {}
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startW = size.w;
@@ -854,14 +876,19 @@ export function SpotifyPanel() {
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
       const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        try {
+          handle.releasePointerCapture(pointerId);
+        } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.willChange = "";
         setSize({ w: nextW, h: nextH });
       };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
     },
     [size, setSize],
   );
