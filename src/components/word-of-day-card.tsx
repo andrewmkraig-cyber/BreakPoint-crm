@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 
 // Compact "Word of the Day" pill that lives at the bottom-right of the
 // dashboard column. Renders a single-line chip ("Word of the Day:
@@ -108,6 +108,14 @@ export function WordOfDayCard() {
           aria-label="Word of the Day"
           className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Close"
+            className="absolute right-2 top-2 rounded-md p-0.5 text-court-fg-muted opacity-40 transition hover:bg-court-surface-subtle hover:opacity-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
           <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
             Word of the Day
           </div>

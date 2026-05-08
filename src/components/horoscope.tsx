@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, X } from "lucide-react";
 
 // Daily horoscope chip in the briefing header. Hardcoded to Pisces —
 // Andrew's birthday is March 11. We hit the same-origin /api/horoscope
@@ -83,7 +83,13 @@ export function Horoscope() {
         aria-haspopup="dialog"
         className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
       >
-        <span aria-hidden="true">{SIGN_GLYPH}</span>
+        {/* The unicode Pisces glyph rendered as a purple emoji on
+            macOS, which clashed with the green dashboard. Sparkles
+            in court-brand green keeps the chip on theme. */}
+        <Sparkles
+          aria-hidden="true"
+          className="h-3.5 w-3.5 text-court-brand"
+        />
         <span>Horoscope</span>
       </button>
 
@@ -93,6 +99,14 @@ export function Horoscope() {
           aria-label="Daily horoscope"
           className="absolute bottom-full right-0 z-20 mb-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Close"
+            className="absolute right-2 top-2 rounded-md p-0.5 text-court-fg-muted opacity-40 transition hover:bg-court-surface-subtle hover:opacity-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
           <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
             Daily Horoscope
           </div>

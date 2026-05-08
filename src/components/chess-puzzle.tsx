@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { Chess, type Square } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
@@ -227,7 +227,19 @@ export function ChessPuzzle() {
         aria-haspopup="dialog"
         className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
       >
-        <span aria-hidden="true">♟</span>
+        {/* Inline chess-king silhouette — the previous unicode pawn
+            glyph (♟) wasn't rendering as a chess piece on Andrew's
+            stack (it fell through to a generic triangle), so we ship
+            our own path. currentColor lets the chip's text color
+            tint the icon. */}
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          className="h-3.5 w-3.5"
+          fill="currentColor"
+        >
+          <path d="M11 2v2H9v2h2v2H8.5A2.5 2.5 0 0 0 6 10.5v.4c0 1.4.6 2.7 1.7 3.6l1.3 1.1V18H7v3h10v-3h-2v-2.4l1.3-1.1A4.6 4.6 0 0 0 18 10.9v-.4A2.5 2.5 0 0 0 15.5 8H13V6h2V4h-2V2h-2zM9 19h6v1H9v-1z" />
+        </svg>
         <span>Daily Chess Puzzle</span>
       </button>
 
@@ -237,6 +249,14 @@ export function ChessPuzzle() {
           aria-label="Chess puzzle"
           className="absolute bottom-full right-0 z-20 mb-2 w-[360px] rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            aria-label="Close"
+            className="absolute right-2 top-2 z-10 rounded-md p-0.5 text-court-fg-muted opacity-40 transition hover:bg-court-surface-subtle hover:opacity-100"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
           <PuzzleBoard puzzle={puzzle} />
         </div>
       )}
