@@ -317,6 +317,14 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
       return (
         <ActionRow disabled={isPending}>
           <DialogOrNav
+            icon={Edit3}
+            label="Edit Offer"
+            title="Edit offered salary, title, or start date"
+            tone="default"
+            onClick={props.onOffer}
+            href={profileHref}
+          />
+          <DialogOrNav
             icon={Handshake}
             label="Placement"
             title="Record placement"

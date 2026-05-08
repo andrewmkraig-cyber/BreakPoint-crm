@@ -12,7 +12,7 @@ const PERIODS = [
   { value: "quarter-current", label: "Current Quarter (Q2 2026)" },
   { value: "quarter-previous", label: "Previous Quarter" },
   { value: "ytd", label: "Year to Date" },
-  { value: "since-inception", label: "Since Inception (May 1, 2026)" },
+  { value: "since-inception", label: "Since Inception (April 1, 2026)" },
   { value: "custom", label: "Custom range…" },
 ] as const;
 

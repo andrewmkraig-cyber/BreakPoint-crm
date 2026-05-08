@@ -11,7 +11,7 @@ import {
   type ChangeEvent,
   type DragEvent,
 } from "react";
-import { Search, Loader2, Settings, X, ListPlus, Send, Upload } from "lucide-react";
+import { Search, Loader2, Settings, X, ListPlus, Send, Upload, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination/pagination";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
@@ -134,7 +134,7 @@ export function CandidatesView({
     });
   }, [candidates, q, selectedListId, page]);
 
-  const [bulkOpen, setBulkOpen] = useState<null | "apply" | "list">(null);
+  const [bulkOpen, setBulkOpen] = useState<null | "apply" | "list" | "delete">(null);
   const [importOpen, setImportOpen] = useState(false);
 
   // Build a URL with ?q=, ?list=, ?page= as appropriate. Page param
@@ -273,6 +273,13 @@ export function CandidatesView({
             >
               <ListPlus className="h-3 w-3" /> Add to List
             </button>
+            <button
+              type="button"
+              onClick={() => setBulkOpen("delete")}
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
+            >
+              <Trash2 className="h-3 w-3" /> Delete Selected
+            </button>
           </div>
         </div>
       )}
@@ -396,6 +403,17 @@ export function CandidatesView({
         <BulkAddToListDialog
           candidateIds={selectedCandidateIds}
           lists={lists}
+          onClose={() => setBulkOpen(null)}
+          onDone={() => {
+            setBulkOpen(null);
+            setSelectedIds(new Set());
+            router.refresh();
+          }}
+        />
+      )}
+      {bulkOpen === "delete" && (
+        <BulkDeleteDialog
+          candidateIds={selectedCandidateIds}
           onClose={() => setBulkOpen(null)}
           onDone={() => {
             setBulkOpen(null);
@@ -624,6 +642,70 @@ function BulkAddToListDialog({
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
           {mode === "existing" ? "Add" : "Create + add"}
+        </button>
+      </div>
+    </BulkModal>
+  );
+}
+
+function BulkDeleteDialog({
+  candidateIds,
+  onClose,
+  onDone,
+}: {
+  candidateIds: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const count = candidateIds.length;
+
+  async function onConfirm() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/candidates/bulk", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: candidateIds }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        deleted?: number;
+        error?: string;
+      };
+      if (!res.ok || !data.ok) {
+        toast.error("Couldn't delete candidates", { description: data.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      toast.success(`Deleted ${data.deleted ?? count} candidate${(data.deleted ?? count) === 1 ? "" : "s"}`);
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BulkModal title={`Delete ${count} candidate${count === 1 ? "" : "s"}?`} onClose={onClose}>
+      <p className="text-sm text-court-fg">
+        Delete {count} candidate{count === 1 ? "" : "s"}? This cannot be undone.
+      </p>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={busy || count === 0}
+          className="inline-flex items-center gap-1 rounded-md border border-red-300 bg-red-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+          Delete
         </button>
       </div>
     </BulkModal>

@@ -162,6 +162,12 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         offerTitle: input.title || null,
         offerStartDate: startDate,
         offerNotes: input.notes || null,
+        // Mirror offered salary into acceptedSalary at offer time so the
+        // Hired-tab Salary column is populated even if PlacementDialog isn't
+        // opened to type it in again. PlacementDialog still wins on edit
+        // (its own save call writes acceptedSalary explicitly).
+        acceptedSalary: input.salary ?? null,
+        acceptedCurrency: input.currency || "USD",
         syncedToRf: sync.synced,
         createdById: userId,
         organizationId: org.id,
@@ -174,6 +180,8 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         offerTitle: input.title || null,
         offerStartDate: startDate,
         offerNotes: input.notes || null,
+        acceptedSalary: input.salary ?? null,
+        acceptedCurrency: input.currency || "USD",
         syncedToRf: sync.synced,
       },
       select: { id: true, syncedToRf: true },
