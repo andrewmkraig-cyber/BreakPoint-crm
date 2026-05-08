@@ -178,14 +178,14 @@ export function ChessPuzzle() {
         className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
       >
         <span aria-hidden="true">♟</span>
-        <span>Chess</span>
+        <span>Daily Chess Puzzle</span>
       </button>
 
       {open && (
         <div
           role="dialog"
           aria-label="Chess puzzle"
-          className="absolute bottom-full left-0 z-20 mb-2 w-[360px] rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
+          className="absolute bottom-full right-0 z-20 mb-2 w-[360px] rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
           <PuzzleBoard puzzle={puzzle} />
         </div>

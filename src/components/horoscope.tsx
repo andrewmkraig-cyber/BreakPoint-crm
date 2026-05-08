@@ -4,27 +4,26 @@ import { useEffect, useRef, useState } from "react";
 import { Sparkles } from "lucide-react";
 
 // Daily horoscope chip in the briefing header. Hardcoded to Pisces —
-// Andrew's birthday is March 11. The horoscope-app-api endpoint is
-// public, returns a fresh blurb daily, and follows a 308 redirect on
-// the first request which fetch() handles transparently.
+// Andrew's birthday is March 11. We hit the same-origin /api/horoscope
+// proxy because the upstream (horoscope-app-api → freehoroscopeapi)
+// doesn't ship CORS headers, so a direct browser fetch is blocked
+// silently. Chip renders eagerly with a loading state in the popover
+// so it never disappears just because the network is slow.
 
-type ApiResponse = {
-  data?: {
-    date?: string;
-    period?: string;
-    sign?: string;
-    horoscope?: string;
-  };
-};
+type ApiResponse =
+  | { ok: true; sign: string; date: string | null; horoscope: string }
+  | { ok: false; error: string };
 
-const SIGN = "pisces";
 const SIGN_GLYPH = "♓";
 const SIGN_DISPLAY = "Pisces";
 
+type Status =
+  | { phase: "loading" }
+  | { phase: "ready"; date: string | null; horoscope: string }
+  | { phase: "error"; message: string };
+
 export function Horoscope() {
-  const [text, setText] = useState<string | null>(null);
-  const [date, setDate] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>({ phase: "loading" });
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -32,21 +31,24 @@ export function Horoscope() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(
-          `https://horoscope-app-api.vercel.app/api/v1/get-horoscope/daily?sign=${SIGN}&day=TODAY`,
-          { cache: "no-store" },
-        );
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch("/api/horoscope?sign=pisces", {
+          cache: "no-store",
+        });
         const json = (await res.json()) as ApiResponse;
         if (cancelled) return;
-        const blurb = json.data?.horoscope?.trim();
-        if (!blurb) throw new Error("Empty horoscope");
-        setText(blurb);
-        setDate(json.data?.date ?? null);
-      } catch (e) {
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : "Failed to load");
+        if (!res.ok || !json.ok) {
+          const msg =
+            "ok" in json && !json.ok ? json.error : `HTTP ${res.status}`;
+          setStatus({ phase: "error", message: msg });
+          return;
         }
+        setStatus({ phase: "ready", date: json.date, horoscope: json.horoscope });
+      } catch (e) {
+        if (cancelled) return;
+        setStatus({
+          phase: "error",
+          message: e instanceof Error ? e.message : "Failed to load",
+        });
       }
     })();
     return () => {
@@ -71,11 +73,6 @@ export function Horoscope() {
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
-
-  if (!text) {
-    if (error) return null;
-    return null;
-  }
 
   return (
     <div ref={containerRef} className="relative">
@@ -103,15 +100,26 @@ export function Horoscope() {
             <div className="font-stat text-xl font-bold leading-tight text-court-fg">
               {SIGN_GLYPH} {SIGN_DISPLAY}
             </div>
-            {date ? (
+            {status.phase === "ready" && status.date ? (
               <div className="text-[11px] italic text-court-fg-muted">
-                {date}
+                {status.date}
               </div>
             ) : null}
           </div>
-          <p className="mt-2 text-sm leading-relaxed text-court-fg [text-wrap:pretty]">
-            {text}
-          </p>
+          {status.phase === "loading" ? (
+            <p className="mt-2 text-sm text-court-fg-muted">
+              Loading today&apos;s horoscope…
+            </p>
+          ) : status.phase === "error" ? (
+            <p className="mt-2 text-sm text-court-fg-muted">
+              Couldn&apos;t load:{" "}
+              <span className="italic">{status.message}</span>
+            </p>
+          ) : (
+            <p className="mt-2 text-sm leading-relaxed text-court-fg [text-wrap:pretty]">
+              {status.horoscope}
+            </p>
+          )}
           <div className="mt-3 flex items-center gap-1 text-[10px] uppercase tracking-wider text-court-fg-muted">
             <Sparkles className="h-3 w-3" /> horoscope-app-api
           </div>
