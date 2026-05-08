@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { logActivity } from "@/lib/activity";
 import { prisma } from "@/lib/prisma";
+import { deleteCandidate as deleteCandidateAction } from "@/app/candidates/[id]/actions";
 import type { PlacementStage } from "@/lib/placements";
 
 // Executes confirmed Claude Panel proposals. The chat route never
@@ -578,6 +579,69 @@ export async function POST(req: Request) {
       ok: true,
       message: `Deleted ${job.title}.`,
       redirect: "/jobs",
+    });
+  }
+
+  if (name === "delete_candidate") {
+    const candidateRef =
+      typeof input.candidateId === "string" ? input.candidateId : "";
+    const preResolvedCandidateId =
+      typeof resolved.candidateId === "string" ? resolved.candidateId : "";
+    if (!candidateRef && !preResolvedCandidateId) {
+      return NextResponse.json(
+        { ok: false, error: "candidateId is required" },
+        { status: 400 },
+      );
+    }
+
+    // Resolve to a cuid that belongs to this org. Pre-resolved id from
+    // the chat route is preferred but re-verified — defense-in-depth
+    // against a forged action POST. Falls back to the cuid-or-rfId
+    // resolver when the pre-resolved id is missing or stale.
+    let candidate:
+      | { id: string; rfId: number | null; firstName: string | null; lastName: string | null }
+      | null = null;
+    if (preResolvedCandidateId) {
+      candidate = await prisma.candidate.findFirst({
+        where: { id: preResolvedCandidateId, organizationId: org.id },
+        select: { id: true, rfId: true, firstName: true, lastName: true },
+      });
+    }
+    if (!candidate && candidateRef) {
+      candidate = await resolveCandidate(candidateRef, org.id);
+    }
+    if (!candidate) {
+      return NextResponse.json(
+        { ok: false, error: "Candidate not found." },
+        { status: 404 },
+      );
+    }
+
+    const candName =
+      [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") ||
+      "(unnamed)";
+
+    // Reuses the same cascading transaction the user-facing delete
+    // button calls — wipes Placement / Interview / CandidateResume /
+    // CandidateListMembership / CallLog / SmsMessage / GmailThreadTag /
+    // ActivityLog rows scoped to this candidate before dropping the
+    // Candidate row. Org-scoped lookup is re-verified inside.
+    const result = await deleteCandidateAction(candidate.id);
+    if (!result.ok) {
+      return NextResponse.json(
+        { ok: false, error: result.error || "Failed to delete candidate." },
+        { status: 500 },
+      );
+    }
+
+    revalidatePath("/candidates");
+    revalidatePath(`/candidates/${candidate.id}`);
+    if (candidate.rfId != null) revalidatePath(`/candidates/${candidate.rfId}`);
+
+    return NextResponse.json({
+      ok: true,
+      message: `Deleted ${candName}.`,
+      redirect: "/candidates",
     });
   }
 

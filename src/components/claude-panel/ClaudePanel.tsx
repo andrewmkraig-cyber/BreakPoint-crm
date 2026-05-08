@@ -88,6 +88,12 @@ type DeleteJobResolved = {
   jobTitle: string;
   clientName: string;
 };
+type DeleteCandidateResolved = {
+  kind: "delete_candidate";
+  description: string;
+  candidateId: string | null;
+  candidateName: string;
+};
 type UnknownResolved = { kind: "unknown"; description: string };
 type ActionResolved =
   | MoveResolved
@@ -95,6 +101,7 @@ type ActionResolved =
   | DraftEmailResolved
   | LifecycleJobResolved
   | DeleteJobResolved
+  | DeleteCandidateResolved
   | UnknownResolved;
 
 type ActionToolName =
@@ -104,7 +111,8 @@ type ActionToolName =
   | "inactivate_job"
   | "privatize_job"
   | "reactivate_job"
-  | "delete_job";
+  | "delete_job"
+  | "delete_candidate";
 
 type ActionCard = {
   kind: "action";
@@ -536,7 +544,8 @@ export function ClaudePanel() {
             event.name === "inactivate_job" ||
             event.name === "privatize_job" ||
             event.name === "reactivate_job" ||
-            event.name === "delete_job")
+            event.name === "delete_job" ||
+            event.name === "delete_candidate")
         ) {
           const input =
             event.input && typeof event.input === "object"
@@ -1011,7 +1020,7 @@ function ActionConfirmCard({
         <span
           className={
             "mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider " +
-            (card.name === "delete_job"
+            (card.name === "delete_job" || card.name === "delete_candidate"
               ? "bg-red-100 text-red-700"
               : "bg-court-surface-subtle text-court-fg-muted")
           }
@@ -1028,7 +1037,9 @@ function ActionConfirmCard({
                     ? "Make private"
                     : card.name === "reactivate_job"
                       ? "Reactivate"
-                      : "Delete job"}
+                      : card.name === "delete_candidate"
+                        ? "Delete candidate"
+                        : "Delete job"}
         </span>
         <div className="min-w-0 flex-1 text-court-fg">
           <ActionCardLabel card={card} />
@@ -1155,6 +1166,17 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
         Permanently delete{" "}
         <span className="font-semibold">{r.jobTitle}</span> at{" "}
         <span className="font-medium">{r.clientName}</span>.{" "}
+        <span className="text-xs italic text-red-600">
+          This cannot be undone.
+        </span>
+      </div>
+    );
+  }
+  if (r.kind === "delete_candidate") {
+    return (
+      <div className="text-sm leading-snug">
+        Permanently delete{" "}
+        <span className="font-semibold">{r.candidateName}</span>.{" "}
         <span className="text-xs italic text-red-600">
           This cannot be undone.
         </span>

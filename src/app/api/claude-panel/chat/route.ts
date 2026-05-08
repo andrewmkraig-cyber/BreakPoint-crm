@@ -64,9 +64,10 @@ const SYSTEM_PROMPT =
   "- General pipeline questions without a stage → get_pipeline({ clientName? }).\n" +
   "- 'what jobs are open' / 'show open roles' / 'active jobs' → search_jobs with the literal phrase as the query (the tool detects this intent and lists every open job).\n" +
   "- Specific candidate / role / client lookups (skills, titles, locations, industries) → search_candidates / search_jobs / search_clients with the user's natural phrasing.\n" +
+  "- 'Recently added candidates' / 'candidates I just imported' / 'newest candidates' → call search_candidates with sortBy='createdAt' (and an empty query string when no keyword filter applies). Use limit to honor counts the recruiter mentions ('the 25 candidates I just imported' → limit 25).\n" +
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
   "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record — never strip the link, never paraphrase the URL.\n" +
-  "Action tools — move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job is destructive and cascades — only use it when the recruiter explicitly says 'delete' or 'permanently remove'. After calling an action tool do not write any more text — the card speaks for itself.";
+  "Action tools — move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job / delete_candidate — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job and delete_candidate are destructive and cascade — only use them when the recruiter explicitly says 'delete' or 'permanently remove' the named record. After calling an action tool do not write any more text — the card speaks for itself.";
 
 // Custom data tools — exposed to Claude so it can pull live records
 // from Neon. Schemas mirror the parameters Andrew is most likely to ask
@@ -76,13 +77,31 @@ const DATA_TOOLS: Anthropic.Tool[] = [
   {
     name: "search_candidates",
     description:
-      "Search candidates in the recruiter's CRM. Pass the user's natural-language query; the tool lowercases, strips stop words, singularizes plurals, then OR-matches against name, current title, current employer, location, skills, tags, and email. Results are scored (title and employer hits weigh more than name hits) and the top ~15 ranked matches are returned.",
+      "Search candidates in the recruiter's CRM. Pass the user's natural-language query; the tool lowercases, strips stop words, singularizes plurals, then OR-matches against name, current title, current employer, location, skills, tags, and email. Results are scored (title and employer hits weigh more than name hits) and the top ranked matches are returned. For 'recently added' / 'just imported' / 'newest' style requests, set sortBy='createdAt' and pass an empty string as `query` to skip keyword filtering.",
     input_schema: {
       type: "object",
       properties: {
         query: {
           type: "string",
-          description: "Natural-language query, e.g. 'tax managers in Ohio' or 'Sara Johnson'.",
+          description:
+            "Natural-language query, e.g. 'tax managers in Ohio' or 'Sara Johnson'. Pass an empty string when sortBy='createdAt' and no keyword filter is needed.",
+        },
+        sortBy: {
+          type: "string",
+          enum: ["relevance", "createdAt"],
+          description:
+            "Result ordering. Defaults to 'relevance' (scored keyword match). Use 'createdAt' for 'recently added' / 'just imported' / 'newest candidates' requests.",
+        },
+        order: {
+          type: "string",
+          enum: ["asc", "desc"],
+          description:
+            "Direction for sortBy='createdAt'. Defaults to 'desc' (newest first). Ignored when sortBy='relevance'.",
+        },
+        limit: {
+          type: "number",
+          description:
+            "Max rows to return. Defaults to 25; clamped to 1..100.",
         },
       },
       required: ["query"],
@@ -283,6 +302,22 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       required: ["jobId"],
     },
   },
+  {
+    name: "delete_candidate",
+    description:
+      "Propose permanently deleting a candidate. The recruiter must Confirm before this lands. Use ONLY when the recruiter explicitly says 'delete' / 'remove' / 'permanently delete' a candidate by name. Cascades through Placement / Interview / CandidateResume / CandidateListMembership / CallLog / SmsMessage / GmailThreadTag rows for the candidate. Resolve the candidateId from search_candidates first; cuid OR numeric rfId both resolve.",
+    input_schema: {
+      type: "object",
+      properties: {
+        candidateId: {
+          type: "string",
+          description:
+            "Candidate id from search_candidates — cuid OR numeric rfId, both resolve.",
+        },
+      },
+      required: ["candidateId"],
+    },
+  },
 ];
 
 // Names of the client-managed action tools. The streaming loop matches
@@ -296,6 +331,7 @@ const ACTION_TOOL_NAMES = new Set([
   "privatize_job",
   "reactivate_job",
   "delete_job",
+  "delete_candidate",
 ]);
 
 const MAX_TOOL_ROUNDS = 4;
@@ -434,10 +470,30 @@ function scoreArrayToken(haystack: string[] | null | undefined, token: string): 
   return best;
 }
 
-// Tool: search_candidates — broad OR pull, JS scoring, top 15.
-// Field weights: title and employer matter more than a name fragment;
-// location helps; tags and skills are lower-weight signal.
-async function runSearchCandidates(query: string, orgId: string): Promise<string> {
+type SearchCandidatesOpts = {
+  query: string;
+  sortBy: "relevance" | "createdAt";
+  order: "asc" | "desc";
+  limit: number;
+};
+
+// Tool: search_candidates — two modes.
+//  - sortBy='createdAt': straight createdAt-ordered list, optional
+//    token OR-filter, no JS scoring. Used for "recently imported" /
+//    "newest candidates" prompts.
+//  - sortBy='relevance' (default): broad OR pull, JS scoring, top N.
+//    Field weights: title and employer matter more than a name
+//    fragment; location helps; tags and skills are lower-weight signal.
+async function runSearchCandidates(
+  opts: SearchCandidatesOpts,
+  orgId: string,
+): Promise<string> {
+  const { query, sortBy, order, limit } = opts;
+
+  if (sortBy === "createdAt") {
+    return runSearchCandidatesByCreatedAt(query, order, limit, orgId);
+  }
+
   const tokens = normalizeQuery(query);
   if (tokens.length === 0) {
     log("search_candidates", { query }, 0, "no-meaningful-tokens");
@@ -514,7 +570,7 @@ async function runSearchCandidates(query: string, orgId: string): Promise<string
       if (b.score !== a.score) return b.score - a.score;
       return b.c.updatedAt.getTime() - a.c.updatedAt.getTime();
     })
-    .slice(0, 15);
+    .slice(0, limit);
 
   log("search_candidates", { query, tokens, totalMatching }, ranked.length);
 
@@ -534,6 +590,77 @@ async function runSearchCandidates(query: string, orgId: string): Promise<string
       ? `\n\nShowing ${ranked.length} of ${totalMatching} — ask me to show more and I'll load the next batch.`
       : "";
   return `Top ${ranked.length} candidate match${ranked.length === 1 ? "" : "es"} for "${query}":\n${lines.join("\n")}${overflow}`;
+}
+
+// Createdat-ordered branch — used for "recently imported" / "newest"
+// requests. Skips the relevance scorer entirely; an optional token
+// OR-filter narrows the result set when the recruiter pairs the
+// temporal phrasing with a keyword ("the 25 sales reps I just
+// imported"), but an empty query just lists newest org-wide.
+async function runSearchCandidatesByCreatedAt(
+  query: string,
+  order: "asc" | "desc",
+  limit: number,
+  orgId: string,
+): Promise<string> {
+  const tokens = normalizeQuery(query);
+  const where: Prisma.CandidateWhereInput = { organizationId: orgId };
+  if (tokens.length > 0) {
+    const or: Prisma.CandidateWhereInput[] = [];
+    for (const t of tokens) {
+      or.push(
+        { firstName: { contains: t, mode: "insensitive" } },
+        { lastName: { contains: t, mode: "insensitive" } },
+        { currentDesignation: { contains: t, mode: "insensitive" } },
+        { currentOrganization: { contains: t, mode: "insensitive" } },
+        { location: { contains: t, mode: "insensitive" } },
+        { email: { contains: t, mode: "insensitive" } },
+        { skills: { has: t } },
+        { tags: { has: t } },
+      );
+    }
+    where.OR = or;
+  }
+
+  const rows = await prisma.candidate.findMany({
+    where,
+    select: {
+      id: true,
+      rfId: true,
+      firstName: true,
+      lastName: true,
+      currentDesignation: true,
+      currentOrganization: true,
+      location: true,
+      tags: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: order },
+    take: limit,
+  });
+
+  log(
+    "search_candidates",
+    { query, sortBy: "createdAt", order, limit, tokens },
+    rows.length,
+  );
+
+  if (rows.length === 0) {
+    return tokens.length > 0
+      ? `No candidates matched "${query}".`
+      : "No candidates yet.";
+  }
+
+  const lines = rows.map((c, i) => {
+    const title = c.currentDesignation || "—";
+    const employer = c.currentOrganization || "—";
+    const loc = c.location || "—";
+    const when = c.createdAt.toISOString().slice(0, 10);
+    return `${i + 1}. ${candidateLink(c)} — ${title} at ${employer} — ${loc} — added ${when}`;
+  });
+  const direction = order === "desc" ? "newest" : "oldest";
+  const filterNote = tokens.length > 0 ? ` matching "${query}"` : "";
+  return `${rows.length} ${direction} candidate${rows.length === 1 ? "" : "s"}${filterNote}:\n${lines.join("\n")}`;
 }
 
 // Tool: search_jobs — intent-aware. "what jobs do I have open" / "show
@@ -1173,6 +1300,12 @@ type ActionResolution =
       clientName: string;
     }
   | {
+      kind: "delete_candidate";
+      description: string;
+      candidateId: string | null;
+      candidateName: string;
+    }
+  | {
       kind: "unknown";
       description: string;
     };
@@ -1331,6 +1464,21 @@ async function describeAction(
         clientName,
       };
     }
+
+    if (name === "delete_candidate") {
+      const candidateRef =
+        typeof input.candidateId === "string" ? input.candidateId : "";
+      const candidate = await resolveCandidate(candidateRef, orgId);
+      const candidateName = candidate
+        ? joinName(candidate.firstName, candidate.lastName)
+        : "(unknown candidate)";
+      return {
+        kind: "delete_candidate",
+        description: `Permanently delete ${candidateName}. This cannot be undone.`,
+        candidateId: candidate?.id ?? null,
+        candidateName,
+      };
+    }
   } catch {
     // fall through
   }
@@ -1352,7 +1500,18 @@ async function executeTool(
   try {
     if (name === "search_candidates") {
       const query = typeof input.query === "string" ? input.query : "";
-      return await runSearchCandidates(query, orgId);
+      const sortBy: "relevance" | "createdAt" =
+        input.sortBy === "createdAt" ? "createdAt" : "relevance";
+      const order: "asc" | "desc" = input.order === "asc" ? "asc" : "desc";
+      const rawLimit =
+        typeof input.limit === "number" && Number.isFinite(input.limit)
+          ? Math.floor(input.limit)
+          : 25;
+      const limit = Math.min(100, Math.max(1, rawLimit));
+      return await runSearchCandidates(
+        { query, sortBy, order, limit },
+        orgId,
+      );
     }
     if (name === "search_jobs") {
       const query = typeof input.query === "string" ? input.query : "";
