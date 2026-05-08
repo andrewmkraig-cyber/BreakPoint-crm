@@ -3,19 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { WordOfDayCard } from "@/components/word-of-day-card";
-import { QuoteOfDay } from "@/components/quote-of-day";
 import { ChessPuzzle } from "@/components/chess-puzzle";
+import { OnThisDay } from "@/components/on-this-day";
+import { Horoscope } from "@/components/horoscope";
 
 // Editorial briefing layout: header, four tabs, one lead story, three
 // list rows. Per-tab fetch wiring is unchanged — /api/news-feed?tab=...
 // backs all four tabs. Collapse persists in localStorage so the
 // recruiter's choice survives reload.
 //
-// The header also hosts the daily-companion chips (Word / Quote /
-// Chess) at the top-right of the bubble — they used to sit in their
-// own bottom bar but the recruiter wanted them inside the briefing
-// surface. Their popovers anchor `bottom-full` so they open up into
-// the dashboard space above the briefing.
+// The header also hosts the daily-companion chips (Chess, Word, On
+// This Day, Horoscope) at the top-right of the bubble — chess leads
+// because it's the one Andrew interacts with most. Quote of the Day
+// was dropped from this row to keep four chips fitting cleanly. Their
+// popovers anchor `bottom-full` so they open up into the dashboard
+// space above the briefing.
 
 const COLLAPSE_KEY = "ace.dashboard.news-feed.collapsed";
 
@@ -152,7 +154,7 @@ export function NewsFeed() {
       id="todays-briefing"
       className="scroll-mt-24 rounded-3xl bg-white p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] dark:bg-court-surface"
     >
-      <div className="flex items-baseline justify-between gap-4">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h2
             className="font-semibold tracking-[-0.035em] text-court-fg"
@@ -164,19 +166,14 @@ export function NewsFeed() {
             className="mt-0.5 text-court-fg-muted"
             style={{ fontSize: "12px" }}
           >
-            Curated daily, 6:00 AM ET
+            {formatToday()}
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <WordOfDayCard />
-          <QuoteOfDay />
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
           <ChessPuzzle />
-          <span
-            className="ml-1 text-court-fg-muted"
-            style={{ fontSize: "12px" }}
-          >
-            {formatToday()}
-          </span>
+          <WordOfDayCard />
+          <OnThisDay />
+          <Horoscope />
           <button
             type="button"
             onClick={() => setCollapsed((c) => !c)}
