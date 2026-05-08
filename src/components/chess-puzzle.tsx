@@ -172,6 +172,50 @@ export function ChessPuzzle() {
   // popover) was opening above the visible area and forcing a manual
   // scroll up.
   const popoverRef = useRef<HTMLDivElement | null>(null);
+  // Drag offset from centered position. Reset to {0,0} on each open so
+  // the dialog reappears centered after a close.
+  const [dragPos, setDragPos] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
+  const dragStartRef = useRef<
+    { startX: number; startY: number; baseX: number; baseY: number } | null
+  >(null);
+
+  function onDialogMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    const target = e.target as HTMLElement;
+    // Don't start a drag from interactive descendants — the close X,
+    // the chessboard, the Lichess link, etc.
+    if (
+      target.closest(
+        "button, a, input, [data-piece], [data-square], .react-chessboard, [role=button]",
+      )
+    ) {
+      return;
+    }
+    e.preventDefault();
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: dragPos.x,
+      baseY: dragPos.y,
+    };
+    function onMove(ev: MouseEvent) {
+      const s = dragStartRef.current;
+      if (!s) return;
+      setDragPos({
+        x: s.baseX + (ev.clientX - s.startX),
+        y: s.baseY + (ev.clientY - s.startY),
+      });
+    }
+    function onUp() {
+      dragStartRef.current = null;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
 
   useEffect(() => {
     // Day-stable cache wins over hitting Lichess again — the streak
@@ -214,7 +258,11 @@ export function ChessPuzzle() {
   }, []);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // Reset drag offset on close so the next open re-centers.
+      setDragPos({ x: 0, y: 0 });
+      return;
+    }
     // The chess popover is ~470px tall (header + 320px board + footer).
     // block: "nearest" only scrolls when strictly necessary, which for
     // an element bigger than the viewport's available space leaves the
@@ -228,19 +276,12 @@ export function ChessPuzzle() {
         behavior: "smooth",
       });
     });
-    function onDown(e: MouseEvent) {
-      const node = containerRef.current;
-      if (!node) return;
-      if (!node.contains(e.target as Node)) setOpen(false);
-    }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
-    document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
       window.cancelAnimationFrame(rafId);
-      document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -288,8 +329,21 @@ export function ChessPuzzle() {
             role="dialog"
             aria-modal="true"
             aria-label="Chess puzzle"
-            className="fixed left-1/2 top-1/2 z-50 w-[360px] max-h-[calc(100vh-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-court-border bg-court-surface p-4 shadow-2xl"
+            style={{
+              transform: `translate(calc(-50% + ${dragPos.x}px), calc(-50% + ${dragPos.y}px))`,
+            }}
+            className="fixed left-1/2 top-1/2 z-50 w-[360px] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-court-border bg-court-surface px-4 pb-4 pt-2 shadow-2xl"
           >
+            {/* Drag handle — small grip bar at the top of the dialog so
+                the user can reposition the puzzle. Sized to clear the
+                close X (top-2 right-2) without overlapping it. */}
+            <div
+              onMouseDown={onDialogMouseDown}
+              aria-hidden="true"
+              className="-mx-4 mb-1 flex h-5 cursor-move items-center justify-center pr-8"
+            >
+              <div className="h-1 w-10 rounded-full bg-court-border" />
+            </div>
             <button
               type="button"
               onClick={() => setOpen(false)}

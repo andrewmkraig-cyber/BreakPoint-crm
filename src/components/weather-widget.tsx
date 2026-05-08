@@ -257,8 +257,52 @@ function formatDayShort(iso: string, idx: number): string {
   );
 }
 
+// Reverse-geocode lat/lon into a "City, ST" label using BigDataCloud's
+// keyless client endpoint. CORS-enabled, no auth needed, fine for an
+// internal single-user dashboard. Returns null on any failure so the
+// popover can fall back to a generic header.
+async function reverseGeocode(
+  lat: number,
+  lon: number,
+): Promise<string | null> {
+  try {
+    const url =
+      `https://api.bigdatacloud.net/data/reverse-geocode-client` +
+      `?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const json = (await res.json()) as {
+      city?: string;
+      locality?: string;
+      principalSubdivisionCode?: string;
+      principalSubdivision?: string;
+      countryCode?: string;
+      countryName?: string;
+    };
+    const city = json.city || json.locality;
+    // principalSubdivisionCode is "US-OH" — slice the state portion for
+    // a "City, OH" label. Fall back to the long subdivision name.
+    let region = "";
+    if (
+      json.principalSubdivisionCode &&
+      json.principalSubdivisionCode.includes("-")
+    ) {
+      region = json.principalSubdivisionCode.split("-")[1] ?? "";
+    } else if (json.principalSubdivision) {
+      region = json.principalSubdivision;
+    }
+    if (city && region) return `${city}, ${region}`;
+    if (city && json.countryCode) return `${city}, ${json.countryCode}`;
+    if (city) return city;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function WeatherWidget() {
   const [data, setData] = useState<Weather | null>(null);
+  const [location, setLocation] = useState<string | null>(null);
   const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
@@ -388,6 +432,19 @@ export function WeatherWidget() {
     function startWith(lat: number, lon: number, source: string) {
       console.log("[weather] starting fetch loop", { lat, lon, source });
       void fetchWeather(lat, lon);
+      // Resolve the lat/lon into a human label for the popover header.
+      // Fallback source already has a known label so we skip the
+      // network call to keep the popover header stable on permission
+      // denial.
+      if (source === "geolocation") {
+        void reverseGeocode(lat, lon).then((label) => {
+          if (cancelled) return;
+          if (label) setLocation(label);
+          else setLocation("Your Location");
+        });
+      } else {
+        setLocation("Cleveland, OH");
+      }
       intervalId = window.setInterval(
         () => void fetchWeather(lat, lon),
         REFRESH_MS,
@@ -455,33 +512,42 @@ export function WeatherWidget() {
           aria-label="Forecast"
           className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
-          {/* CURRENT — left: icon + temp + description; right: today's
-              full date so the recruiter can read it without leaving
-              the dashboard. */}
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <WeatherIcon
-                code={data.code}
-                isDay={data.isCurrentDay}
-                sizeClass="h-9 w-9"
-              />
-              <div className="flex flex-col">
-                <div className="flex items-baseline gap-1.5">
-                  <span className="font-stat text-2xl font-bold leading-none text-court-fg">
-                    {rounded}°
-                  </span>
-                  <span className="text-[11px] text-court-fg-muted">
-                    (feels {apparentRounded}°)
-                  </span>
-                </div>
-                <span className="mt-0.5 text-xs text-court-fg">
-                  {description}
-                </span>
-              </div>
-            </div>
-            <span className="max-w-[7rem] text-right text-[10px] leading-snug text-court-fg-muted">
+          {/* HEADER — location (reverse-geocoded from current
+              coordinates) on the left, today's full date on the right.
+              Pulling the date up here frees the row below so the
+              "(feels XX°)" sub-line sits inline with the temperature
+              instead of wrapping. */}
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-[11px] font-semibold uppercase tracking-widest text-court-fg">
+              {location ?? "Locating…"}
+            </span>
+            <span className="text-[10px] text-court-fg-muted">
               {formatTodayLong()}
             </span>
+          </div>
+
+          {/* CURRENT — icon + temp on the left, "(feels XX°)" forced on
+              the same line as the temperature so the row reads as one
+              piece of data. */}
+          <div className="mt-2 flex items-center gap-2.5">
+            <WeatherIcon
+              code={data.code}
+              isDay={data.isCurrentDay}
+              sizeClass="h-9 w-9"
+            />
+            <div className="flex flex-col">
+              <div className="flex items-baseline gap-1.5 whitespace-nowrap">
+                <span className="font-stat text-2xl font-bold leading-none text-court-fg">
+                  {rounded}°
+                </span>
+                <span className="text-[11px] text-court-fg-muted">
+                  (feels {apparentRounded}°)
+                </span>
+              </div>
+              <span className="mt-0.5 text-xs text-court-fg">
+                {description}
+              </span>
+            </div>
           </div>
 
           {/* HOURLY */}

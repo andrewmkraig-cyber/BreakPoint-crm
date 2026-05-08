@@ -108,45 +108,45 @@ export function Horoscope() {
           ref={popoverRef}
           role="dialog"
           aria-label="Daily horoscope"
-          className="absolute bottom-full right-0 z-20 mb-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
+          className="absolute bottom-full right-0 z-20 mb-2 w-72 rounded-xl border border-court-border bg-court-surface p-3 shadow-xl"
         >
           <button
             type="button"
             onClick={() => setOpen(false)}
             aria-label="Close"
-            className="absolute right-2 top-2 rounded-md p-0.5 text-court-fg-muted opacity-40 transition hover:bg-court-surface-subtle hover:opacity-100"
+            className="absolute right-1.5 top-1.5 rounded-md p-0.5 text-court-fg-muted opacity-40 transition hover:bg-court-surface-subtle hover:opacity-100"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3 w-3" />
           </button>
           <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
             Daily Horoscope
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <div className="font-stat text-xl font-bold leading-tight text-court-fg">
+          <div className="mt-0.5 flex items-baseline gap-1.5">
+            <div className="font-stat text-base font-bold leading-tight text-court-fg">
               {SIGN_GLYPH} {SIGN_DISPLAY}
             </div>
             {status.phase === "ready" && status.date ? (
-              <div className="text-[11px] italic text-court-fg-muted">
+              <div className="text-[10px] italic text-court-fg-muted">
                 {status.date}
               </div>
             ) : null}
           </div>
           {status.phase === "loading" ? (
-            <p className="mt-2 text-sm text-court-fg-muted">
+            <p className="mt-1.5 text-xs text-court-fg-muted">
               Loading today&apos;s horoscope…
             </p>
           ) : status.phase === "error" ? (
-            <p className="mt-2 text-sm text-court-fg-muted">
+            <p className="mt-1.5 text-xs text-court-fg-muted">
               Couldn&apos;t load:{" "}
               <span className="italic">{status.message}</span>
             </p>
           ) : (
-            <p className="mt-2 text-sm leading-relaxed text-court-fg [text-wrap:pretty]">
+            <p className="mt-1.5 text-xs leading-relaxed text-court-fg [text-wrap:pretty]">
               {status.horoscope}
             </p>
           )}
-          <div className="mt-3 flex items-center gap-1 text-[10px] uppercase tracking-wider text-court-fg-muted">
-            <Sparkles className="h-3 w-3" /> horoscope-app-api
+          <div className="mt-2 flex items-center gap-1 text-[9px] uppercase tracking-wider text-court-fg-muted">
+            <Sparkles className="h-2.5 w-2.5" /> horoscope-app-api
           </div>
         </div>
       )}
