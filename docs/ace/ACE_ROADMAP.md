@@ -1,23 +1,21 @@
 # Ace Roadmap
-Last updated: 2026-05-07 · Ace 35.0
+Last updated: 2026-05-08 · Ace 36.0
 
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
-1. **YouTube floating player** — 15-30 min.
-2. **Word of Day card** — 15-30 min standalone, separate from the full Market Insights bundle.
-3. **CSV candidate import** — 1-2 hr.
-4. **Postgres search indexes** — 30-60 min. Build immediately after CSV import so indexes are present before bulk loads.
-5. **Candidate Sourcing Surface** — 4-6 hr combined effort. Full redesign of `/candidates` to match the Jobot Jax Quick Search layout. Left-rail faceted filter sidebar (keyword/Boolean search, skills, job titles, min/max comp, locations with distance, current employer, employer tenure, work auth, last apply date, last action date). Results table with checkbox, name, title, employer with tenure, location, salary, last apply, last action, candidate score, eye icon. All columns sortable. Split-view: clicking a candidate opens the profile as a slide-over overlay, list stays visible behind it, independent scroll regions. Same split-view pattern applied to `/pipeline`. Boolean search with AND/OR/NOT/parens/quoted phrases. Live filter updates debounced 300 ms. Total candidate count displayed. Apply `ACE_DESIGN.md` rules throughout.
-6. **PWA conversion** — 1.5-3 hr. Manifest, service worker, push notifications.
-7. **Quiet Clients tab** — 1-2 hr. New tab on `/clients`. Lists clients where the last touchpoint exceeded threshold (default 21 days, configurable in Settings). Columns: client name, days since last activity, last activity type, last activity date. Sortable by days, default longest first. Tiers: Check in soon 14-30 days / Going cold 30-60 / Cold 60+. Optional Claude summary at tab open. Reads from existing ActivityLog, no new schema.
-8. **BD Engine block** — 12-19 hr total. Claude Design pass first (1-2 hr) for BD tab + BD Settings + Sequence builder UI before any code. Then in order: Scheduled email send (Gmail API send-at), Background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (6 AM scan Indeed API for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect table, deduplicates), Sequence engine + BD Settings (outbound sequences from Ace using warmed domains, Settings for keywords/titles/limit/cadence).
-9. **APRO / job order worksheet** — 2-3 hr. Structured intake form.
-10. **Client preference learning system + Personal Trainer suggestions** — 6.5-9 hr combined. Replaces the killed auto-updating client preference memory and Ace learning layer Phase 1. Phases: Phase 0a client-side email thread tagging (1.5-2 hr prereq), Phase 0b client-side Quo call/SMS tagging (1-1.5 hr prereq), Phase 1 email preference scan + propose UI with daily cron and dashboard card (2-3 hr), Phase 2 Quo transcript preference scan (1.5-2 hr), Phase 3 note-write inline extraction (30-45 min), Personal Trainer rule suggestions bundled (1-1.5 hr). ClientPreference schema + right rail on client profile + submittal composer right rail. Monthly drift review first Monday of each month.
-11. **Interview scheduler enhancements** — 1-2 hr. Edit/cancel/reschedule flows.
-12. **One-click interview prep packet** — 1-2 hr. PDF for candidate pre-interview.
-13. **Calendar tab** — 2-4 hr. Month/week/day, Google Calendar read-write sync, create-meeting modal.
-14. **Market Insights + daily brief** — 2-4 hr. Word of day already built separately.
+1. **CSV candidate import** — 1-2 hr.
+2. **Postgres search indexes** — 30-60 min. Build immediately after CSV import so indexes are present before bulk loads.
+3. **Candidate Sourcing Surface** — 4-6 hr combined effort. Full redesign of `/candidates` to match the Jobot Jax Quick Search layout. Left-rail faceted filter sidebar (keyword/Boolean search, skills, job titles, min/max comp, locations with distance, current employer, employer tenure, work auth, last apply date, last action date). Results table with checkbox, name, title, employer with tenure, location, salary, last apply, last action, candidate score, eye icon. All columns sortable. Split-view: clicking a candidate opens the profile as a slide-over overlay, list stays visible behind it, independent scroll regions. Same split-view pattern applied to `/pipeline`. Boolean search with AND/OR/NOT/parens/quoted phrases. Live filter updates debounced 300 ms. Total candidate count displayed. Apply `ACE_DESIGN.md` rules throughout.
+4. **PWA conversion** — 1.5-3 hr. Manifest, service worker, push notifications.
+5. **Quiet Clients tab** — 1-2 hr. New tab on `/clients`. Lists clients where the last touchpoint exceeded threshold (default 21 days, configurable in Settings). Columns: client name, days since last activity, last activity type, last activity date. Sortable by days, default longest first. Tiers: Check in soon 14-30 days / Going cold 30-60 / Cold 60+. Optional Claude summary at tab open. Reads from existing ActivityLog, no new schema.
+6. **BD Engine block** — 12-19 hr total. Claude Design pass first (1-2 hr) for BD tab + BD Settings + Sequence builder UI before any code. Then in order: Scheduled email send (Gmail API send-at), Background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (6 AM scan Indeed API for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect table, deduplicates), Sequence engine + BD Settings (outbound sequences from Ace using warmed domains, Settings for keywords/titles/limit/cadence).
+7. **APRO / job order worksheet** — 2-3 hr. Structured intake form.
+8. **Client preference learning system + Personal Trainer suggestions** — 6.5-9 hr combined. Replaces the killed auto-updating client preference memory and Ace learning layer Phase 1. Phases: Phase 0a client-side email thread tagging (1.5-2 hr prereq), Phase 0b client-side Quo call/SMS tagging (1-1.5 hr prereq), Phase 1 email preference scan + propose UI with daily cron and dashboard card (2-3 hr), Phase 2 Quo transcript preference scan (1.5-2 hr), Phase 3 note-write inline extraction (30-45 min), Personal Trainer rule suggestions bundled (1-1.5 hr). ClientPreference schema + right rail on client profile + submittal composer right rail. Monthly drift review first Monday of each month.
+9. **Interview scheduler enhancements** — 1-2 hr. Edit/cancel/reschedule flows.
+10. **One-click interview prep packet** — 1-2 hr. PDF for candidate pre-interview.
+11. **Calendar tab** — 2-4 hr. Month/week/day, Google Calendar read-write sync, create-meeting modal.
+12. **Market Insights + daily brief** — 2-4 hr. Word of day already built in Ace 36.0; this bundle covers the remaining market-insights pieces.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
@@ -29,13 +27,18 @@ Items scoped during recent sessions. Each needs its own prompt before slotting i
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.
 
-- **RF string sweep** — 17 RecruiterFlow visible strings still in UI.
 - **Invite flow in Settings** — reuses OrganizationMembership; invite + role chip + revoke.
 - **Quo setup wizard** — guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
 - **Slack sidebar panel**.
 - **DocuSign auto-import** — ~2-3 hr via DocuSign Connect webhook.
 - **Invoicing + QuickBooks + Mercury** — invoicing workflow, QuickBooks sync, Mercury account integration.
 - **GPT as second AI provider** behind Ace Assistant.
+- **Spotify podcasts tab** — wire `/me/shows` into the Library Podcasts filter (currently shows the empty-state placeholder).
+- **News feed per-tab refresh button** — manual re-pull of a single tab without waiting for the 6 AM cron.
+- **Commission calculator** — recruiter-side fee/split math sandbox on the dashboard.
+- **Stock ticker strip** — small dashboard strip (S&P, NASDAQ, Dow, plus configurable watchlist).
+- **Scoreboard widget** — daily/weekly placement + submittal scoreboard tile.
+- **Ace launch countdown** — countdown chip on the dashboard until 2026-05-15.
 
 ## Cleanup
 Do alongside other work.
@@ -79,6 +82,22 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 36.0 Floating media + dashboard daily companions + premium dashboard (May 7, 2026)
+
+- **YouTube floating player** (item 1 from prior sequence): draggable + resizable shell, topbar Music-icon toggle, YouTube Data API v3 search proxied through `/api/youtube/search`, video-first playing state with iframe full-bleed + hover overlay (back / minimize / close), viewport boundary clamping, minimize keeps audio playing because the iframe stays mounted, CSP fix adding youtube.com + youtube-nocookie.com to frame-src, 50 results per search with View More pagination, channel search (`?channelId=` filter, `order=date`) with dedicated channel view + back arrow.
+- **Spotify floating panel**: full Spotify-mobile-style UI on top of the Web Playback SDK, OAuth login via `/api/auth/spotify` with httpOnly token + refresh cookies, transparent token refresh through `spotifyApiProxy`, 3-tab BottomNav (Home / Search / My Library), Recently Played row on Home, Library tab with filter pills (All / Playlists / Albums / Artists / Podcasts) backed by `/api/spotify/playlists` + `/api/spotify/saved-albums` + `/api/spotify/followed-artists`, PlaylistView and AlbumView via shared detail route, ArtistView with top tracks + discography, full-panel NowPlayingView with album art that scales via `flex-1 + object-contain`, minimize keeps audio, X closes and pauses via `/api/spotify/pause` + SDK disconnect. Spotify dark palette intentionally hardcoded (#121212 / #181818 / #1DB954 etc) scoped to `src/components/spotify-panel/` only.
+- **Word of Day pill** (item 2 from prior sequence): Claude-generated word + definition cached in Neon `WordOfDay`, demand-triggered daily reset, click-to-expand popover.
+- **Quote of Day pill**: Claude-generated quote cached in Neon `QuoteOfDay`, click-to-expand popover.
+- **Chess puzzle pill**: Lichess `/api/puzzle/next?difficulty=easiest` (~961 average rating), `react-chessboard` render, hint + show-answer flow, rating chip, streak tracker in localStorage, day-stable cache, Back button + click-to-move added late in the session.
+- **On This Day pill**: Claude-generated historical event for today's ET date cached in Neon `ThisDay`.
+- **Daily Horoscope pill**: Claude-generated via server-side proxy (CORS workaround), cached in Neon `Horoscope`, sign configurable.
+- **Dashboard daily-companion pills**: 6 chips (Chess, Word, Quote, On This Day, Horoscope, Today's Briefing scroll anchor) — Word/Quote/Chess/On This Day/Horoscope later moved into the briefing header itself; the standalone bottom-bar component has since been retired.
+- **News feed redesign**: Apple-News editorial style with 4px colored left border per tab, pill-style tabs, 4 tabs (Front Page / Public Accounting / Recruiting / AI & Tech — Local News dropped), one lead story + 3 list rows, collapsible header.
+- **News feed cron**: 6 AM ET Vercel cron at `/api/cron/news-feed` pre-warms `DailyNewsFeed` rows for every tab, `CRON_SECRET` Bearer auth, `NEWS_API_KEY` (NewsAPI.org) replacing the prior Claude `web_search` round-trip — sub-2s response per tab vs the prior 25s timeout window.
+- **Weather widget**: Open-Meteo geolocation (Cleveland fallback), hover popover with current + 6-hour + 7-day forecast, custom day/night WMO icon dispatch.
+- **Dashboard premium redesign**: green-tint surface, sage-tinted KPI tile icons, Billing Tower in sentence case with primary Q2 billed-revenue focal + secondary cash-collected card, ambient layered shadows, tabular numbers, Activity Dashboard topbar title in Bricolage Grotesque to match the new Ace wordmark. Dashboard hex exceptions (#F6FAF4 / #EFF5EB / #1F6A3A / #F3F8EF) intentionally hardcoded and scoped to dashboard components.
+- **RF string sweep**: final user-facing RecruiterFlow string removed from the UI.
 
 ## Completed - Ace 34.0 Jobs page command center (May 7, 2026)
 

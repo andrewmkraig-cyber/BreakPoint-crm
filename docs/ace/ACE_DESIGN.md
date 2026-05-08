@@ -41,6 +41,13 @@ Never:
 
 Everything else is neutral.
 
+#### Approved hex exceptions (Ace 36.0)
+
+The "no hardcoded colors" rule has two scoped, intentional exceptions documented here so future audits don't try to rip them out:
+
+- **Spotify panel** — `src/components/spotify-panel/` uses the Spotify product palette directly (`#121212` page bg, `#181818` card bg, `#282828` hover, `#B3B3B3` muted text, `#1DB954` Spotify green, `#1ED760` hover green). The whole point of the panel is to feel like Spotify's own product, so it does not route through Court Mode tokens. This exception is scoped to the `spotify-panel/` directory only — no other surface may import these hex values.
+- **Dashboard premium surface** — the dashboard page-bg + KPI card mix uses `#F6FAF4`, `#EFF5EB`, `#1F6A3A`, and `#F3F8EF` directly to land the green-tinted "premium" tone the recruiter signed off on. This exception is scoped to the dashboard components only (`src/app/dashboard/*` and the KPI / Billing Tower / Upcoming Interviews tiles). Other pages must continue to use Court Mode tokens.
+
 ### Dark themes (rebuild required)
 
 Rebuild Clay and Grass:

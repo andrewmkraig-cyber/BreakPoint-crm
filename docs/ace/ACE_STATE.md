@@ -1,23 +1,40 @@
 # ACE_STATE.md
-Last updated: 2026-05-07 · Ace 35.0
+Last updated: 2026-05-08 · Ace 36.0
 
 ## Current Status
-Current Version: Ace 35.0 (Game Plan depth + Ace Assistant Phase 4/5 + Job lifecycle)
-Last Shipped: Ace 35.0 — May 7, 2026
+Current Version: Ace 36.0 (Floating media panels + dashboard daily companions + premium dashboard redesign)
+Last Shipped: Ace 36.0 — May 7, 2026
 Live at: ace.breakpointtalent.com
 
-## Summary — Ace 35.0
-Game Plan context, Ace Assistant data tools + actions, and Job lifecycle controls:
-- Game Plan Context Depth: resume text via pdf-parse, raw JD text, internal recruiter notes, and client pipeline candidate resumes injected into every ai-workspace and Ace Assistant prompt. Applies to candidate, job, and client Game Plans plus Ace Assistant panel everywhere.
-- Ace Assistant Phase 4 Data Access: search_candidates, search_jobs, search_clients, get_pipeline tools wired to live Neon. OR-logic scoring with stop words and plural handling. Historical pipeline queries merging placements and interviews. Clickable candidate and job links in results. Show more when results exceed display limit. Fixed open jobs intent, stage normalization, and conversation memory override bugs.
-- Ace Assistant Phase 5 Actions and History: move_candidate_stage, add_note, draft_email action tools with confirmation card UI showing real entity names. Confirm executes Prisma write, Cancel dismisses. Claude History tab in Settings groups by conversationId, cleared chats preserved in Neon as separate conversation entries.
-- Job Close and Delete: Close Job and Delete Job buttons on job overview page with inline confirmation. Ace Assistant can close or delete jobs via confirmation card with real job and client names.
+## Summary — Ace 36.0
+Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote, Chess, On This Day, Horoscope), Apple-News briefing redesign with cron pre-warm, weather widget, premium dashboard pass, and the final RF string sweep:
+- Floating media panels for YouTube and Spotify with full draggable / resizable / minimize-with-audio shells.
+- Six daily-companion pills on the dashboard bottom bar wired to Claude or public APIs and cached in Neon.
+- News feed redesigned in Apple-News editorial style with a 6 AM ET Vercel cron pre-warm and NewsAPI replacing the prior Claude web search.
+- Dashboard premium redesign (green tint surface, sage KPI tiles, Billing Tower, ambient shadow, tabular numbers).
+- Weather widget on the topbar (Open-Meteo + geolocation, hover popover with current / 6-hour / 7-day forecast).
+- Final user-facing RecruiterFlow string removed from the UI.
 
 ## Known Issues
 None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-YouTube floating player (15-30 min).
+CSV candidate import (1-2 hr).
+
+## What Shipped in Ace 36.0 (2026-05-07)
+- **YouTube floating player**: draggable + resizable panel via YouTubePanelProvider, topbar Music-icon toggle, YouTube Data API v3 search proxied through `/api/youtube/search` (server-side API key, tenant-scoped), video-first playing state with iframe full-bleed, hover overlay controls (back / minimize / close), viewport boundary clamping on drag + window resize, minimize keeps the iframe mounted so audio continues, CSP fix adding youtube.com + youtube-nocookie.com to frame-src, 50 results per search with View More pagination via `?pageToken=`, channel search and channel view (`?channelId=` filter, `order=date`).
+- **Spotify floating panel**: full Spotify-mobile-style UI, OAuth login via `/api/auth/spotify` with token + refresh cookies and transparent refresh through `spotifyApiProxy`, 3-tab bottom nav (Home / Search / My Library), Recently Played row on Home, Library tab with filter pills (All / Playlists / Albums / Artists / Podcasts) backed by `/api/spotify/playlists` + `/api/spotify/saved-albums` + `/api/spotify/followed-artists`, PlaylistView and AlbumView via shared detail route, ArtistView with top tracks + discography, full-panel Now Playing view with album art that scales via `flex-1 + object-contain`, minimize keeps audio playing, X closes and pauses via `/api/spotify/pause` + SDK disconnect, draggable + resizable shell, Spotify dark palette intentionally hardcoded (#121212 / #181818 / #1DB954 etc) scoped to `src/components/spotify-panel/`.
+- **Word of Day pill**: Claude-generated word + definition cached in Neon `WordOfDay` model, demand-triggered daily reset (regenerates if today's row missing), click-to-expand popover, lives on the dashboard bottom bar.
+- **Quote of Day pill**: Claude-generated quote + author cached in Neon `QuoteOfDay` model, click-to-expand popover, lives on the dashboard bottom bar.
+- **Chess puzzle pill**: Lichess `/api/puzzle/next?difficulty=easiest` (~961 average rating), `react-chessboard` render, hint + show-answer flow on a wrong move, rating chip in popover header, streak tracker in localStorage (`ace.chess.streak` + same-day-failed guard), Back button + click-to-move added late in the session, day-stable cache so the puzzle doesn't change mid-day.
+- **On This Day pill**: Claude-generated historical event for today's ET date cached in Neon `ThisDay` model, lives on the dashboard bottom bar (initial chip used Wikipedia REST then later moved into the briefing header — both routes cached in Neon).
+- **Daily Horoscope pill**: Claude-generated via server-side proxy to dodge horoscope-app-api CORS, cached in Neon `Horoscope` model, sign configurable, lives on the dashboard bottom bar.
+- **Dashboard bottom bar**: 6 pills — Chess, Word, Quote, On This Day, Horoscope, plus a Today's Briefing scroll anchor — consolidated into one row at the bottom of the dashboard. Later in the session the Word / Quote / Chess / On This Day / Horoscope chips moved into the briefing header itself; the bottom bar component has since been retired.
+- **News feed redesign**: Apple-News editorial style with 4px colored left border per tab, pill-style tabs with per-topic accent colors, 4 tabs (Front Page / Public Accounting / Recruiting / AI & Tech — Local News dropped), one lead story + 3 list rows, collapsible header with localStorage persistence.
+- **News feed cron**: 6 AM ET Vercel cron job at `/api/cron/news-feed` pre-generates that day's `DailyNewsFeed` rows for every tab, `CRON_SECRET` Bearer auth, `NEWS_API_KEY` (NewsAPI.org) replacing the prior Claude `web_search` round-trip — sub-2s response per tab vs the previous 25s timeout window. Topic queries use `searchIn=title` + phrase quotes + press-release domain exclusion to keep noise out.
+- **Weather widget**: Open-Meteo `/v1/forecast` with browser geolocation (Cleveland fallback when permission denied), hover popover with current conditions + 6-hour hourly strip + 7-day daily forecast, custom day/night WMO icon dispatch including 2-tone partly-cloudy glyphs, 30-minute refresh interval.
+- **Dashboard premium redesign**: green-tint page background, KPI cards with sage-tinted icon chips, Billing Tower in sentence case with primary Q2 billed-revenue focal + secondary cash-collected card, ambient layered shadows, tabular numbers across all stat displays, Activity Dashboard topbar title in Bricolage Grotesque to match the new Ace wordmark.
+- **RF string sweep**: final user-facing RecruiterFlow string removed from the UI (last visible one had survived the earlier sweeps).
 
 ## What Shipped in Ace 35.0 (2026-05-07)
 - Game Plan Context Depth: resume text via pdf-parse, raw JD text, internal recruiter notes, and client pipeline candidate resumes injected into every ai-workspace and Ace Assistant prompt. Applies to candidate, job, and client Game Plans plus Ace Assistant panel everywhere.
