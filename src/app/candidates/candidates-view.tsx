@@ -10,7 +10,7 @@ import {
   useTransition,
   type ChangeEvent,
 } from "react";
-import { Search, Loader2, Settings, X, ListPlus, Send } from "lucide-react";
+import { Search, Loader2, Settings, X, ListPlus, Send, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination/pagination";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
@@ -134,6 +134,7 @@ export function CandidatesView({
   }, [candidates, q, selectedListId, page]);
 
   const [bulkOpen, setBulkOpen] = useState<null | "apply" | "list">(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Build a URL with ?q=, ?list=, ?page= as appropriate. Page param
   // is dropped when 1 (default) so the URL stays clean. Used by
@@ -231,6 +232,13 @@ export function CandidatesView({
           >
             <Settings className="h-3 w-3" /> Manage lists
           </Link>
+          <button
+            type="button"
+            onClick={() => setImportOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-[11px] font-medium text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
+          >
+            <Upload className="h-3 w-3" /> CSV Import
+          </button>
         </div>
       </div>
 
@@ -391,6 +399,15 @@ export function CandidatesView({
           onDone={() => {
             setBulkOpen(null);
             setSelectedIds(new Set());
+            router.refresh();
+          }}
+        />
+      )}
+      {importOpen && (
+        <ImportCsvDialog
+          onClose={() => setImportOpen(false)}
+          onDone={() => {
+            setImportOpen(false);
             router.refresh();
           }}
         />
@@ -648,5 +665,158 @@ function BulkModal({
         {children}
       </div>
     </div>
+  );
+}
+
+const PIN_PREVIEW_COLUMNS: Array<{ header: string; label: string }> = [
+  { header: "candidate.firstName", label: "First" },
+  { header: "candidate.lastName", label: "Last" },
+  { header: "candidate.emails.0", label: "Email" },
+  { header: "candidate.experiences.0.title", label: "Title" },
+  { header: "candidate.experiences.0.company", label: "Employer" },
+  { header: "candidate.location", label: "Location" },
+];
+
+function ImportCsvDialog({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [previewRows, setPreviewRows] = useState<Record<string, string>[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onPick(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    setFile(f);
+    setPreviewRows([]);
+    setPreviewError(null);
+    if (!f) return;
+    try {
+      const text = await f.text();
+      const Papa = (await import("papaparse")).default;
+      const parsed = Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: true,
+        preview: 3,
+        transformHeader: (h: string) => h.trim(),
+      });
+      setPreviewRows(parsed.data ?? []);
+    } catch (err) {
+      setPreviewError(
+        err instanceof Error ? err.message : "Couldn't read CSV file.",
+      );
+    }
+  }
+
+  async function onImport() {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/candidates/import-csv", {
+        method: "POST",
+        body: fd,
+      });
+      const json = (await res.json()) as
+        | { imported: number; skipped: number; duplicates: number }
+        | { error: string };
+      if (!res.ok || "error" in json) {
+        toast.error("Import failed", {
+          description: "error" in json ? json.error : `HTTP ${res.status}`,
+        });
+        return;
+      }
+      const parts = [
+        `Imported ${json.imported} candidate${json.imported === 1 ? "" : "s"}`,
+        json.duplicates > 0
+          ? `${json.duplicates} duplicate${json.duplicates === 1 ? "" : "s"} skipped`
+          : null,
+        json.skipped > 0
+          ? `${json.skipped} row${json.skipped === 1 ? "" : "s"} skipped`
+          : null,
+      ].filter(Boolean);
+      toast.success(parts.join(", "));
+      onDone();
+    } catch (err) {
+      toast.error("Import failed", {
+        description: err instanceof Error ? err.message : "Network error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BulkModal title="Import candidates from CSV" onClose={onClose}>
+      <p className="mb-3 text-xs text-court-fg-muted">
+        Pin export format. Duplicates (matched by email) are skipped automatically.
+      </p>
+      <input
+        type="file"
+        accept=".csv,text/csv"
+        onChange={onPick}
+        disabled={busy}
+        className="block w-full text-xs text-court-fg file:mr-3 file:rounded-md file:border file:border-court-border file:bg-court-surface-subtle file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-court-fg hover:file:bg-court-accent-tint"
+      />
+      {previewError && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+          {previewError}
+        </div>
+      )}
+      {previewRows.length > 0 && (
+        <div className="mt-3 overflow-x-auto rounded-md border border-court-border">
+          <table className="w-full text-left text-[11px]">
+            <thead className="bg-court-surface-subtle text-court-fg-muted">
+              <tr>
+                {PIN_PREVIEW_COLUMNS.map((c) => (
+                  <th key={c.header} className="px-2 py-1 font-medium">
+                    {c.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-court-border-soft">
+              {previewRows.map((r, i) => (
+                <tr key={i}>
+                  {PIN_PREVIEW_COLUMNS.map((c) => (
+                    <td key={c.header} className="px-2 py-1 text-court-fg">
+                      {r[c.header] ?? ""}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onImport}
+          disabled={busy || !file}
+          className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+        >
+          {busy ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Upload className="h-3 w-3" />
+          )}
+          Import
+        </button>
+      </div>
+    </BulkModal>
   );
 }
