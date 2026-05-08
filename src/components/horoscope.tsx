@@ -26,6 +26,9 @@ export function Horoscope() {
   const [status, setStatus] = useState<Status>({ phase: "loading" });
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // popoverRef drives an on-open scrollIntoView so the popover never
+  // clips above the viewport when the recruiter's already scrolled.
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +61,12 @@ export function Horoscope() {
 
   useEffect(() => {
     if (!open) return;
+    const rafId = window.requestAnimationFrame(() => {
+      popoverRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
     function onDown(e: MouseEvent) {
       const node = containerRef.current;
       if (!node) return;
@@ -69,6 +78,7 @@ export function Horoscope() {
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
+      window.cancelAnimationFrame(rafId);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
@@ -95,6 +105,7 @@ export function Horoscope() {
 
       {open && (
         <div
+          ref={popoverRef}
           role="dialog"
           aria-label="Daily horoscope"
           className="absolute bottom-full right-0 z-20 mb-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"

@@ -109,8 +109,8 @@ function Metric({
   const labelCls =
     "text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted";
   const valueCls = accent
-    ? "mt-2 font-stat font-semibold leading-none tracking-[-0.05em] tabular-nums text-court-fg dark:text-court-accent-dark"
-    : "mt-2 font-stat font-semibold leading-none tracking-[-0.05em] tabular-nums text-court-fg";
+    ? "mt-2 font-serif font-extrabold leading-none tracking-[-0.05em] tabular-nums text-court-fg dark:text-court-accent-dark"
+    : "mt-2 font-serif font-extrabold leading-none tracking-[-0.05em] tabular-nums text-court-fg";
   return (
     <div className={wrapper}>
       <div className={labelCls}>{label}</div>

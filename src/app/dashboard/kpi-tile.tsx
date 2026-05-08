@@ -21,7 +21,7 @@ export function KpiTile({
         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
           {label}
         </div>
-        <div className="font-stat text-[28px] font-semibold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
+        <div className="font-serif text-[28px] font-extrabold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
           {value}
         </div>
       </div>

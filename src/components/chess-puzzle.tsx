@@ -166,6 +166,12 @@ export function ChessPuzzle() {
   const [puzzle, setPuzzle] = useState<Puzzle | null>(null);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Popover ref drives the on-open scrollIntoView so the popover is
+  // never clipped above the viewport when the recruiter opens a chip
+  // after scrolling down. Without this, the chess board (the tallest
+  // popover) was opening above the visible area and forcing a manual
+  // scroll up.
+  const popoverRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     // Day-stable cache wins over hitting Lichess again — the streak
@@ -209,6 +215,12 @@ export function ChessPuzzle() {
 
   useEffect(() => {
     if (!open) return;
+    const rafId = window.requestAnimationFrame(() => {
+      popoverRef.current?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    });
     function onDown(e: MouseEvent) {
       const node = containerRef.current;
       if (!node) return;
@@ -220,6 +232,7 @@ export function ChessPuzzle() {
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
+      window.cancelAnimationFrame(rafId);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
@@ -254,6 +267,7 @@ export function ChessPuzzle() {
 
       {open && (
         <div
+          ref={popoverRef}
           role="dialog"
           aria-label="Chess puzzle"
           className="absolute bottom-full right-0 z-20 mb-2 w-[360px] rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
