@@ -1070,9 +1070,12 @@ export function SpotifyPanel() {
         </button>
       </div>
 
-      {/* Body — auth-gated. Scrolls vertically. */}
+      {/* Body — auth-gated. Scrolls vertically. min-h-0 lets it
+          shrink when NowPlayingBar wants more room; without it the
+          body clamps to its content size and the album-art panel
+          gets pushed off the bottom. */}
       <div
-        className="flex-1 overflow-y-auto"
+        className="min-h-0 flex-1 overflow-y-auto"
         style={{ backgroundColor: COLOR_BG }}
       >
         {authState.status === "checking" ? (
@@ -1919,22 +1922,33 @@ function NowPlayingBar(props: {
   }
 
   return (
+    // flex-[2_1_0] makes NowPlayingBar grow twice as fast as the body
+    // above when the panel has spare height, so the album art gets
+    // most of the room. min-h-[120px] keeps the controls block always
+    // visible — at extreme small panel heights the album-art slot
+    // collapses to 0 instead of pushing play/pause off the bottom.
     <div
-      className="shrink-0 border-t border-white/10"
+      className="flex min-h-[120px] flex-[2_1_0] flex-col border-t border-white/10"
       style={{ backgroundColor: COLOR_BG }}
     >
-      {props.track.albumArt ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={props.track.albumArt}
-          alt=""
-          className="aspect-square w-full object-cover"
-        />
-      ) : (
-        <div className="aspect-square w-full bg-[#282828]" />
-      )}
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black">
+        {props.track.albumArt ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={props.track.albumArt}
+            alt=""
+            className="block max-h-full max-w-full object-contain"
+            style={{ aspectRatio: "1 / 1" }}
+          />
+        ) : (
+          <div
+            className="bg-[#282828]"
+            style={{ aspectRatio: "1 / 1", height: "100%", maxWidth: "100%" }}
+          />
+        )}
+      </div>
 
-      <div className="px-4 pb-3 pt-3">
+      <div className="shrink-0 px-4 pb-3 pt-3">
         <div className="truncate text-center text-base font-semibold text-white">
           {props.track.name}
         </div>
