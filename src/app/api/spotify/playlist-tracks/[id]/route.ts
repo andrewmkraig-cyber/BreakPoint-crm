@@ -83,17 +83,17 @@ export async function GET(
   const kind = (new URL(req.url).searchParams.get("kind") ?? "playlist").trim();
   const isAlbum = kind === "album";
 
-  // No `market` parameter: Spotify uses the access-token's profile
-  // market and applies track relinking automatically. Hardcoding
-  // `market=US` worked for some accounts but caused the panel to render
-  // "0 songs" against playlists/albums whose tracks Spotify decided
-  // weren't directly available in US — even when the recruiter's own
-  // account could play them. Letting Spotify resolve the market off
-  // the token is the safe default.
-  const headerPath = isAlbum ? `/v1/albums/${id}` : `/v1/playlists/${id}`;
+  // Pass `market=US` on every call so region-restricted tracks still
+  // get relinked into the response. We removed it briefly in 36.2
+  // hoping token-default would work, but that surfaced as the artist
+  // discography breaking, so we're back to a fixed ISO code that
+  // matches the recruiter's account.
+  const headerPath = isAlbum
+    ? `/v1/albums/${id}?market=US`
+    : `/v1/playlists/${id}?market=US`;
   const tracksPath = isAlbum
-    ? `/v1/albums/${id}/tracks?limit=50`
-    : `/v1/playlists/${id}/tracks?limit=100`;
+    ? `/v1/albums/${id}/tracks?market=US&limit=50`
+    : `/v1/playlists/${id}/tracks?market=US&limit=100`;
 
   const [headerRes, tracksRes] = await Promise.all([
     spotifyApiProxy(headerPath),
@@ -169,7 +169,7 @@ export async function GET(
     );
     tracksError =
       tracksRes.status === 403
-        ? "Spotify restricts API access to its editorial and algorithmic playlists. Open the playlist in Spotify to listen."
+        ? "Spotify limits API access to playlists you didn't create yourself. Open this one in Spotify to listen."
         : `Spotify ${tracksRes.status}: ${tracksRes.error}`;
   }
 

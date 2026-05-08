@@ -39,16 +39,19 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   const id = params.id;
-  // top-tracks REQUIRES a market param. albums and the artist
-  // header don't, and pinning market=US elsewhere caused the panel
-  // to render empty grids for accounts that should've seen results.
-  // Use `from_token` so Spotify reads the profile country off the
-  // user's access token instead.
+  // top-tracks REQUIRES a market param. We tried `from_token` here
+  // briefly but Spotify deprecated that magic value in 2025 and the
+  // call now 400s — empty top tracks and (because the recruiter saw
+  // it) empty discography were the visible regression. Pin to a
+  // hard-coded ISO country code; albums + the artist header don't
+  // need market but pass it anyway so all three sub-calls share one
+  // shape and we don't see an album appear in one view but vanish in
+  // another for region-restricted releases.
   const [artistRes, topRes, albumsRes] = await Promise.all([
     spotifyApiProxy(`/v1/artists/${id}`),
-    spotifyApiProxy(`/v1/artists/${id}/top-tracks?market=from_token`),
+    spotifyApiProxy(`/v1/artists/${id}/top-tracks?market=US`),
     spotifyApiProxy(
-      `/v1/artists/${id}/albums?include_groups=album,single&limit=20`,
+      `/v1/artists/${id}/albums?include_groups=album,single&limit=20&market=US`,
     ),
   ]);
 

@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.2
+Last updated: 2026-05-08 · Ace 36.3
 
 ## Current Status
-Current Version: Ace 36.2 (Floating-panel regression sweep — round 2)
-Last Shipped: Ace 36.2 — May 8, 2026
+Current Version: Ace 36.3 (Floating-panel regression sweep — round 3)
+Last Shipped: Ace 36.3 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.3
+Round-3 fixes after Andrew flagged that the cream header in 36.2 broke the premium feel and that artist pages had regressed:
+- YouTube panel: full-bleed iframe restored. The 36.2 header bar above the iframe is gone; controls now live in a single hover-only glass pill anchored top-LEFT (rounded, semi-transparent black, backdrop blur, ring-1 white/10) with `pointer-events-none` when invisible so it never swallows clicks meant for the iframe. Anchored left so the YouTube native chrome at the top-RIGHT (volume / CC / settings) is fully clickable; channel-avatar / Subscribe are intentionally covered since the recruiter never reaches for them from inside Ace. Bottom-left 200x64 click-blocker for Share + Watch-Later still in place.
+- Spotify artist endpoint: reverted `market=from_token` (deprecated by Spotify in 2025, returns 400) back to `market=US` for top-tracks and added `market=US` back to the albums sub-call. This was the actual cause of "0 followers / empty top tracks / empty discography" — `from_token` 400ed and the panel rendered the empty arrays. Playlist + album detail routes also restored to `market=US` since stripping it had no observable benefit.
+- Spotify 403 inline message rewritten: the dev-mode restriction is broader than just editorial / algorithmic playlists — it covers ANY playlist not owned by the authenticated user. Wording now reflects that ("Spotify limits API access to playlists you didn't create yourself").
 
 ## Summary — Ace 36.2
 Follow-up after Andrew confirmed the 36.1 fixes only partially solved things:
