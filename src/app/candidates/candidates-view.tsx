@@ -11,7 +11,8 @@ import {
   type ChangeEvent,
   type DragEvent,
 } from "react";
-import { Search, Loader2, Settings, X, ListPlus, Send, Upload, Trash2 } from "lucide-react";
+import { Search, Loader2, Settings, X, ListPlus, Send, Upload, Trash2, FileText } from "lucide-react";
+import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination/pagination";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
@@ -136,6 +137,7 @@ export function CandidatesView({
 
   const [bulkOpen, setBulkOpen] = useState<null | "apply" | "list" | "delete">(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [resumeUploadOpen, setResumeUploadOpen] = useState(false);
 
   // Build a URL with ?q=, ?list=, ?page= as appropriate. Page param
   // is dropped when 1 (default) so the URL stays clean. Used by
@@ -239,6 +241,13 @@ export function CandidatesView({
             className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-[11px] font-medium text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
           >
             <Upload className="h-3 w-3" /> CSV Import
+          </button>
+          <button
+            type="button"
+            onClick={() => setResumeUploadOpen(true)}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-[11px] font-medium text-court-fg-muted transition hover:border-brand/40 hover:text-court-fg"
+          >
+            <FileText className="h-3 w-3" /> Upload Resumes
           </button>
         </div>
       </div>
@@ -427,6 +436,15 @@ export function CandidatesView({
           onClose={() => setImportOpen(false)}
           onDone={() => {
             setImportOpen(false);
+            router.refresh();
+          }}
+        />
+      )}
+      {resumeUploadOpen && (
+        <BulkResumeUploadDialog
+          onClose={() => setResumeUploadOpen(false)}
+          onDone={() => {
+            setResumeUploadOpen(false);
             router.refresh();
           }}
         />
@@ -706,6 +724,323 @@ function BulkDeleteDialog({
         >
           {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
           Delete
+        </button>
+      </div>
+    </BulkModal>
+  );
+}
+
+// Filename parser. Pin's resume export emits "First Last_<hash>.pdf" — we
+// strip the .pdf and split on the LAST underscore so hyphenated last names
+// like "Jumawan-Spahr" survive intact. The trailing piece (the hash) is
+// discarded; the leading piece becomes the candidate name we match on.
+function parseNameFromFilename(filename: string): string {
+  const base = filename.replace(/\.pdf$/i, "");
+  const lastUnderscore = base.lastIndexOf("_");
+  return (lastUnderscore >= 0 ? base.slice(0, lastUnderscore) : base).trim();
+}
+
+const MAX_RESUME_FILES = 50;
+const RESUME_UPLOAD_BATCH_SIZE = 5;
+
+type ParsedResumeFile = {
+  key: string;
+  file: File;
+  parsedName: string;
+};
+
+type ResumeUploadOutcome =
+  | { status: "uploaded"; filename: string; parsedName: string }
+  | { status: "unmatched"; filename: string; parsedName: string }
+  | { status: "failed"; filename: string; parsedName: string; error: string };
+
+function BulkResumeUploadDialog({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [files, setFiles] = useState<ParsedResumeFile[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const dragDepth = useRef(0);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function addFiles(incoming: FileList | File[]) {
+    const list = Array.from(incoming);
+    const pdfs = list.filter((f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf");
+    const skipped = list.length - pdfs.length;
+    setError(null);
+    setFiles((prev) => {
+      const seen = new Set(prev.map((p) => `${p.file.name}|${p.file.size}`));
+      const next = [...prev];
+      for (const f of pdfs) {
+        const key = `${f.name}|${f.size}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        next.push({
+          key: `${key}|${Math.random().toString(36).slice(2, 8)}`,
+          file: f,
+          parsedName: parseNameFromFilename(f.name),
+        });
+        if (next.length >= MAX_RESUME_FILES) break;
+      }
+      if (next.length >= MAX_RESUME_FILES && pdfs.length + prev.length > MAX_RESUME_FILES) {
+        setError(`Capped at ${MAX_RESUME_FILES} files. Extra files were dropped.`);
+      } else if (skipped > 0) {
+        setError(`Skipped ${skipped} non-PDF file${skipped === 1 ? "" : "s"}.`);
+      }
+      return next;
+    });
+  }
+
+  function onPick(e: ChangeEvent<HTMLInputElement>) {
+    if (e.target.files) addFiles(e.target.files);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragOver(true);
+  }
+  function onDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  }
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragOver(false);
+    if (busy) return;
+    if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
+  }
+
+  function removeFile(key: string) {
+    setFiles((prev) => prev.filter((p) => p.key !== key));
+  }
+
+  async function onUpload() {
+    if (files.length === 0 || busy) return;
+    setBusy(true);
+    setError(null);
+    setProgress({ done: 0, total: files.length });
+    try {
+      const matchRes = await fetch("/api/candidates/match-by-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ names: files.map((f) => ({ name: f.parsedName })) }),
+      });
+      const matchJson = (await matchRes.json().catch(() => ({}))) as {
+        ok?: boolean;
+        matches?: Array<{ name: string; candidateId: string | null }>;
+        error?: string;
+      };
+      if (!matchRes.ok || !matchJson.ok || !Array.isArray(matchJson.matches)) {
+        throw new Error(matchJson.error ?? `Match failed (HTTP ${matchRes.status})`);
+      }
+      // Pair up matches by index — match-by-name preserves input order.
+      const matchByIndex = matchJson.matches;
+      const outcomes: ResumeUploadOutcome[] = new Array(files.length);
+      let done = 0;
+
+      // Parallel-N runner. Workers race through the index queue so a slow
+      // upload doesn't stall a fixed-size batch — net throughput stays at
+      // RESUME_UPLOAD_BATCH_SIZE concurrent network round-trips.
+      let cursor = 0;
+      const worker = async () => {
+        while (true) {
+          const i = cursor++;
+          if (i >= files.length) return;
+          const f = files[i];
+          const matched = matchByIndex[i]?.candidateId ?? null;
+          if (!matched) {
+            outcomes[i] = {
+              status: "unmatched",
+              filename: f.file.name,
+              parsedName: f.parsedName,
+            };
+          } else {
+            try {
+              await uploadFileInChunks(
+                f.file,
+                "/api/uploads/candidate-resume",
+                { candidateId: matched },
+              );
+              outcomes[i] = {
+                status: "uploaded",
+                filename: f.file.name,
+                parsedName: f.parsedName,
+              };
+            } catch (err) {
+              outcomes[i] = {
+                status: "failed",
+                filename: f.file.name,
+                parsedName: f.parsedName,
+                error: err instanceof Error ? err.message : "Upload failed.",
+              };
+            }
+          }
+          done += 1;
+          setProgress({ done, total: files.length });
+        }
+      };
+
+      const workers = Array.from(
+        { length: Math.min(RESUME_UPLOAD_BATCH_SIZE, files.length) },
+        () => worker(),
+      );
+      await Promise.all(workers);
+
+      const uploaded = outcomes.filter((o) => o.status === "uploaded").length;
+      const unmatched = outcomes.filter((o): o is Extract<ResumeUploadOutcome, { status: "unmatched" }> => o.status === "unmatched");
+      const failed = outcomes.filter((o): o is Extract<ResumeUploadOutcome, { status: "failed" }> => o.status === "failed");
+
+      const summary = [
+        `Attached ${uploaded} resume${uploaded === 1 ? "" : "s"}`,
+        unmatched.length > 0 ? `${unmatched.length} unmatched` : null,
+        failed.length > 0 ? `${failed.length} failed` : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+
+      const description = [
+        unmatched.length > 0
+          ? `Unmatched: ${unmatched.map((u) => u.filename).join(", ")}`
+          : null,
+        failed.length > 0
+          ? `Failed: ${failed.map((u) => `${u.filename} (${u.error})`).join("; ")}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+
+      if (uploaded > 0 && failed.length === 0) {
+        toast.success(summary, description ? { description } : undefined);
+      } else if (uploaded > 0) {
+        toast.success(summary, { description });
+      } else {
+        toast.error(summary || "No resumes uploaded", description ? { description } : undefined);
+      }
+      onDone();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Upload failed.";
+      setError(msg);
+      toast.error("Bulk upload failed", { description: msg });
+    } finally {
+      setBusy(false);
+      setProgress(null);
+    }
+  }
+
+  const totalCount = files.length;
+  const remaining = MAX_RESUME_FILES - totalCount;
+
+  return (
+    <BulkModal title="Upload resumes" onClose={onClose}>
+      <p className="mb-3 text-xs text-court-fg-muted">
+        Drop PDFs whose filename starts with the candidate name (e.g. <span className="font-mono">Benjamin White_b17d.pdf</span>). We&apos;ll match by first + last name and attach as a new resume version. Up to {MAX_RESUME_FILES} files at a time.
+      </p>
+      <div
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={
+          "rounded-lg border-2 border-dashed p-4 transition " +
+          (dragOver
+            ? "border-court-accent bg-court-accent-tint"
+            : "border-court-border bg-court-surface-subtle")
+        }
+      >
+        <p className="mb-2 text-center text-xs text-court-fg-muted">
+          {dragOver
+            ? "Drop PDFs to queue"
+            : totalCount === 0
+              ? "Drag .pdf files here, or pick files"
+              : `${totalCount} queued · ${remaining} more allowed`}
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          multiple
+          onChange={onPick}
+          disabled={busy || remaining <= 0}
+          className="block w-full text-xs text-court-fg file:mr-3 file:rounded-md file:border file:border-court-border file:bg-court-surface file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-court-fg hover:file:bg-court-accent-tint"
+        />
+      </div>
+
+      {error && (
+        <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+          {error}
+        </div>
+      )}
+
+      {totalCount > 0 && (
+        <div className="mt-3 max-h-64 overflow-y-auto rounded-md border border-court-border">
+          <table className="w-full text-left text-[11px]">
+            <thead className="sticky top-0 bg-court-surface-subtle text-court-fg-muted">
+              <tr>
+                <th className="px-2 py-1 font-medium">Filename</th>
+                <th className="px-2 py-1 font-medium">Parsed name</th>
+                <th className="w-8 px-2 py-1" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-court-border-soft">
+              {files.map((f) => (
+                <tr key={f.key}>
+                  <td className="truncate px-2 py-1 font-mono text-court-fg">{f.file.name}</td>
+                  <td className="px-2 py-1 text-court-fg">{f.parsedName || <span className="text-court-fg-muted italic">(unparseable)</span>}</td>
+                  <td className="px-2 py-1 text-right">
+                    <button
+                      type="button"
+                      onClick={() => removeFile(f.key)}
+                      disabled={busy}
+                      aria-label={`Remove ${f.file.name}`}
+                      className="rounded p-0.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-40"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {progress && (
+        <p className="mt-3 text-center text-[11px] text-court-fg-muted">
+          Uploading {progress.done} / {progress.total}…
+        </p>
+      )}
+
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onUpload}
+          disabled={busy || totalCount === 0}
+          className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+          {busy ? "Uploading…" : `Upload ${totalCount || ""}`.trim()}
         </button>
       </div>
     </BulkModal>
