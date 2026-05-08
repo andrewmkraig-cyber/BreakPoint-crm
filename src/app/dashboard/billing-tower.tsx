@@ -29,18 +29,18 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
       : "Fees earned on placements that hit start date.";
 
   return (
-    <section className="rounded-3xl bg-court-surface p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <h2
             className="font-semibold tracking-[-0.035em] text-court-fg"
-            style={{ fontSize: "20px", lineHeight: 1.15 }}
+            style={{ fontSize: "18px", lineHeight: 1.15 }}
           >
             Billing Tower
           </h2>
           <p
             className="mt-0.5 text-court-fg-muted"
-            style={{ fontSize: "13px" }}
+            style={{ fontSize: "12px" }}
           >
             Revenue and collections overview
           </p>
@@ -61,7 +61,7 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
         <Metric
           label="Cash Collected"
@@ -105,8 +105,8 @@ function Metric({
   // pair reads as primary + secondary instead of two equal weights.
   const accent = tone === "accent";
   const wrapper = accent
-    ? "rounded-2xl bg-court-accent-tint p-5"
-    : "rounded-2xl bg-court-surface p-5 ring-1 ring-inset ring-court-border-soft";
+    ? "rounded-2xl bg-court-accent-tint p-4"
+    : "rounded-2xl bg-court-surface p-4 ring-1 ring-inset ring-court-border-soft";
   const labelCls =
     "text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted";
   const valueCls = accent

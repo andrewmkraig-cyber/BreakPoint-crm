@@ -221,7 +221,7 @@ export function NewsFeed() {
                   aria-selected={selected}
                   onClick={() => setActive(t.key)}
                   className={
-                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
+                    "rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors " +
                     (selected
                       ? "bg-court-accent-tint text-court-accent-dark"
                       : "text-court-fg-muted hover:bg-court-surface-subtle")

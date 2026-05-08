@@ -466,12 +466,12 @@ export function WeatherWidget() {
                 sizeClass="h-9 w-9"
               />
               <div className="flex flex-col">
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-baseline gap-1.5">
                   <span className="font-stat text-2xl font-bold leading-none text-court-fg">
                     {rounded}°
                   </span>
-                  <span className="text-[10px] text-court-fg-muted">
-                    Feels {apparentRounded}°
+                  <span className="text-[11px] text-court-fg-muted">
+                    (feels {apparentRounded}°)
                   </span>
                 </div>
                 <span className="mt-0.5 text-xs text-court-fg">

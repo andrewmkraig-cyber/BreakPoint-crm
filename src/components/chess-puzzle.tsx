@@ -273,22 +273,34 @@ export function ChessPuzzle() {
       </button>
 
       {open && (
-        <div
-          ref={popoverRef}
-          role="dialog"
-          aria-label="Chess puzzle"
-          className="absolute bottom-full right-0 z-20 mb-2 w-[360px] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
-        >
-          <button
-            type="button"
+        <>
+          {/* Backdrop — clicking dismisses the modal. position:fixed
+              so the chess popover is no longer anchored to the chip's
+              location (which was clipping the top when the chip sat
+              near the top of the viewport). */}
+          <div
+            aria-hidden="true"
             onClick={() => setOpen(false)}
-            aria-label="Close"
-            className="absolute right-2 top-2 z-10 rounded-md p-0.5 text-court-fg-muted opacity-40 transition hover:bg-court-surface-subtle hover:opacity-100"
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+          />
+          <div
+            ref={popoverRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Chess puzzle"
+            className="fixed left-1/2 top-1/2 z-50 w-[360px] max-h-[calc(100vh-2rem)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-court-border bg-court-surface p-4 shadow-2xl"
           >
-            <X className="h-3.5 w-3.5" />
-          </button>
-          <PuzzleBoard puzzle={puzzle} />
-        </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="absolute right-2 top-2 z-10 rounded-md p-0.5 text-court-fg-muted opacity-60 transition hover:bg-court-surface-subtle hover:opacity-100"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+            <PuzzleBoard puzzle={puzzle} />
+          </div>
+        </>
       )}
     </div>
   );
