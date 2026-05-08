@@ -156,7 +156,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
 
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] text-left text-sm">
+          <table className="w-full min-w-[820px] text-left text-sm">
             <DataTableHead>
               <tr>
                 <DataTableHeaderCell>Candidate</DataTableHeaderCell>
@@ -285,10 +285,15 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3 align-top">
+                      <td className="w-px whitespace-nowrap px-5 py-3 align-top">
                         {/* Schedule (submitted) + Offer (interviewing) sit
                             left of Reject. Both deep-link to the candidate
-                            profile — the full modal flows live there. */}
+                            profile — the full modal flows live there.
+                            Labels collapse to icon-only below md so the
+                            action column stays visible when the page
+                            decompresses; w-px + whitespace-nowrap on the
+                            cell pins it to its natural width and forces
+                            other columns (Job/Client) to compress first. */}
                         <div className="flex items-center justify-end gap-1.5">
                           {r.bucket === "submitted" && (
                             <Link
@@ -296,8 +301,10 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-blue-200 bg-blue-50 px-2.5 text-[11px] font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60"
                               title="Schedule interview on candidate profile"
+                              aria-label="Schedule interview"
                             >
-                              <CalendarClock className="h-3 w-3" /> Schedule
+                              <CalendarClock className="h-3 w-3" />
+                              <span className="hidden md:inline">Schedule</span>
                             </Link>
                           )}
                           {r.bucket === "interviewing" && (
@@ -306,8 +313,10 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-purple-200 bg-purple-50 px-2.5 text-[11px] font-semibold text-purple-700 shadow-sm transition hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60"
                               title="Record offer on candidate profile"
+                              aria-label="Record offer"
                             >
-                              <DollarSign className="h-3 w-3" /> Offer
+                              <DollarSign className="h-3 w-3" />
+                              <span className="hidden md:inline">Offer</span>
                             </Link>
                           )}
                           {(r.bucket === "submitted" || r.bucket === "interviewing") && r.placementId && (
@@ -562,9 +571,10 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
         disabled={isPending}
         className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-red-200 bg-red-50 px-2.5 text-[11px] font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
         title="Reject this candidate for this job"
+        aria-label="Reject"
       >
         {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
-        Reject
+        <span className="hidden md:inline">Reject</span>
       </button>
       {open && (
         <RejectCandidateDialog
