@@ -109,13 +109,13 @@ export function TopBarPageTitle() {
 
   if (!spec.title.label) return null;
 
-  // Every page uses the same premium sans-serif treatment introduced
-  // on the dashboard pass — Jobs / Candidates / Mail / etc. read with
-  // the same weight and letter-spacing as the dashboard title so the
-  // topbar feels consistent across the app.
-  const titleClass = "font-sans font-semibold text-court-fg";
+  // Every page title runs on the Bricolage display face (font-serif
+  // → --font-display) so the topbar reads in the same family as the
+  // Ace wordmark. Size dropped to 22 so the page title sits next to
+  // the Ace lockup at sidebar width without overpowering it.
+  const titleClass = "font-serif font-extrabold text-court-fg";
   const titleStyle = {
-    fontSize: "26px",
+    fontSize: "22px",
     letterSpacing: "-0.035em",
     lineHeight: 1.15,
   };

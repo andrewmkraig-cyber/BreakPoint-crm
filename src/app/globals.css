@@ -306,6 +306,17 @@ html[data-surface='night'] {
   --brand-light:                    156 214 131;
 }
 
+@layer base {
+  /* Every native heading picks up the Bricolage display face by
+     default so dashboard section titles, page headers, and any
+     <h*> element in cards land on the same Yahoo-vibe wordmark
+     font as the Ace lockup — without forcing every component to
+     opt in via `font-serif`. */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display), system-ui, sans-serif;
+  }
+}
+
 @layer utilities {
   .text-balance { text-wrap: balance; }
 

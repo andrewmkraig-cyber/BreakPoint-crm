@@ -18,8 +18,8 @@ export function BrandMark({
   return (
     <div className={cn("flex items-center gap-3", className)}>
       <svg
-        width="36"
-        height="36"
+        width="40"
+        height="40"
         viewBox="0 0 60 60"
         fill="none"
         aria-hidden="true"
