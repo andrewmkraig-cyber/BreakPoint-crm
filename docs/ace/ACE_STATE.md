@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.9
+Last updated: 2026-05-08 · Ace 37.0
 
 ## Current Status
-Current Version: Ace 36.9 (Spotify artist diagnostics)
-Last Shipped: Ace 36.9 — May 8, 2026
+Current Version: Ace 37.0 (Spotify artist Popular via album-derived; playlist 403 owner-aware silent)
+Last Shipped: Ace 37.0 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 37.0
+Three Spotify fixes — no playback or YouTube code touched:
+- Artist Popular section no longer hits `/v1/artists/{id}/top-tracks` (403 in dev mode). New flow: fetch `/v1/artists/{id}/albums?include_groups=single,album&market=US&limit=5`, take the first album, fetch `/v1/albums/{firstAlbumId}/tracks?market=US&limit=5`, project the first 3-5 rows for Popular. If anything in that chain 403s the section hides silently with no error state.
+- Discography continues to use `/v1/artists/{id}/albums?include_groups=album,single&limit=20&market=US`. Limit is hardcoded to 20 (Spotify min 1, max 50). The diagnostic empty-state block from 36.9 is removed — both Popular and Discography hide silently when empty per the brief.
+- `classifyPlaylistTracksError` returns null on 403 + ownerId === meId so the recruiter's own playlists never show a restriction or auth-refresh message; Spotify's status (403 vs 404 vs other) still flows through `tracksStatus` so the panel can decide. Followed-but-not-owned playlists keep showing "Spotify's API restricts access to playlists you didn't create. Open in Spotify to listen."
 
 ## Summary — Ace 36.9
 Andrew was still seeing 0 followers / no Popular / no Discography on artist pages even after 36.5's followers/null fix and 36.7's market=US revert. Added diagnostics (no behavior changes to playlist code or playback):

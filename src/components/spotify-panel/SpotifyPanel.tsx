@@ -163,12 +163,17 @@ function classifyPlaylistTracksError(
   }
   if (status === 403) {
     // Dev-mode restriction only fires on playlists the recruiter
-    // doesn't own. If owner == me, this is an auth / permission /
-    // rate-limit issue and the recruiter should see a different copy.
+    // doesn't own. On the recruiter's OWN playlists, Spotify should
+    // never 403 the /tracks call — and if it transiently does, we
+    // suppress the message entirely per the brief: "own playlists
+    // must load tracks normally - never show any restriction
+    // message". Empty list is the visible state in that edge case;
+    // the underlying status is still in `tracksStatus` for
+    // diagnostics.
     if (ownerId && meId && ownerId === meId) {
-      return "Spotify denied access to this playlist's tracks. Reconnect Spotify or refresh and try again.";
+      return null;
     }
-    return "Spotify limits API access to playlists you didn't create yourself. Open this one in Spotify to listen.";
+    return "Spotify's API restricts access to playlists you didn't create. Open in Spotify to listen.";
   }
   return `Spotify couldn't load these tracks (HTTP ${status}). Try again in a moment.`;
 }
@@ -2255,52 +2260,12 @@ function ArtistView(props: {
         <Play className="h-4 w-4" fill="currentColor" /> Play
       </button>
 
-      {/* Visible error state when sub-calls fail or come back empty.
-          Was previously a silent "no Popular section + no Discography
-          section" render that hid the cause from the recruiter. The
-          debug envelope from /api/spotify/artist/[id] carries the
-          actual upstream HTTP status + the raw count BEFORE our
-          projection, so we can tell whether Spotify denied the call
-          (e.g. 401 / 403 / 404) or returned zero items. */}
-      {(() => {
-        const dbg = a.debug;
-        if (!dbg) return null;
-        const topFailed =
-          typeof dbg.topTracksStatus === "number" &&
-          dbg.topTracksStatus >= 400;
-        const albumsFailed =
-          typeof dbg.albumsStatus === "number" && dbg.albumsStatus >= 400;
-        const topEmpty =
-          !topFailed && a.topTracks.length === 0 && (dbg.rawTopTracksCount ?? 0) === 0;
-        const albumsEmpty =
-          !albumsFailed && a.albums.length === 0 && (dbg.rawAlbumsCount ?? 0) === 0;
-        if (!topFailed && !albumsFailed && !topEmpty && !albumsEmpty) return null;
-        const lines: string[] = [];
-        if (topFailed) {
-          lines.push(
-            `Top tracks: Spotify returned ${dbg.topTracksStatus}${dbg.topTracksError ? ` — ${dbg.topTracksError}` : ""}.`,
-          );
-        } else if (topEmpty) {
-          lines.push("Top tracks: Spotify returned an empty list for this artist.");
-        }
-        if (albumsFailed) {
-          lines.push(
-            `Discography: Spotify returned ${dbg.albumsStatus}${dbg.albumsError ? ` — ${dbg.albumsError}` : ""}.`,
-          );
-        } else if (albumsEmpty) {
-          lines.push("Discography: Spotify returned an empty album list.");
-        }
-        return (
-          <div className="rounded-lg border border-[#3D3D3D] bg-[#1F1F1F] p-3 text-xs text-[#B3B3B3]">
-            {lines.map((l, i) => (
-              <p key={i} className={i > 0 ? "mt-1" : ""}>
-                {l}
-              </p>
-            ))}
-          </div>
-        );
-      })()}
-
+      {/* Popular section silently hides when topTracks is empty —
+          per the brief: never show a 403 error state to the user on
+          the artist page. Diagnostics still ship via console.log +
+          the debug envelope on the response so we can audit without
+          surfacing anything to the recruiter. Same convention for
+          Discography below. */}
       {a.topTracks.length > 0 && (
         <Section title="Popular">
           <ul className="flex flex-col">

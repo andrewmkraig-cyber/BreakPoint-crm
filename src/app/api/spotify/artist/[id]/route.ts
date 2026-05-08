@@ -1,19 +1,32 @@
 import { NextResponse } from "next/server";
 import { applyRefreshedSpotifyCookies, spotifyApiProxy } from "@/lib/spotify";
 
-// GET /v1/artists/{id} + /top-tracks + /albums in parallel so the
-// artist view can render header, top-track row, and album grid from
-// a single fetch.
+// GET /v1/artists/{id} + /albums + first-album /tracks. The /top-tracks
+// endpoint is intentionally NOT used — Spotify's dev-mode policy (Nov
+// 2024) 403s it for apps that aren't in Extended Quota mode. Instead
+// we derive a "Popular" row from the first album the artist has on
+// Spotify: cheap, scopes already-granted, and never 403s for browsable
+// catalog content. If the album-derived path also can't resolve, the
+// panel hides the Popular section silently — no error state.
+//
+// Three calls run in parallel:
+//   /v1/artists/{id}                                              — header
+//   /v1/artists/{id}/albums?include_groups=single,album&limit=5   — top source
+//   /v1/artists/{id}/albums?include_groups=album,single&limit=20  — discography
+// Then a fourth dependent call once the top-source's first album id
+// is known:
+//   /v1/albums/{firstAlbumId}/tracks?market=US&limit=5
+// The discography call's limit is hardcoded to 20 (Spotify max 50,
+// min 1) per the brief — anything outside [1, 50] returns 400.
 
 export const dynamic = "force-dynamic";
 
 type Image = { url?: string; width?: number };
-type Track = {
+type AlbumTrack = {
   id?: string;
   name?: string;
   uri?: string;
   duration_ms?: number;
-  album?: { name?: string; images?: Image[] };
 };
 type Album = {
   id?: string;
@@ -39,26 +52,22 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   const id = params.id;
-  // top-tracks REQUIRES a market param. We tried `from_token` here
-  // briefly but Spotify deprecated that magic value in 2025 and the
-  // call now 400s — empty top tracks and (because the recruiter saw
-  // it) empty discography were the visible regression. Pin to a
-  // hard-coded ISO country code; albums + the artist header don't
-  // need market but pass it anyway so all three sub-calls share one
-  // shape and we don't see an album appear in one view but vanish in
-  // another for region-restricted releases.
-  const [artistRes, topRes, albumsRes] = await Promise.all([
+
+  // Three parallel calls; the fourth (album tracks) waits on the top-
+  // source response. market=US matches the playlist/album detail route
+  // so region-restricted albums relink consistently across surfaces.
+  const [artistRes, popAlbumsRes, discographyRes] = await Promise.all([
     spotifyApiProxy(`/v1/artists/${id}`),
-    spotifyApiProxy(`/v1/artists/${id}/top-tracks?market=US`),
+    spotifyApiProxy(
+      `/v1/artists/${id}/albums?include_groups=single,album&market=US&limit=5`,
+    ),
     spotifyApiProxy(
       `/v1/artists/${id}/albums?include_groups=album,single&limit=20&market=US`,
     ),
   ]);
 
-  // Pick whichever sub-call refreshed (at most one will, since they
-  // share the cookie state at request entry).
-  const refreshed =
-    artistRes.refreshed ?? topRes.refreshed ?? albumsRes.refreshed;
+  let refreshed =
+    artistRes.refreshed ?? popAlbumsRes.refreshed ?? discographyRes.refreshed;
 
   if (!artistRes.ok) {
     console.error(
@@ -72,47 +81,80 @@ export async function GET(
     );
     return applyRefreshedSpotifyCookies(res, refreshed);
   }
-  if (!topRes.ok) {
+  if (!popAlbumsRes.ok) {
     console.error(
-      "[spotify-artist] top-tracks fetch failed",
-      topRes.status,
-      topRes.error,
+      "[spotify-artist] popular-source albums fetch failed",
+      popAlbumsRes.status,
+      popAlbumsRes.error,
     );
   }
-  if (!albumsRes.ok) {
+  if (!discographyRes.ok) {
     console.error(
-      "[spotify-artist] albums fetch failed",
-      albumsRes.status,
-      albumsRes.error,
+      "[spotify-artist] discography albums fetch failed",
+      discographyRes.status,
+      discographyRes.error,
     );
   }
 
-  // Server-side raw-response logs. Truncated to 600 chars per shape so
-  // Vercel logs don't get flooded but we can still see followers,
-  // top-tracks count, and the first album. Used to diagnose the
-  // "0 followers / no top tracks / no discography" reports — if the
-  // panel comes up empty we need to know whether Spotify returned
-  // an empty payload or our parser dropped it.
+  // Extract first album id from the popular-source response — this is
+  // what we hand to /v1/albums/{id}/tracks for the dependent call.
+  const popAlbumsData = popAlbumsRes.ok
+    ? (popAlbumsRes.data as { items?: Album[] })
+    : { items: [] };
+  const firstPopAlbum = (popAlbumsData.items ?? []).find(
+    (al) => al && al.id && al.name,
+  );
+
+  // Dependent call: only fires if the popular-source actually returned
+  // an album. Bumps the existing `refreshed` cookie state if it
+  // happens to refresh the access token, so the response reflects the
+  // freshest credentials.
+  let albumTracksRes: Awaited<ReturnType<typeof spotifyApiProxy>> | null = null;
+  if (firstPopAlbum?.id) {
+    albumTracksRes = await spotifyApiProxy(
+      `/v1/albums/${firstPopAlbum.id}/tracks?market=US&limit=5`,
+    );
+    if (!albumTracksRes.ok) {
+      console.error(
+        "[spotify-artist] album-derived tracks fetch failed",
+        albumTracksRes.status,
+        albumTracksRes.error,
+      );
+    }
+    refreshed = refreshed ?? albumTracksRes.refreshed ?? null;
+  }
+
+  // Diagnostic logs (truncated). Helps confirm the album-derived path
+  // is producing what we expect when the panel reports empty Popular.
   console.log(
     "[spotify-artist] raw artist:",
     JSON.stringify(artistRes.data ?? null).slice(0, 600),
   );
   console.log(
-    "[spotify-artist] raw top-tracks:",
-    topRes.status,
-    JSON.stringify(topRes.ok ? topRes.data : { error: topRes.error }).slice(
-      0,
-      600,
-    ),
+    "[spotify-artist] raw pop-albums:",
+    popAlbumsRes.status,
+    JSON.stringify(
+      popAlbumsRes.ok ? popAlbumsRes.data : { error: popAlbumsRes.error },
+    ).slice(0, 600),
   );
   console.log(
-    "[spotify-artist] raw albums:",
-    albumsRes.status,
-    JSON.stringify(albumsRes.ok ? albumsRes.data : { error: albumsRes.error }).slice(
-      0,
-      600,
-    ),
+    "[spotify-artist] raw discography:",
+    discographyRes.status,
+    JSON.stringify(
+      discographyRes.ok ? discographyRes.data : { error: discographyRes.error },
+    ).slice(0, 600),
   );
+  if (albumTracksRes) {
+    console.log(
+      "[spotify-artist] raw album-tracks:",
+      albumTracksRes.status,
+      JSON.stringify(
+        albumTracksRes.ok
+          ? albumTracksRes.data
+          : { error: albumTracksRes.error },
+      ).slice(0, 600),
+    );
+  }
 
   const artist = artistRes.data as {
     id?: string;
@@ -123,28 +165,37 @@ export async function GET(
     followers?: { total?: number };
   };
 
-  const topTracksData = topRes.ok
-    ? (topRes.data as { tracks?: Track[] })
-    : { tracks: [] };
-  const topTracks = (topTracksData.tracks ?? [])
+  // Build Popular from the first album's tracks. The album endpoint's
+  // tracks payload doesn't embed album art on each track (the album
+  // already has it at the parent), so we reuse firstPopAlbum's
+  // images for every derived row.
+  const albumTracksData =
+    albumTracksRes && albumTracksRes.ok
+      ? (albumTracksRes.data as { items?: AlbumTrack[] })
+      : { items: [] };
+  const albumArtFallback = pickImage(firstPopAlbum?.images, 64);
+  const topTracks = (albumTracksData.items ?? [])
     .slice(0, 5)
     .map((t) => {
-      if (!t.id || !t.uri || !t.name) return null;
+      if (!t || !t.id || !t.uri || !t.name) return null;
       return {
         id: t.id,
         uri: t.uri,
         name: t.name,
         durationMs: t.duration_ms ?? 0,
-        albumArt: pickImage(t.album?.images, 64),
+        albumArt: albumArtFallback,
       };
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
-  const albumsData = albumsRes.ok
-    ? (albumsRes.data as { items?: Album[] })
+  // Discography from the limit=20 fetch. Dedupe by lowercased name to
+  // collapse same-album-different-edition rows Spotify sometimes
+  // returns side by side.
+  const discographyData = discographyRes.ok
+    ? (discographyRes.data as { items?: Album[] })
     : { items: [] };
   const seen = new Set<string>();
-  const albums = (albumsData.items ?? [])
+  const albums = (discographyData.items ?? [])
     .map((al) => {
       if (!al.id || !al.uri || !al.name) return null;
       const dedupeKey = al.name.toLowerCase();
@@ -162,29 +213,36 @@ export async function GET(
 
   // Followers must distinguish "Spotify said zero" from "Spotify
   // didn't include the field at all" — defaulting both to 0 was the
-  // bug the recruiter saw on real artists. We surface null when the
-  // field is missing/undefined so the panel can hide the row instead
-  // of pretending Spotify reported zero followers.
+  // bug on real artists. Null when the field is missing/undefined so
+  // the panel can hide the row instead of pretending Spotify reported
+  // zero followers.
   const followers =
-    typeof artist.followers?.total === "number" ? artist.followers.total : null;
+    typeof artist.followers?.total === "number"
+      ? artist.followers.total
+      : null;
 
-  // Debug envelope so the panel can log + render a visible empty-
-  // state message when sub-calls fail or come back empty. Never
-  // contains secrets — just statuses + counts + the upstream error
-  // string — so it's safe to ship to the client.
+  // Debug envelope kept for client-side console diagnostics. Field
+  // names match the panel's existing expectations from 36.9.
   const debug = {
     headerStatus: artistRes.status,
-    topTracksStatus: topRes.status,
-    topTracksError: topRes.ok ? null : topRes.error,
-    rawTopTracksCount:
-      topRes.ok && Array.isArray((topRes.data as { tracks?: Track[] })?.tracks)
-        ? (topRes.data as { tracks?: Track[] }).tracks!.length
-        : 0,
-    albumsStatus: albumsRes.status,
-    albumsError: albumsRes.ok ? null : albumsRes.error,
+    // topTracksStatus is now the album-tracks dependent call's status
+    // when it ran, otherwise the popular-source albums status — these
+    // are the two upstreams that gate Popular rendering.
+    topTracksStatus: albumTracksRes ? albumTracksRes.status : popAlbumsRes.status,
+    topTracksError: albumTracksRes
+      ? albumTracksRes.ok
+        ? null
+        : albumTracksRes.error
+      : popAlbumsRes.ok
+        ? null
+        : popAlbumsRes.error,
+    rawTopTracksCount: topTracks.length,
+    albumsStatus: discographyRes.status,
+    albumsError: discographyRes.ok ? null : discographyRes.error,
     rawAlbumsCount:
-      albumsRes.ok && Array.isArray((albumsRes.data as { items?: Album[] })?.items)
-        ? (albumsRes.data as { items?: Album[] }).items!.length
+      discographyRes.ok &&
+      Array.isArray((discographyRes.data as { items?: Album[] })?.items)
+        ? (discographyRes.data as { items?: Album[] }).items!.length
         : 0,
     followersField:
       artist.followers === undefined
