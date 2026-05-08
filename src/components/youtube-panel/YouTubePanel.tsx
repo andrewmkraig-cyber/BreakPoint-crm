@@ -23,11 +23,28 @@ import { Button } from "@/components/ui/button";
 // shrinks to 320x52 and the dock UI overlays the iframe at z-10 — the iframe
 // keeps playing because it's never unmounted, just visually covered.
 
-type SearchResult = {
+type VideoResult = {
+  type: "video";
   videoId: string;
   title: string;
+  channelId: string;
   channelTitle: string;
   thumbnail: string;
+};
+
+type ChannelResult = {
+  type: "channel";
+  channelId: string;
+  title: string;
+  thumbnail: string;
+};
+
+type ApiResult = VideoResult | ChannelResult;
+
+type ChannelView = {
+  info: ChannelResult;
+  videos: VideoResult[];
+  loading: boolean;
 };
 
 const DOCK_W = 320;
@@ -47,11 +64,15 @@ export function YouTubePanel() {
 
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResult[]>([]);
+  const [videoResults, setVideoResults] = useState<VideoResult[]>([]);
+  const [channelResults, setChannelResults] = useState<ChannelResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState<string>("");
   const [minimized, setMinimized] = useState(false);
+  // null = showing search results; set = showing a single channel's
+  // latest uploads with a back arrow to return to the search list.
+  const [channelView, setChannelView] = useState<ChannelView | null>(null);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -225,6 +246,7 @@ export function YouTubePanel() {
     setSearching(true);
     setActiveVideoId(null);
     setActiveVideoTitle("");
+    setChannelView(null);
     try {
       const res = await fetch(
         `/api/youtube/search?q=${encodeURIComponent(q)}`,
@@ -233,12 +255,18 @@ export function YouTubePanel() {
       const data = (await res.json()) as {
         ok?: boolean;
         error?: string;
-        results?: SearchResult[];
+        results?: ApiResult[];
       };
       if (!res.ok || !data.ok) {
         throw new Error(data.error ?? `HTTP ${res.status}`);
       }
-      setResults(data.results ?? []);
+      const items = data.results ?? [];
+      setVideoResults(
+        items.filter((r): r is VideoResult => r.type === "video"),
+      );
+      setChannelResults(
+        items.filter((r): r is ChannelResult => r.type === "channel"),
+      );
     } catch (e) {
       const message = e instanceof Error ? e.message : "Search failed";
       toast.error("YouTube search failed", { description: message });
@@ -247,14 +275,52 @@ export function YouTubePanel() {
     }
   }
 
-  function playResult(r: SearchResult) {
-    setActiveVideoId(r.videoId);
-    setActiveVideoTitle(r.title);
+  // Click a channel card → fetch that channel's latest 10 uploads via
+  // the same route's channelId mode and switch the body to channel
+  // view. Optimistic render: set channelView with loading=true so the
+  // recruiter sees the channel header immediately while the fetch
+  // resolves.
+  async function openChannel(c: ChannelResult) {
+    setChannelView({ info: c, videos: [], loading: true });
+    try {
+      const res = await fetch(
+        `/api/youtube/search?channelId=${encodeURIComponent(c.channelId)}`,
+        { cache: "no-store" },
+      );
+      const data = (await res.json()) as {
+        ok?: boolean;
+        error?: string;
+        results?: ApiResult[];
+      };
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error ?? `HTTP ${res.status}`);
+      }
+      const videos = (data.results ?? []).filter(
+        (r): r is VideoResult => r.type === "video",
+      );
+      setChannelView({ info: c, videos, loading: false });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Channel load failed";
+      toast.error("Couldn't load channel", { description: message });
+      setChannelView(null);
+    }
   }
 
+  function playVideo(v: VideoResult) {
+    setActiveVideoId(v.videoId);
+    setActiveVideoTitle(v.title);
+  }
+
+  // Back from the playing iframe overlay. Clears the iframe but keeps
+  // whichever non-playing state the recruiter came from (search list
+  // or channel view) so they land where they were.
   function backToSearch() {
     setActiveVideoId(null);
     setActiveVideoTitle("");
+  }
+
+  function backFromChannel() {
+    setChannelView(null);
   }
 
   if (!mounted || !open || !position) return null;
@@ -366,11 +432,17 @@ export function YouTubePanel() {
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {searching && results.length === 0 ? (
+            {channelView ? (
+              <ChannelViewBody
+                view={channelView}
+                onBack={backFromChannel}
+                onPlay={playVideo}
+              />
+            ) : searching && videoResults.length === 0 && channelResults.length === 0 ? (
               <div className="flex h-full items-center justify-center gap-2 text-sm text-court-fg-muted">
                 <Loader2 className="h-4 w-4 animate-spin" /> Searching…
               </div>
-            ) : results.length === 0 ? (
+            ) : videoResults.length === 0 && channelResults.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center gap-1 text-center text-sm text-court-fg-muted">
                 <div className="font-serif text-court-fg">Search YouTube.</div>
                 <div className="text-xs">
@@ -378,39 +450,33 @@ export function YouTubePanel() {
                 </div>
               </div>
             ) : (
-              <ul className="flex flex-col">
-                {results.map((r) => (
-                  <li key={r.videoId}>
-                    <button
-                      type="button"
-                      onClick={() => playResult(r)}
-                      className="flex w-full items-start gap-3 px-3 py-2 text-left transition hover:bg-court-surface-subtle"
-                    >
-                      {r.thumbnail ? (
-                        // Plain <img>: thumbnails are external (i.ytimg.com)
-                        // and pre-sized by YouTube; next/image isn't worth
-                        // the loader configuration here.
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={r.thumbnail}
-                          alt=""
-                          className="h-16 w-28 shrink-0 rounded object-cover"
-                        />
-                      ) : (
-                        <div className="h-16 w-28 shrink-0 rounded bg-court-surface-subtle" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="line-clamp-2 text-sm font-medium text-court-fg">
-                          {r.title}
-                        </div>
-                        <div className="mt-0.5 truncate text-xs text-court-fg-muted">
-                          {r.channelTitle}
-                        </div>
-                      </div>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className="flex flex-col">
+                {videoResults.length > 0 && (
+                  <ResultSection title="Videos">
+                    <ul className="flex flex-col">
+                      {videoResults.map((v) => (
+                        <li key={`video-${v.videoId}`}>
+                          <VideoRow video={v} onClick={() => playVideo(v)} />
+                        </li>
+                      ))}
+                    </ul>
+                  </ResultSection>
+                )}
+                {channelResults.length > 0 && (
+                  <ResultSection title="Channels">
+                    <ul className="flex flex-col">
+                      {channelResults.map((c) => (
+                        <li key={`channel-${c.channelId}`}>
+                          <ChannelRow
+                            channel={c}
+                            onClick={() => void openChannel(c)}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </ResultSection>
+                )}
+              </div>
             )}
           </div>
         </>
@@ -496,5 +562,139 @@ export function YouTubePanel() {
       )}
     </div>,
     document.body,
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Result-list helpers
+
+function ResultSection(props: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section>
+      <div className="bg-court-surface-subtle px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+        {props.title}
+      </div>
+      {props.children}
+    </section>
+  );
+}
+
+function VideoRow(props: { video: VideoResult; onClick: () => void }) {
+  const v = props.video;
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className="flex w-full items-start gap-3 px-3 py-2 text-left transition hover:bg-court-surface-subtle"
+    >
+      {v.thumbnail ? (
+        // Plain <img>: thumbnails are external (i.ytimg.com) and
+        // pre-sized by YouTube; next/image isn't worth the loader
+        // configuration here.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={v.thumbnail}
+          alt=""
+          className="h-16 w-28 shrink-0 rounded object-cover"
+        />
+      ) : (
+        <div className="h-16 w-28 shrink-0 rounded bg-court-surface-subtle" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="line-clamp-2 text-sm font-medium text-court-fg">
+          {v.title}
+        </div>
+        <div className="mt-0.5 truncate text-xs text-court-fg-muted">
+          {v.channelTitle}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ChannelRow(props: { channel: ChannelResult; onClick: () => void }) {
+  const c = props.channel;
+  return (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:bg-court-surface-subtle"
+    >
+      {c.thumbnail ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={c.thumbnail}
+          alt=""
+          className="h-12 w-12 shrink-0 rounded-full object-cover"
+        />
+      ) : (
+        <div className="h-12 w-12 shrink-0 rounded-full bg-court-surface-subtle" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-medium text-court-fg">
+          {c.title}
+        </div>
+        <div className="text-xs text-court-fg-muted">Channel</div>
+      </div>
+    </button>
+  );
+}
+
+function ChannelViewBody(props: {
+  view: ChannelView;
+  onBack: () => void;
+  onPlay: (v: VideoResult) => void;
+}) {
+  const { info, videos, loading } = props.view;
+  return (
+    <div className="flex flex-col">
+      <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle px-2 py-2">
+        <button
+          type="button"
+          onClick={props.onBack}
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+          aria-label="Back to search"
+        >
+          <ArrowLeft className="h-3 w-3" /> Back
+        </button>
+        {info.thumbnail ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={info.thumbnail}
+            alt=""
+            className="h-7 w-7 shrink-0 rounded-full object-cover"
+          />
+        ) : (
+          <div className="h-7 w-7 shrink-0 rounded-full bg-court-surface" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-court-fg">
+            {info.title}
+          </div>
+          <div className="text-[11px] text-court-fg-muted">Latest videos</div>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-court-fg-muted">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading channel…
+        </div>
+      ) : videos.length === 0 ? (
+        <div className="py-8 text-center text-sm text-court-fg-muted">
+          No videos for this channel.
+        </div>
+      ) : (
+        <ul className="flex flex-col">
+          {videos.map((v) => (
+            <li key={`channel-vid-${v.videoId}`}>
+              <VideoRow video={v} onClick={() => props.onPlay(v)} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
