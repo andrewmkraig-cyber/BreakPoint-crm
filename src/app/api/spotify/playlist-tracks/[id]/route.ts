@@ -133,7 +133,7 @@ export async function GET(
     artists?: ArtistRef[];
     release_date?: string;
     owner?: { id?: string; display_name?: string };
-    tracks?: { total?: number };
+    tracks?: { total?: number; items?: (PlaylistTrackEntry | Track | null)[] };
     external_urls?: { spotify?: string };
   };
 
@@ -142,20 +142,28 @@ export async function GET(
   // and 404 into a generic 502). The panel branches messaging off the
   // status + owner-vs-me classification — see classifyPlaylistTracksError
   // in SpotifyPanel.tsx. We DO NOT compose the user-facing message
-  // server-side anymore because that path can't tell whether the
-  // playlist belongs to the recruiter (the wrong-message bug on
-  // Andrew's "Lifting" playlist came from doing exactly that).
+  // server-side anymore.
+  //
+  // Embedded-items fallback: when the dedicated `/tracks` endpoint
+  // fails (Spotify dev-mode is increasingly 403-ing it on owned
+  // playlists too) the header response sometimes still contains
+  // `tracks.items[]` populated from the same data path. We harvest
+  // those as a last-ditch source so an owned playlist doesn't show
+  // "0 songs" just because a single sub-call broke. The brief reports
+  // "Lifting" rendering as 0 songs with no error — this fallback is
+  // exactly for that case.
   let tracks: ReturnType<typeof projectTrack>[] = [];
   let totalFromTracks = 0;
+  let tracksSource: "tracks-endpoint" | "header-embedded" | "none" = "none";
   const tracksStatus: number | null = tracksRes.ok ? null : tracksRes.status;
+  const fallbackImages = header.images;
+  const fallbackName = header.name ?? "";
   if (tracksRes.ok) {
     const tracksData = tracksRes.data as {
       items?: (PlaylistTrackEntry | Track | null)[];
       total?: number;
     };
     totalFromTracks = tracksData.total ?? 0;
-    const fallbackImages = header.images;
-    const fallbackName = header.name ?? "";
     tracks = (tracksData.items ?? [])
       .map((entry, idx) => {
         if (!entry) return null;
@@ -167,6 +175,7 @@ export async function GET(
         return projectTrack(t, idx, fallbackName, fallbackImages);
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
+    if (tracks.length > 0) tracksSource = "tracks-endpoint";
   } else {
     console.error(
       "[spotify-playlist-tracks] tracks fetch failed",
@@ -175,12 +184,87 @@ export async function GET(
     );
   }
 
+  // Embedded-items fallback when the dedicated /tracks endpoint
+  // returned nothing. The header path's tracks.items array is the
+  // same shape (PlaylistTrackEntry for playlists, bare Track for
+  // albums) so projectTrack handles both forms identically.
+  if (tracks.length === 0) {
+    const embeddedItems = header.tracks?.items;
+    if (Array.isArray(embeddedItems) && embeddedItems.length > 0) {
+      tracks = embeddedItems
+        .map((entry, idx) => {
+          if (!entry) return null;
+          const t =
+            "track" in (entry as PlaylistTrackEntry)
+              ? (entry as PlaylistTrackEntry).track
+              : (entry as Track);
+          return projectTrack(t, idx, fallbackName, fallbackImages);
+        })
+        .filter((x): x is NonNullable<typeof x> => x !== null);
+      if (tracks.length > 0) tracksSource = "header-embedded";
+    }
+  }
+
   // Authenticated user id — used by the panel's classifyPlaylistTracksError
   // to detect whether the playlist's owner is the recruiter. Null on
   // album requests (we skipped /v1/me there) or if /v1/me itself failed.
   const me =
     meRes && meRes.ok ? (meRes.data as { id?: string }) : null;
   const meId = me?.id ?? null;
+
+  // Diagnostics — truncated raw responses + identity comparison so the
+  // recruiter can copy a single console line back when an owned
+  // playlist still comes up empty. Vercel logs receive the raw bodies;
+  // the client receives the small `debug` envelope on the response.
+  console.log(
+    "[spotify-playlist-tracks] raw header:",
+    headerRes.status,
+    JSON.stringify(headerRes.data ?? null).slice(0, 600),
+  );
+  console.log(
+    "[spotify-playlist-tracks] raw tracks:",
+    tracksRes.status,
+    tracksRes.ok
+      ? JSON.stringify(tracksRes.data ?? null).slice(0, 600)
+      : `(error) ${tracksRes.error}`,
+  );
+  console.log(
+    "[spotify-playlist-tracks] raw me:",
+    meRes ? meRes.status : "(skipped — album)",
+    meRes && meRes.ok
+      ? JSON.stringify(meRes.data ?? null).slice(0, 200)
+      : meRes
+        ? `(error) ${meRes.error}`
+        : "",
+  );
+  console.log(
+    "[spotify-playlist-tracks] decision:",
+    JSON.stringify({
+      ownerId: header.owner?.id ?? null,
+      meId,
+      ownerMatchesMe:
+        !!header.owner?.id && !!meId && header.owner.id === meId,
+      tracksStatus,
+      embeddedItemsCount: Array.isArray(header.tracks?.items)
+        ? header.tracks!.items!.length
+        : 0,
+      projectedTracks: tracks.length,
+      tracksSource,
+    }),
+  );
+
+  // Pick the most accurate trackCount we can. Spotify reports the
+  // playlist's total in `header.tracks.total`; if that's missing we
+  // fall back to the dedicated /tracks endpoint's total, then to the
+  // number of rows we actually projected. Avoids the "5 songs" header
+  // line above an empty list when /tracks returned a non-zero total
+  // but the embedded items render is what we have.
+  const trackCount =
+    typeof header.tracks?.total === "number"
+      ? header.tracks.total
+      : totalFromTracks > 0
+        ? totalFromTracks
+        : tracks.length;
 
   const res = NextResponse.json({
     ok: true,
@@ -204,10 +288,27 @@ export async function GET(
     ownerId: isAlbum ? null : header.owner?.id ?? null,
     meId,
     year: isAlbum && header.release_date ? header.release_date.slice(0, 4) : "",
-    trackCount: header.tracks?.total ?? totalFromTracks ?? tracks.length,
+    trackCount,
     tracks,
     tracksStatus,
     externalUrl: header.external_urls?.spotify ?? "",
+    // Small client-readable diagnostic. Same fields as the server
+    // log's `decision` line so the recruiter can paste either one
+    // back if an owned playlist still comes up empty.
+    debug: {
+      headerStatus: headerRes.status,
+      tracksStatus,
+      tracksError: tracksRes.ok ? null : tracksRes.error,
+      meStatus: meRes ? meRes.status : null,
+      meError: meRes && !meRes.ok ? meRes.error : null,
+      ownerMatchesMe:
+        !!header.owner?.id && !!meId && header.owner.id === meId,
+      embeddedItemsCount: Array.isArray(header.tracks?.items)
+        ? header.tracks!.items!.length
+        : 0,
+      projectedTracks: tracks.length,
+      tracksSource,
+    },
   });
   return applyRefreshedSpotifyCookies(res, refreshed);
 }

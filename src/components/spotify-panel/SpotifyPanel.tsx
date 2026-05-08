@@ -142,6 +142,20 @@ type DetailPayload = {
   ownerId?: string | null;
   meId?: string | null;
   externalUrl?: string;
+  // Small diagnostic envelope for the playlist fetcher's console.log
+  // — mirrors the server's `decision` log line so we can pin down
+  // why an owned playlist comes up empty.
+  debug?: {
+    headerStatus?: number;
+    tracksStatus?: number | null;
+    tracksError?: string | null;
+    meStatus?: number | null;
+    meError?: string | null;
+    ownerMatchesMe?: boolean;
+    embeddedItemsCount?: number;
+    projectedTracks?: number;
+    tracksSource?: "tracks-endpoint" | "header-embedded" | "none";
+  };
 };
 
 // Classify a /tracks failure into the message the panel should show.
@@ -666,6 +680,31 @@ export function SpotifyPanel() {
           error?: string;
         };
         if (cancelled) return;
+        // Mirror the artist fetcher's diagnostic — the recruiter can
+        // copy this single line back when an owned playlist still
+        // renders empty so we can tell whether /tracks failed, /me
+        // failed, the owner-match check is wrong, or the projected
+        // count dropped to zero through the parser.
+        console.log(
+          "[spotify-playlist-tracks] response:",
+          res.status,
+          {
+            ok: json.ok,
+            error: json.error,
+            id: json.id,
+            name: json.name,
+            owner: json.owner,
+            ownerId: json.ownerId,
+            meId: json.meId,
+            trackCount: json.trackCount,
+            tracksLength: Array.isArray(json.tracks)
+              ? json.tracks.length
+              : "(missing)",
+            tracksStatus: json.tracksStatus,
+            debug: json.debug,
+          },
+          { fullResponse: json },
+        );
         if (res.status === 401) {
           setAuthState({ status: "unauthenticated" });
           return;

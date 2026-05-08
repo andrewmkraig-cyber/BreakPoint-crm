@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 37.0
+Last updated: 2026-05-08 · Ace 37.1
 
 ## Current Status
-Current Version: Ace 37.0 (Spotify artist Popular via album-derived; playlist 403 owner-aware silent)
-Last Shipped: Ace 37.0 — May 8, 2026
+Current Version: Ace 37.1 (Playlist tracks diagnostics + embedded fallback)
+Last Shipped: Ace 37.1 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 37.1
+After 37.0 Andrew confirmed artists work, but his "Lifting" playlist (which he owns) renders 0 songs with no error message. Added two things to /api/spotify/playlist-tracks/[id] without touching playback or YouTube:
+- Embedded-items fallback: when /v1/playlists/{id}/tracks fails or returns no projected rows, harvest the same shape from the header response's `tracks.items[]` so an owned playlist doesn't strand on 0 songs because a single sub-call broke. Same projectTrack handles either source.
+- Diagnostics on both surfaces: server logs raw header / tracks / me responses (truncated 600 chars), plus a structured "decision" line with ownerId, meId, ownerMatchesMe, embeddedItemsCount, projectedTracks, tracksSource. Response now ships a small `debug` envelope to the client; the panel's playlist fetcher console.logs it on every response so the recruiter can copy a single console line back.
+- trackCount priority adjusted: header.tracks.total → totalFromTracks → tracks.length so we never display "0 songs" above a non-empty row list.
 
 ## Summary — Ace 37.0
 Three Spotify fixes — no playback or YouTube code touched:
