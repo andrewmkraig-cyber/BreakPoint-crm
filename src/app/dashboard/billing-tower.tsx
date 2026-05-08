@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp } from "lucide-react";
+
+// localStorage key for the collapse-state toggle. Per-card key matches
+// the news-feed convention so each dashboard block remembers its own
+// minimized/expanded state across reloads.
+const COLLAPSE_KEY = "ace.dashboard.billing-tower.collapsed";
 
 const PERIODS = [
   { value: "quarter-current", label: "Current Quarter (Q2 2026)" },
@@ -19,6 +24,15 @@ const PERIODS = [
 // have an invoice-paid signal.
 export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: number }) {
   const [period, setPeriod] = useState<(typeof PERIODS)[number]["value"]>("quarter-current");
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
 
   const billedLabel =
     period === "quarter-current" ? "Q2 Billed Revenue" : "Placement Revenue";
@@ -45,31 +59,49 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
             Revenue and collections overview
           </p>
         </div>
-        <div className="relative">
-          <select
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as typeof period)}
-            className="appearance-none rounded-lg border border-court-border bg-court-surface py-2 pl-3 pr-9 text-sm font-medium text-court-fg shadow-sm focus:border-court-accent focus:outline-none"
+        <div className="flex items-center gap-2">
+          <div className="relative">
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value as typeof period)}
+              className="appearance-none rounded-lg border border-court-border bg-court-surface py-2 pl-3 pr-9 text-sm font-medium text-court-fg shadow-sm focus:border-court-accent focus:outline-none"
+            >
+              {PERIODS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+          </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            aria-controls="billing-tower-body"
+            aria-label={collapsed ? "Expand billing tower" : "Minimize billing tower"}
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
           >
-            {PERIODS.map((p) => (
-              <option key={p.value} value={p.value}>
-                {p.label}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
+            {collapsed ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronUp className="h-4 w-4" />
+            )}
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
-        <Metric
-          label="Cash Collected"
-          value="$0"
-          hint="Client payments received, regardless of placement date. Stays at $0 until invoices are paid."
-          tone="neutral"
-        />
-      </div>
+      {!collapsed && (
+        <div id="billing-tower-body" className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
+          <Metric
+            label="Cash Collected"
+            value="$0"
+            hint="Client payments received, regardless of placement date. Stays at $0 until invoices are paid."
+            tone="neutral"
+          />
+        </div>
+      )}
     </section>
   );
 }

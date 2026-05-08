@@ -818,65 +818,72 @@ export function YouTubePanel() {
           </button>
         </div>
       ) : (
-        // PLAYING STATE — iframe (above) is full bleed. Hover overlay
-        // bar appears at the top on hover only. Buttons stop drag
-        // propagation so clicking them never starts a window drag.
-        <div
-          onPointerDown={onHeaderPointerDown}
-          className="absolute inset-x-0 top-0 z-10 flex h-9 cursor-grab select-none items-center gap-1 bg-black/70 px-3 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 active:cursor-grabbing"
-        >
-          <button
-            type="button"
-            onClick={backToSearch}
-            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
+        // PLAYING STATE — iframe is full bleed underneath. Our chrome
+        // is split into two compact pills anchored to the top corners
+        // so YouTube's native controls + popup menus (volume, CC,
+        // settings) along the bottom-right have an unobstructed
+        // vertical channel up the middle to expand into. Both pills
+        // hover-reveal and disable pointer events when hidden so
+        // invisible chrome can't swallow clicks meant for the iframe.
+        <>
+          <div
+            onPointerDown={onHeaderPointerDown}
+            className="pointer-events-none absolute left-2 top-2 z-10 flex cursor-grab select-none items-center gap-0.5 rounded-md bg-black/70 px-1.5 py-1 text-white opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 active:cursor-grabbing"
           >
-            <ArrowLeft className="h-3 w-3" /> Search
-          </button>
-          <span className="flex-1" />
-          <button
-            type="button"
-            onClick={rewind}
-            className="rounded-md p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Rewind 15 seconds"
-            title="Rewind 15s"
-          >
-            <Rewind className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={fastForward}
-            className="rounded-md p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Forward 15 seconds"
-            title="Forward 15s"
-          >
-            <FastForward className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={cycleSpeed}
-            className="inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold tabular-nums text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label={`Playback speed ${playbackRate}x — click to change`}
-            title="Playback speed"
-          >
-            {playbackRate}x
-          </button>
-          <button
-            type="button"
-            onClick={() => setMinimized(true)}
-            className="rounded-md p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Minimize"
-          >
-            <Minimize2 className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={close}
-            className="rounded-md p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Close panel"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={backToSearch}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
+            >
+              <ArrowLeft className="h-3 w-3" /> Search
+            </button>
+            <button
+              type="button"
+              onClick={rewind}
+              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
+              aria-label="Rewind 15 seconds"
+              title="Rewind 15s"
+            >
+              <Rewind className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={fastForward}
+              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
+              aria-label="Forward 15 seconds"
+              title="Forward 15s"
+            >
+              <FastForward className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={cycleSpeed}
+              className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white/80 transition hover:bg-white/10 hover:text-white"
+              aria-label={`Playback speed ${playbackRate}x — click to change`}
+              title="Playback speed"
+            >
+              {playbackRate}x
+            </button>
+          </div>
+          <div className="pointer-events-none absolute right-2 top-2 z-10 flex select-none items-center gap-0.5 rounded-md bg-black/70 px-1.5 py-1 text-white opacity-0 transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={() => setMinimized(true)}
+              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
+              aria-label="Minimize"
+            >
+              <Minimize2 className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={close}
+              className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
+              aria-label="Close panel"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </>
       )}
 
       {/* Resize is meaningless on the fixed-size mini dock, so the

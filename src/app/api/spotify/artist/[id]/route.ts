@@ -39,13 +39,16 @@ export async function GET(
   { params }: { params: { id: string } },
 ) {
   const id = params.id;
+  // top-tracks REQUIRES a market param. albums and the artist
+  // header don't, and pinning market=US elsewhere caused the panel
+  // to render empty grids for accounts that should've seen results.
+  // Use `from_token` so Spotify reads the profile country off the
+  // user's access token instead.
   const [artistRes, topRes, albumsRes] = await Promise.all([
     spotifyApiProxy(`/v1/artists/${id}`),
-    spotifyApiProxy(`/v1/artists/${id}/top-tracks?market=US`),
-    // market=US matches the top-tracks call so the artist's album
-    // grid doesn't end up empty for region-restricted releases.
+    spotifyApiProxy(`/v1/artists/${id}/top-tracks?market=from_token`),
     spotifyApiProxy(
-      `/v1/artists/${id}/albums?include_groups=album,single&limit=20&market=US`,
+      `/v1/artists/${id}/albums?include_groups=album,single&limit=20`,
     ),
   ]);
 
@@ -55,11 +58,30 @@ export async function GET(
     artistRes.refreshed ?? topRes.refreshed ?? albumsRes.refreshed;
 
   if (!artistRes.ok) {
+    console.error(
+      "[spotify-artist] header fetch failed",
+      artistRes.status,
+      artistRes.error,
+    );
     const res = NextResponse.json(
-      { ok: false, error: artistRes.error },
+      { ok: false, error: `Header: ${artistRes.error}` },
       { status: artistRes.status === 401 ? 401 : 502 },
     );
     return applyRefreshedSpotifyCookies(res, refreshed);
+  }
+  if (!topRes.ok) {
+    console.error(
+      "[spotify-artist] top-tracks fetch failed",
+      topRes.status,
+      topRes.error,
+    );
+  }
+  if (!albumsRes.ok) {
+    console.error(
+      "[spotify-artist] albums fetch failed",
+      albumsRes.status,
+      albumsRes.error,
+    );
   }
 
   const artist = artistRes.data as {

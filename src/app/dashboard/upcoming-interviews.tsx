@@ -1,9 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarClock, CalendarCog, MapPin, PhoneCall, Video } from "lucide-react";
+import {
+  CalendarClock,
+  CalendarCog,
+  ChevronDown,
+  ChevronUp,
+  MapPin,
+  PhoneCall,
+  Video,
+} from "lucide-react";
 import { InterviewInvitePopup } from "./interview-invite-popup";
+
+// Same per-card localStorage convention as Billing Tower / news feed —
+// each block remembers its expanded/collapsed state independently.
+const COLLAPSE_KEY = "ace.dashboard.upcoming-interviews.collapsed";
 
 export type UpcomingInterviewRow = {
   id: string;
@@ -33,33 +45,58 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
   // instead of routing to the candidate page. Whole-row click still
   // goes to the candidate page (reschedule / cancel flow lives there).
   const [popupRow, setPopupRow] = useState<UpcomingInterviewRow | null>(null);
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
   return (
     <section className="rounded-3xl bg-court-surface p-6 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div className="flex items-center justify-between">
         <div>
           <h2
             className="font-semibold tracking-[-0.035em] text-court-fg"
-            style={{ fontSize: "20px", lineHeight: 1.15 }}
+            style={{ fontSize: "18px", lineHeight: 1.15 }}
           >
             Upcoming interviews
           </h2>
           <p
             className="mt-0.5 text-court-fg-muted"
-            style={{ fontSize: "13px" }}
+            style={{ fontSize: "12px" }}
           >
             Scheduled in the next 7 days
           </p>
         </div>
-        <div className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2.5 py-0.5 text-[11px] font-semibold text-court-fg-muted">
-          <CalendarClock className="h-3 w-3" /> {rows.length}
+        <div className="flex items-center gap-2">
+          <div className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2.5 py-0.5 text-[11px] font-semibold text-court-fg-muted">
+            <CalendarClock className="h-3 w-3" /> {rows.length}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            aria-controls="upcoming-interviews-body"
+            aria-label={collapsed ? "Expand upcoming interviews" : "Minimize upcoming interviews"}
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            {collapsed ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronUp className="h-4 w-4" />
+            )}
+          </button>
         </div>
       </div>
-      {rows.length === 0 ? (
-        <div className="px-2 py-10 text-center text-sm text-court-fg-muted">
+      {collapsed ? null : rows.length === 0 ? (
+        <div id="upcoming-interviews-body" className="px-2 py-10 text-center text-sm text-court-fg-muted">
           Nothing on the calendar this week.
         </div>
       ) : (
-        <ul className="mt-2">
+        <ul id="upcoming-interviews-body" className="mt-2">
           {rows.map((r, idx) => {
             const Icon = r.type === "phone_screen" ? PhoneCall : r.type === "video" ? Video : MapPin;
             const when = new Date(r.scheduledAt);

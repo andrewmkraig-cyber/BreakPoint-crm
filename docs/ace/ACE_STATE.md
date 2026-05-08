@@ -1,10 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.0
+Last updated: 2026-05-08 · Ace 36.1
 
 ## Current Status
-Current Version: Ace 36.0 (Floating media panels + dashboard daily companions + premium dashboard redesign)
-Last Shipped: Ace 36.0 — May 7, 2026
+Current Version: Ace 36.1 (Floating-panel + dashboard regression sweep)
+Last Shipped: Ace 36.1 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.1
+Regression sweep on the floating panels and dashboard cards reported after the Ace 36.0 deploy:
+- YouTube panel hover overlay split into two compact corner pills with `pointer-events-none` when hidden so the invisible bar no longer swallows clicks meant for YouTube's native CC/volume/settings controls or popup menus.
+- Spotify playlist/album detail route hard-fails when the tracks subcall errors instead of silently rendering "0 songs"; market hardcoding dropped (`market=US` removed; artist endpoint switched to `market=from_token`) so Spotify resolves the market off the token instead of filtering legitimately playable rows out.
+- Dashboard `Billing Tower`, `Today's Briefing`, and `Upcoming interviews` headings unified to 18px / 12px subtitle. Billing Tower and Upcoming Interviews are now collapsible with the same chevron + localStorage convention Today's Briefing already used.
+- CSP `connect-src` adds `https://api.bigdatacloud.net` so the weather widget's reverse-geocode call (lat/lng → city) is no longer blocked.
 
 ## Summary — Ace 36.0
 Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote, Chess, On This Day, Horoscope), Apple-News briefing redesign with cron pre-warm, weather widget, premium dashboard pass, and the final RF string sweep:

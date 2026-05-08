@@ -83,12 +83,17 @@ export async function GET(
   const kind = (new URL(req.url).searchParams.get("kind") ?? "playlist").trim();
   const isAlbum = kind === "album";
 
-  const headerPath = isAlbum
-    ? `/v1/albums/${id}?market=US`
-    : `/v1/playlists/${id}?market=US`;
+  // No `market` parameter: Spotify uses the access-token's profile
+  // market and applies track relinking automatically. Hardcoding
+  // `market=US` worked for some accounts but caused the panel to render
+  // "0 songs" against playlists/albums whose tracks Spotify decided
+  // weren't directly available in US — even when the recruiter's own
+  // account could play them. Letting Spotify resolve the market off
+  // the token is the safe default.
+  const headerPath = isAlbum ? `/v1/albums/${id}` : `/v1/playlists/${id}`;
   const tracksPath = isAlbum
-    ? `/v1/albums/${id}/tracks?market=US&limit=50`
-    : `/v1/playlists/${id}/tracks?market=US&limit=100`;
+    ? `/v1/albums/${id}/tracks?limit=50`
+    : `/v1/playlists/${id}/tracks?limit=100`;
 
   const [headerRes, tracksRes] = await Promise.all([
     spotifyApiProxy(headerPath),
@@ -106,8 +111,25 @@ export async function GET(
       headerRes.error,
     );
     const res = NextResponse.json(
-      { ok: false, error: headerRes.error },
+      { ok: false, error: `Header: ${headerRes.error}` },
       { status: headerRes.status === 401 ? 401 : 502 },
+    );
+    return applyRefreshedSpotifyCookies(res, refreshed);
+  }
+
+  // Tracks fetch failure used to silently return ok with empty tracks,
+  // which surfaced as the unactionable "0 songs" the recruiter kept
+  // seeing — no toast, no clue. Now we hard-fail so the upstream error
+  // reaches the panel and the user sees what Spotify actually said.
+  if (!tracksRes.ok) {
+    console.error(
+      "[spotify-playlist-tracks] tracks fetch failed",
+      tracksRes.status,
+      tracksRes.error,
+    );
+    const res = NextResponse.json(
+      { ok: false, error: `Tracks: ${tracksRes.error}` },
+      { status: tracksRes.status === 401 ? 401 : 502 },
     );
     return applyRefreshedSpotifyCookies(res, refreshed);
   }
@@ -124,34 +146,24 @@ export async function GET(
     tracks?: { total?: number };
   };
 
-  let tracks: ReturnType<typeof projectTrack>[] = [];
-  let totalFromTracks = 0;
-  if (tracksRes.ok) {
-    const tracksData = tracksRes.data as {
-      items?: (PlaylistTrackEntry | Track | null)[];
-      total?: number;
-    };
-    totalFromTracks = tracksData.total ?? 0;
-    const fallbackImages = header.images;
-    const fallbackName = header.name ?? "";
-    tracks = (tracksData.items ?? [])
-      .map((entry, idx) => {
-        if (!entry) return null;
-        // Playlist tracks: { track: {...} }. Album tracks: bare Track.
-        const t =
-          "track" in (entry as PlaylistTrackEntry)
-            ? (entry as PlaylistTrackEntry).track
-            : (entry as Track);
-        return projectTrack(t, idx, fallbackName, fallbackImages);
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
-  } else {
-    console.error(
-      "[spotify-playlist-tracks] tracks fetch failed",
-      tracksRes.status,
-      tracksRes.error,
-    );
-  }
+  const tracksData = tracksRes.data as {
+    items?: (PlaylistTrackEntry | Track | null)[];
+    total?: number;
+  };
+  const totalFromTracks = tracksData.total ?? 0;
+  const fallbackImages = header.images;
+  const fallbackName = header.name ?? "";
+  const tracks = (tracksData.items ?? [])
+    .map((entry, idx) => {
+      if (!entry) return null;
+      // Playlist tracks: { track: {...} }. Album tracks: bare Track.
+      const t =
+        "track" in (entry as PlaylistTrackEntry)
+          ? (entry as PlaylistTrackEntry).track
+          : (entry as Track);
+      return projectTrack(t, idx, fallbackName, fallbackImages);
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
 
   const res = NextResponse.json({
     ok: true,
