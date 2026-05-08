@@ -20,11 +20,10 @@ const COL = {
   phone: "candidate.phoneNumbers",
   location: "candidate.location",
   linkedin: "candidate.linkedin",
-  expTitle: "candidate.experiences.0.title",
-  expCompany: "candidate.experiences.0.company",
-  eduDegree: "candidate.educations.0.degree",
-  eduSchool: "candidate.educations.0.school",
 } as const;
+
+const MAX_EXPERIENCES = 10;
+const MAX_EDUCATIONS = 5;
 
 type Row = Record<string, string | undefined>;
 
@@ -37,6 +36,92 @@ function normalizeEmail(raw: string | undefined): string | null {
   if (!s) return null;
   if (!s.includes("@")) return null;
   return s;
+}
+
+// Pin date columns come as raw strings (ISO, year-only, "Present", or
+// blank). We extract the first 4-digit year (1900–2099) so the existing
+// editable-experience / resume-pdf-template / generate-resume readers
+// that key off from_year/to_year still get a value.
+function yearOf(s: string): number | null {
+  const m = s.match(/\b(19|20)\d{2}\b/);
+  return m ? Number(m[0]) : null;
+}
+
+type WorkEntry = {
+  title: string;
+  company: string;
+  startDate: string;
+  endDate: string;
+  linkedin: string;
+  designation: string;
+  organization: string;
+  from_year: number | null;
+  to_year: number | null;
+  description: string;
+};
+
+type EduEntry = {
+  degree: string;
+  major: string;
+  school: string;
+  schoolStartDate: string;
+  schoolEndDate: string;
+  from_year: number | null;
+  to_year: number | null;
+  description: string;
+};
+
+function collectExperiences(row: Row): WorkEntry[] {
+  const out: WorkEntry[] = [];
+  for (let i = 0; i < MAX_EXPERIENCES; i++) {
+    const title = clean(row[`candidate.experiences.${i}.title`]);
+    const company = clean(row[`candidate.experiences.${i}.company`]);
+    const startDate = clean(row[`candidate.experiences.${i}.startDate`]);
+    const endDate = clean(row[`candidate.experiences.${i}.endDate`]);
+    const linkedin = clean(row[`candidate.experiences.${i}.linkedin`]);
+    if (!title && !company && !startDate && !endDate && !linkedin) continue;
+    out.push({
+      title,
+      company,
+      startDate,
+      endDate,
+      linkedin,
+      designation: title,
+      organization: company,
+      from_year: yearOf(startDate),
+      to_year: yearOf(endDate),
+      description: "",
+    });
+  }
+  return out;
+}
+
+function collectEducations(row: Row): EduEntry[] {
+  const out: EduEntry[] = [];
+  for (let i = 0; i < MAX_EDUCATIONS; i++) {
+    const degree = clean(row[`candidate.educations.${i}.degree`]);
+    const major = clean(row[`candidate.educations.${i}.major`]);
+    const school = clean(row[`candidate.educations.${i}.school`]);
+    const schoolStartDate = clean(
+      row[`candidate.educations.${i}.schoolStartDate`],
+    );
+    const schoolEndDate = clean(
+      row[`candidate.educations.${i}.schoolEndDate`],
+    );
+    if (!degree && !major && !school && !schoolStartDate && !schoolEndDate)
+      continue;
+    out.push({
+      degree,
+      major,
+      school,
+      schoolStartDate,
+      schoolEndDate,
+      from_year: yearOf(schoolStartDate),
+      to_year: yearOf(schoolEndDate),
+      description: major,
+    });
+  }
+  return out;
 }
 
 export async function POST(req: Request) {
@@ -112,20 +197,9 @@ export async function POST(req: Request) {
       }
     }
 
-    const degree = clean(row[COL.eduDegree]);
-    const school = clean(row[COL.eduSchool]);
-    const education =
-      degree || school
-        ? [
-            {
-              degree,
-              school,
-              from_year: null,
-              to_year: null,
-              description: "",
-            },
-          ]
-        : undefined;
+    const experiences = collectExperiences(row);
+    const educations = collectEducations(row);
+    const head = experiences[0];
 
     try {
       await prisma.candidate.create({
@@ -134,11 +208,12 @@ export async function POST(req: Request) {
           lastName: firstName ? lastName || null : null,
           email,
           phone: clean(row[COL.phone]) || null,
-          currentDesignation: clean(row[COL.expTitle]) || null,
-          currentOrganization: clean(row[COL.expCompany]) || null,
+          currentDesignation: head?.title || null,
+          currentOrganization: head?.company || null,
           location: clean(row[COL.location]) || null,
           linkedinProfile: clean(row[COL.linkedin]) || null,
-          education,
+          experience: experiences.length ? experiences : undefined,
+          education: educations.length ? educations : undefined,
           createdById: user.id,
           organizationId: org.id,
         },

@@ -496,6 +496,10 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
               currentOrganization: candidate.currentOrganization ?? "",
             }}
           />
+          <BackgroundSection
+            experience={candidate.experience}
+            education={candidate.education}
+          />
           <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
           {/* Skills feeds the search + Find Matches surfaces, so it's
               always editable. The card stays mounted even when empty
@@ -609,6 +613,133 @@ function LocalNotesTab({
             POST /api/notes (cuid-aware). */}
         <input type="hidden" data-candidate-id={candidateId} />
       </div>
+    </section>
+  );
+}
+
+// Read-only Work History + Education card. Reads candidate.experience
+// and candidate.education (both Json?). Tolerates the two shapes we
+// write — Pin CSV import (title/company/startDate/endDate) and the
+// existing AI parser (designation/organization/from_year/to_year) —
+// so a single render path handles both. The first experience row is
+// already surfaced as Current Title/Employer in LocalEditableIdentity,
+// so we drop it here to avoid the duplicate.
+type BackgroundExperience = {
+  title?: unknown;
+  company?: unknown;
+  designation?: unknown;
+  organization?: unknown;
+  startDate?: unknown;
+  endDate?: unknown;
+  from_year?: unknown;
+  to_year?: unknown;
+};
+type BackgroundEducation = {
+  degree?: unknown;
+  major?: unknown;
+  school?: unknown;
+  schoolStartDate?: unknown;
+  schoolEndDate?: unknown;
+  from_year?: unknown;
+  to_year?: unknown;
+};
+
+function asString(v: unknown): string {
+  if (v == null) return "";
+  if (typeof v === "string") return v.trim();
+  if (typeof v === "number") return String(v);
+  return "";
+}
+
+function dashRange(start: string, end: string): string {
+  if (!start && !end) return "";
+  return `${start || "?"} – ${end || "Present"}`;
+}
+
+function BackgroundSection({
+  experience,
+  education,
+}: {
+  experience: unknown;
+  education: unknown;
+}) {
+  const expArr = Array.isArray(experience)
+    ? (experience as BackgroundExperience[])
+    : [];
+  const eduArr = Array.isArray(education)
+    ? (education as BackgroundEducation[])
+    : [];
+
+  // Drop the head experience — already shown as Current Title/Employer.
+  const priorRoles = expArr
+    .slice(1)
+    .map((r) => {
+      const title = asString(r.title) || asString(r.designation);
+      const company = asString(r.company) || asString(r.organization);
+      const start = asString(r.startDate) || asString(r.from_year);
+      const end = asString(r.endDate) || asString(r.to_year);
+      return { title, company, start, end };
+    })
+    .filter((r) => r.title || r.company);
+
+  const eduRows = eduArr
+    .map((r) => {
+      const degree = asString(r.degree);
+      const major = asString(r.major);
+      const school = asString(r.school);
+      const start = asString(r.schoolStartDate) || asString(r.from_year);
+      const end = asString(r.schoolEndDate) || asString(r.to_year);
+      const year = end || start;
+      return { degree, major, school, year };
+    })
+    .filter((r) => r.school);
+
+  if (priorRoles.length === 0 && eduRows.length === 0) return null;
+
+  return (
+    <section className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      {priorRoles.length > 0 && (
+        <div>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+            Work History
+          </h3>
+          <ul className="mt-2 space-y-1.5 text-sm text-court-fg">
+            {priorRoles.map((r, i) => {
+              const label = [r.title, r.company].filter(Boolean).join(" at ");
+              const range = dashRange(r.start, r.end);
+              return (
+                <li key={i} className="leading-snug">
+                  <span>{label || "—"}</span>
+                  {range && (
+                    <span className="text-court-fg-muted"> ({range})</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
+      {eduRows.length > 0 && (
+        <div className={priorRoles.length > 0 ? "mt-4" : undefined}>
+          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+            Education
+          </h3>
+          <ul className="mt-2 space-y-1.5 text-sm text-court-fg">
+            {eduRows.map((r, i) => {
+              const left = [r.degree, r.major].filter(Boolean).join(" in ");
+              const head = [left, r.school].filter(Boolean).join(", ");
+              return (
+                <li key={i} className="leading-snug">
+                  <span>{head || r.school}</span>
+                  {r.year && (
+                    <span className="text-court-fg-muted"> ({r.year})</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
