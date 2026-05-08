@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
 import { TopBarPageTitle } from "@/components/top-bar-page-title";
+import { MobileNav } from "@/components/mobile-nav";
 import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 import { InConversation } from "@/components/icons/in-conversation";
 import { useClaudePanel } from "@/lib/claude-panel-context";
@@ -21,6 +22,11 @@ export function TopBar() {
 
   return (
     <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between gap-4 bg-court-surface px-6">
+      {/* MobileNav appears only below md (where the desktop sidebar is
+          hidden). Click opens a left drawer with the same nav groups
+          the sidebar shows so the recruiter never loses access to nav
+          on a phone or shrunk window. */}
+      <MobileNav />
       {/* Page title + inline action button — pathname-driven. Replaces
           the previous in-page PageHeader pattern; pages render their
           content flush with the topbar now. */}
