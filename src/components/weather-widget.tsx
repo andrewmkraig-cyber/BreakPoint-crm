@@ -57,20 +57,70 @@ function iconFor(code: number): LucideIcon {
   return Cloud;
 }
 
-// Tailwind classes per weather bucket. Sun = amber, partly sunny = amber
-// (still sun visible), overcast / fog = muted grey (court token), rain
-// = blue, snow = sky, thunder = purple. Strings are returned (not
-// concatenated inline) so Tailwind's static analyzer keeps the classes
-// in the production bundle.
+// Tailwind classes per weather bucket. Used for single-tone icons —
+// partly-cloudy buckets (codes 1–2) bypass this and render via
+// PartlyCloudyIcon below so the sun and cloud halves can carry
+// different colors.
 function colorFor(code: number): string {
   if (code === 0) return "text-amber-400";
-  if (code === 1 || code === 2) return "text-amber-400";
   if (code === 3) return "text-court-fg-muted";
   if (code === 45 || code === 48) return "text-court-fg-muted";
   if (code >= 95) return "text-purple-500";
   if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "text-sky-300";
   if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "text-blue-500";
   return "text-court-fg-muted";
+}
+
+// Custom 2-tone partly-cloudy glyph. Lucide's CloudSun renders all
+// paths in `currentColor`, which makes the cloud body and the sun rays
+// share a single tint — visually it always reads as either "all yellow"
+// or "all grey" depending on which bucket we apply. Splitting the paths
+// into two <g> groups lets the sun half stay amber while the cloud body
+// stays muted grey.
+function PartlyCloudyIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={className}
+    >
+      <g className="text-amber-400" stroke="currentColor">
+        <path d="M12 2v2" />
+        <path d="m4.93 4.93 1.41 1.41" />
+        <path d="M20 12h2" />
+        <path d="m19.07 4.93-1.41 1.41" />
+        <path d="M15.947 12.65a4 4 0 0 0-5.925-4.128" />
+      </g>
+      <g className="text-court-fg-muted" stroke="currentColor">
+        <path d="M13 22H7a5 5 0 1 1 4.9-6H13a3 3 0 0 1 0 6Z" />
+      </g>
+    </svg>
+  );
+}
+
+// Single dispatch point for every weather-icon render in the widget.
+// Codes 1–2 (mainly clear / partly cloudy) get the 2-tone glyph; every
+// other bucket falls back to the matching Lucide icon plus a single
+// tint from colorFor.
+function WeatherIcon({
+  code,
+  sizeClass,
+}: {
+  code: number;
+  sizeClass: string;
+}) {
+  if (code === 1 || code === 2) {
+    return <PartlyCloudyIcon className={sizeClass} />;
+  }
+  const Icon = iconFor(code);
+  return (
+    <Icon className={`${sizeClass} ${colorFor(code)}`} aria-hidden="true" />
+  );
 }
 
 // Day-of-month with English ordinal suffix ("7th", "1st", "22nd").
@@ -295,7 +345,6 @@ export function WeatherWidget() {
 
   if (!data) return null;
 
-  const Icon = iconFor(data.code);
   const rounded = Math.round(data.tempF);
   const apparentRounded = Math.round(data.apparentF);
   const description = descriptionFor(data.code);
@@ -310,7 +359,7 @@ export function WeatherWidget() {
         className="inline-flex cursor-default items-center gap-1 text-court-fg"
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
       >
-        <Icon className={`h-4 w-4 ${colorFor(data.code)}`} aria-hidden="true" />
+        <WeatherIcon code={data.code} sizeClass="h-4 w-4" />
         <span className="text-sm font-medium tabular-nums">{rounded}°</span>
       </div>
 
@@ -330,10 +379,7 @@ export function WeatherWidget() {
               the dashboard. */}
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
-              <Icon
-                className={`h-10 w-10 ${colorFor(data.code)}`}
-                aria-hidden="true"
-              />
+              <WeatherIcon code={data.code} sizeClass="h-10 w-10" />
               <div className="flex flex-col">
                 <div className="flex items-baseline gap-2">
                   <span className="font-stat text-3xl font-bold leading-none text-court-fg">
@@ -361,7 +407,6 @@ export function WeatherWidget() {
               </div>
               <div className="mt-2 flex justify-between gap-1">
                 {data.hourly.map((h, i) => {
-                  const HIcon = iconFor(h.code);
                   const showRain = h.precipPct >= 20;
                   return (
                     <div
@@ -371,10 +416,7 @@ export function WeatherWidget() {
                       <div className="text-[10px] text-court-fg-muted">
                         {i === 0 ? "Now" : formatHour(h.time)}
                       </div>
-                      <HIcon
-                        className={`h-4 w-4 ${colorFor(h.code)}`}
-                        aria-hidden="true"
-                      />
+                      <WeatherIcon code={h.code} sizeClass="h-4 w-4" />
                       <div className="text-xs font-medium tabular-nums text-court-fg">
                         {Math.round(h.tempF)}°
                       </div>
@@ -396,7 +438,6 @@ export function WeatherWidget() {
               </div>
               <ul className="mt-2 flex flex-col">
                 {data.daily.map((d, i) => {
-                  const DIcon = iconFor(d.code);
                   const showRain = d.precipPctMax >= 20;
                   return (
                     <li
@@ -406,10 +447,7 @@ export function WeatherWidget() {
                       <span className="w-12 text-court-fg-muted">
                         {formatDayShort(d.date, i)}
                       </span>
-                      <DIcon
-                        className={`h-4 w-4 ${colorFor(d.code)}`}
-                        aria-hidden="true"
-                      />
+                      <WeatherIcon code={d.code} sizeClass="h-4 w-4" />
                       <span className="w-10 tabular-nums text-court-accent">
                         {showRain ? `${d.precipPctMax}%` : ""}
                       </span>
