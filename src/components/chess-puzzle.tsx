@@ -536,7 +536,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   if (selectedSquare && status !== "solved") {
     customSquareStyles[selectedSquare] = {
       ...(customSquareStyles[selectedSquare] ?? {}),
-      boxShadow: "inset 0 0 0 4px rgba(59, 130, 246, 0.7)",
+      boxShadow: "inset 0 0 0 4px rgba(37, 99, 235, 0.95)",
     };
     let legal: { to: string }[] = [];
     try {
@@ -551,7 +551,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
       customSquareStyles[m.to] = {
         ...(customSquareStyles[m.to] ?? {}),
         background:
-          "radial-gradient(circle, rgba(59,130,246,0.35) 22%, transparent 23%)",
+          "radial-gradient(circle, rgba(37, 99, 235, 0.6) 25%, transparent 26%)",
       };
     }
   }
