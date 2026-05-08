@@ -3,7 +3,6 @@ import { authOptions } from "@/lib/auth";
 import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
-import { DashboardBottomBar } from "@/components/dashboard-bottom-bar";
 import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
@@ -228,12 +227,6 @@ export default async function DashboardPage() {
       <NewsFeed />
 
       <UpcomingInterviews rows={upcoming} />
-
-      {/* Bottom bar consolidates the daily-companion chips (Word /
-          Quote / Chess) plus a scroll-back-up affordance for the
-          briefing. Popovers open upward from each chip so they never
-          spill off the page bottom. */}
-      <DashboardBottomBar />
     </div>
   );
 }

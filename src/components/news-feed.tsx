@@ -2,11 +2,20 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { WordOfDayCard } from "@/components/word-of-day-card";
+import { QuoteOfDay } from "@/components/quote-of-day";
+import { ChessPuzzle } from "@/components/chess-puzzle";
 
 // Editorial briefing layout: header, four tabs, one lead story, three
 // list rows. Per-tab fetch wiring is unchanged — /api/news-feed?tab=...
 // backs all four tabs. Collapse persists in localStorage so the
 // recruiter's choice survives reload.
+//
+// The header also hosts the daily-companion chips (Word / Quote /
+// Chess) at the top-right of the bubble — they used to sit in their
+// own bottom bar but the recruiter wanted them inside the briefing
+// surface. Their popovers anchor `bottom-full` so they open up into
+// the dashboard space above the briefing.
 
 const COLLAPSE_KEY = "ace.dashboard.news-feed.collapsed";
 
@@ -158,9 +167,12 @@ export function NewsFeed() {
             Curated daily, 6:00 AM ET
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <WordOfDayCard />
+          <QuoteOfDay />
+          <ChessPuzzle />
           <span
-            className="text-court-fg-muted"
+            className="ml-1 text-court-fg-muted"
             style={{ fontSize: "12px" }}
           >
             {formatToday()}
