@@ -95,14 +95,21 @@ export async function GET(
     ? `/v1/albums/${id}/tracks?market=US&limit=50`
     : `/v1/playlists/${id}/tracks?market=US&limit=100`;
 
-  const [headerRes, tracksRes] = await Promise.all([
+  // /v1/me runs alongside header + tracks so the response can tell
+  // the panel WHO the authenticated Spotify user is. The panel needs
+  // owner-vs-me to classify a tracks 403 correctly: a 403 on the
+  // recruiter's OWN playlist is an auth/permission issue (the dev-
+  // mode policy doesn't restrict apps from reading playlists they
+  // own), while a 403 on someone else's playlist is the actual
+  // dev-mode restriction. Albums skip this — owner doesn't apply.
+  const [headerRes, tracksRes, meRes] = await Promise.all([
     spotifyApiProxy(headerPath),
     spotifyApiProxy(tracksPath),
+    isAlbum ? Promise.resolve(null) : spotifyApiProxy("/v1/me"),
   ]);
 
-  // Whichever sub-call refreshed (at most one will, since both share
-  // the cookie state at request entry).
-  const refreshed = headerRes.refreshed ?? tracksRes.refreshed;
+  const refreshed =
+    headerRes.refreshed ?? tracksRes.refreshed ?? meRes?.refreshed ?? null;
 
   if (!headerRes.ok) {
     console.error(
@@ -125,23 +132,22 @@ export async function GET(
     images?: Image[];
     artists?: ArtistRef[];
     release_date?: string;
-    owner?: { display_name?: string };
+    owner?: { id?: string; display_name?: string };
     tracks?: { total?: number };
     external_urls?: { spotify?: string };
   };
 
-  // 403 on /v1/playlists/{id}/tracks (and increasingly /albums/{id}/tracks)
-  // is the post-Nov-2024 Spotify dev-mode restriction: apps that aren't in
-  // "Extended Quota" mode lose API access to Spotify-owned editorial /
-  // algorithmic playlists (Made For You, Daily Mix, Today's Top Hits,
-  // etc.). Andrew's user-owned playlists still resolve. Rather than
-  // strand the panel on a toast and "Loading…" we render the header we
-  // *did* get plus a `tracksError` the panel can show inline next to an
-  // Open-in-Spotify CTA. Other tracks failures (network, 401, 5xx) take
-  // the same code path so the user always sees the upstream reason.
+  // Tracks failure path: keep ok=true with the header we DID get,
+  // but surface the upstream HTTP status verbatim (no collapsing 403
+  // and 404 into a generic 502). The panel branches messaging off the
+  // status + owner-vs-me classification — see classifyPlaylistTracksError
+  // in SpotifyPanel.tsx. We DO NOT compose the user-facing message
+  // server-side anymore because that path can't tell whether the
+  // playlist belongs to the recruiter (the wrong-message bug on
+  // Andrew's "Lifting" playlist came from doing exactly that).
   let tracks: ReturnType<typeof projectTrack>[] = [];
   let totalFromTracks = 0;
-  let tracksError: string | null = null;
+  const tracksStatus: number | null = tracksRes.ok ? null : tracksRes.status;
   if (tracksRes.ok) {
     const tracksData = tracksRes.data as {
       items?: (PlaylistTrackEntry | Track | null)[];
@@ -167,11 +173,14 @@ export async function GET(
       tracksRes.status,
       tracksRes.error,
     );
-    tracksError =
-      tracksRes.status === 403
-        ? "Spotify limits API access to playlists you didn't create yourself. Open this one in Spotify to listen."
-        : `Spotify ${tracksRes.status}: ${tracksRes.error}`;
   }
+
+  // Authenticated user id — used by the panel's classifyPlaylistTracksError
+  // to detect whether the playlist's owner is the recruiter. Null on
+  // album requests (we skipped /v1/me there) or if /v1/me itself failed.
+  const me =
+    meRes && meRes.ok ? (meRes.data as { id?: string }) : null;
+  const meId = me?.id ?? null;
 
   const res = NextResponse.json({
     ok: true,
@@ -189,10 +198,15 @@ export async function GET(
           .filter((n): n is string => Boolean(n))
           .join(", ")
       : header.owner?.display_name ?? "",
+    // Owner id (playlists only) — the panel compares this to meId to
+    // decide whether a 403 on /tracks is a dev-mode access issue or
+    // an auth/permission issue on the recruiter's own playlist.
+    ownerId: isAlbum ? null : header.owner?.id ?? null,
+    meId,
     year: isAlbum && header.release_date ? header.release_date.slice(0, 4) : "",
     trackCount: header.tracks?.total ?? totalFromTracks ?? tracks.length,
     tracks,
-    tracksError,
+    tracksStatus,
     externalUrl: header.external_urls?.spotify ?? "",
   });
   return applyRefreshedSpotifyCookies(res, refreshed);

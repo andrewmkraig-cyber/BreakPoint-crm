@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-08 · Ace 36.4
+Last updated: 2026-05-08 · Ace 36.5
 
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline.

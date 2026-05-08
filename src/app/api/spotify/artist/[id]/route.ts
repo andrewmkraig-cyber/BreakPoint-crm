@@ -133,13 +133,23 @@ export async function GET(
     })
     .filter((x): x is NonNullable<typeof x> => x !== null);
 
+  // Followers must distinguish "Spotify said zero" from "Spotify
+  // didn't include the field at all" — defaulting both to 0 was the
+  // bug the recruiter saw on real artists. We surface null when the
+  // field is missing/undefined so the panel can hide the row instead
+  // of pretending Spotify reported zero followers.
+  const followers =
+    typeof artist.followers?.total === "number" ? artist.followers.total : null;
   const res = NextResponse.json({
     ok: true,
     id: artist.id ?? id,
+    // Always emit a context_uri the panel's Play button can hand to
+    // /v1/me/player/play — fall back to the spotify: URI built from
+    // the path id so we never ship an empty string here.
     uri: artist.uri ?? `spotify:artist:${id}`,
     name: artist.name ?? "",
     image: pickImage(artist.images, 600),
-    followers: artist.followers?.total ?? 0,
+    followers,
     genres: (artist.genres ?? []).slice(0, 3),
     topTracks,
     albums,

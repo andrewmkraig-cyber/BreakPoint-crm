@@ -1,10 +1,22 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.4
+Last updated: 2026-05-08 · Ace 36.5
 
 ## Current Status
-Current Version: Ace 36.4 (Weather WMO audit + YouTube drag handle)
-Last Shipped: Ace 36.4 — May 8, 2026
+Current Version: Ace 36.5 (Spotify artist + playlist error-handling fix)
+Last Shipped: Ace 36.5 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.5
+Two distinct Spotify bugs the recruiter flagged after 36.4:
+
+Bug 1 — artist page showing "0 followers" + Play not working:
+- Artist endpoint now returns `followers: number | null` instead of defaulting missing fields to `0`. Panel hides the row entirely when null and only renders a count when Spotify explicitly provided one (including an explicit zero).
+- Artist Play already routes through `playContext` → `PUT /api/spotify/play` with `{ context_uri }`; the fallback to `spotify:artist:${id}` is now applied in both the route and the panel button so we never hand Spotify an empty context_uri.
+- /api/spotify/play passes the upstream HTTP status through verbatim instead of collapsing every non-2xx to 502. The panel branches distinct toasts off 401 (session expired / reconnect), 403 (Premium / device / scope — no playlist-ownership copy), 404 (artist or context not found), and other (generic).
+
+Bug 2 — Andrew's own playlists ("Lifting") wrongly showing the API restriction copy:
+- /api/spotify/playlist-tracks/[id] now fetches /v1/me alongside the header + tracks calls and returns `ownerId`, `meId`, and `tracksStatus` (real upstream HTTP status, not collapsed). The route no longer composes a user-facing message server-side — that path can't tell whether the playlist is the recruiter's own.
+- Added `classifyPlaylistTracksError(status, ownerId, meId)` in SpotifyPanel.tsx as the single source of truth for the inline message: 401 → reconnect, 404 → "couldn't find this playlist or its tracks", 403+owner≠me → dev-mode restriction copy, 403+owner=me → auth/permission refresh copy, other → generic with status code. Court Mode styling preserved; only the message text changes.
 
 ## Summary — Ace 36.4
 Two follow-ups requested after the 36.3 deploy:

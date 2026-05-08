@@ -131,12 +131,47 @@ type DetailPayload = {
   year: string;
   trackCount: number;
   tracks: DetailTrack[];
-  // Set when the /tracks subcall failed but the header succeeded — used
-  // to render an inline "Spotify dev-mode restricted" message and an
-  // Open-in-Spotify CTA in place of the empty track list.
-  tracksError?: string | null;
+  // Real upstream HTTP status from the /tracks subcall — null when it
+  // succeeded. The panel uses this + ownerId/meId to classify the
+  // failure (see classifyPlaylistTracksError) so we can show a
+  // different message for 403 / 404 / on-own-playlist / on-other.
+  tracksStatus?: number | null;
+  // Playlist owner id (null on albums) and the authenticated Spotify
+  // user id, both echoed back so the panel can detect whether a 403
+  // is on the recruiter's own playlist or someone else's.
+  ownerId?: string | null;
+  meId?: string | null;
   externalUrl?: string;
 };
+
+// Classify a /tracks failure into the message the panel should show.
+// Lives client-side because the route doesn't render copy — keeping
+// the messaging here means design changes don't need a deploy of two
+// surfaces. `status` is the upstream HTTP status; ownerId/meId come
+// straight off the route response.
+function classifyPlaylistTracksError(
+  status: number | null | undefined,
+  ownerId: string | null | undefined,
+  meId: string | null | undefined,
+): string | null {
+  if (!status) return null;
+  if (status === 401) {
+    return "Your Spotify session expired. Reconnect Spotify to keep listening.";
+  }
+  if (status === 404) {
+    return "Spotify could not find this playlist or its tracks. Try refreshing Spotify and opening it again.";
+  }
+  if (status === 403) {
+    // Dev-mode restriction only fires on playlists the recruiter
+    // doesn't own. If owner == me, this is an auth / permission /
+    // rate-limit issue and the recruiter should see a different copy.
+    if (ownerId && meId && ownerId === meId) {
+      return "Spotify denied access to this playlist's tracks. Reconnect Spotify or refresh and try again.";
+    }
+    return "Spotify limits API access to playlists you didn't create yourself. Open this one in Spotify to listen.";
+  }
+  return `Spotify couldn't load these tracks (HTTP ${status}). Try again in a moment.`;
+}
 
 type LikedPayload = {
   total: number;
@@ -148,7 +183,10 @@ type ArtistPayload = {
   uri: string;
   name: string;
   image: string;
-  followers: number;
+  // null when Spotify didn't include `followers.total`. We hide the
+  // count entirely in that case — defaulting to 0 was the source of
+  // the "0 followers" bug on real artists.
+  followers: number | null;
   genres: string[];
   topTracks: {
     id: string;
@@ -933,14 +971,29 @@ export function SpotifyPanel() {
           const json = (await res.json().catch(() => ({}))) as {
             error?: string;
           };
+          // Branch on real upstream status — the play route now passes
+          // it through verbatim instead of collapsing every non-2xx to
+          // 502. None of these messages should reference playlist
+          // ownership; that's a separate concern handled in
+          // classifyPlaylistTracksError for the playlist detail view.
           if (res.status === 401) {
             setAuthState({ status: "unauthenticated" });
+            toast.error("Spotify session expired", {
+              description: "Reconnect Spotify to resume playback.",
+            });
             return;
           }
-          if (res.status === 502 && (json.error ?? "").includes("403")) {
-            toast.error("Spotify Premium required", {
+          if (res.status === 403) {
+            toast.error("Spotify can't play this here", {
               description:
-                "Full-track playback through the Web SDK needs a Premium account.",
+                "Full-track playback through the Web SDK requires a Premium account, an active device, and the right scope. Try opening the Spotify app to wake the device, then retry.",
+            });
+            return;
+          }
+          if (res.status === 404) {
+            toast.error("Couldn't find that on Spotify", {
+              description:
+                "The artist, track, or context Spotify was given couldn't be located. Try opening Spotify and retrying.",
             });
             return;
           }
@@ -1892,26 +1945,38 @@ function PlaylistView(props: {
         <Play className="h-4 w-4" fill="currentColor" /> Play
       </button>
 
-      {d.tracksError && d.tracks.length === 0 && (
-        // Spotify dev-mode block: header loads but /tracks 403s on
-        // editorial / algorithmic playlists. Surface the reason inline
-        // alongside an Open-in-Spotify CTA instead of leaving the panel
-        // empty. Open-in-Spotify uses the spotify: URI so it deep-links
-        // straight into the desktop app when installed and otherwise
-        // falls through to open.spotify.com.
-        <div className="rounded-lg border border-[#3D3D3D] bg-[#1F1F1F] p-3 text-xs text-[#B3B3B3]">
-          <p>{d.tracksError}</p>
-          <a
-            href={d.externalUrl || d.uri}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-white underline-offset-2 hover:underline"
-            style={{ color: COLOR_GREEN }}
-          >
-            Open in Spotify →
-          </a>
-        </div>
-      )}
+      {(() => {
+        // Classify the /tracks failure with the upstream HTTP status
+        // and the playlist's owner-vs-me check. The previous version
+        // composed the message server-side, which couldn't tell that
+        // Andrew's "Lifting" playlist was his own and so misfired the
+        // dev-mode copy on it. classifyPlaylistTracksError is the
+        // single source of truth now and only emits the dev-mode
+        // sentence when both status===403 and ownerId !== meId.
+        const message =
+          d.tracks.length === 0
+            ? classifyPlaylistTracksError(
+                d.tracksStatus,
+                d.ownerId,
+                d.meId,
+              )
+            : null;
+        if (!message) return null;
+        return (
+          <div className="rounded-lg border border-[#3D3D3D] bg-[#1F1F1F] p-3 text-xs text-[#B3B3B3]">
+            <p>{message}</p>
+            <a
+              href={d.externalUrl || d.uri}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-white underline-offset-2 hover:underline"
+              style={{ color: COLOR_GREEN }}
+            >
+              Open in Spotify →
+            </a>
+          </div>
+        );
+      })()}
 
       <ul className="flex flex-col">
         {d.tracks.map((t) => (
@@ -2075,9 +2140,14 @@ function ArtistView(props: {
         )}
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <div className="text-xl font-bold text-white">{a.name}</div>
-          <div className="text-xs text-[#B3B3B3]">
-            {a.followers.toLocaleString()} followers
-          </div>
+          {/* Hide the followers row entirely when Spotify didn't
+              include the field — only render the count when we got a
+              real number back (including an explicit zero). */}
+          {typeof a.followers === "number" && (
+            <div className="text-xs text-[#B3B3B3]">
+              {a.followers.toLocaleString()} followers
+            </div>
+          )}
           {a.genres.length > 0 && (
             <div className="text-xs italic text-[#B3B3B3]">
               {a.genres.join(", ")}
@@ -2088,7 +2158,14 @@ function ArtistView(props: {
 
       <button
         type="button"
-        onClick={() => props.onPlayArtist(a.uri)}
+        onClick={() =>
+          // Fall back to a constructed spotify:artist URI if the
+          // payload's uri came through empty (defensive — the route
+          // already constructs this same fallback, but the panel
+          // shouldn't hand /v1/me/player/play an empty context_uri
+          // even for one render).
+          props.onPlayArtist(a.uri || `spotify:artist:${a.id}`)
+        }
         className="inline-flex w-fit items-center gap-2 rounded-full px-5 py-2 text-sm font-bold text-black transition hover:scale-[1.04]"
         style={{ backgroundColor: COLOR_GREEN }}
       >
