@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Loader2, Search, X, ArrowLeft, Minimize2, Maximize2, Music } from "lucide-react";
+import {
+  ArrowLeft,
+  FastForward,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Music,
+  Rewind,
+  Search,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   YOUTUBE_PANEL_MIN_H,
@@ -52,6 +62,40 @@ type ChannelView = {
 const DOCK_W = 320;
 const DOCK_H = 52;
 const DOCK_EDGE_GAP = 24;
+const YT_API_SRC = "https://www.youtube.com/iframe_api";
+// 15-second skip increment per the recruiter's spec — matches the
+// jump-back arrow on Apple's iOS player and most podcast apps.
+const SEEK_DELTA = 15;
+// Speed cycle order. Click the Speed chip to step to the next rate.
+const SPEED_CYCLE = [1, 1.5, 2] as const;
+
+// Subset of the YouTube IFrame Player API surface we actually call.
+// Keeps `any` out of the player ref + the speed/seek buttons.
+type YTPlayer = {
+  playVideo(): void;
+  pauseVideo(): void;
+  getCurrentTime(): number;
+  seekTo(seconds: number, allowSeekAhead: boolean): void;
+  setPlaybackRate(rate: number): void;
+  getPlaybackRate(): number;
+  destroy(): void;
+};
+
+declare global {
+  interface Window {
+    YT?: {
+      Player: new (
+        target: HTMLElement | string,
+        opts: {
+          videoId?: string;
+          playerVars?: Record<string, string | number>;
+          events?: { onReady?: () => void; onStateChange?: () => void };
+        },
+      ) => YTPlayer;
+    };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
 
 export function YouTubePanel() {
   const {
@@ -83,13 +127,123 @@ export function YouTubePanel() {
   // null = showing search results; set = showing a single channel's
   // latest uploads with a back arrow to return to the search list.
   const [channelView, setChannelView] = useState<ChannelView | null>(null);
+  // Playback rate cycles 1 → 1.5 → 2 → 1 via the Speed button. Driven
+  // by setPlaybackRate on the YT player, surfaced as the chip label.
+  const [playbackRate, setPlaybackRate] = useState<number>(1);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // YouTube IFrame Player API gives us programmatic seekTo +
+  // setPlaybackRate. The container div below is what YT.Player
+  // attaches to (it replaces the div with its own iframe), so we
+  // hold the container ref and the player handle separately.
+  const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<YTPlayer | null>(null);
 
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // YouTube IFrame Player API loader. Once per page lifetime: drop
+  // the script tag, return when window.YT is hot. Subsequent video
+  // changes reuse the same global API. modestbranding+rel kill the
+  // YouTube logo and the related-video grid; controls=1 keeps the
+  // native scrubber so the recruiter can still drag the timeline.
+  useEffect(() => {
+    if (!activeVideoId) return;
+    let cancelled = false;
+
+    function bootPlayer() {
+      if (cancelled || !window.YT?.Player || !playerContainerRef.current) {
+        return;
+      }
+      try {
+        playerRef.current = new window.YT.Player(playerContainerRef.current, {
+          videoId: activeVideoId!,
+          playerVars: {
+            autoplay: 1,
+            modestbranding: 1,
+            rel: 0,
+            controls: 1,
+            playsinline: 1,
+          },
+          events: {
+            onReady: () => {
+              if (cancelled) return;
+              try {
+                const r = playerRef.current?.getPlaybackRate() ?? 1;
+                setPlaybackRate(r);
+              } catch {}
+            },
+          },
+        });
+      } catch (e) {
+        console.error("[youtube] player init failed", e);
+      }
+    }
+
+    if (window.YT?.Player) {
+      bootPlayer();
+    } else {
+      if (
+        !document.querySelector(`script[src="${YT_API_SRC}"]`)
+      ) {
+        const tag = document.createElement("script");
+        tag.src = YT_API_SRC;
+        tag.async = true;
+        document.body.appendChild(tag);
+      }
+      // The API calls onYouTubeIframeAPIReady globally when it's
+      // hot. Chain through any prior handler so we don't trample
+      // another consumer's hook.
+      const prior = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        try {
+          prior?.();
+        } catch {}
+        bootPlayer();
+      };
+    }
+
+    return () => {
+      cancelled = true;
+      if (playerRef.current) {
+        try {
+          playerRef.current.destroy();
+        } catch {}
+        playerRef.current = null;
+      }
+    };
+  }, [activeVideoId]);
+
+  function rewind() {
+    const p = playerRef.current;
+    if (!p) return;
+    try {
+      const t = p.getCurrentTime();
+      p.seekTo(Math.max(0, t - SEEK_DELTA), true);
+    } catch {}
+  }
+
+  function fastForward() {
+    const p = playerRef.current;
+    if (!p) return;
+    try {
+      const t = p.getCurrentTime();
+      p.seekTo(t + SEEK_DELTA, true);
+    } catch {}
+  }
+
+  function cycleSpeed() {
+    const p = playerRef.current;
+    if (!p) return;
+    const idx = SPEED_CYCLE.indexOf(playbackRate as 1 | 1.5 | 2);
+    const next = SPEED_CYCLE[(idx + 1) % SPEED_CYCLE.length];
+    try {
+      p.setPlaybackRate(next);
+      setPlaybackRate(next);
+    } catch {}
+  }
 
   // Focus the search input when the panel opens into the search state.
   // Skipped while a video is playing so we don't yank focus away from the
@@ -494,18 +648,30 @@ export function YouTubePanel() {
       }
       style={rootStyle}
     >
-      {/* Iframe stays mounted whenever activeVideoId is set so audio
-          continues to play across state changes (search ↔ playing ↔
-          minimized). It absolute-fills the panel root; in minimized
-          mode that's 320x52 and the dock UI on top covers it visually. */}
+      {/* YT.Player swaps this div for its own iframe at runtime. We
+          re-key on activeVideoId so the player effect tears down and
+          rebuilds cleanly on every track switch. The div absolute-
+          fills the panel root; in minimized mode that's 320x52 and
+          the dock UI on top covers it visually. */}
       {playing && (
-        <iframe
+        <div
           key={activeVideoId}
-          src={`https://www.youtube.com/embed/${activeVideoId}?autoplay=1`}
+          ref={playerContainerRef}
           title={activeVideoTitle || "YouTube player"}
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen
           className="absolute inset-0 h-full w-full border-0 bg-black"
+        />
+      )}
+
+      {/* Transparent click blocker over the top-right corner of the
+          iframe, sized to cover YouTube's native "Save / Share" pill.
+          Sitting at z-[5] (above iframe, below our hover overlay at
+          z-10) it absorbs any taps on those buttons so the recruiter
+          can't accidentally pop YouTube's share dialog from inside
+          our panel. */}
+      {playing && !minimized && (
+        <div
+          aria-hidden
+          className="pointer-events-auto absolute right-0 top-0 z-[5] h-12 w-[160px]"
         />
       )}
 
@@ -667,6 +833,33 @@ export function YouTubePanel() {
             <ArrowLeft className="h-3 w-3" /> Search
           </button>
           <span className="flex-1" />
+          <button
+            type="button"
+            onClick={rewind}
+            className="rounded-md p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
+            aria-label="Rewind 15 seconds"
+            title="Rewind 15s"
+          >
+            <Rewind className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={fastForward}
+            className="rounded-md p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
+            aria-label="Forward 15 seconds"
+            title="Forward 15s"
+          >
+            <FastForward className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={cycleSpeed}
+            className="inline-flex items-center rounded-md px-2 py-1 text-[11px] font-semibold tabular-nums text-white/80 transition hover:bg-white/10 hover:text-white"
+            aria-label={`Playback speed ${playbackRate}x — click to change`}
+            title="Playback speed"
+          >
+            {playbackRate}x
+          </button>
           <button
             type="button"
             onClick={() => setMinimized(true)}
