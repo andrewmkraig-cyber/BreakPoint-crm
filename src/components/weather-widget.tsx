@@ -10,6 +10,7 @@ import {
   Sun,
   type LucideIcon,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 // Topbar weather chip with a hover-only forecast popover. Reads the
 // browser's geolocation, hits Open-Meteo (free, no API key) for the
@@ -452,50 +453,50 @@ export function WeatherWidget() {
         <div
           role="dialog"
           aria-label="Forecast"
-          className="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
+          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-court-border bg-court-surface p-3 shadow-xl"
         >
           {/* CURRENT — left: icon + temp + description; right: today's
               full date so the recruiter can read it without leaving
               the dashboard. */}
           <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5">
               <WeatherIcon
                 code={data.code}
                 isDay={data.isCurrentDay}
-                sizeClass="h-10 w-10"
+                sizeClass="h-9 w-9"
               />
               <div className="flex flex-col">
                 <div className="flex items-baseline gap-2">
-                  <span className="font-stat text-3xl font-bold leading-none text-court-fg">
+                  <span className="font-stat text-2xl font-bold leading-none text-court-fg">
                     {rounded}°
                   </span>
-                  <span className="text-[11px] text-court-fg-muted">
+                  <span className="text-[10px] text-court-fg-muted">
                     Feels {apparentRounded}°
                   </span>
                 </div>
-                <span className="mt-1 text-sm text-court-fg">
+                <span className="mt-0.5 text-xs text-court-fg">
                   {description}
                 </span>
               </div>
             </div>
-            <span className="max-w-[8rem] text-right text-[11px] leading-snug text-court-fg-muted">
+            <span className="max-w-[7rem] text-right text-[10px] leading-snug text-court-fg-muted">
               {formatTodayLong()}
             </span>
           </div>
 
           {/* HOURLY */}
           {data.hourly.length > 0 && (
-            <div className="mt-4">
+            <div className="mt-3">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
                 Next {data.hourly.length} Hours
               </div>
-              <div className="mt-2 flex justify-between gap-1">
+              <div className="mt-1.5 flex justify-between gap-1">
                 {data.hourly.map((h, i) => {
                   const showRain = h.precipPct >= 20;
                   return (
                     <div
                       key={`${i}-${h.time}`}
-                      className="flex flex-1 flex-col items-center gap-1"
+                      className="flex flex-1 flex-col items-center gap-0.5"
                     >
                       <div className="text-[10px] text-court-fg-muted">
                         {i === 0 ? "Now" : formatHour(h.time)}
@@ -508,8 +509,15 @@ export function WeatherWidget() {
                       <div className="text-xs font-medium tabular-nums text-court-fg">
                         {Math.round(h.tempF)}°
                       </div>
-                      <div className="h-3 text-[10px] tabular-nums text-court-accent">
-                        {showRain ? `${h.precipPct}%` : ""}
+                      <div
+                        className={cn(
+                          "h-3 text-[10px] tabular-nums",
+                          showRain
+                            ? "text-court-accent"
+                            : "text-court-fg-muted/40",
+                        )}
+                      >
+                        {h.precipPct}%
                       </div>
                     </div>
                   );
@@ -519,13 +527,24 @@ export function WeatherWidget() {
           )}
 
           {/* DAILY — forecast tiles always render the daytime icon
-              since each row represents a whole day, not a moment. */}
+              since each row represents a whole day, not a moment.
+              Header row labels the columns (RAIN / HIGH / LOW) so
+              the temps and precip aren't a guess on first glance. */}
           {data.daily.length > 0 && (
-            <div className="mt-4">
+            <div className="mt-3">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
                 {data.daily.length}-Day Forecast
               </div>
-              <ul className="mt-2 flex flex-col">
+              {/* Column headers — widths mirror the data row below so
+                  labels sit directly over their values. */}
+              <div className="mt-1.5 flex items-center gap-2 border-b border-court-border-soft pb-1 text-[9px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                <span className="w-12">Day</span>
+                <span className="h-4 w-4" aria-hidden />
+                <span className="w-10">Rain</span>
+                <span className="ml-auto">High</span>
+                <span className="w-8 text-right">Low</span>
+              </div>
+              <ul className="flex flex-col">
                 {data.daily.map((d, i) => {
                   const showRain = d.precipPctMax >= 20;
                   return (
@@ -541,8 +560,15 @@ export function WeatherWidget() {
                         isDay={true}
                         sizeClass="h-4 w-4"
                       />
-                      <span className="w-10 tabular-nums text-court-accent">
-                        {showRain ? `${d.precipPctMax}%` : ""}
+                      <span
+                        className={cn(
+                          "w-10 tabular-nums",
+                          showRain
+                            ? "text-court-accent"
+                            : "text-court-fg-muted/50",
+                        )}
+                      >
+                        {d.precipPctMax}%
                       </span>
                       <span className="ml-auto font-medium tabular-nums text-court-fg">
                         {Math.round(d.highF)}°
