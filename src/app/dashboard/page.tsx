@@ -4,6 +4,7 @@ import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
 import { WordOfDayCard } from "@/components/word-of-day-card";
+import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
@@ -223,6 +224,8 @@ export default async function DashboardPage() {
       </div>
 
       <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
+
+      <NewsFeed />
 
       <UpcomingInterviews rows={upcoming} />
 

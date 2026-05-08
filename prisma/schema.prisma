@@ -889,6 +889,7 @@ model Organization {
   claudePanelMessages  ClaudePanelMessage[]
   jobBoardStatuses     JobBoardStatus[]
   wordsOfDay           WordOfDay[]
+  dailyNewsFeeds       DailyNewsFeed[]
 }
 
 model ClaudePanelMessage {
@@ -1064,5 +1065,25 @@ model WordOfDay {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, generatedDate])
+  @@index([organizationId])
+}
+
+// One row per (org, tab, ET day). The /api/news-feed route checks for
+// today's row for the requested tab before invoking Claude — so once a
+// recruiter clicks a tab, the headlines stay sticky for the rest of
+// the ET day. headlines is a Json column carrying the {headline,
+// source, url, summary}[] payload Claude returns; we don't normalize
+// it because it's read-only inside the dashboard widget.
+model DailyNewsFeed {
+  id             String   @id @default(cuid())
+  organizationId String
+  tab            String
+  headlines      Json
+  generatedDate  DateTime @db.Date
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, tab, generatedDate])
   @@index([organizationId])
 }
