@@ -391,11 +391,11 @@ export function YouTubePanel() {
         </div>
       ) : (
         // PLAYING STATE — iframe (above) is full bleed. Hover overlay
-        // bar appears at the bottom on hover only. Buttons stop drag
+        // bar appears at the top on hover only. Buttons stop drag
         // propagation so clicking them never starts a window drag.
         <div
           onPointerDown={onHeaderPointerDown}
-          className="absolute inset-x-0 bottom-0 z-10 flex h-9 cursor-grab select-none items-center gap-1 bg-black/70 px-3 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 active:cursor-grabbing"
+          className="absolute inset-x-0 top-0 z-10 flex h-9 cursor-grab select-none items-center gap-1 bg-black/70 px-3 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 active:cursor-grabbing"
         >
           <button
             type="button"
