@@ -15,10 +15,14 @@ import {
 // Music-icon button toggles `open`. Default dock is bottom-right of
 // the viewport at 480x360.
 
-const DEFAULT_W = 480;
-const DEFAULT_H = 360;
+// 380×600 is a deliberate "tall narrow" footprint to mirror the
+// real Spotify mobile/sidebar aesthetic — wide enough for a 2-col
+// playlist grid + horizontal Recently Played row, tall enough that
+// the persistent now-playing bar doesn't crowd out content above it.
+const DEFAULT_W = 380;
+const DEFAULT_H = 600;
 const MIN_W = 320;
-const MIN_H = 260;
+const MIN_H = 400;
 const EDGE_GAP = 24;
 
 export type SpotifyPanelPosition = { x: number; y: number };

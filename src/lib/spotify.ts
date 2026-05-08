@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { NextResponse } from "next/server";
 
 // Spotify OAuth Authorization Code flow plumbing shared by every
 // Spotify-touching API route. The recruiter connects once via the
@@ -152,4 +153,137 @@ export function getValidSpotifyAccessToken(): ValidTokenResult | Promise<ValidTo
         error: e instanceof Error ? e.message : "Refresh failed",
       }),
     );
+}
+
+// Mirrors the cookie writes the OAuth callback does, lifted out so
+// every API proxy route can apply them after a transparent refresh
+// without copying the same five-line block.
+export function applyRefreshedSpotifyCookies(
+  res: NextResponse,
+  refreshed: SpotifyTokenResponse | null,
+): NextResponse {
+  if (!refreshed) return res;
+  const expiresAt = Date.now() + refreshed.expires_in * 1000;
+  res.cookies.set(
+    SPOTIFY_COOKIE.access,
+    refreshed.access_token,
+    spotifyCookieOpts(refreshed.expires_in),
+  );
+  res.cookies.set(
+    SPOTIFY_COOKIE.expires,
+    String(expiresAt),
+    spotifyCookieOpts(60 * 60 * 24 * 30),
+  );
+  if (refreshed.refresh_token) {
+    res.cookies.set(
+      SPOTIFY_COOKIE.refresh,
+      refreshed.refresh_token,
+      spotifyCookieOpts(60 * 60 * 24 * 30),
+    );
+  }
+  return res;
+}
+
+export type SpotifyApiOk = {
+  ok: true;
+  status: number;
+  data: unknown;
+  refreshed: SpotifyTokenResponse | null;
+};
+export type SpotifyApiErr = {
+  ok: false;
+  status: number;
+  error: string;
+  refreshed: SpotifyTokenResponse | null;
+};
+export type SpotifyApiResult = SpotifyApiOk | SpotifyApiErr;
+
+// Single chokepoint for every server-side call to api.spotify.com.
+// Resolves a fresh access token (refreshing if needed), forwards the
+// request, and tunnels back the raw response code so playback control
+// routes can mirror Spotify's 204-no-content acks without parsing.
+export async function spotifyApiProxy(
+  path: string,
+  init?: { method?: string; body?: string; headers?: Record<string, string> },
+): Promise<SpotifyApiResult> {
+  const tokenResult = await getValidSpotifyAccessToken();
+  if (!tokenResult.ok) {
+    return {
+      ok: false,
+      status: 401,
+      error: tokenResult.error,
+      refreshed: null,
+    };
+  }
+
+  const url = path.startsWith("http") ? path : `https://api.spotify.com${path}`;
+  let upstream: Response;
+  try {
+    upstream = await fetch(url, {
+      method: init?.method ?? "GET",
+      headers: {
+        Authorization: `Bearer ${tokenResult.accessToken}`,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...(init?.headers ?? {}),
+      },
+      body: init?.body,
+      cache: "no-store",
+    });
+  } catch (e) {
+    return {
+      ok: false,
+      status: 502,
+      error: e instanceof Error ? e.message : "Spotify fetch failed",
+      refreshed: tokenResult.refreshed,
+    };
+  }
+
+  if (upstream.status === 204) {
+    return {
+      ok: true,
+      status: 204,
+      data: null,
+      refreshed: tokenResult.refreshed,
+    };
+  }
+
+  const text = await upstream.text();
+  let data: unknown = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
+    }
+  }
+
+  if (!upstream.ok) {
+    let error = `Spotify ${upstream.status}`;
+    if (
+      data &&
+      typeof data === "object" &&
+      "error" in data &&
+      data.error &&
+      typeof data.error === "object" &&
+      "message" in data.error &&
+      typeof (data.error as { message: unknown }).message === "string"
+    ) {
+      error = (data.error as { message: string }).message;
+    } else if (typeof text === "string" && text.length > 0) {
+      error = `${error}: ${text.slice(0, 200)}`;
+    }
+    return {
+      ok: false,
+      status: upstream.status,
+      error,
+      refreshed: tokenResult.refreshed,
+    };
+  }
+
+  return {
+    ok: true,
+    status: upstream.status,
+    data,
+    refreshed: tokenResult.refreshed,
+  };
 }
