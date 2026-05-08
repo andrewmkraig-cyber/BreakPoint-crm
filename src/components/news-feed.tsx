@@ -64,6 +64,7 @@ export function NewsFeed() {
     setByTab((prev) => ({ ...prev, [active]: { status: "loading" } }));
     let cancelled = false;
     void (async () => {
+      console.log("[news-feed] fetching tab:", active);
       try {
         const res = await fetch(
           `/api/news-feed?tab=${encodeURIComponent(active)}`,

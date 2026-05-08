@@ -16,6 +16,10 @@ import { withSentryConfig } from "@sentry/nextjs";
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://vercel.live",
+  // worker-src must be set explicitly — when omitted it falls back to
+  // script-src, which lacks `blob:` and so blocks every Web Worker
+  // bundled by Next/Sentry/etc. that loads from a Blob URL.
+  "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https: http:",
   "font-src 'self' data:",
