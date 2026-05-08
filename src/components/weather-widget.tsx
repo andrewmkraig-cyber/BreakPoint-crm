@@ -14,13 +14,20 @@ import {
 // Topbar weather chip with a hover-only forecast popover. Reads the
 // browser's geolocation, hits Open-Meteo (free, no API key) for the
 // current conditions plus 6-hour hourly and 7-day daily slices,
-// refreshes every 30 min. Silent fail on geolocation denial / network
-// error — the chip renders nothing rather than an error state, so the
-// topbar stays clean for users who haven't granted location.
+// refreshes every 30 min.
+//
+// If geolocation is unavailable or the user denied it, we fall back
+// to BreakPoint's home base (Cleveland) so the chip always renders —
+// the recruiter caught it disappearing whenever the browser revoked
+// the permission, and an empty topbar slot looked like a regression.
 
 const REFRESH_MS = 30 * 60 * 1000;
 const HOURS_AHEAD = 6;
 const DAYS_AHEAD = 7;
+// Cleveland, OH — BreakPoint's office. Used when the browser hasn't
+// granted geolocation so weather still renders.
+const FALLBACK_LAT = 41.4993;
+const FALLBACK_LON = -81.6944;
 
 type Hourly = { time: string; tempF: number; precipPct: number; code: number };
 type Daily = {
@@ -254,8 +261,6 @@ export function WeatherWidget() {
   const [hovered, setHovered] = useState(false);
 
   useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) return;
-
     let cancelled = false;
     let intervalId: number | undefined;
 
@@ -379,21 +384,34 @@ export function WeatherWidget() {
       }
     }
 
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (cancelled) return;
-        const { latitude, longitude } = pos.coords;
-        console.log("[weather] geolocation granted", { latitude, longitude });
-        void fetchWeather(latitude, longitude);
-        intervalId = window.setInterval(
-          () => void fetchWeather(latitude, longitude),
-          REFRESH_MS,
-        );
-      },
-      (err) => {
-        console.warn("[weather] geolocation denied or failed", err);
-      },
-    );
+    function startWith(lat: number, lon: number, source: string) {
+      console.log("[weather] starting fetch loop", { lat, lon, source });
+      void fetchWeather(lat, lon);
+      intervalId = window.setInterval(
+        () => void fetchWeather(lat, lon),
+        REFRESH_MS,
+      );
+    }
+
+    if (typeof navigator !== "undefined" && navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          if (cancelled) return;
+          startWith(pos.coords.latitude, pos.coords.longitude, "geolocation");
+        },
+        (err) => {
+          if (cancelled) return;
+          console.warn(
+            "[weather] geolocation denied or failed, using Cleveland fallback",
+            err,
+          );
+          startWith(FALLBACK_LAT, FALLBACK_LON, "fallback");
+        },
+        { timeout: 5000 },
+      );
+    } else {
+      startWith(FALLBACK_LAT, FALLBACK_LON, "fallback-no-geolocation");
+    }
 
     return () => {
       cancelled = true;

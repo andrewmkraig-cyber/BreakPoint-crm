@@ -160,7 +160,7 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        "relative flex h-10 items-center gap-3 rounded-lg pl-4 pr-3 text-sm font-medium transition-colors",
+        "relative flex h-11 items-center gap-3 rounded-lg pl-4 pr-3 text-[15px] font-medium transition-colors",
         active
           ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
@@ -169,10 +169,10 @@ function NavLink({
       {active && (
         <span
           aria-hidden="true"
-          className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-court-sidebar-rail/80"
+          className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-court-sidebar-rail/80"
         />
       )}
-      <Icon className={cn("h-4 w-4", active ? "text-court-sidebar-active-fg" : "text-court-sidebar-icon")} />
+      <Icon className={cn("h-[18px] w-[18px]", active ? "text-court-sidebar-active-fg" : "text-court-sidebar-icon")} />
       <span className="flex-1">{item.label}</span>
       {showBadge && (
         <span
