@@ -215,9 +215,16 @@ export function ChessPuzzle() {
 
   useEffect(() => {
     if (!open) return;
+    // The chess popover is ~470px tall (header + 320px board + footer).
+    // block: "nearest" only scrolls when strictly necessary, which for
+    // an element bigger than the viewport's available space leaves the
+    // top clipped. block: "start" guarantees the popover top lands at
+    // the top of the visible scroll area, so the rating chip / heading
+    // are always readable. Combined with max-h on the popover itself,
+    // overflow gets handled gracefully on short viewports.
     const rafId = window.requestAnimationFrame(() => {
       popoverRef.current?.scrollIntoView({
-        block: "nearest",
+        block: "start",
         behavior: "smooth",
       });
     });
@@ -270,7 +277,7 @@ export function ChessPuzzle() {
           ref={popoverRef}
           role="dialog"
           aria-label="Chess puzzle"
-          className="absolute bottom-full right-0 z-20 mb-2 w-[360px] rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
+          className="absolute bottom-full right-0 z-20 mb-2 w-[360px] max-h-[calc(100vh-2rem)] overflow-y-auto rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
           <button
             type="button"

@@ -433,15 +433,15 @@ export function WeatherWidget() {
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        className="inline-flex cursor-default items-center gap-1 text-court-fg"
+        className="inline-flex cursor-default items-center gap-1.5 text-court-fg"
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
       >
         <WeatherIcon
           code={data.code}
           isDay={data.isCurrentDay}
-          sizeClass="h-4 w-4"
+          sizeClass="h-5 w-5"
         />
-        <span className="text-sm font-medium tabular-nums">{rounded}°</span>
+        <span className="text-base font-medium tabular-nums">{rounded}°</span>
       </div>
 
       {hovered && (
@@ -453,7 +453,7 @@ export function WeatherWidget() {
         <div
           role="dialog"
           aria-label="Forecast"
-          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-court-border bg-court-surface p-3 shadow-xl"
+          className="absolute right-0 top-full z-50 mt-2 w-72 rounded-xl border border-court-border bg-court-surface p-4 shadow-xl"
         >
           {/* CURRENT — left: icon + temp + description; right: today's
               full date so the recruiter can read it without leaving
@@ -486,17 +486,17 @@ export function WeatherWidget() {
 
           {/* HOURLY */}
           {data.hourly.length > 0 && (
-            <div className="mt-3">
+            <div className="mt-4">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
                 Next {data.hourly.length} Hours
               </div>
-              <div className="mt-1.5 flex justify-between gap-1">
+              <div className="mt-2.5 flex justify-between gap-1">
                 {data.hourly.map((h, i) => {
                   const showRain = h.precipPct >= 20;
                   return (
                     <div
                       key={`${i}-${h.time}`}
-                      className="flex flex-1 flex-col items-center gap-0.5"
+                      className="flex flex-1 flex-col items-center gap-1"
                     >
                       <div className="text-[10px] text-court-fg-muted">
                         {i === 0 ? "Now" : formatHour(h.time)}
@@ -531,13 +531,13 @@ export function WeatherWidget() {
               Header row labels the columns (RAIN / HIGH / LOW) so
               the temps and precip aren't a guess on first glance. */}
           {data.daily.length > 0 && (
-            <div className="mt-3">
+            <div className="mt-4">
               <div className="text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
                 {data.daily.length}-Day Forecast
               </div>
               {/* Column headers — widths mirror the data row below so
                   labels sit directly over their values. */}
-              <div className="mt-1.5 flex items-center gap-2 border-b border-court-border-soft pb-1 text-[9px] font-semibold uppercase tracking-wider text-court-fg-muted">
+              <div className="mt-2 flex items-center gap-2 border-b border-court-border-soft pb-1.5 text-[9px] font-semibold uppercase tracking-wider text-court-fg-muted">
                 <span className="w-12">Day</span>
                 <span className="h-4 w-4" aria-hidden />
                 <span className="w-10">Rain</span>
@@ -550,7 +550,7 @@ export function WeatherWidget() {
                   return (
                     <li
                       key={`${i}-${d.date}`}
-                      className="flex items-center gap-2 py-1 text-xs"
+                      className="flex items-center gap-2 py-1.5 text-xs"
                     >
                       <span className="w-12 text-court-fg-muted">
                         {formatDayShort(d.date, i)}
