@@ -16,12 +16,46 @@ export type NewsTab = (typeof NEWS_TABS)[number];
 // sortBy=publishedAt for topic feeds; /v2/top-headlines powers the
 // country-wide "Front Page" tab where keyword filtering would only
 // narrow it.
+//
+// The topic queries use phrase quotes + searchIn=title so a story
+// only qualifies if the industry term lands in the headline itself.
+// Without that, NewsAPI's default body-text matching pulled in
+// random articles that mention "audit" or "Deloitte" once in passing
+// (Australian "Big Four" banks were a recurring offender on the
+// accounting tab). We also exclude the press-release distributors
+// because their fan-out flooded the feed with sponsored items —
+// that's how the "Am I Meant to Be Impressed?" newsletter slipped in
+// as a lead story on the accounting tab.
+const PRESS_RELEASE_DOMAINS = [
+  "prnewswire.com",
+  "businesswire.com",
+  "globenewswire.com",
+  "einpresswire.com",
+  "prweb.com",
+  "benzinga.com",
+].join(",");
+
+function buildTopicUrl(query: string): string {
+  const params = new URLSearchParams({
+    q: query,
+    searchIn: "title",
+    excludeDomains: PRESS_RELEASE_DOMAINS,
+    language: "en",
+    sortBy: "publishedAt",
+  });
+  return `https://newsapi.org/v2/everything?${params.toString()}`;
+}
+
 const TAB_ENDPOINTS: Record<NewsTab, string> = {
-  accounting:
-    "https://newsapi.org/v2/everything?q=CPA+accounting+firm&language=en&sortBy=publishedAt",
-  recruiting:
-    "https://newsapi.org/v2/everything?q=recruiting+staffing+industry&language=en&sortBy=publishedAt",
-  ai: "https://newsapi.org/v2/everything?q=artificial+intelligence+technology&language=en&sortBy=publishedAt",
+  accounting: buildTopicUrl(
+    '"public accounting" OR "Big Four accounting" OR PCAOB OR AICPA OR Deloitte OR PwC OR KPMG OR "Ernst & Young" OR "audit firm" OR "Grant Thornton" OR "BDO USA" OR "RSM US"',
+  ),
+  recruiting: buildTopicUrl(
+    '"staffing industry" OR "executive search" OR "labor market" OR "hiring trends" OR "talent acquisition" OR "job market" OR "unemployment rate" OR "JOLTS"',
+  ),
+  ai: buildTopicUrl(
+    '"artificial intelligence" OR Anthropic OR OpenAI OR Claude OR ChatGPT OR "large language model" OR "machine learning"',
+  ),
   general: "https://newsapi.org/v2/top-headlines?country=us",
 };
 
