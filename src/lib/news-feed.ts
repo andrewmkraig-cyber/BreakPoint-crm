@@ -9,7 +9,6 @@ export const NEWS_TABS = [
   "recruiting",
   "ai",
   "general",
-  "cleveland",
 ] as const;
 export type NewsTab = (typeof NEWS_TABS)[number];
 
@@ -24,8 +23,6 @@ const TAB_ENDPOINTS: Record<NewsTab, string> = {
     "https://newsapi.org/v2/everything?q=recruiting+staffing+industry&language=en&sortBy=publishedAt",
   ai: "https://newsapi.org/v2/everything?q=artificial+intelligence+technology&language=en&sortBy=publishedAt",
   general: "https://newsapi.org/v2/top-headlines?country=us",
-  cleveland:
-    "https://newsapi.org/v2/everything?q=Cleveland+Ohio&language=en&sortBy=publishedAt",
 };
 
 export type Headline = {

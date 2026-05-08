@@ -1,25 +1,34 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
-// Tabbed daily briefing for the dashboard. Five topic tabs; each tab
+// Tabbed daily briefing for the dashboard. Four topic tabs; each tab
 // fetches /api/news-feed?tab=... lazily on first activation. Headlines
 // are cached server-side per (org, tab, ET day), so subsequent clicks
-// within the same day return instantly without spending a Claude call.
+// within the same day return instantly without spending a NewsAPI call.
 
-type TabKey = "accounting" | "recruiting" | "ai" | "general" | "cleveland";
+type TabKey = "accounting" | "recruiting" | "ai" | "general";
+
+// Per-tab accent color used for both the active pill background and
+// the 4px left border on each story. Hardcoded by spec — these are the
+// only hex values allowed in this component; everything else routes
+// through Court Mode tokens.
+const TAB_ACCENT: Record<TabKey, string> = {
+  general: "#6B7280",
+  accounting: "#5A9642",
+  recruiting: "#3B82F6",
+  ai: "#8B5CF6",
+};
 
 // Display order for the tab strip. Tab *keys* match the cached row's
-// `tab` column and the API's per-tab search prompts — never rename
-// them; only the label changes here. Keys: general → "Front Page",
-// cleveland → "Local News".
+// `tab` column and the API's per-tab endpoints — never rename them;
+// only the label changes here.
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "general", label: "Front Page" },
   { key: "accounting", label: "Public Accounting" },
   { key: "recruiting", label: "Recruiting" },
   { key: "ai", label: "AI & Tech" },
-  { key: "cleveland", label: "Local News" },
 ];
 
 type Headline = {
@@ -55,7 +64,6 @@ export function NewsFeed() {
     recruiting: { status: "idle" },
     ai: { status: "idle" },
     general: { status: "idle" },
-    cleveland: { status: "idle" },
   });
   // Tracks which tabs already kicked off a fetch. Lives outside React
   // state so the effect below depends only on `active`. Subscribing to
@@ -72,7 +80,6 @@ export function NewsFeed() {
     setByTab((prev) => ({ ...prev, [active]: { status: "loading" } }));
     let cancelled = false;
     void (async () => {
-      console.log("[news-feed] fetching tab:", active);
       try {
         const res = await fetch(
           `/api/news-feed?tab=${encodeURIComponent(active)}`,
@@ -123,20 +130,33 @@ export function NewsFeed() {
   }, [active]);
 
   const current = byTab[active];
+  const accent = TAB_ACCENT[active];
 
   return (
     <section className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
-      <div className="flex items-center justify-between gap-2 border-b border-court-border px-5 py-3">
-        <h2 className="font-serif text-lg font-semibold text-court-fg">
+      <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-3">
+        <h2
+          className="font-semibold text-court-fg-muted"
+          style={{
+            fontSize: "11px",
+            letterSpacing: "0.12em",
+            textTransform: "uppercase",
+          }}
+        >
           Today&apos;s Briefing
         </h2>
-        <span className="text-xs text-court-fg-muted">{formatToday()}</span>
+        <span
+          className="text-court-fg-muted"
+          style={{ fontSize: "12px" }}
+        >
+          {formatToday()}
+        </span>
       </div>
 
       <div
         role="tablist"
         aria-label="News feed topics"
-        className="flex flex-wrap items-center gap-1 border-b border-court-border px-3 py-2"
+        className="flex flex-wrap items-center gap-1.5 px-5 pb-3"
       >
         {TABS.map((t) => {
           const selected = t.key === active;
@@ -148,11 +168,16 @@ export function NewsFeed() {
               type="button"
               onClick={() => setActive(t.key)}
               className={
-                "rounded-md px-3 py-1.5 text-xs font-medium transition " +
+                "rounded-full font-medium transition " +
                 (selected
-                  ? "bg-court-brand text-white shadow-sm"
-                  : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg")
+                  ? "text-white"
+                  : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg")
               }
+              style={{
+                padding: "5px 14px",
+                fontSize: "13px",
+                backgroundColor: selected ? TAB_ACCENT[t.key] : undefined,
+              }}
             >
               {t.label}
             </button>
@@ -160,43 +185,63 @@ export function NewsFeed() {
         })}
       </div>
 
-      <div role="tabpanel" className="px-5 py-4">
+      <div role="tabpanel" className="px-5 pb-4">
         {current.status === "loading" || current.status === "idle" ? (
-          <SkeletonList />
+          <div className="flex items-center justify-center py-10">
+            <Loader2 className="h-5 w-5 animate-spin text-court-fg-muted" />
+          </div>
         ) : current.status === "error" ? (
-          <div className="text-sm text-court-fg-muted">
+          <div className="py-4 text-sm text-court-fg-muted">
             Couldn&apos;t load this briefing.{" "}
             <span className="italic">{current.error}</span>
           </div>
         ) : current.headlines.length === 0 ? (
-          <div className="text-sm text-court-fg-muted">
+          <div className="py-4 text-sm text-court-fg-muted">
             No headlines for this topic today.
           </div>
         ) : (
-          <ul className="flex flex-col divide-y divide-court-border">
+          <ul className="flex flex-col">
             {current.headlines.map((h, idx) => (
-              <li key={`${idx}-${h.url}`} className="py-3 first:pt-0 last:pb-0">
+              <li
+                key={`${idx}-${h.url}`}
+                className="border-b border-court-border-soft last:border-b-0"
+              >
                 <a
                   href={h.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="group block"
+                  className="group block py-3 pl-3 pr-2 transition-colors hover:bg-court-surface-subtle"
+                  style={{ borderLeft: `4px solid ${accent}` }}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-sm font-semibold leading-snug text-court-fg group-hover:text-court-brand-dark">
-                      {h.headline}
-                    </span>
-                    <ExternalLink
-                      aria-hidden="true"
-                      className="mt-0.5 h-3.5 w-3.5 shrink-0 text-court-fg-muted opacity-0 transition group-hover:opacity-100"
-                    />
-                  </div>
-                  <div className="mt-1 text-xs italic text-court-fg-muted">
+                  <div
+                    className="text-court-fg-muted"
+                    style={{
+                      fontSize: "10px",
+                      letterSpacing: "0.08em",
+                      textTransform: "uppercase",
+                      fontWeight: 500,
+                    }}
+                  >
                     {h.source}
                   </div>
-                  <p className="mt-1 text-sm leading-relaxed text-court-fg">
-                    {h.summary}
-                  </p>
+                  <div
+                    className="mt-1 text-court-fg group-hover:text-court-brand-dark"
+                    style={{
+                      fontSize: "15px",
+                      fontWeight: 500,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {h.headline}
+                  </div>
+                  {h.summary ? (
+                    <p
+                      className="mt-1 text-court-fg-muted"
+                      style={{ fontSize: "13px", lineHeight: 1.5 }}
+                    >
+                      {h.summary}
+                    </p>
+                  ) : null}
                 </a>
               </li>
             ))}
@@ -204,22 +249,5 @@ export function NewsFeed() {
         )}
       </div>
     </section>
-  );
-}
-
-function SkeletonList() {
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-2 text-sm text-court-fg-muted">
-        <Loader2 className="h-4 w-4 animate-spin" /> Loading briefing…
-      </div>
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex flex-col gap-2">
-          <div className="h-4 w-3/4 animate-pulse rounded bg-court-surface-subtle" />
-          <div className="h-3 w-24 animate-pulse rounded bg-court-surface-subtle" />
-          <div className="h-3 w-full animate-pulse rounded bg-court-surface-subtle" />
-        </div>
-      ))}
-    </div>
   );
 }
