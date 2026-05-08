@@ -42,8 +42,10 @@ export async function GET(
   const [artistRes, topRes, albumsRes] = await Promise.all([
     spotifyApiProxy(`/v1/artists/${id}`),
     spotifyApiProxy(`/v1/artists/${id}/top-tracks?market=US`),
+    // market=US matches the top-tracks call so the artist's album
+    // grid doesn't end up empty for region-restricted releases.
     spotifyApiProxy(
-      `/v1/artists/${id}/albums?include_groups=album,single&limit=20`,
+      `/v1/artists/${id}/albums?include_groups=album,single&limit=20&market=US`,
     ),
   ]);
 

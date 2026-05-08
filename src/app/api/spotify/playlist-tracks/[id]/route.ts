@@ -38,7 +38,14 @@ export async function GET(
   const id = params.id;
   const kind = (new URL(req.url).searchParams.get("kind") ?? "playlist").trim();
   const isAlbum = kind === "album";
-  const path = isAlbum ? `/v1/albums/${id}` : `/v1/playlists/${id}`;
+  // market=US is mandatory for /v1/playlists/{id} — without it
+  // Spotify returns every tracks.items[*].track as null and the
+  // panel renders "0 songs" even for fully-populated playlists.
+  // Same fix for /v1/albums/{id} so locked / market-restricted
+  // tracks still come through.
+  const path = isAlbum
+    ? `/v1/albums/${id}?market=US`
+    : `/v1/playlists/${id}?market=US`;
 
   const result = await spotifyApiProxy(path);
   if (!result.ok) {
