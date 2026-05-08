@@ -1892,6 +1892,12 @@ function BottomNav(props: {
 // ──────────────────────────────────────────────────────────────────
 // Now Playing Bar
 
+// Now Playing surface — when a track is loaded, the bottom of the
+// panel turns into a Spotify-mobile-style "now playing" view: the
+// album art takes the full panel width, the track name and artist
+// are centered below it, then the scrubber, transport controls, and
+// volume. The body content above scrolls under this; the recruiter
+// can resize the panel taller to see more of it at once.
 function NowPlayingBar(props: {
   track: ActiveTrack;
   paused: boolean;
@@ -1917,82 +1923,88 @@ function NowPlayingBar(props: {
       className="shrink-0 border-t border-white/10"
       style={{ backgroundColor: COLOR_BG }}
     >
-      <div className="flex items-center gap-2 px-3 py-2">
-        {props.track.albumArt ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={props.track.albumArt}
-            alt=""
-            className="h-10 w-10 shrink-0 rounded object-cover"
-          />
-        ) : (
-          <div className="h-10 w-10 shrink-0 rounded bg-[#282828]" />
-        )}
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-xs font-semibold text-white">
-            {props.track.name}
-          </div>
-          <div className="truncate text-[11px] text-[#B3B3B3]">
-            {props.track.artist}
-          </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={props.onPrev}
-            className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
-            aria-label="Previous"
-          >
-            <SkipBack className="h-4 w-4" fill="currentColor" />
-          </button>
-          <button
-            type="button"
-            onClick={props.onTogglePlay}
-            className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-white text-black transition hover:scale-105"
-            aria-label={props.paused ? "Play" : "Pause"}
-          >
-            {props.paused ? (
-              <Play className="h-3.5 w-3.5" fill="currentColor" />
-            ) : (
-              <Pause className="h-3.5 w-3.5" fill="currentColor" />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={props.onNext}
-            className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
-            aria-label="Next"
-          >
-            <SkipForward className="h-4 w-4" fill="currentColor" />
-          </button>
-        </div>
-      </div>
-      <div className="flex items-center gap-2 px-3 pb-2">
-        <span className="w-[34px] shrink-0 text-right text-[10px] tabular-nums text-[#B3B3B3]">
-          {formatDuration(props.positionMs)}
-        </span>
-        <div
-          onClick={onProgressClick}
-          className="group relative h-1 flex-1 cursor-pointer rounded-full bg-[#4D4D4D]"
-        >
-          <div
-            className="h-full rounded-full transition-[width] duration-100 group-hover:bg-[#1ED760]"
-            style={{ width: `${pct}%`, backgroundColor: "#FFFFFF" }}
-          />
-        </div>
-        <span className="w-[34px] shrink-0 text-[10px] tabular-nums text-[#B3B3B3]">
-          {formatDuration(props.track.durationMs)}
-        </span>
-        <Volume2 className="ml-1 h-3.5 w-3.5 shrink-0 text-[#B3B3B3]" />
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={props.volume}
-          onChange={(e) => props.onVolume(Number(e.target.value))}
-          aria-label="Volume"
-          className="h-1 w-[60px] shrink-0 cursor-pointer accent-white"
+      {props.track.albumArt ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={props.track.albumArt}
+          alt=""
+          className="aspect-square w-full object-cover"
         />
+      ) : (
+        <div className="aspect-square w-full bg-[#282828]" />
+      )}
+
+      <div className="px-4 pb-3 pt-3">
+        <div className="truncate text-center text-base font-semibold text-white">
+          {props.track.name}
+        </div>
+        <div className="mt-0.5 truncate text-center text-xs text-[#B3B3B3]">
+          {props.track.artist}
+        </div>
+
+        <div className="mt-3 flex items-center gap-2">
+          <span className="w-[34px] shrink-0 text-right text-[10px] tabular-nums text-[#B3B3B3]">
+            {formatDuration(props.positionMs)}
+          </span>
+          <div
+            onClick={onProgressClick}
+            className="group relative h-1 flex-1 cursor-pointer rounded-full bg-[#4D4D4D]"
+          >
+            <div
+              className="h-full rounded-full transition-[width] duration-100 group-hover:bg-[#1ED760]"
+              style={{ width: `${pct}%`, backgroundColor: "#FFFFFF" }}
+            />
+          </div>
+          <span className="w-[34px] shrink-0 text-[10px] tabular-nums text-[#B3B3B3]">
+            {formatDuration(props.track.durationMs)}
+          </span>
+        </div>
+
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1">
+            <Volume2 className="h-3.5 w-3.5 shrink-0 text-[#B3B3B3]" />
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={props.volume}
+              onChange={(e) => props.onVolume(Number(e.target.value))}
+              aria-label="Volume"
+              className="h-1 w-[72px] shrink-0 cursor-pointer accent-white"
+            />
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={props.onPrev}
+              className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
+              aria-label="Previous"
+            >
+              <SkipBack className="h-5 w-5" fill="currentColor" />
+            </button>
+            <button
+              type="button"
+              onClick={props.onTogglePlay}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white text-black transition hover:scale-105"
+              aria-label={props.paused ? "Play" : "Pause"}
+            >
+              {props.paused ? (
+                <Play className="h-4 w-4" fill="currentColor" />
+              ) : (
+                <Pause className="h-4 w-4" fill="currentColor" />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={props.onNext}
+              className="rounded-full p-1 text-[#B3B3B3] transition hover:text-white"
+              aria-label="Next"
+            >
+              <SkipForward className="h-5 w-5" fill="currentColor" />
+            </button>
+          </div>
+          <div className="w-[88px]" />
+        </div>
       </div>
     </div>
   );
