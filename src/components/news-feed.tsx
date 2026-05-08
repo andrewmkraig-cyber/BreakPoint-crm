@@ -1,36 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
-const COLLAPSE_KEY = "ace.dashboard.news-feed.collapsed";
+// Editorial briefing layout: header, five tabs, one lead story, three
+// list rows. Per-tab fetch wiring is unchanged — /api/news-feed?tab=...
+// still backs general/accounting/recruiting/ai. The "local" tab is
+// presentation-only for now and renders an empty state without firing
+// a request (the API would 400 on an unknown tab).
 
-// Tabbed daily briefing for the dashboard. Four topic tabs; each tab
-// fetches /api/news-feed?tab=... lazily on first activation. Headlines
-// are cached server-side per (org, tab, ET day), so subsequent clicks
-// within the same day return instantly without spending a NewsAPI call.
+type DataTabKey = "general" | "accounting" | "recruiting" | "ai";
+type TabKey = DataTabKey | "local";
 
-type TabKey = "accounting" | "recruiting" | "ai" | "general";
-
-// Per-tab accent color used for both the active pill background and
-// the 4px left border on each story. Hardcoded by spec — these are the
-// only hex values allowed in this component; everything else routes
-// through Court Mode tokens.
-const TAB_ACCENT: Record<TabKey, string> = {
-  general: "#6B7280",
-  accounting: "#5A9642",
-  recruiting: "#3B82F6",
-  ai: "#8B5CF6",
-};
-
-// Display order for the tab strip. Tab *keys* match the cached row's
-// `tab` column and the API's per-tab endpoints — never rename them;
-// only the label changes here.
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "general", label: "Front Page" },
   { key: "accounting", label: "Public Accounting" },
   { key: "recruiting", label: "Recruiting" },
   { key: "ai", label: "AI & Tech" },
+  { key: "local", label: "Local News" },
 ];
 
 type Headline = {
@@ -58,35 +45,23 @@ function formatToday(): string {
 
 export function NewsFeed() {
   const [active, setActive] = useState<TabKey>("general");
-  // Collapse persists in localStorage so the recruiter's choice
-  // survives reload — the briefing is one of the largest tiles on
-  // the dashboard and not everyone wants it expanded all day.
-  const [collapsed, setCollapsed] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
-  }, []);
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
-  }, [collapsed]);
-  // Per-tab state map so switching tabs doesn't clobber an already-
-  // loaded panel. First activation triggers a fetch; subsequent clicks
-  // surface the cached state instantly.
   const [byTab, setByTab] = useState<Record<TabKey, TabState>>({
+    general: { status: "idle" },
     accounting: { status: "idle" },
     recruiting: { status: "idle" },
     ai: { status: "idle" },
-    general: { status: "idle" },
+    // Local News is UI-only; seed as ready+empty so the empty-state
+    // copy renders without firing a request that would 400.
+    local: { status: "ready", headlines: [], generatedDate: "" },
   });
-  // Tracks which tabs already kicked off a fetch. Lives outside React
-  // state so the effect below depends only on `active`. Subscribing to
-  // `byTab` would cancel the in-flight fetch the moment we set it to
-  // "loading" — the dependency change triggers cleanup (cancelled =
-  // true) before the response lands, which is why headlines used to
-  // never render. On error we drop the entry so navigating away and
-  // back retries.
-  const initiatedRef = useRef<Set<TabKey>>(new Set());
+  // initiatedRef lives outside React state so the fetch effect depends
+  // only on `active`. Pre-seed "local" so its idle slot never triggers
+  // a request.
+  const initiatedRef = useRef<Set<TabKey>>(new Set<TabKey>(["local"]));
+  // Read state is local-only (no persistence). Keyed by
+  // `${activeTab}::${headline}` so the same article in two tabs tracks
+  // independently.
+  const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (initiatedRef.current.has(active)) return;
@@ -144,77 +119,65 @@ export function NewsFeed() {
   }, [active]);
 
   const current = byTab[active];
-  const accent = TAB_ACCENT[active];
+  const stories = current.status === "ready" ? current.headlines : [];
+  const lead = stories[0];
+  const list = stories.slice(1, 4);
+
+  const readKey = (story: Headline) => `${active}::${story.headline}`;
+  const isRead = (story: Headline) => readKeys.has(readKey(story));
+  const markRead = (story: Headline) => {
+    setReadKeys((prev) => {
+      const next = new Set(prev);
+      next.add(readKey(story));
+      return next;
+    });
+  };
 
   return (
-    <section className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
-      <div
-        className={
-          "flex items-center justify-between gap-2 px-5 pt-4 " +
-          (collapsed ? "pb-4" : "pb-3")
-        }
-      >
-        <h2
-          className="font-semibold text-court-fg-muted"
-          style={{
-            fontSize: "11px",
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-          }}
-        >
-          Today&apos;s Briefing
-        </h2>
-        <div className="flex items-center gap-3">
-          <span
-            className="text-court-fg-muted"
-            style={{ fontSize: "12px" }}
+    <section className="rounded-[32px] bg-court-surface p-10 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_16px_40px_rgba(16,36,24,0.04)]">
+      <div className="flex items-baseline justify-between gap-4">
+        <div>
+          <h2
+            className="font-semibold tracking-[-0.04em] text-court-fg"
+            style={{ fontSize: "28px", lineHeight: 1.1 }}
           >
-            {formatToday()}
-          </span>
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
-            aria-expanded={!collapsed}
-            aria-controls="today-briefing-body"
-            aria-label={collapsed ? "Expand briefing" : "Collapse briefing"}
-            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            Today&apos;s Briefing
+          </h2>
+          <p
+            className="mt-1 text-court-fg-muted"
+            style={{ fontSize: "14px" }}
           >
-            {collapsed ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronUp className="h-4 w-4" />
-            )}
-          </button>
+            Curated daily, 6:00 AM ET
+          </p>
         </div>
+        <span
+          className="text-court-fg-muted"
+          style={{ fontSize: "12px" }}
+        >
+          {formatToday()}
+        </span>
       </div>
 
-      {collapsed ? null : (
-        <div id="today-briefing-body">
       <div
         role="tablist"
-        aria-label="News feed topics"
-        className="flex flex-wrap items-center gap-1.5 px-5 pb-3"
+        aria-label="Briefing topics"
+        className="mt-6 mb-6 flex gap-1 border-b border-court-border"
       >
         {TABS.map((t) => {
           const selected = t.key === active;
           return (
             <button
               key={t.key}
+              type="button"
               role="tab"
               aria-selected={selected}
-              type="button"
               onClick={() => setActive(t.key)}
               className={
-                "rounded-full font-medium transition " +
+                "relative top-px border-b-2 px-3.5 pt-2.5 pb-3 text-sm font-semibold transition-colors " +
                 (selected
-                  ? "text-white"
-                  : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg")
+                  ? "border-court-accent text-court-fg"
+                  : "border-transparent text-court-fg-muted hover:text-court-fg")
               }
-              style={{
-                padding: "5px 14px",
-                fontSize: "13px",
-                backgroundColor: selected ? TAB_ACCENT[t.key] : undefined,
-              }}
             >
               {t.label}
             </button>
@@ -222,7 +185,7 @@ export function NewsFeed() {
         })}
       </div>
 
-      <div role="tabpanel" className="px-5 pb-4">
+      <div role="tabpanel">
         {current.status === "loading" || current.status === "idle" ? (
           <div className="flex items-center justify-center py-10">
             <Loader2 className="h-5 w-5 animate-spin text-court-fg-muted" />
@@ -232,61 +195,89 @@ export function NewsFeed() {
             Couldn&apos;t load this briefing.{" "}
             <span className="italic">{current.error}</span>
           </div>
-        ) : current.headlines.length === 0 ? (
+        ) : stories.length === 0 ? (
           <div className="py-4 text-sm text-court-fg-muted">
-            No headlines for this topic today.
+            No headlines for this section today.
           </div>
         ) : (
-          <ul className="flex flex-col">
-            {current.headlines.map((h, idx) => (
-              <li
-                key={`${idx}-${h.url}`}
-                className="border-b border-court-border-soft last:border-b-0"
+          <>
+            {lead ? (
+              <a
+                href={lead.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => markRead(lead)}
+                className="group mb-2 block cursor-pointer border-b border-court-border pb-5"
               >
-                <a
-                  href={h.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="group block py-3 pl-3 pr-2 transition-colors hover:bg-court-surface-subtle"
-                  style={{ borderLeft: `4px solid ${accent}` }}
+                <h3
+                  className={
+                    "font-semibold tracking-[-0.02em] [text-wrap:pretty] group-hover:text-court-accent-dark " +
+                    (isRead(lead) ? "text-court-fg-muted" : "text-court-fg")
+                  }
+                  style={{
+                    fontSize: "22px",
+                    lineHeight: 1.2,
+                    maxWidth: "36ch",
+                  }}
                 >
-                  <div
-                    className="text-court-fg-muted"
-                    style={{
-                      fontSize: "10px",
-                      letterSpacing: "0.08em",
-                      textTransform: "uppercase",
-                      fontWeight: 500,
-                    }}
+                  {lead.headline}
+                </h3>
+                {lead.summary ? (
+                  <p
+                    className={
+                      "mt-2.5 leading-relaxed [text-wrap:pretty] " +
+                      (isRead(lead) ? "text-court-fg-dim" : "text-court-fg-muted")
+                    }
+                    style={{ fontSize: "14px", maxWidth: "60ch" }}
                   >
-                    {h.source}
-                  </div>
-                  <div
-                    className="mt-1 text-court-fg group-hover:text-court-brand-dark"
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 500,
-                      lineHeight: 1.4,
-                    }}
+                    {lead.summary}
+                  </p>
+                ) : null}
+                <div className="mt-3 flex items-center gap-2 text-xs text-court-fg-muted">
+                  <span>{lead.source}</span>
+                  <span aria-hidden>·</span>
+                  <span>Today</span>
+                </div>
+              </a>
+            ) : null}
+
+            {list.length > 0 ? (
+              <ul>
+                {list.map((story, idx) => (
+                  <li
+                    key={`${idx}-${story.url}`}
+                    className="border-b border-court-border last:border-b-0"
                   >
-                    {h.headline}
-                  </div>
-                  {h.summary ? (
-                    <p
-                      className="mt-1 text-court-fg-muted"
-                      style={{ fontSize: "13px", lineHeight: 1.5 }}
+                    <a
+                      href={story.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => markRead(story)}
+                      className="group block cursor-pointer py-3"
                     >
-                      {h.summary}
-                    </p>
-                  ) : null}
-                </a>
-              </li>
-            ))}
-          </ul>
+                      <h4
+                        className={
+                          "m-0 text-sm leading-snug group-hover:text-court-accent-dark " +
+                          (isRead(story)
+                            ? "font-medium text-court-fg-muted"
+                            : "font-semibold text-court-fg")
+                        }
+                      >
+                        {story.headline}
+                      </h4>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-court-fg-muted">
+                        <span>{story.source}</span>
+                        <span aria-hidden>·</span>
+                        <span>Today</span>
+                      </div>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </>
         )}
       </div>
-        </div>
-      )}
     </section>
   );
 }
