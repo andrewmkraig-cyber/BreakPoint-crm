@@ -10,12 +10,14 @@ import { PhonePanelsProvider } from "@/lib/phone-panels-context";
 import { FindMatchesProvider } from "@/lib/find-matches-context";
 import { ClaudePanelProvider } from "@/lib/claude-panel-context";
 import { YouTubePanelProvider } from "@/components/youtube-panel/YouTubePanelProvider";
+import { SpotifyPanelProvider } from "@/components/spotify-panel/SpotifyPanelProvider";
 import { MinimizedTray } from "@/components/composer/minimized-tray";
 import { FloatingThreadWindow } from "@/components/mail/floating-thread-window";
 import { GlobalPhonePanels } from "@/components/phone/global-phone-panels";
 import { FindMatchesPanel } from "@/components/game-plan/find-matches-panel";
 import { ClaudePanel } from "@/components/claude-panel/ClaudePanel";
 import { YouTubePanel } from "@/components/youtube-panel/YouTubePanel";
+import { SpotifyPanel } from "@/components/spotify-panel/SpotifyPanel";
 
 // ComposeFAB used to mount here as a portal-style fixed FAB. It now
 // lives inside TopBar (left of the user info cluster) so it can't
@@ -32,23 +34,27 @@ export function Providers({ children }: { children: ReactNode }) {
               <FindMatchesProvider>
                 <ClaudePanelProvider>
                   <YouTubePanelProvider>
-                    {children}
-                    <MinimizedTray />
-                    <FloatingThreadWindow />
-                    <GlobalPhonePanels />
-                    <FindMatchesPanel />
-                    <ClaudePanel />
-                    <YouTubePanel />
-                    <Toaster
-                      position="bottom-right"
-                      richColors
-                      closeButton
-                      toastOptions={{
-                        style: {
-                          fontFamily: "var(--font-inter), system-ui, sans-serif",
-                        },
-                      }}
-                    />
+                    <SpotifyPanelProvider>
+                      {children}
+                      <MinimizedTray />
+                      <FloatingThreadWindow />
+                      <GlobalPhonePanels />
+                      <FindMatchesPanel />
+                      <ClaudePanel />
+                      <YouTubePanel />
+                      <SpotifyPanel />
+                      <Toaster
+                        position="bottom-right"
+                        richColors
+                        closeButton
+                        toastOptions={{
+                          style: {
+                            fontFamily:
+                              "var(--font-inter), system-ui, sans-serif",
+                          },
+                        }}
+                      />
+                    </SpotifyPanelProvider>
                   </YouTubePanelProvider>
                 </ClaudePanelProvider>
               </FindMatchesProvider>

@@ -15,18 +15,23 @@ import { withSentryConfig } from "@sentry/nextjs";
 // and API routes; Vercel live adds a websocket for preview deploys.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://vercel.live",
+  // sdk.scdn.co hosts the Spotify Web Playback SDK script that the
+  // floating Spotify panel loads on first authenticated open.
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.vercel.app https://vercel.live https://sdk.scdn.co",
   // worker-src must be set explicitly — when omitted it falls back to
   // script-src, which lacks `blob:` and so blocks every Web Worker
-  // bundled by Next/Sentry/etc. that loads from a Blob URL.
+  // bundled by Next/Sentry/the Spotify SDK that loads from a Blob URL.
   "worker-src 'self' blob:",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https: http:",
   "font-src 'self' data:",
-  // api.open-meteo.com is the topbar weather widget's data source —
-  // free, no key, no proxy needed; it's added to connect-src so the
-  // browser fetch isn't silently blocked.
-  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.open-meteo.com",
+  // api.open-meteo.com is the topbar weather widget's data source.
+  // api.spotify.com + dealer.spotify.com (wss) + *.scdn.co cover the
+  // Web Playback SDK's Web API + realtime + media-CDN traffic.
+  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.open-meteo.com https://api.spotify.com https://*.spotify.com wss://*.spotify.com https://*.scdn.co",
+  // media-src defaults to default-src ('self'), which would block the
+  // Spotify SDK's MSE-backed audio streams from *.scdn.co.
+  "media-src 'self' https://*.scdn.co https://*.spotify.com",
   // youtube.com + youtube-nocookie.com are allowlisted so the floating
   // YouTube panel can embed the standard /embed/{videoId} player.
   "frame-src 'self' https://vercel.live https://*.amazonaws.com https://www.youtube.com https://www.youtube-nocookie.com",
