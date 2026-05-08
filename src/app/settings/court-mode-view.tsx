@@ -243,10 +243,6 @@ export function CourtModeView() {
           );
         })}
       </div>
-
-      <p className="text-[11px] text-court-fg-muted">
-        Persists per browser. Surface + theme combine into the active palette.
-      </p>
     </div>
   );
 }
