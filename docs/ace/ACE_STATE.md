@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.5
+Last updated: 2026-05-08 · Ace 36.7
 
 ## Current Status
-Current Version: Ace 36.5 (Spotify artist + playlist error-handling fix)
-Last Shipped: Ace 36.5 — May 8, 2026
+Current Version: Ace 36.7 (Wide-screen content cap at 1600px)
+Last Shipped: Ace 36.7 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.7
+Re-applied the wide-screen breathing room on the AppShell `<main>` after the 36.6 revert. Andrew specified `max-w-[1600px]` (slightly wider than 36.6's `max-w-screen-2xl` = 1536px) as the cap so wide monitors get more table real estate before centering kicks in. Audited tables and grids:
+- All four list-page tables (candidates / clients / jobs / pipeline) already use `w-full` inside their wrappers, so they fill the new 1600px cap automatically — no per-table changes needed.
+- Dashboard KPI strip is already `md:grid-cols-6` for its 6 KPI tiles; bumping to xl:grid-cols-7 would create an empty cell. Billing Tower's body is `sm:grid-cols-2` for 2 metrics; same logic. No grid changes needed.
+- AppShell main now: `... md:p-8 md:pl-4 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 2xl:px-12`. md and below untouched per the brief.
 
 ## Summary — Ace 36.5
 Two distinct Spotify bugs the recruiter flagged after 36.4:

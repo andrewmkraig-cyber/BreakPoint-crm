@@ -187,8 +187,17 @@ export function AppShell({
                   tighter (pt-4 = 16px) so every page sits the same
                   16px below the topbar that Mail/Phone already used
                   via their custom -mt-2/-mt-4 pull-up. Right / bottom
-                  keep their original p-6 / md:p-8 generosity. */}
-              <main className="min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4">{children}</main>
+                  keep their original p-6 / md:p-8 generosity.
+                  At xl+ the column caps at 1600px with mx-auto so wide
+                  monitors don't sprawl content edge-to-edge, and the
+                  horizontal padding bumps to px-8 / px-12 for added
+                  breathing room. md and below are intentionally
+                  untouched — every existing tablet / phone layout
+                  assumption holds. Tables (candidates / clients /
+                  jobs / pipeline) already use `w-full` inside their
+                  containers so they fill the 1600px cap rather than
+                  staying at intrinsic width. */}
+              <main className="min-w-0 flex-1 p-6 pl-3 pt-4 md:p-8 md:pl-4 md:pt-4 xl:mx-auto xl:w-full xl:max-w-[1600px] xl:px-8 2xl:px-12">{children}</main>
             </div>
           </div>
         </TextingProvider>
