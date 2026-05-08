@@ -66,12 +66,12 @@ async function processTab(
 
   let headlines;
   try {
-    headlines = await generateHeadlinesForTab(tab, generatedDate);
+    headlines = await generateHeadlinesForTab(tab);
   } catch (e) {
     return {
       tab,
       status: "failed",
-      error: e instanceof Error ? e.message : "Claude call failed",
+      error: e instanceof Error ? e.message : "NewsAPI call failed",
     };
   }
   if (!headlines) {

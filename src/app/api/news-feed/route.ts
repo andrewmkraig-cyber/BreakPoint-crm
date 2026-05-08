@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
   let headlines;
   try {
     headlines = await Promise.race([
-      generateHeadlinesForTab(tab, generatedDate),
+      generateHeadlinesForTab(tab),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("News feed timed out after 25s")), 25_000),
       ),
