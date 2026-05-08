@@ -40,7 +40,16 @@ type Puzzle = {
   themes: string[];
 };
 
-type Status = "playing" | "wrong" | "solved";
+type Status =
+  | "playing"
+  | "wrong"
+  | "solved"
+  // Set on mount when localStorage shows the user already solved
+  // cleanly today — board is locked, banner says "Nice job".
+  | "already-solved"
+  // Set on mount when failedDate stamped today — streak is gone for
+  // the day, board is locked, banner says "try again tomorrow".
+  | "streak-failed";
 
 type UciMove = { from: Square; to: Square; promotion?: string };
 
@@ -290,10 +299,20 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   const oppTimeoutRef = useRef<number | null>(null);
   const answerTimeoutRef = useRef<number | null>(null);
 
-  // Hydrate streak after mount — reading localStorage during initial
-  // state would trip Next's SSR mismatch warning.
+  // Hydrate streak + terminal-day status after mount. Reading
+  // localStorage during initial state would trip Next's SSR mismatch
+  // warning, so it lives in an effect. failedDate wins over
+  // lastSolved if both somehow land on today (shouldn't happen given
+  // the recordSolve guard, but defensive).
   useEffect(() => {
     setStreak(readStreak());
+    if (typeof window === "undefined") return;
+    const today = todayET();
+    if (window.localStorage.getItem(FAILED_DATE_KEY) === today) {
+      setStatus("streak-failed");
+    } else if (window.localStorage.getItem(LAST_SOLVED_KEY) === today) {
+      setStatus("already-solved");
+    }
   }, []);
 
   // Effect-driven streak updates: status is the only signal, so the
@@ -357,7 +376,15 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   }
 
   function onPieceDrop(source: string, target: string): boolean {
-    if (status === "solved") return false;
+    // Block any move once the day is settled — solved cleanly,
+    // already-solved on a prior visit, or streak-failed earlier today.
+    if (
+      status === "solved" ||
+      status === "already-solved" ||
+      status === "streak-failed"
+    ) {
+      return false;
+    }
     setHintActive(false);
     setSelectedSquare(null);
 
@@ -537,13 +564,22 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
         : "ring-1 ring-court-border";
 
   const heading =
-    status === "solved"
-      ? "Solved!"
-      : status === "wrong"
-        ? "Not quite — try again."
-        : moveIdx === 0
-          ? `${userColor === "white" ? "White" : "Black"} to move`
-          : "Your move";
+    status === "already-solved"
+      ? "Nice job!"
+      : status === "streak-failed"
+        ? "Streak ruined."
+        : status === "solved"
+          ? "Solved!"
+          : status === "wrong"
+            ? "Not quite — try again."
+            : moveIdx === 0
+              ? `${userColor === "white" ? "White" : "Black"} to move`
+              : "Your move";
+
+  const locked =
+    status === "solved" ||
+    status === "already-solved" ||
+    status === "streak-failed";
 
   return (
     <div>
@@ -570,7 +606,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
       </div>
       <div className="mt-1 flex items-center justify-between gap-2">
         <div className="text-sm font-semibold text-court-fg">{heading}</div>
-        {history.length > 0 && status !== "solved" ? (
+        {history.length > 0 && !locked ? (
           <button
             type="button"
             onClick={goBack}
@@ -591,7 +627,7 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
           onSquareClick={onSquareClick}
           boardWidth={320}
           boardOrientation={userColor}
-          arePiecesDraggable={status !== "solved"}
+          arePiecesDraggable={!locked}
           customSquareStyles={customSquareStyles}
           customDarkSquareStyle={{ backgroundColor: "#5A9642" }}
           customLightSquareStyle={{ backgroundColor: "#EFF5EB" }}
@@ -620,6 +656,18 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
       {status === "solved" ? (
         <div className="mt-3 rounded-md bg-court-accent-tint px-3 py-2 text-xs font-semibold text-court-accent-dark">
           Solved! Puzzle rating {puzzle.rating}.
+        </div>
+      ) : null}
+
+      {status === "already-solved" ? (
+        <div className="mt-3 rounded-md bg-court-accent-tint px-3 py-2 text-xs font-semibold text-court-accent-dark">
+          Nice job. You already solved this!
+        </div>
+      ) : null}
+
+      {status === "streak-failed" ? (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          Streak ruined. Try again tomorrow!
         </div>
       ) : null}
 
