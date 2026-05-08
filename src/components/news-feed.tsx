@@ -203,10 +203,13 @@ export function NewsFeed() {
 
       {collapsed ? null : (
         <div id="today-briefing-body">
+          {/* Segmented tab box, mirrors the Active/Inactive control on
+              /jobs and the Applied/Kept control on /applicants so every
+              tab strip in the app reads as one control language. */}
           <div
             role="tablist"
             aria-label="Briefing topics"
-            className="mt-3 mb-3 flex gap-1 border-b border-court-border"
+            className="mt-3 mb-3 inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm"
           >
             {TABS.map((t) => {
               const selected = t.key === active;
@@ -218,10 +221,10 @@ export function NewsFeed() {
                   aria-selected={selected}
                   onClick={() => setActive(t.key)}
                   className={
-                    "relative top-px border-b-2 px-3 pt-2 pb-2.5 text-sm font-semibold transition-colors " +
+                    "rounded-md px-3 py-1.5 text-sm font-medium transition-colors " +
                     (selected
-                      ? "border-court-accent text-court-fg"
-                      : "border-transparent text-court-fg-muted hover:text-court-fg")
+                      ? "bg-court-accent-tint text-court-accent-dark"
+                      : "text-court-fg-muted hover:bg-court-surface-subtle")
                   }
                 >
                   {t.label}
