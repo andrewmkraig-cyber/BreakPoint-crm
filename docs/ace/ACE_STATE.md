@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.5
+Last updated: 2026-05-08 · Ace 36.6
 
 ## Current Status
-Current Version: Ace 36.5 (Spotify artist + playlist error-handling fix)
-Last Shipped: Ace 36.5 — May 8, 2026
+Current Version: Ace 36.6 (Wide-screen breathing room on AppShell)
+Last Shipped: Ace 36.6 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.6
+On wide monitors every page sprawled edge-to-edge because the AppShell `<main>` had no max-width — only `flex-1` with the existing left/right padding. Added `xl:max-w-screen-2xl xl:mx-auto xl:w-full xl:px-8 2xl:px-12` to the shell main so:
+- xl (≥1280px): content caps at 1536px and centers, horizontal padding bumps to 32px each side.
+- 2xl (≥1536px): horizontal padding bumps to 48px each side; mx-auto pushes the equal margins.
+- md and below: untouched. Mobile / tablet layout unchanged exactly per the brief.
 
 ## Summary — Ace 36.5
 Two distinct Spotify bugs the recruiter flagged after 36.4:
