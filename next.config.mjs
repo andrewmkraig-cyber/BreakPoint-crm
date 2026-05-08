@@ -19,7 +19,10 @@ const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https: http:",
   "font-src 'self' data:",
-  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com",
+  // api.open-meteo.com is the topbar weather widget's data source —
+  // free, no key, no proxy needed; it's added to connect-src so the
+  // browser fetch isn't silently blocked.
+  "connect-src 'self' https://vercel.live wss://ws-us3.pusher.com https://api.open-meteo.com",
   // youtube.com + youtube-nocookie.com are allowlisted so the floating
   // YouTube panel can embed the standard /embed/{videoId} player.
   "frame-src 'self' https://vercel.live https://*.amazonaws.com https://www.youtube.com https://www.youtube-nocookie.com",

@@ -57,10 +57,14 @@ export function WeatherWidget() {
         `&temperature_unit=fahrenheit&wind_speed_unit=mph&forecast_days=1`;
       try {
         const res = await fetch(url);
-        if (!res.ok) return;
+        if (!res.ok) {
+          console.warn("[weather] open-meteo fetch failed", res.status);
+          return;
+        }
         const json = (await res.json()) as {
           current?: { temperature_2m?: number; weather_code?: number };
         };
+        console.log("[weather] open-meteo response", json);
         const tempF = json.current?.temperature_2m;
         const code = json.current?.weather_code;
         if (
@@ -70,8 +74,10 @@ export function WeatherWidget() {
         ) {
           setData({ tempF, code });
         }
-      } catch {
-        // silent fail — keep the previous reading or stay blank
+      } catch (e) {
+        // Likely a CSP block or network error — log so the next debug
+        // pass doesn't have to re-derive the cause from a blank chip.
+        console.warn("[weather] open-meteo fetch threw", e);
       }
     }
 
@@ -79,14 +85,15 @@ export function WeatherWidget() {
       (pos) => {
         if (cancelled) return;
         const { latitude, longitude } = pos.coords;
+        console.log("[weather] geolocation granted", { latitude, longitude });
         void fetchWeather(latitude, longitude);
         intervalId = window.setInterval(
           () => void fetchWeather(latitude, longitude),
           REFRESH_MS,
         );
       },
-      () => {
-        // denied / error — render nothing
+      (err) => {
+        console.warn("[weather] geolocation denied or failed", err);
       },
     );
 
