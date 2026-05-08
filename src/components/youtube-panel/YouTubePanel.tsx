@@ -694,6 +694,23 @@ export function YouTubePanel() {
         />
       )}
 
+      {/* Always-on transparent drag handle spanning the top edge so
+          the recruiter can grab the panel from a generous target
+          instead of the 280x36 hover pill. Sits above the iframe at
+          z-[6] so its pointerdown wins over iframe clicks; below the
+          hover pill at z-10 so the pill's buttons take priority where
+          they overlap. The right offset leaves a 200px channel clear
+          for YouTube's top-right native chrome (volume / CC / settings)
+          which the recruiter explicitly asked to keep clickable. */}
+      {playing && !minimized && (
+        <div
+          onPointerDown={onHeaderPointerDown}
+          aria-hidden
+          className="absolute left-0 top-0 z-[6] h-9 cursor-grab select-none active:cursor-grabbing"
+          style={{ right: 200 }}
+        />
+      )}
+
       {!playing ? (
         // SEARCH STATE — full-panel layout: header (drag) + search input + results.
         <>

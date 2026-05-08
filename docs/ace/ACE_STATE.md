@@ -1,10 +1,15 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 36.3
+Last updated: 2026-05-08 · Ace 36.4
 
 ## Current Status
-Current Version: Ace 36.3 (Floating-panel regression sweep — round 3)
-Last Shipped: Ace 36.3 — May 8, 2026
+Current Version: Ace 36.4 (Weather WMO audit + YouTube drag handle)
+Last Shipped: Ace 36.4 — May 8, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 36.4
+Two follow-ups requested after the 36.3 deploy:
+- Weather widget WMO dispatch unified behind a single `bucketFor(code)` switch with an explicit `WeatherBucket` enum so icon / color / description can't drift apart again. All Open-Meteo WMO codes (0, 1, 2, 3, 45, 48, 51-57, 61-67, 71-77, 80-86, 95-99) have explicit cases; anything outside the chart lands in an `unknown` bucket and emits a `console.warn` so we notice if Open-Meteo expands the chart. Replaced the bulk JSON dump with a focused `console.log` of the current weathercode + dispatch decision + first 6 hourly + first 7 daily codes, so verifying a wrong icon takes one console line instead of expanding a tree.
+- YouTube panel: drag handle was a 280x36 sliver (the hover pill) which the recruiter found hard to grab. Added an always-on transparent drag strip spanning `top-0 left-0` to ~200px from the right edge at z-[6] — sits above the iframe so its pointerdown wins, but below the hover pill at z-10 so pill buttons still take priority where they overlap. The 200px right-side channel leaves YouTube's top-right native chrome (volume / CC / settings) fully clickable.
 
 ## Summary — Ace 36.3
 Round-3 fixes after Andrew flagged that the cream header in 36.2 broke the premium feel and that artist pages had regressed:

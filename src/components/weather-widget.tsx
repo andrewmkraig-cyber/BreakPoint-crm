@@ -47,37 +47,159 @@ type Weather = {
   isCurrentDay: boolean;
 };
 
-// Open-Meteo follows WMO weather codes. Buckets:
-//   0, 1        — clear / mainly clear
-//   2           — partly cloudy (2-tone glyph)
-//   3           — overcast
-//   45, 48      — fog
-//   51–67       — drizzle / rain
-//   71–77, 85–86 — snow
-//   80–82       — rain showers
-//   95–99       — thunderstorm
-function iconFor(code: number, isDay: boolean): LucideIcon {
-  if (code === 0 || code === 1) return isDay ? Sun : Moon;
-  if (code === 3) return Cloud;
-  if (code === 45 || code === 48) return Cloud;
-  if (code >= 95) return CloudLightning;
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return CloudSnow;
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return CloudRain;
-  return Cloud;
+// Open-Meteo follows the WMO 4677 weather-code chart. We use a single
+// source-of-truth dispatch (`bucketFor`) keyed on `code`, then derive
+// icon / color / description off that bucket. The previous version
+// kept three near-identical range checks in iconFor / colorFor /
+// descriptionFor which could (and did) drift — once a code matched a
+// rain bucket in iconFor but a default Cloud bucket in colorFor and
+// you'd see a CloudRain icon tinted muted-grey instead of blue.
+//
+// Codes covered:
+//   0, 1     — clear / mainly clear
+//   2        — partly cloudy (2-tone glyph branch in WeatherIcon)
+//   3        — overcast
+//   45, 48   — fog / depositing rime fog
+//   51,53,55 — drizzle (light / moderate / dense)
+//   56, 57   — freezing drizzle
+//   61,63,65 — rain (slight / moderate / heavy)
+//   66, 67   — freezing rain
+//   71,73,75 — snowfall (slight / moderate / heavy)
+//   77       — snow grains
+//   80,81,82 — rain showers (slight / moderate / violent)
+//   85, 86   — snow showers
+//   95       — thunderstorm
+//   96, 99   — thunderstorm with hail
+//
+// Anything outside this set lands in the `unknown` bucket and emits a
+// console warning so we notice if Open-Meteo expands the chart.
+type WeatherBucket =
+  | "clear"
+  | "partly_cloudy"
+  | "overcast"
+  | "fog"
+  | "drizzle"
+  | "freezing_drizzle"
+  | "rain"
+  | "freezing_rain"
+  | "snow"
+  | "snow_grains"
+  | "rain_showers"
+  | "snow_showers"
+  | "thunderstorm"
+  | "thunder_hail"
+  | "unknown";
+
+function bucketFor(code: number): WeatherBucket {
+  switch (code) {
+    case 0:
+    case 1:
+      return "clear";
+    case 2:
+      return "partly_cloudy";
+    case 3:
+      return "overcast";
+    case 45:
+    case 48:
+      return "fog";
+    case 51:
+    case 53:
+    case 55:
+      return "drizzle";
+    case 56:
+    case 57:
+      return "freezing_drizzle";
+    case 61:
+    case 63:
+    case 65:
+      return "rain";
+    case 66:
+    case 67:
+      return "freezing_rain";
+    case 71:
+    case 73:
+    case 75:
+      return "snow";
+    case 77:
+      return "snow_grains";
+    case 80:
+    case 81:
+    case 82:
+      return "rain_showers";
+    case 85:
+    case 86:
+      return "snow_showers";
+    case 95:
+      return "thunderstorm";
+    case 96:
+    case 99:
+      return "thunder_hail";
+    default:
+      console.warn("[weather] unmapped WMO code", code);
+      return "unknown";
+  }
 }
 
-// Tailwind classes per weather bucket. Used for single-tone icons —
-// code 2 (partly cloudy) bypasses this and renders via the 2-tone
-// PartlyCloudy{Day,Night}Icon glyphs below so the celestial body and
-// cloud halves can carry different colors.
+function iconFor(code: number, isDay: boolean): LucideIcon {
+  switch (bucketFor(code)) {
+    case "clear":
+      return isDay ? Sun : Moon;
+    // Partly-cloudy renders via the 2-tone glyph in WeatherIcon; the
+    // Cloud fallback here only fires if iconFor is called directly
+    // (defensive — keeps the function complete on its own).
+    case "partly_cloudy":
+    case "overcast":
+    case "fog":
+      return Cloud;
+    case "drizzle":
+    case "freezing_drizzle":
+    case "rain":
+    case "freezing_rain":
+    case "rain_showers":
+      return CloudRain;
+    case "snow":
+    case "snow_grains":
+    case "snow_showers":
+      return CloudSnow;
+    case "thunderstorm":
+    case "thunder_hail":
+      return CloudLightning;
+    case "unknown":
+    default:
+      return Cloud;
+  }
+}
+
+// Tailwind tint per bucket. Single source of truth keeps icon + color
+// in sync — previously the range checks in iconFor and colorFor could
+// drift and we'd render a CloudRain glyph in muted-grey or a Sun in
+// sky-blue. Code 2 (partly cloudy) bypasses this entirely and renders
+// the 2-tone PartlyCloudy{Day,Night}Icon glyphs.
 function colorFor(code: number, isDay: boolean): string {
-  if (code === 0 || code === 1) return isDay ? "text-amber-400" : "text-slate-300";
-  if (code === 3) return "text-court-fg-muted";
-  if (code === 45 || code === 48) return "text-court-fg-muted";
-  if (code >= 95) return "text-purple-500";
-  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return "text-sky-300";
-  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "text-blue-500";
-  return "text-court-fg-muted";
+  switch (bucketFor(code)) {
+    case "clear":
+      return isDay ? "text-amber-400" : "text-slate-300";
+    case "partly_cloudy":
+    case "overcast":
+    case "fog":
+      return "text-court-fg-muted";
+    case "drizzle":
+    case "freezing_drizzle":
+    case "rain":
+    case "freezing_rain":
+    case "rain_showers":
+      return "text-blue-500";
+    case "snow":
+    case "snow_grains":
+    case "snow_showers":
+      return "text-sky-300";
+    case "thunderstorm":
+    case "thunder_hail":
+      return "text-purple-500";
+    case "unknown":
+    default:
+      return "text-court-fg-muted";
+  }
 }
 
 // Day 2-tone partly-cloudy glyph: amber sun + muted-grey cloud.
@@ -214,22 +336,44 @@ function formatTodayLong(): string {
 }
 
 function descriptionFor(code: number): string {
+  // 0 vs 1 distinction is preserved (Clear vs Mainly Clear) since
+  // bucketFor collapses both into "clear" — the human-readable label
+  // benefits from the finer split.
   if (code === 0) return "Clear";
   if (code === 1) return "Mainly Clear";
-  if (code === 2) return "Partly Cloudy";
-  if (code === 3) return "Overcast";
-  if (code === 45 || code === 48) return "Foggy";
-  if (code === 51 || code === 53 || code === 55) return "Drizzle";
-  if (code === 56 || code === 57) return "Freezing Drizzle";
-  if (code === 61 || code === 63 || code === 65) return "Rainy";
-  if (code === 66 || code === 67) return "Freezing Rain";
-  if (code === 71 || code === 73 || code === 75) return "Snowy";
-  if (code === 77) return "Snow Grains";
-  if (code === 80 || code === 81 || code === 82) return "Rain Showers";
-  if (code === 85 || code === 86) return "Snow Showers";
-  if (code === 95) return "Thunderstorm";
-  if (code === 96 || code === 99) return "Thunder & Hail";
-  return "Unknown";
+  switch (bucketFor(code)) {
+    case "clear":
+      return "Clear";
+    case "partly_cloudy":
+      return "Partly Cloudy";
+    case "overcast":
+      return "Overcast";
+    case "fog":
+      return "Foggy";
+    case "drizzle":
+      return "Drizzle";
+    case "freezing_drizzle":
+      return "Freezing Drizzle";
+    case "rain":
+      return "Rainy";
+    case "freezing_rain":
+      return "Freezing Rain";
+    case "snow":
+      return "Snowy";
+    case "snow_grains":
+      return "Snow Grains";
+    case "rain_showers":
+      return "Rain Showers";
+    case "snow_showers":
+      return "Snow Showers";
+    case "thunderstorm":
+      return "Thunderstorm";
+    case "thunder_hail":
+      return "Thunder & Hail";
+    case "unknown":
+    default:
+      return "Unknown";
+  }
 }
 
 // Open-Meteo's hourly arrays start at the local-day midnight. Find the
@@ -346,11 +490,21 @@ export function WeatherWidget() {
             sunset?: string[];
           };
         };
-        console.log("[weather] open-meteo response", json);
-
         const tempF = json.current?.temperature_2m;
         const apparentF = json.current?.apparent_temperature;
         const code = json.current?.weather_code;
+        // Focused log so the raw weathercode is easy to spot in the
+        // browser console — useful when the displayed condition looks
+        // wrong and we need to confirm what Open-Meteo actually
+        // returned. Logs the dispatch decision alongside the code so
+        // mismatches between API and our mapping show up at a glance.
+        console.log("[weather] current weathercode:", code, {
+          bucket: typeof code === "number" ? bucketFor(code) : "(no code)",
+          description:
+            typeof code === "number" ? descriptionFor(code) : "(no code)",
+          hourlyCodes: (json.hourly?.weather_code ?? []).slice(0, 6),
+          dailyCodes: (json.daily?.weather_code ?? []).slice(0, 7),
+        });
         if (
           typeof tempF !== "number" ||
           typeof apparentF !== "number" ||
