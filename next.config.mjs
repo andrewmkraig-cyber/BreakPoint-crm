@@ -38,7 +38,9 @@ const CSP = [
   "media-src 'self' https://*.scdn.co https://*.spotify.com",
   // youtube.com + youtube-nocookie.com are allowlisted so the floating
   // YouTube panel can embed the standard /embed/{videoId} player.
-  "frame-src 'self' https://vercel.live https://*.amazonaws.com https://www.youtube.com https://www.youtube-nocookie.com",
+  // sdk.scdn.co is allowlisted because the Spotify Web Playback SDK
+  // creates a hidden iframe to host its EME/MSE audio pipeline.
+  "frame-src 'self' https://vercel.live https://*.amazonaws.com https://www.youtube.com https://www.youtube-nocookie.com https://sdk.scdn.co",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
