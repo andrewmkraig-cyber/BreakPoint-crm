@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+
+const COLLAPSE_KEY = "ace.dashboard.news-feed.collapsed";
 
 // Tabbed daily briefing for the dashboard. Four topic tabs; each tab
 // fetches /api/news-feed?tab=... lazily on first activation. Headlines
@@ -56,6 +58,18 @@ function formatToday(): string {
 
 export function NewsFeed() {
   const [active, setActive] = useState<TabKey>("general");
+  // Collapse persists in localStorage so the recruiter's choice
+  // survives reload — the briefing is one of the largest tiles on
+  // the dashboard and not everyone wants it expanded all day.
+  const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
   // Per-tab state map so switching tabs doesn't clobber an already-
   // loaded panel. First activation triggers a fetch; subsequent clicks
   // surface the cached state instantly.
@@ -134,7 +148,12 @@ export function NewsFeed() {
 
   return (
     <section className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
-      <div className="flex items-center justify-between gap-2 px-5 pt-4 pb-3">
+      <div
+        className={
+          "flex items-center justify-between gap-2 px-5 pt-4 " +
+          (collapsed ? "pb-4" : "pb-3")
+        }
+      >
         <h2
           className="font-semibold text-court-fg-muted"
           style={{
@@ -145,14 +164,32 @@ export function NewsFeed() {
         >
           Today&apos;s Briefing
         </h2>
-        <span
-          className="text-court-fg-muted"
-          style={{ fontSize: "12px" }}
-        >
-          {formatToday()}
-        </span>
+        <div className="flex items-center gap-3">
+          <span
+            className="text-court-fg-muted"
+            style={{ fontSize: "12px" }}
+          >
+            {formatToday()}
+          </span>
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            aria-controls="today-briefing-body"
+            aria-label={collapsed ? "Expand briefing" : "Collapse briefing"}
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            {collapsed ? (
+              <ChevronDown className="h-4 w-4" />
+            ) : (
+              <ChevronUp className="h-4 w-4" />
+            )}
+          </button>
+        </div>
       </div>
 
+      {collapsed ? null : (
+        <div id="today-briefing-body">
       <div
         role="tablist"
         aria-label="News feed topics"
@@ -248,6 +285,8 @@ export function NewsFeed() {
           </ul>
         )}
       </div>
+        </div>
+      )}
     </section>
   );
 }

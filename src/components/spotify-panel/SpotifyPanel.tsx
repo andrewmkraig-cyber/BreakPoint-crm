@@ -488,18 +488,24 @@ export function SpotifyPanel() {
   // ────────────────────────────────────────────────────────────────
   // Per-view fetchers
 
-  // Search debouncer — runs whenever the query input changes.
+  // Search debouncer — runs whenever the query input changes. 250ms
+  // debounce keeps the request-per-keystroke load down without making
+  // the recruiter wait. console.logs here are intentional — they're
+  // the fastest way to confirm in the browser console that input is
+  // firing the fetch and the API is returning rows.
   useEffect(() => {
     if (view.kind !== "search") return;
     const q = searchInput.trim();
     if (!q) {
       setSearchResults(null);
       setSearchQuery("");
+      setSearching(false);
       return;
     }
     setSearching(true);
     const handle = window.setTimeout(() => {
       void (async () => {
+        console.log("[spotify-search] query:", q);
         try {
           const res = await fetch(
             `/api/spotify/search?q=${encodeURIComponent(q)}&types=track,artist,album,playlist`,
@@ -513,6 +519,7 @@ export function SpotifyPanel() {
             albums?: SearchAlbum[];
             playlists?: SearchPlaylist[];
           };
+          console.log("[spotify-search] results:", json);
           if (res.status === 401) {
             setAuthState({ status: "unauthenticated" });
             return;
@@ -530,6 +537,8 @@ export function SpotifyPanel() {
             albums: json.albums ?? [],
             playlists: json.playlists ?? [],
           });
+        } catch (e) {
+          console.error("[spotify-search] fetch failed:", e);
         } finally {
           setSearching(false);
         }
@@ -895,6 +904,36 @@ export function SpotifyPanel() {
     );
   }, []);
 
+  // Close fully tears down: pauses playback on Spotify's side, then
+  // disconnects the SDK player so audio stops even if the pause
+  // request races. Without this the panel hides but the Web Playback
+  // SDK keeps streaming until the tab is closed. Minimize stays a
+  // pure UI collapse — audio continues there by design.
+  const handleClose = useCallback(() => {
+    const deviceId = deviceIdRef.current;
+    if (deviceId) {
+      void fetch(
+        `/api/spotify/pause?device_id=${encodeURIComponent(deviceId)}`,
+        { method: "PUT" },
+      ).catch(() => {});
+    }
+    if (playerRef.current) {
+      try {
+        playerRef.current.disconnect();
+      } catch {}
+      playerRef.current = null;
+    }
+    deviceIdRef.current = null;
+    setActiveTrack(null);
+    setPaused(true);
+    // Reset auth state so the next open re-runs the auth check + SDK
+    // init effects. Without this, reopening the panel would render
+    // without a connected player because `authState.status` never
+    // changed back through the "checking" → "authenticated" edge.
+    setAuthState({ status: "checking" });
+    close();
+  }, [close]);
+
   // ────────────────────────────────────────────────────────────────
   // Render
 
@@ -971,7 +1010,7 @@ export function SpotifyPanel() {
           </button>
           <button
             type="button"
-            onClick={close}
+            onClick={handleClose}
             className="rounded-md p-1 text-[#B3B3B3] transition hover:text-white"
             aria-label="Close panel"
           >
@@ -1023,7 +1062,7 @@ export function SpotifyPanel() {
         </button>
         <button
           type="button"
-          onClick={close}
+          onClick={handleClose}
           className="rounded-md p-1 text-[#B3B3B3] transition hover:text-white"
           aria-label="Close panel"
         >
