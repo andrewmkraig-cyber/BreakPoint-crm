@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 import {
   ChevronLeft,
   Heart,
+  Library as LibraryIcon,
   Loader2,
   Maximize2,
   Minimize2,
@@ -163,10 +164,27 @@ type ArtistPayload = {
 type View =
   | { kind: "home" }
   | { kind: "search" }
+  | { kind: "library" }
   | { kind: "playlist"; id: string; isAlbum?: boolean }
   | { kind: "liked" }
   | { kind: "artist"; id: string }
   | { kind: "nowplaying" };
+
+type SavedAlbum = {
+  id: string;
+  uri: string;
+  name: string;
+  artist: string;
+  year: string;
+  image: string;
+};
+type FollowedArtist = {
+  id: string;
+  uri: string;
+  name: string;
+  image: string;
+};
+type LibraryFilter = "all" | "playlists" | "albums" | "artists" | "podcasts";
 
 type ActiveTrack = {
   uri: string;
@@ -291,6 +309,7 @@ export function SpotifyPanel() {
     [],
   );
   const goHome = useCallback(() => setStack([{ kind: "home" }]), []);
+  const goLibrary = useCallback(() => setStack([{ kind: "library" }]), []);
 
   // Home-screen data (loaded once on first authenticated open).
   const [recentlyPlayed, setRecentlyPlayed] = useState<RecentTrack[] | null>(
@@ -298,6 +317,16 @@ export function SpotifyPanel() {
   );
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null);
   const [likedCount, setLikedCount] = useState<number | null>(null);
+
+  // Library tab data + filter state. Albums and followed artists
+  // load lazily the first time the recruiter opens the Library tab,
+  // so we don't burn the API call on every dashboard mount.
+  const [savedAlbums, setSavedAlbums] = useState<SavedAlbum[] | null>(null);
+  const [followedArtists, setFollowedArtists] = useState<
+    FollowedArtist[] | null
+  >(null);
+  const libraryLoadedRef = useRef(false);
+  const [libraryFilter, setLibraryFilter] = useState<LibraryFilter>("all");
 
   // View-specific data caches.
   const [searchQuery, setSearchQuery] = useState("");
@@ -664,6 +693,50 @@ export function SpotifyPanel() {
     if (view.kind !== "search") return;
     const id = window.setTimeout(() => searchInputRef.current?.focus(), 30);
     return () => window.clearTimeout(id);
+  }, [view.kind]);
+
+  // Library tab fetcher — fires the first time the recruiter opens
+  // the Library tab (the `libraryLoadedRef` guard prevents refetching
+  // on every navigation back). Saved albums + followed artists
+  // resolve in parallel; playlists are already loaded by the home
+  // fetcher above.
+  useEffect(() => {
+    if (view.kind !== "library") return;
+    if (libraryLoadedRef.current) return;
+    libraryLoadedRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [albumsRes, artistsRes] = await Promise.all([
+          fetch("/api/spotify/saved-albums", { cache: "no-store" }),
+          fetch("/api/spotify/followed-artists", { cache: "no-store" }),
+        ]);
+        const albumsJson = (await albumsRes.json()) as {
+          ok?: boolean;
+          albums?: SavedAlbum[];
+        };
+        const artistsJson = (await artistsRes.json()) as {
+          ok?: boolean;
+          artists?: FollowedArtist[];
+        };
+        if (cancelled) return;
+        if (albumsRes.status === 401 || artistsRes.status === 401) {
+          setAuthState({ status: "unauthenticated" });
+          return;
+        }
+        setSavedAlbums(albumsJson.ok ? albumsJson.albums ?? [] : []);
+        setFollowedArtists(
+          artistsJson.ok ? artistsJson.artists ?? [] : [],
+        );
+      } catch {
+        if (cancelled) return;
+        setSavedAlbums([]);
+        setFollowedArtists([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [view.kind]);
 
   // ────────────────────────────────────────────────────────────────
@@ -1114,12 +1187,23 @@ export function SpotifyPanel() {
         ) : view.kind === "home" ? (
           <HomeView
             recentlyPlayed={recentlyPlayed}
-            playlists={playlists}
-            likedCount={likedCount}
             onSearch={() => goTo({ kind: "search" })}
-            onOpenPlaylist={(id) => goTo({ kind: "playlist", id })}
-            onOpenLiked={() => goTo({ kind: "liked" })}
             onPlayTrack={(uri) => playTrackList([uri])}
+          />
+        ) : view.kind === "library" ? (
+          <LibraryView
+            filter={libraryFilter}
+            onFilterChange={setLibraryFilter}
+            playlists={playlists}
+            albums={savedAlbums}
+            artists={followedArtists}
+            likedCount={likedCount}
+            onOpenPlaylist={(id) => goTo({ kind: "playlist", id })}
+            onOpenAlbum={(id) =>
+              goTo({ kind: "playlist", id, isAlbum: true })
+            }
+            onOpenArtist={(id) => goTo({ kind: "artist", id })}
+            onOpenLiked={() => goTo({ kind: "liked" })}
           />
         ) : view.kind === "search" ? (
           <SearchView
@@ -1192,6 +1276,7 @@ export function SpotifyPanel() {
           hasActiveTrack={Boolean(activeTrack)}
           onHome={goHome}
           onSearch={() => goTo({ kind: "search" })}
+          onLibrary={goLibrary}
         />
       )}
       {activeTrack && (
@@ -1227,11 +1312,7 @@ export function SpotifyPanel() {
 
 function HomeView(props: {
   recentlyPlayed: RecentTrack[] | null;
-  playlists: Playlist[] | null;
-  likedCount: number | null;
   onSearch: () => void;
-  onOpenPlaylist: (id: string) => void;
-  onOpenLiked: () => void;
   onPlayTrack: (uri: string) => void;
 }) {
   const greeting = useMemo(timeOfDayGreeting, []);
@@ -1280,62 +1361,223 @@ function HomeView(props: {
             ))}
           </div>
         </Section>
-      ) : null}
+      ) : (
+        <div className="text-sm text-[#B3B3B3]">
+          Nothing played yet. Use Search or My Library to get started.
+        </div>
+      )}
+    </div>
+  );
+}
 
-      <Section title="Your Library">
-        <div className="grid grid-cols-2 gap-2">
-          {/* Liked Songs special card — purple-blue gradient + heart. */}
-          <button
-            type="button"
-            onClick={props.onOpenLiked}
-            className="group flex aspect-square flex-col justify-end overflow-hidden rounded-md p-3 text-left transition hover:brightness-110"
-            style={{
-              background:
-                "linear-gradient(135deg, #450AF5 0%, #8E8EE5 60%, #C4EFD9 100%)",
-            }}
-          >
-            <Heart className="mb-2 h-6 w-6 text-white" fill="currentColor" />
-            <div className="text-sm font-bold text-white">Liked Songs</div>
-            <div className="text-xs text-white/80">
-              {props.likedCount === null
-                ? "—"
-                : `${props.likedCount} ${props.likedCount === 1 ? "song" : "songs"}`}
-            </div>
-          </button>
-          {props.playlists === null
-            ? Array.from({ length: 3 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="aspect-square animate-pulse rounded-md bg-[#181818]"
-                />
-              ))
-            : props.playlists.slice(0, 11).map((p) => (
+// Library tab — Spotify-mobile-style "Your Library" with a filter
+// pill row (All | Playlists | Albums | Artists | Podcasts). The
+// underlying data is fetched once via the library effect above and
+// re-filtered client-side as the recruiter clicks pills.
+type LibraryRow =
+  | { kind: "liked"; total: number | null }
+  | { kind: "playlist"; id: string; name: string; image: string; owner: string }
+  | { kind: "album"; id: string; name: string; image: string; artist: string }
+  | { kind: "artist"; id: string; name: string; image: string };
+
+function LibraryView(props: {
+  filter: LibraryFilter;
+  onFilterChange: (f: LibraryFilter) => void;
+  playlists: Playlist[] | null;
+  albums: SavedAlbum[] | null;
+  artists: FollowedArtist[] | null;
+  likedCount: number | null;
+  onOpenPlaylist: (id: string) => void;
+  onOpenAlbum: (id: string) => void;
+  onOpenArtist: (id: string) => void;
+  onOpenLiked: () => void;
+}) {
+  const filters: { key: LibraryFilter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "playlists", label: "Playlists" },
+    { key: "albums", label: "Albums" },
+    { key: "artists", label: "Artists" },
+    { key: "podcasts", label: "Podcasts" },
+  ];
+
+  const loading =
+    props.playlists === null ||
+    props.albums === null ||
+    props.artists === null;
+
+  const rows: LibraryRow[] = useMemo(() => {
+    const out: LibraryRow[] = [];
+    const f = props.filter;
+    if ((f === "all" || f === "playlists") && props.playlists) {
+      // Liked Songs is treated as a playlist by Spotify mobile, so
+      // it appears at the top of the Playlists / All filters.
+      out.push({ kind: "liked", total: props.likedCount });
+      for (const p of props.playlists) {
+        out.push({
+          kind: "playlist",
+          id: p.id,
+          name: p.name,
+          image: p.image,
+          owner: p.owner,
+        });
+      }
+    }
+    if ((f === "all" || f === "albums") && props.albums) {
+      for (const a of props.albums) {
+        out.push({
+          kind: "album",
+          id: a.id,
+          name: a.name,
+          image: a.image,
+          artist: a.artist,
+        });
+      }
+    }
+    if ((f === "all" || f === "artists") && props.artists) {
+      for (const a of props.artists) {
+        out.push({
+          kind: "artist",
+          id: a.id,
+          name: a.name,
+          image: a.image,
+        });
+      }
+    }
+    return out;
+  }, [
+    props.filter,
+    props.playlists,
+    props.albums,
+    props.artists,
+    props.likedCount,
+  ]);
+
+  return (
+    <div className="flex flex-col gap-3 px-4 pb-4 pt-3">
+      <div className="text-xl font-bold text-white">Your Library</div>
+      <div className="-mx-1 flex flex-wrap gap-1.5">
+        {filters.map((f) => {
+          const active = props.filter === f.key;
+          return (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => props.onFilterChange(f.key)}
+              className={
+                "rounded-full px-3 py-1 text-xs font-medium transition " +
+                (active
+                  ? "bg-white text-black"
+                  : "bg-[#1F1F1F] text-[#B3B3B3] hover:text-white")
+              }
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {props.filter === "podcasts" ? (
+        <div className="py-6 text-center text-sm text-[#B3B3B3]">
+          No saved podcasts.
+        </div>
+      ) : loading && rows.length === 0 ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-[#B3B3B3]">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading library…
+        </div>
+      ) : rows.length === 0 ? (
+        <div className="py-6 text-center text-sm text-[#B3B3B3]">
+          Nothing saved yet for this filter.
+        </div>
+      ) : (
+        <ul className="flex flex-col">
+          {rows.map((row) => {
+            if (row.kind === "liked") {
+              return (
+                <li key="library-liked">
+                  <button
+                    type="button"
+                    onClick={props.onOpenLiked}
+                    className="flex w-full items-center gap-3 rounded p-2 text-left transition hover:bg-[#282828]"
+                  >
+                    <div
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded"
+                      style={{
+                        background:
+                          "linear-gradient(135deg, #450AF5 0%, #8E8EE5 60%, #C4EFD9 100%)",
+                      }}
+                    >
+                      <Heart
+                        className="h-6 w-6 text-white"
+                        fill="currentColor"
+                      />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">
+                        Liked Songs
+                      </div>
+                      <div className="truncate text-xs text-[#B3B3B3]">
+                        Playlist
+                        {row.total === null
+                          ? ""
+                          : ` • ${row.total} ${row.total === 1 ? "song" : "songs"}`}
+                      </div>
+                    </div>
+                  </button>
+                </li>
+              );
+            }
+            const onClick =
+              row.kind === "playlist"
+                ? () => props.onOpenPlaylist(row.id)
+                : row.kind === "album"
+                  ? () => props.onOpenAlbum(row.id)
+                  : () => props.onOpenArtist(row.id);
+            const sublabel =
+              row.kind === "playlist"
+                ? `Playlist${row.owner ? ` • ${row.owner}` : ""}`
+                : row.kind === "album"
+                  ? `Album${row.artist ? ` • ${row.artist}` : ""}`
+                  : "Artist";
+            const isArtist = row.kind === "artist";
+            return (
+              <li key={`${row.kind}-${row.id}`}>
                 <button
-                  key={p.id}
                   type="button"
-                  onClick={() => props.onOpenPlaylist(p.id)}
-                  className="group flex flex-col gap-1 rounded-md p-2 text-left transition hover:bg-[#282828]"
+                  onClick={onClick}
+                  className="flex w-full items-center gap-3 rounded p-2 text-left transition hover:bg-[#282828]"
                 >
-                  {p.image ? (
+                  {row.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={p.image}
+                      src={row.image}
                       alt=""
-                      className="aspect-square w-full rounded object-cover shadow-md"
+                      className={
+                        "h-12 w-12 shrink-0 object-cover " +
+                        (isArtist ? "rounded-full" : "rounded")
+                      }
                     />
                   ) : (
-                    <div className="aspect-square w-full rounded bg-[#282828]" />
+                    <div
+                      className={
+                        "h-12 w-12 shrink-0 bg-[#282828] " +
+                        (isArtist ? "rounded-full" : "rounded")
+                      }
+                    />
                   )}
-                  <div className="line-clamp-1 text-xs font-semibold text-white">
-                    {p.name}
-                  </div>
-                  <div className="truncate text-[11px] text-[#B3B3B3]">
-                    {p.owner}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-white">
+                      {row.name}
+                    </div>
+                    <div className="truncate text-xs text-[#B3B3B3]">
+                      {sublabel}
+                    </div>
                   </div>
                 </button>
-              ))}
-        </div>
-      </Section>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -1879,6 +2121,7 @@ function BottomNav(props: {
   hasActiveTrack: boolean;
   onHome: () => void;
   onSearch: () => void;
+  onLibrary: () => void;
 }) {
   return (
     <nav
@@ -1917,6 +2160,19 @@ function BottomNav(props: {
       >
         <Search className="h-4 w-4" />
         Search
+      </button>
+      <button
+        type="button"
+        onClick={props.onLibrary}
+        className="flex flex-1 flex-col items-center gap-0.5 py-1 text-[10px] font-medium transition"
+        style={{
+          color:
+            props.view.kind === "library" ? "#fff" : COLOR_TEXT_SECONDARY,
+        }}
+        aria-label="My Library"
+      >
+        <LibraryIcon className="h-4 w-4" />
+        My Library
       </button>
     </nav>
   );

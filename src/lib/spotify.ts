@@ -23,6 +23,9 @@ export const SPOTIFY_SCOPES = [
   "playlist-read-collaborative",
   "user-read-recently-played",
   "user-top-read",
+  // user-follow-read powers the Library tab's Artists filter via
+  // GET /me/following — without it Spotify 403s the request.
+  "user-follow-read",
 ].join(" ");
 
 export const SPOTIFY_COOKIE = {

@@ -563,17 +563,6 @@ export function YouTubePanel() {
               </div>
             ) : (
               <div className="flex flex-col">
-                {videoResults.length > 0 && (
-                  <ResultSection title="Videos">
-                    <ul className="flex flex-col">
-                      {videoResults.map((v) => (
-                        <li key={`video-${v.videoId}`}>
-                          <VideoRow video={v} onClick={() => playVideo(v)} />
-                        </li>
-                      ))}
-                    </ul>
-                  </ResultSection>
-                )}
                 {channelResults.length > 0 && (
                   <ResultSection title="Channels">
                     <ul className="flex flex-col">
@@ -583,6 +572,17 @@ export function YouTubePanel() {
                             channel={c}
                             onClick={() => void openChannel(c)}
                           />
+                        </li>
+                      ))}
+                    </ul>
+                  </ResultSection>
+                )}
+                {videoResults.length > 0 && (
+                  <ResultSection title="Videos">
+                    <ul className="flex flex-col">
+                      {videoResults.map((v) => (
+                        <li key={`video-${v.videoId}`}>
+                          <VideoRow video={v} onClick={() => playVideo(v)} />
                         </li>
                       ))}
                     </ul>
@@ -838,7 +838,7 @@ function LoadMoreButton(props: { loading: boolean; onClick: () => void }) {
             <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
           </>
         ) : (
-          "Load more"
+          "View more"
         )}
       </Button>
     </div>
