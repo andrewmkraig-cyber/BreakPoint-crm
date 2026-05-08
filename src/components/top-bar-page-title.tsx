@@ -100,8 +100,13 @@ function resolveSpec(
   return { title: { label: "" } };
 }
 
+// Action chip ("+ New Job" / "+ Compose" / etc.) sits to the right
+// of the page title in the topbar. Sized to read as a sibling of the
+// 22px serif title rather than dominating it: px-2.5 py-1 text-[11px]
+// puts the chip at ~24px tall, matching the title's optical height
+// so items-center alignment looks visually centered on every page.
 const ACTION_BUTTON_CLASS =
-  "inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
+  "inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
 export function TopBarPageTitle() {
   const pathname = usePathname();
@@ -121,7 +126,7 @@ export function TopBarPageTitle() {
   };
 
   return (
-    <div className="flex min-w-0 items-center gap-3">
+    <div className="flex min-w-0 items-center gap-2.5">
       {spec.title.href ? (
         <Link
           href={spec.title.href}
