@@ -21,8 +21,13 @@ import {
 // the persistent now-playing bar doesn't crowd out content above it.
 const DEFAULT_W = 380;
 const DEFAULT_H = 600;
-const MIN_W = 320;
-const MIN_H = 400;
+// Lower than YouTube's 320x260 floor so Andrew can park the Spotify
+// panel in the empty sidebar slot under Phone if he wants. The body
+// already has overflow-y-auto and the layout uses min-w-0 flex-1
+// throughout, so content scales / scrolls proportionately as the
+// panel shrinks toward this floor.
+const MIN_W = 200;
+const MIN_H = 240;
 const EDGE_GAP = 24;
 
 export type SpotifyPanelPosition = { x: number; y: number };
