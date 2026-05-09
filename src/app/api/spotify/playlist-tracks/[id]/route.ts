@@ -476,18 +476,16 @@ export async function GET(
     // explicitly opts out of episodes — we don't render those.
     //
     // Albums: /v1/albums/{id}/tracks (no /items endpoint exists).
-    // `fields=` explicitly enumerates every track property the mapper
-    // reads. Without it, Spotify's /items endpoint has been observed
-    // returning track objects without `uri` for entire pages — the
-    // explicit field list forces uri+id+name+type+artists+album+
-    // duration_ms back into the response. URL-encoded because the
-    // fields grammar uses parens and commas.
-    const playlistItemFields = encodeURIComponent(
-      "items(track(id,uri,name,type,artists(id,name),album(name,images),duration_ms,external_urls,is_local)),total,next",
-    );
+    //
+    // No `fields=` filter on playlist /items: an earlier attempt to
+    // narrow the projection (uri,id,name,type,artists,album,...)
+    // returned items where every track lacked uri AND id (mapper saw
+    // missingUri=50, mapped=0 across the whole page). Fetching the
+    // full track object is larger over the wire but reliably includes
+    // both identifiers.
     const primaryPath = isAlbum
       ? `/v1/albums/${id}/tracks?limit=50&offset=0&market=${market}`
-      : `/v1/playlists/${id}/items?limit=50&offset=0&market=${market}&additional_types=track&fields=${playlistItemFields}`;
+      : `/v1/playlists/${id}/items?limit=50&offset=0&market=${market}&additional_types=track`;
     stage("pre-primary", { primaryPath: safePath(primaryPath) });
     const primaryRes = await spotifyApiProxy(primaryPath, {
       tag: isAlbum ? "album/tracks" : "playlist/items-primary",
@@ -521,6 +519,12 @@ export async function GET(
     let hrefCounts: ProjectionCounts | null = null;
     let embeddedCounts: ProjectionCounts | null = null;
 
+    // First raw item captured from whichever upstream attempt actually
+    // returned data. Surfaced as debug.sampleFirstTrackShape ONLY when
+    // mapping drops every item — lets the recruiter see Spotify's exact
+    // payload shape from the browser Network tab without trawling logs.
+    let sampleFirstItem: unknown = null;
+
     // Per-attempt upstream snapshots — surfaced verbatim in the JSON
     // response so the recruiter can see Spotify's exact reason in the
     // browser Network tab without trawling Vercel logs. Bodies run
@@ -547,6 +551,9 @@ export async function GET(
     if (primaryRes.ok) {
       const data = primaryRes.data as TracksPayload;
       tracksTotal = typeof data.total === "number" ? data.total : null;
+      if (Array.isArray(data.items) && data.items.length > 0 && !sampleFirstItem) {
+        sampleFirstItem = data.items[0];
+      }
       logFirstItemShape(
         isAlbum ? "album/tracks" : "playlist/items-primary",
         data.items as unknown[] | undefined,
@@ -562,7 +569,7 @@ export async function GET(
     // succeed on /tracks even when /items is the documented current
     // path — try it before giving up.
     if (!primaryRes.ok && !isAlbum) {
-      const fallbackPath = `/v1/playlists/${id}/tracks?limit=50&offset=0&market=${market}&fields=${playlistItemFields}`;
+      const fallbackPath = `/v1/playlists/${id}/tracks?limit=50&offset=0&market=${market}`;
       const fallbackRes = await spotifyApiProxy(fallbackPath, {
         tag: "playlist/tracks-fallback",
       });
@@ -577,6 +584,9 @@ export async function GET(
       if (fallbackRes.ok) {
         const data = fallbackRes.data as TracksPayload;
         tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
+        if (Array.isArray(data.items) && data.items.length > 0 && !sampleFirstItem) {
+          sampleFirstItem = data.items[0];
+        }
         logFirstItemShape(
           "playlist/tracks-fallback",
           data.items as unknown[] | undefined,
@@ -623,6 +633,9 @@ export async function GET(
       if (hrefRes.ok) {
         const data = hrefRes.data as TracksPayload;
         tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
+        if (Array.isArray(data.items) && data.items.length > 0 && !sampleFirstItem) {
+          sampleFirstItem = data.items[0];
+        }
         logFirstItemShape(
           "playlist/tracks-href",
           data.items as unknown[] | undefined,
@@ -651,6 +664,9 @@ export async function GET(
 
     // Step D — embedded fallback.
     if (tracks.length === 0 && Array.isArray(header.tracks?.items)) {
+      if (header.tracks!.items!.length > 0 && !sampleFirstItem) {
+        sampleFirstItem = header.tracks!.items![0];
+      }
       logFirstItemShape(
         "playlist/tracks-embedded",
         header.tracks!.items as unknown[],
@@ -778,6 +794,12 @@ export async function GET(
           href: hrefCounts,
           embedded: embeddedCounts,
         },
+        // Only attached when projection produced zero tracks despite
+        // the upstream returning items — gives the recruiter a direct
+        // view of Spotify's actual payload shape so the next mapper
+        // tweak can be made against real data, not guesses.
+        sampleFirstTrackShape:
+          tracks.length === 0 && sampleFirstItem ? sampleFirstItem : null,
       },
     });
     return applyRefreshedSpotifyCookies(res, refreshed);
