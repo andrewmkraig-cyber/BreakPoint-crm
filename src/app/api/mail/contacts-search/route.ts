@@ -3,24 +3,25 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { searchGmailSentRecipients } from "@/lib/gmail-recipients";
+import { getGmailSentRecipients } from "@/lib/gmail-recipients";
 
 // GET /api/mail/contacts-search?q=… — typeahead source for the mail
 // composer's To field. Three sources, all merged into a single
-// deduped { name, email } list (max 6):
+// deduped { name, email } list (max 8), priority-sorted:
 //
 //   1. Candidates (firstName / lastName / email), org-scoped.
 //   2. Contacts (firstName / lastName / name + every entry in
 //      emails[]), org-scoped.
 //   3. Gmail Sent recipients — anyone the recruiter has emailed
-//      previously, even if they aren't in Ace. Pulled live from
-//      Gmail using the readonly scope; cached 5min in-process so a
-//      typeahead burst on the same query doesn't burn 11 Gmail
-//      calls per keystroke.
+//      previously, even if they aren't in Ace. Snapshot of the
+//      last 500 sent messages, cached 30min in-process. Filtered
+//      against the query in-route so we hit Gmail at most once per
+//      30 min per user, not per keystroke.
 //
-// The composer hits this on every keystroke (debounced 200ms
-// client-side) so the route stays narrow: no joins, no extra fields
-// beyond what the dropdown renders.
+// Sort order: exact email match → prefix-of-local-part →
+// prefix-of-name → contains. Within each tier, source rank wins
+// (Ace > Gmail) since manually curated contacts outrank random
+// sent-mail addresses.
 //
 // Contact.emails is text[] in Postgres; Prisma's array filters can't
 // do a partial-match on element contents, so the Contact branch
@@ -30,7 +31,7 @@ import { searchGmailSentRecipients } from "@/lib/gmail-recipients";
 
 export const dynamic = "force-dynamic";
 
-const MAX_RESULTS = 6;
+const MAX_RESULTS = 8;
 const MIN_QUERY_LEN = 2;
 const PER_SOURCE_LIMIT = 20;
 
@@ -41,6 +42,26 @@ type ContactRow = {
   name: string | null;
   emails: string[] | null;
 };
+
+type Candidate = { name: string; email: string; sourceRank: number };
+
+// Score a candidate against the query. Higher is better.
+//   3 — exact email match
+//   2 — local-part starts with the query, or name starts with it
+//   1 — substring match anywhere
+//   0 — no match (caller filters these out)
+// sourceRank breaks ties: Ace candidates/contacts (rank 1) come
+// before Gmail history (rank 0) at the same score level.
+function scoreMatch(name: string, email: string, q: string): number {
+  const lowerEmail = email.toLowerCase();
+  const lowerName = name.toLowerCase();
+  if (lowerEmail === q) return 3;
+  const localPart = lowerEmail.split("@")[0] ?? "";
+  if (localPart.startsWith(q)) return 2;
+  if (lowerName.startsWith(q)) return 2;
+  if (lowerEmail.includes(q) || lowerName.includes(q)) return 1;
+  return 0;
+}
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -64,8 +85,9 @@ export async function GET(req: NextRequest) {
   if (q.length < MIN_QUERY_LEN) {
     return NextResponse.json({ ok: true, contacts: [] });
   }
-  // Escape LIKE meta-characters in the user's query so a literal "%"
-  // or "_" doesn't blow the search wide open.
+  const lowerQ = q.toLowerCase();
+  // Escape LIKE meta-characters so a literal "%" or "_" doesn't blow
+  // the search wide open.
   const escaped = q.replace(/[\\%_]/g, (m) => "\\" + m);
   const pattern = `%${escaped}%`;
 
@@ -95,61 +117,72 @@ export async function GET(req: NextRequest) {
     LIMIT ${PER_SOURCE_LIMIT}
   `;
 
-  // Gmail Sent recipients run in parallel with the DB queries. The
-  // helper swallows its own errors and returns [] on any failure, so
-  // a Gmail outage just hides those suggestions instead of breaking
-  // the route.
+  // Gmail Sent recipients: cached snapshot of the last 500 sent
+  // messages, refreshed every 30 min. Helper returns [] on any
+  // failure so a Gmail outage just hides these rows.
   const gmailPromise: Promise<{ name: string; email: string }[]> = user
-    ? searchGmailSentRecipients(user.id, q)
+    ? getGmailSentRecipients(user.id)
     : Promise.resolve([]);
 
-  const [candidates, contacts, gmailContacts] = await Promise.all([
+  const [aceCandidates, aceContacts, gmailRecipients] = await Promise.all([
     candidatesPromise,
     contactsPromise,
     gmailPromise,
   ]);
 
-  const seen = new Set<string>();
-  const out: { name: string; email: string }[] = [];
-  function push(name: string, email: string | null | undefined) {
+  // Dedupe across all sources by lowercased email. Ace sources are
+  // pushed first so the dedupe set keeps Ace versions of an address
+  // (with the canonical Ace display name) over a Gmail header parse.
+  const byEmail = new Map<string, Candidate>();
+
+  function add(name: string, email: string | null | undefined, sourceRank: number) {
     if (!email) return;
     const key = email.toLowerCase();
-    if (seen.has(key)) return;
-    seen.add(key);
-    out.push({ name: name.trim() || email, email });
+    if (byEmail.has(key)) return;
+    byEmail.set(key, {
+      name: name.trim() || email,
+      email,
+      sourceRank,
+    });
   }
 
-  for (const c of candidates) {
+  for (const c of aceCandidates) {
     const fullName = [c.firstName, c.lastName]
       .filter((s): s is string => Boolean(s))
       .join(" ")
       .trim();
-    push(fullName, c.email);
-    if (out.length >= MAX_RESULTS) break;
+    add(fullName, c.email, 1);
   }
-  for (const c of contacts) {
+  for (const c of aceContacts) {
     const display =
       c.name?.trim() ||
       [c.firstName, c.lastName].filter((s): s is string => Boolean(s)).join(" ").trim() ||
       "";
     for (const email of c.emails ?? []) {
-      push(display, email);
-      if (out.length >= MAX_RESULTS) break;
+      add(display, email, 1);
     }
-    if (out.length >= MAX_RESULTS) break;
   }
-  // Gmail Sent recipients fill any remaining slots. They go last so
-  // Ace candidates/contacts (which the recruiter has manually
-  // curated) outrank random sent-mail addresses when both match —
-  // typing "ben" prefers the Ace candidate over a Bennett at a
-  // vendor address.
-  for (const c of gmailContacts) {
-    push(c.name, c.email);
-    if (out.length >= MAX_RESULTS) break;
+  for (const r of gmailRecipients) {
+    add(r.name, r.email, 0);
   }
+
+  // Filter to entries that match the query, then sort by score and
+  // source rank. Equal-score-and-rank ties fall back to email order
+  // for stable output.
+  const scored = Array.from(byEmail.values())
+    .map((c) => ({ ...c, score: scoreMatch(c.name, c.email, lowerQ) }))
+    .filter((c) => c.score > 0)
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.sourceRank !== a.sourceRank) return b.sourceRank - a.sourceRank;
+      return a.email.localeCompare(b.email);
+    });
 
   return NextResponse.json({
     ok: true,
-    contacts: out.slice(0, MAX_RESULTS),
+    contacts: scored.slice(0, MAX_RESULTS).map(({ name, email }) => ({
+      name,
+      email,
+    })),
   });
 }
