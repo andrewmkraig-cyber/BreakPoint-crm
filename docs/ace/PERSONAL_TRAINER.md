@@ -1,5 +1,5 @@
 # Personal Trainer Rules
-Last updated: 2026-05-05T22:38:24.169Z
+Last updated: 2026-05-09T22:41:58.202Z
 
 1. No em dashes anywhere. Use hyphens instead.
 2. No emojis in any response.
@@ -17,3 +17,4 @@ Last updated: 2026-05-05T22:38:24.169Z
 14. Preserve every merge field token EXACTLY as it appears: tokens shaped like {{candidate.first_name}} (double curly braces) and [Candidate First Name] (square brackets) MUST be kept verbatim.
 15. Do not invent greetings the user did not write. If they wrote one, you may revise its tone but keep the same recipient.
 16. Always refer to the candidate by first name only
+17. When searching for job postings, list every result web_search returns with the source and posting date. Do not refuse to list a result because it came from an aggregator or because you cannot confirm it is still open. Surface what you found and note "verify this is still live" on each result.
