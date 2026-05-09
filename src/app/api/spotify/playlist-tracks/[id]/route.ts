@@ -159,10 +159,12 @@ function deriveIdFromUri(uri: string): string {
 //   - entry is null/undefined
 //   - entry.track (playlist shape) is null
 //   - track.type is set and not "track" (episodes etc.)
-//   - track.uri is missing — uri is the canonical handle for queueing
-// Anything else (missing id, missing name, missing album art, missing
-// preview_url, missing external_urls, missing markets) still maps —
-// we backfill with safe defaults so the row still renders.
+//   - BOTH track.uri and track.id are missing — we need at least one
+//     identifier to queue the row. When uri is absent but id exists,
+//     we synthesize `spotify:track:${id}` (Spotify's canonical form).
+// Anything else (missing name, missing album art, missing preview_url,
+// missing external_urls, missing markets) still maps — we backfill with
+// safe defaults so the row still renders.
 function projectItems(
   items: (PlaylistTrackEntry | Track | null)[] | undefined,
   fallbackName: string,
@@ -197,11 +199,12 @@ function projectItems(
       counts.nonTrackItems += 1;
       continue;
     }
-    if (!t.uri) {
+    if (!t.uri && !t.id) {
       counts.missingUriItems += 1;
       continue;
     }
-    const id = t.id ?? deriveIdFromUri(t.uri);
+    const uri = t.uri ?? `spotify:track:${t.id}`;
+    const id = t.id ?? deriveIdFromUri(uri);
     const name = t.name ?? "Unknown title";
     const artist = (t.artists ?? [])
       .map((a) => a?.name)
@@ -210,7 +213,7 @@ function projectItems(
     tracks.push({
       index: idx,
       id,
-      uri: t.uri,
+      uri,
       name,
       artist,
       albumName: t.album?.name ?? fallbackName ?? "",
@@ -375,9 +378,18 @@ export async function GET(
     // explicitly opts out of episodes — we don't render those.
     //
     // Albums: /v1/albums/{id}/tracks (no /items endpoint exists).
+    // `fields=` explicitly enumerates every track property the mapper
+    // reads. Without it, Spotify's /items endpoint has been observed
+    // returning track objects without `uri` for entire pages — the
+    // explicit field list forces uri+id+name+type+artists+album+
+    // duration_ms back into the response. URL-encoded because the
+    // fields grammar uses parens and commas.
+    const playlistItemFields = encodeURIComponent(
+      "items(track(id,uri,name,type,artists(id,name),album(name,images),duration_ms,external_urls,is_local)),total,next",
+    );
     const primaryPath = isAlbum
       ? `/v1/albums/${id}/tracks?limit=50&offset=0&market=${market}`
-      : `/v1/playlists/${id}/items?limit=50&offset=0&market=${market}&additional_types=track`;
+      : `/v1/playlists/${id}/items?limit=50&offset=0&market=${market}&additional_types=track&fields=${playlistItemFields}`;
     const primaryRes = await spotifyApiProxy(primaryPath, {
       tag: isAlbum ? "album/tracks" : "playlist/items-primary",
     });
@@ -443,7 +455,7 @@ export async function GET(
     // succeed on /tracks even when /items is the documented current
     // path — try it before giving up.
     if (!primaryRes.ok && !isAlbum) {
-      const fallbackPath = `/v1/playlists/${id}/tracks?limit=50&offset=0&market=${market}`;
+      const fallbackPath = `/v1/playlists/${id}/tracks?limit=50&offset=0&market=${market}&fields=${playlistItemFields}`;
       const fallbackRes = await spotifyApiProxy(fallbackPath, {
         tag: "playlist/tracks-fallback",
       });
