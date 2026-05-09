@@ -71,7 +71,7 @@ async function processTab(
     return {
       tab,
       status: "failed",
-      error: e instanceof Error ? e.message : "NewsAPI call failed",
+      error: e instanceof Error ? e.message : "headline generation failed",
     };
   }
   if (!headlines) {

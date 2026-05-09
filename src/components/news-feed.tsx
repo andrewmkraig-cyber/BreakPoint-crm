@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
+import { toast } from "sonner";
 import { WordOfDayCard } from "@/components/word-of-day-card";
 import { ChessPuzzle } from "@/components/chess-puzzle";
 import { OnThisDay } from "@/components/on-this-day";
@@ -82,10 +83,43 @@ export function NewsFeed() {
   // initiatedRef lives outside React state so the fetch effect depends
   // only on `active`.
   const initiatedRef = useRef<Set<TabKey>>(new Set<TabKey>());
+  const [refreshing, setRefreshing] = useState(false);
   // Read state is local-only (no persistence). Keyed by
   // `${activeTab}::${headline}` so the same article in two tabs tracks
   // independently.
   const [readKeys, setReadKeys] = useState<Set<string>>(new Set());
+
+  async function fetchTab(tab: TabKey): Promise<TabState> {
+    try {
+      const res = await fetch(
+        `/api/news-feed?tab=${encodeURIComponent(tab)}`,
+        { cache: "no-store" },
+      );
+      const json = (await res.json()) as
+        | {
+            ok: true;
+            tab: TabKey;
+            generatedDate: string;
+            headlines: Headline[];
+          }
+        | { ok: false; error: string };
+      if (!res.ok || !("ok" in json) || !json.ok) {
+        const error =
+          "ok" in json && !json.ok ? json.error : `HTTP ${res.status}`;
+        return { status: "error", error };
+      }
+      return {
+        status: "ready",
+        headlines: json.headlines ?? [],
+        generatedDate: json.generatedDate,
+      };
+    } catch (e) {
+      return {
+        status: "error",
+        error: e instanceof Error ? e.message : "Failed to load",
+      };
+    }
+  }
 
   useEffect(() => {
     if (collapsed) return;
@@ -94,54 +128,55 @@ export function NewsFeed() {
     setByTab((prev) => ({ ...prev, [active]: { status: "loading" } }));
     let cancelled = false;
     void (async () => {
-      try {
-        const res = await fetch(
-          `/api/news-feed?tab=${encodeURIComponent(active)}`,
-          { cache: "no-store" },
-        );
-        const json = (await res.json()) as
-          | {
-              ok: true;
-              tab: TabKey;
-              generatedDate: string;
-              headlines: Headline[];
-            }
-          | { ok: false; error: string };
-        if (cancelled) return;
-        if (!res.ok || !("ok" in json) || !json.ok) {
-          const error =
-            "ok" in json && !json.ok ? json.error : `HTTP ${res.status}`;
-          setByTab((prev) => ({
-            ...prev,
-            [active]: { status: "error", error },
-          }));
-          initiatedRef.current.delete(active);
-          return;
-        }
-        setByTab((prev) => ({
-          ...prev,
-          [active]: {
-            status: "ready",
-            headlines: json.headlines ?? [],
-            generatedDate: json.generatedDate,
-          },
-        }));
-      } catch (e) {
-        if (cancelled) return;
-        setByTab((prev) => ({
-          ...prev,
-          [active]: {
-            status: "error",
-            error: e instanceof Error ? e.message : "Failed to load",
-          },
-        }));
-        initiatedRef.current.delete(active);
-      }
+      const next = await fetchTab(active);
+      if (cancelled) return;
+      setByTab((prev) => ({ ...prev, [active]: next }));
+      if (next.status === "error") initiatedRef.current.delete(active);
     })();
     return () => {
       cancelled = true;
     };
   }, [active, collapsed]);
+
+  async function handleRefresh() {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      const res = await fetch("/api/news-feed/cache", { method: "DELETE" });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      // Cache is empty for all 4 tabs now — clear initiation tracking so
+      // the next click on any tab re-fetches, and pull the active tab
+      // immediately so the recruiter sees fresh headlines without an
+      // extra click.
+      initiatedRef.current.clear();
+      initiatedRef.current.add(active);
+      setByTab({
+        general: { status: "idle" },
+        accounting: { status: "idle" },
+        recruiting: { status: "idle" },
+        ai: { status: "idle" },
+        [active]: { status: "loading" },
+      });
+      const next = await fetchTab(active);
+      setByTab((prev) => ({ ...prev, [active]: next }));
+      if (next.status === "error") {
+        initiatedRef.current.delete(active);
+        toast.error(`Refresh failed: ${next.error}`);
+      } else {
+        toast.success("News refreshed.");
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Refresh failed";
+      toast.error(msg);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const current = byTab[active];
   const stories = current.status === "ready" ? current.headlines : [];
@@ -205,32 +240,51 @@ export function NewsFeed() {
         <div id="today-briefing-body">
           {/* Segmented tab box, mirrors the Active/Inactive control on
               /jobs and the Applied/Kept control on /applicants so every
-              tab strip in the app reads as one control language. */}
-          <div
-            role="tablist"
-            aria-label="Briefing topics"
-            className="mt-3 mb-3 inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm"
-          >
-            {TABS.map((t) => {
-              const selected = t.key === active;
-              return (
-                <button
-                  key={t.key}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  onClick={() => setActive(t.key)}
-                  className={
-                    "rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors " +
-                    (selected
-                      ? "bg-court-accent-tint text-court-accent-dark"
-                      : "text-court-fg-muted hover:bg-court-surface-subtle")
-                  }
-                >
-                  {t.label}
-                </button>
-              );
-            })}
+              tab strip in the app reads as one control language. The
+              refresh icon to its right wipes today's cached rows for
+              all four tabs so the next read regenerates fresh
+              headlines via Claude web_search. */}
+          <div className="mt-3 mb-3 flex items-center gap-2">
+            <div
+              role="tablist"
+              aria-label="Briefing topics"
+              className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm"
+            >
+              {TABS.map((t) => {
+                const selected = t.key === active;
+                return (
+                  <button
+                    key={t.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setActive(t.key)}
+                    className={
+                      "rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors " +
+                      (selected
+                        ? "bg-court-accent-tint text-court-accent-dark"
+                        : "text-court-fg-muted hover:bg-court-surface-subtle")
+                    }
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              aria-label="Refresh news"
+              title="Refresh news"
+              className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-50"
+            >
+              {refreshing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </button>
           </div>
 
           <div role="tabpanel">
