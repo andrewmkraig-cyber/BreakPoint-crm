@@ -5,32 +5,15 @@ import { ArrowLeft, X } from "lucide-react";
 import { Chess, type Square } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-// Interactive Lichess puzzle in the 800-1200 rating band. Pulls a
-// random easy puzzle from /api/puzzle/next?difficulty=easiest, renders
-// the position with react-chessboard, and validates each user move
-// against the published solution. The daily endpoint trends 1800-2200
-// rating which is too sharp for a quick dashboard distraction; the
-// `easiest` difficulty band on the `next` endpoint tops out around
-// 1200, which is the level Andrew asked for. The endpoint ships
-// initialPly without an explicit fen, so deriveFen() replays the PGN.
+// Interactive Lichess puzzle in the 800-1200 rating band, shared across
+// the org. The puzzle is selected once per (org, ET day) by
+// /api/chess-puzzle, which hits Lichess and persists the result so
+// every recruiter in the org sees the same board. Streak state stays
+// in localStorage per browser — solving as the org would be weird
+// (one person clicks a piece, the other gets credit).
 //
 // Convention: solution[0] is the user's first move (FEN side-to-move
 // == user's color); odd-indexed moves are auto-played by the opponent.
-
-type LichessPuzzleResponse = {
-  puzzle?: {
-    id?: string;
-    rating?: number;
-    plays?: number;
-    initialPly?: number;
-    solution?: string[];
-    themes?: string[];
-    fen?: string;
-  };
-  game?: {
-    pgn?: string;
-  };
-};
 
 type Puzzle = {
   id: string;
@@ -38,6 +21,13 @@ type Puzzle = {
   fen: string;
   solution: string[];
   themes: string[];
+};
+
+type ChessPuzzleApiResponse = {
+  ok: boolean;
+  cached?: boolean;
+  puzzle?: Puzzle;
+  error?: string;
 };
 
 type Status =
@@ -56,18 +46,11 @@ type UciMove = { from: Square; to: Square; promotion?: string };
 // Streak state persists across reloads so the day count survives a
 // hard refresh. failedDate stops a same-day re-solve from un-doing a
 // wrong move's reset — once you blow it for the day, you're at 0
-// until tomorrow.
+// until tomorrow. Stays per-browser even though the puzzle itself is
+// shared org-wide.
 const STREAK_KEY = "ace.chess.streak";
 const LAST_SOLVED_KEY = "ace.chess.lastSolvedDate";
 const FAILED_DATE_KEY = "ace.chess.failedDate";
-
-// Daily puzzle cache. Without this, /api/puzzle/next returns a fresh
-// random puzzle on every page load and the "one puzzle per day"
-// model breaks — Andrew would solve at breakfast, refresh later, and
-// see a different puzzle the same day. localStorage cache stamps the
-// puzzle with today's ET date and reuses it until midnight ET.
-const PUZZLE_CACHE_KEY = "ace.chess.puzzle";
-const PUZZLE_DATE_KEY = "ace.chess.puzzleDate";
 
 function todayET(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -98,68 +81,12 @@ function readStreak(): number {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
 }
 
-function loadCachedPuzzle(): Puzzle | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const stamp = window.localStorage.getItem(PUZZLE_DATE_KEY);
-    if (stamp !== todayET()) return null;
-    const raw = window.localStorage.getItem(PUZZLE_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<Puzzle>;
-    if (
-      typeof parsed.id === "string" &&
-      typeof parsed.rating === "number" &&
-      typeof parsed.fen === "string" &&
-      Array.isArray(parsed.solution) &&
-      Array.isArray(parsed.themes)
-    ) {
-      return parsed as Puzzle;
-    }
-  } catch {
-    // fall through — corrupted cache, just refetch
-  }
-  return null;
-}
-
-function saveCachedPuzzle(puzzle: Puzzle): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(PUZZLE_CACHE_KEY, JSON.stringify(puzzle));
-    window.localStorage.setItem(PUZZLE_DATE_KEY, todayET());
-  } catch {
-    // localStorage full / disabled — non-fatal, just won't cache
-  }
-}
-
 function parseUci(uci: string): UciMove {
   return {
     from: uci.slice(0, 2) as Square,
     to: uci.slice(2, 4) as Square,
     promotion: uci.length > 4 ? uci[4] : undefined,
   };
-}
-
-// Lichess daily endpoint sometimes ships only a PGN — derive the FEN
-// by replaying the game up to initialPly when puzzle.fen is missing.
-function deriveFen(payload: LichessPuzzleResponse): string | null {
-  const fen = payload.puzzle?.fen;
-  if (fen) return fen;
-  const pgn = payload.game?.pgn;
-  const ply = payload.puzzle?.initialPly;
-  if (!pgn || ply == null) return null;
-  try {
-    const g = new Chess();
-    g.loadPgn(pgn);
-    const history = g.history({ verbose: true });
-    g.reset();
-    for (let i = 0; i <= ply && i < history.length; i++) {
-      const h = history[i];
-      g.move({ from: h.from, to: h.to, promotion: h.promotion });
-    }
-    return g.fen();
-  } catch {
-    return null;
-  }
 }
 
 export function ChessPuzzle() {
@@ -218,38 +145,22 @@ export function ChessPuzzle() {
   }
 
   useEffect(() => {
-    // Day-stable cache wins over hitting Lichess again — the streak
-    // model assumes the puzzle is fixed across the ET day.
-    const cached = loadCachedPuzzle();
-    if (cached) {
-      setPuzzle(cached);
-      return;
-    }
+    // Server route is authoritative — picks once per (org, ET day) and
+    // caches in Neon, so every recruiter in the org lands on the same
+    // board. No client-side localStorage cache here on purpose: a
+    // stale per-browser copy would diverge from the org-shared row
+    // after midnight ET.
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch(
-          "https://lichess.org/api/puzzle/next?difficulty=easiest",
-          { cache: "no-store" },
-        );
+        const res = await fetch("/api/chess-puzzle", { cache: "no-store" });
         if (!res.ok) return;
-        const json = (await res.json()) as LichessPuzzleResponse;
+        const json = (await res.json()) as ChessPuzzleApiResponse;
         if (cancelled) return;
-        const id = json.puzzle?.id;
-        const solution = json.puzzle?.solution ?? [];
-        const fen = deriveFen(json);
-        if (!id || solution.length === 0 || !fen) return;
-        const next: Puzzle = {
-          id,
-          rating: json.puzzle?.rating ?? 0,
-          fen,
-          solution,
-          themes: json.puzzle?.themes ?? [],
-        };
-        saveCachedPuzzle(next);
-        setPuzzle(next);
+        if (!json.ok || !json.puzzle) return;
+        setPuzzle(json.puzzle);
       } catch {
-        // Silent — pill stays hidden if Lichess is unreachable.
+        // Silent — pill stays hidden if the API is unreachable.
       }
     })();
     return () => {

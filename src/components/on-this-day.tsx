@@ -3,27 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import { Globe, X } from "lucide-react";
 
-// On-this-day chip in the briefing header. Pulls from Wikipedia's
-// public REST endpoint — no auth, no caching layer needed since
-// Wikipedia returns the same set of historic events for a given
-// MM/DD every year. We pick a single notable event (preferring older
-// over newer so the fact lands as something Andrew is unlikely to
-// have lived through) and surface it in the popover. The chip itself
-// renders eagerly so a slow / failed fetch never causes the chip to
-// silently disappear from the briefing header.
-
-type WikiEvent = {
-  year?: number;
-  text?: string;
-};
-
-type WikiResponse = {
-  events?: WikiEvent[];
-};
+// On-this-day chip in the briefing header. The event is selected once
+// per (org, ET day) by /api/on-this-day, which hits Wikipedia and
+// persists the chosen year + text — so every recruiter in the org
+// sees the same fun fact when discussing it. The chip renders eagerly
+// so a slow / failed fetch never causes the chip to silently
+// disappear from the briefing header.
 
 type Pick = {
   year: number;
   text: string;
+};
+
+type OnThisDayApiResponse = {
+  ok: boolean;
+  cached?: boolean;
+  year?: number;
+  text?: string;
+  error?: string;
 };
 
 type Status =
@@ -31,33 +28,12 @@ type Status =
   | { phase: "ready"; pick: Pick }
   | { phase: "error"; message: string };
 
-function todayMMDD(): { mm: string; dd: string; label: string } {
-  const fmt = new Intl.DateTimeFormat("en-US", {
+function todayLabel(): string {
+  return new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     month: "long",
     day: "numeric",
-  });
-  const label = fmt.format(new Date());
-  const mmFmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/New_York",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  const [mm, dd] = mmFmt.format(new Date()).split("-");
-  return { mm, dd, label };
-}
-
-// Bias toward older events with a substantive blurb so the result
-// reads as a fun fact rather than a recent-tragedy ticker.
-function pickEvent(events: WikiEvent[]): Pick | null {
-  const candidates = events
-    .filter((e) => typeof e.year === "number" && (e.text ?? "").length > 30)
-    .sort((a, b) => (a.year ?? 0) - (b.year ?? 0));
-  if (candidates.length === 0) return null;
-  const old = candidates.filter((e) => (e.year ?? 0) < 1950);
-  const pool = old.length > 0 ? old : candidates;
-  const pick = pool[Math.floor(Math.random() * pool.length)];
-  return { year: pick.year ?? 0, text: pick.text ?? "" };
+  }).format(new Date());
 }
 
 export function OnThisDay() {
@@ -71,23 +47,24 @@ export function OnThisDay() {
 
   useEffect(() => {
     let cancelled = false;
+    setDateLabel(todayLabel());
     void (async () => {
       try {
-        const { mm, dd, label } = todayMMDD();
-        setDateLabel(label);
-        const res = await fetch(
-          `https://en.wikipedia.org/api/rest_v1/feed/onthisday/events/${mm}/${dd}`,
-          { cache: "no-store" },
-        );
+        const res = await fetch("/api/on-this-day", { cache: "no-store" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = (await res.json()) as WikiResponse;
+        const json = (await res.json()) as OnThisDayApiResponse;
         if (cancelled) return;
-        const pick = pickEvent(json.events ?? []);
-        if (!pick) {
-          setStatus({ phase: "error", message: "No events for today" });
+        if (!json.ok || typeof json.year !== "number" || !json.text) {
+          setStatus({
+            phase: "error",
+            message: json.error ?? "No events for today",
+          });
           return;
         }
-        setStatus({ phase: "ready", pick });
+        setStatus({
+          phase: "ready",
+          pick: { year: json.year, text: json.text },
+        });
       } catch (e) {
         if (cancelled) return;
         setStatus({

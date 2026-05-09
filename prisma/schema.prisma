@@ -897,6 +897,8 @@ model Organization {
   wordsOfDay           WordOfDay[]
   quotesOfDay          QuoteOfDay[]
   dailyNewsFeeds       DailyNewsFeed[]
+  chessPuzzlesOfDay    ChessPuzzleOfDay[]
+  onThisDayEvents      OnThisDayEvent[]
 }
 
 model ClaudePanelMessage {
@@ -1086,6 +1088,49 @@ model QuoteOfDay {
   quote          String   @db.Text
   author         String
   context        String   @db.Text
+  generatedDate  DateTime @db.Date
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, generatedDate])
+  @@index([organizationId])
+}
+
+// One Lichess puzzle per (org, ET day). /api/chess-puzzle hits Lichess
+// once on the first request of the day for an org and persists the
+// result so every recruiter in the org sees the same board. Streak
+// state stays in localStorage per browser — solving for the org would
+// be weird (one person clicks a piece, the other gets credit).
+// solution and themes are JSON to avoid a separate ordering column on
+// the move list.
+model ChessPuzzleOfDay {
+  id             String   @id @default(cuid())
+  organizationId String
+  lichessId      String
+  rating         Int
+  fen            String   @db.Text
+  solution       Json
+  themes         Json
+  generatedDate  DateTime @db.Date
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, generatedDate])
+  @@index([organizationId])
+}
+
+// One Wikipedia "on this day" event per (org, ET day). The route picks
+// a single event server-side (preferring older + substantive entries)
+// and persists it so everyone in the org sees the same fun fact. Year
+// is nullable on Wikipedia's payload but always present after our
+// pickEvent filter — store as Int.
+model OnThisDayEvent {
+  id             String   @id @default(cuid())
+  organizationId String
+  year           Int
+  text           String   @db.Text
   generatedDate  DateTime @db.Date
   createdAt      DateTime @default(now())
 
