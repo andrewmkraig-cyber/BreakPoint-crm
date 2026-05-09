@@ -465,6 +465,17 @@ export function SpotifyPanel() {
   const [shuffle, setShuffle] = useState(false);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
+  // Refs to the interactive content sections so the drag/resize
+  // session can disable their pointer events while a gesture is in
+  // flight. Mirrors the YouTube panel's iframe-lockout pattern: any
+  // child that hosts buttons / sliders / scroll containers can swallow
+  // pointerup or mouseup, leaving the panel chasing the cursor after
+  // release. Each section gets its own ref because they're rendered as
+  // sibling flex items (wrapping them in a single container would
+  // collapse the panel layout).
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const bottomNavRef = useRef<HTMLElement | null>(null);
+  const nowPlayingBarRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<SpotifyPlayer | null>(null);
   const deviceIdRef = useRef<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
@@ -1037,13 +1048,45 @@ export function SpotifyPanel() {
     return () => window.removeEventListener("resize", onResize);
   }, [open, minimized, position, size, setPosition]);
 
-  // setPointerCapture on the handle element forces every subsequent
-  // pointer event for this pointerId to fire on the handle, even if
-  // the cursor drifts over the album-art img or any nested overflow
-  // container that would otherwise swallow pointerup. Without this
-  // the panel would keep tracking the cursor after release until the
-  // next click. pointercancel is wired as belt-and-suspenders for
-  // OS / browser-level gesture cancellation.
+  // ─── Drag/resize session lifecycle ────────────────────────────────
+  // One pointer at a time: drag and resize are mutually exclusive.
+  // endSessionRef holds the live session's cleanup so any new gesture
+  // — or the document-level safety net — can force-end the prior one
+  // and the panel can never get stuck following the cursor after
+  // release. Refs (not React state) hold session state because the
+  // cleanup paths run inside event handlers where stale closures over
+  // render-scoped state would silently miss late events.
+  const endSessionRef = useRef<(() => void) | null>(null);
+
+  const cancelActiveSession = useCallback(() => {
+    const fn = endSessionRef.current;
+    if (fn) fn();
+  }, []);
+
+  // While a drag/resize is in flight, set pointer-events: none on the
+  // body, BottomNav, and NowPlayingBar so their buttons / sliders /
+  // scroll containers can't swallow pointerup or mouseup. pointer-
+  // events does NOT inherit, so each interactive sibling needs its own
+  // mutation. Without this, releasing the mouse over any button (e.g.
+  // the volume slider or a transport control) left the panel chasing
+  // the cursor because the control ate the release event.
+  const setInteractiveLock = useCallback((locked: boolean) => {
+    const value = locked ? "none" : "";
+    const body = bodyRef.current;
+    if (body) body.style.pointerEvents = value;
+    const nav = bottomNavRef.current;
+    if (nav) nav.style.pointerEvents = value;
+    const bar = nowPlayingBarRef.current;
+    if (bar) bar.style.pointerEvents = value;
+  }, []);
+
+  // Drag the panel from the header / dock pill. Pointer capture routes
+  // every move + release back to the handle; the body / nav / bar are
+  // disabled as a second line of defense; and a document-level safety
+  // net (window pointerup/mouseup/blur, visibilitychange,
+  // lostpointercapture) guarantees the session ends even if the OS or
+  // browser eats the release. cleanup is idempotent via the `ended`
+  // flag — every escape hatch routes through it.
   const onHeaderPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -1051,11 +1094,14 @@ export function SpotifyPanel() {
       if ((e.target as HTMLElement).closest("input")) return;
       const node = panelRef.current;
       if (!node) return;
+
+      cancelActiveSession();
+
       // Branch on minimized vs full-panel drag. When minimized we
       // operate on the dock's local position (pill is 320×52 anchored
       // bottom-right by default) and write the result to dockPosition;
       // when not minimized we operate on the full panel's `position`
-      // from the provider. Sharing a single position state was the
+      // from the provider. Sharing a single position state was a prior
       // bug — the minimized pill's drag was writing the un-minimized
       // location, so on release the pill snapped back to the dock
       // anchor and looked stuck.
@@ -1079,7 +1125,11 @@ export function SpotifyPanel() {
       let dx = 0;
       let dy = 0;
       let rafId = 0;
+      let ended = false;
+
       node.style.willChange = "transform";
+      setInteractiveLock(true);
+
       const flush = () => {
         rafId = 0;
         node.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
@@ -1095,16 +1145,25 @@ export function SpotifyPanel() {
         dy = clampedY - startY;
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
-      const onUp = () => {
+
+      const cleanup = () => {
+        if (ended) return;
+        ended = true;
         handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        handle.removeEventListener("pointercancel", onUp);
+        handle.removeEventListener("pointerup", cleanup);
+        handle.removeEventListener("pointercancel", cleanup);
+        handle.removeEventListener("lostpointercapture", cleanup);
+        window.removeEventListener("pointerup", cleanup);
+        window.removeEventListener("mouseup", cleanup);
+        window.removeEventListener("blur", cleanup);
+        document.removeEventListener("visibilitychange", onVisibility);
         try {
           handle.releasePointerCapture(pointerId);
         } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.transform = "";
         node.style.willChange = "";
+        setInteractiveLock(false);
         const maxX = Math.max(0, window.innerWidth - dragW);
         const maxY = Math.max(0, window.innerHeight - dragH);
         const nextX = Math.max(0, Math.min(maxX, startX + dx));
@@ -1114,20 +1173,51 @@ export function SpotifyPanel() {
         } else {
           setPosition({ x: nextX, y: nextY });
         }
+        if (endSessionRef.current === cleanup) {
+          endSessionRef.current = null;
+        }
       };
+
+      const onVisibility = () => {
+        if (document.hidden) cleanup();
+      };
+
       handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
-      handle.addEventListener("pointercancel", onUp);
+      handle.addEventListener("pointerup", cleanup);
+      handle.addEventListener("pointercancel", cleanup);
+      handle.addEventListener("lostpointercapture", cleanup);
+      window.addEventListener("pointerup", cleanup);
+      window.addEventListener("mouseup", cleanup);
+      window.addEventListener("blur", cleanup);
+      document.addEventListener("visibilitychange", onVisibility);
+
+      endSessionRef.current = cleanup;
     },
-    [minimized, position, dockPosition, size, setPosition],
+    [
+      minimized,
+      position,
+      dockPosition,
+      size,
+      setPosition,
+      cancelActiveSession,
+      setInteractiveLock,
+    ],
   );
 
+  // Bottom-right corner resize. Same pointer-capture + safety-net
+  // pattern as the drag handler. After commit we re-clamp the saved
+  // position against the new size so a resize that pushes the panel
+  // off the right or bottom edge of the viewport snaps it back into
+  // view instead of leaving it inaccessible.
   const onCornerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       const node = panelRef.current;
       if (!node) return;
+
+      cancelActiveSession();
+
       const handle = e.currentTarget;
       const pointerId = e.pointerId;
       try {
@@ -1140,7 +1230,11 @@ export function SpotifyPanel() {
       let nextW = startW;
       let nextH = startH;
       let rafId = 0;
+      let ended = false;
+
       node.style.willChange = "width, height";
+      setInteractiveLock(true);
+
       const flush = () => {
         rafId = 0;
         node.style.width = `${nextW}px`;
@@ -1151,23 +1245,76 @@ export function SpotifyPanel() {
         nextH = Math.max(SPOTIFY_PANEL_MIN_H, startH + (ev.clientY - startPy));
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
-      const onUp = () => {
+
+      const cleanup = () => {
+        if (ended) return;
+        ended = true;
         handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        handle.removeEventListener("pointercancel", onUp);
+        handle.removeEventListener("pointerup", cleanup);
+        handle.removeEventListener("pointercancel", cleanup);
+        handle.removeEventListener("lostpointercapture", cleanup);
+        window.removeEventListener("pointerup", cleanup);
+        window.removeEventListener("mouseup", cleanup);
+        window.removeEventListener("blur", cleanup);
+        document.removeEventListener("visibilitychange", onVisibility);
         try {
           handle.releasePointerCapture(pointerId);
         } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.willChange = "";
+        setInteractiveLock(false);
         setSize({ w: nextW, h: nextH });
+        // Re-clamp the saved position against the new size so the
+        // panel can't sit half-off the right or bottom edge after a
+        // resize. position is the gesture-start value; drag/resize are
+        // mutually exclusive so no concurrent move updated it.
+        if (position) {
+          const maxX = Math.max(0, window.innerWidth - nextW);
+          const maxY = Math.max(0, window.innerHeight - nextH);
+          const clampedX = Math.max(0, Math.min(maxX, position.x));
+          const clampedY = Math.max(0, Math.min(maxY, position.y));
+          if (clampedX !== position.x || clampedY !== position.y) {
+            setPosition({ x: clampedX, y: clampedY });
+          }
+        }
+        if (endSessionRef.current === cleanup) {
+          endSessionRef.current = null;
+        }
       };
+
+      const onVisibility = () => {
+        if (document.hidden) cleanup();
+      };
+
       handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
-      handle.addEventListener("pointercancel", onUp);
+      handle.addEventListener("pointerup", cleanup);
+      handle.addEventListener("pointercancel", cleanup);
+      handle.addEventListener("lostpointercapture", cleanup);
+      window.addEventListener("pointerup", cleanup);
+      window.addEventListener("mouseup", cleanup);
+      window.addEventListener("blur", cleanup);
+      document.addEventListener("visibilitychange", onVisibility);
+
+      endSessionRef.current = cleanup;
     },
-    [size, setSize],
+    [
+      size,
+      setSize,
+      position,
+      setPosition,
+      cancelActiveSession,
+      setInteractiveLock,
+    ],
   );
+
+  // Force-end any in-flight drag/resize on panel close or component
+  // unmount. Without this, closing the panel mid-drag would leak the
+  // window/document listeners and leave the pointer-events lockout in
+  // place for the next open.
+  useEffect(() => {
+    if (!open) cancelActiveSession();
+  }, [open, cancelActiveSession]);
+  useEffect(() => () => cancelActiveSession(), [cancelActiveSession]);
 
   // ────────────────────────────────────────────────────────────────
   // Playback handlers
@@ -1664,6 +1811,7 @@ export function SpotifyPanel() {
           body clamps to its content size and the album-art panel
           gets pushed off the bottom. */}
       <div
+        ref={bodyRef}
         className="min-h-0 flex-1 overflow-y-auto"
         style={{ backgroundColor: COLOR_BG }}
       >
@@ -1790,9 +1938,14 @@ export function SpotifyPanel() {
       {/* Bottom of the panel stacks: BottomNav above NowPlayingBar,
           mirroring Spotify's mobile layout. Both are flex children
           so they take real layout space and content above never
-          scrolls underneath them. */}
+          scrolls underneath them. containerRef hands the drag/resize
+          lifecycle a handle on each root element so it can flip
+          pointer-events: none during a gesture — without that,
+          buttons and the volume slider would swallow pointerup and
+          strand the panel chasing the cursor. */}
       {authState.status === "authenticated" && (
         <BottomNav
+          containerRef={bottomNavRef}
           view={view}
           hasActiveTrack={Boolean(activeTrack)}
           onHome={goHome}
@@ -1802,6 +1955,7 @@ export function SpotifyPanel() {
       )}
       {activeTrack && (
         <NowPlayingBar
+          containerRef={nowPlayingBarRef}
           track={activeTrack}
           paused={paused}
           positionMs={position_ms}
@@ -2770,9 +2924,11 @@ function BottomNav(props: {
   onHome: () => void;
   onSearch: () => void;
   onLibrary: () => void;
+  containerRef?: React.Ref<HTMLElement>;
 }) {
   return (
     <nav
+      ref={props.containerRef}
       className="flex shrink-0 items-center justify-around border-t border-white/5 px-2 py-1"
       style={{ backgroundColor: COLOR_BG }}
     >
@@ -2882,6 +3038,7 @@ function NowPlayingBar(props: {
   onSeek: (ms: number) => void;
   onVolume: (pct: number) => void;
   onToggleShuffle: () => void;
+  containerRef?: React.Ref<HTMLDivElement>;
 }) {
   const dur = props.track.durationMs || 1;
   const pct = Math.min(100, Math.max(0, (props.positionMs / dur) * 100));
@@ -2894,6 +3051,7 @@ function NowPlayingBar(props: {
 
   return (
     <div
+      ref={props.containerRef}
       className="shrink-0 border-t border-white/10"
       style={{ backgroundColor: COLOR_BG }}
     >
