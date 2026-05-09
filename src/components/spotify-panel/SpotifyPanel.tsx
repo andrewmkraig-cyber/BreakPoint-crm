@@ -1245,6 +1245,27 @@ export function SpotifyPanel() {
     [playBody],
   );
 
+  // Play a multi-track URI queue starting from a specific track. Used
+  // by the artist Popular / More-from-this-artist sections so clicking
+  // an individual song doesn't strand the user with a one-track queue
+  // (Spotify's /next has nowhere to go with a single uris[] entry).
+  // Same shape as a context+offset play, just with uris instead of
+  // context_uri so we control the exact ordering.
+  const playUriQueue = useCallback(
+    (uris: string[], offsetUri: string) => {
+      // No Spotify-managed context — manual /next is the right
+      // behavior here. Clear the ref so the auto-skip path stays
+      // active for end-of-track.
+      initiatedContextRef.current = null;
+      return playBody({
+        uris,
+        offset: { uri: offsetUri },
+        position_ms: 0,
+      });
+    },
+    [playBody],
+  );
+
   const playContext = useCallback(
     (contextUri: string, offsetUri?: string) => {
       // Context-driven playback (artist / playlist / album). Spotify's
@@ -1670,7 +1691,22 @@ export function SpotifyPanel() {
             data={artist}
             loading={artistLoading}
             onPlayArtist={(uri) => playContext(uri)}
-            onPlayTrack={(uri) => playTrackList([uri])}
+            onPlayTrack={(uri) => {
+              // Build a real URI queue from the visible Popular + More
+              // tracks (deduped) and start at the clicked track. A
+              // one-track uris[] would leave Spotify with nowhere to
+              // /next to.
+              if (!artist) return;
+              const seen = new Set<string>();
+              const queue: string[] = [];
+              for (const t of [...artist.topTracks, ...artist.moreTracks]) {
+                if (!t.uri || seen.has(t.uri)) continue;
+                seen.add(t.uri);
+                queue.push(t.uri);
+              }
+              if (queue.length === 0) return;
+              playUriQueue(queue, uri);
+            }}
             onOpenAlbum={(id) =>
               goTo({ kind: "playlist", id, isAlbum: true })
             }
