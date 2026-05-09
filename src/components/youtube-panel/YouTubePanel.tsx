@@ -254,7 +254,17 @@ export function YouTubePanel() {
       // YT's teardown postMessage can't see a stale player handle.
       const p = playerRef.current;
       playerRef.current = null;
-      if (p) {
+      // YT.Player.destroy() does iframe.parentNode.removeChild(iframe)
+      // internally. If React has already unmounted or moved the
+      // wrapper by the time this cleanup runs (portal teardown, the
+      // `{playing && <div .../>}` conditional collapsing first), the
+      // iframe's parent is gone or has different children — destroy()
+      // throws "Failed to execute 'removeChild' on 'Node': The node
+      // to be removed is not a child of this node" and crashes the
+      // whole panel. Skip destroy entirely when the container we
+      // handed YT.Player is no longer attached; the orphaned iframe
+      // gets reclaimed when its closures drop.
+      if (p && playerContainerRef.current?.isConnected) {
         try {
           p.destroy();
         } catch {}
