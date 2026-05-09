@@ -1271,11 +1271,95 @@ export function SpotifyPanel() {
   }, [paused]);
 
   const skipNext = useCallback(async () => {
+    // Don't silently bail when device_id is missing — Spotify's
+    // /v1/me/player/next still works without it (acts on the user's
+    // currently active device), so we let the route through and let
+    // Spotify itself say "no active device" via 404 if applicable.
     const deviceId = deviceIdRef.current;
-    if (!deviceId) return;
-    await fetch(`/api/spotify/next?device_id=${encodeURIComponent(deviceId)}`, {
-      method: "POST",
-    });
+    const url = deviceId
+      ? `/api/spotify/next?device_id=${encodeURIComponent(deviceId)}`
+      : "/api/spotify/next";
+    try {
+      const res = await fetch(url, { method: "POST" });
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as {
+          error?: string;
+          status?: number;
+        };
+        console.error("[spotify-next] failed", res.status, json);
+        if (res.status === 401) {
+          setAuthState({ status: "unauthenticated" });
+          toast.error("Spotify session expired", {
+            description: "Reconnect Spotify to keep listening.",
+          });
+          return;
+        }
+        if (res.status === 403) {
+          toast.error("Spotify can't skip here", {
+            description:
+              json.error ??
+              "Skip blocked — Premium account, an active device, and the right scope are all required.",
+          });
+          return;
+        }
+        if (res.status === 404) {
+          toast.error("Nothing to skip to", {
+            description:
+              json.error ??
+              "Spotify has no next track in the current queue or context.",
+          });
+          return;
+        }
+        if (res.status === 429) {
+          toast.error("Spotify rate-limited", {
+            description: "Slow down a bit and try again.",
+          });
+          return;
+        }
+        toast.error("Couldn't skip", {
+          description: json.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      // After a successful Next, the Web Playback SDK SHOULD fire a
+      // player_state_changed with the new track. In practice, when
+      // playback was started outside the SDK or when network jitter
+      // delays the event, the panel can read stale state for several
+      // seconds. Pull getCurrentState() once at ~500ms as a UI-
+      // refresh safety net — applies the same projection the listener
+      // does.
+      const player = playerRef.current;
+      if (player) {
+        window.setTimeout(async () => {
+          try {
+            const state = await player.getCurrentState();
+            if (!state) return;
+            setPaused(Boolean(state.paused));
+            if (typeof state.position === "number") setPositionMs(state.position);
+            const t = state.track_window?.current_track;
+            if (t?.uri && t.name) {
+              setActiveTrack({
+                uri: t.uri,
+                name: t.name,
+                artist: (t.artists ?? [])
+                  .map((a) => a.name)
+                  .filter(Boolean)
+                  .join(", "),
+                albumArt: t.album?.images?.[0]?.url ?? "",
+                durationMs: t.duration_ms ?? state.duration ?? 0,
+              });
+            }
+          } catch (e) {
+            console.error("[spotify-next] post-skip state poll failed", e);
+          }
+        }, 500);
+      }
+    } catch (e) {
+      console.error("[spotify-next] network error", e);
+      toast.error("Couldn't skip", {
+        description: e instanceof Error ? e.message : "Network error",
+      });
+    }
   }, []);
 
   const skipPrev = useCallback(async () => {
