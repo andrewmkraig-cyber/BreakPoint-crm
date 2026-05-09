@@ -130,11 +130,12 @@ type Props = {
   // Ignored in modal mode — the modal already has drag/resize +
   // sticky footer.
   onPopOut?: (snapshot: ComposerStateSnapshot) => void;
-  // When true (Reply / Reply All / Forward), auto-focus the editor
-  // body on mount so the recruiter can start typing without clicking
-  // into the field. Skipped for click-to-email so the To row gets
-  // the focus instead.
+  // When true (Reply / Reply All), auto-focus the editor body on mount
+  // so the recruiter can start typing without clicking into the field.
   autoFocusBody?: boolean;
+  // When true (Forward / new compose), auto-focus the To row on mount
+  // so the recruiter can type the recipient first.
+  autoFocusTo?: boolean;
   templates?: ActiveTemplateSummary[];
   mergeContext?: MailMergeContext;
   // Same-company CC picker source. When provided + non-empty, the CC
@@ -195,6 +196,7 @@ export function MailComposer({
   defaultAttachments,
   defaultDraftId = null,
   autoFocusBody = false,
+  autoFocusTo = false,
   templates = [],
   mergeContext = {},
   ccPickerOptions: ccPickerOptionsProp,
@@ -640,10 +642,9 @@ export function MailComposer({
     };
   }, [editor]);
 
-  // Auto-focus the body when this composer opens as a reply / forward.
-  // Cursor lands at the start of the editor for forwards (so the
-  // recruiter types above the quoted original) and at the end for
-  // empty replies. Runs once when the editor finishes constructing —
+  // Auto-focus the body when this composer opens as a reply / reply-all.
+  // Forwards and new compose route focus to the To row instead via
+  // autoFocusTo. Runs once when the editor finishes constructing —
   // editor identity is stable for the life of the composer.
   useEffect(() => {
     if (!editor) return;
@@ -1141,6 +1142,7 @@ export function MailComposer({
           onChange={setTo}
           suggestions={toSuggestions}
           serverSearch
+          autoFocus={autoFocusTo}
         />
         <div className="flex gap-2 text-[10px] text-court-fg-muted">
           <button
@@ -1559,10 +1561,12 @@ function AddressRow({
   suggestions = [],
   pickerOptions = [],
   serverSearch = false,
+  autoFocus = false,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
+  autoFocus?: boolean;
   // Typeahead source — surfaces matching contacts when the field is
   // focused. Picking one appends "Name <email>, " to the field —
   // same string-comma format the To and CC fields expect.
@@ -1740,6 +1744,7 @@ function AddressRow({
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           onKeyDown={onKeyDown}
+          autoFocus={autoFocus}
           className="h-7 w-full rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
       </label>

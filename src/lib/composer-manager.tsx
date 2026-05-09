@@ -103,6 +103,7 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           mergeContext={s.mergeContext}
           candidateRef={s.candidateRef}
           toSuggestions={s.toSuggestions}
+          autoFocusTo
           onClose={() => close(s.id)}
           onSent={() => {
             s.onSent?.();

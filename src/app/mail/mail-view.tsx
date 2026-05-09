@@ -1743,9 +1743,8 @@ export function ThreadDetail({
     : `Fwd: ${detail.subject}`;
   // Forward body: blank line on top so the user can type their note,
   // then a quoted block citing the chosen message's headers + body.
-  // The composer's tiptap editor focuses at the start (Forward sets
-  // autoFocusBody w/ defaultBody non-empty), so the cursor lands
-  // ABOVE the quote.
+  // Forward auto-focuses the To row (not the body), so the recruiter
+  // can type the recipient first.
   const forwardBody = useMemo(
     () => buildForwardQuote(replyTarget),
     [replyTarget],
@@ -1847,7 +1846,8 @@ export function ThreadDetail({
         composerMode === "forward" ? forwardSubject : defaultSubject
       }
       defaultBody={composerMode === "forward" ? forwardBody : ""}
-      autoFocusBody
+      autoFocusBody={composerMode !== "forward"}
+      autoFocusTo={composerMode === "forward"}
       growToFill={isFloating}
       templates={templates}
       ccPickerOptions={ccPickerOptions}
