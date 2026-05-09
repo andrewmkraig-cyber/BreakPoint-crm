@@ -26,8 +26,8 @@ type TabKey = "general" | "accounting" | "recruiting" | "ai";
 
 const TABS: Array<{ key: TabKey; label: string }> = [
   { key: "general", label: "Front Page" },
-  { key: "accounting", label: "Public Accounting" },
   { key: "recruiting", label: "Recruiting" },
+  { key: "accounting", label: "Public Accounting" },
   { key: "ai", label: "AI & Tech" },
 ];
 

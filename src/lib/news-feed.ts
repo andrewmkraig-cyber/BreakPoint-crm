@@ -12,11 +12,16 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { CLAUDE_MODEL } from "@/lib/claude";
 
+// UI display order: Front Page → Recruiting → Public Accounting → AI &
+// Tech. Cron runs through this list to pre-warm tabs in the same order
+// the recruiter scans them. The cache @@unique key is keyed on the tab
+// string (not the array index), so reordering doesn't invalidate any
+// previously cached row — it just changes cron's run/log order.
 export const NEWS_TABS = [
-  "accounting",
-  "recruiting",
-  "ai",
   "general",
+  "recruiting",
+  "accounting",
+  "ai",
 ] as const;
 export type NewsTab = (typeof NEWS_TABS)[number];
 
