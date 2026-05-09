@@ -243,14 +243,15 @@ type ArtistPayload = {
   // for the field shapes.
   debug?: {
     headerStatus?: number;
+    discographyStatus?: number;
+    discographyError?: string | null;
     albumsScanned?: number;
     albumTracksOk?: number;
     albumTracksFailed?: number;
+    topTracksFallbackUsed?: boolean;
     rawTopTracksCount?: number;
     rawMoreTracksCount?: number;
     rawAlbumsCount?: number;
-    discographyStatus?: number;
-    discographyError?: string | null;
     followersField?: "missing" | "null" | "ok" | "no-total";
   };
 };

@@ -207,16 +207,89 @@ export type SpotifyApiErr = {
 };
 export type SpotifyApiResult = SpotifyApiOk | SpotifyApiErr;
 
+// Pull only the path + non-credential query off either a relative or
+// absolute Spotify URL. We never put auth tokens in query strings —
+// they live in the Authorization header — but stripping the host and
+// any `access_token` param is defensive in case Spotify ever hands
+// back an absolute URL via a `next`/`href` field that embeds one.
+function safeEndpoint(path: string): string {
+  try {
+    const u = path.startsWith("http")
+      ? new URL(path)
+      : new URL(path, "https://api.spotify.com");
+    u.searchParams.delete("access_token");
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return path.split("?")[0] ?? path;
+  }
+}
+
+// Best-effort summary of Spotify's response body for logs. Counts
+// items/total/next-existence; truncates raw error message. No tokens,
+// no headers, no full URLs with credentials.
+function summarize(data: unknown): {
+  itemsCount: number | null;
+  total: number | null;
+  hasNext: boolean | null;
+  errorMessage: string | null;
+} {
+  if (!data || typeof data !== "object") {
+    return { itemsCount: null, total: null, hasNext: null, errorMessage: null };
+  }
+  const d = data as {
+    items?: unknown[];
+    total?: number;
+    next?: string | null;
+    error?: { message?: string; status?: number } | string;
+  };
+  const itemsCount = Array.isArray(d.items) ? d.items.length : null;
+  const total = typeof d.total === "number" ? d.total : null;
+  const hasNext = "next" in d ? Boolean(d.next) : null;
+  let errorMessage: string | null = null;
+  if (typeof d.error === "string") {
+    errorMessage = d.error.slice(0, 200);
+  } else if (d.error && typeof d.error === "object" && d.error.message) {
+    errorMessage = String(d.error.message).slice(0, 200);
+  }
+  return { itemsCount, total, hasNext, errorMessage };
+}
+
 // Single chokepoint for every server-side call to api.spotify.com.
 // Resolves a fresh access token (refreshing if needed), forwards the
 // request, and tunnels back the raw response code so playback control
 // routes can mirror Spotify's 204-no-content acks without parsing.
+//
+// `tag` is an optional caller-supplied label that shows up in the
+// structured log line — let callers pin a request to a specific
+// route+step so logs don't blur together when several proxy calls
+// fire in parallel for the same request.
 export async function spotifyApiProxy(
   path: string,
-  init?: { method?: string; body?: string; headers?: Record<string, string> },
+  init?: {
+    method?: string;
+    body?: string;
+    headers?: Record<string, string>;
+    tag?: string;
+  },
 ): Promise<SpotifyApiResult> {
+  const endpoint = safeEndpoint(path);
+  const tag = init?.tag ?? "spotify-api";
+  const method = init?.method ?? "GET";
+
   const tokenResult = await getValidSpotifyAccessToken();
   if (!tokenResult.ok) {
+    console.log(
+      "[spotify-api]",
+      JSON.stringify({
+        tag,
+        endpoint,
+        method,
+        hasAccess: false,
+        refreshed: false,
+        status: 401,
+        error: tokenResult.error,
+      }),
+    );
     return {
       ok: false,
       status: 401,
@@ -229,7 +302,7 @@ export async function spotifyApiProxy(
   let upstream: Response;
   try {
     upstream = await fetch(url, {
-      method: init?.method ?? "GET",
+      method,
       headers: {
         Authorization: `Bearer ${tokenResult.accessToken}`,
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
@@ -239,15 +312,39 @@ export async function spotifyApiProxy(
       cache: "no-store",
     });
   } catch (e) {
+    const errMsg = e instanceof Error ? e.message : "Spotify fetch failed";
+    console.log(
+      "[spotify-api]",
+      JSON.stringify({
+        tag,
+        endpoint,
+        method,
+        hasAccess: true,
+        refreshed: Boolean(tokenResult.refreshed),
+        status: 502,
+        error: errMsg,
+      }),
+    );
     return {
       ok: false,
       status: 502,
-      error: e instanceof Error ? e.message : "Spotify fetch failed",
+      error: errMsg,
       refreshed: tokenResult.refreshed,
     };
   }
 
   if (upstream.status === 204) {
+    console.log(
+      "[spotify-api]",
+      JSON.stringify({
+        tag,
+        endpoint,
+        method,
+        hasAccess: true,
+        refreshed: Boolean(tokenResult.refreshed),
+        status: 204,
+      }),
+    );
     return {
       ok: true,
       status: 204,
@@ -266,21 +363,27 @@ export async function spotifyApiProxy(
     }
   }
 
+  const summary = summarize(data);
+
   if (!upstream.ok) {
     let error = `Spotify ${upstream.status}`;
-    if (
-      data &&
-      typeof data === "object" &&
-      "error" in data &&
-      data.error &&
-      typeof data.error === "object" &&
-      "message" in data.error &&
-      typeof (data.error as { message: unknown }).message === "string"
-    ) {
-      error = (data.error as { message: string }).message;
+    if (summary.errorMessage) {
+      error = summary.errorMessage;
     } else if (typeof text === "string" && text.length > 0) {
       error = `${error}: ${text.slice(0, 200)}`;
     }
+    console.log(
+      "[spotify-api]",
+      JSON.stringify({
+        tag,
+        endpoint,
+        method,
+        hasAccess: true,
+        refreshed: Boolean(tokenResult.refreshed),
+        status: upstream.status,
+        error,
+      }),
+    );
     return {
       ok: false,
       status: upstream.status,
@@ -288,6 +391,21 @@ export async function spotifyApiProxy(
       refreshed: tokenResult.refreshed,
     };
   }
+
+  console.log(
+    "[spotify-api]",
+    JSON.stringify({
+      tag,
+      endpoint,
+      method,
+      hasAccess: true,
+      refreshed: Boolean(tokenResult.refreshed),
+      status: upstream.status,
+      itemsCount: summary.itemsCount,
+      total: summary.total,
+      hasNext: summary.hasNext,
+    }),
+  );
 
   return {
     ok: true,

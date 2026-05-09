@@ -1,21 +1,21 @@
 import { NextResponse } from "next/server";
 import { applyRefreshedSpotifyCookies, spotifyApiProxy } from "@/lib/spotify";
 
-// Artist detail: header + Popular + More-from-this-artist + Discography.
+// Artist detail.
 //
-// /v1/artists/{id}/top-tracks is intentionally NOT used — Spotify's
-// dev-mode policy (Nov 2024) 403s it for apps that aren't in Extended
-// Quota mode. We derive both Popular and More from the artist's first
-// few albums' track listings instead, which never 403s for browsable
-// catalog content.
+// Step A — header:        /v1/artists/{id}
+// Step B — discography:   /v1/artists/{id}/albums?include_groups=album,single&limit=20
+// Step C — album scan:    /v1/albums/{id}/tracks for the first SCAN_ALBUMS
+//                         albums; flatten + dedupe → Popular (10) + More (20)
+// Step D — top-tracks:    /v1/artists/{id}/top-tracks?market=US
+//                         FALLBACK only when Step C produced zero
+//                         usable tracks. Used to 403 in dev mode but
+//                         we try it anyway because the album scan
+//                         can still come back empty for fringe artists.
 //
-// Calls (parallelized):
-//   /v1/artists/{id}                                                — header
-//   /v1/artists/{id}/albums?include_groups=album,single&limit=20    — discography (also feeds track scan)
-// Then a dependent batch: /v1/albums/{id}/tracks for the first
-// SCAN_ALBUMS albums (parallel). All track items are flattened,
-// deduped by track id and by (lowercased-name + duration), then sliced
-// into Popular (first 10) and More (next 20).
+// Visible track count never gates playback — artist Play hands the
+// whole spotify:artist:{id} URI to /v1/me/player/play and Spotify's
+// queue engine handles song-to-song advance.
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +25,7 @@ type AlbumTrack = {
   name?: string;
   uri?: string;
   duration_ms?: number;
+  album?: { images?: Image[] } | null;
 };
 type Album = {
   id?: string;
@@ -56,32 +57,25 @@ export async function GET(
   const id = params.id;
 
   const [artistRes, discographyRes] = await Promise.all([
-    spotifyApiProxy(`/v1/artists/${id}`),
+    spotifyApiProxy(`/v1/artists/${id}`, { tag: "artist/header" }),
     spotifyApiProxy(
       `/v1/artists/${id}/albums?include_groups=album,single&limit=20&market=US`,
+      { tag: "artist/discography" },
     ),
   ]);
 
   let refreshed = artistRes.refreshed ?? discographyRes.refreshed;
 
   if (!artistRes.ok) {
-    console.error(
-      "[spotify-artist] header fetch failed",
-      artistRes.status,
-      artistRes.error,
-    );
     const res = NextResponse.json(
-      { ok: false, error: `Header: ${artistRes.error}` },
+      {
+        ok: false,
+        error: `Header: ${artistRes.error}`,
+        status: artistRes.status,
+      },
       { status: artistRes.status === 401 ? 401 : 502 },
     );
     return applyRefreshedSpotifyCookies(res, refreshed);
-  }
-  if (!discographyRes.ok) {
-    console.error(
-      "[spotify-artist] discography albums fetch failed",
-      discographyRes.status,
-      discographyRes.error,
-    );
   }
 
   const discographyData = discographyRes.ok
@@ -91,22 +85,19 @@ export async function GET(
     (al) => al && al.id && al.name && al.uri,
   );
 
-  // Scan the first SCAN_ALBUMS for tracks. We don't dedupe the album
-  // list here — the artist might release multiple "deluxe" editions of
-  // the same album, and we'll dedupe at the track level below.
+  // Step C — album scan.
   const albumsToScan = discographyItems.slice(0, SCAN_ALBUMS);
   const albumTracksResults = await Promise.all(
     albumsToScan.map((al) =>
-      spotifyApiProxy(`/v1/albums/${al.id}/tracks?market=US&limit=50`),
+      spotifyApiProxy(`/v1/albums/${al.id}/tracks?market=US&limit=50`, {
+        tag: "artist/album-tracks",
+      }),
     ),
   );
   for (const r of albumTracksResults) {
     refreshed = refreshed ?? r.refreshed ?? null;
   }
 
-  // Flatten + dedupe by track id and by (lowercased-name + duration).
-  // Carry album art down from the parent album because /albums/{id}/tracks
-  // doesn't embed album images on each track.
   const seenIds = new Set<string>();
   const seenSig = new Set<string>();
   const allTracks: {
@@ -119,15 +110,7 @@ export async function GET(
   for (let i = 0; i < albumsToScan.length; i++) {
     const album = albumsToScan[i];
     const res = albumTracksResults[i];
-    if (!res.ok) {
-      console.error(
-        "[spotify-artist] album-tracks fetch failed",
-        album.id,
-        res.status,
-        res.error,
-      );
-      continue;
-    }
+    if (!res.ok) continue;
     const data = res.data as { items?: AlbumTrack[] };
     const albumArt = pickImage(album.images, 64);
     for (const t of data.items ?? []) {
@@ -144,6 +127,37 @@ export async function GET(
         durationMs: t.duration_ms ?? 0,
         albumArt,
       });
+    }
+  }
+
+  // Step D — top-tracks fallback. Fires when the album scan yielded
+  // nothing usable (no albums in discography, or every album-tracks
+  // call failed, or every album returned tracks we couldn't project).
+  // Used to 403 in dev mode; trying anyway because (a) some accounts
+  // are in extended-quota mode and it works, and (b) when it does
+  // fail the structured log shows the 403 and we fall through.
+  let topTracksFallbackUsed = false;
+  if (allTracks.length === 0) {
+    const ttRes = await spotifyApiProxy(
+      `/v1/artists/${id}/top-tracks?market=US`,
+      { tag: "artist/top-tracks-fallback" },
+    );
+    refreshed = refreshed ?? ttRes.refreshed ?? null;
+    if (ttRes.ok) {
+      const data = ttRes.data as { tracks?: AlbumTrack[] };
+      for (const t of data.tracks ?? []) {
+        if (!t || !t.id || !t.uri || !t.name) continue;
+        if (seenIds.has(t.id)) continue;
+        seenIds.add(t.id);
+        allTracks.push({
+          id: t.id,
+          uri: t.uri,
+          name: t.name,
+          durationMs: t.duration_ms ?? 0,
+          albumArt: pickImage(t.album?.images, 64),
+        });
+      }
+      topTracksFallbackUsed = true;
     }
   }
 
@@ -186,16 +200,34 @@ export async function GET(
       ? artist.followers.total
       : null;
 
+  console.log(
+    "[spotify-artist]",
+    JSON.stringify({
+      id,
+      headerStatus: artistRes.status,
+      discographyStatus: discographyRes.status,
+      discographyItems: discographyItems.length,
+      albumsScanned: albumsToScan.length,
+      albumTracksOk: albumTracksResults.filter((r) => r.ok).length,
+      albumTracksFailed: albumTracksResults.filter((r) => !r.ok).length,
+      topTracksFallbackUsed,
+      topTracksCount: topTracks.length,
+      moreTracksCount: moreTracks.length,
+      albumsCount: albums.length,
+    }),
+  );
+
   const debug = {
     headerStatus: artistRes.status,
+    discographyStatus: discographyRes.status,
+    discographyError: discographyRes.ok ? null : discographyRes.error,
     albumsScanned: albumsToScan.length,
     albumTracksOk: albumTracksResults.filter((r) => r.ok).length,
     albumTracksFailed: albumTracksResults.filter((r) => !r.ok).length,
+    topTracksFallbackUsed,
     rawTopTracksCount: topTracks.length,
     rawMoreTracksCount: moreTracks.length,
     rawAlbumsCount: albums.length,
-    discographyStatus: discographyRes.status,
-    discographyError: discographyRes.ok ? null : discographyRes.error,
     followersField:
       artist.followers === undefined
         ? "missing"

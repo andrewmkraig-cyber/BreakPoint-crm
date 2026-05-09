@@ -3,18 +3,17 @@ import { applyRefreshedSpotifyCookies, spotifyApiProxy } from "@/lib/spotify";
 
 // Playlist / album detail fetch.
 //
-// The original implementation pulled everything from /v1/playlists/{id}
-// (header + embedded tracks). That endpoint started returning empty
-// tracks for plenty of legitimate user-saved playlists after Spotify's
-// late-2025 changes — the panel showed "0 songs" even with market=US.
+// Step A: header             /v1/playlists/{id}        (or /v1/albums/{id})
+// Step B: tracks (primary)   /v1/playlists/{id}/tracks?limit=50&offset=0
+// Step C: tracks (href)      header.tracks.href            — second-chance
+// Step D: tracks (embedded)  header.tracks.items[]         — last-ditch
 //
-// We now fetch metadata and tracks in parallel through the dedicated
-// sub-endpoint:
-//   /v1/playlists/{id}                — header (name, owner, image, total)
-//   /v1/playlists/{id}/tracks         — actual tracks
-// Same split for albums via /v1/albums/{id} + /v1/albums/{id}/tracks.
-// market=US on every call so region-restricted tracks still come
-// through.
+// Each step logs its outcome through spotifyApiProxy's structured
+// logger so we can see (in Vercel logs) exactly which Spotify status
+// came back. We do NOT convert failures to "0 tracks" — when no
+// step yields a real list the response carries `tracksLoaded: false`
+// and the upstream status verbatim, so the panel can render error
+// state instead of a fake empty list.
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +28,11 @@ type Track = {
   album?: { name?: string; images?: Image[] } | null;
 };
 type PlaylistTrackEntry = { track?: Track | null };
+type TracksPayload = {
+  items?: (PlaylistTrackEntry | Track | null)[];
+  total?: number;
+  href?: string | null;
+};
 
 function pickImage(images: Image[] | undefined, preferred: number): string {
   if (!images || images.length === 0) return "";
@@ -75,6 +79,23 @@ function projectTrack(
   };
 }
 
+function projectItems(
+  items: (PlaylistTrackEntry | Track | null)[] | undefined,
+  fallbackName: string,
+  fallbackImages: Image[] | undefined,
+) {
+  return (items ?? [])
+    .map((entry, idx) => {
+      if (!entry) return null;
+      const t =
+        "track" in (entry as PlaylistTrackEntry)
+          ? (entry as PlaylistTrackEntry).track
+          : (entry as Track);
+      return projectTrack(t, idx, fallbackName, fallbackImages);
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } },
@@ -83,42 +104,35 @@ export async function GET(
   const kind = (new URL(req.url).searchParams.get("kind") ?? "playlist").trim();
   const isAlbum = kind === "album";
 
-  // Pass `market=US` on every call so region-restricted tracks still
-  // get relinked into the response. We removed it briefly in 36.2
-  // hoping token-default would work, but that surfaced as the artist
-  // discography breaking, so we're back to a fixed ISO code that
-  // matches the recruiter's account.
+  // Step A — header.
+  // Albums DO use market=US for region-relinking. Playlists OMIT it
+  // on the primary call: 36.x added market=US for relinking but it
+  // turned out to make some owned playlists return as if they had
+  // no tracks. Leaving it off matches what Spotify's own clients
+  // send by default for playlist details.
   const headerPath = isAlbum
     ? `/v1/albums/${id}?market=US`
-    : `/v1/playlists/${id}?market=US`;
-  const tracksPath = isAlbum
-    ? `/v1/albums/${id}/tracks?market=US&limit=50`
-    : `/v1/playlists/${id}/tracks?market=US&limit=100`;
+    : `/v1/playlists/${id}`;
 
-  // /v1/me runs alongside header + tracks so the response can tell
-  // the panel WHO the authenticated Spotify user is. The panel needs
-  // owner-vs-me to classify a tracks 403 correctly: a 403 on the
-  // recruiter's OWN playlist is an auth/permission issue (the dev-
-  // mode policy doesn't restrict apps from reading playlists they
-  // own), while a 403 on someone else's playlist is the actual
-  // dev-mode restriction. Albums skip this — owner doesn't apply.
-  const [headerRes, tracksRes, meRes] = await Promise.all([
-    spotifyApiProxy(headerPath),
-    spotifyApiProxy(tracksPath),
-    isAlbum ? Promise.resolve(null) : spotifyApiProxy("/v1/me"),
+  // Albums skip the /me call — owner doesn't apply.
+  const [headerRes, meRes] = await Promise.all([
+    spotifyApiProxy(headerPath, {
+      tag: isAlbum ? "album/header" : "playlist/header",
+    }),
+    isAlbum
+      ? Promise.resolve(null)
+      : spotifyApiProxy("/v1/me", { tag: "playlist/me" }),
   ]);
 
-  const refreshed =
-    headerRes.refreshed ?? tracksRes.refreshed ?? meRes?.refreshed ?? null;
+  let refreshed = headerRes.refreshed ?? meRes?.refreshed ?? null;
 
   if (!headerRes.ok) {
-    console.error(
-      "[spotify-playlist-tracks] header fetch failed",
-      headerRes.status,
-      headerRes.error,
-    );
     const res = NextResponse.json(
-      { ok: false, error: `Header: ${headerRes.error}` },
+      {
+        ok: false,
+        error: `Header: ${headerRes.error}`,
+        status: headerRes.status,
+      },
       { status: headerRes.status === 401 ? 401 : 502 },
     );
     return applyRefreshedSpotifyCookies(res, refreshed);
@@ -133,143 +147,125 @@ export async function GET(
     artists?: ArtistRef[];
     release_date?: string;
     owner?: { id?: string; display_name?: string };
-    tracks?: { total?: number; items?: (PlaylistTrackEntry | Track | null)[] };
+    tracks?: TracksPayload;
     external_urls?: { spotify?: string };
   };
 
-  // Tracks failure path: keep ok=true with the header we DID get,
-  // but surface the upstream HTTP status verbatim (no collapsing 403
-  // and 404 into a generic 502). The panel branches messaging off the
-  // status + owner-vs-me classification — see classifyPlaylistTracksError
-  // in SpotifyPanel.tsx. We DO NOT compose the user-facing message
-  // server-side anymore.
-  //
-  // Embedded-items fallback: when the dedicated `/tracks` endpoint
-  // fails (Spotify dev-mode is increasingly 403-ing it on owned
-  // playlists too) the header response sometimes still contains
-  // `tracks.items[]` populated from the same data path. We harvest
-  // those as a last-ditch source so an owned playlist doesn't show
-  // "0 songs" just because a single sub-call broke. The brief reports
-  // "Lifting" rendering as 0 songs with no error — this fallback is
-  // exactly for that case.
-  let tracks: ReturnType<typeof projectTrack>[] = [];
-  let totalFromTracks = 0;
-  let tracksSource: "tracks-endpoint" | "header-embedded" | "none" = "none";
-  const tracksStatus: number | null = tracksRes.ok ? null : tracksRes.status;
   const fallbackImages = header.images;
   const fallbackName = header.name ?? "";
+
+  // Step B — primary /tracks fetch. Albums use market=US (region-
+  // relink). Playlists deliberately OMIT market.
+  const tracksPath = isAlbum
+    ? `/v1/albums/${id}/tracks?market=US&limit=50&offset=0`
+    : `/v1/playlists/${id}/tracks?limit=50&offset=0`;
+  const tracksRes = await spotifyApiProxy(tracksPath, {
+    tag: isAlbum ? "album/tracks" : "playlist/tracks-primary",
+  });
+  refreshed = refreshed ?? tracksRes.refreshed ?? null;
+
+  let tracks: ReturnType<typeof projectItems> = [];
+  let tracksTotal: number | null = null;
+  let tracksSource: "primary" | "href" | "embedded" | "none" = "none";
+  // The status that drove the user-visible classification — primary
+  // by default, but if a fallback succeeds we report null because
+  // tracks did load.
+  let tracksStatus: number | null = tracksRes.ok ? null : tracksRes.status;
+
   if (tracksRes.ok) {
-    const tracksData = tracksRes.data as {
-      items?: (PlaylistTrackEntry | Track | null)[];
-      total?: number;
-    };
-    totalFromTracks = tracksData.total ?? 0;
-    tracks = (tracksData.items ?? [])
-      .map((entry, idx) => {
-        if (!entry) return null;
-        // Playlist tracks: { track: {...} }. Album tracks: bare Track.
-        const t =
-          "track" in (entry as PlaylistTrackEntry)
-            ? (entry as PlaylistTrackEntry).track
-            : (entry as Track);
-        return projectTrack(t, idx, fallbackName, fallbackImages);
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null);
-    if (tracks.length > 0) tracksSource = "tracks-endpoint";
-  } else {
-    console.error(
-      "[spotify-playlist-tracks] tracks fetch failed",
-      tracksRes.status,
-      tracksRes.error,
-    );
+    const data = tracksRes.data as TracksPayload;
+    tracksTotal = typeof data.total === "number" ? data.total : null;
+    tracks = projectItems(data.items, fallbackName, fallbackImages);
+    tracksSource = "primary";
   }
 
-  // Embedded-items fallback when the dedicated /tracks endpoint
-  // returned nothing. The header path's tracks.items array is the
-  // same shape (PlaylistTrackEntry for playlists, bare Track for
-  // albums) so projectTrack handles both forms identically.
-  if (tracks.length === 0) {
-    const embeddedItems = header.tracks?.items;
-    if (Array.isArray(embeddedItems) && embeddedItems.length > 0) {
-      tracks = embeddedItems
-        .map((entry, idx) => {
-          if (!entry) return null;
-          const t =
-            "track" in (entry as PlaylistTrackEntry)
-              ? (entry as PlaylistTrackEntry).track
-              : (entry as Track);
-          return projectTrack(t, idx, fallbackName, fallbackImages);
-        })
-        .filter((x): x is NonNullable<typeof x> => x !== null);
-      if (tracks.length > 0) tracksSource = "header-embedded";
+  // Step C — href fallback. Header carries tracks.href which is the
+  // same endpoint; trying it directly sometimes succeeds when our
+  // own constructed URL doesn't (different default query params).
+  // Only run when the primary failed AND href differs from what we
+  // already tried, to avoid re-firing the same failing call.
+  if (
+    !tracksRes.ok &&
+    !isAlbum &&
+    typeof header.tracks?.href === "string" &&
+    header.tracks.href.includes("/tracks")
+  ) {
+    const hrefRes = await spotifyApiProxy(header.tracks.href, {
+      tag: "playlist/tracks-href",
+    });
+    refreshed = refreshed ?? hrefRes.refreshed ?? null;
+    if (hrefRes.ok) {
+      const data = hrefRes.data as TracksPayload;
+      tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
+      tracks = projectItems(data.items, fallbackName, fallbackImages);
+      if (tracks.length > 0) {
+        tracksSource = "href";
+        tracksStatus = null;
+      }
     }
   }
 
-  // Authenticated user id — used by the panel's classifyPlaylistTracksError
-  // to detect whether the playlist's owner is the recruiter. Null on
-  // album requests (we skipped /v1/me there) or if /v1/me itself failed.
-  const me =
-    meRes && meRes.ok ? (meRes.data as { id?: string }) : null;
+  // Step D — embedded fallback. Header sometimes carries tracks.items
+  // populated even when /tracks fails. Last-ditch source so an owned
+  // playlist with a known-good header doesn't render empty just
+  // because a single sub-call broke.
+  if (tracks.length === 0 && Array.isArray(header.tracks?.items)) {
+    const projected = projectItems(
+      header.tracks!.items as (PlaylistTrackEntry | Track | null)[],
+      fallbackName,
+      fallbackImages,
+    );
+    if (projected.length > 0) {
+      tracks = projected;
+      tracksSource = "embedded";
+      tracksStatus = null;
+    }
+  }
+
+  // Authenticated user id — drives the panel's owner-vs-me check for
+  // 403 classification. Null on album requests or if /me failed.
+  const me = meRes && meRes.ok ? (meRes.data as { id?: string }) : null;
   const meId = me?.id ?? null;
 
-  // Diagnostics — truncated raw responses + identity comparison so the
-  // recruiter can copy a single console line back when an owned
-  // playlist still comes up empty. Vercel logs receive the raw bodies;
-  // the client receives the small `debug` envelope on the response.
+  // Spotify-confirmed total: only when the header explicitly returned
+  // a numeric tracks.total OR the /tracks endpoint did. Anything else
+  // is unknown — UI must NOT fall back to "0 songs" on unknown.
+  const headerTotal =
+    typeof header.tracks?.total === "number" ? header.tracks.total : null;
+  const trackCount =
+    headerTotal ?? tracksTotal ?? (tracksSource !== "none" ? tracks.length : 0);
+  const trackCountKnown = headerTotal !== null || tracksTotal !== null;
+
+  // tracksLoaded: true iff at least one source produced a definitive
+  // list. The "primary" source counts even when items=[] (Spotify
+  // confirmed empty). False only when every step failed.
+  const tracksLoaded = tracksSource !== "none";
+
+  // Decision summary — single-line structured log so we can grep
+  // Vercel for the post-fetch state.
   console.log(
-    "[spotify-playlist-tracks] raw header:",
-    headerRes.status,
-    JSON.stringify(headerRes.data ?? null).slice(0, 600),
-  );
-  console.log(
-    "[spotify-playlist-tracks] raw tracks:",
-    tracksRes.status,
-    tracksRes.ok
-      ? JSON.stringify(tracksRes.data ?? null).slice(0, 600)
-      : `(error) ${tracksRes.error}`,
-  );
-  console.log(
-    "[spotify-playlist-tracks] raw me:",
-    meRes ? meRes.status : "(skipped — album)",
-    meRes && meRes.ok
-      ? JSON.stringify(meRes.data ?? null).slice(0, 200)
-      : meRes
-        ? `(error) ${meRes.error}`
-        : "",
-  );
-  console.log(
-    "[spotify-playlist-tracks] decision:",
+    "[spotify-playlist-tracks]",
     JSON.stringify({
+      kind: isAlbum ? "album" : "playlist",
+      id,
+      headerStatus: headerRes.status,
+      tracksStatus,
+      tracksSource,
       ownerId: header.owner?.id ?? null,
       meId,
       ownerMatchesMe:
         !!header.owner?.id && !!meId && header.owner.id === meId,
-      tracksStatus,
+      headerTracksTotal: headerTotal,
+      hrefPresent: typeof header.tracks?.href === "string",
       embeddedItemsCount: Array.isArray(header.tracks?.items)
         ? header.tracks!.items!.length
         : 0,
       projectedTracks: tracks.length,
-      tracksSource,
+      trackCount,
+      trackCountKnown,
+      tracksLoaded,
     }),
   );
-
-  // Spotify-confirmed total: only true when the header endpoint
-  // explicitly returned a numeric tracks.total. Anything else is
-  // unknown — the UI must NOT fall back to "0 songs" on unknown.
-  const trackCountKnown = typeof header.tracks?.total === "number";
-  const trackCount = trackCountKnown
-    ? (header.tracks!.total as number)
-    : totalFromTracks > 0
-      ? totalFromTracks
-      : tracks.length;
-
-  // tracksLoaded: did we actually obtain a definitive track list? True
-  // when the dedicated /tracks endpoint succeeded (regardless of how
-  // many rows it returned, including an explicit zero). Header-embedded
-  // fallback also counts because it represents Spotify's own track
-  // payload from a different endpoint. False when both subcalls failed
-  // to give us anything — the UI renders error/retry, never "0 songs".
-  const tracksLoaded = tracksRes.ok || tracksSource === "header-embedded";
 
   const res = NextResponse.json({
     ok: true,
@@ -287,9 +283,6 @@ export async function GET(
           .filter((n): n is string => Boolean(n))
           .join(", ")
       : header.owner?.display_name ?? "",
-    // Owner id (playlists only) — the panel compares this to meId to
-    // decide whether a 403 on /tracks is a dev-mode access issue or
-    // an auth/permission issue on the recruiter's own playlist.
     ownerId: isAlbum ? null : header.owner?.id ?? null,
     meId,
     year: isAlbum && header.release_date ? header.release_date.slice(0, 4) : "",
@@ -299,9 +292,6 @@ export async function GET(
     tracks,
     tracksStatus,
     externalUrl: header.external_urls?.spotify ?? "",
-    // Small client-readable diagnostic. Same fields as the server
-    // log's `decision` line so the recruiter can paste either one
-    // back if an owned playlist still comes up empty.
     debug: {
       headerStatus: headerRes.status,
       tracksStatus,
