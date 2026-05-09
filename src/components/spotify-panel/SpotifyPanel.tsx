@@ -1789,33 +1789,36 @@ function HomeView(props: {
         <RowSkeleton />
       ) : props.recentlyPlayed.length > 0 ? (
         <Section title="Recently Played">
-          <div className="flex gap-3 overflow-x-auto pb-2">
+          <ul className="flex flex-col">
             {props.recentlyPlayed.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => props.onPlayTrack(t.uri)}
-                className="group flex w-[120px] shrink-0 flex-col gap-2 rounded-md p-2 transition hover:bg-[#282828]"
-              >
-                {t.albumArt ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={t.albumArt}
-                    alt=""
-                    className="h-[100px] w-[100px] rounded object-cover shadow-md"
-                  />
-                ) : (
-                  <div className="h-[100px] w-[100px] rounded bg-[#282828]" />
-                )}
-                <div className="line-clamp-2 text-left text-xs font-semibold text-white">
-                  {t.name}
-                </div>
-                <div className="truncate text-[11px] text-[#B3B3B3]">
-                  {t.artist}
-                </div>
-              </button>
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => props.onPlayTrack(t.uri)}
+                  className="flex w-full items-center gap-3 rounded p-2 text-left transition hover:bg-[#282828]"
+                >
+                  {t.albumArt ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={t.albumArt}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 shrink-0 rounded bg-[#282828]" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium text-white">
+                      {t.name}
+                    </div>
+                    <div className="truncate text-xs text-[#B3B3B3]">
+                      {t.artist}
+                    </div>
+                  </div>
+                </button>
+              </li>
             ))}
-          </div>
+          </ul>
         </Section>
       ) : (
         <div className="text-sm text-[#B3B3B3]">
