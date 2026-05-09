@@ -3,23 +3,35 @@
 import { useEffect, useRef, useState } from "react";
 import { Sparkles, X } from "lucide-react";
 
-// Daily horoscope chip in the briefing header. Hardcoded to Pisces —
-// Andrew's birthday is March 11. We hit the same-origin /api/horoscope
-// proxy because the upstream (horoscope-app-api → freehoroscopeapi)
-// doesn't ship CORS headers, so a direct browser fetch is blocked
-// silently. Chip renders eagerly with a loading state in the popover
-// so it never disappears just because the network is slow.
+// Daily horoscope chip in the briefing header. Sign is derived from
+// the signed-in user's UserProfile.birthday by /api/horoscope; the
+// route falls back to Pisces when no birthday is set. We hit the
+// same-origin /api/horoscope proxy because the upstream
+// (horoscope-app-api → freehoroscopeapi) doesn't ship CORS headers,
+// so a direct browser fetch is blocked silently. Chip renders eagerly
+// with a loading state in the popover so it never disappears just
+// because the network is slow.
 
 type ApiResponse =
-  | { ok: true; sign: string; date: string | null; horoscope: string }
+  | {
+      ok: true;
+      sign: string;
+      displayName: string;
+      glyph: string;
+      date: string | null;
+      horoscope: string;
+    }
   | { ok: false; error: string };
-
-const SIGN_GLYPH = "♓";
-const SIGN_DISPLAY = "Pisces";
 
 type Status =
   | { phase: "loading" }
-  | { phase: "ready"; date: string | null; horoscope: string }
+  | {
+      phase: "ready";
+      displayName: string;
+      glyph: string;
+      date: string | null;
+      horoscope: string;
+    }
   | { phase: "error"; message: string };
 
 export function Horoscope() {
@@ -34,9 +46,7 @@ export function Horoscope() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/horoscope?sign=pisces", {
-          cache: "no-store",
-        });
+        const res = await fetch("/api/horoscope", { cache: "no-store" });
         const json = (await res.json()) as ApiResponse;
         if (cancelled) return;
         if (!res.ok || !json.ok) {
@@ -45,7 +55,13 @@ export function Horoscope() {
           setStatus({ phase: "error", message: msg });
           return;
         }
-        setStatus({ phase: "ready", date: json.date, horoscope: json.horoscope });
+        setStatus({
+          phase: "ready",
+          displayName: json.displayName,
+          glyph: json.glyph,
+          date: json.date,
+          horoscope: json.horoscope,
+        });
       } catch (e) {
         if (cancelled) return;
         setStatus({
@@ -93,13 +109,7 @@ export function Horoscope() {
         aria-haspopup="dialog"
         className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2.5 py-1 text-[11px] font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
       >
-        {/* The unicode Pisces glyph rendered as a purple emoji on
-            macOS, which clashed with the green dashboard. Sparkles
-            in court-brand green keeps the chip on theme. */}
-        <Sparkles
-          aria-hidden="true"
-          className="h-3.5 w-3.5 text-court-brand"
-        />
+        <Sparkles aria-hidden="true" className="h-3.5 w-3.5" />
         <span>Horoscope</span>
       </button>
 
@@ -123,7 +133,9 @@ export function Horoscope() {
           </div>
           <div className="mt-0.5 flex items-baseline gap-1.5">
             <div className="font-stat text-base font-bold leading-tight text-court-fg">
-              {SIGN_GLYPH} {SIGN_DISPLAY}
+              {status.phase === "ready"
+                ? `${status.glyph} ${status.displayName}`
+                : "…"}
             </div>
             {status.phase === "ready" && status.date ? (
               <div className="text-[10px] italic text-court-fg-muted">

@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 // Templates/Triggers.
 export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
+  { slug: "personal-info",     label: "Personal Info" },
   { slug: "notifications",     label: "Notifications" },
   { slug: "personal-trainer",  label: "Personal Trainer" },
   { slug: "history",           label: "Claude History" },

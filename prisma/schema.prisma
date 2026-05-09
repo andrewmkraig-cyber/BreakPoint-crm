@@ -84,6 +84,12 @@ model UserProfile {
   website      String?
   logoData     Bytes?
   logoMimeType String?
+  // Personal info (Settings → Personal Info). Birthday drives the
+  // dashboard horoscope chip's zodiac sign automatically when present.
+  // tshirtSize is a free-form string; UI restricts to XS..3XL.
+  birthday     DateTime? @db.Date
+  address      String?
+  tshirtSize   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
