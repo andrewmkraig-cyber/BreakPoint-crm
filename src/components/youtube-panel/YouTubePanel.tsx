@@ -140,6 +140,17 @@ export function YouTubePanel() {
   // hold the container ref and the player handle separately.
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
+  // Re-entry mutex for backToSearch. The state-based check inside
+  // backToSearch closes over the captured activeVideoId from the
+  // render that built it, so a doubled invocation in the same tick
+  // (pointer-capture replay, strict-mode handler replay, focus event
+  // bouncing the click) sees the pre-update value and falls through
+  // — that's the chain that causes the loop. A ref always reads the
+  // live value, so once one back-click latches it true, the next
+  // synchronous call bails immediately. Reset by the [activeVideoId]
+  // minimize-reset effect below once the transition has actually
+  // committed and we're back in the search state.
+  const backInFlightRef = useRef(false);
 
   useEffect(() => {
     setMounted(true);
@@ -291,8 +302,13 @@ export function YouTubePanel() {
 
   // Reset minimize when the user goes back to the search list — minimize
   // is a "playing state" affordance and shouldn't survive the transition.
+  // Also releases the back-to-search re-entry mutex now that the null
+  // transition has committed; the next play → back cycle starts fresh.
   useEffect(() => {
-    if (!activeVideoId) setMinimized(false);
+    if (!activeVideoId) {
+      setMinimized(false);
+      backInFlightRef.current = false;
+    }
   }, [activeVideoId]);
 
   // Closing the panel also clears minimize so the next open starts in a
@@ -634,12 +650,15 @@ export function YouTubePanel() {
 
   // Back from the playing iframe overlay. Clears the iframe but keeps
   // whichever non-playing state the recruiter came from (search list
-  // or channel view) so they land where they were. Idempotent: a
-  // doubled click (focus event bouncing back to the just-rendered
-  // button, pointer-capture replay) bails rather than re-running the
-  // state transition.
+  // or channel view) so they land where they were. The ref-based
+  // mutex (NOT the activeVideoId compare, which is stale across a
+  // synchronous re-entry) is the actual loop break: once the first
+  // call latches it, every replay in the same tick exits before
+  // dispatching another setState pair.
   function backToSearch() {
+    if (backInFlightRef.current) return;
     if (activeVideoId === null) return;
+    backInFlightRef.current = true;
     setActiveVideoId(null);
     setActiveVideoTitle("");
   }
