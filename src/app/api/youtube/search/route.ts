@@ -244,13 +244,26 @@ export async function GET(req: NextRequest) {
   if (pageToken) yt.searchParams.set("pageToken", pageToken);
 
   if (channelId) {
-    // Channel-uploads mode: latest videos from a single channel,
-    // newest first. Mode is intentionally ignored here — channel
-    // browse is always chronological.
+    // Channel-uploads mode: a single channel's videos, ordered per
+    // the requested mode. Channel browse is always type=video (no
+    // nested channels), so videoDuration=long can be combined with
+    // any order. Default (top) maps to relevance; recent maps to
+    // chronological — preserving the original "latest videos" feel.
     yt.searchParams.set("type", "video");
     yt.searchParams.set("channelId", channelId);
-    yt.searchParams.set("order", "date");
     if (q) yt.searchParams.set("q", q);
+    if (mode === "popular") {
+      yt.searchParams.set("order", "viewCount");
+    } else if (mode === "long") {
+      yt.searchParams.set("order", "relevance");
+      yt.searchParams.set("videoDuration", "long");
+    } else if (mode === "top") {
+      yt.searchParams.set("order", "relevance");
+    } else {
+      // recent (default for channel browse — closest to the prior
+      // "latest videos" behavior the panel always shipped with)
+      yt.searchParams.set("order", "date");
+    }
   } else {
     // Free-text mode. Mode picks the order (and for `long`, narrows
     // to long-form videos only — videoDuration requires type=video,

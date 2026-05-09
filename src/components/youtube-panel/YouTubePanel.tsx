@@ -705,9 +705,18 @@ export function YouTubePanel() {
   }, [open, cancelActiveSession]);
   useEffect(() => () => cancelActiveSession(), [cancelActiveSession]);
 
-  async function runSearch() {
-    const q = query.trim();
+  // Run a search. The mode/query overrides exist so the mode-pill
+  // click handler can rerun against the new mode without waiting for
+  // the searchMode setState to flush, and against the
+  // lastSearchedQuery rather than whatever the recruiter has since
+  // typed into the input box.
+  async function runSearch(opts?: {
+    modeOverride?: SearchMode;
+    queryOverride?: string;
+  }) {
+    const q = (opts?.queryOverride ?? query).trim();
     if (!q || searching) return;
+    const mode = opts?.modeOverride ?? searchMode;
     setSearching(true);
     setActiveVideoId(null);
     setActiveVideoTitle("");
@@ -718,7 +727,7 @@ export function YouTubePanel() {
     setSearchNextToken(null);
     try {
       const res = await fetch(
-        `/api/youtube/search?q=${encodeURIComponent(q)}&mode=${searchMode}`,
+        `/api/youtube/search?q=${encodeURIComponent(q)}&mode=${mode}`,
         { cache: "no-store" },
       );
       const data = (await res.json()) as {
@@ -739,7 +748,7 @@ export function YouTubePanel() {
       );
       setSearchNextToken(data.nextPageToken ?? null);
       setLastSearchedQuery(q);
-      setLastSearchedMode(searchMode);
+      setLastSearchedMode(mode);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Search failed";
       toast.error("YouTube search failed", { description: message });
@@ -791,8 +800,11 @@ export function YouTubePanel() {
   // the same route's channelId mode and switch the body to channel
   // view. Optimistic render: set channelView with loading=true so the
   // recruiter sees the channel header immediately while the fetch
-  // resolves.
-  async function openChannel(c: ChannelResult) {
+  // resolves. modeOverride lets the mode-pill handler rerun the
+  // channel browse with a new ordering without waiting on the
+  // searchMode setState.
+  async function openChannel(c: ChannelResult, modeOverride?: SearchMode) {
+    const mode = modeOverride ?? searchMode;
     setChannelView({
       info: c,
       videos: [],
@@ -802,7 +814,7 @@ export function YouTubePanel() {
     });
     try {
       const res = await fetch(
-        `/api/youtube/search?channelId=${encodeURIComponent(c.channelId)}`,
+        `/api/youtube/search?channelId=${encodeURIComponent(c.channelId)}&mode=${mode}`,
         { cache: "no-store" },
       );
       const data = (await res.json()) as {
@@ -824,6 +836,9 @@ export function YouTubePanel() {
         nextPageToken: data.nextPageToken ?? null,
         loadingMore: false,
       });
+      // Pin lastSearchedMode for the channel-view load-more path so
+      // pagination matches the mode that produced the current page.
+      setLastSearchedMode(mode);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Channel load failed";
       toast.error("Couldn't load channel", { description: message });
@@ -842,10 +857,13 @@ export function YouTubePanel() {
       return;
     }
     const cv = channelView;
+    // Pin the load-more page to whichever mode is currently active so
+    // pagination doesn't drift into a different ordering mid-scroll.
+    const mode = lastSearchedMode;
     setChannelView({ ...cv, loadingMore: true });
     try {
       const res = await fetch(
-        `/api/youtube/search?channelId=${encodeURIComponent(cv.info.channelId)}&pageToken=${encodeURIComponent(cv.nextPageToken!)}`,
+        `/api/youtube/search?channelId=${encodeURIComponent(cv.info.channelId)}&mode=${mode}&pageToken=${encodeURIComponent(cv.nextPageToken!)}`,
         { cache: "no-store" },
       );
       const data = (await res.json()) as {
@@ -1048,10 +1066,12 @@ export function YouTubePanel() {
                 relevance order the panel always shipped with. The
                 non-default modes are quick filters: Recent (newest
                 first), Popular (most viewed), Long (long-form
-                videos via videoDuration=long). Picking a mode does
-                NOT auto-rerun the search; it takes effect on the
-                next Enter / Search click so the recruiter can pick
-                a mode and a query in either order. */}
+                videos via videoDuration=long). Clicking a pill
+                immediately reruns whichever surface is active —
+                channel browse if the recruiter is inside a channel,
+                otherwise the last search query. With no active
+                results the click only updates state; the next Search
+                click runs against the picked mode. */}
             <div className="flex items-center gap-1">
               {SEARCH_MODES.map((m) => {
                 const active = searchMode === m.value;
@@ -1059,7 +1079,18 @@ export function YouTubePanel() {
                   <button
                     key={m.value}
                     type="button"
-                    onClick={() => setSearchMode(m.value)}
+                    onClick={() => {
+                      if (m.value === searchMode) return;
+                      setSearchMode(m.value);
+                      if (channelView) {
+                        void openChannel(channelView.info, m.value);
+                      } else if (lastSearchedQuery) {
+                        void runSearch({
+                          modeOverride: m.value,
+                          queryOverride: lastSearchedQuery,
+                        });
+                      }
+                    }}
                     aria-pressed={active}
                     className={
                       "rounded-full px-2.5 py-0.5 text-[11px] font-medium transition " +
