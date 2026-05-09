@@ -23,8 +23,9 @@ import {
 // Vercel cron log.
 
 export const dynamic = "force-dynamic";
-// Web-search-enabled calls run ~5–15s each; running 5 in parallel
-// usually finishes in 15–20s, but 60s leaves headroom for slow days.
+// Web-search-enabled calls run ~5–15s each; running all 4 tabs in
+// parallel usually finishes in 15–20s, but 60s leaves headroom for
+// slow days.
 export const maxDuration = 60;
 
 const DEFAULT_ORG_FALLBACK = "DEFAULT_ORG_ID";
@@ -71,7 +72,7 @@ async function processTab(
     return {
       tab,
       status: "failed",
-      error: e instanceof Error ? e.message : "NewsAPI call failed",
+      error: e instanceof Error ? e.message : "Claude call failed",
     };
   }
   if (!headlines) {
