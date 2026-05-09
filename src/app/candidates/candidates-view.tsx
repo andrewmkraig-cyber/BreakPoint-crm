@@ -279,7 +279,7 @@ export function CandidatesView({
               onClick={() => setBulkOpen("delete")}
               className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-red-50 px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
             >
-              <Trash2 className="h-3 w-3" /> Delete Selected
+              <Trash2 className="h-3 w-3" /> Delete Selected ({selectedCount})
             </button>
           </div>
         </div>
@@ -686,9 +686,9 @@ function BulkDeleteDialog({
   }
 
   return (
-    <BulkModal title={`Delete ${count} candidate${count === 1 ? "" : "s"}?`} onClose={onClose}>
+    <BulkModal title={`Permanently delete ${count} candidate${count === 1 ? "" : "s"}?`} onClose={onClose}>
       <p className="text-sm text-court-fg">
-        Delete {count} candidate{count === 1 ? "" : "s"}? This cannot be undone.
+        Permanently delete {count} candidate{count === 1 ? "" : "s"}? This cannot be undone.
       </p>
       <div className="mt-4 flex items-center justify-end gap-2">
         <button
