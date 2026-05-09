@@ -16,7 +16,6 @@ import {
   DollarSign,
   Handshake,
   Send,
-  Users,
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
@@ -76,7 +75,6 @@ export default async function DashboardPage() {
     rfCandidates,
     rfJobs,
     rfClients,
-    applyLogCount,
     submitLogCount,
     interviewsScheduledCount,
     interviewsCompletedCount,
@@ -92,12 +90,6 @@ export default async function DashboardPage() {
     getRfCandidatesForOrg().catch(() => []),
     getRfJobsForOrg().catch(() => []),
     getRfClientsForOrg().catch(() => []),
-    // Apply transitions logged by applyCandidateToJob. Inbound job-
-    // board applicants don't write ActionLog yet; when that pipeline
-    // lands, add another source here or bundle them into this query.
-    prisma.actionLog.count({
-      where: { actionType: "apply", organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
-    }),
     // Submit transitions — includes the `submit` log written by both
     // applyCandidateToJob follow-ups and the full submittal flow.
     prisma.actionLog.count({
@@ -217,8 +209,7 @@ export default async function DashboardPage() {
           Activity for {formatEasternWeekRange(weekStart, weekEnd)}
         </p>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-        <KpiTile label="New Applicants" value={applyLogCount} icon={Users} />
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
         <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
         <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
