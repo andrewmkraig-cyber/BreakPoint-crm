@@ -9,13 +9,13 @@ import {
 
 // On-demand per-tab daily news briefing for the dashboard widget. One
 // row per (org, tab, ET day) keyed off DEFAULT_ORG_ID — the first
-// request of the ET day spends a Claude web_search call, the rest
-// serve from the DailyNewsFeed cache. /api/cron/news-feed prewarms
-// the rows at 6am ET so the recruiter usually hits cache.
+// request of the ET day spends a NewsAPI call, the rest serve from
+// the DailyNewsFeed cache. /api/cron/news-feed prewarms the rows at
+// 6am ET so the recruiter usually hits cache.
 //
 // Intentionally unauthenticated: headlines aren't tenant-private and
 // session resolution was the dominant tail-latency source. If
-// DEFAULT_ORG_ID is unset we skip the cache entirely and hit Claude
+// DEFAULT_ORG_ID is unset we skip the cache entirely and hit NewsAPI
 // live every time. DB errors during cache read or upsert are logged
 // and swallowed so a Neon hiccup can't take the widget down.
 
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
         });
       }
     } catch (e) {
-      console.error("[news-feed] cache read failed, hitting Claude live:", e);
+      console.error("[news-feed] cache read failed, hitting NewsAPI live:", e);
     }
   }
 
