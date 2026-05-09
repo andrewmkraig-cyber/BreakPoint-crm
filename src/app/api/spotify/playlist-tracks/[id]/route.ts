@@ -97,6 +97,7 @@ type Track = {
   id?: string;
   name?: string;
   uri?: string;
+  type?: string;
   duration_ms?: number;
   artists?: (ArtistRef | null)[];
   album?: { name?: string; images?: Image[] } | null;
@@ -106,6 +107,30 @@ type TracksPayload = {
   items?: (PlaylistTrackEntry | Track | null)[];
   total?: number;
   href?: string | null;
+};
+
+type ProjectedTrack = {
+  index: number;
+  id: string;
+  uri: string;
+  name: string;
+  artist: string;
+  albumName: string;
+  albumArt: string;
+  durationMs: number;
+};
+
+type ProjectionCounts = {
+  itemsReceived: number;
+  nullTrackItems: number;
+  nonTrackItems: number;
+  missingUriItems: number;
+  mappedTracks: number;
+};
+
+type ProjectionResult = {
+  tracks: ProjectedTrack[];
+  counts: ProjectionCounts;
 };
 
 function pickImage(images: Image[] | undefined, preferred: number): string {
@@ -121,53 +146,81 @@ function pickImage(images: Image[] | undefined, preferred: number): string {
   );
 }
 
-function projectTrack(
-  t: Track | null | undefined,
-  idx: number,
-  fallbackName: string,
-  fallbackImages: Image[] | undefined,
-): {
-  index: number;
-  id: string;
-  uri: string;
-  name: string;
-  artist: string;
-  albumName: string;
-  albumArt: string;
-  durationMs: number;
-} | null {
-  if (!t || !t.id || !t.uri || !t.name) return null;
-  const artist = (t.artists ?? [])
-    .map((a) => a?.name)
-    .filter((n): n is string => Boolean(n))
-    .join(", ");
-  return {
-    index: idx,
-    id: t.id,
-    uri: t.uri,
-    name: t.name,
-    artist,
-    albumName: t.album?.name ?? fallbackName ?? "",
-    albumArt: pickImage(t.album?.images, 64) || pickImage(fallbackImages, 64),
-    durationMs: t.duration_ms ?? 0,
-  };
+// Spotify URIs are colon-delimited (`spotify:track:abc`). When `id` is
+// absent we derive it from the URI tail so the UI still has a stable
+// identifier to key on.
+function deriveIdFromUri(uri: string): string {
+  const parts = uri.split(":");
+  return parts[parts.length - 1] ?? "";
 }
 
+// Project /v1/playlists/{id}/items (and /v1/albums/{id}/tracks, and the
+// legacy /tracks shape) into Ace's flat track row. Skip ONLY:
+//   - entry is null/undefined
+//   - entry.track (playlist shape) is null
+//   - track.type is set and not "track" (episodes etc.)
+//   - track.uri is missing — uri is the canonical handle for queueing
+// Anything else (missing id, missing name, missing album art, missing
+// preview_url, missing external_urls, missing markets) still maps —
+// we backfill with safe defaults so the row still renders.
 function projectItems(
   items: (PlaylistTrackEntry | Track | null)[] | undefined,
   fallbackName: string,
   fallbackImages: Image[] | undefined,
-) {
-  return (items ?? [])
-    .map((entry, idx) => {
-      if (!entry) return null;
-      const t =
-        "track" in (entry as PlaylistTrackEntry)
-          ? (entry as PlaylistTrackEntry).track
-          : (entry as Track);
-      return projectTrack(t, idx, fallbackName, fallbackImages);
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null);
+): ProjectionResult {
+  const counts: ProjectionCounts = {
+    itemsReceived: 0,
+    nullTrackItems: 0,
+    nonTrackItems: 0,
+    missingUriItems: 0,
+    mappedTracks: 0,
+  };
+  const list = items ?? [];
+  const tracks: ProjectedTrack[] = [];
+
+  for (let idx = 0; idx < list.length; idx++) {
+    counts.itemsReceived += 1;
+    const entry = list[idx];
+    if (!entry) {
+      counts.nullTrackItems += 1;
+      continue;
+    }
+    const t =
+      typeof entry === "object" && entry !== null && "track" in entry
+        ? (entry as PlaylistTrackEntry).track
+        : (entry as Track);
+    if (!t) {
+      counts.nullTrackItems += 1;
+      continue;
+    }
+    if (typeof t.type === "string" && t.type !== "track") {
+      counts.nonTrackItems += 1;
+      continue;
+    }
+    if (!t.uri) {
+      counts.missingUriItems += 1;
+      continue;
+    }
+    const id = t.id ?? deriveIdFromUri(t.uri);
+    const name = t.name ?? "Unknown title";
+    const artist = (t.artists ?? [])
+      .map((a) => a?.name)
+      .filter((n): n is string => Boolean(n))
+      .join(", ");
+    tracks.push({
+      index: idx,
+      id,
+      uri: t.uri,
+      name,
+      artist,
+      albumName: t.album?.name ?? fallbackName ?? "",
+      albumArt: pickImage(t.album?.images, 64) || pickImage(fallbackImages, 64),
+      durationMs: t.duration_ms ?? 0,
+    });
+    counts.mappedTracks += 1;
+  }
+
+  return { tracks, counts };
 }
 
 export async function GET(
@@ -337,7 +390,7 @@ export async function GET(
     );
     refreshed = refreshed ?? primaryRes.refreshed ?? null;
 
-    let tracks: ReturnType<typeof projectItems> = [];
+    let tracks: ProjectedTrack[] = [];
     let tracksTotal: number | null = null;
     let tracksSource: "items" | "tracks" | "href" | "embedded" | "none" =
       "none";
@@ -345,6 +398,13 @@ export async function GET(
     let lastTracksError: { msg: string; body: unknown } | null = primaryRes.ok
       ? null
       : { msg: primaryRes.error, body: primaryRes.body };
+
+    // Per-attempt mapper counts. Surfaced in `debug` so a "200 but zero
+    // tracks" condition is diagnosable from the response body alone.
+    let primaryCounts: ProjectionCounts | null = null;
+    let fallbackCounts: ProjectionCounts | null = null;
+    let hrefCounts: ProjectionCounts | null = null;
+    let embeddedCounts: ProjectionCounts | null = null;
 
     // Per-attempt upstream snapshots — surfaced verbatim in the JSON
     // response so the recruiter can see Spotify's exact reason in the
@@ -372,7 +432,9 @@ export async function GET(
     if (primaryRes.ok) {
       const data = primaryRes.data as TracksPayload;
       tracksTotal = typeof data.total === "number" ? data.total : null;
-      tracks = projectItems(data.items, fallbackName, fallbackImages);
+      const projection = projectItems(data.items, fallbackName, fallbackImages);
+      tracks = projection.tracks;
+      primaryCounts = projection.counts;
       tracksSource = isAlbum ? "tracks" : "items";
     }
 
@@ -396,7 +458,13 @@ export async function GET(
       if (fallbackRes.ok) {
         const data = fallbackRes.data as TracksPayload;
         tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
-        tracks = projectItems(data.items, fallbackName, fallbackImages);
+        const projection = projectItems(
+          data.items,
+          fallbackName,
+          fallbackImages,
+        );
+        tracks = projection.tracks;
+        fallbackCounts = projection.counts;
         tracksSource = "tracks";
         tracksStatus = null;
         lastTracksError = null;
@@ -432,8 +500,14 @@ export async function GET(
       if (hrefRes.ok) {
         const data = hrefRes.data as TracksPayload;
         tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
-        tracks = projectItems(data.items, fallbackName, fallbackImages);
-        if (tracks.length > 0) {
+        const projection = projectItems(
+          data.items,
+          fallbackName,
+          fallbackImages,
+        );
+        hrefCounts = projection.counts;
+        if (projection.tracks.length > 0) {
+          tracks = projection.tracks;
           tracksSource = "href";
           tracksStatus = null;
           lastTracksError = null;
@@ -450,13 +524,14 @@ export async function GET(
 
     // Step D — embedded fallback.
     if (tracks.length === 0 && Array.isArray(header.tracks?.items)) {
-      const projected = projectItems(
+      const projection = projectItems(
         header.tracks!.items as (PlaylistTrackEntry | Track | null)[],
         fallbackName,
         fallbackImages,
       );
-      if (projected.length > 0) {
-        tracks = projected;
+      embeddedCounts = projection.counts;
+      if (projection.tracks.length > 0) {
+        tracks = projection.tracks;
         tracksSource = "embedded";
         tracksStatus = null;
         lastTracksError = null;
@@ -475,7 +550,28 @@ export async function GET(
     const trackCount =
       headerTotal ?? tracksTotal ?? (tracksSource !== "none" ? tracks.length : 0);
     const trackCountKnown = headerTotal !== null || tracksTotal !== null;
-    const tracksLoaded = tracksSource !== "none";
+    let tracksLoaded = tracksSource !== "none";
+
+    // Mapper guard: if Spotify returned items but our projection
+    // dropped every one of them, surface that as a distinct failure
+    // mode so the UI doesn't sit on tracksLoaded:true with an empty
+    // array. Pick the counts from whichever attempt produced items
+    // most recently — primary first, then fallback, href, embedded.
+    const lastCounts: ProjectionCounts | null =
+      embeddedCounts ?? hrefCounts ?? fallbackCounts ?? primaryCounts;
+    let mapperError: string | null = null;
+    if (
+      trackCount > 0 &&
+      lastCounts &&
+      lastCounts.itemsReceived > 0 &&
+      lastCounts.mappedTracks === 0
+    ) {
+      tracksLoaded = false;
+      mapperError =
+        `Projection dropped every item: itemsReceived=${lastCounts.itemsReceived}, ` +
+        `nullTrack=${lastCounts.nullTrackItems}, nonTrack=${lastCounts.nonTrackItems}, ` +
+        `missingUri=${lastCounts.missingUriItems}, mapped=${lastCounts.mappedTracks}`;
+    }
 
     summary.trackCount = trackCount;
     summary.trackCountKnown = trackCountKnown;
@@ -511,6 +607,7 @@ export async function GET(
       tracks,
       tracksStatus,
       tracksError: lastTracksError ? lastTracksError.msg : null,
+      mapperError,
       // Per-attempt upstream snapshots — visible directly in the
       // browser Network tab when /items / /tracks / href all fail.
       // null when the attempt succeeded (or wasn't run at all).
@@ -537,6 +634,13 @@ export async function GET(
         tracksSource,
         trackCountKnown,
         tracksLoaded,
+        mapperError,
+        mapperCounts: {
+          primary: primaryCounts,
+          fallback: fallbackCounts,
+          href: hrefCounts,
+          embedded: embeddedCounts,
+        },
       },
     });
     return applyRefreshedSpotifyCookies(res, refreshed);
