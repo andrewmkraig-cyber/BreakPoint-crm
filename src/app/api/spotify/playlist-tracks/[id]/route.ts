@@ -110,7 +110,12 @@ type Track = {
   artists?: (ArtistRef | null)[];
   album?: { name?: string; images?: Image[] } | null;
 };
-type PlaylistTrackEntry = { track?: Track | null };
+// Spotify wraps the inner track under `track` on most accounts, but
+// for some accounts the playlist-items response wraps it under `item`
+// instead (observed empirically on this user's /v1/playlists/{id}/items
+// — see commit fa8e2b0 follow-up). Both wrappers can appear; we
+// normalize via `row?.track ?? row?.item ?? row`.
+type PlaylistTrackEntry = { track?: Track | null; item?: Track | null };
 type TracksPayload = {
   items?: (PlaylistTrackEntry | Track | null)[];
   total?: number;
@@ -165,16 +170,18 @@ function deriveIdFromUri(uri: string): string {
 // Project /v1/playlists/{id}/items (and /v1/albums/{id}/tracks, and the
 // legacy /tracks shape) into Ace's flat track row.
 //
-// Normalization: every row is run through `item?.track ?? item`. Playlist
-// items wrap the track (`{ added_at, track: {...} }`); album tracks and
-// the legacy /tracks shape don't. The `??` collapses both into a single
-// path. If `item.track` is explicitly `null` (Spotify's marker for an
-// unavailable track in a playlist), we count it as nullTrack and skip
-// rather than falling through to the wrapper.
+// Normalization: every row is run through `row?.track ?? row?.item ?? row`.
+// Spotify's playlist-items endpoint has been observed wrapping the inner
+// track under either `track` (documented shape) or `item` (this user's
+// account, empirically). Album tracks and the legacy /tracks endpoint
+// return the track flat. The chained `??` collapses all three into one
+// path. If the wrapper key is present but explicitly `null`, that's
+// Spotify's marker for an unavailable track — we count it as nullTrack
+// and skip rather than falling through to the outer wrapper.
 //
 // Skip ONLY:
-//   - entry is null/undefined
-//   - entry.track is explicitly null (unavailable track marker)
+//   - row is null/undefined
+//   - row.track or row.item is explicitly null (unavailable track marker)
 //   - track.type is set and not "track" (episodes etc.)
 //   - BOTH track.uri and track.id are missing — uri is the canonical
 //     queue handle, but when uri is absent we synthesize it from id
@@ -196,24 +203,27 @@ function projectItems(
 
   for (let idx = 0; idx < list.length; idx++) {
     counts.itemsReceived += 1;
-    const item = list[idx] as
+    const row = list[idx] as
       | (PlaylistTrackEntry & Track)
       | null
       | undefined;
-    if (!item) {
+    if (!row) {
       counts.nullTrackItems += 1;
       continue;
     }
-    // Spotify uses `track: null` to mark unavailable tracks in a
-    // playlist (deleted/region-locked). Detect that explicitly so we
-    // don't fall through to the wrapper.
-    if ((item as PlaylistTrackEntry).track === null) {
+    // Spotify uses `track: null` (or `item: null` on the alt-wrapper
+    // shape) to mark unavailable tracks in a playlist (deleted /
+    // region-locked). Detect that explicitly so we don't fall through
+    // to the outer wrapper, which has no id/uri of its own.
+    const wrapper = row as PlaylistTrackEntry;
+    if (wrapper.track === null || wrapper.item === null) {
       counts.nullTrackItems += 1;
       continue;
     }
     const track: Track =
-      ((item as PlaylistTrackEntry).track as Track | undefined) ??
-      (item as Track);
+      (wrapper.track as Track | undefined) ??
+      (wrapper.item as Track | undefined) ??
+      (row as Track);
     if (typeof track.type === "string" && track.type !== "track") {
       counts.nonTrackItems += 1;
       continue;
