@@ -4,6 +4,44 @@ Long-form history archive. Started 2026-05-07 when ACE_STATE.md was trimmed to t
 
 ---
 
+## Completed - Ace 38.0 (May 9, 2026)
+
+Spotify/YouTube/Mail polish + CSV import tightening. Nine commits across four surfaces. No core schema changes; one new Json column was considered (Candidate.rawCv) but skipped because the existing experience/education columns already carry the data and all downstream readers (resume PDF, generate-resume action) depend on them.
+
+- Spotify shuffle: PUT /api/spotify/shuffle, panel reads shuffle_state from SDK, NowPlayingBar toggle (right of Next, green when active), Playlist Play and individual track click push toggle state to Spotify before /play, track click sends offset + position_ms: 0.
+- Spotify drag/resize lifecycle ported from YouTube. Single endSessionRef + window/document safety net (pointerup, mouseup, blur, visibilitychange, lostpointercapture). Body, BottomNav, NowPlayingBar get pointer-events: none for the gesture. Resize commit re-clamps position so the panel never lands half off-screen.
+- Spotify recency-derived: /api/spotify/recently-played returns recentPlaylistIds + recentArtists (hydrated via one batched /v1/artists call, max 10 each). New /api/spotify/playlists-meta?ids=... fetches metadata for up to 10 playlist IDs the recruiter doesn't follow. Home shows a "Recently played playlists" 2-col grid above the tracks row. Library Playlists tab pulls recents (matched against the user's library) to the top; Library Artists tab puts recent artists first (including non-followed) followed by the existing followed list, deduped.
+- YouTube search modes Top / Recent / Popular as pills. Long mode added then removed per Andrew. Pills auto-rerun the active surface immediately — channel browse if inside a channel, otherwise the last searched query. /api/youtube/search channelId branch now respects mode. Channel-view load-more pins the mode that produced the page.
+- YouTube duration badges via batched videos.list (part=contentDetails). ISO 8601 parsed and formatted as 8:42 / 1:12:04. Bottom-right of thumbnail. Hidden when null. Minimized dock shows duration next to the title when available.
+- Mail To-field typeahead with three sources in parallel (Ace candidates, Ace contacts, Gmail Sent recipients), all org-scoped, up to 8 deduped items, priority-sorted (exact email > local-part-prefix or name-prefix > substring-anywhere; Ace sources outrank Gmail at ties). New /api/mail/contacts-search?q= route. Contact.emails partial match via parameterized $queryRaw since Prisma can't substring-match into String[].
+- Mail Gmail Sent recipients via new src/lib/gmail-recipients.ts. Snapshot of the last 500 sent messages — pages through messages.list, fetches metadata-only headers in parallel, parses To/Cc/Bcc address lists, dedupes by lowercased email. Cached 30 min in-process; stale-while-revalidate up to 24h; concurrent refreshes coalesce on one Promise. No new OAuth scope. Earlier per-keystroke live-search approach was scrapped because Gmail's to: operator does prefix-of-token, not substring.
+- AddressRow upgrade: opt-in serverSearch flag. 200ms debounce, AbortController for stale-response drops, Arrow/Enter/Escape keyboard nav, mouse hover follows the same activeIndex. To row passes serverSearch; CC/BCC unchanged.
+- Candidate CSV import skip rules tightened. Experiences drop when both title AND company empty. Educations drop when school empty. linkedin field dropped from experience capture.
+- Candidate profile WORK HISTORY + EDUCATION sections render year-only via regex pull on raw start/end dates. Court Mode tokens preserved.
+
+## Completed - Ace 37.0 / 37.1 / 37.2 (May 8, 2026)
+
+Three-step Spotify thread the day before the 38.0 polish day.
+
+- 37.0 — Three Spotify fixes, no playback or YouTube code touched. Artist Popular section no longer hits /v1/artists/{id}/top-tracks (403 in dev mode); new flow fetches /v1/artists/{id}/albums?include_groups=single,album&market=US&limit=5, takes the first album, fetches /v1/albums/{firstAlbumId}/tracks?market=US&limit=5, projects 3-5 rows for Popular; if anything 403s the section hides silently. Discography continues to use /v1/artists/{id}/albums?include_groups=album,single&limit=20&market=US (hardcoded 20). classifyPlaylistTracksError returns null on 403 + ownerId === meId so the recruiter's own playlists never show a restriction or auth-refresh message; followed-but-not-owned playlists keep the "Spotify's API restricts access to playlists you didn't create. Open in Spotify to listen." message.
+- 37.1 — Andrew's "Lifting" playlist (which he owns) was rendering 0 songs with no error. /api/spotify/playlist-tracks/[id] gained an embedded-items fallback: when /v1/playlists/{id}/tracks fails or returns no projected rows, harvest the same shape from the header response's tracks.items[] so an owned playlist doesn't strand on 0 songs because a single sub-call broke. Server logs raw header / tracks / me responses (truncated 600 chars) plus a structured "decision" line with ownerId, meId, ownerMatchesMe, embeddedItemsCount, projectedTracks, tracksSource. Response ships a small debug envelope to the client; panel console.logs it on every response. trackCount priority adjusted: header.tracks.total → totalFromTracks → tracks.length so we never display "0 songs" above a non-empty row list.
+- 37.2 — Web Playback SDK doesn't reliably auto-advance through a context_uri (artist / playlist) on its own — playback would just stop after each track. Wired track-end detection into the existing player_state_changed listener: prevPlayerStateRef remembers the previous state's trackUri + paused so we can distinguish "track ended" from initial connect / user pause / seek-to-zero. When prev state was actively playing a track (paused=false + trackUri) and the new state matches end-of-track shape (paused=true + position=0), POST /api/spotify/next with the current device_id. autoSkipInFlightRef debounces the burst of player_state_changed events the /next call itself triggers so we never double-skip.
+
+## Completed - Ace 36.0 (May 7, 2026)
+
+Floating media + dashboard daily companions + premium dashboard. Full per-bullet log lives in ACE_ROADMAP.md's Completed - Ace 36.0 section; rollup here for archive completeness.
+
+- YouTube floating player (draggable + resizable, topbar Music-icon toggle, /api/youtube/search proxy, video-first iframe + hover overlay, viewport clamping, minimize-keeps-audio, CSP fix, 50 results + View More pagination, channel search + channel view).
+- Spotify floating panel (full Spotify-mobile-style UI on top of the Web Playback SDK, OAuth via /api/auth/spotify with httpOnly cookies, transparent token refresh through spotifyApiProxy, 3-tab BottomNav, Recently Played row on Home, Library tab with filter pills backed by /api/spotify/playlists + /api/spotify/saved-albums + /api/spotify/followed-artists, PlaylistView + AlbumView via shared detail route, ArtistView with top tracks + discography, full-panel NowPlayingView, minimize keeps audio, X closes and pauses + SDK disconnect, Spotify dark palette intentionally hardcoded scoped to src/components/spotify-panel/).
+- Word of Day, Quote of Day, Chess puzzle, On This Day, Daily Horoscope dashboard pills (cached in Neon).
+- News feed redesign (Apple-News editorial style, 4 tabs, lead-story + 3-list-rows layout, collapsible).
+- News feed cron (6 AM ET Vercel cron at /api/cron/news-feed pre-warms DailyNewsFeed for every tab, NEWS_API_KEY replacing the prior Claude web_search round-trip).
+- Weather widget (Open-Meteo + geolocation, hover popover with current/6-hour/7-day forecast, custom WMO icon dispatch).
+- Dashboard premium redesign (green-tint surface, sage KPI tile icons, Billing Tower with Q2 focal + cash-collected secondary, ambient layered shadows, tabular numbers, Activity Dashboard topbar in Bricolage Grotesque).
+- Final user-facing RecruiterFlow string removed from the UI.
+
+---
+
 ## Completed - Ace 35.0 (May 7, 2026)
 
 - Game Plan Context Depth: extractResumeTextForCandidate helper in ai-workspace-context.ts. pdf-parse via dynamic import. Candidate context gets UPLOADED RESUME section (6k char cap) or "No resume on file". Job context gets RAW JOB DESCRIPTION and INTERNAL RECRUITER NOTES sections, skipped silently if null. Client context gets ACTIVE JOBS (up to 5 open jobs, 2k cap each) and PIPELINE CANDIDATES (10 most recent placements, 3k cap each, parallel pdf-parse).

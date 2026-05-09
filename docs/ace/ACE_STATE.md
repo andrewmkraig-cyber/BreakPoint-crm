@@ -1,10 +1,31 @@
 # ACE_STATE.md
-Last updated: 2026-05-08 · Ace 37.2
+Last updated: 2026-05-09 · Ace 38.0
 
 ## Current Status
-Current Version: Ace 37.2 (Spotify auto-skip on track end)
-Last Shipped: Ace 37.2 — May 8, 2026
+Current Version: Ace 38.0 (Spotify/YouTube/Mail polish + CSV import tightening)
+Last Shipped: Ace 38.0 — May 9, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 38.0
+Polish day across Spotify, YouTube, Mail, and the candidate CSV import. No core schema changes; one new Json column was considered (Candidate.rawCv) but skipped because the existing experience/education columns already carry the data.
+
+Spotify panel:
+- Shuffle support. New PUT /api/spotify/shuffle proxies to /v1/me/player/shuffle. Panel reads shuffle_state from the Web Playback SDK player_state_changed event. New shuffle toggle in NowPlayingBar (right of Next, green when active). Playlist Play and individual playlist track click now push the toggle's state to Spotify before /play so order matches the toggle. Track click sends offset + position_ms: 0 for in-order resume.
+- Robust drag/resize lifecycle modeled on the YouTube panel. Single endSessionRef holds the live gesture; cancelActiveSession ends drag before starting resize and vice versa. Pointer capture plus a window/document safety net (pointerup, mouseup, blur, visibilitychange, lostpointercapture) so a swallowed release can never strand the panel chasing the cursor. Body, BottomNav, and NowPlayingBar each get pointer-events: none for the duration of the gesture so controls can't eat pointerup. Resize commit re-clamps position so the panel never lands half off-screen.
+- Recency-derived playlists + artists. /api/spotify/recently-played now also returns recentPlaylistIds (deduped, recency order, max 10) and recentArtists (hydrated via one batched /v1/artists call, max 10). New /api/spotify/playlists-meta?ids=... fetches metadata for up to 10 playlist IDs the recruiter doesn't follow (Spotify-curated mixes etc.). Home shows a compact "Recently played playlists" 2-col grid above the existing tracks row. Library Playlists tab pulls recents (matched against the user's library) to the top while keeping every other playlist visible. Library Artists tab puts recent artists first (including non-followed) followed by the existing followed list, deduped.
+
+YouTube panel:
+- Search modes Top / Recent / Popular as pills under the search input. Default Top matches the original relevance order; Recent maps to order=date, Popular to order=viewCount. Long mode was added then removed per Andrew. Pills auto-rerun the active surface immediately on click — channel browse if you're inside a channel, otherwise the last searched query. Channel branch in /api/youtube/search now respects mode (was hard-coded to order=date). Channel-view load-more pins the mode that produced the page so pagination doesn't drift.
+- Duration badges on every result thumbnail. After search.list returns, a single batched videos.list call hydrates each video with contentDetails.duration. ISO 8601 parsed and formatted as 8:42 / 1:12:04. Hidden when null (live streams, hydration failure). Channel-view videos get the same badge for free since they share VideoRow. Minimized dock shows the duration of the playing video next to the title when available.
+
+Mail composer:
+- To-field typeahead with three sources merged in parallel: Ace Candidates (firstName / lastName / email), Ace Contacts (firstName / lastName / name + every entry in emails[]), and Gmail Sent recipients. All org-scoped. Up to 8 deduped { name, email } items, priority-sorted (exact email match → local-part-prefix or name-prefix → substring-anywhere; Ace sources outrank Gmail history at ties).
+- Gmail Sent recipients pulled via a snapshot strategy. New src/lib/gmail-recipients.ts. getGmailSentRecipients(userId) pages through up to 500 recent sent message IDs, fetches metadata-only headers in parallel, parses To/Cc/Bcc address lists, dedupes by lowercased email. Cached 30 min in-process per user. Stale-while-revalidate up to 24h. Concurrent refreshes coalesce on a single Promise. No new OAuth scope — gmail.readonly already granted. The earlier per-keystroke live-search approach was scrapped because Gmail's to: operator does prefix-of-token, not substring — typing "merc" couldn't reliably find receipts@mercury.com.
+- AddressRow component upgraded with an opt-in serverSearch flag. 200ms debounce, AbortController to drop stale responses, Arrow up/down/Enter/Escape keyboard nav, mouse hover follows the same activeIndex. To row passes serverSearch; CC/BCC unchanged.
+
+Candidate CSV import:
+- Skip rules tightened. Experiences now drop rows where both title AND company are empty (date-only noise rows out). Educations drop rows where school is empty. linkedin column dropped from experience capture (no reader uses it).
+- Profile WORK HISTORY + EDUCATION sections render year-only ("Title at Company (2020 – 2024)" / "Degree in Major, School (2024)") via a regex pull on raw startDate/endDate when from_year/to_year aren't pre-extracted. Court Mode tokens preserved.
 
 ## Summary — Ace 37.2
 Web Playback SDK doesn't reliably auto-advance through a context_uri (artist / playlist) on its own — playback would just stop after each track. Wired track-end detection into the existing `player_state_changed` listener:
@@ -91,7 +112,7 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-CSV candidate import (1-2 hr).
+Postgres search indexes (30-60 min). Build immediately so indexes are present before bulk loads — also unblocks the Candidate Sourcing Surface that follows.
 
 ## What Shipped in Ace 36.0 (2026-05-07)
 - **YouTube floating player**: draggable + resizable panel via YouTubePanelProvider, topbar Music-icon toggle, YouTube Data API v3 search proxied through `/api/youtube/search` (server-side API key, tenant-scoped), video-first playing state with iframe full-bleed, hover overlay controls (back / minimize / close), viewport boundary clamping on drag + window resize, minimize keeps the iframe mounted so audio continues, CSP fix adding youtube.com + youtube-nocookie.com to frame-src, 50 results per search with View More pagination via `?pageToken=`, channel search and channel view (`?channelId=` filter, `order=date`).

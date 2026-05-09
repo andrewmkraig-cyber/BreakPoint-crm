@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-08 · Ace 37.2
+Last updated: 2026-05-09 · Ace 38.0
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
