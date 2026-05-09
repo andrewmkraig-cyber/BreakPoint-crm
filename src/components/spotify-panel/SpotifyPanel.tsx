@@ -428,6 +428,20 @@ export function SpotifyPanel() {
   );
   const [playlists, setPlaylists] = useState<Playlist[] | null>(null);
   const [likedCount, setLikedCount] = useState<number | null>(null);
+  // Recency-derived lists, populated from /me/player/recently-played.
+  // Spotify has no "recently played playlists" API, so these are
+  // approximations: playlist contexts from recently played tracks
+  // (deduped, recency-ordered, max 10) and artists from recently
+  // played track artists (deduped, recency-ordered, max 10). null
+  // until the home effect resolves; [] when there's nothing to
+  // surface (e.g., recent playback was all album/artist contexts).
+  const [recentPlaylists, setRecentPlaylists] = useState<Playlist[] | null>(
+    null,
+  );
+  const [recentPlaylistIds, setRecentPlaylistIds] = useState<string[]>([]);
+  const [recentArtists, setRecentArtists] = useState<FollowedArtist[] | null>(
+    null,
+  );
 
   // Library tab data + filter state. Albums and followed artists
   // load lazily the first time the recruiter opens the Library tab,
@@ -711,6 +725,8 @@ export function SpotifyPanel() {
         const recentJson = (await recentRes.json()) as {
           ok?: boolean;
           tracks?: RecentTrack[];
+          recentPlaylistIds?: string[];
+          recentArtists?: FollowedArtist[];
         };
         const playlistJson = (await playlistRes.json()) as {
           ok?: boolean;
@@ -724,6 +740,71 @@ export function SpotifyPanel() {
         if (recentJson.ok) setRecentlyPlayed(recentJson.tracks ?? []);
         if (playlistJson.ok) setPlaylists(playlistJson.playlists ?? []);
         if (likedJson.ok) setLikedCount(likedJson.total ?? 0);
+
+        const ids = recentJson.recentPlaylistIds ?? [];
+        setRecentPlaylistIds(ids);
+        setRecentArtists(recentJson.recentArtists ?? []);
+
+        // Recent playlists: reuse the user's loaded playlists list
+        // when an ID matches (zero extra API calls). For IDs we
+        // can't resolve locally — playlists the recruiter listened
+        // to but doesn't follow, like Spotify-curated daily mixes —
+        // fall back to /api/spotify/playlists-meta with just the
+        // missing IDs to keep API spend bounded.
+        if (ids.length === 0) {
+          setRecentPlaylists([]);
+        } else {
+          const userPlaylists = playlistJson.ok
+            ? playlistJson.playlists ?? []
+            : [];
+          const byId = new Map(userPlaylists.map((p) => [p.id, p]));
+          const matched: Playlist[] = [];
+          const missing: string[] = [];
+          for (const id of ids) {
+            const local = byId.get(id);
+            if (local) matched.push(local);
+            else missing.push(id);
+          }
+          if (missing.length === 0) {
+            setRecentPlaylists(matched);
+          } else {
+            try {
+              const metaRes = await fetch(
+                `/api/spotify/playlists-meta?ids=${encodeURIComponent(
+                  missing.join(","),
+                )}`,
+                { cache: "no-store" },
+              );
+              const metaJson = (await metaRes.json()) as {
+                ok?: boolean;
+                playlists?: Playlist[];
+              };
+              if (cancelled) return;
+              const fetched = metaJson.ok ? metaJson.playlists ?? [] : [];
+              const fetchedById = new Map(fetched.map((p) => [p.id, p]));
+              // Re-emit in recency order so matched + fetched
+              // interleave correctly. A missing ID that the meta
+              // call also failed to resolve is silently dropped.
+              const ordered: Playlist[] = [];
+              for (const id of ids) {
+                const local = byId.get(id);
+                if (local) {
+                  ordered.push(local);
+                  continue;
+                }
+                const remote = fetchedById.get(id);
+                if (remote) ordered.push(remote);
+              }
+              setRecentPlaylists(ordered);
+            } catch {
+              // meta fetch is best-effort — fall back to whatever
+              // we matched locally so the home section still shows
+              // something instead of going empty.
+              if (cancelled) return;
+              setRecentPlaylists(matched);
+            }
+          }
+        }
       } catch {
         // home tiles render their own empty states; nothing to log.
       }
@@ -1840,8 +1921,10 @@ export function SpotifyPanel() {
         ) : view.kind === "home" ? (
           <HomeView
             recentlyPlayed={recentlyPlayed}
+            recentPlaylists={recentPlaylists}
             onSearch={() => goTo({ kind: "search" })}
             onPlayTrack={(uri) => playTrackList([uri])}
+            onOpenPlaylist={(id) => goTo({ kind: "playlist", id })}
           />
         ) : view.kind === "library" ? (
           <LibraryView
@@ -1850,6 +1933,8 @@ export function SpotifyPanel() {
             playlists={playlists}
             albums={savedAlbums}
             artists={followedArtists}
+            recentPlaylistIds={recentPlaylistIds}
+            recentArtists={recentArtists}
             likedCount={likedCount}
             onOpenPlaylist={(id) => goTo({ kind: "playlist", id })}
             onOpenAlbum={(id) =>
@@ -1989,8 +2074,10 @@ export function SpotifyPanel() {
 
 function HomeView(props: {
   recentlyPlayed: RecentTrack[] | null;
+  recentPlaylists: Playlist[] | null;
   onSearch: () => void;
   onPlayTrack: (uri: string) => void;
+  onOpenPlaylist: (id: string) => void;
 }) {
   const greeting = useMemo(timeOfDayGreeting, []);
   return (
@@ -2005,6 +2092,42 @@ function HomeView(props: {
         <span>What do you want to play?</span>
       </button>
       <div className="text-xl font-bold text-white">{greeting}</div>
+
+      {/* Recently played playlists — derived from the playlist
+          contexts of recently played tracks (Spotify has no direct
+          API for this). Hidden when there's nothing to surface so
+          the home screen doesn't render an empty header. Compact 2-
+          column row format keeps it visually distinct from the full-
+          width Recently Played track list below. */}
+      {props.recentPlaylists && props.recentPlaylists.length > 0 && (
+        <Section title="Recently played playlists">
+          <ul className="grid grid-cols-2 gap-2">
+            {props.recentPlaylists.map((p) => (
+              <li key={p.id}>
+                <button
+                  type="button"
+                  onClick={() => props.onOpenPlaylist(p.id)}
+                  className="flex w-full items-center gap-2 overflow-hidden rounded bg-[#1F1F1F] text-left transition hover:bg-[#282828]"
+                >
+                  {p.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.image}
+                      alt=""
+                      className="h-12 w-12 shrink-0 object-cover"
+                    />
+                  ) : (
+                    <div className="h-12 w-12 shrink-0 bg-[#282828]" />
+                  )}
+                  <span className="line-clamp-2 pr-2 text-xs font-semibold text-white">
+                    {p.name}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
 
       {props.recentlyPlayed === null ? (
         <RowSkeleton />
@@ -2066,6 +2189,8 @@ function LibraryView(props: {
   playlists: Playlist[] | null;
   albums: SavedAlbum[] | null;
   artists: FollowedArtist[] | null;
+  recentPlaylistIds: string[];
+  recentArtists: FollowedArtist[] | null;
   likedCount: number | null;
   onOpenPlaylist: (id: string) => void;
   onOpenAlbum: (id: string) => void;
@@ -2092,7 +2217,26 @@ function LibraryView(props: {
       // Liked Songs is treated as a playlist by Spotify mobile, so
       // it appears at the top of the Playlists / All filters.
       out.push({ kind: "liked", total: props.likedCount });
+      // Reorder: recently played playlists FROM the user's library
+      // float to the top in recency order; everything else keeps its
+      // original order. Recents that aren't in the user's library
+      // aren't surfaced here — those live on the Home screen instead.
+      const byId = new Map(props.playlists.map((p) => [p.id, p]));
+      const recentSet = new Set<string>();
+      for (const id of props.recentPlaylistIds) {
+        const p = byId.get(id);
+        if (!p) continue;
+        recentSet.add(id);
+        out.push({
+          kind: "playlist",
+          id: p.id,
+          name: p.name,
+          image: p.image,
+          owner: p.owner,
+        });
+      }
       for (const p of props.playlists) {
+        if (recentSet.has(p.id)) continue;
         out.push({
           kind: "playlist",
           id: p.id,
@@ -2114,13 +2258,18 @@ function LibraryView(props: {
       }
     }
     if ((f === "all" || f === "artists") && props.artists) {
+      // Recent artists go first (even if the recruiter doesn't follow
+      // them — the brief explicitly allows non-followed recents in
+      // this section). Followed artists fill in below, deduped.
+      const recents = props.recentArtists ?? [];
+      const recentSet = new Set<string>();
+      for (const a of recents) {
+        recentSet.add(a.id);
+        out.push({ kind: "artist", id: a.id, name: a.name, image: a.image });
+      }
       for (const a of props.artists) {
-        out.push({
-          kind: "artist",
-          id: a.id,
-          name: a.name,
-          image: a.image,
-        });
+        if (recentSet.has(a.id)) continue;
+        out.push({ kind: "artist", id: a.id, name: a.name, image: a.image });
       }
     }
     return out;
@@ -2129,6 +2278,8 @@ function LibraryView(props: {
     props.playlists,
     props.albums,
     props.artists,
+    props.recentPlaylistIds,
+    props.recentArtists,
     props.likedCount,
   ]);
 
