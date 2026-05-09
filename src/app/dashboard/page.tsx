@@ -10,13 +10,11 @@ import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/li
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
-import Link from "next/link";
 import {
   Building2,
   CalendarDays,
   DollarSign,
   Handshake,
-  Plus,
   Send,
 } from "lucide-react";
 
@@ -202,17 +200,9 @@ export default async function DashboardPage() {
           of inheriting the page's gap-6 — at gap-6 it floated in
           dead space and read like its own row. */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-2">
-          <p className="font-serif text-[13px] font-semibold tracking-tight text-court-fg-muted">
-            Activity for {formatEasternWeekRange(weekStart, weekEnd)}
-          </p>
-          <Link
-            href="/clients/new"
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg"
-          >
-            <Plus className="h-3.5 w-3.5" /> New Client
-          </Link>
-        </div>
+        <p className="font-serif text-[13px] font-semibold tracking-tight text-court-fg-muted">
+          Activity for {formatEasternWeekRange(weekStart, weekEnd)}
+        </p>
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
         <KpiTile label="New Clients" value={newClientsCount} icon={Building2} />
