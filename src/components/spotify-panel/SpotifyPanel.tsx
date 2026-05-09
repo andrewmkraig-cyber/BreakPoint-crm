@@ -20,6 +20,7 @@ import {
   Pause,
   Play,
   Search,
+  Shuffle,
   SkipBack,
   SkipForward,
   Volume2,
@@ -307,6 +308,7 @@ type SpotifyPlayerState = {
   paused?: boolean;
   position?: number;
   duration?: number;
+  shuffle?: boolean;
   context?: {
     uri?: string | null;
     metadata?: unknown;
@@ -456,6 +458,11 @@ export function SpotifyPanel() {
   const [paused, setPaused] = useState(true);
   const [position_ms, setPositionMs] = useState(0);
   const [volume, setVolume] = useState(50);
+  // Shuffle state mirrors Spotify's shuffle_state. Synced from
+  // player_state_changed once playback starts; before that, the local
+  // toggle is the source of truth and we push it to Spotify ahead of
+  // each playlist play.
+  const [shuffle, setShuffle] = useState(false);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<SpotifyPlayer | null>(null);
@@ -545,6 +552,7 @@ export function SpotifyPanel() {
         if (!state) return;
         setPaused(Boolean(state.paused));
         if (typeof state.position === "number") setPositionMs(state.position);
+        if (typeof state.shuffle === "boolean") setShuffle(state.shuffle);
         const t = state.track_window?.current_track;
         if (t?.uri && t.name) {
           const albumImage = t.album?.images?.[0]?.url ?? "";
@@ -1272,13 +1280,70 @@ export function SpotifyPanel() {
       // queue engine handles song-to-song advance natively; the
       // auto-skip listener checks this ref to stay out of the way.
       initiatedContextRef.current = contextUri;
-      const body: { context_uri: string; offset?: { uri: string } } = {
-        context_uri: contextUri,
-      };
-      if (offsetUri) body.offset = { uri: offsetUri };
+      const body: {
+        context_uri: string;
+        offset?: { uri: string };
+        position_ms?: number;
+      } = { context_uri: contextUri };
+      if (offsetUri) {
+        body.offset = { uri: offsetUri };
+        body.position_ms = 0;
+      }
       return playBody(body);
     },
     [playBody],
+  );
+
+  // Pushes the local shuffle toggle to Spotify. Best-effort — failures
+  // surface a toast but don't block playback. Returns true on 2xx so
+  // the playlist play wrapper can decide whether to wait on this state
+  // before issuing /play.
+  const applyShuffleState = useCallback(
+    async (state: boolean): Promise<boolean> => {
+      const deviceId = deviceIdRef.current;
+      const url = deviceId
+        ? `/api/spotify/shuffle?device_id=${encodeURIComponent(deviceId)}`
+        : "/api/spotify/shuffle";
+      try {
+        const res = await fetch(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ state }),
+        });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
+    [],
+  );
+
+  // User-driven shuffle toggle. Optimistically flips local state so
+  // the icon reacts instantly, then pushes to Spotify. If the API
+  // rejects, revert and surface a toast.
+  const toggleShuffle = useCallback(async () => {
+    const next = !shuffle;
+    setShuffle(next);
+    const ok = await applyShuffleState(next);
+    if (!ok) {
+      setShuffle(!next);
+      toast.error("Couldn't change shuffle", {
+        description: "Spotify rejected the shuffle change. Try again.",
+      });
+    }
+  }, [shuffle, applyShuffleState]);
+
+  // Playlist context playback wrapper. Per the brief, we always push
+  // the current shuffle toggle to Spotify before starting playlist
+  // context playback so order matches the toggle even if Spotify's
+  // session was previously in the opposite mode. Awaiting the shuffle
+  // call ensures Spotify applies the state before /play queues tracks.
+  const playPlaylistContext = useCallback(
+    async (contextUri: string, offsetUri?: string) => {
+      await applyShuffleState(shuffle);
+      await playContext(contextUri, offsetUri);
+    },
+    [applyShuffleState, playContext, shuffle],
   );
 
   const togglePlay = useCallback(async () => {
@@ -1664,9 +1729,9 @@ export function SpotifyPanel() {
           <PlaylistView
             detail={detail}
             loading={detailLoading}
-            onPlayContext={playContext}
+            onPlayContext={playPlaylistContext}
             onPlayTrack={(t) => {
-              if (detail) playContext(detail.uri, t.uri);
+              if (detail) void playPlaylistContext(detail.uri, t.uri);
             }}
             onRetry={() => setDetailReloadKey((k) => k + 1)}
           />
@@ -1741,11 +1806,13 @@ export function SpotifyPanel() {
           paused={paused}
           positionMs={position_ms}
           volume={volume}
+          shuffle={shuffle}
           onTogglePlay={togglePlay}
           onNext={skipNext}
           onPrev={skipPrev}
           onSeek={seekTo}
           onVolume={setVolumePercent}
+          onToggleShuffle={toggleShuffle}
         />
       )}
 
@@ -2808,11 +2875,13 @@ function NowPlayingBar(props: {
   paused: boolean;
   positionMs: number;
   volume: number;
+  shuffle: boolean;
   onTogglePlay: () => void;
   onNext: () => void;
   onPrev: () => void;
   onSeek: (ms: number) => void;
   onVolume: (pct: number) => void;
+  onToggleShuffle: () => void;
 }) {
   const dur = props.track.durationMs || 1;
   const pct = Math.min(100, Math.max(0, (props.positionMs / dur) * 100));
@@ -2889,9 +2958,31 @@ function NowPlayingBar(props: {
             <SkipForward className="h-5 w-5" fill="currentColor" />
           </button>
         </div>
-        {/* spacer to balance the volume slider so the transport
-            controls land visually centered */}
-        <div className="w-[88px]" />
+        {/* Shuffle on the right balances the volume slider on the left
+            so the transport buttons stay visually centered. Active
+            color is Spotify green (matches Spotify's own UI) and a
+            small dot under the icon mirrors the desktop client. */}
+        <div className="flex w-[88px] items-center justify-end pr-1">
+          <button
+            type="button"
+            onClick={props.onToggleShuffle}
+            className="relative rounded-full p-1 transition hover:text-white"
+            style={{
+              color: props.shuffle ? COLOR_GREEN : COLOR_TEXT_SECONDARY,
+            }}
+            aria-label={props.shuffle ? "Disable shuffle" : "Enable shuffle"}
+            aria-pressed={props.shuffle}
+            title={props.shuffle ? "Shuffle on" : "Shuffle off"}
+          >
+            <Shuffle className="h-4 w-4" />
+            {props.shuffle && (
+              <span
+                className="absolute left-1/2 top-[calc(100%-2px)] h-1 w-1 -translate-x-1/2 rounded-full"
+                style={{ backgroundColor: COLOR_GREEN }}
+              />
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
