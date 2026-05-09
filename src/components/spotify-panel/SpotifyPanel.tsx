@@ -287,6 +287,10 @@ type SpotifyPlayerState = {
   paused?: boolean;
   position?: number;
   duration?: number;
+  context?: {
+    uri?: string | null;
+    metadata?: unknown;
+  } | null;
   track_window?: {
     current_track?: {
       uri?: string;
@@ -524,11 +528,15 @@ export function SpotifyPanel() {
           });
         }
 
-        // Auto-skip on track end. The Web Playback SDK doesn't reliably
-        // advance through a context_uri on its own — for an artist or
-        // playlist we have to detect the end and call /v1/me/player/next
-        // ourselves. End-of-track shape per Spotify: `paused === true`
-        // and `position === 0`. To avoid false positives on initial
+        // Auto-skip on track end — only for tracklist playback (no
+        // context_uri). When playback was started with a context_uri
+        // of type artist/playlist/album, Spotify's queue engine
+        // handles song-to-song advancement itself; our manual /next
+        // call would race it and cause double-skips. So we gate the
+        // auto-skip on the absence of an advancing context.
+        //
+        // End-of-track shape per Spotify: `paused === true` and
+        // `position === 0`. To avoid false positives on initial
         // connect / user pause / mid-track seek-to-zero, we require
         // that the PREVIOUS state was actively playing a track
         // (paused=false with a current_track uri). Once we fire the
@@ -549,7 +557,11 @@ export function SpotifyPanel() {
           paused: newPaused,
           position: newPosition,
         };
-        if (trackEnded && !autoSkipInFlightRef.current) {
+        const contextUri = state.context?.uri ?? null;
+        const inAdvancingContext =
+          typeof contextUri === "string" &&
+          /^spotify:(artist|playlist|album):/.test(contextUri);
+        if (trackEnded && !inAdvancingContext && !autoSkipInFlightRef.current) {
           autoSkipInFlightRef.current = true;
           const deviceId = deviceIdRef.current;
           const url = deviceId
