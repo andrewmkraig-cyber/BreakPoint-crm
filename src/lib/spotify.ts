@@ -203,6 +203,10 @@ export type SpotifyApiErr = {
   ok: false;
   status: number;
   error: string;
+  // Parsed Spotify error body (or raw text if not JSON). Routes use
+  // this on 403 to log Spotify's exact reason string. Null when no
+  // body was returned (network failure, 204, etc.).
+  body: unknown;
   refreshed: SpotifyTokenResponse | null;
 };
 export type SpotifyApiResult = SpotifyApiOk | SpotifyApiErr;
@@ -294,6 +298,7 @@ export async function spotifyApiProxy(
       ok: false,
       status: 401,
       error: tokenResult.error,
+      body: null,
       refreshed: null,
     };
   }
@@ -329,6 +334,7 @@ export async function spotifyApiProxy(
       ok: false,
       status: 502,
       error: errMsg,
+      body: null,
       refreshed: tokenResult.refreshed,
     };
   }
@@ -388,6 +394,7 @@ export async function spotifyApiProxy(
       ok: false,
       status: upstream.status,
       error,
+      body: data,
       refreshed: tokenResult.refreshed,
     };
   }

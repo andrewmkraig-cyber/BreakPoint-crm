@@ -58,8 +58,12 @@ export async function GET(
 
   const [artistRes, discographyRes] = await Promise.all([
     spotifyApiProxy(`/v1/artists/${id}`, { tag: "artist/header" }),
+    // limit=10 — Spotify rejected limit=20 with "Invalid limit" on
+    // this endpoint despite docs claiming 1–50. 10 is the empirically
+    // working cap. Hardcoded literal (no variable) so it can't be
+    // accidentally changed by a refactor of unrelated constants.
     spotifyApiProxy(
-      `/v1/artists/${id}/albums?include_groups=album,single&limit=20&market=US`,
+      `/v1/artists/${id}/albums?include_groups=album,single&limit=10&market=US`,
       { tag: "artist/discography" },
     ),
   ]);

@@ -1,5 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
-import { applyRefreshedSpotifyCookies, spotifyApiProxy } from "@/lib/spotify";
+import {
+  applyRefreshedSpotifyCookies,
+  getValidSpotifyAccessToken,
+  spotifyApiProxy,
+  type SpotifyApiResult,
+} from "@/lib/spotify";
+
+// Pull JUST the human-readable Spotify error message from a parsed
+// error body. Spotify's shape is `{ error: { status, message } }` on
+// REST endpoints. Strings are passed through truncated; anything else
+// JSON-stringified, all clipped to 400 chars. No tokens, headers, or
+// auth-bearing URLs ever land in the body so this is safe to log raw.
+function sanitizeBody(body: unknown): string {
+  if (body == null) return "(empty)";
+  if (typeof body === "string") return body.slice(0, 400);
+  if (typeof body === "object") {
+    try {
+      return JSON.stringify(body).slice(0, 400);
+    } catch {
+      return "(unserializable)";
+    }
+  }
+  return String(body).slice(0, 400);
+}
+
+// Strip host + access_token query param from any Spotify path/URL so
+// it's safe to log. We never put tokens in the URL ourselves but a
+// `next`/`href` field returned by Spotify could in principle embed
+// one — defensive scrub.
+function safePath(p: string): string {
+  try {
+    const u = p.startsWith("http")
+      ? new URL(p)
+      : new URL(p, "https://api.spotify.com");
+    u.searchParams.delete("access_token");
+    return `${u.pathname}${u.search}`;
+  } catch {
+    return p.split("?")[0] ?? p;
+  }
+}
+
+// Single chokepoint for emitting 403 diagnostics from this route.
+// Always called regardless of which call failed; only emits when the
+// upstream really was 403 so unrelated errors stay in the structured
+// proxy log. Includes tag, endpoint+query, hasToken, status, and the
+// sanitized body. Never logs tokens, cookies, or auth headers.
+function log403IfApplicable(
+  tag: string,
+  path: string,
+  result: SpotifyApiResult,
+  hasToken: boolean,
+): void {
+  if (result.ok || result.status !== 403) return;
+  console.log(
+    "[spotify-playlist-tracks 403]",
+    JSON.stringify({
+      tag,
+      endpoint: safePath(path),
+      hasToken,
+      status: 403,
+      error: result.error,
+      body: sanitizeBody(result.body),
+    }),
+  );
+}
 
 // Playlist / album detail fetch.
 //
@@ -104,6 +168,23 @@ export async function GET(
   const kind = (new URL(req.url).searchParams.get("kind") ?? "playlist").trim();
   const isAlbum = kind === "album";
 
+  // hasToken probe — runs the same auth resolver every spotifyApiProxy
+  // call uses, just to surface whether the request EVER had a usable
+  // token before any Spotify call ran. Logged once at the top so a
+  // 403 cluster can be triaged immediately. Costs one extra refresh
+  // attempt only when the cached token is already expired (cheap).
+  const tokenProbe = await getValidSpotifyAccessToken();
+  const hasToken = tokenProbe.ok;
+  console.log(
+    "[spotify-playlist-tracks token]",
+    JSON.stringify({
+      kind: isAlbum ? "album" : "playlist",
+      id,
+      hasToken,
+      tokenError: tokenProbe.ok ? null : tokenProbe.error,
+    }),
+  );
+
   // Step A — header.
   // Albums DO use market=US for region-relinking. Playlists OMIT it
   // on the primary call: 36.x added market=US for relinking but it
@@ -123,6 +204,12 @@ export async function GET(
       ? Promise.resolve(null)
       : spotifyApiProxy("/v1/me", { tag: "playlist/me" }),
   ]);
+  log403IfApplicable(
+    isAlbum ? "album/header" : "playlist/header",
+    headerPath,
+    headerRes,
+    hasToken,
+  );
 
   let refreshed = headerRes.refreshed ?? meRes?.refreshed ?? null;
 
@@ -162,6 +249,12 @@ export async function GET(
   const tracksRes = await spotifyApiProxy(tracksPath, {
     tag: isAlbum ? "album/tracks" : "playlist/tracks-primary",
   });
+  log403IfApplicable(
+    isAlbum ? "album/tracks" : "playlist/tracks-primary",
+    tracksPath,
+    tracksRes,
+    hasToken,
+  );
   refreshed = refreshed ?? tracksRes.refreshed ?? null;
 
   let tracks: ReturnType<typeof projectItems> = [];
@@ -193,6 +286,12 @@ export async function GET(
     const hrefRes = await spotifyApiProxy(header.tracks.href, {
       tag: "playlist/tracks-href",
     });
+    log403IfApplicable(
+      "playlist/tracks-href",
+      header.tracks.href,
+      hrefRes,
+      hasToken,
+    );
     refreshed = refreshed ?? hrefRes.refreshed ?? null;
     if (hrefRes.ok) {
       const data = hrefRes.data as TracksPayload;
@@ -291,6 +390,12 @@ export async function GET(
     tracksLoaded,
     tracks,
     tracksStatus,
+    // Sanitized error string from the failing /tracks subcall — null
+    // when the primary call succeeded. The frontend already branches
+    // on tracksStatus + ownerId vs meId for messaging, but exposing
+    // the raw error gives us a way to surface Spotify's exact reason
+    // string in diagnostics without re-fetching.
+    tracksError: tracksRes.ok ? null : tracksRes.error,
     externalUrl: header.external_urls?.spotify ?? "",
     debug: {
       headerStatus: headerRes.status,
