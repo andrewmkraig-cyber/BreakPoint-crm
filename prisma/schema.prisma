@@ -392,6 +392,8 @@ model Candidate {
   matches         CandidateMatch[]
 
   @@index([email])
+  @@index([firstName])
+  @@index([lastName])
   @@index([createdById, createdAt])
   @@index([organizationId])
 }
