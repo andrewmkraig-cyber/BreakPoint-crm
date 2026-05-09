@@ -67,18 +67,27 @@ function log403IfApplicable(
 
 // Playlist / album detail fetch.
 //
-// Step A: header             /v1/playlists/{id}        (or /v1/albums/{id})
-// Step B: tracks (primary)   /v1/playlists/{id}/tracks?limit=50&offset=0
-// Step C: tracks (href)      header.tracks.href            — second-chance
-// Step D: tracks (embedded)  header.tracks.items[]         — last-ditch
+// Step A: header        /v1/playlists/{id}        (or /v1/albums/{id})
+// Step B: items         /v1/playlists/{id}/items?limit=50&offset=0
+//                       &market={country}&additional_types=track
+//                       (PLAYLISTS ONLY — Spotify's current canonical
+//                       playlist-items endpoint; the older
+//                       /v1/playlists/{id}/tracks 403s on owned
+//                       playlists in dev-mode for some accounts.)
+// Step B': tracks       /v1/playlists/{id}/tracks?limit=50&offset=0
+//                       (PLAYLISTS — fallback only, when /items fails)
+//                       /v1/albums/{id}/tracks?limit=50&offset=0&market
+//                       (ALBUMS — primary; albums don't have /items)
+// Step C: tracks (href) header.tracks.href            — second-chance
+// Step D: tracks (embedded) header.tracks.items[]     — last-ditch
 //
 // Every request emits ONE [spotify-playlist-tracks result] line via a
 // finally block, regardless of which path was taken (header fail,
 // tracks fail, or full success). The line carries hasToken,
-// headerStatus, primaryTracksStatus, hrefTracksStatus, tracksSource,
-// trackCount, tracksLoaded, plus a sanitized error string for the
-// last failed stage. Greppable from Vercel without joining multiple
-// log lines.
+// headerStatus, primaryItemsStatus, fallbackTracksStatus,
+// hrefTracksStatus, tracksSource, trackCount, tracksLoaded, plus a
+// sanitized error string for the last failed stage. Greppable from
+// Vercel without joining multiple log lines.
 
 export const dynamic = "force-dynamic";
 
@@ -193,14 +202,21 @@ export async function GET(
     id: string;
     hasToken: boolean;
     headerStatus: number | null;
-    primaryTracksStatus: number | null;
+    primaryItemsStatus: number | null;
+    fallbackTracksStatus: number | null;
     hrefTracksStatus: number | null;
     embeddedItemsCount: number;
-    tracksSource: "primary" | "href" | "embedded" | "none";
+    tracksSource:
+      | "items"
+      | "tracks"
+      | "href"
+      | "embedded"
+      | "none";
     trackCount: number | null;
     trackCountKnown: boolean;
     tracksLoaded: boolean;
     ownerMatchesMe: boolean;
+    market: string | null;
     error: string | null;
     errorBody: string | null;
   } = {
@@ -208,7 +224,8 @@ export async function GET(
     id,
     hasToken,
     headerStatus: null,
-    primaryTracksStatus: null,
+    primaryItemsStatus: null,
+    fallbackTracksStatus: null,
     hrefTracksStatus: null,
     embeddedItemsCount: 0,
     tracksSource: "none",
@@ -216,6 +233,7 @@ export async function GET(
     trackCountKnown: false,
     tracksLoaded: false,
     ownerMatchesMe: false,
+    market: null,
     error: null,
     errorBody: null,
   };
@@ -284,41 +302,118 @@ export async function GET(
     const fallbackImages = header.images;
     const fallbackName = header.name ?? "";
 
-    // Step B — primary /tracks fetch. Albums use market=US (region-
-    // relink). Playlists deliberately OMIT market.
-    const tracksPath = isAlbum
-      ? `/v1/albums/${id}/tracks?market=US&limit=50&offset=0`
-      : `/v1/playlists/${id}/tracks?limit=50&offset=0`;
-    const tracksRes = await spotifyApiProxy(tracksPath, {
-      tag: isAlbum ? "album/tracks" : "playlist/tracks-primary",
+    // Country code drives `market` on the items/tracks fetches so
+    // region-restricted tracks relink to the user's region. Read from
+    // /v1/me when available, default US.
+    const meCountryRaw =
+      meRes && meRes.ok ? (meRes.data as { country?: string }).country : null;
+    const market =
+      typeof meCountryRaw === "string" && meCountryRaw.length === 2
+        ? meCountryRaw
+        : "US";
+    summary.market = market;
+
+    // Step B — primary fetch.
+    //
+    // Playlists: /v1/playlists/{id}/items?additional_types=track is
+    // Spotify's current canonical endpoint. The older /tracks endpoint
+    // 403s on some owned playlists in dev-mode (confirmed via Vercel
+    // logs: tracksStatus 403 with ownerMatchesMe true). additional_types=track
+    // explicitly opts out of episodes — we don't render those.
+    //
+    // Albums: /v1/albums/{id}/tracks (no /items endpoint exists).
+    const primaryPath = isAlbum
+      ? `/v1/albums/${id}/tracks?limit=50&offset=0&market=${market}`
+      : `/v1/playlists/${id}/items?limit=50&offset=0&market=${market}&additional_types=track`;
+    const primaryRes = await spotifyApiProxy(primaryPath, {
+      tag: isAlbum ? "album/tracks" : "playlist/items-primary",
     });
-    summary.primaryTracksStatus = tracksRes.status;
+    summary.primaryItemsStatus = primaryRes.status;
     log403IfApplicable(
-      isAlbum ? "album/tracks" : "playlist/tracks-primary",
-      tracksPath,
-      tracksRes,
+      isAlbum ? "album/tracks" : "playlist/items-primary",
+      primaryPath,
+      primaryRes,
       hasToken,
     );
-    refreshed = refreshed ?? tracksRes.refreshed ?? null;
+    refreshed = refreshed ?? primaryRes.refreshed ?? null;
 
     let tracks: ReturnType<typeof projectItems> = [];
     let tracksTotal: number | null = null;
-    let tracksSource: "primary" | "href" | "embedded" | "none" = "none";
-    let tracksStatus: number | null = tracksRes.ok ? null : tracksRes.status;
-    let lastTracksError: { msg: string; body: unknown } | null = tracksRes.ok
+    let tracksSource: "items" | "tracks" | "href" | "embedded" | "none" =
+      "none";
+    let tracksStatus: number | null = primaryRes.ok ? null : primaryRes.status;
+    let lastTracksError: { msg: string; body: unknown } | null = primaryRes.ok
       ? null
-      : { msg: tracksRes.error, body: tracksRes.body };
+      : { msg: primaryRes.error, body: primaryRes.body };
 
-    if (tracksRes.ok) {
-      const data = tracksRes.data as TracksPayload;
+    // Per-attempt upstream snapshots — surfaced verbatim in the JSON
+    // response so the recruiter can see Spotify's exact reason in the
+    // browser Network tab without trawling Vercel logs. Bodies run
+    // through sanitizeBody (clipped, no tokens — Spotify never puts
+    // tokens in error bodies anyway).
+    const upstreamPrimary = primaryRes.ok
+      ? null
+      : {
+          status: primaryRes.status,
+          error: primaryRes.error,
+          body: sanitizeBody(primaryRes.body),
+        };
+    let upstreamFallback: {
+      status: number;
+      error: string;
+      body: string;
+    } | null = null;
+    let upstreamHref: {
+      status: number;
+      error: string;
+      body: string;
+    } | null = null;
+
+    if (primaryRes.ok) {
+      const data = primaryRes.data as TracksPayload;
       tracksTotal = typeof data.total === "number" ? data.total : null;
       tracks = projectItems(data.items, fallbackName, fallbackImages);
-      tracksSource = "primary";
+      tracksSource = isAlbum ? "tracks" : "items";
     }
 
-    // Step C — href fallback.
+    // Step B' — playlists only: fall back to the legacy /tracks
+    // endpoint when /items fails. Some accounts/playlists still
+    // succeed on /tracks even when /items is the documented current
+    // path — try it before giving up.
+    if (!primaryRes.ok && !isAlbum) {
+      const fallbackPath = `/v1/playlists/${id}/tracks?limit=50&offset=0&market=${market}`;
+      const fallbackRes = await spotifyApiProxy(fallbackPath, {
+        tag: "playlist/tracks-fallback",
+      });
+      summary.fallbackTracksStatus = fallbackRes.status;
+      log403IfApplicable(
+        "playlist/tracks-fallback",
+        fallbackPath,
+        fallbackRes,
+        hasToken,
+      );
+      refreshed = refreshed ?? fallbackRes.refreshed ?? null;
+      if (fallbackRes.ok) {
+        const data = fallbackRes.data as TracksPayload;
+        tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
+        tracks = projectItems(data.items, fallbackName, fallbackImages);
+        tracksSource = "tracks";
+        tracksStatus = null;
+        lastTracksError = null;
+      } else {
+        lastTracksError = { msg: fallbackRes.error, body: fallbackRes.body };
+        upstreamFallback = {
+          status: fallbackRes.status,
+          error: fallbackRes.error,
+          body: sanitizeBody(fallbackRes.body),
+        };
+      }
+    }
+
+    // Step C — href fallback. Only fires when both primary AND
+    // fallback already failed.
     if (
-      !tracksRes.ok &&
+      tracksSource === "none" &&
       !isAlbum &&
       typeof header.tracks?.href === "string" &&
       header.tracks.href.includes("/tracks")
@@ -345,6 +440,11 @@ export async function GET(
         }
       } else {
         lastTracksError = { msg: hrefRes.error, body: hrefRes.body };
+        upstreamHref = {
+          status: hrefRes.status,
+          error: hrefRes.error,
+          body: sanitizeBody(hrefRes.body),
+        };
       }
     }
 
@@ -411,9 +511,22 @@ export async function GET(
       tracks,
       tracksStatus,
       tracksError: lastTracksError ? lastTracksError.msg : null,
+      // Per-attempt upstream snapshots — visible directly in the
+      // browser Network tab when /items / /tracks / href all fail.
+      // null when the attempt succeeded (or wasn't run at all).
+      tracksUpstream: {
+        primary: upstreamPrimary,
+        fallback: upstreamFallback,
+        href: upstreamHref,
+      },
+      market,
       externalUrl: header.external_urls?.spotify ?? "",
       debug: {
         headerStatus: headerRes.status,
+        primaryItemsStatus: summary.primaryItemsStatus,
+        fallbackTracksStatus: summary.fallbackTracksStatus,
+        hrefTracksStatus: summary.hrefTracksStatus,
+        market,
         tracksStatus,
         tracksError: lastTracksError ? lastTracksError.msg : null,
         meStatus: meRes ? meRes.status : null,
