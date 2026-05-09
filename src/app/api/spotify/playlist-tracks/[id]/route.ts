@@ -253,18 +253,23 @@ export async function GET(
     }),
   );
 
-  // Pick the most accurate trackCount we can. Spotify reports the
-  // playlist's total in `header.tracks.total`; if that's missing we
-  // fall back to the dedicated /tracks endpoint's total, then to the
-  // number of rows we actually projected. Avoids the "5 songs" header
-  // line above an empty list when /tracks returned a non-zero total
-  // but the embedded items render is what we have.
-  const trackCount =
-    typeof header.tracks?.total === "number"
-      ? header.tracks.total
-      : totalFromTracks > 0
-        ? totalFromTracks
-        : tracks.length;
+  // Spotify-confirmed total: only true when the header endpoint
+  // explicitly returned a numeric tracks.total. Anything else is
+  // unknown — the UI must NOT fall back to "0 songs" on unknown.
+  const trackCountKnown = typeof header.tracks?.total === "number";
+  const trackCount = trackCountKnown
+    ? (header.tracks!.total as number)
+    : totalFromTracks > 0
+      ? totalFromTracks
+      : tracks.length;
+
+  // tracksLoaded: did we actually obtain a definitive track list? True
+  // when the dedicated /tracks endpoint succeeded (regardless of how
+  // many rows it returned, including an explicit zero). Header-embedded
+  // fallback also counts because it represents Spotify's own track
+  // payload from a different endpoint. False when both subcalls failed
+  // to give us anything — the UI renders error/retry, never "0 songs".
+  const tracksLoaded = tracksRes.ok || tracksSource === "header-embedded";
 
   const res = NextResponse.json({
     ok: true,
@@ -289,6 +294,8 @@ export async function GET(
     meId,
     year: isAlbum && header.release_date ? header.release_date.slice(0, 4) : "",
     trackCount,
+    trackCountKnown,
+    tracksLoaded,
     tracks,
     tracksStatus,
     externalUrl: header.external_urls?.spotify ?? "",
@@ -308,6 +315,8 @@ export async function GET(
         : 0,
       projectedTracks: tracks.length,
       tracksSource,
+      trackCountKnown,
+      tracksLoaded,
     },
   });
   return applyRefreshedSpotifyCookies(res, refreshed);

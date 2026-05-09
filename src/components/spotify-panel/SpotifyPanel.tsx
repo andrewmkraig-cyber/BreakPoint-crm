@@ -130,6 +130,14 @@ type DetailPayload = {
   owner: string;
   year: string;
   trackCount: number;
+  // True iff Spotify explicitly returned `tracks.total` in the header
+  // payload. When false, the UI must not display "0 songs" — only
+  // confirmed totals are shown.
+  trackCountKnown?: boolean;
+  // True iff we obtained a definitive track list (either from the
+  // /tracks endpoint or the header-embedded fallback). When false,
+  // the UI renders an error/retry state instead of an empty list.
+  tracksLoaded?: boolean;
   tracks: DetailTrack[];
   // Real upstream HTTP status from the /tracks subcall — null when it
   // succeeded. The panel uses this + ownerId/meId to classify the
@@ -214,6 +222,16 @@ type ArtistPayload = {
     durationMs: number;
     albumArt: string;
   }[];
+  // "More from this artist" — pulled from the same album scan as
+  // topTracks but a different slice. Visible-tracks count never gates
+  // playback: artist Play hands the whole context_uri to Spotify.
+  moreTracks: {
+    id: string;
+    uri: string;
+    name: string;
+    durationMs: number;
+    albumArt: string;
+  }[];
   albums: {
     id: string;
     uri: string;
@@ -221,17 +239,18 @@ type ArtistPayload = {
     year: string;
     albumArt: string;
   }[];
-  // Debug envelope from the route — used to log the raw API decision
-  // and render a visible empty-state when sub-calls fail or come back
-  // empty. See /api/spotify/artist/[id]/route.ts for the field shapes.
+  // Debug envelope from the route. See /api/spotify/artist/[id]/route.ts
+  // for the field shapes.
   debug?: {
     headerStatus?: number;
-    topTracksStatus?: number;
-    topTracksError?: string | null;
+    albumsScanned?: number;
+    albumTracksOk?: number;
+    albumTracksFailed?: number;
     rawTopTracksCount?: number;
-    albumsStatus?: number;
-    albumsError?: string | null;
+    rawMoreTracksCount?: number;
     rawAlbumsCount?: number;
+    discographyStatus?: number;
+    discographyError?: string | null;
     followersField?: "missing" | "null" | "ok" | "no-total";
   };
 };
@@ -424,6 +443,8 @@ export function SpotifyPanel() {
   const [searching, setSearching] = useState(false);
   const [detail, setDetail] = useState<DetailPayload | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  // Bumped on retry to re-trigger the detail-fetch effect.
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
   const [liked, setLiked] = useState<LikedPayload | null>(null);
   const [likedLoading, setLikedLoading] = useState(false);
   const [artist, setArtist] = useState<ArtistPayload | null>(null);
@@ -455,6 +476,13 @@ export function SpotifyPanel() {
     position: number;
   } | null>(null);
   const autoSkipInFlightRef = useRef(false);
+  // Authoritative record of what we just initiated. The Web Playback
+  // SDK's state.context.uri is sometimes null right after a play call
+  // (timing) — without this ref, the auto-skip listener would
+  // misclassify a context-driven session as a tracklist session and
+  // race Spotify's native advance. Set on every play; null means
+  // "tracklist (uris) mode — manual advance is required."
+  const initiatedContextRef = useRef<string | null>(null);
 
   // ────────────────────────────────────────────────────────────────
   // Mount / auth
@@ -557,10 +585,19 @@ export function SpotifyPanel() {
           paused: newPaused,
           position: newPosition,
         };
-        const contextUri = state.context?.uri ?? null;
+        // Two signals that we're in a Spotify-managed context:
+        //   - SDK state.context.uri (authoritative when populated)
+        //   - initiatedContextRef (our local record — fills the gap
+        //     when the SDK hasn't propagated state yet)
+        // If either says "context", we let Spotify advance.
+        const sdkContextUri = state.context?.uri ?? null;
+        const localContextUri = initiatedContextRef.current;
+        const advancingContextRe = /^spotify:(artist|playlist|album):/;
         const inAdvancingContext =
-          typeof contextUri === "string" &&
-          /^spotify:(artist|playlist|album):/.test(contextUri);
+          (typeof sdkContextUri === "string" &&
+            advancingContextRe.test(sdkContextUri)) ||
+          (typeof localContextUri === "string" &&
+            advancingContextRe.test(localContextUri));
         if (trackEnded && !inAdvancingContext && !autoSkipInFlightRef.current) {
           autoSkipInFlightRef.current = true;
           const deviceId = deviceIdRef.current;
@@ -799,7 +836,7 @@ export function SpotifyPanel() {
     return () => {
       cancelled = true;
     };
-  }, [view]);
+  }, [view, detailReloadKey]);
 
   // Liked songs fetcher.
   useEffect(() => {
@@ -1198,12 +1235,21 @@ export function SpotifyPanel() {
   );
 
   const playTrackList = useCallback(
-    (uris: string[]) => playBody({ uris }),
+    (uris: string[]) => {
+      // Tracklist (uris) playback — no Spotify-managed context, so the
+      // auto-skip listener must fire /next at track end.
+      initiatedContextRef.current = null;
+      return playBody({ uris });
+    },
     [playBody],
   );
 
   const playContext = useCallback(
     (contextUri: string, offsetUri?: string) => {
+      // Context-driven playback (artist / playlist / album). Spotify's
+      // queue engine handles song-to-song advance natively; the
+      // auto-skip listener checks this ref to stay out of the way.
+      initiatedContextRef.current = contextUri;
       const body: { context_uri: string; offset?: { uri: string } } = {
         context_uri: contextUri,
       };
@@ -1516,6 +1562,7 @@ export function SpotifyPanel() {
             onPlayTrack={(t) => {
               if (detail) playContext(detail.uri, t.uri);
             }}
+            onRetry={() => setDetailReloadKey((k) => k + 1)}
           />
         ) : view.kind === "liked" ? (
           <LikedView
@@ -2095,6 +2142,7 @@ function PlaylistView(props: {
   loading: boolean;
   onPlayContext: (uri: string, offsetUri?: string) => void;
   onPlayTrack: (track: DetailTrack) => void;
+  onRetry?: () => void;
 }) {
   if (props.loading || !props.detail) {
     return (
@@ -2133,7 +2181,16 @@ function PlaylistView(props: {
           )}
           <div className="text-xs text-[#B3B3B3]">
             {d.owner && <span className="font-semibold text-white">{d.owner}</span>}
-            {d.year ? ` • ${d.year}` : ""} • {d.trackCount} songs
+            {d.year ? ` • ${d.year}` : ""}
+            {/* Only show a song count when Spotify explicitly told us
+                the total. Anything else — total missing, /tracks
+                failed — must NOT render "0 songs"; the failure
+                rendering below covers that case. */}
+            {d.trackCountKnown && d.trackCount > 0
+              ? ` • ${d.trackCount} ${d.trackCount === 1 ? "song" : "songs"}`
+              : d.trackCountKnown && d.trackCount === 0
+                ? ` • 0 songs`
+                : ""}
             {totalDuration ? `, ${formatTotalDuration(totalDuration)}` : ""}
           </div>
         </div>
@@ -2149,34 +2206,57 @@ function PlaylistView(props: {
       </button>
 
       {(() => {
-        // Classify the /tracks failure with the upstream HTTP status
-        // and the playlist's owner-vs-me check. The previous version
-        // composed the message server-side, which couldn't tell that
-        // Andrew's "Lifting" playlist was his own and so misfired the
-        // dev-mode copy on it. classifyPlaylistTracksError is the
-        // single source of truth now and only emits the dev-mode
-        // sentence when both status===403 and ownerId !== meId.
+        // Three cases when the visible track list is empty:
+        //
+        //  1. Confirmed empty — Spotify said total is 0 AND tracks
+        //     loaded successfully. Render nothing (header line above
+        //     already shows "0 songs"). Per the brief, that's the
+        //     ONLY case where "0 songs" is the right rendering.
+        //
+        //  2. Tracks failed to load — `tracksLoaded === false`.
+        //     Render an error/retry state. Never render "0 songs"
+        //     here, even if we don't know the total. For owned
+        //     playlists, classifyPlaylistTracksError swallows the
+        //     dev-mode copy.
+        //
+        //  3. Tracks loaded but list happens to be empty (rare —
+        //     header.tracks.total absent and /tracks returned []).
+        //     Surface the classifier message which falls through to
+        //     the generic "couldn't load" text.
+        if (d.tracks.length > 0) return null;
+        if (d.tracksLoaded && d.trackCountKnown && d.trackCount === 0) {
+          return null;
+        }
         const message =
-          d.tracks.length === 0
-            ? classifyPlaylistTracksError(
-                d.tracksStatus,
-                d.ownerId,
-                d.meId,
-              )
-            : null;
-        if (!message) return null;
+          classifyPlaylistTracksError(d.tracksStatus, d.ownerId, d.meId) ??
+          "Couldn't load tracks for this playlist. Try again in a moment.";
         return (
           <div className="rounded-lg border border-[#3D3D3D] bg-[#1F1F1F] p-3 text-xs text-[#B3B3B3]">
             <p>{message}</p>
-            <a
-              href={d.externalUrl || d.uri}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-white underline-offset-2 hover:underline"
-              style={{ color: COLOR_GREEN }}
-            >
-              Open in Spotify →
-            </a>
+            {d.trackCountKnown && d.trackCount > 0 && (
+              <p className="mt-1 text-[11px] text-[#9A9A9A]">
+                Spotify reports {d.trackCount}{" "}
+                {d.trackCount === 1 ? "track" : "tracks"} on this playlist.
+              </p>
+            )}
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => props.onRetry?.()}
+                className="inline-flex items-center gap-1 rounded-full border border-white/20 px-3 py-1 text-[11px] font-semibold text-white transition hover:bg-white/10"
+              >
+                Retry
+              </button>
+              <a
+                href={d.externalUrl || d.uri}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-semibold underline-offset-2 hover:underline"
+                style={{ color: COLOR_GREEN }}
+              >
+                Open in Spotify →
+              </a>
+            </div>
           </div>
         );
       })()}
@@ -2375,16 +2455,54 @@ function ArtistView(props: {
         <Play className="h-4 w-4" fill="currentColor" /> Play
       </button>
 
-      {/* Popular section silently hides when topTracks is empty —
-          per the brief: never show a 403 error state to the user on
-          the artist page. Diagnostics still ship via console.log +
-          the debug envelope on the response so we can audit without
-          surfacing anything to the recruiter. Same convention for
-          Discography below. */}
+      {/* Popular + More from this artist sections silently hide when
+          empty — per the brief: never show a 403 error state to the
+          user on the artist page. Diagnostics still ship via console
+          and the debug envelope. Visible track count never gates
+          playback: artist Play hands the whole context_uri to
+          Spotify regardless of what's rendered below. */}
       {a.topTracks.length > 0 && (
         <Section title="Popular">
           <ul className="flex flex-col">
             {a.topTracks.map((t, i) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  onClick={() => props.onPlayTrack(t.uri)}
+                  className="grid w-full grid-cols-[24px_40px_1fr_auto] items-center gap-3 rounded p-2 text-left transition hover:bg-[#282828]"
+                >
+                  <span className="text-right text-xs tabular-nums text-[#B3B3B3]">
+                    {i + 1}
+                  </span>
+                  {t.albumArt ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={t.albumArt}
+                      alt=""
+                      className="h-10 w-10 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <div className="h-10 w-10 shrink-0 rounded bg-[#282828]" />
+                  )}
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium text-white">
+                      {t.name}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs tabular-nums text-[#B3B3B3]">
+                    {formatDuration(t.durationMs)}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
+
+      {a.moreTracks.length > 0 && (
+        <Section title="More from this artist">
+          <ul className="flex flex-col">
+            {a.moreTracks.map((t, i) => (
               <li key={t.id}>
                 <button
                   type="button"
