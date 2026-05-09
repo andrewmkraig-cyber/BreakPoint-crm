@@ -80,8 +80,12 @@ export function NewsFeed() {
     recruiting: { status: "idle" },
     ai: { status: "idle" },
   });
-  // initiatedRef lives outside React state so the fetch effect depends
-  // only on `active`.
+  // byTab IS the per-tab cache. Once a tab transitions to `ready`, its
+  // headlines stay in local state for the rest of the session and tab
+  // switches render instantly from there — only the first click on a
+  // tab spends a /api/news-feed round-trip. initiatedRef tracks which
+  // tabs have already kicked off a fetch so the effect doesn't double-
+  // fire on re-render.
   const initiatedRef = useRef<Set<TabKey>>(new Set<TabKey>());
   const [refreshing, setRefreshing] = useState(false);
   // Read state is local-only (no persistence). Keyed by
@@ -125,17 +129,19 @@ export function NewsFeed() {
     if (collapsed) return;
     if (initiatedRef.current.has(active)) return;
     initiatedRef.current.add(active);
-    setByTab((prev) => ({ ...prev, [active]: { status: "loading" } }));
-    let cancelled = false;
+    const tabBeingFetched = active;
+    setByTab((prev) => ({ ...prev, [tabBeingFetched]: { status: "loading" } }));
+    // No cancellation: each fetch writes back to its OWN tab's slot in
+    // byTab regardless of which tab is active when it returns. This way
+    // the recruiter can click around while a slow tab loads in the
+    // background, and the data lands as soon as it's ready. (The earlier
+    // `cancelled` flag dropped late results, which left the tab pinned
+    // on "loading" forever because initiatedRef still had it.)
     void (async () => {
-      const next = await fetchTab(active);
-      if (cancelled) return;
-      setByTab((prev) => ({ ...prev, [active]: next }));
-      if (next.status === "error") initiatedRef.current.delete(active);
+      const next = await fetchTab(tabBeingFetched);
+      setByTab((prev) => ({ ...prev, [tabBeingFetched]: next }));
+      if (next.status === "error") initiatedRef.current.delete(tabBeingFetched);
     })();
-    return () => {
-      cancelled = true;
-    };
   }, [active, collapsed]);
 
   async function handleRefresh() {
@@ -149,10 +155,13 @@ export function NewsFeed() {
         };
         throw new Error(json.error ?? `HTTP ${res.status}`);
       }
-      // Cache is empty for all 4 tabs now — clear initiation tracking so
-      // the next click on any tab re-fetches, and pull the active tab
-      // immediately so the recruiter sees fresh headlines without an
-      // extra click.
+      // Server cache is empty for all 4 tabs. Wipe the client-side
+      // per-tab cache too — every tab goes back to `idle`, initiatedRef
+      // is cleared — so the next click on any non-active tab triggers a
+      // fresh /api/news-feed call instead of rendering the stale ready
+      // payload from before the refresh. Active tab is set to loading
+      // and pulled immediately below so the recruiter doesn't need an
+      // extra click to see the new headlines.
       initiatedRef.current.clear();
       initiatedRef.current.add(active);
       setByTab({
@@ -252,21 +261,26 @@ export function NewsFeed() {
             >
               {TABS.map((t) => {
                 const selected = t.key === active;
+                const tabLoading = byTab[t.key].status === "loading";
                 return (
                   <button
                     key={t.key}
                     type="button"
                     role="tab"
                     aria-selected={selected}
+                    aria-busy={tabLoading}
                     onClick={() => setActive(t.key)}
                     className={
-                      "rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors " +
+                      "inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors " +
                       (selected
                         ? "bg-court-accent-tint text-court-accent-dark"
                         : "text-court-fg-muted hover:bg-court-surface-subtle")
                     }
                   >
                     {t.label}
+                    {tabLoading ? (
+                      <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                    ) : null}
                   </button>
                 );
               })}
