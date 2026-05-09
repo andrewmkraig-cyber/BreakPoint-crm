@@ -24,10 +24,11 @@ export const maxDuration = 60;
 
 const FALLBACK_HEADLINES = [
   {
-    headline: "News unavailable — try again shortly",
+    headline: "Couldn't load this briefing. Try refreshing.",
     source: "Ace",
     url: "#",
-    summary: "Could not load headlines. Will retry on next visit.",
+    summary:
+      "The Claude web search timed out or failed. Click the refresh icon at the top of the briefing to retry.",
   },
 ];
 
@@ -79,17 +80,14 @@ export async function GET(req: NextRequest) {
     }
   }
 
+  // generateHeadlinesForTab has its own 30s timeout around the Claude
+  // call, so we don't need an outer race here. Any thrown error (timeout,
+  // API error, parse failure) lands in this catch and serves the
+  // "try refreshing" fallback so the recruiter sees a clear next step
+  // instead of a blank widget.
   let headlines;
   try {
-    headlines = await Promise.race([
-      generateHeadlinesForTab(tab),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error("News feed timed out after 25s")),
-          25_000,
-        ),
-      ),
-    ]);
+    headlines = await generateHeadlinesForTab(tab);
   } catch (e) {
     console.error("[news-feed] generation failed, serving fallback:", e);
     return fallbackResponse();

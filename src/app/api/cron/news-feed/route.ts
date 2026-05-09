@@ -17,15 +17,18 @@ import {
 // without that header is rejected — there's no session attached to
 // cron invocations so getServerSession can't gate it.
 //
-// Tabs run in parallel via Promise.allSettled so a single tab failing
-// (web_search hiccup, JSON parse miss) doesn't abort the rest. Result
-// summary lists per-tab outcome so a missed tab is visible in the
-// Vercel cron log.
+// Tabs run sequentially (not in parallel) — concurrent web_search calls
+// were occasionally hitting rate limits and competing for socket
+// resources, leaving the cron with 1-2 tabs failed. One-at-a-time is
+// slower but reliable; each tab is independently try/catch'd so a
+// single failure doesn't abort the rest. Result summary lists per-tab
+// outcome so a missed tab is visible in the Vercel cron log.
 
 export const dynamic = "force-dynamic";
-// Web-search-enabled calls run ~5–15s each; running 5 in parallel
-// usually finishes in 15–20s, but 60s leaves headroom for slow days.
-export const maxDuration = 60;
+// Sequential 4 tabs × 30s timeout each = 120s worst case. 180s leaves
+// headroom for parsing, DB writes, and any slow tab that runs to
+// timeout before the next one starts.
+export const maxDuration = 180;
 
 const DEFAULT_ORG_FALLBACK = "DEFAULT_ORG_ID";
 
@@ -122,19 +125,21 @@ export async function GET(req: NextRequest) {
 
   const generatedDate = todayInEastern();
 
-  const settled = await Promise.allSettled(
-    NEWS_TABS.map((tab) => processTab(tab, organizationId, generatedDate)),
-  );
-
-  const results: TabOutcome[] = settled.map((r, i) => {
-    if (r.status === "fulfilled") return r.value;
-    const tab = NEWS_TABS[i];
-    return {
-      tab,
-      status: "failed",
-      error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-    };
-  });
+  // Sequential per-tab loop: one web_search at a time. Each tab is
+  // independently try/catch'd via processTab so a timeout or parse miss
+  // on tab N doesn't abort tab N+1.
+  const results: TabOutcome[] = [];
+  for (const tab of NEWS_TABS) {
+    try {
+      results.push(await processTab(tab, organizationId, generatedDate));
+    } catch (e) {
+      results.push({
+        tab,
+        status: "failed",
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   const summary = {
     generated: results.filter((r) => r.status === "generated").length,

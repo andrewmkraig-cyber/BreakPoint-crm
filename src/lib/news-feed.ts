@@ -232,20 +232,38 @@ export async function generateHeadlinesForTab(
   const userMessage = TAB_PROMPTS[tab](todayIso);
 
   const anthropic = getAnthropic();
+  // Per-tab timeout so a single hung web_search call can't block the rest
+  // of the cron (which now runs tabs sequentially) or the on-demand
+  // route's 60s ceiling. 30s is comfortably above typical 5-15s round
+  // trips and fires before Vercel's serverless ceiling.
+  const TIMEOUT_MS = 30_000;
   let response;
   try {
-    response = await anthropic.messages.create({
-      model: CLAUDE_MODEL,
-      max_tokens: 2000,
-      tools: [
-        {
-          type: "web_search_20250305",
-          name: "web_search",
-        },
-      ],
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: userMessage }],
-    });
+    response = await Promise.race([
+      anthropic.messages.create({
+        model: CLAUDE_MODEL,
+        max_tokens: 2000,
+        tools: [
+          {
+            type: "web_search_20250305",
+            name: "web_search",
+          },
+        ],
+        system: SYSTEM_PROMPT,
+        messages: [{ role: "user", content: userMessage }],
+      }),
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Claude web_search timed out after ${TIMEOUT_MS / 1000}s for tab "${tab}"`,
+              ),
+            ),
+          TIMEOUT_MS,
+        ),
+      ),
+    ]);
   } catch (err) {
     // Anthropic.APIError carries .status, .message, and .error (body).
     // Surface every field we can so a 401/429/5xx is visible in Vercel
