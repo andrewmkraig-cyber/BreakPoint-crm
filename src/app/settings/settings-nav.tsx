@@ -7,13 +7,13 @@ import { cn } from "@/lib/utils";
 // Category list lives here so layout.tsx (server component) and the
 // nav (client component) share the same source of truth.
 //
-// Order: setup-y items first, the catch-all live-health Connectors
-// panel last. Email Preferences was removed — phone + signature are
-// owned by Branding now, and the auto-send trigger moved into
-// Templates/Triggers.
+// Order: setup-y items first, then the catch-all live-health
+// Connectors panel, then Personal Info at the very bottom (it's a
+// once-set housekeeping form, not an everyday tab). Email Preferences
+// was removed — phone + signature are owned by Branding now, and the
+// auto-send trigger moved into Templates/Triggers.
 export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
-  { slug: "personal-info",     label: "Personal Info" },
   { slug: "notifications",     label: "Notifications" },
   { slug: "personal-trainer",  label: "Personal Trainer" },
   { slug: "history",           label: "Claude History" },
@@ -21,6 +21,7 @@ export const SETTINGS_CATEGORIES = [
   { slug: "templates",         label: "Templates" },
   { slug: "triggers",          label: "Triggers" },
   { slug: "connectors",        label: "Connectors" },
+  { slug: "personal-info",     label: "Personal Info" },
 ] as const;
 
 export function SettingsNav() {

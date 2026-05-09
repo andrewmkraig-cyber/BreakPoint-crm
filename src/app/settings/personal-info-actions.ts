@@ -5,7 +5,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import {
+  EMPTY_ADDRESS,
   TSHIRT_SIZES,
+  parseAddress,
+  serializeAddress,
+  type AddressFields,
   type PersonalInfoRow,
 } from "@/app/settings/personal-info-constants";
 
@@ -13,6 +17,10 @@ import {
 // UserProfile and are scoped per signed-in user — not per org. Loaders
 // upsert an empty profile row on demand so the form has something to
 // hydrate from on first visit.
+//
+// Address is a 4-field shape (street/city/state/zip) on the wire but
+// persists as a JSON-encoded string in UserProfile.address — see
+// personal-info-constants for the (de)serializer.
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -34,19 +42,25 @@ export async function getPersonalInfo(): Promise<PersonalInfoRow | null> {
     where: { userId },
     select: { birthday: true, address: true, tshirtSize: true },
   });
-  if (!profile) return { birthday: null, address: null, tshirtSize: null };
+  if (!profile) {
+    return {
+      birthday: null,
+      address: { ...EMPTY_ADDRESS },
+      tshirtSize: null,
+    };
+  }
   return {
     birthday: profile.birthday
       ? profile.birthday.toISOString().slice(0, 10)
       : null,
-    address: profile.address,
+    address: parseAddress(profile.address),
     tshirtSize: profile.tshirtSize,
   };
 }
 
 export async function savePersonalInfo(input: {
   birthday: string | null; // YYYY-MM-DD or empty
-  address: string | null;
+  address: AddressFields;
   tshirtSize: string | null;
 }): Promise<Result> {
   const userId = await requireUserId();
@@ -78,8 +92,7 @@ export async function savePersonalInfo(input: {
     return { ok: false, error: "Unknown t-shirt size." };
   }
 
-  const address =
-    input.address && input.address.trim() !== "" ? input.address.trim() : null;
+  const address = serializeAddress(input.address);
 
   try {
     await prisma.userProfile.upsert({

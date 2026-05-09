@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { savePersonalInfo } from "@/app/settings/personal-info-actions";
 import {
   TSHIRT_SIZES,
+  type AddressFields,
   type PersonalInfoRow,
 } from "@/app/settings/personal-info-constants";
 
@@ -13,18 +14,25 @@ export function PersonalInfoView({
   initial: PersonalInfoRow;
 }) {
   const [birthday, setBirthday] = useState(initial.birthday ?? "");
-  const [address, setAddress] = useState(initial.address ?? "");
+  const [address, setAddress] = useState<AddressFields>(initial.address);
   const [tshirtSize, setTshirtSize] = useState(initial.tshirtSize ?? "");
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [pending, startTransition] = useTransition();
+
+  function setAddressField<K extends keyof AddressFields>(
+    field: K,
+    value: AddressFields[K],
+  ) {
+    setAddress((prev) => ({ ...prev, [field]: value }));
+  }
 
   function handleSave() {
     setError(null);
     startTransition(async () => {
       const res = await savePersonalInfo({
         birthday: birthday || null,
-        address: address || null,
+        address,
         tshirtSize: tshirtSize || null,
       });
       if (!res.ok) {
@@ -46,15 +54,52 @@ export function PersonalInfoView({
         />
       </Field>
 
-      <Field label="Address">
-        <input
-          type="text"
-          value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="123 Main St, City, State 12345"
-          className="block w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
-        />
-      </Field>
+      <fieldset className="space-y-2">
+        <legend className="mb-1 text-sm font-semibold text-court-fg">
+          Address
+        </legend>
+        <SubField label="Street">
+          <input
+            type="text"
+            value={address.street}
+            onChange={(e) => setAddressField("street", e.target.value)}
+            placeholder="123 Main St"
+            className="block w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          />
+        </SubField>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:gap-3">
+          <SubField label="City">
+            <input
+              type="text"
+              value={address.city}
+              onChange={(e) => setAddressField("city", e.target.value)}
+              placeholder="Solon"
+              className="block w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+            />
+          </SubField>
+          <SubField label="State">
+            <input
+              type="text"
+              value={address.state}
+              onChange={(e) => setAddressField("state", e.target.value)}
+              placeholder="OH"
+              maxLength={32}
+              className="block w-20 rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm uppercase text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+            />
+          </SubField>
+          <SubField label="ZIP">
+            <input
+              type="text"
+              value={address.zip}
+              onChange={(e) => setAddressField("zip", e.target.value)}
+              placeholder="44139"
+              inputMode="numeric"
+              maxLength={10}
+              className="block w-28 rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm tabular-nums text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+            />
+          </SubField>
+        </div>
+      </fieldset>
 
       <Field label="T-Shirt Size">
         <select
@@ -103,6 +148,23 @@ function Field({
     <label className="block">
       <div className="mb-1 text-sm font-semibold text-court-fg">{label}</div>
       {hint && <div className="mb-1.5 text-xs text-court-fg-muted">{hint}</div>}
+      {children}
+    </label>
+  );
+}
+
+function SubField({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <div className="mb-1 text-xs font-medium text-court-fg-muted">
+        {label}
+      </div>
       {children}
     </label>
   );
