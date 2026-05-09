@@ -1,21 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
+import { getServerSession } from "next-auth";
 import { prisma } from "@/lib/prisma";
+import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 export const dynamic = "force-dynamic";
 
 // Append-a-note endpoint backing the global FAB Notes popup. Takes
 // { entityType: "candidate"|"client", entityId, note } and prepends
-// the new entry — with a timestamp prefix — to the entity's `notes`
-// text column. Tenant-scoped: the row update is gated on
-// organizationId so a stranger probing by cuid gets a clean 404
-// rather than a cross-tenant write.
+// the new entry to the entity's notes. Tenant-scoped: the row update
+// is gated on organizationId so a stranger probing by cuid gets a
+// clean 404 rather than a cross-tenant write.
 //
-// Storage shape: each note is stored on its own line, prefixed with
-// "[YYYY-MM-DD HH:MM] " so the existing EditableNotes component
-// (which splits Candidate.notes by newline + filters empty) keeps
-// rendering each entry as its own row without further migration.
+// Storage shape diverges by entity:
+//   - Candidate: the Notes tab reads from Candidate.raw.notes (the
+//     structured RF-shaped {id?, note, added_time, added_by} array).
+//     We prepend a new entry to that array AND mirror joined text
+//     into Candidate.notes so updateCandidate's text-column mirror
+//     stays consistent.
+//   - Client: the Notes tab renders Client.notes as a <pre> block,
+//     so we keep the original "[YYYY-MM-DD HH:MM] body" line-prefix
+//     append against the text column.
 
 type Body = {
   entityType?: "candidate" | "client";
@@ -57,19 +64,41 @@ export async function POST(req: NextRequest) {
   if (entityType === "candidate") {
     const target = await prisma.candidate.findFirst({
       where: { id: entityId, organizationId: org.id },
-      select: { id: true, rfId: true, notes: true },
+      select: { id: true, rfId: true, raw: true },
     });
     if (!target) {
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
     }
-    // Blank line between entries so notes don't bunch up. The
-    // EditableNotes / Notes-tab renderer uses <pre>-style whitespace
-    // preservation, so the gap reads as visual separation between
-    // each timestamped entry.
-    const next = target.notes ? `${stamped}\n\n${target.notes}` : stamped;
+    // Prepend a structured entry into raw.notes — this is the array
+    // the Notes tab reads from. added_by mirrors the RF shape so the
+    // existing EditableNotes byline renderer ("Name · timestamp")
+    // doesn't need to branch on Ace-native vs RF-imported entries.
+    const session = await getServerSession(authOptions);
+    const addedByName = session?.user?.name ?? session?.user?.email ?? null;
+    const prevRaw = (target.raw as Record<string, unknown> | null) ?? {};
+    const prevNotes = Array.isArray(prevRaw.notes)
+      ? (prevRaw.notes as Array<Record<string, unknown>>)
+      : [];
+    const newEntry = {
+      note,
+      added_time: new Date().toISOString(),
+      added_by: addedByName ? { name: addedByName } : null,
+    };
+    const nextNotes = [newEntry, ...prevNotes];
+    const nextRaw = { ...prevRaw, notes: nextNotes };
+    // Mirror joined text into the Candidate.notes column so the
+    // legacy text-column reader (and updateCandidate's rfNotesToText
+    // round-trip) stays consistent with raw.notes.
+    const mirroredText = nextNotes
+      .map((n) => (typeof n.note === "string" ? n.note.trim() : ""))
+      .filter((s): s is string => Boolean(s))
+      .join("\n\n---\n\n");
     await prisma.candidate.update({
       where: { id: target.id },
-      data: { notes: next },
+      data: {
+        raw: nextRaw as Prisma.InputJsonValue,
+        notes: mirroredText || null,
+      },
     });
     revalidatePath(`/candidates/${target.id}`);
     if (target.rfId != null) revalidatePath(`/candidates/${target.rfId}`);
