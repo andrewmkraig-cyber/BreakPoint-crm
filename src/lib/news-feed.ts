@@ -75,37 +75,145 @@ const SYSTEM_PROMPT =
   "Skip press-release wires (PR Newswire, Business Wire, GlobeNewswire, EIN Presswire, PRWeb), foreign-language sites, aggregator pages, and homepages. " +
   "URLs must point to the specific article, never a section index or Google cache.";
 
-// Claude wraps the JSON in occasional preamble even when told not to,
-// and web_search responses sometimes include a citations footer. Slice
-// from the first `[{` to the last `}]` so neither breaks parsing.
-function parseHeadlines(raw: string): Headline[] | null {
-  const trimmed = raw.trim();
-  const start = trimmed.indexOf("[{");
-  const end = trimmed.lastIndexOf("}]");
-  if (start === -1 || end === -1 || end < start) return null;
-  const slice = trimmed.slice(start, end + 2);
-  let parsed: unknown;
+function coerceItem(value: unknown): Headline | null {
+  if (!value || typeof value !== "object") return null;
+  const r = value as Record<string, unknown>;
+  const headline =
+    typeof r.headline === "string"
+      ? r.headline.trim()
+      : typeof r.title === "string"
+        ? r.title.trim()
+        : "";
+  const url =
+    typeof r.url === "string"
+      ? r.url.trim()
+      : typeof r.link === "string"
+        ? r.link.trim()
+        : "";
+  const source =
+    typeof r.source === "string"
+      ? r.source.trim()
+      : typeof r.publication === "string"
+        ? r.publication.trim()
+        : "";
+  const summary =
+    typeof r.summary === "string"
+      ? r.summary.trim()
+      : typeof r.description === "string"
+        ? r.description.trim()
+        : "";
+  if (!headline || !url || !source) return null;
+  return { headline, url, source, summary };
+}
+
+function clip(arr: Headline[]): Headline[] | null {
+  return arr.length === 0 ? null : arr.slice(0, 4);
+}
+
+// Strategy 1: the whole text is already valid JSON (best case — Claude
+// followed instructions). Strip ```json fences first.
+function tryDirectJsonArray(raw: string): Headline[] | null {
+  let s = raw.trim();
+  s = s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "");
   try {
-    parsed = JSON.parse(slice);
+    const parsed = JSON.parse(s);
+    if (!Array.isArray(parsed)) return null;
+    const out: Headline[] = [];
+    for (const item of parsed) {
+      const h = coerceItem(item);
+      if (h) out.push(h);
+    }
+    return clip(out);
   } catch {
     return null;
   }
-  if (!Array.isArray(parsed)) return null;
+}
+
+// Strategy 2: a JSON array of objects is embedded somewhere in prose /
+// citations footer. Slice from first `[{` to last `}]` and parse.
+function tryEmbeddedJsonArray(raw: string): Headline[] | null {
+  const start = raw.indexOf("[{");
+  const end = raw.lastIndexOf("}]");
+  if (start === -1 || end === -1 || end < start) return null;
+  try {
+    const parsed = JSON.parse(raw.slice(start, end + 2));
+    if (!Array.isArray(parsed)) return null;
+    const out: Headline[] = [];
+    for (const item of parsed) {
+      const h = coerceItem(item);
+      if (h) out.push(h);
+    }
+    return clip(out);
+  } catch {
+    return null;
+  }
+}
+
+// Strategy 3: numbered list. Splits on lines that start with `N.` /
+// `N)` and harvests headline / source / url / summary from each block.
+// Tolerant of markdown bold, hyphen separators, and label variations.
+function tryNumberedList(raw: string): Headline[] | null {
+  const blocks = raw
+    .split(/^\s*\d+[.)]\s+/m)
+    .map((b) => b.trim())
+    .filter((b) => b.length > 0);
+  if (blocks.length < 2) return null;
+
+  const stripMd = (s: string) =>
+    s.replace(/\*\*(.+?)\*\*/g, "$1").replace(/^["'`]|["'`]$/g, "").trim();
+  const sourceFromUrl = (url: string): string => {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, "");
+      return host.split(".")[0].replace(/^./, (c) => c.toUpperCase());
+    } catch {
+      return "";
+    }
+  };
 
   const out: Headline[] = [];
-  for (const item of parsed) {
-    if (!item || typeof item !== "object") continue;
-    const r = item as Record<string, unknown>;
-    const headline = typeof r.headline === "string" ? r.headline.trim() : "";
-    const url = typeof r.url === "string" ? r.url.trim() : "";
-    const source = typeof r.source === "string" ? r.source.trim() : "";
-    const summary = typeof r.summary === "string" ? r.summary.trim() : "";
+  for (const block of blocks) {
+    const urlMatch = block.match(/https?:\/\/[^\s)\]<>"']+/);
+    const url = urlMatch ? urlMatch[0].replace(/[.,;:]+$/, "") : "";
+
+    const labeled = (label: RegExp): string => {
+      const m = block.match(label);
+      return m ? stripMd(m[1].trim()) : "";
+    };
+
+    const headline =
+      labeled(/(?:^|\n)\s*(?:\*\*)?(?:headline|title)(?:\*\*)?\s*[:\-—]\s*(.+)/i) ||
+      stripMd(block.split(/\n/)[0] ?? "");
+    const source =
+      labeled(/(?:^|\n)\s*(?:\*\*)?(?:source|publication|outlet)(?:\*\*)?\s*[:\-—]\s*(.+)/i) ||
+      sourceFromUrl(url);
+    const summary =
+      labeled(/(?:^|\n)\s*(?:\*\*)?(?:summary|description)(?:\*\*)?\s*[:\-—]\s*(.+)/i);
+
     if (!headline || !url || !source) continue;
-    out.push({ headline, source, url, summary });
-    if (out.length === 4) break;
+    out.push({ headline, url, source, summary });
   }
-  if (out.length === 0) return null;
-  return out;
+  return clip(out);
+}
+
+// Tries every parser in order, logs which one won (or failed). Returns
+// null when nothing matches; caller logs the raw snippet.
+function parseHeadlines(raw: string, tab: NewsTab): Headline[] | null {
+  const direct = tryDirectJsonArray(raw);
+  if (direct) {
+    console.log(`[news-feed:${tab}] parsed via direct-JSON, count=${direct.length}`);
+    return direct;
+  }
+  const embedded = tryEmbeddedJsonArray(raw);
+  if (embedded) {
+    console.log(`[news-feed:${tab}] parsed via embedded-JSON, count=${embedded.length}`);
+    return embedded;
+  }
+  const numbered = tryNumberedList(raw);
+  if (numbered) {
+    console.log(`[news-feed:${tab}] parsed via numbered-list, count=${numbered.length}`);
+    return numbered;
+  }
+  return null;
 }
 
 // Calls Claude with the web_search tool and returns the 4-headline payload
@@ -119,29 +227,70 @@ export async function generateHeadlinesForTab(
   const userMessage = TAB_PROMPTS[tab](todayIso);
 
   const anthropic = getAnthropic();
-  const response = await anthropic.messages.create({
-    model: CLAUDE_MODEL,
-    max_tokens: 2000,
-    tools: [
-      {
-        type: "web_search_20250305",
-        name: "web_search",
-      },
-    ],
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userMessage }],
-  });
+  let response;
+  try {
+    response = await anthropic.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 2000,
+      tools: [
+        {
+          type: "web_search_20250305",
+          name: "web_search",
+        },
+      ],
+      system: SYSTEM_PROMPT,
+      messages: [{ role: "user", content: userMessage }],
+    });
+  } catch (err) {
+    // Anthropic.APIError carries .status, .message, and .error (body).
+    // Surface every field we can so a 401/429/5xx is visible in Vercel
+    // logs without re-running locally.
+    const apiErr = err as {
+      status?: number;
+      message?: string;
+      name?: string;
+      error?: unknown;
+    };
+    console.error(`[news-feed:${tab}] Claude API call threw`, {
+      name: apiErr?.name,
+      status: apiErr?.status,
+      message: apiErr?.message,
+      error: apiErr?.error,
+    });
+    throw err;
+  }
 
   // Server-side web_search returns a multi-block sequence:
   //   [ text(preface), server_tool_use, web_search_tool_result, text(answer) ]
   // The JSON we want lives in the trailing text block; the preface is
-  // usually "Let me search for...". Concatenate every text block and let
-  // parseHeadlines extract the array — it slices from `[{` to `}]` so a
-  // chatty preface or citations footer doesn't break parsing.
+  // usually "Let me search for...". Concatenate every text block so the
+  // parser sees the full final answer plus any preamble.
   const fullText = response.content
     .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("\n\n");
-  if (!fullText) return null;
-  return parseHeadlines(fullText);
+
+  // Log the complete raw response BEFORE any parsing. This is the only
+  // way to debug "headlines were empty" from Vercel logs alone — the
+  // Claude call is non-deterministic so we can't reproduce it locally.
+  console.log(`[news-feed:${tab}] raw Claude response`, {
+    stop_reason: response.stop_reason,
+    block_count: response.content.length,
+    block_types: response.content.map((b) => b.type),
+    usage: response.usage,
+    text_length: fullText.length,
+    text: fullText,
+  });
+
+  if (!fullText) {
+    console.error(`[news-feed:${tab}] no text blocks in response`);
+    return null;
+  }
+  const parsed = parseHeadlines(fullText, tab);
+  if (!parsed) {
+    console.error(
+      `[news-feed:${tab}] all parsers failed, first 500 chars: ${fullText.slice(0, 500)}`,
+    );
+  }
+  return parsed;
 }
