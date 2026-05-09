@@ -14,6 +14,7 @@ import {
   Building2,
   CalendarDays,
   DollarSign,
+  FileSignature,
   Handshake,
   Send,
 } from "lucide-react";
@@ -33,6 +34,9 @@ export const dynamic = "force-dynamic";
 // transitions we stamp on the row (offerReceivedAt / placedAt).
 // Interview completions read Interview directly since we want every
 // non-cancelled past interview regardless of when it was booked.
+// Agreements Signed reads ClientAgreement.uploadedAt — every row in
+// that table is a signed agreement Andrew dropped into a client
+// folder (drafts go out via email, never get uploaded).
 
 export default async function DashboardPage() {
   // Session resolved here for auth-gating elsewhere; the dashboard
@@ -80,6 +84,7 @@ export default async function DashboardPage() {
     interviewsScheduledCount,
     offersExtendedCount,
     placementsMadeCount,
+    agreementsSignedCount,
     q2BilledRevenueAgg,
   ] = await Promise.all([
     getInterviewsForOrg({
@@ -119,6 +124,12 @@ export default async function DashboardPage() {
     // Cancelled placements still count as activity that happened.
     prisma.placement.count({
       where: { organizationId: org.id, placedAt: { gte: weekStart, lt: weekEnd } },
+    }),
+    // Agreements signed — every ClientAgreement row is a signed
+    // contract Andrew uploaded into a client folder. Drafts go out via
+    // email and never hit this table, so a raw count is the metric.
+    prisma.clientAgreement.count({
+      where: { organizationId: org.id, uploadedAt: { gte: weekStart, lt: weekEnd } },
     }),
     // Sum of feeTotal across Q2 2026 placements (expectedStartDate in-range),
     // limited to pending_start + hired so we don't count cancelled/rejected
@@ -204,12 +215,13 @@ export default async function DashboardPage() {
           Activity for {formatEasternWeekRange(weekStart, weekEnd)}
         </p>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Clients" value={newClientsCount} icon={Building2} />
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
         <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
         <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
+        <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} />
         </div>
       </div>
 
