@@ -10,11 +10,12 @@ import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/li
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
+import Link from "next/link";
 import {
-  CalendarCheck2,
   CalendarDays,
   DollarSign,
   Handshake,
+  Plus,
   Send,
 } from "lucide-react";
 
@@ -77,7 +78,6 @@ export default async function DashboardPage() {
     rfClients,
     submitLogCount,
     interviewsScheduledCount,
-    interviewsCompletedCount,
     offersExtendedCount,
     placementsMadeCount,
     q2BilledRevenueAgg,
@@ -101,18 +101,6 @@ export default async function DashboardPage() {
     // is the activity we're measuring.
     prisma.interview.count({
       where: { organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
-    }),
-    // Completed = past scheduledAt within the ET week AND not
-    // cancelled. `lt: now` keeps us from counting interviews booked
-    // for later today. Rescheduled interviews carry their original
-    // id and status=scheduled after the move, so they're treated as
-    // the same interview landing on its new time.
-    prisma.interview.count({
-      where: {
-        organizationId: org.id,
-        scheduledAt: { gte: weekStart, lt: now < weekEnd ? now : weekEnd },
-        status: { not: "cancelled" },
-      },
     }),
     // Offers — Placement.offerReceivedAt is stamped by recordOffer.
     // Counted regardless of whether the offer was later accepted,
@@ -205,14 +193,21 @@ export default async function DashboardPage() {
           of inheriting the page's gap-6 — at gap-6 it floated in
           dead space and read like its own row. */}
       <div className="flex flex-col gap-2">
-        <p className="font-serif text-[13px] font-semibold tracking-tight text-court-fg-muted">
-          Activity for {formatEasternWeekRange(weekStart, weekEnd)}
-        </p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="font-serif text-[13px] font-semibold tracking-tight text-court-fg-muted">
+            Activity for {formatEasternWeekRange(weekStart, weekEnd)}
+          </p>
+          <Link
+            href="/clients/new"
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg"
+          >
+            <Plus className="h-3.5 w-3.5" /> New Client
+          </Link>
+        </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4">
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
         <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
-        <KpiTile label="Interviews Completed" value={interviewsCompletedCount} icon={CalendarCheck2} />
         <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
         </div>
