@@ -90,6 +90,14 @@ function log403IfApplicable(
 // Vercel without joining multiple log lines.
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
+
+// Module-load timestamp. Stamped into every [token] / [stage] / [result]
+// log so we can prove from Vercel logs alone whether the deployed
+// instance is the one we just shipped (vs. a stale serverless instance
+// or a CDN-cached response). Update naturally on each cold start.
+const ROUTE_BUILD = `pl-${new Date().toISOString()}`;
 
 type Image = { url?: string; width?: number };
 type ArtistRef = { id?: string; name?: string };
@@ -294,17 +302,41 @@ export async function GET(
   // call uses, just to surface whether the request EVER had a usable
   // token before any Spotify call ran. Logged once before any other
   // work so a 401 cluster can be triaged immediately.
+  // Per-request id makes [token]/[stage]/[shape]/[result] joinable when
+  // multiple requests interleave on a single Vercel instance.
+  const reqId = Math.random().toString(36).slice(2, 8);
+
+  const stage = (name: string, extra?: Record<string, unknown>): void => {
+    console.log(
+      "[spotify-playlist-tracks stage]",
+      JSON.stringify({
+        build: ROUTE_BUILD,
+        reqId,
+        id,
+        kind: isAlbum ? "album" : "playlist",
+        stage: name,
+        ...(extra ?? {}),
+      }),
+    );
+  };
+
+  stage("entered");
+
   const tokenProbe = await getValidSpotifyAccessToken();
   const hasToken = tokenProbe.ok;
   console.log(
     "[spotify-playlist-tracks token]",
     JSON.stringify({
+      build: ROUTE_BUILD,
+      reqId,
       kind: isAlbum ? "album" : "playlist",
       id,
       hasToken,
       tokenError: tokenProbe.ok ? null : tokenProbe.error,
     }),
   );
+
+  stage("post-token", { hasToken });
 
   // Result accumulator — populated as we go, logged unconditionally
   // in the finally block below so even an early-return path produces
@@ -351,6 +383,7 @@ export async function GET(
   };
 
   try {
+    stage("try-enter");
     // Step A — header.
     // Albums use market=US (region-relinking). Playlists OMIT it on
     // the primary call: 36.x added market=US for relinking but it
@@ -361,6 +394,7 @@ export async function GET(
       ? `/v1/albums/${id}?market=US`
       : `/v1/playlists/${id}`;
 
+    stage("pre-header", { headerPath: safePath(headerPath) });
     // Albums skip the /me call — owner doesn't apply.
     const [headerRes, meRes] = await Promise.all([
       spotifyApiProxy(headerPath, {
@@ -370,6 +404,10 @@ export async function GET(
         ? Promise.resolve(null)
         : spotifyApiProxy("/v1/me", { tag: "playlist/me" }),
     ]);
+    stage("post-header", {
+      headerStatus: headerRes.status,
+      meStatus: meRes ? meRes.status : null,
+    });
     summary.headerStatus = headerRes.status;
     log403IfApplicable(
       isAlbum ? "album/header" : "playlist/header",
@@ -381,6 +419,10 @@ export async function GET(
     let refreshed = headerRes.refreshed ?? meRes?.refreshed ?? null;
 
     if (!headerRes.ok) {
+      stage("header-failed-early-return", {
+        headerStatus: headerRes.status,
+        headerError: headerRes.error,
+      });
       summary.error = headerRes.error;
       summary.errorBody = sanitizeBody(headerRes.body);
       const res = NextResponse.json(
@@ -446,8 +488,13 @@ export async function GET(
     const primaryPath = isAlbum
       ? `/v1/albums/${id}/tracks?limit=50&offset=0&market=${market}`
       : `/v1/playlists/${id}/items?limit=50&offset=0&market=${market}&additional_types=track&fields=${playlistItemFields}`;
+    stage("pre-primary", { primaryPath: safePath(primaryPath) });
     const primaryRes = await spotifyApiProxy(primaryPath, {
       tag: isAlbum ? "album/tracks" : "playlist/items-primary",
+    });
+    stage("post-primary", {
+      primaryStatus: primaryRes.status,
+      primaryOk: primaryRes.ok,
     });
     summary.primaryItemsStatus = primaryRes.status;
     log403IfApplicable(
@@ -665,6 +712,12 @@ export async function GET(
       summary.errorBody = sanitizeBody(lastTracksError.body);
     }
 
+    stage("pre-response", {
+      tracksSource,
+      mappedTracks: tracks.length,
+      tracksLoaded,
+      mapperError: mapperError ?? null,
+    });
     const res = NextResponse.json({
       ok: true,
       kind: isAlbum ? "album" : "playlist",
@@ -731,6 +784,7 @@ export async function GET(
   } catch (e) {
     summary.error =
       e instanceof Error ? e.message : "Unknown error in playlist-tracks route";
+    stage("caught", { error: summary.error });
     // Return a 502 so the panel can render error state. The finally
     // block still emits the [...result] line below.
     return NextResponse.json(
@@ -740,7 +794,7 @@ export async function GET(
   } finally {
     console.log(
       "[spotify-playlist-tracks result]",
-      JSON.stringify(summary),
+      JSON.stringify({ build: ROUTE_BUILD, reqId, ...summary }),
     );
   }
 }
