@@ -25,10 +25,10 @@ import {
 // outcome so a missed tab is visible in the Vercel cron log.
 
 export const dynamic = "force-dynamic";
-// Sequential 4 tabs × 30s timeout each = 120s worst case. 180s leaves
+// Sequential 4 tabs × 55s timeout each = 220s worst case. 300s leaves
 // headroom for parsing, DB writes, and any slow tab that runs to
 // timeout before the next one starts.
-export const maxDuration = 180;
+export const maxDuration = 300;
 
 const DEFAULT_ORG_FALLBACK = "DEFAULT_ORG_ID";
 

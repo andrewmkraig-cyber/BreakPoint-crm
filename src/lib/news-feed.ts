@@ -234,9 +234,9 @@ export async function generateHeadlinesForTab(
   const anthropic = getAnthropic();
   // Per-tab timeout so a single hung web_search call can't block the rest
   // of the cron (which now runs tabs sequentially) or the on-demand
-  // route's 60s ceiling. 30s is comfortably above typical 5-15s round
-  // trips and fires before Vercel's serverless ceiling.
-  const TIMEOUT_MS = 30_000;
+  // route's 60s ceiling. Narrow-topic searches (recruiting, accounting,
+  // ai) routinely take 30-50s, so 55s sits just under the route ceiling.
+  const TIMEOUT_MS = 55_000;
   let response;
   try {
     response = await Promise.race([
