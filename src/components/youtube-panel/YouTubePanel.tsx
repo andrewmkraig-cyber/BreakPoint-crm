@@ -196,6 +196,15 @@ export function YouTubePanel() {
       }
     }
 
+    // Track whether THIS effect run installed the global hook so the
+    // cleanup can restore the prior value instead of leaking a stale
+    // closure that fires bootPlayer() against an unmounted container
+    // when YT.js finally loads after the user has already clicked
+    // back-to-search. priorHook is captured outside the closure so the
+    // cleanup branch can see it.
+    let priorHook: typeof window.onYouTubeIframeAPIReady | undefined;
+    let installedHook = false;
+
     if (window.YT?.Player) {
       bootPlayer();
     } else {
@@ -210,10 +219,11 @@ export function YouTubePanel() {
       // The API calls onYouTubeIframeAPIReady globally when it's
       // hot. Chain through any prior handler so we don't trample
       // another consumer's hook.
-      const prior = window.onYouTubeIframeAPIReady;
+      priorHook = window.onYouTubeIframeAPIReady;
+      installedHook = true;
       window.onYouTubeIframeAPIReady = () => {
         try {
-          prior?.();
+          priorHook?.();
         } catch {}
         bootPlayer();
       };
@@ -221,11 +231,22 @@ export function YouTubePanel() {
 
     return () => {
       cancelled = true;
-      if (playerRef.current) {
+      if (installedHook) {
+        // Restore whatever was there before we clobbered it. If YT
+        // loads after this point, our (now-cancelled) bootPlayer
+        // closure doesn't run; the prior consumer's hook (if any)
+        // still does. Fixes back-to-search when the YT script load
+        // races the click.
+        window.onYouTubeIframeAPIReady = priorHook;
+      }
+      // Null the ref BEFORE destroy() so any re-entry triggered by
+      // YT's teardown postMessage can't see a stale player handle.
+      const p = playerRef.current;
+      playerRef.current = null;
+      if (p) {
         try {
-          playerRef.current.destroy();
+          p.destroy();
         } catch {}
-        playerRef.current = null;
       }
     };
   }, [activeVideoId]);
@@ -613,8 +634,12 @@ export function YouTubePanel() {
 
   // Back from the playing iframe overlay. Clears the iframe but keeps
   // whichever non-playing state the recruiter came from (search list
-  // or channel view) so they land where they were.
+  // or channel view) so they land where they were. Idempotent: a
+  // doubled click (focus event bouncing back to the just-rendered
+  // button, pointer-capture replay) bails rather than re-running the
+  // state transition.
   function backToSearch() {
+    if (activeVideoId === null) return;
     setActiveVideoId(null);
     setActiveVideoTitle("");
   }
