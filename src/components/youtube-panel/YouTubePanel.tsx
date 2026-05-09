@@ -435,24 +435,61 @@ export function YouTubePanel() {
     return () => window.removeEventListener("resize", onResize);
   }, [open, minimized, position, size, setPosition]);
 
-  // setPointerCapture on the handle element forces every subsequent
-  // pointermove / pointerup / pointercancel for this pointerId to fire
-  // on the handle, even if the cursor drifts over the YouTube iframe.
-  // window listeners alone weren't enough — the iframe absorbed the
-  // up event and the panel kept tracking the cursor until the next
-  // click. pointercancel is added as belt-and-suspenders for the
-  // case where the OS / browser cancels the gesture.
+  // ─── Drag/resize session lifecycle ────────────────────────────────
+  // One pointer at a time: drag and resize are mutually exclusive.
+  // endSessionRef holds the active session's cleanup so any new
+  // gesture (or the document-level safety net) can force-end the
+  // prior one and the panel can never get stuck following the cursor
+  // after release. Refs (not React state) hold the live session because
+  // the cleanup paths run inside event handlers where stale closures
+  // over render-scoped state would silently miss late events.
+  const endSessionRef = useRef<(() => void) | null>(null);
+
+  const cancelActiveSession = useCallback(() => {
+    const fn = endSessionRef.current;
+    if (fn) fn();
+  }, []);
+
+  // While a drag/resize is in flight, set pointer-events: none on the
+  // YouTube iframe AND its wrapper so the iframe can't swallow
+  // pointerup / pointermove. pointer-events does NOT inherit, so we
+  // mutate both the wrapper and the iframe child directly. Without
+  // this, releasing the mouse over the video area left the panel
+  // chasing the cursor because YouTube's iframe ate the release.
+  const setIframeInteractive = useCallback((active: boolean) => {
+    const wrapper = playerHostRef.current;
+    if (!wrapper) return;
+    wrapper.style.pointerEvents = active ? "" : "none";
+    const iframe = wrapper.querySelector("iframe");
+    if (iframe) {
+      (iframe as HTMLIFrameElement).style.pointerEvents = active
+        ? ""
+        : "none";
+    }
+  }, []);
+
+  // Drag the panel from the header / overlay handles. Pointer capture
+  // routes every move + release back to the handle; the iframe is
+  // disabled as a second line of defense; and a document-level safety
+  // net (window pointerup/mouseup/blur, visibilitychange,
+  // lostpointercapture) guarantees the session ends even if the OS or
+  // browser eats the release event. cleanup is idempotent via the
+  // `ended` flag — every escape hatch routes through it.
   const onHeaderPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       if ((e.target as HTMLElement).closest("button")) return;
       const node = panelRef.current;
       if (!node || !position) return;
+
+      cancelActiveSession();
+
       const handle = e.currentTarget;
       const pointerId = e.pointerId;
       try {
         handle.setPointerCapture(pointerId);
       } catch {}
+
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startX = position.x;
@@ -460,7 +497,11 @@ export function YouTubePanel() {
       let dx = 0;
       let dy = 0;
       let rafId = 0;
+      let ended = false;
+
       node.style.willChange = "transform";
+      setIframeInteractive(false);
+
       const flush = () => {
         rafId = 0;
         node.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
@@ -476,45 +517,74 @@ export function YouTubePanel() {
         dy = clampedY - startY;
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
-      const onUp = () => {
+
+      const cleanup = () => {
+        if (ended) return;
+        ended = true;
         handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        handle.removeEventListener("pointercancel", onUp);
+        handle.removeEventListener("pointerup", cleanup);
+        handle.removeEventListener("pointercancel", cleanup);
+        handle.removeEventListener("lostpointercapture", cleanup);
+        window.removeEventListener("pointerup", cleanup);
+        window.removeEventListener("mouseup", cleanup);
+        window.removeEventListener("blur", cleanup);
+        document.removeEventListener("visibilitychange", onVisibility);
         try {
           handle.releasePointerCapture(pointerId);
         } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.transform = "";
         node.style.willChange = "";
+        setIframeInteractive(true);
         const maxX = Math.max(0, window.innerWidth - size.w);
         const maxY = Math.max(0, window.innerHeight - size.h);
         setPosition({
           x: Math.max(0, Math.min(maxX, startX + dx)),
           y: Math.max(0, Math.min(maxY, startY + dy)),
         });
+        if (endSessionRef.current === cleanup) {
+          endSessionRef.current = null;
+        }
       };
+
+      const onVisibility = () => {
+        if (document.hidden) cleanup();
+      };
+
       handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
-      handle.addEventListener("pointercancel", onUp);
+      handle.addEventListener("pointerup", cleanup);
+      handle.addEventListener("pointercancel", cleanup);
+      handle.addEventListener("lostpointercapture", cleanup);
+      window.addEventListener("pointerup", cleanup);
+      window.addEventListener("mouseup", cleanup);
+      window.addEventListener("blur", cleanup);
+      document.addEventListener("visibilitychange", onVisibility);
+
+      endSessionRef.current = cleanup;
     },
-    [position, size, setPosition],
+    [position, size, setPosition, cancelActiveSession, setIframeInteractive],
   );
 
-  // Bottom-right corner resize handle. Same pointer-capture pattern as
-  // the header drag — without it, dragging across the YouTube iframe
-  // swallowed the pointerup and the panel resized forever until the
-  // next click.
+  // Bottom-right corner resize. Same pointer-capture + safety-net
+  // pattern as the drag handler. After commit we re-clamp the panel
+  // position against the new size so a resize that pushes the panel
+  // off the right or bottom edge of the viewport snaps it back into
+  // view instead of leaving it inaccessible.
   const onCornerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
       e.stopPropagation();
       const node = panelRef.current;
       if (!node) return;
+
+      cancelActiveSession();
+
       const handle = e.currentTarget;
       const pointerId = e.pointerId;
       try {
         handle.setPointerCapture(pointerId);
       } catch {}
+
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startW = size.w;
@@ -522,7 +592,11 @@ export function YouTubePanel() {
       let nextW = startW;
       let nextH = startH;
       let rafId = 0;
+      let ended = false;
+
       node.style.willChange = "width, height";
+      setIframeInteractive(false);
+
       const flush = () => {
         rafId = 0;
         node.style.width = `${nextW}px`;
@@ -533,23 +607,76 @@ export function YouTubePanel() {
         nextH = Math.max(YOUTUBE_PANEL_MIN_H, startH + (ev.clientY - startPy));
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
-      const onUp = () => {
+
+      const cleanup = () => {
+        if (ended) return;
+        ended = true;
         handle.removeEventListener("pointermove", onMove);
-        handle.removeEventListener("pointerup", onUp);
-        handle.removeEventListener("pointercancel", onUp);
+        handle.removeEventListener("pointerup", cleanup);
+        handle.removeEventListener("pointercancel", cleanup);
+        handle.removeEventListener("lostpointercapture", cleanup);
+        window.removeEventListener("pointerup", cleanup);
+        window.removeEventListener("mouseup", cleanup);
+        window.removeEventListener("blur", cleanup);
+        document.removeEventListener("visibilitychange", onVisibility);
         try {
           handle.releasePointerCapture(pointerId);
         } catch {}
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.willChange = "";
+        setIframeInteractive(true);
         setSize({ w: nextW, h: nextH });
+        // Re-clamp the saved position against the new size so the
+        // panel can't sit half-off the right or bottom edge after a
+        // resize. position is the gesture-start value; drag/resize
+        // are mutually exclusive so no concurrent move updated it.
+        if (position) {
+          const maxX = Math.max(0, window.innerWidth - nextW);
+          const maxY = Math.max(0, window.innerHeight - nextH);
+          const clampedX = Math.max(0, Math.min(maxX, position.x));
+          const clampedY = Math.max(0, Math.min(maxY, position.y));
+          if (clampedX !== position.x || clampedY !== position.y) {
+            setPosition({ x: clampedX, y: clampedY });
+          }
+        }
+        if (endSessionRef.current === cleanup) {
+          endSessionRef.current = null;
+        }
       };
+
+      const onVisibility = () => {
+        if (document.hidden) cleanup();
+      };
+
       handle.addEventListener("pointermove", onMove);
-      handle.addEventListener("pointerup", onUp);
-      handle.addEventListener("pointercancel", onUp);
+      handle.addEventListener("pointerup", cleanup);
+      handle.addEventListener("pointercancel", cleanup);
+      handle.addEventListener("lostpointercapture", cleanup);
+      window.addEventListener("pointerup", cleanup);
+      window.addEventListener("mouseup", cleanup);
+      window.addEventListener("blur", cleanup);
+      document.addEventListener("visibilitychange", onVisibility);
+
+      endSessionRef.current = cleanup;
     },
-    [size, setSize],
+    [
+      size,
+      setSize,
+      position,
+      setPosition,
+      cancelActiveSession,
+      setIframeInteractive,
+    ],
   );
+
+  // Force-end any in-flight drag/resize on panel close or component
+  // unmount. Without this, closing the panel mid-drag would leak the
+  // window/document listeners and leave the iframe pointer-events
+  // override in place for the next open.
+  useEffect(() => {
+    if (!open) cancelActiveSession();
+  }, [open, cancelActiveSession]);
+  useEffect(() => () => cancelActiveSession(), [cancelActiveSession]);
 
   async function runSearch() {
     const q = query.trim();
