@@ -68,6 +68,11 @@ const YT_API_SRC = "https://www.youtube.com/iframe_api";
 const SEEK_DELTA = 15;
 // Speed cycle order. Click the Speed chip to step to the next rate.
 const SPEED_CYCLE = [1, 1.5, 2] as const;
+// How long a paused-cursor inside the playing-state panel waits before
+// the top toolbar fades out. Matches typical media-player overlay
+// timeouts (~2.5s) so the recruiter has time to read titles before the
+// chrome dissolves.
+const TOOLBAR_IDLE_MS = 2500;
 
 // Subset of the YouTube IFrame Player API surface we actually call.
 // Keeps `any` out of the player ref + the speed/seek buttons.
@@ -140,6 +145,24 @@ export function YouTubePanel() {
   // hold the container ref and the player handle separately.
   const playerContainerRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
+  // Guards a render loop on back-to-search: the YT IFrame API's global
+  // onYouTubeIframeAPIReady callback was being chained on every play
+  // and never cleared on unmount, so a delayed-load YT script could
+  // fire bootPlayer() against a container that React had already
+  // unmounted, throwing inside `new YT.Player()` repeatedly. Tracking
+  // the last successfully-booted videoId lets the effect short-circuit
+  // when activeVideoId hasn't actually changed (defense in depth) and
+  // the focus-input ref guard below stops the search-input focus
+  // effect from re-running when its deps recur with the same values.
+  const lastBootedVideoIdRef = useRef<string | null>(null);
+  const focusedSinceSearchRef = useRef(false);
+
+  // Playing-state toolbar visibility. Always shown in search/minimized;
+  // in the playing state it auto-hides after the recruiter stops moving
+  // their cursor inside the panel for `TOOLBAR_IDLE_MS`. Hover, pointer
+  // move, and drag interactions wake it back up.
+  const [toolbarVisible, setToolbarVisible] = useState(true);
+  const toolbarHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -151,7 +174,19 @@ export function YouTubePanel() {
   // YouTube logo and the related-video grid; controls=1 keeps the
   // native scrubber so the recruiter can still drag the timeline.
   useEffect(() => {
-    if (!activeVideoId) return;
+    if (!activeVideoId) {
+      lastBootedVideoIdRef.current = null;
+      return;
+    }
+    // Defense in depth: if React fires this effect with the same
+    // activeVideoId we already booted (shouldn't happen with the
+    // [activeVideoId] dep, but a parent strict-mode replay or a stale
+    // closure path could), bail rather than spawn a second YT.Player
+    // against the same container.
+    if (lastBootedVideoIdRef.current === activeVideoId && playerRef.current) {
+      return;
+    }
+    lastBootedVideoIdRef.current = activeVideoId;
     let cancelled = false;
 
     function bootPlayer() {
@@ -196,6 +231,18 @@ export function YouTubePanel() {
       }
     }
 
+    // Capture the prior global hook OUTSIDE bootPlayer so the cleanup
+    // can restore it. The previous version chained `prior?.()` from
+    // inside a closure but never cleared the override on unmount —
+    // when the user clicked back-to-search before the YT script had
+    // loaded, the lingering global callback would still fire later
+    // and call bootPlayer() against a container React had already
+    // unmounted, throwing inside `new YT.Player()` and (combined with
+    // strict-mode replays of effects) producing the back-to-search
+    // render storm.
+    let priorHook: typeof window.onYouTubeIframeAPIReady | undefined;
+    let installedHook = false;
+
     if (window.YT?.Player) {
       bootPlayer();
     } else {
@@ -207,13 +254,11 @@ export function YouTubePanel() {
         tag.async = true;
         document.body.appendChild(tag);
       }
-      // The API calls onYouTubeIframeAPIReady globally when it's
-      // hot. Chain through any prior handler so we don't trample
-      // another consumer's hook.
-      const prior = window.onYouTubeIframeAPIReady;
+      priorHook = window.onYouTubeIframeAPIReady;
+      installedHook = true;
       window.onYouTubeIframeAPIReady = () => {
         try {
-          prior?.();
+          priorHook?.();
         } catch {}
         bootPlayer();
       };
@@ -221,6 +266,11 @@ export function YouTubePanel() {
 
     return () => {
       cancelled = true;
+      if (installedHook) {
+        // Restore whatever was there before we clobbered it; if YT has
+        // already loaded by now this is a no-op for the API.
+        window.onYouTubeIframeAPIReady = priorHook;
+      }
       if (playerRef.current) {
         try {
           playerRef.current.destroy();
@@ -260,12 +310,22 @@ export function YouTubePanel() {
   }
 
   // Focus the search input when the panel opens into the search state.
-  // Skipped while a video is playing so we don't yank focus away from the
-  // iframe.
+  // Skipped while a video is playing so we don't yank focus away from
+  // the iframe. The ref guard ensures we focus exactly once per
+  // entry into the search state — without it, any spurious re-fire
+  // of this effect (strict-mode replay, parent re-render that recurs
+  // the same deps) would call focus() again. focus() can dispatch
+  // focus/blur events that ripple through the DOM, which is the kind
+  // of side-effect a re-render loop can amplify.
   useEffect(() => {
+    if (activeVideoId) {
+      focusedSinceSearchRef.current = false;
+      return;
+    }
     if (!open) return;
-    if (activeVideoId) return;
+    if (focusedSinceSearchRef.current) return;
     inputRef.current?.focus();
+    focusedSinceSearchRef.current = true;
   }, [open, activeVideoId]);
 
   // Reset minimize when the user goes back to the search list — minimize
@@ -279,6 +339,47 @@ export function YouTubePanel() {
   useEffect(() => {
     if (!open) setMinimized(false);
   }, [open]);
+
+  // Toolbar auto-hide. Runs only while a video is playing in normal
+  // (non-minimized) mode. Search and minimized states keep their full
+  // chrome at all times.
+  const playingFullscreenChrome =
+    activeVideoId !== null && !minimized && open;
+  useEffect(() => {
+    if (!playingFullscreenChrome) {
+      // Reset to visible whenever we leave the playing state so the
+      // next entry starts with chrome shown.
+      setToolbarVisible(true);
+      if (toolbarHideTimerRef.current) {
+        clearTimeout(toolbarHideTimerRef.current);
+        toolbarHideTimerRef.current = null;
+      }
+      return;
+    }
+    setToolbarVisible(true);
+    toolbarHideTimerRef.current = setTimeout(() => {
+      setToolbarVisible(false);
+    }, TOOLBAR_IDLE_MS);
+    return () => {
+      if (toolbarHideTimerRef.current) {
+        clearTimeout(toolbarHideTimerRef.current);
+        toolbarHideTimerRef.current = null;
+      }
+    };
+  }, [playingFullscreenChrome]);
+
+  // Wake the toolbar back up and re-arm the idle timer. Cheap to call
+  // on every pointer move because it short-circuits when the toolbar
+  // is already visible (React's setState bails on identical values, so
+  // no re-render cascade — only the timer rolls forward).
+  const wakeToolbar = useCallback(() => {
+    if (!playingFullscreenChrome) return;
+    setToolbarVisible(true);
+    if (toolbarHideTimerRef.current) clearTimeout(toolbarHideTimerRef.current);
+    toolbarHideTimerRef.current = setTimeout(() => {
+      setToolbarVisible(false);
+    }, TOOLBAR_IDLE_MS);
+  }, [playingFullscreenChrome]);
 
   // On open, if the saved position would put any part of the panel off-
   // screen (window resized smaller while panel was closed, monitor
@@ -353,6 +454,11 @@ export function YouTubePanel() {
         rafId = 0;
         node.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       };
+      // Keep the toolbar awake throughout the drag — the recruiter is
+      // actively interacting, the chrome should stay visible. Without
+      // this the 2.5s idle timer can fire mid-drag and fade the
+      // toolbar out from under the cursor.
+      wakeToolbar();
       const onMove = (ev: PointerEvent) => {
         const rawX = startX + (ev.clientX - startPx);
         const rawY = startY + (ev.clientY - startPy);
@@ -363,6 +469,7 @@ export function YouTubePanel() {
         dx = clampedX - startX;
         dy = clampedY - startY;
         if (rafId === 0) rafId = requestAnimationFrame(flush);
+        wakeToolbar();
       };
       const onUp = () => {
         handle.removeEventListener("pointermove", onMove);
@@ -385,7 +492,7 @@ export function YouTubePanel() {
       handle.addEventListener("pointerup", onUp);
       handle.addEventListener("pointercancel", onUp);
     },
-    [position, size, setPosition],
+    [position, size, setPosition, wakeToolbar],
   );
 
   // Bottom-right corner resize handle. Same pointer-capture pattern as
@@ -613,8 +720,13 @@ export function YouTubePanel() {
 
   // Back from the playing iframe overlay. Clears the iframe but keeps
   // whichever non-playing state the recruiter came from (search list
-  // or channel view) so they land where they were.
+  // or channel view) so they land where they were. Idempotent guard:
+  // if the click somehow re-fires (focus event bouncing back to the
+  // re-rendered button, pointer-capture replay), bail rather than
+  // re-running the state transition and the cascade of effects it
+  // triggers.
   function backToSearch() {
+    if (activeVideoId === null) return;
     setActiveVideoId(null);
     setActiveVideoTitle("");
   }
@@ -656,6 +768,8 @@ export function YouTubePanel() {
       role="dialog"
       aria-label="YouTube"
       onPointerDownCapture={bringToFront}
+      onPointerEnter={wakeToolbar}
+      onPointerMove={wakeToolbar}
       className={
         "group pointer-events-auto fixed flex flex-col overflow-hidden border border-court-border bg-court-surface shadow-2xl " +
         (minimized ? "rounded-lg" : "rounded-xl")
@@ -694,21 +808,86 @@ export function YouTubePanel() {
         />
       )}
 
-      {/* Always-on transparent drag handle spanning the top edge so
-          the recruiter can grab the panel from a generous target
-          instead of the 280x36 hover pill. Sits above the iframe at
-          z-[6] so its pointerdown wins over iframe clicks; below the
-          hover pill at z-10 so the pill's buttons take priority where
-          they overlap. The right offset leaves a 200px channel clear
-          for YouTube's top-right native chrome (volume / CC / settings)
-          which the recruiter explicitly asked to keep clickable. */}
+      {/* Playing-state top toolbar. Spans the full panel width (44px
+          tall) so the recruiter has a generous drag target — the old
+          36-pixel transparent stripe + 280-pixel hover pill left
+          essentially nothing to grab. Sits above the iframe at z-10.
+          Auto-hides after TOOLBAR_IDLE_MS of cursor inactivity inside
+          the panel; reappears on hover, pointer move, or drag. While
+          hidden, the toolbar uses pointer-events-none so YouTube's
+          native top-right chrome (volume / CC / settings) is fully
+          clickable underneath. */}
       {playing && !minimized && (
         <div
           onPointerDown={onHeaderPointerDown}
-          aria-hidden
-          className="absolute left-0 top-0 z-[6] h-9 cursor-grab select-none active:cursor-grabbing"
-          style={{ right: 200 }}
-        />
+          className={
+            "absolute left-0 right-0 top-0 z-10 flex h-11 cursor-grab select-none items-center gap-0.5 bg-gradient-to-b from-black/75 to-black/30 px-2 text-white backdrop-blur-md transition-opacity duration-200 active:cursor-grabbing " +
+            (toolbarVisible
+              ? "pointer-events-auto opacity-100"
+              : "pointer-events-none opacity-0")
+          }
+        >
+          <button
+            type="button"
+            onClick={backToSearch}
+            className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-1 text-xs font-medium text-white/90 transition hover:bg-white/15 hover:text-white"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" /> Search
+          </button>
+          <button
+            type="button"
+            onClick={rewind}
+            className="rounded p-1 text-white/85 transition hover:bg-white/15 hover:text-white"
+            aria-label="Rewind 15 seconds"
+            title="Rewind 15s"
+          >
+            <Rewind className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={fastForward}
+            className="rounded p-1 text-white/85 transition hover:bg-white/15 hover:text-white"
+            aria-label="Forward 15 seconds"
+            title="Forward 15s"
+          >
+            <FastForward className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={cycleSpeed}
+            className="inline-flex items-center rounded px-1.5 py-1 text-[11px] font-semibold tabular-nums text-white/85 transition hover:bg-white/15 hover:text-white"
+            aria-label={`Playback speed ${playbackRate}x — click to change`}
+            title="Playback speed"
+          >
+            {playbackRate}x
+          </button>
+          {/* Title text in the middle doubles as drag-handle space —
+              clicks fall through to the parent's onPointerDown. */}
+          <div
+            className="min-w-0 flex-1 truncate px-2 text-center text-xs font-medium text-white/85"
+            title={activeVideoTitle}
+          >
+            {activeVideoTitle}
+          </div>
+          <button
+            type="button"
+            onClick={() => setMinimized(true)}
+            className="rounded p-1 text-white/85 transition hover:bg-white/15 hover:text-white"
+            aria-label="Minimize"
+            title="Minimize"
+          >
+            <Minimize2 className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={close}
+            className="rounded p-1 text-white/85 transition hover:bg-white/15 hover:text-white"
+            aria-label="Close panel"
+            title="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       )}
 
       {!playing ? (
@@ -853,75 +1032,7 @@ export function YouTubePanel() {
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
-      ) : (
-        // PLAYING STATE — single hover-only pill anchored top-LEFT.
-        // The whole panel reads as full-bleed video; our chrome only
-        // appears when the mouse enters the panel. Anchored left so
-        // it sits over YouTube's channel-avatar / Subscribe area
-        // (which the recruiter doesn't need from inside Ace) instead
-        // of the volume / CC / settings cluster YouTube renders at
-        // the top-right. `pointer-events-none` keeps the invisible
-        // pill from absorbing clicks meant for YouTube's chrome
-        // underneath, and `group-hover:pointer-events-auto` re-enables
-        // interaction the moment the pill is visible. Backdrop blur +
-        // semi-transparent black + ring give it a glass-panel feel
-        // closer to a premium media player.
-        <div
-          onPointerDown={onHeaderPointerDown}
-          className="pointer-events-none absolute left-2 top-2 z-10 flex cursor-grab select-none items-center gap-0.5 rounded-md bg-black/55 px-1.5 py-1 text-white opacity-0 ring-1 ring-white/10 backdrop-blur-md transition-opacity duration-200 group-hover:pointer-events-auto group-hover:opacity-100 active:cursor-grabbing"
-        >
-          <button
-            type="button"
-            onClick={backToSearch}
-            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-white/90 transition hover:bg-white/10 hover:text-white"
-          >
-            <ArrowLeft className="h-3 w-3" /> Search
-          </button>
-          <button
-            type="button"
-            onClick={rewind}
-            className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Rewind 15 seconds"
-            title="Rewind 15s"
-          >
-            <Rewind className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={fastForward}
-            className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Forward 15 seconds"
-            title="Forward 15s"
-          >
-            <FastForward className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={cycleSpeed}
-            className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-semibold tabular-nums text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label={`Playback speed ${playbackRate}x — click to change`}
-            title="Playback speed"
-          >
-            {playbackRate}x
-          </button>
-          <button
-            type="button"
-            onClick={() => setMinimized(true)}
-            className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Minimize"
-          >
-            <Minimize2 className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={close}
-            className="rounded p-1 text-white/80 transition hover:bg-white/10 hover:text-white"
-            aria-label="Close panel"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
+      ) : null /* PLAYING STATE chrome lives in the top toolbar above. */}
 
       {/* Resize is meaningless on the fixed-size mini dock, so the
           handle only mounts in search/playing states. */}
