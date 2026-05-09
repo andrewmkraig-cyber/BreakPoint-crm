@@ -184,7 +184,7 @@ export function TopBarSearch() {
           }}
           onFocus={() => setIsOpen(true)}
           onKeyDown={onKeyDown}
-          placeholder="Search candidates & clients…"
+          placeholder="Search"
           aria-label="Global search"
           // Autocomplete off + unusual name stops Chrome from filling this
           // with the recruiter's stored profile.
