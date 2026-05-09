@@ -19,8 +19,21 @@ export const dynamic = "force-dynamic";
 // case-insensitive via Prisma's `mode: "insensitive"`. If multiple
 // candidates share the same first+last we pick the most-recently-updated
 // row — recruiter can re-attach manually if it lands on the wrong one.
+//
+// createIfMissing flag: when true, any parseable name that doesn't match an
+// existing candidate is lazily inserted as a new Candidate (firstName,
+// lastName, organizationId, createdById only — no email/phone/location)
+// and returned with `created: true`. This is the bulk-PDF upload path's
+// way of saying "if I have a PDF for someone we don't have yet, just make
+// the candidate now and attach the resume in the next step." Names whose
+// `splitName` fails (no whitespace, e.g. "Resume.pdf") still come back
+// with `candidateId: null` so the client can flag them.
 type MatchInput = { name: string };
-type MatchResult = { name: string; candidateId: string | null };
+type MatchResult = {
+  name: string;
+  candidateId: string | null;
+  created?: boolean;
+};
 
 function splitName(raw: string): { first: string; last: string } | null {
   const trimmed = raw.trim().replace(/\s+/g, " ");
@@ -35,7 +48,7 @@ function splitName(raw: string): { first: string; last: string } | null {
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session) {
+  if (!session?.user?.email) {
     return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
   }
 
@@ -54,11 +67,27 @@ export async function POST(req: Request) {
           typeof (v as { name?: unknown }).name === "string",
       ))
     : [];
+  const createIfMissing = (body as { createIfMissing?: unknown }).createIfMissing === true;
+
   if (inputs.length === 0) {
     return NextResponse.json({ ok: true, matches: [] as MatchResult[] });
   }
 
   const org = await getCurrentOrg();
+
+  // Resolve the signed-in user once; createIfMissing needs createdById and
+  // we don't want to pay the lookup per-row inside the Promise.all below.
+  let createdById: string | null = null;
+  if (createIfMissing) {
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true },
+    });
+    if (!user) {
+      return NextResponse.json({ ok: false, error: "User not found." }, { status: 401 });
+    }
+    createdById = user.id;
+  }
 
   // Resolve each name independently so a parser miss on one row doesn't
   // poison the rest. We could batch with OR clauses but the per-name
@@ -77,7 +106,19 @@ export async function POST(req: Request) {
         orderBy: { updatedAt: "desc" },
         select: { id: true },
       });
-      return { name, candidateId: row?.id ?? null };
+      if (row) return { name, candidateId: row.id, created: false };
+      if (!createIfMissing || !createdById) return { name, candidateId: null };
+
+      const created = await prisma.candidate.create({
+        data: {
+          firstName: parts.first,
+          lastName: parts.last,
+          organizationId: org.id,
+          createdById,
+        },
+        select: { id: true },
+      });
+      return { name, candidateId: created.id, created: true };
     }),
   );
 

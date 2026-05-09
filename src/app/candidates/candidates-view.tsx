@@ -750,7 +750,7 @@ type ParsedResumeFile = {
 };
 
 type ResumeUploadOutcome =
-  | { status: "uploaded"; filename: string; parsedName: string }
+  | { status: "uploaded"; filename: string; parsedName: string; created: boolean }
   | { status: "unmatched"; filename: string; parsedName: string }
   | { status: "failed"; filename: string; parsedName: string; error: string };
 
@@ -837,11 +837,17 @@ function BulkResumeUploadDialog({
       const matchRes = await fetch("/api/candidates/match-by-name", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ names: files.map((f) => ({ name: f.parsedName })) }),
+        body: JSON.stringify({
+          names: files.map((f) => ({ name: f.parsedName })),
+          // Lazy-create candidates for parseable filenames that don't
+          // match an existing record — the resume upload below will
+          // attach to the freshly-created Candidate.
+          createIfMissing: true,
+        }),
       });
       const matchJson = (await matchRes.json().catch(() => ({}))) as {
         ok?: boolean;
-        matches?: Array<{ name: string; candidateId: string | null }>;
+        matches?: Array<{ name: string; candidateId: string | null; created?: boolean }>;
         error?: string;
       };
       if (!matchRes.ok || !matchJson.ok || !Array.isArray(matchJson.matches)) {
@@ -861,8 +867,13 @@ function BulkResumeUploadDialog({
           const i = cursor++;
           if (i >= files.length) return;
           const f = files[i];
-          const matched = matchByIndex[i]?.candidateId ?? null;
+          const matchRow = matchByIndex[i];
+          const matched = matchRow?.candidateId ?? null;
+          const wasCreated = matchRow?.created === true;
           if (!matched) {
+            // Only reachable when the filename couldn't be parsed into
+            // first + last name (e.g. "Resume.pdf" with no whitespace).
+            // The route now creates a Candidate for any parseable miss.
             outcomes[i] = {
               status: "unmatched",
               filename: f.file.name,
@@ -879,6 +890,7 @@ function BulkResumeUploadDialog({
                 status: "uploaded",
                 filename: f.file.name,
                 parsedName: f.parsedName,
+                created: wasCreated,
               };
             } catch (err) {
               outcomes[i] = {
@@ -900,13 +912,21 @@ function BulkResumeUploadDialog({
       );
       await Promise.all(workers);
 
-      const uploaded = outcomes.filter((o) => o.status === "uploaded").length;
+      const uploadedOutcomes = outcomes.filter(
+        (o): o is Extract<ResumeUploadOutcome, { status: "uploaded" }> =>
+          o.status === "uploaded",
+      );
+      const attached = uploadedOutcomes.filter((o) => !o.created).length;
+      const created = uploadedOutcomes.filter((o) => o.created).length;
       const unmatched = outcomes.filter((o): o is Extract<ResumeUploadOutcome, { status: "unmatched" }> => o.status === "unmatched");
       const failed = outcomes.filter((o): o is Extract<ResumeUploadOutcome, { status: "failed" }> => o.status === "failed");
 
       const summary = [
-        `Attached ${uploaded} resume${uploaded === 1 ? "" : "s"}`,
-        unmatched.length > 0 ? `${unmatched.length} unmatched` : null,
+        `Attached ${attached} resume${attached === 1 ? "" : "s"}`,
+        created > 0
+          ? `${created} new candidate${created === 1 ? "" : "s"} created from PDF`
+          : null,
+        unmatched.length > 0 ? `${unmatched.length} unparseable` : null,
         failed.length > 0 ? `${failed.length} failed` : null,
       ]
         .filter(Boolean)
@@ -914,7 +934,7 @@ function BulkResumeUploadDialog({
 
       const description = [
         unmatched.length > 0
-          ? `Unmatched: ${unmatched.map((u) => u.filename).join(", ")}`
+          ? `Unparseable: ${unmatched.map((u) => u.filename).join(", ")}`
           : null,
         failed.length > 0
           ? `Failed: ${failed.map((u) => `${u.filename} (${u.error})`).join("; ")}`
@@ -923,9 +943,10 @@ function BulkResumeUploadDialog({
         .filter(Boolean)
         .join(" · ");
 
-      if (uploaded > 0 && failed.length === 0) {
+      const totalUploaded = attached + created;
+      if (totalUploaded > 0 && failed.length === 0) {
         toast.success(summary, description ? { description } : undefined);
-      } else if (uploaded > 0) {
+      } else if (totalUploaded > 0) {
         toast.success(summary, { description });
       } else {
         toast.error(summary || "No resumes uploaded", description ? { description } : undefined);
