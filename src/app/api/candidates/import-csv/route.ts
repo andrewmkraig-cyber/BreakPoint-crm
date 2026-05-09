@@ -52,7 +52,9 @@ type WorkEntry = {
   company: string;
   startDate: string;
   endDate: string;
-  linkedin: string;
+  // Mirrored fields kept for backward-compat with the AI-parsed shape
+  // (designation/organization/from_year/to_year). The profile page,
+  // resume PDF, and generate-resume action all key off these names.
   designation: string;
   organization: string;
   from_year: number | null;
@@ -78,14 +80,16 @@ function collectExperiences(row: Row): WorkEntry[] {
     const company = clean(row[`candidate.experiences.${i}.company`]);
     const startDate = clean(row[`candidate.experiences.${i}.startDate`]);
     const endDate = clean(row[`candidate.experiences.${i}.endDate`]);
-    const linkedin = clean(row[`candidate.experiences.${i}.linkedin`]);
-    if (!title && !company && !startDate && !endDate && !linkedin) continue;
+    // Skip rows where both title and company are empty — a date-only
+    // experience entry is noise. Keeps date-bearing rows that have
+    // either a title OR a company so partial Pin exports still
+    // contribute to the timeline.
+    if (!title && !company) continue;
     out.push({
       title,
       company,
       startDate,
       endDate,
-      linkedin,
       designation: title,
       organization: company,
       from_year: yearOf(startDate),
@@ -108,8 +112,10 @@ function collectEducations(row: Row): EduEntry[] {
     const schoolEndDate = clean(
       row[`candidate.educations.${i}.schoolEndDate`],
     );
-    if (!degree && !major && !school && !schoolStartDate && !schoolEndDate)
-      continue;
+    // Skip when school is empty — degree/major without a school is
+    // unusable; the profile and resume readers all need school as the
+    // anchor field.
+    if (!school) continue;
     out.push({
       degree,
       major,

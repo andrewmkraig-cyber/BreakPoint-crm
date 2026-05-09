@@ -651,6 +651,18 @@ function asString(v: unknown): string {
   return "";
 }
 
+// Pull a 4-digit year out of a string. Pin's CSV ships full ISO dates
+// ("2020-01-01") and sometimes plain years ("2020") or "Present"; the
+// brief specifies a year-only display, so we collapse anything down
+// to the year. Returns "" when no 4-digit year is found — callers
+// substitute "Present" / "?" for the missing-end case.
+function yearFrom(s: string): string {
+  if (!s) return "";
+  if (/^\d{4}$/.test(s)) return s;
+  const m = s.match(/\b(19|20)\d{2}\b/);
+  return m ? m[0] : "";
+}
+
 function dashRange(start: string, end: string): string {
   if (!start && !end) return "";
   return `${start || "?"} – ${end || "Present"}`;
@@ -676,8 +688,13 @@ function BackgroundSection({
     .map((r) => {
       const title = asString(r.title) || asString(r.designation);
       const company = asString(r.company) || asString(r.organization);
-      const start = asString(r.startDate) || asString(r.from_year);
-      const end = asString(r.endDate) || asString(r.to_year);
+      // Year-only per brief: prefer the pre-extracted from_year/to_year
+      // when import already populated them, else regex out a 4-digit
+      // year from the raw startDate/endDate string.
+      const startRaw = asString(r.startDate) || asString(r.from_year);
+      const endRaw = asString(r.endDate) || asString(r.to_year);
+      const start = yearFrom(startRaw);
+      const end = yearFrom(endRaw);
       return { title, company, start, end };
     })
     .filter((r) => r.title || r.company);
@@ -687,9 +704,9 @@ function BackgroundSection({
       const degree = asString(r.degree);
       const major = asString(r.major);
       const school = asString(r.school);
-      const start = asString(r.schoolStartDate) || asString(r.from_year);
-      const end = asString(r.schoolEndDate) || asString(r.to_year);
-      const year = end || start;
+      const startRaw = asString(r.schoolStartDate) || asString(r.from_year);
+      const endRaw = asString(r.schoolEndDate) || asString(r.to_year);
+      const year = yearFrom(endRaw) || yearFrom(startRaw);
       return { degree, major, school, year };
     })
     .filter((r) => r.school);
