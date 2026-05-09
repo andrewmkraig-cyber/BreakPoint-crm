@@ -74,6 +74,7 @@ const SPEED_CYCLE = [1, 1.5, 2] as const;
 type YTPlayer = {
   playVideo(): void;
   pauseVideo(): void;
+  loadVideoById(videoId: string): void;
   getCurrentTime(): number;
   seekTo(seconds: number, allowSeekAhead: boolean): void;
   setPlaybackRate(rate: number): void;
@@ -134,44 +135,108 @@ export function YouTubePanel() {
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  // YouTube IFrame Player API gives us programmatic seekTo +
-  // setPlaybackRate. The container div below is what YT.Player
-  // attaches to (it replaces the div with its own iframe), so we
-  // hold the container ref and the player handle separately.
-  const playerContainerRef = useRef<HTMLDivElement | null>(null);
+  // STABLE YouTube player host. This wrapper is mounted whenever the
+  // panel is open and never re-keyed or conditionally rendered — that
+  // is what fixes the back-to-search "removeChild on Node: not a
+  // child of this node" crash. YT.Player replaces an inner element we
+  // create manually inside this wrapper with its iframe, so React's
+  // tracked tree never includes a node YouTube has swapped. React
+  // owns the wrapper; YouTube owns whatever's inside it.
+  const playerHostRef = useRef<HTMLDivElement | null>(null);
   const playerRef = useRef<YTPlayer | null>(null);
+  // Live videoId mirror. The async YT-script-load path captures
+  // bootPlayer in a closure that may not see the latest state if the
+  // user switches videos while YT.js is still loading — bootPlayer
+  // reads from this ref instead so it always plays the right video.
+  const activeVideoIdRef = useRef<string | null>(null);
   // Re-entry mutex for backToSearch. The state-based check inside
   // backToSearch closes over the captured activeVideoId from the
   // render that built it, so a doubled invocation in the same tick
   // (pointer-capture replay, strict-mode handler replay, focus event
-  // bouncing the click) sees the pre-update value and falls through
-  // — that's the chain that causes the loop. A ref always reads the
-  // live value, so once one back-click latches it true, the next
-  // synchronous call bails immediately. Reset by the [activeVideoId]
-  // minimize-reset effect below once the transition has actually
-  // committed and we're back in the search state.
+  // bouncing the click) sees the pre-update value and falls through.
+  // A ref always reads the live value, so once one back-click latches
+  // it true, the next synchronous call bails immediately. Reset by
+  // the [activeVideoId] minimize-reset effect below.
   const backInFlightRef = useRef(false);
+
+  // Single chokepoint for tearing down the YT player. Only called on
+  // full panel close or component unmount — never on back-to-search
+  // or video switch (those go through pause/loadVideoById and leave
+  // the player alive). Order: null the ref FIRST so any re-entrant
+  // call from YouTube's internal teardown sees null and bails;
+  // try/catch around destroy() so a stray "removeChild" violation
+  // can't propagate; never throws.
+  function safeDestroyYouTubePlayer() {
+    const p = playerRef.current;
+    playerRef.current = null;
+    if (!p) return;
+    try {
+      p.destroy();
+    } catch {}
+  }
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
-  // YouTube IFrame Player API loader. Once per page lifetime: drop
-  // the script tag, return when window.YT is hot. Subsequent video
-  // changes reuse the same global API. modestbranding+rel kill the
-  // YouTube logo and the related-video grid; controls=1 keeps the
-  // native scrubber so the recruiter can still drag the timeline.
+  // YouTube player lifecycle. Boots the player ONCE on first play
+  // (lazy — YT.js may still be loading), reuses the same player for
+  // every subsequent video via loadVideoById, and pauses on
+  // back-to-search WITHOUT destroying. Destruction is reserved for
+  // safeDestroyYouTubePlayer (panel close / component unmount).
+  // modestbranding+rel kill the YouTube logo and the related-video
+  // grid; controls=1 keeps the native scrubber so the recruiter can
+  // still drag the timeline.
   useEffect(() => {
-    if (!activeVideoId) return;
+    activeVideoIdRef.current = activeVideoId;
+
+    if (!activeVideoId) {
+      // Back to search: pause if the player is alive. No destroy.
+      if (playerRef.current) {
+        try {
+          playerRef.current.pauseVideo();
+        } catch {}
+      }
+      return;
+    }
+
+    // Switching videos with the player already booted — cheapest
+    // path, no DOM churn at all.
+    if (playerRef.current) {
+      try {
+        playerRef.current.loadVideoById(activeVideoId);
+      } catch {}
+      return;
+    }
+
+    // First play of this panel session: boot the player. Captured
+    // `cancelled` flag protects the async YT-script-load path from
+    // booting against a stale state if the user navigates away
+    // before YT.js loads.
     let cancelled = false;
+    let priorHook: typeof window.onYouTubeIframeAPIReady | undefined;
+    let installedHook = false;
 
     function bootPlayer() {
-      if (cancelled || !window.YT?.Player || !playerContainerRef.current) {
-        return;
-      }
+      if (cancelled) return;
+      if (!playerHostRef.current || !window.YT?.Player) return;
+      if (playerRef.current) return; // raced to first place
+      const videoIdNow = activeVideoIdRef.current;
+      if (!videoIdNow) return; // user navigated back before YT loaded
+
+      // YT.Player REPLACES the element it's given with an iframe.
+      // We hand it an inner div we create manually so the swap
+      // happens entirely outside React's tracked tree — React keeps
+      // owning playerHostRef (the wrapper), YouTube owns the iframe
+      // inside it. This is the structural fix for the
+      // "Failed to execute 'removeChild' on 'Node'" crash: there's
+      // no React unmount of a YT-replaced node anymore.
+      const inner = document.createElement("div");
+      playerHostRef.current.appendChild(inner);
+
       try {
-        playerRef.current = new window.YT.Player(playerContainerRef.current, {
-          videoId: activeVideoId!,
+        playerRef.current = new window.YT.Player(inner, {
+          videoId: videoIdNow,
           playerVars: {
             autoplay: 1,
             modestbranding: 1,
@@ -204,17 +269,11 @@ export function YouTubePanel() {
         });
       } catch (e) {
         console.error("[youtube] player init failed", e);
+        try {
+          inner.remove();
+        } catch {}
       }
     }
-
-    // Track whether THIS effect run installed the global hook so the
-    // cleanup can restore the prior value instead of leaking a stale
-    // closure that fires bootPlayer() against an unmounted container
-    // when YT.js finally loads after the user has already clicked
-    // back-to-search. priorHook is captured outside the closure so the
-    // cleanup branch can see it.
-    let priorHook: typeof window.onYouTubeIframeAPIReady | undefined;
-    let installedHook = false;
 
     if (window.YT?.Player) {
       bootPlayer();
@@ -243,32 +302,15 @@ export function YouTubePanel() {
     return () => {
       cancelled = true;
       if (installedHook) {
-        // Restore whatever was there before we clobbered it. If YT
-        // loads after this point, our (now-cancelled) bootPlayer
-        // closure doesn't run; the prior consumer's hook (if any)
-        // still does. Fixes back-to-search when the YT script load
-        // races the click.
+        // Restore whatever was there before we clobbered it so the
+        // (now-cancelled) closure doesn't fire bootPlayer against a
+        // stale state when YT.js finally loads.
         window.onYouTubeIframeAPIReady = priorHook;
       }
-      // Null the ref BEFORE destroy() so any re-entry triggered by
-      // YT's teardown postMessage can't see a stale player handle.
-      const p = playerRef.current;
-      playerRef.current = null;
-      // YT.Player.destroy() does iframe.parentNode.removeChild(iframe)
-      // internally. If React has already unmounted or moved the
-      // wrapper by the time this cleanup runs (portal teardown, the
-      // `{playing && <div .../>}` conditional collapsing first), the
-      // iframe's parent is gone or has different children — destroy()
-      // throws "Failed to execute 'removeChild' on 'Node': The node
-      // to be removed is not a child of this node" and crashes the
-      // whole panel. Skip destroy entirely when the container we
-      // handed YT.Player is no longer attached; the orphaned iframe
-      // gets reclaimed when its closures drop.
-      if (p && playerContainerRef.current?.isConnected) {
-        try {
-          p.destroy();
-        } catch {}
-      }
+      // NO destroy() here. The player persists across activeVideoId
+      // changes for the lifetime of the panel session. Teardown
+      // happens in safeDestroyYouTubePlayer, called from the
+      // panel-close and unmount effects below.
     };
   }, [activeVideoId]);
 
@@ -326,6 +368,29 @@ export function YouTubePanel() {
   useEffect(() => {
     if (!open) setMinimized(false);
   }, [open]);
+
+  // Panel close: tear the player down and reset the active video so
+  // reopening lands cleanly in the search state. This is the ONLY
+  // path on which we destroy() outside component unmount — every
+  // user-facing transition during a session (back-to-search, video
+  // switch, minimize) keeps the player alive.
+  useEffect(() => {
+    if (open) return;
+    safeDestroyYouTubePlayer();
+    setActiveVideoId(null);
+    setActiveVideoTitle("");
+  }, [open]);
+
+  // Component unmount: final destroy. playerRef is usually already
+  // null by here (the panel-close effect ran first), but if the
+  // component unmounts while open — HMR, a parent provider remount —
+  // safeDestroyYouTubePlayer guarantees we don't leak a live YT
+  // player across the unmount boundary.
+  useEffect(() => {
+    return () => {
+      safeDestroyYouTubePlayer();
+    };
+  }, []);
 
   // On open, if the saved position would put any part of the panel off-
   // screen (window resized smaller while panel was closed, monitor
@@ -716,21 +781,23 @@ export function YouTubePanel() {
       }
       style={rootStyle}
     >
-      {/* YT.Player swaps the inner div for its own iframe at runtime.
-          We re-key on activeVideoId so the YT effect tears down +
-          rebuilds cleanly on track switch. The div is full-bleed
-          (absolute inset-0) so the iframe takes the entire panel —
-          our chrome floats on top as a hover-only pill rather than
-          stealing layout space, which is what the recruiter asked for
-          (full-window video, controls only when needed). */}
-      {playing && (
-        <div
-          key={activeVideoId}
-          ref={playerContainerRef}
-          title={activeVideoTitle || "YouTube player"}
-          className="absolute inset-0 h-full w-full border-0 bg-black"
-        />
-      )}
+      {/* Stable YouTube player host — mounted for the full lifetime
+          of the open panel. YT.Player attaches an inner element (then
+          replaces it with its iframe) here on first play, and we
+          reuse the same player for every subsequent video via
+          loadVideoById. Hidden via display:none on the search and
+          minimized-without-video states so React's tracked tree
+          never has to unmount a YT-managed node — that's the fix for
+          the back-to-search "removeChild on Node" crash. The wrapper
+          is full-bleed (absolute inset-0) so the iframe takes the
+          entire panel; the playing-state pill / minimized dock float
+          on top via z-index. */}
+      <div
+        ref={playerHostRef}
+        title={activeVideoTitle || "YouTube player"}
+        className="absolute inset-0 h-full w-full border-0 bg-black"
+        style={{ display: playing ? "block" : "none" }}
+      />
 
       {/* Bottom click-blocker pinned to the lower-left of the iframe,
           sized to cover YouTube's native Share + Watch-Later pills
