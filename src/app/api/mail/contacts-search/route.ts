@@ -3,16 +3,24 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { searchGmailSentRecipients } from "@/lib/gmail-recipients";
 
 // GET /api/mail/contacts-search?q=… — typeahead source for the mail
-// composer's To field. Searches both Candidates (firstName /
-// lastName / email) and Contacts (firstName / lastName / name +
-// every entry in the emails[] array), all scoped to the active org.
+// composer's To field. Three sources, all merged into a single
+// deduped { name, email } list (max 6):
 //
-// Returns up to 6 { name, email } items merged across both sources,
-// deduped on email (lowercased). The composer hits this on every
-// keystroke (debounced 200ms client-side) so the route stays narrow:
-// no joins, no extra fields beyond what the dropdown renders.
+//   1. Candidates (firstName / lastName / email), org-scoped.
+//   2. Contacts (firstName / lastName / name + every entry in
+//      emails[]), org-scoped.
+//   3. Gmail Sent recipients — anyone the recruiter has emailed
+//      previously, even if they aren't in Ace. Pulled live from
+//      Gmail using the readonly scope; cached 5min in-process so a
+//      typeahead burst on the same query doesn't burn 11 Gmail
+//      calls per keystroke.
+//
+// The composer hits this on every keystroke (debounced 200ms
+// client-side) so the route stays narrow: no joins, no extra fields
+// beyond what the dropdown renders.
 //
 // Contact.emails is text[] in Postgres; Prisma's array filters can't
 // do a partial-match on element contents, so the Contact branch
@@ -43,6 +51,13 @@ export async function GET(req: NextRequest) {
     );
   }
   const org = await getCurrentOrg();
+  // The Gmail call needs a userId, not an email. Look it up once;
+  // null means we silently skip the gmail branch (e.g. a service
+  // account with no User row).
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true },
+  });
 
   const url = new URL(req.url);
   const q = (url.searchParams.get("q") ?? "").trim();
@@ -80,9 +95,18 @@ export async function GET(req: NextRequest) {
     LIMIT ${PER_SOURCE_LIMIT}
   `;
 
-  const [candidates, contacts] = await Promise.all([
+  // Gmail Sent recipients run in parallel with the DB queries. The
+  // helper swallows its own errors and returns [] on any failure, so
+  // a Gmail outage just hides those suggestions instead of breaking
+  // the route.
+  const gmailPromise: Promise<{ name: string; email: string }[]> = user
+    ? searchGmailSentRecipients(user.id, q)
+    : Promise.resolve([]);
+
+  const [candidates, contacts, gmailContacts] = await Promise.all([
     candidatesPromise,
     contactsPromise,
+    gmailPromise,
   ]);
 
   const seen = new Set<string>();
@@ -101,6 +125,7 @@ export async function GET(req: NextRequest) {
       .join(" ")
       .trim();
     push(fullName, c.email);
+    if (out.length >= MAX_RESULTS) break;
   }
   for (const c of contacts) {
     const display =
@@ -111,6 +136,15 @@ export async function GET(req: NextRequest) {
       push(display, email);
       if (out.length >= MAX_RESULTS) break;
     }
+    if (out.length >= MAX_RESULTS) break;
+  }
+  // Gmail Sent recipients fill any remaining slots. They go last so
+  // Ace candidates/contacts (which the recruiter has manually
+  // curated) outrank random sent-mail addresses when both match —
+  // typing "ben" prefers the Ace candidate over a Bennett at a
+  // vendor address.
+  for (const c of gmailContacts) {
+    push(c.name, c.email);
     if (out.length >= MAX_RESULTS) break;
   }
 
