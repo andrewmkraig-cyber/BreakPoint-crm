@@ -1140,6 +1140,7 @@ export function MailComposer({
           value={to}
           onChange={setTo}
           suggestions={toSuggestions}
+          serverSearch
         />
         <div className="flex gap-2 text-[10px] text-court-fg-muted">
           <button
@@ -1547,12 +1548,17 @@ const ORG_MEMBER_SUGGESTIONS: Array<{ name: string; email: string }> = [
   { name: "Austin Barnard", email: "austin@breakpointtalent.com" },
 ];
 
+const TYPEAHEAD_MAX = 6;
+const TYPEAHEAD_DEBOUNCE_MS = 200;
+const TYPEAHEAD_MIN_LEN = 2;
+
 function AddressRow({
   label,
   value,
   onChange,
   suggestions = [],
   pickerOptions = [],
+  serverSearch = false,
 }: {
   label: string;
   value: string;
@@ -1570,24 +1576,87 @@ function AddressRow({
   // every click in the row beneath it). Removed per Andrew's
   // request — typeahead is the single recipient-pick path now.
   pickerOptions?: Array<{ name: string; email: string }>;
+  // Hits /api/mail/contacts-search on every keystroke (200ms debounced,
+  // min 2 chars after the last comma). Server results merge with the
+  // local `suggestions` and `pickerOptions` and feed the same dropdown
+  // — keyboard nav and the click handler don't care where a row came
+  // from. Off by default so CC/BCC don't issue contact lookups.
+  serverSearch?: boolean;
 }) {
   const [focused, setFocused] = useState(false);
+  // Server-backed contact search results, paired with the query that
+  // produced them so a stale debounce tick can't apply suggestions
+  // for an outdated segment. Cleared whenever the segment shrinks
+  // below the min-length threshold.
+  const [serverResults, setServerResults] = useState<{
+    query: string;
+    contacts: Array<{ name: string; email: string }>;
+  }>({ query: "", contacts: [] });
+  // Highlighted dropdown row index for keyboard navigation. -1 means
+  // "nothing selected" — Enter falls through to the input's default
+  // submit behavior. Reset on segment change so the highlight doesn't
+  // chase a row that's no longer the same item it pointed at.
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   // The "current segment" is whatever the user is typing after the
   // last comma. We filter suggestions against this so the dropdown
   // narrows as they type "aust…".
   const lowerValue = value.toLowerCase();
   const lastCommaIdx = value.lastIndexOf(",");
-  const currentSegment = value.slice(lastCommaIdx + 1).trim().toLowerCase();
+  const currentSegment = value.slice(lastCommaIdx + 1).trim();
+  const lowerSegment = currentSegment.toLowerCase();
 
-  // Merge suggestions + pickerOptions, de-duped by email (lowercase).
-  // Caller may pass overlap (the BCC field passes ORG_MEMBER_SUGGESTIONS
-  // as both); the dedupe here keeps Austin from rendering twice in
-  // the dropdown.
+  // Debounced server fetch. Resets the request on every keystroke;
+  // the abort controller cancels the in-flight fetch so a stale
+  // response can't overwrite a fresher one. Only runs when the row
+  // opted in via serverSearch and the segment is long enough.
+  useEffect(() => {
+    if (!serverSearch) return;
+    if (!focused) return;
+    if (currentSegment.length < TYPEAHEAD_MIN_LEN) {
+      setServerResults({ query: "", contacts: [] });
+      return;
+    }
+    const controller = new AbortController();
+    const handle = window.setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/mail/contacts-search?q=${encodeURIComponent(currentSegment)}`,
+          { signal: controller.signal, cache: "no-store" },
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          ok?: boolean;
+          contacts?: Array<{ name: string; email: string }>;
+        };
+        if (!data.ok) return;
+        setServerResults({
+          query: currentSegment,
+          contacts: data.contacts ?? [],
+        });
+      } catch {
+        // AbortError or network — silently no-op; the next keystroke
+        // will issue another request.
+      }
+    }, TYPEAHEAD_DEBOUNCE_MS);
+    return () => {
+      controller.abort();
+      window.clearTimeout(handle);
+    };
+  }, [serverSearch, focused, currentSegment]);
+
+  // Merge static suggestions + pickerOptions + server results. Server
+  // results are appended last so the static org members (Austin) hit
+  // the top of the dropdown when both match — matches the existing
+  // "Austin first" recruiter expectation. Dedupe is by email
+  // (lowercased) across all three sources.
   const merged = (() => {
     const out: Array<{ name: string; email: string }> = [];
     const seen = new Set<string>();
-    for (const s of [...suggestions, ...pickerOptions]) {
+    const sources = serverSearch
+      ? [...suggestions, ...pickerOptions, ...serverResults.contacts]
+      : [...suggestions, ...pickerOptions];
+    for (const s of sources) {
       const key = s.email.toLowerCase();
       if (seen.has(key)) continue;
       seen.add(key);
@@ -1601,13 +1670,21 @@ function AddressRow({
         // Skip anyone already present in the field.
         if (lowerValue.includes(s.email.toLowerCase())) return false;
         // Empty segment → show every remaining suggestion.
-        if (!currentSegment) return true;
+        if (!lowerSegment) return true;
         return (
-          s.email.toLowerCase().includes(currentSegment) ||
-          s.name.toLowerCase().includes(currentSegment)
+          s.email.toLowerCase().includes(lowerSegment) ||
+          s.name.toLowerCase().includes(lowerSegment)
         );
       })
     : [];
+  const visible = filtered.slice(0, TYPEAHEAD_MAX);
+
+  // Reset the keyboard highlight whenever the visible list shape
+  // changes. Without this, the highlighted index points at whatever
+  // entry is now in that slot — usually the wrong contact.
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [currentSegment, focused, visible.length]);
 
   function pick(s: { name: string; email: string }) {
     const addr = `${s.name} <${s.email}>`;
@@ -1617,6 +1694,38 @@ function AddressRow({
     const before =
       lastCommaIdx >= 0 ? value.slice(0, lastCommaIdx + 1) + " " : "";
     onChange(before + addr + ", ");
+    setActiveIndex(-1);
+    // Clear server results so the dropdown doesn't briefly flash the
+    // just-picked contact while the segment resets.
+    setServerResults({ query: "", contacts: [] });
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (visible.length === 0) {
+      if (e.key === "Escape") setFocused(false);
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % visible.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIndex((i) =>
+        i <= 0 ? visible.length - 1 : i - 1,
+      );
+    } else if (e.key === "Enter") {
+      if (activeIndex >= 0 && activeIndex < visible.length) {
+        e.preventDefault();
+        pick(visible[activeIndex]);
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setActiveIndex(-1);
+      setFocused(false);
+      // Move focus off the input so Escape feels like "close the
+      // dropdown" rather than "keep editing with no suggestions."
+      (e.currentTarget as HTMLInputElement).blur();
+    }
   }
 
   return (
@@ -1630,33 +1739,43 @@ function AddressRow({
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
+          onKeyDown={onKeyDown}
           className="h-7 w-full rounded-md border border-court-border bg-court-surface px-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
       </label>
-      {filtered.length > 0 && (
+      {visible.length > 0 && (
         <ul className="absolute left-[64px] right-0 top-full z-50 mt-1 max-h-48 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
-          {filtered.map((s) => (
-            <li key={s.email}>
-              <button
-                type="button"
-                // Run pick() on mousedown — earlier in the event
-                // sequence than click — and call preventDefault to
-                // block the focus shift away from the input. This
-                // sidesteps the classic blur-before-click race that
-                // dismisses the dropdown without registering the
-                // selection. Single mouse press lands the address.
-                onMouseDown={(e) => {
-                  if (e.button !== 0) return;
-                  e.preventDefault();
-                  pick(s);
-                }}
-                className="block w-full px-3 py-2 text-left text-sm transition hover:bg-court-surface-subtle"
-              >
-                <div className="font-medium text-court-fg">{s.name}</div>
-                <div className="text-[11px] text-court-fg-muted">{s.email}</div>
-              </button>
-            </li>
-          ))}
+          {visible.map((s, i) => {
+            const active = i === activeIndex;
+            return (
+              <li key={s.email}>
+                <button
+                  type="button"
+                  // Run pick() on mousedown — earlier in the event
+                  // sequence than click — and call preventDefault to
+                  // block the focus shift away from the input. This
+                  // sidesteps the classic blur-before-click race that
+                  // dismisses the dropdown without registering the
+                  // selection. Single mouse press lands the address.
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    pick(s);
+                  }}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  className={cn(
+                    "block w-full px-3 py-2 text-left text-sm transition",
+                    active
+                      ? "bg-court-accent-tint/60"
+                      : "hover:bg-court-surface-subtle",
+                  )}
+                >
+                  <div className="font-medium text-court-fg">{s.name}</div>
+                  <div className="text-[11px] text-court-fg-muted">{s.email}</div>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

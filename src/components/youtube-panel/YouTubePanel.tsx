@@ -47,13 +47,12 @@ type VideoResult = {
   durationLabel: string | null;
 };
 
-type SearchMode = "top" | "recent" | "popular" | "long";
+type SearchMode = "top" | "recent" | "popular";
 
 const SEARCH_MODES: { value: SearchMode; label: string }[] = [
   { value: "top", label: "Top" },
   { value: "recent", label: "Recent" },
   { value: "popular", label: "Popular" },
-  { value: "long", label: "Long" },
 ];
 
 type ChannelResult = {

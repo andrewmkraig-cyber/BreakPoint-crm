@@ -83,13 +83,12 @@ type ResultItem =
       thumbnail: string;
     };
 
-type SearchMode = "top" | "recent" | "popular" | "long";
+type SearchMode = "top" | "recent" | "popular";
 
 function parseMode(raw: string | null): SearchMode {
   switch (raw) {
     case "recent":
     case "popular":
-    case "long":
       return raw;
     default:
       return "top";
@@ -245,18 +244,14 @@ export async function GET(req: NextRequest) {
 
   if (channelId) {
     // Channel-uploads mode: a single channel's videos, ordered per
-    // the requested mode. Channel browse is always type=video (no
-    // nested channels), so videoDuration=long can be combined with
-    // any order. Default (top) maps to relevance; recent maps to
-    // chronological — preserving the original "latest videos" feel.
+    // the requested mode. Default (top) maps to relevance; recent
+    // maps to chronological — preserving the original "latest
+    // videos" feel.
     yt.searchParams.set("type", "video");
     yt.searchParams.set("channelId", channelId);
     if (q) yt.searchParams.set("q", q);
     if (mode === "popular") {
       yt.searchParams.set("order", "viewCount");
-    } else if (mode === "long") {
-      yt.searchParams.set("order", "relevance");
-      yt.searchParams.set("videoDuration", "long");
     } else if (mode === "top") {
       yt.searchParams.set("order", "relevance");
     } else {
@@ -265,22 +260,14 @@ export async function GET(req: NextRequest) {
       yt.searchParams.set("order", "date");
     }
   } else {
-    // Free-text mode. Mode picks the order (and for `long`, narrows
-    // to long-form videos only — videoDuration requires type=video,
-    // so channels don't appear in that mode).
+    // Free-text mode. Mode picks the order across video,channel.
     yt.searchParams.set("q", q);
+    yt.searchParams.set("type", "video,channel");
     if (mode === "recent") {
-      yt.searchParams.set("type", "video,channel");
       yt.searchParams.set("order", "date");
     } else if (mode === "popular") {
-      yt.searchParams.set("type", "video,channel");
       yt.searchParams.set("order", "viewCount");
-    } else if (mode === "long") {
-      yt.searchParams.set("type", "video");
-      yt.searchParams.set("order", "relevance");
-      yt.searchParams.set("videoDuration", "long");
     } else {
-      yt.searchParams.set("type", "video,channel");
       yt.searchParams.set("order", "relevance");
     }
   }
