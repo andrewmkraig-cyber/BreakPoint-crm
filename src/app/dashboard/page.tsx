@@ -12,6 +12,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
 import Link from "next/link";
 import {
+  Building2,
   CalendarDays,
   DollarSign,
   Handshake,
@@ -76,6 +77,7 @@ export default async function DashboardPage() {
     rfCandidates,
     rfJobs,
     rfClients,
+    newClientsCount,
     submitLogCount,
     interviewsScheduledCount,
     offersExtendedCount,
@@ -90,6 +92,13 @@ export default async function DashboardPage() {
     getRfCandidatesForOrg().catch(() => []),
     getRfJobsForOrg().catch(() => []),
     getRfClientsForOrg().catch(() => []),
+    // New clients added in the ET week — counts every Client row whose
+    // createdAt lands in-range. Inactive / archived clients still
+    // count as activity that happened; we're measuring intake, not
+    // current pipeline state.
+    prisma.client.count({
+      where: { organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
+    }),
     // Submit transitions — includes the `submit` log written by both
     // applyCandidateToJob follow-ups and the full submittal flow.
     prisma.actionLog.count({
@@ -205,7 +214,8 @@ export default async function DashboardPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 md:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+        <KpiTile label="New Clients" value={newClientsCount} icon={Building2} />
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
         <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
         <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
