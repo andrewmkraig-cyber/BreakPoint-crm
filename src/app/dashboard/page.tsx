@@ -217,11 +217,11 @@ export default async function DashboardPage() {
 
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Clients" value={newClientsCount} icon={Building2} />
+        <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} />
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
         <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
         <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
-        <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} />
         </div>
       </div>
 
