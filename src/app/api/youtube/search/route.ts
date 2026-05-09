@@ -8,13 +8,21 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 // requires an authenticated session and resolves the active org so
 // only signed-in BreakPoint users can spin the quota.
 //
-// Two modes:
+// Three input shapes:
 //   - ?q=…           free-text search; returns videos + channels
 //                    interleaved with a `type` discriminator so the
 //                    panel can render them in separate sections.
 //   - ?channelId=…   fetches the channel's latest 10 uploads (videos
 //                    only, ordered by date). Used by the "click a
 //                    channel card to see their videos" flow.
+//   - ?mode=…        optional sort/filter for free-text search.
+//                    top (default) | recent | popular | long.
+//
+// After search.list returns, any video IDs in the result set get
+// hydrated with duration via a single batched videos.list call. The
+// extra request is 1 quota unit (vs search.list's 100) so it's a
+// rounding error on cost. Channels in the same response don't have a
+// duration concept and are returned unchanged.
 
 type YouTubeId = {
   kind?: string;
@@ -44,6 +52,16 @@ type YouTubeSearchResponse = {
   nextPageToken?: string;
 };
 
+type YouTubeVideoDetailsItem = {
+  id?: string;
+  contentDetails?: { duration?: string };
+  statistics?: { viewCount?: string };
+};
+
+type YouTubeVideoDetailsResponse = {
+  items?: YouTubeVideoDetailsItem[];
+};
+
 type ResultItem =
   | {
       type: "video";
@@ -52,6 +70,11 @@ type ResultItem =
       channelId: string;
       channelTitle: string;
       thumbnail: string;
+      // null when the video is a live stream or YouTube didn't return
+      // a parseable contentDetails.duration. Panel renders the badge
+      // only when both fields are present.
+      durationSec: number | null;
+      durationLabel: string | null;
     }
   | {
       type: "channel";
@@ -60,8 +83,50 @@ type ResultItem =
       thumbnail: string;
     };
 
+type SearchMode = "top" | "recent" | "popular" | "long";
+
+function parseMode(raw: string | null): SearchMode {
+  switch (raw) {
+    case "recent":
+    case "popular":
+    case "long":
+      return raw;
+    default:
+      return "top";
+  }
+}
+
 function pickThumbnail(t: YouTubeThumbnailSet | undefined): string {
   return t?.medium?.url ?? t?.high?.url ?? t?.default?.url ?? "";
+}
+
+// Parse YouTube's ISO 8601 duration (PT#H#M#S) into seconds. Returns
+// null for live streams (PT0S without contentDetails matching), unknown
+// shapes, or anything that won't fit a positive integer.
+function parseIsoDuration(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const match = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(raw);
+  if (!match) return null;
+  const h = Number(match[1] ?? 0);
+  const m = Number(match[2] ?? 0);
+  const s = Number(match[3] ?? 0);
+  const total = h * 3600 + m * 60 + s;
+  if (!Number.isFinite(total) || total <= 0) return null;
+  return total;
+}
+
+// 8:42, 1:12:04. Seconds always 2-digit; minutes 2-digit only when an
+// hour component is present (matches YouTube's own badge style).
+function formatDurationLabel(totalSec: number): string {
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const ss = String(s).padStart(2, "0");
+  if (h > 0) {
+    const mm = String(m).padStart(2, "0");
+    return `${h}:${mm}:${ss}`;
+  }
+  return `${m}:${ss}`;
 }
 
 function projectItem(item: YouTubeSearchItem): ResultItem | null {
@@ -77,12 +142,65 @@ function projectItem(item: YouTubeSearchItem): ResultItem | null {
       channelId: item.snippet?.channelId ?? "",
       channelTitle: item.snippet?.channelTitle ?? "",
       thumbnail,
+      durationSec: null,
+      durationLabel: null,
     };
   }
   if (channelId) {
     return { type: "channel", channelId, title, thumbnail };
   }
   return null;
+}
+
+// Hydrate every video result with duration via a single videos.list
+// call. Channels pass through unchanged. Failures are logged and
+// swallowed so a flaky details fetch never strands the search itself —
+// the recruiter just sees results without duration badges in that case.
+async function hydrateDurations(
+  results: ResultItem[],
+  apiKey: string,
+): Promise<ResultItem[]> {
+  const videoIds = results
+    .filter((r): r is Extract<ResultItem, { type: "video" }> => r.type === "video")
+    .map((r) => r.videoId);
+  if (videoIds.length === 0) return results;
+
+  const yt = new URL("https://www.googleapis.com/youtube/v3/videos");
+  yt.searchParams.set("part", "contentDetails,statistics");
+  yt.searchParams.set("id", videoIds.join(","));
+  yt.searchParams.set("key", apiKey);
+
+  let data: YouTubeVideoDetailsResponse;
+  try {
+    const res = await fetch(yt.toString(), { cache: "no-store" });
+    if (!res.ok) {
+      console.error("[youtube] videos.list", res.status);
+      return results;
+    }
+    data = (await res.json()) as YouTubeVideoDetailsResponse;
+  } catch (e) {
+    console.error("[youtube] videos.list fetch failed", e);
+    return results;
+  }
+
+  const byId = new Map<string, number>();
+  for (const item of data.items ?? []) {
+    const id = item.id;
+    if (!id) continue;
+    const sec = parseIsoDuration(item.contentDetails?.duration);
+    if (sec !== null) byId.set(id, sec);
+  }
+
+  return results.map((r) => {
+    if (r.type !== "video") return r;
+    const sec = byId.get(r.videoId);
+    if (sec === undefined) return r;
+    return {
+      ...r,
+      durationSec: sec,
+      durationLabel: formatDurationLabel(sec),
+    };
+  });
 }
 
 export async function GET(req: NextRequest) {
@@ -109,6 +227,7 @@ export async function GET(req: NextRequest) {
   const q = (url.searchParams.get("q") ?? "").trim();
   const channelId = (url.searchParams.get("channelId") ?? "").trim();
   const pageToken = (url.searchParams.get("pageToken") ?? "").trim();
+  const mode = parseMode(url.searchParams.get("mode"));
 
   if (!q && !channelId) {
     return NextResponse.json({ ok: true, results: [], nextPageToken: null });
@@ -126,15 +245,31 @@ export async function GET(req: NextRequest) {
 
   if (channelId) {
     // Channel-uploads mode: latest videos from a single channel,
-    // newest first.
+    // newest first. Mode is intentionally ignored here — channel
+    // browse is always chronological.
     yt.searchParams.set("type", "video");
     yt.searchParams.set("channelId", channelId);
     yt.searchParams.set("order", "date");
     if (q) yt.searchParams.set("q", q);
   } else {
-    // Free-text mode: videos + channels interleaved.
-    yt.searchParams.set("type", "video,channel");
+    // Free-text mode. Mode picks the order (and for `long`, narrows
+    // to long-form videos only — videoDuration requires type=video,
+    // so channels don't appear in that mode).
     yt.searchParams.set("q", q);
+    if (mode === "recent") {
+      yt.searchParams.set("type", "video,channel");
+      yt.searchParams.set("order", "date");
+    } else if (mode === "popular") {
+      yt.searchParams.set("type", "video,channel");
+      yt.searchParams.set("order", "viewCount");
+    } else if (mode === "long") {
+      yt.searchParams.set("type", "video");
+      yt.searchParams.set("order", "relevance");
+      yt.searchParams.set("videoDuration", "long");
+    } else {
+      yt.searchParams.set("type", "video,channel");
+      yt.searchParams.set("order", "relevance");
+    }
   }
 
   let data: YouTubeSearchResponse;
@@ -153,9 +288,11 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: false, error: message }, { status: 502 });
   }
 
-  const results: ResultItem[] = (data.items ?? [])
+  const projected: ResultItem[] = (data.items ?? [])
     .map(projectItem)
     .filter((r): r is ResultItem => r !== null);
+
+  const results = await hydrateDurations(projected, apiKey);
 
   return NextResponse.json({
     ok: true,

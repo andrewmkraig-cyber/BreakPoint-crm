@@ -40,7 +40,21 @@ type VideoResult = {
   channelId: string;
   channelTitle: string;
   thumbnail: string;
+  // Both null when the video is a live stream or YouTube didn't
+  // return a parseable duration. Renderers should treat these as a
+  // pair: badge appears only when durationLabel is non-null.
+  durationSec: number | null;
+  durationLabel: string | null;
 };
+
+type SearchMode = "top" | "recent" | "popular" | "long";
+
+const SEARCH_MODES: { value: SearchMode; label: string }[] = [
+  { value: "top", label: "Top" },
+  { value: "recent", label: "Recent" },
+  { value: "popular", label: "Popular" },
+  { value: "long", label: "Long" },
+];
 
 type ChannelResult = {
   type: "channel";
@@ -125,6 +139,19 @@ export function YouTubePanel() {
   const [lastSearchedQuery, setLastSearchedQuery] = useState("");
   const [activeVideoId, setActiveVideoId] = useState<string | null>(null);
   const [activeVideoTitle, setActiveVideoTitle] = useState<string>("");
+  // Duration of the currently-playing video, captured from the
+  // selected search result. null when the data wasn't available
+  // (live streams, hydration failure). Used in the minimized dock to
+  // give the recruiter at-a-glance length info without expanding.
+  const [activeVideoDurationLabel, setActiveVideoDurationLabel] = useState<
+    string | null
+  >(null);
+  // Active sort/filter for the search input. Defaults to "top"
+  // (relevance). lastSearchedMode pins the mode for Load More so
+  // pagination doesn't drift if the recruiter changes the mode while
+  // results are visible.
+  const [searchMode, setSearchMode] = useState<SearchMode>("top");
+  const [lastSearchedMode, setLastSearchedMode] = useState<SearchMode>("top");
   const [minimized, setMinimized] = useState(false);
   // null = showing search results; set = showing a single channel's
   // latest uploads with a back arrow to return to the search list.
@@ -684,13 +711,14 @@ export function YouTubePanel() {
     setSearching(true);
     setActiveVideoId(null);
     setActiveVideoTitle("");
+    setActiveVideoDurationLabel(null);
     setChannelView(null);
     setVideoResults([]);
     setChannelResults([]);
     setSearchNextToken(null);
     try {
       const res = await fetch(
-        `/api/youtube/search?q=${encodeURIComponent(q)}`,
+        `/api/youtube/search?q=${encodeURIComponent(q)}&mode=${searchMode}`,
         { cache: "no-store" },
       );
       const data = (await res.json()) as {
@@ -711,6 +739,7 @@ export function YouTubePanel() {
       );
       setSearchNextToken(data.nextPageToken ?? null);
       setLastSearchedQuery(q);
+      setLastSearchedMode(searchMode);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Search failed";
       toast.error("YouTube search failed", { description: message });
@@ -728,7 +757,7 @@ export function YouTubePanel() {
     setLoadingMore(true);
     try {
       const res = await fetch(
-        `/api/youtube/search?q=${encodeURIComponent(lastSearchedQuery)}&pageToken=${encodeURIComponent(searchNextToken)}`,
+        `/api/youtube/search?q=${encodeURIComponent(lastSearchedQuery)}&mode=${lastSearchedMode}&pageToken=${encodeURIComponent(searchNextToken)}`,
         { cache: "no-store" },
       );
       const data = (await res.json()) as {
@@ -848,6 +877,7 @@ export function YouTubePanel() {
   function playVideo(v: VideoResult) {
     setActiveVideoId(v.videoId);
     setActiveVideoTitle(v.title);
+    setActiveVideoDurationLabel(v.durationLabel ?? null);
   }
 
   // Back from the playing iframe overlay. Clears the iframe but keeps
@@ -863,6 +893,7 @@ export function YouTubePanel() {
     backInFlightRef.current = true;
     setActiveVideoId(null);
     setActiveVideoTitle("");
+    setActiveVideoDurationLabel(null);
   }
 
   function backFromChannel() {
@@ -981,36 +1012,67 @@ export function YouTubePanel() {
             </button>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-surface px-3 py-2">
-            <input
-              ref={inputRef}
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void runSearch();
-                }
-              }}
-              placeholder="Search YouTube…"
-              className="flex-1 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none"
-            />
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={() => void runSearch()}
-              disabled={searching || !query.trim()}
-              aria-label="Search"
-            >
-              {searching ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Search className="h-3.5 w-3.5" />
-              )}
-              Search
-            </Button>
+          <div className="flex shrink-0 flex-col gap-2 border-b border-court-border bg-court-surface px-3 py-2">
+            <div className="flex items-center gap-2">
+              <input
+                ref={inputRef}
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void runSearch();
+                  }
+                }}
+                placeholder="Search YouTube…"
+                className="flex-1 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none"
+              />
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={() => void runSearch()}
+                disabled={searching || !query.trim()}
+                aria-label="Search"
+              >
+                {searching ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Search className="h-3.5 w-3.5" />
+                )}
+                Search
+              </Button>
+            </div>
+            {/* Mode pills — Top is the default and runs the same
+                relevance order the panel always shipped with. The
+                non-default modes are quick filters: Recent (newest
+                first), Popular (most viewed), Long (long-form
+                videos via videoDuration=long). Picking a mode does
+                NOT auto-rerun the search; it takes effect on the
+                next Enter / Search click so the recruiter can pick
+                a mode and a query in either order. */}
+            <div className="flex items-center gap-1">
+              {SEARCH_MODES.map((m) => {
+                const active = searchMode === m.value;
+                return (
+                  <button
+                    key={m.value}
+                    type="button"
+                    onClick={() => setSearchMode(m.value)}
+                    aria-pressed={active}
+                    className={
+                      "rounded-full px-2.5 py-0.5 text-[11px] font-medium transition " +
+                      (active
+                        ? "bg-court-accent text-white"
+                        : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg")
+                    }
+                  >
+                    {m.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -1079,11 +1141,23 @@ export function YouTubePanel() {
         >
           <Music className="h-4 w-4 shrink-0 text-court-brand" />
           <span
-            title={activeVideoTitle}
+            title={
+              activeVideoDurationLabel
+                ? `${activeVideoTitle} • ${activeVideoDurationLabel}`
+                : activeVideoTitle
+            }
             className="flex-1 truncate text-xs font-medium text-court-fg"
           >
             {activeVideoTitle || "Now playing"}
           </span>
+          {activeVideoDurationLabel && (
+            <span
+              className="shrink-0 rounded-sm bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-court-fg-muted"
+              aria-label={`Duration ${activeVideoDurationLabel}`}
+            >
+              {activeVideoDurationLabel}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setMinimized(false)}
@@ -1214,19 +1288,34 @@ function VideoRow(props: { video: VideoResult; onClick: () => void }) {
       onClick={props.onClick}
       className="flex w-full items-start gap-3 px-3 py-2 text-left transition hover:bg-court-surface-subtle"
     >
-      {v.thumbnail ? (
-        // Plain <img>: thumbnails are external (i.ytimg.com) and
-        // pre-sized by YouTube; next/image isn't worth the loader
-        // configuration here.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={v.thumbnail}
-          alt=""
-          className="h-16 w-28 shrink-0 rounded object-cover"
-        />
-      ) : (
-        <div className="h-16 w-28 shrink-0 rounded bg-court-surface-subtle" />
-      )}
+      {/* Thumbnail wrapper is relative so the duration badge can
+          anchor bottom-right of the image (matches YouTube's own
+          thumbnail style). Badge omitted when durationLabel is null
+          (live streams, hydration failure) so the cell never shows
+          a half-baked "0:00" placeholder. */}
+      <div className="relative h-16 w-28 shrink-0">
+        {v.thumbnail ? (
+          // Plain <img>: thumbnails are external (i.ytimg.com) and
+          // pre-sized by YouTube; next/image isn't worth the loader
+          // configuration here.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={v.thumbnail}
+            alt=""
+            className="h-16 w-28 rounded object-cover"
+          />
+        ) : (
+          <div className="h-16 w-28 rounded bg-court-surface-subtle" />
+        )}
+        {v.durationLabel && (
+          <span
+            className="pointer-events-none absolute bottom-1 right-1 rounded bg-black/80 px-1 py-px text-[10px] font-semibold tabular-nums text-white"
+            aria-label={`Duration ${v.durationLabel}`}
+          >
+            {v.durationLabel}
+          </span>
+        )}
+      </div>
       <div className="min-w-0 flex-1">
         <div className="line-clamp-2 text-sm font-medium text-court-fg">
           {v.title}
