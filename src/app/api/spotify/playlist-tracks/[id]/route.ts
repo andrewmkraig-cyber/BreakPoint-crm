@@ -155,16 +155,22 @@ function deriveIdFromUri(uri: string): string {
 }
 
 // Project /v1/playlists/{id}/items (and /v1/albums/{id}/tracks, and the
-// legacy /tracks shape) into Ace's flat track row. Skip ONLY:
+// legacy /tracks shape) into Ace's flat track row.
+//
+// Normalization: every row is run through `item?.track ?? item`. Playlist
+// items wrap the track (`{ added_at, track: {...} }`); album tracks and
+// the legacy /tracks shape don't. The `??` collapses both into a single
+// path. If `item.track` is explicitly `null` (Spotify's marker for an
+// unavailable track in a playlist), we count it as nullTrack and skip
+// rather than falling through to the wrapper.
+//
+// Skip ONLY:
 //   - entry is null/undefined
-//   - entry.track (playlist shape) is null
+//   - entry.track is explicitly null (unavailable track marker)
 //   - track.type is set and not "track" (episodes etc.)
-//   - BOTH track.uri and track.id are missing — we need at least one
-//     identifier to queue the row. When uri is absent but id exists,
-//     we synthesize `spotify:track:${id}` (Spotify's canonical form).
-// Anything else (missing name, missing album art, missing preview_url,
-// missing external_urls, missing markets) still maps — we backfill with
-// safe defaults so the row still renders.
+//   - BOTH track.uri and track.id are missing — uri is the canonical
+//     queue handle, but when uri is absent we synthesize it from id
+//     using Spotify's `spotify:track:${id}` URI grammar.
 function projectItems(
   items: (PlaylistTrackEntry | Track | null)[] | undefined,
   fallbackName: string,
@@ -182,31 +188,36 @@ function projectItems(
 
   for (let idx = 0; idx < list.length; idx++) {
     counts.itemsReceived += 1;
-    const entry = list[idx];
-    if (!entry) {
+    const item = list[idx] as
+      | (PlaylistTrackEntry & Track)
+      | null
+      | undefined;
+    if (!item) {
       counts.nullTrackItems += 1;
       continue;
     }
-    const t =
-      typeof entry === "object" && entry !== null && "track" in entry
-        ? (entry as PlaylistTrackEntry).track
-        : (entry as Track);
-    if (!t) {
+    // Spotify uses `track: null` to mark unavailable tracks in a
+    // playlist (deleted/region-locked). Detect that explicitly so we
+    // don't fall through to the wrapper.
+    if ((item as PlaylistTrackEntry).track === null) {
       counts.nullTrackItems += 1;
       continue;
     }
-    if (typeof t.type === "string" && t.type !== "track") {
+    const track: Track =
+      ((item as PlaylistTrackEntry).track as Track | undefined) ??
+      (item as Track);
+    if (typeof track.type === "string" && track.type !== "track") {
       counts.nonTrackItems += 1;
       continue;
     }
-    if (!t.uri && !t.id) {
+    if (!track.uri && !track.id) {
       counts.missingUriItems += 1;
       continue;
     }
-    const uri = t.uri ?? `spotify:track:${t.id}`;
-    const id = t.id ?? deriveIdFromUri(uri);
-    const name = t.name ?? "Unknown title";
-    const artist = (t.artists ?? [])
+    const uri = track.uri ?? `spotify:track:${track.id}`;
+    const id = track.id ?? deriveIdFromUri(uri);
+    const name = track.name ?? "Unknown title";
+    const artist = (track.artists ?? [])
       .map((a) => a?.name)
       .filter((n): n is string => Boolean(n))
       .join(", ");
@@ -216,14 +227,59 @@ function projectItems(
       uri,
       name,
       artist,
-      albumName: t.album?.name ?? fallbackName ?? "",
-      albumArt: pickImage(t.album?.images, 64) || pickImage(fallbackImages, 64),
-      durationMs: t.duration_ms ?? 0,
+      albumName: track.album?.name ?? fallbackName ?? "",
+      albumArt:
+        pickImage(track.album?.images, 64) || pickImage(fallbackImages, 64),
+      durationMs: track.duration_ms ?? 0,
     });
     counts.mappedTracks += 1;
   }
 
   return { tracks, counts };
+}
+
+// One-shot diagnostic: dump the keys (and a uri/id snippet) from the
+// first entry of an items array so we can confirm Spotify's actual
+// response shape from Vercel logs without leaking PII.
+function logFirstItemShape(
+  tag: string,
+  items: unknown[] | undefined,
+): void {
+  if (!items || items.length === 0) return;
+  const first = items[0];
+  if (!first || typeof first !== "object") {
+    console.log(
+      "[spotify-playlist-tracks shape]",
+      JSON.stringify({ tag, kind: typeof first }),
+    );
+    return;
+  }
+  const outerKeys = Object.keys(first as Record<string, unknown>);
+  const wrapped = (first as { track?: unknown }).track;
+  const innerKeys =
+    wrapped && typeof wrapped === "object"
+      ? Object.keys(wrapped as Record<string, unknown>)
+      : null;
+  const innerHasUri =
+    wrapped && typeof wrapped === "object"
+      ? "uri" in (wrapped as Record<string, unknown>)
+      : false;
+  const innerHasId =
+    wrapped && typeof wrapped === "object"
+      ? "id" in (wrapped as Record<string, unknown>)
+      : false;
+  console.log(
+    "[spotify-playlist-tracks shape]",
+    JSON.stringify({
+      tag,
+      outerKeys,
+      hasTrackKey: "track" in (first as Record<string, unknown>),
+      trackIsNull: wrapped === null,
+      innerKeys,
+      innerHasUri,
+      innerHasId,
+    }),
+  );
 }
 
 export async function GET(
@@ -444,6 +500,10 @@ export async function GET(
     if (primaryRes.ok) {
       const data = primaryRes.data as TracksPayload;
       tracksTotal = typeof data.total === "number" ? data.total : null;
+      logFirstItemShape(
+        isAlbum ? "album/tracks" : "playlist/items-primary",
+        data.items as unknown[] | undefined,
+      );
       const projection = projectItems(data.items, fallbackName, fallbackImages);
       tracks = projection.tracks;
       primaryCounts = projection.counts;
@@ -470,6 +530,10 @@ export async function GET(
       if (fallbackRes.ok) {
         const data = fallbackRes.data as TracksPayload;
         tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
+        logFirstItemShape(
+          "playlist/tracks-fallback",
+          data.items as unknown[] | undefined,
+        );
         const projection = projectItems(
           data.items,
           fallbackName,
@@ -512,6 +576,10 @@ export async function GET(
       if (hrefRes.ok) {
         const data = hrefRes.data as TracksPayload;
         tracksTotal = typeof data.total === "number" ? data.total : tracksTotal;
+        logFirstItemShape(
+          "playlist/tracks-href",
+          data.items as unknown[] | undefined,
+        );
         const projection = projectItems(
           data.items,
           fallbackName,
@@ -536,6 +604,10 @@ export async function GET(
 
     // Step D — embedded fallback.
     if (tracks.length === 0 && Array.isArray(header.tracks?.items)) {
+      logFirstItemShape(
+        "playlist/tracks-embedded",
+        header.tracks!.items as unknown[],
+      );
       const projection = projectItems(
         header.tracks!.items as (PlaylistTrackEntry | Track | null)[],
         fallbackName,
