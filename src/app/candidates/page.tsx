@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronsUpDown, Eye } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { ChevronsUpDown, Eye, X } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const TENURE_OPTIONS = [
@@ -42,8 +42,8 @@ type Row = {
 
 type Filters = {
   q: string;
-  skills: string;
-  jobTitles: string;
+  skills: string[];
+  jobTitles: string[];
   minComp: string;
   maxComp: string;
   location: string;
@@ -57,8 +57,8 @@ type Filters = {
 
 const INITIAL_FILTERS: Filters = {
   q: "",
-  skills: "",
-  jobTitles: "",
+  skills: [],
+  jobTitles: [],
   minComp: "",
   maxComp: "",
   location: "",
@@ -73,6 +73,8 @@ const INITIAL_FILTERS: Filters = {
 function buildQuery(f: Filters): string {
   const sp = new URLSearchParams();
   if (f.q.trim()) sp.set("q", f.q.trim());
+  if (f.skills.length > 0) sp.set("skills", f.skills.join(","));
+  if (f.jobTitles.length > 0) sp.set("jobTitles", f.jobTitles.join(","));
   if (f.minComp.trim()) sp.set("minComp", f.minComp.trim());
   if (f.maxComp.trim()) sp.set("maxComp", f.maxComp.trim());
   if (f.location.trim()) sp.set("location", f.location.trim());
@@ -96,6 +98,82 @@ const inputCls =
 
 const selectCls =
   "w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent/30";
+
+// Tag-pill input. Each committed value renders as a removable pill;
+// the trailing text input stays inline so the field reads like a
+// continuation of the pill row. Enter or comma commits the buffer;
+// Backspace on an empty buffer pops the last pill (standard tag-input
+// affordance). Duplicates are silently dropped — matching against the
+// same value twice would just dedupe at query time anyway.
+function TagInput({
+  values,
+  buffer,
+  onBufferChange,
+  onCommit,
+  onRemove,
+  placeholder,
+  ariaLabel,
+}: {
+  values: string[];
+  buffer: string;
+  onBufferChange: (v: string) => void;
+  onCommit: (v: string) => void;
+  onRemove: (v: string) => void;
+  placeholder: string;
+  ariaLabel: string;
+}) {
+  function commit() {
+    const v = buffer.trim().replace(/,$/, "").trim();
+    if (!v) {
+      if (buffer !== "") onBufferChange("");
+      return;
+    }
+    onCommit(v);
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      commit();
+      return;
+    }
+    if (e.key === "Backspace" && buffer === "" && values.length > 0) {
+      e.preventDefault();
+      onRemove(values[values.length - 1]);
+    }
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-1 focus-within:border-court-accent focus-within:ring-1 focus-within:ring-court-accent/30">
+      {values.map((v) => (
+        <span
+          key={v}
+          className="inline-flex items-center gap-1 rounded bg-court-accent-tint px-1.5 py-0.5 text-[11px] font-medium text-court-accent-dark"
+        >
+          {v}
+          <button
+            type="button"
+            onClick={() => onRemove(v)}
+            aria-label={`Remove ${v}`}
+            className="rounded-sm text-court-accent-dark/70 transition hover:bg-court-surface/40 hover:text-court-accent-dark"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={buffer}
+        onChange={(e) => onBufferChange(e.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={commit}
+        placeholder={values.length === 0 ? placeholder : ""}
+        aria-label={ariaLabel}
+        className="min-w-[60px] flex-1 bg-transparent px-1 py-0.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:outline-none"
+      />
+    </div>
+  );
+}
 
 function SortHeader({
   label,
@@ -123,8 +201,8 @@ function SortHeader({
 function hasAnyFilter(f: Filters): boolean {
   return (
     f.q.trim() !== "" ||
-    f.skills.trim() !== "" ||
-    f.jobTitles.trim() !== "" ||
+    f.skills.length > 0 ||
+    f.jobTitles.length > 0 ||
     f.minComp.trim() !== "" ||
     f.maxComp.trim() !== "" ||
     f.location.trim() !== "" ||
@@ -138,6 +216,8 @@ function hasAnyFilter(f: Filters): boolean {
 
 export default function CandidatesPage() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
+  const [skillsBuffer, setSkillsBuffer] = useState("");
+  const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -148,9 +228,30 @@ export default function CandidatesPage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasFilters = hasAnyFilter(filters);
+  // Stable string identity for the array filters so useEffect's dep
+  // compare retriggers on pill add/remove.
+  const skillsKey = filters.skills.join("|");
+  const jobTitlesKey = filters.jobTitles.join("|");
 
   function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function addPill(key: "skills" | "jobTitles", value: string) {
+    setFilters((prev) => {
+      const existing = prev[key];
+      if (existing.includes(value)) return prev;
+      return { ...prev, [key]: [...existing, value] };
+    });
+    if (key === "skills") setSkillsBuffer("");
+    else setJobTitlesBuffer("");
+  }
+
+  function removePill(key: "skills" | "jobTitles", value: string) {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: prev[key].filter((v) => v !== value),
+    }));
   }
 
   async function runFetch(f: Filters) {
@@ -207,8 +308,8 @@ export default function CandidatesPage() {
   }, [
     hasFilters,
     filters.q,
-    filters.skills,
-    filters.jobTitles,
+    skillsKey,
+    jobTitlesKey,
     filters.minComp,
     filters.maxComp,
     filters.location,
@@ -243,23 +344,27 @@ export default function CandidatesPage() {
 
           <div>
             <FilterLabel>Skills</FilterLabel>
-            <input
-              type="text"
-              value={filters.skills}
-              onChange={(e) => setField("skills", e.target.value)}
-              placeholder="Add skills…"
-              className={`${inputCls} mt-1`}
+            <TagInput
+              values={filters.skills}
+              buffer={skillsBuffer}
+              onBufferChange={setSkillsBuffer}
+              onCommit={(v) => addPill("skills", v)}
+              onRemove={(v) => removePill("skills", v)}
+              placeholder="Add a skill, press Enter"
+              ariaLabel="Skills"
             />
           </div>
 
           <div>
             <FilterLabel>Job Titles</FilterLabel>
-            <input
-              type="text"
-              value={filters.jobTitles}
-              onChange={(e) => setField("jobTitles", e.target.value)}
-              placeholder="e.g. Software Engineer"
-              className={`${inputCls} mt-1`}
+            <TagInput
+              values={filters.jobTitles}
+              buffer={jobTitlesBuffer}
+              onBufferChange={setJobTitlesBuffer}
+              onCommit={(v) => addPill("jobTitles", v)}
+              onRemove={(v) => removePill("jobTitles", v)}
+              placeholder="Add a title, press Enter"
+              ariaLabel="Job Titles"
             />
           </div>
 

@@ -95,6 +95,14 @@ function parseNumber(raw: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseCsv(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -107,6 +115,8 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const sp = url.searchParams;
   const q = (sp.get("q") ?? "").trim();
+  const jobTitles = parseCsv(sp.get("jobTitles"));
+  const skills = parseCsv(sp.get("skills"));
   const minComp = parseNumber(sp.get("minComp"));
   const maxComp = parseNumber(sp.get("maxComp"));
   const location = (sp.get("location") ?? "").trim();
@@ -145,6 +155,26 @@ export async function GET(req: Request) {
           ],
         });
       }
+    }
+
+    // Job-title pills: candidate matches if currentDesignation contains
+    // ANY of the supplied titles (case-insensitive). The pills compose
+    // disjunctively against the title column and AND with all other
+    // active filters.
+    if (jobTitles.length > 0) {
+      andClauses.push({
+        OR: jobTitles.map((t) => ({
+          currentDesignation: { contains: t, mode: "insensitive" as const },
+        })),
+      });
+    }
+
+    // Skill pills: Candidate.skills is a String[] column, so OR semantics
+    // map cleanly to Prisma's `hasSome` — candidate matches if their
+    // skills array contains any of the supplied values (exact match;
+    // case-sensitive at the DB layer).
+    if (skills.length > 0) {
+      andClauses.push({ skills: { hasSome: skills } });
     }
 
     // expectedSalary is JSON `{ number, currency }`; Prisma's JSON path
