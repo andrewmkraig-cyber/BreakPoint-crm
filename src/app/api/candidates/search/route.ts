@@ -85,8 +85,52 @@ function mostRecentExperience(raw: unknown): ExperienceEntry | null {
   return best;
 }
 
+// Boolean connectives that recruiters type between real terms — the
+// search treats them as the implicit AND/OR they're already using
+// at the clause level, so the literal words shouldn't have to appear
+// in the candidate's data. "tax AND ohio" matches the same set as
+// "tax ohio".
+const BOOL_STOPWORDS = new Set(["and", "or"]);
+
 function tokenize(q: string): string[] {
-  return q.trim().split(/\s+/).filter(Boolean);
+  return q
+    .trim()
+    .split(/\s+/)
+    .filter((s) => s.length > 0 && !BOOL_STOPWORDS.has(s.toLowerCase()));
+}
+
+// For each search token, pre-resolves the set of candidate ids whose
+// data contains the token anywhere — structured columns plus the raw
+// JSON payload cast to text. This is the only way to scan resume
+// content (experience, education, summary, etc.) since Prisma can't
+// run ILIKE against jsonb directly. Returns one Set per token; the
+// caller AND-composes them via `id: { in: [...] }` clauses so the
+// final result honors "every token must match somewhere".
+async function resolveTokenIds(
+  orgId: string,
+  tokens: string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  for (const t of tokens) {
+    const pattern = `%${t}%`;
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+      SELECT id FROM "Candidate"
+      WHERE "organizationId" = ${orgId}
+        AND (
+          "firstName" ILIKE ${pattern}
+          OR "lastName" ILIKE ${pattern}
+          OR "currentDesignation" ILIKE ${pattern}
+          OR "currentOrganization" ILIKE ${pattern}
+          OR location ILIKE ${pattern}
+          OR (raw IS NOT NULL AND raw::text ILIKE ${pattern})
+        )
+    `);
+    out.set(
+      t,
+      rows.map((r) => r.id),
+    );
+  }
+  return out;
 }
 
 function parseNumber(raw: string | null): number | null {
@@ -144,16 +188,15 @@ export async function GET(req: Request) {
     const andClauses: Prisma.CandidateWhereInput[] = [];
 
     if (q) {
-      for (const t of tokenize(q)) {
-        andClauses.push({
-          OR: [
-            { firstName: { contains: t, mode: "insensitive" } },
-            { lastName: { contains: t, mode: "insensitive" } },
-            { currentDesignation: { contains: t, mode: "insensitive" } },
-            { currentOrganization: { contains: t, mode: "insensitive" } },
-            { location: { contains: t, mode: "insensitive" } },
-          ],
-        });
+      const tokens = tokenize(q);
+      if (tokens.length > 0) {
+        const tokenIds = await resolveTokenIds(org.id, tokens);
+        for (const t of tokens) {
+          // Empty list short-circuits the whole query to zero rows,
+          // which is correct: if no candidate carries this token
+          // anywhere, no row can satisfy the AND across tokens.
+          andClauses.push({ id: { in: tokenIds.get(t) ?? [] } });
+        }
       }
     }
 
