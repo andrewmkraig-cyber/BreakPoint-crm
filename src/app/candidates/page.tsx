@@ -120,16 +120,34 @@ function SortHeader({
   );
 }
 
+function hasAnyFilter(f: Filters): boolean {
+  return (
+    f.q.trim() !== "" ||
+    f.skills.trim() !== "" ||
+    f.jobTitles.trim() !== "" ||
+    f.minComp.trim() !== "" ||
+    f.maxComp.trim() !== "" ||
+    f.location.trim() !== "" ||
+    f.employer.trim() !== "" ||
+    (f.tenure !== "" && f.tenure !== "any") ||
+    (f.workAuth !== "" && f.workAuth !== "all") ||
+    (f.lastApply !== "" && f.lastApply !== "any") ||
+    (f.lastAction !== "" && f.lastAction !== "any")
+  );
+}
+
 export default function CandidatesPage() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   // Cancel any in-flight request when a newer one starts so a slow
   // earlier response can't overwrite a fresher result set.
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hasFilters = hasAnyFilter(filters);
 
   function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -163,9 +181,22 @@ export default function CandidatesPage() {
     }
   }
 
-  // Initial fetch on mount + debounced refetch on any filter change.
+  // Debounced refetch on any filter change. Gated on hasFilters: with
+  // every field at its empty/default value the page sits in its empty
+  // start state — no fetch fires on mount, the count reads "—", and
+  // the table shows the placeholder. As soon as any field carries a
+  // user-entered value the debounce kicks in and results populate.
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!hasFilters) {
+      // Drop any stale results so clearing the last filter snaps back
+      // to the empty placeholder rather than showing the prior page.
+      if (abortRef.current) abortRef.current.abort();
+      setRows([]);
+      setTotal(null);
+      setLoading(false);
+      return;
+    }
     debounceRef.current = setTimeout(() => {
       void runFetch(filters);
     }, DEBOUNCE_MS);
@@ -174,7 +205,10 @@ export default function CandidatesPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    hasFilters,
     filters.q,
+    filters.skills,
+    filters.jobTitles,
     filters.minComp,
     filters.maxComp,
     filters.location,
@@ -182,10 +216,13 @@ export default function CandidatesPage() {
     filters.employer,
     filters.tenure,
     filters.workAuth,
+    filters.lastApply,
+    filters.lastAction,
   ]);
 
   function onQuickSearch() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!hasFilters) return;
     void runFetch(filters);
   }
 
@@ -342,7 +379,7 @@ export default function CandidatesPage() {
           </div>
         </div>
 
-        <div className="border-t border-court-border bg-court-surface-subtle p-3">
+        <div className="shrink-0 border-t border-court-border bg-court-surface-subtle p-3">
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
@@ -358,7 +395,7 @@ export default function CandidatesPage() {
           </div>
           <Link
             href="/candidates/lists"
-            className="mt-2 block text-[11px] text-court-fg-muted underline-offset-2 hover:text-court-fg hover:underline"
+            className="mt-2 block text-[11px] text-court-fg-muted underline underline-offset-2 hover:text-court-fg"
           >
             View Lists
           </Link>
@@ -399,7 +436,9 @@ export default function CandidatesPage() {
                   colSpan={10}
                   className="px-5 py-12 text-center text-sm text-court-fg-muted"
                 >
-                  No candidates match your filters
+                  {hasFilters
+                    ? "No candidates match your filters"
+                    : "Apply a filter to start searching"}
                 </td>
               </tr>
             )}
