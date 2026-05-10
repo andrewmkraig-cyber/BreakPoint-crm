@@ -229,7 +229,7 @@ export default function CandidatesPage() {
   return (
     <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex min-h-[calc(100vh-72px)] md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4">
       <aside className="flex w-[280px] shrink-0 flex-col border-r border-court-border bg-court-surface">
-        <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+        <div className="flex flex-col gap-3 overflow-y-auto p-4">
           <div>
             <FilterLabel>Keyword / Boolean</FilterLabel>
             <input
@@ -377,10 +377,8 @@ export default function CandidatesPage() {
               ))}
             </select>
           </div>
-        </div>
 
-        <div className="shrink-0 border-t border-court-border bg-court-surface-subtle p-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="mt-1 flex items-center justify-between gap-3 border-t border-court-border-soft pt-3">
             <button
               type="button"
               onClick={onQuickSearch}
@@ -388,17 +386,19 @@ export default function CandidatesPage() {
             >
               Quick Search
             </button>
-            <span className="text-xs font-medium text-court-fg-muted">
-              {total == null ? "—" : total.toLocaleString()} Candidate
-              {total === 1 ? "" : "s"}
-            </span>
+            <div className="flex flex-col items-end gap-0.5 leading-tight">
+              <span className="text-xs font-medium text-court-fg">
+                {total == null ? "—" : total.toLocaleString()} Candidate
+                {total === 1 ? "" : "s"}
+              </span>
+              <Link
+                href="/candidates/lists"
+                className="text-[11px] text-court-fg-muted underline underline-offset-2 hover:text-court-fg"
+              >
+                View Lists
+              </Link>
+            </div>
           </div>
-          <Link
-            href="/candidates/lists"
-            className="mt-2 block text-[11px] text-court-fg-muted underline underline-offset-2 hover:text-court-fg"
-          >
-            View Lists
-          </Link>
         </div>
       </aside>
 
