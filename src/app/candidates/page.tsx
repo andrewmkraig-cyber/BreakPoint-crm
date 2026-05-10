@@ -221,6 +221,10 @@ export default function CandidatesPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  // Split-view: when set, the filter rail collapses to 0 and the
+  // results pane swaps to a narrow name list + iframe of the
+  // candidate's profile. Cleared by the close X.
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   // Cancel any in-flight request when a newer one starts so a slow
   // earlier response can't overwrite a fresher result set.
@@ -329,7 +333,14 @@ export default function CandidatesPage() {
 
   return (
     <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex min-h-[calc(100vh-72px)] md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4">
-      <aside className="flex w-[280px] shrink-0 flex-col border-r border-court-border bg-court-surface">
+      <aside
+        className={
+          "flex shrink-0 flex-col overflow-hidden bg-court-surface transition-[width,border] duration-200 " +
+          (selectedId
+            ? "w-0 border-r-0"
+            : "w-[280px] border-r border-court-border")
+        }
+      >
         <div className="flex flex-col gap-3 overflow-y-auto p-4">
           <div>
             <FilterLabel>Keyword / Boolean</FilterLabel>
@@ -507,95 +518,134 @@ export default function CandidatesPage() {
         </div>
       </aside>
 
-      <section className="flex-1 overflow-x-auto bg-court-bg">
-        <table className="w-full text-left text-xs">
-          <thead className="border-b border-court-border bg-court-surface-subtle">
-            <tr>
-              <th className="w-10 px-3 py-2">
-                <input
-                  type="checkbox"
-                  aria-label="Select all"
-                  className="h-4 w-4 cursor-pointer accent-brand"
-                />
-              </th>
-              <SortHeader label="Candidate" />
-              <SortHeader label="Current Title" />
-              <SortHeader label="Employer" />
-              <SortHeader label="Location" />
-              <SortHeader label="Salary" align="right" />
-              <SortHeader label="Last Apply" />
-              <SortHeader label="Last Action" />
-              <SortHeader label="Score" align="center" />
-              <th className="w-10 px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody
-            className={
-              "divide-y divide-court-border-soft transition-opacity " +
-              (loading ? "opacity-50" : "opacity-100")
-            }
-          >
-            {rows.length === 0 && !loading && (
-              <tr>
-                <td
-                  colSpan={10}
-                  className="px-5 py-12 text-center text-sm text-court-fg-muted"
+      {selectedId ? (
+        <>
+          <section className="flex h-[calc(100vh-72px)] w-[280px] shrink-0 flex-col overflow-y-auto border-r border-court-border bg-court-surface">
+            {rows.map((c) => {
+              const active = c.id === selectedId;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSelectedId(c.id)}
+                  className={
+                    "border-b border-court-border-soft px-4 py-3 text-left text-sm font-medium transition " +
+                    (active
+                      ? "bg-brand text-white"
+                      : "text-court-fg hover:bg-court-accent-tint/40")
+                  }
                 >
-                  {hasFilters
-                    ? "No candidates match your filters"
-                    : "Apply a filter to start searching"}
-                </td>
-              </tr>
-            )}
-            {rows.map((c) => (
-              <tr
-                key={c.id}
-                className="h-12 transition hover:bg-court-accent-tint/40"
-              >
-                <td className="w-10 px-3">
+                  {c.name}
+                </button>
+              );
+            })}
+          </section>
+          <section className="relative flex-1 bg-court-bg">
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              aria-label="Close profile"
+              className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <iframe
+              key={selectedId}
+              src={`/candidates/${selectedId}`}
+              title="Candidate profile"
+              className="h-[calc(100vh-72px)] w-full border-0"
+            />
+          </section>
+        </>
+      ) : (
+        <section className="flex-1 overflow-x-auto bg-court-bg">
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-court-border bg-court-surface-subtle">
+              <tr>
+                <th className="w-10 px-3 py-2">
                   <input
                     type="checkbox"
-                    aria-label={`Select ${c.name}`}
+                    aria-label="Select all"
                     className="h-4 w-4 cursor-pointer accent-brand"
                   />
-                </td>
-                <td className="px-3 font-medium text-court-fg">
-                  <Link
-                    href={`/candidates/${c.id}`}
-                    className="hover:text-court-accent-dark"
-                  >
-                    {c.name}
-                  </Link>
-                </td>
-                <td className="px-3 text-court-fg-muted">
-                  {c.title || "—"}
-                </td>
-                <td className="px-3 text-court-fg-muted">
-                  {c.employer || "—"}
-                </td>
-                <td className="px-3 text-court-fg-muted">
-                  {c.location || "—"}
-                </td>
-                <td className="px-3 text-right tabular-nums text-court-fg-muted">
-                  {c.salary}
-                </td>
-                <td className="px-3 text-court-fg-muted">{c.lastApply}</td>
-                <td className="px-3 text-court-fg-muted">{c.lastAction}</td>
-                <td className="px-3 text-center text-court-fg-muted">—</td>
-                <td className="w-10 px-3 text-right">
-                  <Link
-                    href={`/candidates/${c.id}`}
-                    aria-label={`View ${c.name}`}
-                    className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Link>
-                </td>
+                </th>
+                <SortHeader label="Candidate" />
+                <SortHeader label="Current Title" />
+                <SortHeader label="Employer" />
+                <SortHeader label="Location" />
+                <SortHeader label="Salary" align="right" />
+                <SortHeader label="Last Apply" />
+                <SortHeader label="Last Action" />
+                <SortHeader label="Score" align="center" />
+                <th className="w-10 px-3 py-2" />
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
+            </thead>
+            <tbody
+              className={
+                "divide-y divide-court-border-soft transition-opacity " +
+                (loading ? "opacity-50" : "opacity-100")
+              }
+            >
+              {rows.length === 0 && !loading && (
+                <tr>
+                  <td
+                    colSpan={10}
+                    className="px-5 py-12 text-center text-sm text-court-fg-muted"
+                  >
+                    {hasFilters
+                      ? "No candidates match your filters"
+                      : "Apply a filter to start searching"}
+                  </td>
+                </tr>
+              )}
+              {rows.map((c) => (
+                <tr
+                  key={c.id}
+                  onClick={() => setSelectedId(c.id)}
+                  className="h-12 cursor-pointer transition hover:bg-court-accent-tint/40"
+                >
+                  <td
+                    className="w-10 px-3"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${c.name}`}
+                      className="h-4 w-4 cursor-pointer accent-brand"
+                    />
+                  </td>
+                  <td className="px-3 font-medium text-court-fg">{c.name}</td>
+                  <td className="px-3 text-court-fg-muted">
+                    {c.title || "—"}
+                  </td>
+                  <td className="px-3 text-court-fg-muted">
+                    {c.employer || "—"}
+                  </td>
+                  <td className="px-3 text-court-fg-muted">
+                    {c.location || "—"}
+                  </td>
+                  <td className="px-3 text-right tabular-nums text-court-fg-muted">
+                    {c.salary}
+                  </td>
+                  <td className="px-3 text-court-fg-muted">{c.lastApply}</td>
+                  <td className="px-3 text-court-fg-muted">{c.lastAction}</td>
+                  <td className="px-3 text-center text-court-fg-muted">—</td>
+                  <td className="w-10 px-3 text-right">
+                    <Link
+                      href={`/candidates/${c.id}`}
+                      aria-label={`View ${c.name}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+                    >
+                      <Eye className="h-4 w-4" />
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
     </div>
   );
 }
