@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Pencil, Trash2, X, Check } from "lucide-react";
 import { toast } from "sonner";
@@ -149,17 +150,30 @@ function ListRow({
             <Check className="h-3 w-3 text-court-fg-muted" />
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(list.name);
-              setEditing(true);
-            }}
-            className="group inline-flex items-center gap-1.5 text-court-fg transition hover:text-brand-dark"
-          >
-            <span>{list.name}</span>
-            <Pencil className="h-3 w-3 text-court-fg-muted opacity-0 group-hover:opacity-100" />
-          </button>
+          // Name is the primary affordance — clicking it opens the
+          // list detail page. Inline rename moves to a small pencil
+          // icon that surfaces on row hover so the link target is
+          // unambiguous (clicking the name shouldn't put it in edit
+          // mode anymore now that the list opens to its own page).
+          <div className="group inline-flex items-center gap-1.5">
+            <Link
+              href={`/candidates/lists/${list.id}`}
+              className="text-court-fg transition hover:text-brand-dark hover:underline"
+            >
+              {list.name}
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(list.name);
+                setEditing(true);
+              }}
+              aria-label={`Rename ${list.name}`}
+              className="rounded-sm p-0.5 text-court-fg-muted opacity-0 transition hover:text-court-fg group-hover:opacity-100"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          </div>
         )}
       </td>
       <td className="px-5 py-3 text-court-fg-muted">{list.memberCount}</td>
