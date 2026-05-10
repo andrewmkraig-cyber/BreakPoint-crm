@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { TopBar } from "@/components/top-bar";
@@ -29,6 +29,13 @@ export function AppShell({
 }) {
   const pathname = usePathname();
   const isUnauth = UNAUTH_PATHS.some((p) => pathname?.startsWith(p));
+  // Embed mode: surfaces that load a page inside an iframe (e.g. the
+  // candidates split-view) pass ?embed=true so the chrome (sidebar +
+  // topbar + resize handle) collapses and the iframe shows just the
+  // page's own content. Without this the inner doc rendered the whole
+  // shell again, producing a page-inside-a-page look.
+  const searchParams = useSearchParams();
+  const isEmbed = searchParams?.get("embed") === "true";
 
   // Sidebar width state lives in AppShell so the drag handle can sit
   // adjacent to <Sidebar /> in the same flex row. Persisted to
@@ -121,6 +128,12 @@ export function AppShell({
   // switch feel broken.
   if (isUnauth) {
     return <main className="min-h-screen bg-court-bg">{children}</main>;
+  }
+
+  if (isEmbed) {
+    return (
+      <main className="min-h-screen bg-court-bg p-6 md:p-8">{children}</main>
+    );
   }
 
   // MailProvider polls /api/mail/unread every 30s; the SSR count seeds

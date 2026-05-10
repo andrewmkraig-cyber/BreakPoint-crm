@@ -551,7 +551,7 @@ export default function CandidatesPage() {
             </button>
             <iframe
               key={selectedId}
-              src={`/candidates/${selectedId}`}
+              src={`/candidates/${selectedId}?embed=true`}
               title="Candidate profile"
               className="h-[calc(100vh-72px)] w-full border-0"
             />

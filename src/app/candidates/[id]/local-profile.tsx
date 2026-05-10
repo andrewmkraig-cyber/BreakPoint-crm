@@ -29,7 +29,15 @@ import { getAppPreferences } from "@/lib/preferences";
 
 type LocalCandidateTab = "profile" | "game-plan" | "notes";
 
-export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string; tab?: string }) {
+export async function LocalCandidateProfile({
+  id,
+  tab: tabParam,
+  embed = false,
+}: {
+  id: string;
+  tab?: string;
+  embed?: boolean;
+}) {
   const tab: LocalCandidateTab =
     tabParam === "game-plan"
       ? "game-plan"
@@ -430,7 +438,7 @@ export async function LocalCandidateProfile({ id, tab: tabParam }: { id: string;
 
   return (
     <div className="space-y-6">
-      <CandidateProfileNav currentId={candidate.id} />
+      {embed ? null : <CandidateProfileNav currentId={candidate.id} />}
 
       {/* Standalone name header was folded into the identity card at
           the top of the left column below so all candidate-identity

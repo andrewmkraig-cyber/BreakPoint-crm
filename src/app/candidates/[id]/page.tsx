@@ -78,7 +78,7 @@ export default async function CandidateProfilePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { tab?: CandidateTab };
+  searchParams?: { tab?: CandidateTab; embed?: string };
 }) {
   // Phase 1 candidate cutover: every candidate profile resolves through
   // Neon. The URL segment can be either a cuid (the canonical post-cutover
@@ -87,10 +87,22 @@ export default async function CandidateProfilePage({
   const candidate = await getCandidateByIdentifier(params.id);
   if (!candidate) notFound();
 
+  // Embed mode: the candidates split-view loads this page inside an
+  // iframe and passes ?embed=true. AppShell strips the sidebar/topbar
+  // chrome; here we drop the in-page back/prev/next nav so the iframe
+  // shows just the profile content.
+  const isEmbed = searchParams?.embed === "true";
+
   // Ace-native candidates (never imported from RF) have no rfId and route
   // to the simpler LocalCandidateProfile UI — unchanged from pre-Phase 1.
   if (candidate.rfId == null) {
-    return <LocalCandidateProfile id={candidate.id} tab={searchParams?.tab} />;
+    return (
+      <LocalCandidateProfile
+        id={candidate.id}
+        tab={searchParams?.tab}
+        embed={isEmbed}
+      />
+    );
   }
 
   const id = candidate.rfId;
@@ -521,7 +533,7 @@ export default async function CandidateProfilePage({
   return (
     <CandidateProfileBoundary>
     <div className="space-y-6">
-      <CandidateProfileNav currentId={candidate.id} />
+      {isEmbed ? null : <CandidateProfileNav currentId={candidate.id} />}
 
       {/* The standalone name header was folded into the identity card
           at the top of the left column below so all candidate-identity
