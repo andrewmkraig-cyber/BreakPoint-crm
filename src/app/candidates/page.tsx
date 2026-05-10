@@ -1,13 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import { ChevronsUpDown, Eye } from "lucide-react";
-
-import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { prisma } from "@/lib/prisma";
-import { formatLocation } from "@/lib/utils";
-
-export const dynamic = "force-dynamic";
-
-const PAGE_SIZE = 25;
+import { useEffect, useRef, useState } from "react";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const TENURE_OPTIONS = [
@@ -32,6 +27,8 @@ const DATE_OPTIONS = [
   { value: "1y", label: "Last year" },
 ];
 
+const DEBOUNCE_MS = 300;
+
 type Row = {
   id: string;
   name: string;
@@ -43,34 +40,47 @@ type Row = {
   lastAction: string;
 };
 
-function composeName(first: string | null, last: string | null): string {
-  const parts = [first, last].map((p) => (p ?? "").trim()).filter(Boolean);
-  return parts.length ? parts.join(" ") : "(unnamed)";
-}
+type Filters = {
+  q: string;
+  skills: string;
+  jobTitles: string;
+  minComp: string;
+  maxComp: string;
+  location: string;
+  distance: string;
+  employer: string;
+  tenure: string;
+  workAuth: string;
+  lastApply: string;
+  lastAction: string;
+};
 
-function formatSalary(raw: unknown): string {
-  if (!raw || typeof raw !== "object") return "—";
-  const n = (raw as { number?: unknown }).number;
-  if (typeof n !== "number" || !Number.isFinite(n) || n <= 0) return "—";
-  const ccy = (raw as { currency?: unknown }).currency;
-  const symbol = ccy === "USD" || !ccy ? "$" : `${String(ccy)} `;
-  return `${symbol}${n.toLocaleString()}`;
-}
+const INITIAL_FILTERS: Filters = {
+  q: "",
+  skills: "",
+  jobTitles: "",
+  minComp: "",
+  maxComp: "",
+  location: "",
+  distance: "25",
+  employer: "",
+  tenure: "any",
+  workAuth: "all",
+  lastApply: "any",
+  lastAction: "any",
+};
 
-function relativeTime(d: Date): string {
-  const diffMs = Date.now() - d.getTime();
-  const sec = Math.round(diffMs / 1000);
-  if (sec < 60) return "just now";
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min} min${min === 1 ? "" : "s"} ago`;
-  const hr = Math.round(min / 60);
-  if (hr < 24) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
-  const day = Math.round(hr / 24);
-  if (day < 30) return `${day} day${day === 1 ? "" : "s"} ago`;
-  const mo = Math.round(day / 30);
-  if (mo < 12) return `${mo} mo${mo === 1 ? "" : "s"} ago`;
-  const yr = Math.round(mo / 12);
-  return `${yr} yr${yr === 1 ? "" : "s"} ago`;
+function buildQuery(f: Filters): string {
+  const sp = new URLSearchParams();
+  if (f.q.trim()) sp.set("q", f.q.trim());
+  if (f.minComp.trim()) sp.set("minComp", f.minComp.trim());
+  if (f.maxComp.trim()) sp.set("maxComp", f.maxComp.trim());
+  if (f.location.trim()) sp.set("location", f.location.trim());
+  if (f.distance) sp.set("distance", f.distance);
+  if (f.employer.trim()) sp.set("employer", f.employer.trim());
+  if (f.tenure && f.tenure !== "any") sp.set("tenure", f.tenure);
+  if (f.workAuth && f.workAuth !== "all") sp.set("workAuth", f.workAuth);
+  return sp.toString();
 }
 
 function FilterLabel({ children }: { children: React.ReactNode }) {
@@ -90,11 +100,9 @@ const selectCls =
 function SortHeader({
   label,
   align = "left",
-  className = "",
 }: {
   label: string;
   align?: "left" | "center" | "right";
-  className?: string;
 }) {
   const justify =
     align === "right"
@@ -103,12 +111,7 @@ function SortHeader({
         ? "justify-center"
         : "justify-start";
   return (
-    <th
-      className={
-        "px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted " +
-        className
-      }
-    >
+    <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
       <span className={`inline-flex items-center gap-1 ${justify}`}>
         {label}
         <ChevronsUpDown className="h-3 w-3 opacity-60" />
@@ -117,39 +120,74 @@ function SortHeader({
   );
 }
 
-export default async function CandidatesPage() {
-  const org = await getCurrentOrg();
+export default function CandidatesPage() {
+  const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
+  const [rows, setRows] = useState<Row[]>([]);
+  const [total, setTotal] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const [rowsRaw, total] = await Promise.all([
-    prisma.candidate.findMany({
-      where: { organizationId: org.id },
-      select: {
-        id: true,
-        firstName: true,
-        lastName: true,
-        currentDesignation: true,
-        currentOrganization: true,
-        location: true,
-        expectedSalary: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-      orderBy: { updatedAt: "desc" },
-      take: PAGE_SIZE,
-    }),
-    prisma.candidate.count({ where: { organizationId: org.id } }),
+  // Cancel any in-flight request when a newer one starts so a slow
+  // earlier response can't overwrite a fresher result set.
+  const abortRef = useRef<AbortController | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function runFetch(f: Filters) {
+    if (abortRef.current) abortRef.current.abort();
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
+    setLoading(true);
+    try {
+      const qs = buildQuery(f);
+      const url = qs
+        ? `/api/candidates/search?${qs}`
+        : "/api/candidates/search";
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { candidates: Row[]; total: number };
+      setRows(data.candidates ?? []);
+      setTotal(data.total ?? 0);
+    } catch (e) {
+      if ((e as Error).name === "AbortError") return;
+      // On error keep prior rows so the table doesn't blank out;
+      // surface no toast — this surface is still being shelled in.
+      setTotal(0);
+    } finally {
+      if (abortRef.current === ctrl) {
+        setLoading(false);
+        abortRef.current = null;
+      }
+    }
+  }
+
+  // Initial fetch on mount + debounced refetch on any filter change.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      void runFetch(filters);
+    }, DEBOUNCE_MS);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    filters.q,
+    filters.minComp,
+    filters.maxComp,
+    filters.location,
+    filters.distance,
+    filters.employer,
+    filters.tenure,
+    filters.workAuth,
   ]);
 
-  const rows: Row[] = rowsRaw.map((r) => ({
-    id: r.id,
-    name: composeName(r.firstName, r.lastName),
-    title: r.currentDesignation ?? "",
-    employer: r.currentOrganization ?? "",
-    location: formatLocation(r.location) || "",
-    salary: formatSalary(r.expectedSalary),
-    lastApply: relativeTime(r.createdAt),
-    lastAction: relativeTime(r.updatedAt),
-  }));
+  function onQuickSearch() {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    void runFetch(filters);
+  }
 
   return (
     <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex min-h-[calc(100vh-72px)] md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4">
@@ -159,6 +197,8 @@ export default async function CandidatesPage() {
             <FilterLabel>Keyword / Boolean</FilterLabel>
             <input
               type="text"
+              value={filters.q}
+              onChange={(e) => setField("q", e.target.value)}
               placeholder='e.g. ("python" AND "aws")'
               className={`${inputCls} mt-1`}
             />
@@ -168,6 +208,8 @@ export default async function CandidatesPage() {
             <FilterLabel>Skills</FilterLabel>
             <input
               type="text"
+              value={filters.skills}
+              onChange={(e) => setField("skills", e.target.value)}
               placeholder="Add skills…"
               className={`${inputCls} mt-1`}
             />
@@ -177,6 +219,8 @@ export default async function CandidatesPage() {
             <FilterLabel>Job Titles</FilterLabel>
             <input
               type="text"
+              value={filters.jobTitles}
+              onChange={(e) => setField("jobTitles", e.target.value)}
               placeholder="e.g. Software Engineer"
               className={`${inputCls} mt-1`}
             />
@@ -187,11 +231,15 @@ export default async function CandidatesPage() {
             <div className="mt-1 grid grid-cols-2 gap-2">
               <input
                 type="number"
+                value={filters.minComp}
+                onChange={(e) => setField("minComp", e.target.value)}
                 placeholder="Min"
                 className={inputCls}
               />
               <input
                 type="number"
+                value={filters.maxComp}
+                onChange={(e) => setField("maxComp", e.target.value)}
                 placeholder="Max"
                 className={inputCls}
               />
@@ -203,10 +251,16 @@ export default async function CandidatesPage() {
             <div className="mt-1 grid grid-cols-[1fr_auto] gap-2">
               <input
                 type="text"
+                value={filters.location}
+                onChange={(e) => setField("location", e.target.value)}
                 placeholder="City, State"
                 className={inputCls}
               />
-              <select className={selectCls} defaultValue="25">
+              <select
+                value={filters.distance}
+                onChange={(e) => setField("distance", e.target.value)}
+                className={selectCls}
+              >
                 {DISTANCE_OPTIONS.map((d) => (
                   <option key={d} value={d}>
                     {d} mi
@@ -220,6 +274,8 @@ export default async function CandidatesPage() {
             <FilterLabel>Current Employer</FilterLabel>
             <input
               type="text"
+              value={filters.employer}
+              onChange={(e) => setField("employer", e.target.value)}
               placeholder="Company name"
               className={`${inputCls} mt-1`}
             />
@@ -227,7 +283,11 @@ export default async function CandidatesPage() {
 
           <div>
             <FilterLabel>Employer Tenure</FilterLabel>
-            <select className={`${selectCls} mt-1`} defaultValue="any">
+            <select
+              value={filters.tenure}
+              onChange={(e) => setField("tenure", e.target.value)}
+              className={`${selectCls} mt-1`}
+            >
               {TENURE_OPTIONS.map((t) => (
                 <option key={t.value} value={t.value}>
                   {t.label}
@@ -238,7 +298,11 @@ export default async function CandidatesPage() {
 
           <div>
             <FilterLabel>Work Authorization</FilterLabel>
-            <select className={`${selectCls} mt-1`} defaultValue="all">
+            <select
+              value={filters.workAuth}
+              onChange={(e) => setField("workAuth", e.target.value)}
+              className={`${selectCls} mt-1`}
+            >
               {WORK_AUTH_OPTIONS.map((w) => (
                 <option key={w.value} value={w.value}>
                   {w.label}
@@ -249,7 +313,11 @@ export default async function CandidatesPage() {
 
           <div>
             <FilterLabel>Last Apply Date</FilterLabel>
-            <select className={`${selectCls} mt-1`} defaultValue="any">
+            <select
+              value={filters.lastApply}
+              onChange={(e) => setField("lastApply", e.target.value)}
+              className={`${selectCls} mt-1`}
+            >
               {DATE_OPTIONS.map((d) => (
                 <option key={d.value} value={d.value}>
                   {d.label}
@@ -260,7 +328,11 @@ export default async function CandidatesPage() {
 
           <div>
             <FilterLabel>Last Action Date</FilterLabel>
-            <select className={`${selectCls} mt-1`} defaultValue="any">
+            <select
+              value={filters.lastAction}
+              onChange={(e) => setField("lastAction", e.target.value)}
+              className={`${selectCls} mt-1`}
+            >
               {DATE_OPTIONS.map((d) => (
                 <option key={d.value} value={d.value}>
                   {d.label}
@@ -274,14 +346,22 @@ export default async function CandidatesPage() {
           <div className="flex items-center justify-between gap-2">
             <button
               type="button"
+              onClick={onQuickSearch}
               className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
             >
               Quick Search
             </button>
             <span className="text-xs font-medium text-court-fg-muted">
-              {total.toLocaleString()} Candidate{total === 1 ? "" : "s"}
+              {total == null ? "—" : total.toLocaleString()} Candidate
+              {total === 1 ? "" : "s"}
             </span>
           </div>
+          <Link
+            href="/candidates/lists"
+            className="mt-2 block text-[11px] text-court-fg-muted underline-offset-2 hover:text-court-fg hover:underline"
+          >
+            View Lists
+          </Link>
         </div>
       </aside>
 
@@ -307,14 +387,19 @@ export default async function CandidatesPage() {
               <th className="w-10 px-3 py-2" />
             </tr>
           </thead>
-          <tbody className="divide-y divide-court-border-soft">
-            {rows.length === 0 && (
+          <tbody
+            className={
+              "divide-y divide-court-border-soft transition-opacity " +
+              (loading ? "opacity-50" : "opacity-100")
+            }
+          >
+            {rows.length === 0 && !loading && (
               <tr>
                 <td
                   colSpan={10}
                   className="px-5 py-12 text-center text-sm text-court-fg-muted"
                 >
-                  No candidates yet
+                  No candidates match your filters
                 </td>
               </tr>
             )}
