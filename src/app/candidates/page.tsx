@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronsUpDown, Eye, X } from "lucide-react";
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronLeft, ChevronRight, ChevronsUpDown, Eye, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const TENURE_OPTIONS = [
@@ -331,6 +331,39 @@ export default function CandidatesPage() {
     void runFetch(filters);
   }
 
+  // Split-view prev/next. The narrow name list and the iframe both
+  // index off rows[], so the position of selectedId in rows[] drives
+  // the "X of Y" counter and the disabled state of the arrows. When
+  // the active candidate falls off the filtered set (e.g. user tweaks
+  // a filter while the slide-over is open), currentIndex is -1; both
+  // arrows disable and the counter shows "— of N" rather than crashing.
+  const currentIndex = useMemo(
+    () => (selectedId ? rows.findIndex((r) => r.id === selectedId) : -1),
+    [rows, selectedId],
+  );
+  const canPrev = currentIndex > 0;
+  const canNext = currentIndex >= 0 && currentIndex < rows.length - 1;
+
+  function goPrev() {
+    if (!canPrev) return;
+    setSelectedId(rows[currentIndex - 1].id);
+  }
+  function goNext() {
+    if (!canNext) return;
+    setSelectedId(rows[currentIndex + 1].id);
+  }
+
+  // Scroll the active name into view inside the narrow left pane each
+  // time prev/next changes the selection. block: "nearest" only scrolls
+  // when the row is actually outside the viewport, so a click on a row
+  // that's already visible doesn't jerk the list.
+  const nameRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+  useEffect(() => {
+    if (!selectedId) return;
+    const el = nameRefs.current.get(selectedId);
+    if (el) el.scrollIntoView({ block: "nearest" });
+  }, [selectedId]);
+
   return (
     <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex min-h-[calc(100vh-72px)] md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4">
       <aside
@@ -526,6 +559,9 @@ export default function CandidatesPage() {
               return (
                 <button
                   key={c.id}
+                  ref={(el) => {
+                    nameRefs.current.set(c.id, el);
+                  }}
                   type="button"
                   onClick={() => setSelectedId(c.id)}
                   className={
@@ -540,20 +576,48 @@ export default function CandidatesPage() {
               );
             })}
           </section>
-          <section className="relative flex-1 bg-court-bg">
-            <button
-              type="button"
-              onClick={() => setSelectedId(null)}
-              aria-label="Close profile"
-              className="absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:bg-court-surface-subtle hover:text-court-fg"
-            >
-              <X className="h-4 w-4" />
-            </button>
+          <section className="flex flex-1 flex-col bg-court-bg">
+            {/* Split-view nav bar. Sits flush above the iframe with a
+                topbar-height (~40px) chrome strip so the prev/next +
+                counter read as a control row, not a floating widget.
+                Close X moves into this row at the far right so it
+                doesn't overlay the bar's content. */}
+            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-court-border bg-court-surface px-3">
+              <button
+                type="button"
+                onClick={goPrev}
+                disabled={!canPrev}
+                aria-label="Previous candidate"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-xs font-medium tabular-nums text-court-fg-muted">
+                {currentIndex >= 0 ? currentIndex + 1 : "—"} of {rows.length}
+              </span>
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={!canNext}
+                aria-label="Next candidate"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                aria-label="Close profile"
+                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
             <iframe
               key={selectedId}
               src={`/candidates/${selectedId}?embed=true`}
               title="Candidate profile"
-              className="h-[calc(100vh-72px)] w-full border-0"
+              className="w-full flex-1 border-0"
             />
           </section>
         </>
