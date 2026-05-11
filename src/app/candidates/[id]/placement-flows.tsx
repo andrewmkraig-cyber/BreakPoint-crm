@@ -44,6 +44,7 @@ import {
   type SubmittalResumeVariant,
 } from "@/app/candidates/[id]/placement-actions";
 import {
+  getInterviewSchedulingTemplates,
   rescheduleInterview,
   scheduleInterview,
   sendInterviewInvite,
@@ -151,6 +152,14 @@ type InviteFlowState = {
   // both invite composers so the toggle decision on the schedule dialog
   // applies to both events.
   openMeeting: boolean;
+  // Pre-fetched active templates for the two interview-scheduled
+  // triggers. When non-null the composers use the template's
+  // subject/body as the seed (with merge fields resolved against the
+  // live interview context); when null they fall back to the
+  // hardcoded composer defaults so the flow keeps working without
+  // any templates seeded.
+  candidateTemplate: { subject: string; body: string } | null;
+  clientTemplate: { subject: string; body: string } | null;
 };
 
 type CandidateInviteContext = {
@@ -1644,11 +1653,28 @@ function ScheduleInterviewDialog({
         toast.error("Couldn't schedule interview", { description: result.error });
         return;
       }
-      // Trigger fires (Client Interview Scheduled + Candidate
-      // Interview Prep) now run inside scheduleInterview itself —
-      // see fireInterviewTriggers in interview-actions.ts. This
-      // call site no longer needs to invoke the legacy single-email
-      // helper, which has been deleted.
+      // Pre-fetch the two interview-scheduled templates so the
+      // composers can seed subject + body from them. Best-effort:
+      // a failure here just leaves the composers to render their
+      // hardcoded fallbacks, which is the same path no-template
+      // organizations already take.
+      let templates: { candidate: { subject: string; body: string } | null; client: { subject: string; body: string } | null } = {
+        candidate: null,
+        client: null,
+      };
+      try {
+        templates = await getInterviewSchedulingTemplates();
+      } catch {
+        // ignore — composers fall back to defaults
+      }
+      // Surface the Meet "Trusted by default" caveat in a sticky
+      // toast with a one-click link to the Meet settings page so the
+      // recruiter can flip it to Open without leaving the flow. Only
+      // applies to Video interviews where Calendar minted a Meet.
+      if (type === "video" && result.value.meetLink) {
+        const meetCode = extractMeetCode(result.value.meetLink);
+        if (meetCode) surfaceMeetSettingsLink(meetCode);
+      }
       onScheduled({
         interviewId: result.value.interviewId,
         scheduledAtISO: snapped.toISOString(),
@@ -1669,6 +1695,8 @@ function ScheduleInterviewDialog({
         bccEmails: parseEmailCsv(bccCsv),
         timeZone,
         openMeeting,
+        candidateTemplate: templates.candidate,
+        clientTemplate: templates.client,
       });
     });
   }
@@ -2960,6 +2988,40 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary);
 }
 
+// Extract the meeting code from a Meet URL — `meetCode` is the
+// dash-separated slug Google uses for the meeting room (e.g.
+// https://meet.google.com/abc-defg-hij → "abc-defg-hij"). Returns null
+// when the URL doesn't match the Meet shape so callers can skip the
+// follow-up settings link cleanly.
+export function extractMeetCode(meetLink: string | null | undefined): string | null {
+  if (!meetLink) return null;
+  const m = meetLink.match(/meet\.google\.com\/([a-z0-9-]+)/i);
+  return m?.[1] ?? null;
+}
+
+// Sticky info toast surfacing the Meet "Trusted by default" caveat
+// with a one-click jump to the room's settings page so the recruiter
+// can flip access to "Anyone with the link" without leaving Ace. We
+// keep the toast visible for 15 s — long enough to read + click on,
+// short enough to not pile up if multiple invites get scheduled in a
+// row. Exported so the Ace-native scheduler (local-placement-rows)
+// can reuse the same UX without duplicating the JSX.
+export function surfaceMeetSettingsLink(meetCode: string): void {
+  toast.info("Meeting access is set to Trusted by default.", {
+    description: (
+      <a
+        href={`https://meet.google.com/${meetCode}/settings`}
+        target="_blank"
+        rel="noreferrer"
+        className="text-brand-dark underline underline-offset-2 hover:text-brand"
+      >
+        Change to Open →
+      </a>
+    ),
+    duration: 15_000,
+  });
+}
+
 // ---------------- Interview invite composers ----------------
 
 function buildInterviewMergeValues(args: {
@@ -3091,8 +3153,19 @@ function ClientInviteComposer({
         to: hasClient ? [invite.clientContactEmail] : [],
         cc: invite.ccEmails,
         bcc: invite.bccEmails,
-        subject: applyMergeFieldsClient(fallbackClientSubject(invite, candidateFullName), values),
-        body: applyMergeFieldsClient(fallbackBody(invite, "client", candidateFullName), values),
+        // Active client-side template wins if present; falls back to
+        // the hardcoded composer default when no template is seeded
+        // for this org. Merge fields resolve against the same `values`
+        // map either way so [Job Title] / [Candidate Full Name] /
+        // etc. populate the same way regardless of source.
+        subject: applyMergeFieldsClient(
+          invite.clientTemplate?.subject ?? fallbackClientSubject(invite, candidateFullName),
+          values,
+        ),
+        body: applyMergeFieldsClient(
+          invite.clientTemplate?.body ?? fallbackBody(invite, "client", candidateFullName),
+          values,
+        ),
       }}
       showTemplatePicker
       templateFilter={(t) => t.category === "interview"}
@@ -3166,8 +3239,17 @@ function CandidateInviteComposer({
         to: candidateEmail ? [candidateEmail] : [],
         cc: invite.ccEmails,
         bcc: invite.bccEmails,
-        subject: applyMergeFieldsClient(fallbackCandidateSubject(invite), values),
-        body: applyMergeFieldsClient(fallbackBody(invite, "candidate", candidateFullName), values),
+        // Active candidate-prep template wins when seeded — otherwise
+        // the existing hardcoded fallback applies. Merge fields are
+        // resolved client-side via the same `values` map either way.
+        subject: applyMergeFieldsClient(
+          invite.candidateTemplate?.subject ?? fallbackCandidateSubject(invite),
+          values,
+        ),
+        body: applyMergeFieldsClient(
+          invite.candidateTemplate?.body ?? fallbackBody(invite, "candidate", candidateFullName),
+          values,
+        ),
       }}
       showTemplatePicker
       templateFilter={(t) => t.category === "interview"}

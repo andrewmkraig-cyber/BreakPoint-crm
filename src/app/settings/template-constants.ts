@@ -47,12 +47,14 @@ export const TRIGGER_OPTIONS: ReadonlyArray<{ value: string; label: string; desc
   {
     value: CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
     label: "Interview Scheduled — Client Confirmation",
-    description: "Auto-sends to the client when you Schedule Interview, confirming the time + calendar invite.",
+    description:
+      "Pre-populates the Send Client Invite composer when you Schedule Interview. Does NOT auto-send — the calendar invite is the only thing that ships.",
   },
   {
     value: CANDIDATE_INTERVIEW_PREP_TRIGGER,
     label: "Interview Scheduled — Candidate Prep",
-    description: "Auto-sends to the candidate when you Schedule Interview, with prep tips and the calendar invite.",
+    description:
+      "Pre-populates the Send Candidate Invite composer when you Schedule Interview. Does NOT auto-send — the calendar invite is the only thing that ships.",
   },
   {
     value: OFFER_EXTENDED_TRIGGER,

@@ -13,6 +13,10 @@ import {
   updateEventAsInvite,
 } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
+import {
+  CANDIDATE_INTERVIEW_PREP_TRIGGER,
+  CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
+} from "@/app/settings/template-constants";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
 // Ace-local candidates (candidateId cuid). The Interview model is polymorphic
@@ -707,4 +711,34 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   };
 }
 
+// Returns the active templates for the two interview-scheduled triggers so
+// the per-party composers can pre-populate subject + body when a template
+// exists. Returns null for whichever side has no active template; callers
+// fall back to the hardcoded composer defaults in that case. Merge fields
+// are NOT resolved here — the caller applies applyMergeFields with the
+// live interview context so merge values can change between fetch and
+// render.
+export type InterviewSchedulingTemplate = { subject: string; body: string };
+export type InterviewSchedulingTemplates = {
+  candidate: InterviewSchedulingTemplate | null;
+  client: InterviewSchedulingTemplate | null;
+};
 
+export async function getInterviewSchedulingTemplates(): Promise<InterviewSchedulingTemplates> {
+  const user = await requireUser();
+  if (!user) return { candidate: null, client: null };
+  const [candidate, client] = await Promise.all([
+    prisma.emailTemplate.findFirst({
+      where: { trigger: CANDIDATE_INTERVIEW_PREP_TRIGGER, isActive: true },
+      select: { subject: true, body: true },
+    }),
+    prisma.emailTemplate.findFirst({
+      where: { trigger: CLIENT_INTERVIEW_SCHEDULED_TRIGGER, isActive: true },
+      select: { subject: true, body: true },
+    }),
+  ]);
+  return {
+    candidate: candidate ? { subject: candidate.subject, body: candidate.body } : null,
+    client: client ? { subject: client.subject, body: client.body } : null,
+  };
+}

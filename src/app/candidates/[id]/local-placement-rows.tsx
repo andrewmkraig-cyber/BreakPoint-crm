@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
 import {
+  getInterviewSchedulingTemplates,
   rescheduleInterview,
   scheduleInterview,
   sendInterviewInvite,
@@ -29,7 +30,9 @@ import {
   DurationSelect,
   InterviewerPicker,
   buildCcBccOptions,
+  extractMeetCode,
   parseEmailCsv,
+  surfaceMeetSettingsLink,
   type AceTeamContact,
 } from "@/app/candidates/[id]/placement-flows";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
@@ -83,6 +86,11 @@ type LocalInviteFlow = {
   clientContactEmail: string;
   ccEmails: string[];
   bccEmails: string[];
+  // Pre-fetched interview-scheduled templates; null per side means the
+  // composer falls back to its hardcoded default. Mirrors the RF flow's
+  // InviteFlowState shape so both surfaces stay in sync.
+  candidateTemplate: { subject: string; body: string } | null;
+  clientTemplate: { subject: string; body: string } | null;
 };
 
 export function LocalPlacementRows({
@@ -435,6 +443,21 @@ function ScheduleDialog({
         toast.error("Couldn't schedule", { description: result.error });
         return;
       }
+      // Same pre-fetch as the RF flow — templates seed the composers,
+      // failures fall back to hardcoded defaults silently.
+      let templates: { candidate: { subject: string; body: string } | null; client: { subject: string; body: string } | null } = {
+        candidate: null,
+        client: null,
+      };
+      try {
+        templates = await getInterviewSchedulingTemplates();
+      } catch {
+        // ignore
+      }
+      if (type === "video" && result.value.meetLink) {
+        const meetCode = extractMeetCode(result.value.meetLink);
+        if (meetCode) surfaceMeetSettingsLink(meetCode);
+      }
       onScheduled({
         interviewId: result.value.interviewId,
         scheduledAtISO: snapped.toISOString(),
@@ -454,6 +477,8 @@ function ScheduleDialog({
         clientContactEmail: interviewerEmail.trim(),
         ccEmails: parseEmailCsv(ccCsv),
         bccEmails: parseEmailCsv(bccCsv),
+        candidateTemplate: templates.candidate,
+        clientTemplate: templates.client,
       });
     });
   }
@@ -932,20 +957,19 @@ function LocalClientInviteComposer({
   const meetLine = invite.type === "video" && invite.meetLink
     ? `\n• Join on Google Meet: [Interview Meet Link]`
     : "";
-  // Client-side title surfaces the candidate + role so the client can
-  // distinguish overlapping interviews on their calendar (matches the
-  // RF-candidate flow's fallbackClientSubject).
-  const subject = applyMergeFieldsClient(
-    `${formatType(invite.type)} Interview - ${candidateName || "Candidate"} - ${invite.jobTitle}`,
-    values,
-  );
-  const body = applyMergeFieldsClient(
+  // Active client-side template wins when seeded; otherwise the
+  // hardcoded composer default kicks in. Merge fields resolve against
+  // the same values map either way so [Job Title] / [Candidate Full
+  // Name] populate consistently.
+  const fallbackSubject =
+    `${formatType(invite.type)} Interview - ${candidateName || "Candidate"} - ${invite.jobTitle}`;
+  const fallbackBody =
     `Hi [Client Contact First Name],\n\nConfirming the interview with [Candidate Full Name] for the [Job Title] role. ` +
-      `The calendar invite is on its way.\n\n` +
-      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
-      `Reply to this email if anything needs to change.`,
-    values,
-  );
+    `The calendar invite is on its way.\n\n` +
+    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
+    `Reply to this email if anything needs to change.`;
+  const subject = applyMergeFieldsClient(invite.clientTemplate?.subject ?? fallbackSubject, values);
+  const body = applyMergeFieldsClient(invite.clientTemplate?.body ?? fallbackBody, values);
   const ccPickerOptions = buildCcBccOptions(invite.clientContacts);
   const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
@@ -1037,19 +1061,17 @@ function LocalCandidateInviteComposer({
   const meetLine = invite.type === "video" && invite.meetLink
     ? `\n• Join on Google Meet: [Interview Meet Link]`
     : "";
-  // Candidate-side title is intentionally generic — keeps the client's
-  // name off any calendar the candidate may share publicly.
-  const subject = applyMergeFieldsClient(
-    `${formatType(invite.type)} Interview - BreakPoint Talent`,
-    values,
-  );
-  const body = applyMergeFieldsClient(
+  // Active candidate-prep template wins when seeded; otherwise the
+  // generic hardcoded default applies (keeps client's name off the
+  // candidate's shared calendar).
+  const fallbackSubject = `${formatType(invite.type)} Interview - BreakPoint Talent`;
+  const fallbackBody =
     `Hi [Candidate First Name],\n\nYou are confirmed for your [Interview Type] interview with [Client Company Name] ` +
-      `for the [Job Title] role. The calendar invite is on its way.\n\n` +
-      `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
-      `Good luck!`,
-    values,
-  );
+    `for the [Job Title] role. The calendar invite is on its way.\n\n` +
+    `• When: [Interview Date Time]\n• Duration: [Interview Duration]\n• Format: [Interview Type]${addrLine}${meetLine}\n\n` +
+    `Good luck!`;
+  const subject = applyMergeFieldsClient(invite.candidateTemplate?.subject ?? fallbackSubject, values);
+  const body = applyMergeFieldsClient(invite.candidateTemplate?.body ?? fallbackBody, values);
   const ccPickerOptions = buildCcBccOptions(invite.clientContacts);
   const bccPickerOptions = aceTeam.map((m) => ({ id: m.id, name: m.name, email: m.email }));
   return (
