@@ -239,7 +239,11 @@ function SelectField({
   ...rest
 }: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <div className="relative">
+    // w-full + min-w-0 on the wrapper so the select never overflows
+    // its grid column (Location / Employer rows pair this with a
+    // fixed-width sibling and rely on the second column staying
+    // exactly that width).
+    <div className="relative w-full min-w-0">
       <select className={`${selectBareCls}${className ? ` ${className}` : ""}`} {...rest}>
         {children}
       </select>
@@ -862,19 +866,19 @@ export function MatchesTab({
     }
   }
 
-  // Reapply path. Single-row POST to /api/placements with
-  // stage=APPLIED; the server route detects an existing rejected
-  // placement and flips it back to applied (skipping the confirmation
-  // email since the candidate was already in the pipeline once). On
-  // success the row drops out of the Rejected bucket locally.
-  async function reapplyCandidate(candidateId: string, candidateName: string) {
+  // Reapply path. DELETE /api/placements drops the rejected Placement
+  // row entirely so the candidate falls back to having no stage on
+  // this job — they reappear in the All-tab matches search next time
+  // the recruiter looks. Clean-slate semantics, not a stage bump.
+  async function reapplyCandidate(candidateId: string, _candidateName: string) {
+    void _candidateName;
     if (actionInFlight === candidateId) return;
     setActionInFlight(candidateId);
     try {
       const res = await fetch("/api/placements", {
-        method: "POST",
+        method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ candidateId, jobId: jobCuid, stage: "APPLIED" }),
+        body: JSON.stringify({ candidateId, jobId: jobCuid }),
       });
       const data: unknown = await res.json().catch(() => null);
       const okFlag =
@@ -894,7 +898,7 @@ export function MatchesTab({
         return;
       }
       removeRowAndAdvance(candidateId);
-      toast.success(`Reapplied ${candidateName}`);
+      toast.success("Candidate restored to search");
     } catch (e) {
       toast.error("Couldn't reapply", {
         description: e instanceof Error ? e.message : "Network error.",
@@ -1154,7 +1158,12 @@ export function MatchesTab({
       <aside
         className={
           "flex shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface transition-[width,border] duration-200 " +
-          (selectedId ? "w-0 border-r-0" : "w-[240px]")
+          // min-w-[240px] belt-and-suspenders against any future flex
+          // pressure from the right pane — the outer container has
+          // overflow-hidden for the rounded corners, so without an
+          // explicit floor a shrunk aside would silently clip its
+          // dropdowns. Collapsed (split-view) state stays at w-0.
+          (selectedId ? "w-0 border-r-0" : "w-[240px] min-w-[240px]")
         }
       >
         <div className="flex items-center justify-between border-b border-court-border/60 px-3 py-2">

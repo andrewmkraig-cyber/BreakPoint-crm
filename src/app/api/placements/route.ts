@@ -20,6 +20,16 @@ export const dynamic = "force-dynamic";
 // instead of going through the rejectLocalPlacement flow which
 // requires an existing Placement row.
 //
+// DELETE /api/placements
+// Body: { candidateId: string, jobId: string }
+//
+// Reapply (clean-slate) path. Hard-deletes the rejected Placement for
+// (candidate, job) in the caller's org so the candidate falls back to
+// having no stage for this job — they reappear in the All-tab matches
+// search instead of bouncing back to "applied". This is intentional:
+// recruiters use Reject as a triage hide, and Reapply as "ignore that
+// triage, I want to re-evaluate from scratch."
+//
 // Submit still routes through the candidate profile's Submit modal —
 // it's a multi-step flow (writeup generation, email send) that
 // doesn't fit a one-click body.
@@ -210,6 +220,65 @@ export async function POST(req: Request) {
       clientRfId,
       reason: "find_matches_reject",
     },
+  });
+
+  return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(req: Request) {
+  let body: { candidateId?: string; jobId?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
+  }
+  const candidateId = typeof body.candidateId === "string" ? body.candidateId.trim() : "";
+  const jobId = typeof body.jobId === "string" ? body.jobId.trim() : "";
+  if (!candidateId || !jobId) {
+    return NextResponse.json(
+      { ok: false, error: "candidateId and jobId required" },
+      { status: 400 },
+    );
+  }
+
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) {
+    return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+  }
+  const user = await prisma.user.findUnique({
+    where: { email: session.user.email },
+    select: { id: true },
+  });
+  if (!user) {
+    return NextResponse.json({ ok: false, error: "User not found." }, { status: 401 });
+  }
+  const org = await getCurrentOrg();
+
+  // deleteMany with the full key set (candidateId, jobId, stage, org) is
+  // the security boundary — a forged candidate/job from another tenant
+  // matches zero rows and 404s out without touching anything.
+  const result = await prisma.placement.deleteMany({
+    where: {
+      candidateId,
+      jobId,
+      stage: "rejected",
+      organizationId: org.id,
+    },
+  });
+  if (result.count === 0) {
+    return NextResponse.json(
+      { ok: false, error: "No rejected placement found for this candidate and job" },
+      { status: 404 },
+    );
+  }
+
+  await logActivity({
+    organizationId: org.id,
+    userId: user.id,
+    actionType: "candidate_unrejected_for_job",
+    targetType: "candidate",
+    targetId: candidateId,
+    metadata: { jobId, reason: "find_matches_reapply" },
   });
 
   return NextResponse.json({ ok: true });
