@@ -99,6 +99,10 @@ function tokenize(q: string): string[] {
     .filter((s) => s.length > 0 && !BOOL_STOPWORDS.has(s.toLowerCase()));
 }
 
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 // For each search token, pre-resolves the set of candidate ids whose
 // data contains the token anywhere — structured columns plus the raw
 // JSON payload cast to text. This is the only way to scan resume
@@ -106,23 +110,28 @@ function tokenize(q: string): string[] {
 // run ILIKE against jsonb directly. Returns one Set per token; the
 // caller AND-composes them via `id: { in: [...] }` clauses so the
 // final result honors "every token must match somewhere".
+//
+// Uses Postgres POSIX regex (~*) with word boundaries \m and \M instead
+// of ILIKE substring so "tax" doesn't match inside "syntax" / "taxes" /
+// "exact". Word boundaries treat punctuation as a break, so "Tax,"
+// or "Tax-Senior" still match cleanly.
 async function resolveTokenIds(
   orgId: string,
   tokens: string[],
 ): Promise<Map<string, string[]>> {
   const out = new Map<string, string[]>();
   for (const t of tokens) {
-    const pattern = `%${t}%`;
+    const pattern = `\\m${escapeRegex(t)}\\M`;
     const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT id FROM "Candidate"
       WHERE "organizationId" = ${orgId}
         AND (
-          "firstName" ILIKE ${pattern}
-          OR "lastName" ILIKE ${pattern}
-          OR "currentDesignation" ILIKE ${pattern}
-          OR "currentOrganization" ILIKE ${pattern}
-          OR location ILIKE ${pattern}
-          OR (raw IS NOT NULL AND raw::text ILIKE ${pattern})
+          "firstName" ~* ${pattern}
+          OR "lastName" ~* ${pattern}
+          OR "currentDesignation" ~* ${pattern}
+          OR "currentOrganization" ~* ${pattern}
+          OR location ~* ${pattern}
+          OR (raw IS NOT NULL AND raw::text ~* ${pattern})
         )
     `);
     out.set(
