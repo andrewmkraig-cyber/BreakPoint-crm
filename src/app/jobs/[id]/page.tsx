@@ -375,7 +375,13 @@ export default async function JobDetailPage({
   };
 
   return (
-    <div className="space-y-5">
+    // Tightened vertical stack so the page header (Back link + client +
+    // title + pipeline chips + tabs) sits closer to the app shell's top
+    // header. Matches the visual density of /jobs and /candidates list
+    // views — the prior space-y-5 pushed Matches/Description content
+    // far enough down that the Save search button on the Matches sidebar
+    // clipped below the fold.
+    <div className="space-y-3">
       <Link
         href="/jobs"
         className="inline-flex items-center gap-1 text-xs text-court-fg-muted hover:text-court-fg"
@@ -383,7 +389,7 @@ export default async function JobDetailPage({
         <ArrowLeft className="h-3 w-3" /> Back to jobs
       </Link>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
         {clientSlug ? (
           <Link
             href={`/clients/${clientSlug}`}
@@ -396,7 +402,7 @@ export default async function JobDetailPage({
             {job.company || "Client"}
           </div>
         )}
-        <h1 className="font-serif text-3xl font-bold text-court-fg">{job.title}</h1>
+        <h1 className="font-serif text-2xl font-bold text-court-fg">{job.title}</h1>
       </div>
 
       {/* Compact pipeline strip — single chip row sitting directly above
@@ -420,7 +426,7 @@ export default async function JobDetailPage({
         }}
       />
 
-      <div className="space-y-4">
+      <div className="space-y-3">
         <JobTabs slug={slug} tab={tab} />
         {tab === "overview" ? (
           <JobOverviewTab
