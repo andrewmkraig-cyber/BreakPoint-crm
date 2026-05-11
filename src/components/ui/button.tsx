@@ -118,3 +118,11 @@ export { Button };
 // to pick the same `size` prop.
 export const CLAUDE_PILL_CLASS =
   "inline-flex items-center gap-1.5 rounded-md border border-[#2A4D38] bg-[#1F3A29] px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-[#284A36] dark:border-[#3A5944] dark:bg-[#2D4435] dark:hover:bg-[#37533F] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-60";
+
+// Canonical "Add to List" affordance. Matches the candidate profile's
+// neutral-white surface so every Add to List across the app — candidate
+// profile, /candidates bulk bar, Matches bulk bar — renders identically.
+// Bake the shape in (rounded-md, square corners) so it doesn't drift
+// to a pill on any surface.
+export const ADD_TO_LIST_BUTTON_CLASS =
+  "inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:cursor-not-allowed disabled:opacity-60";

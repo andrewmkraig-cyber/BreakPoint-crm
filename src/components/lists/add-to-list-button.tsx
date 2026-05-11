@@ -11,6 +11,7 @@ import {
   setCandidateListMemberships,
   type CandidateListSummary,
 } from "@/app/candidates/lists-actions";
+import { ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 // Phase 5A.4.b: candidate-profile button + modal that lets the user
@@ -34,7 +35,7 @@ export function AddToListButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+        className={ADD_TO_LIST_BUTTON_CLASS}
       >
         <ListPlus className="h-3 w-3" /> Add to List
       </button>

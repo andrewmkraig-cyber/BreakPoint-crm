@@ -36,7 +36,7 @@ import {
   type SelectHTMLAttributes,
 } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 
 // Per-job sourcing surface. Structurally a clone of /candidates' rail +
 // results table + split-view from src/app/candidates/page.tsx, scoped
@@ -1812,7 +1812,6 @@ export function MatchesTab({
                       size="sm"
                       onClick={() => void bulkApply()}
                       disabled={bulkInFlight}
-                      className="rounded-full"
                     >
                       {bulkInFlight ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1827,7 +1826,6 @@ export function MatchesTab({
                       size="sm"
                       onClick={() => void bulkKeep()}
                       disabled={bulkInFlight}
-                      className="rounded-full"
                     >
                       <Bookmark className="h-3.5 w-3.5" />
                       Keep
@@ -1838,7 +1836,6 @@ export function MatchesTab({
                       size="sm"
                       onClick={() => void bulkReject()}
                       disabled={bulkInFlight}
-                      className="rounded-full"
                     >
                       {bulkInFlight ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1847,13 +1844,11 @@ export function MatchesTab({
                       )}
                       Reject
                     </Button>
-                    <Button
+                    <button
                       type="button"
-                      variant="secondary"
-                      size="sm"
                       onClick={() => void openAddToList()}
                       disabled={bulkInFlight || listsLoading}
-                      className="rounded-full"
+                      className={ADD_TO_LIST_BUTTON_CLASS}
                     >
                       {listsLoading ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1861,7 +1856,7 @@ export function MatchesTab({
                         <ListPlus className="h-3.5 w-3.5" />
                       )}
                       Add to List
-                    </Button>
+                    </button>
                   </div>
                 </div>
               )}

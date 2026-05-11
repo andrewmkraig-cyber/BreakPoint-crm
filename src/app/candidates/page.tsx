@@ -44,7 +44,7 @@ import {
   type SelectHTMLAttributes,
 } from "react";
 import { toast } from "sonner";
-import { Button } from "@/components/ui/button";
+import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const DATE_OPTIONS = [
@@ -1616,7 +1616,6 @@ export default function CandidatesPage() {
                       variant="apply"
                       onClick={() => void openBulkApply()}
                       disabled={bulkLoading}
-                      className="rounded-full"
                     >
                       {bulkLoading && bulkDialog === null ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1625,17 +1624,15 @@ export default function CandidatesPage() {
                       )}
                       Apply to Job
                     </Button>
-                    <Button
+                    <button
                       type="button"
-                      size="sm"
-                      variant="secondary"
                       onClick={() => void openBulkList()}
                       disabled={bulkLoading}
-                      className="rounded-full"
+                      className={ADD_TO_LIST_BUTTON_CLASS}
                     >
                       <ListPlus className="h-3.5 w-3.5" />
                       Add to List
-                    </Button>
+                    </button>
                   </div>
                 </div>
               )}
