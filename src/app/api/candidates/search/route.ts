@@ -147,6 +147,73 @@ function parseCsv(raw: string | null): string[] {
     .filter((s) => s.length > 0);
 }
 
+// Nominatim hits for the search-pill location are reused across requests
+// within a server process. Recruiter typing "Akron, OH" 12 times in a
+// minute only burns the Nominatim quota once. Module-level Map is fine
+// here — Next's serverless runtime recycles the process often enough
+// that cache freshness isn't a concern (city centroids don't move).
+const geocodeCache = new Map<string, { lat: number; lng: number } | null>();
+const NOMINATIM_UA =
+  "Ace-BreakPointTalent-Search/1.0 (andrew@breakpointtalent.com)";
+
+type GeoHit = { lat: number; lng: number };
+type NominatimHit = { lat: string; lon: string };
+
+async function geocodePill(loc: string): Promise<GeoHit | null> {
+  const key = loc.toLowerCase().trim();
+  if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`;
+    const res = await fetch(url, {
+      headers: { "User-Agent": NOMINATIM_UA },
+      // 5s upper bound so a slow Nominatim doesn't stall the search
+      // request — caller falls back to text contains on null return.
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      geocodeCache.set(key, null);
+      return null;
+    }
+    const arr = (await res.json()) as NominatimHit[];
+    if (!Array.isArray(arr) || arr.length === 0) {
+      geocodeCache.set(key, null);
+      return null;
+    }
+    const lat = Number.parseFloat(arr[0].lat);
+    const lng = Number.parseFloat(arr[0].lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      geocodeCache.set(key, null);
+      return null;
+    }
+    const hit = { lat, lng };
+    geocodeCache.set(key, hit);
+    return hit;
+  } catch {
+    geocodeCache.set(key, null);
+    return null;
+  }
+}
+
+// Approximate degrees per mile. 1° latitude ≈ 69 miles everywhere; 1°
+// longitude shrinks with cos(lat). Good enough for filter pre-pass —
+// the bounding box is intentionally a little generous near the poles
+// rather than a great-circle calculation.
+function milesToBox(center: GeoHit, miles: number): {
+  latMin: number;
+  latMax: number;
+  lngMin: number;
+  lngMax: number;
+} {
+  const degLat = miles / 69;
+  const degLng = miles / (69 * Math.cos((center.lat * Math.PI) / 180));
+  return {
+    latMin: center.lat - degLat,
+    latMax: center.lat + degLat,
+    lngMin: center.lng - degLng,
+    lngMax: center.lng + degLng,
+  };
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) {
@@ -164,6 +231,14 @@ export async function GET(req: Request) {
   const minComp = parseNumber(sp.get("minComp"));
   const maxComp = parseNumber(sp.get("maxComp"));
   const location = (sp.get("location") ?? "").trim();
+  // Distance pill in miles. UI options are 10/25/50/100; we accept any
+  // positive integer but clamp the resolved bounding box at 500 miles
+  // so a stray "10000" can't paint the whole continent.
+  const distanceMi = (() => {
+    const raw = parseNumber(sp.get("distance"));
+    if (raw == null || raw <= 0) return 25;
+    return Math.min(Math.round(raw), 500);
+  })();
   const employer = (sp.get("employer") ?? "").trim();
   const tenure = (sp.get("tenure") ?? "any").trim();
   // workAuth is accepted but currently a no-op — Candidate has no
@@ -234,9 +309,27 @@ export async function GET(req: Request) {
     }
 
     if (location) {
-      andClauses.push({
-        location: { contains: location, mode: "insensitive" },
-      });
+      // Geocode the pill once and run a bounding-box filter on
+      // candidate lat/lng. Rows without geocoded coordinates are
+      // excluded from the radius result on purpose — after the
+      // scripts/geocode-candidates.ts backfill every row has them, and
+      // dropping ungeocodable rows ("Remote", "—") is what the
+      // recruiter wants when they're searching by miles. If the pill
+      // itself fails to geocode (typo, unknown city, Nominatim down)
+      // we fall through to the previous text-contains behavior so the
+      // search never silently returns 0.
+      const pillHit = await geocodePill(location);
+      if (pillHit) {
+        const box = milesToBox(pillHit, distanceMi);
+        andClauses.push({
+          lat: { gte: box.latMin, lte: box.latMax },
+          lng: { gte: box.lngMin, lte: box.lngMax },
+        });
+      } else {
+        andClauses.push({
+          location: { contains: location, mode: "insensitive" },
+        });
+      }
     }
     if (employer) {
       andClauses.push({

@@ -349,6 +349,13 @@ model Candidate {
   currentDesignation  String?
   currentOrganization String?
   location            String?
+  // Geocoded from `location` via the one-shot scripts/geocode-candidates.ts
+  // backfill (Nominatim). The /api/candidates/search route uses these to
+  // run a bounding-box radius filter when the user supplies a location +
+  // distance, falling back to a text-contains match if either is null
+  // (e.g. unparseable locations like "Remote").
+  lat                 Float?
+  lng                 Float?
   linkedinProfile     String?
   skills              String[] @default([])
   // Free-form tags + RF attributes normalized to strings (e.g. "kept",
