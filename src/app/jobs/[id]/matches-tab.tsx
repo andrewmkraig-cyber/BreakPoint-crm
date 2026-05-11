@@ -1110,7 +1110,7 @@ export function MatchesTab({
       <aside
         className={
           "flex shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface transition-[width,border] duration-200 " +
-          (selectedId ? "w-0 border-r-0" : "w-[200px]")
+          (selectedId ? "w-0 border-r-0" : "w-[240px]")
         }
       >
         <div className="flex items-center justify-between border-b border-court-border/60 px-3 py-2">
