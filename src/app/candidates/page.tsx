@@ -937,8 +937,10 @@ export default function CandidatesPage() {
             : "w-[300px] border-r border-court-border")
         }
       >
-        {/* Header block — title + Reset */}
-        <div className="flex items-center justify-between border-b border-court-border/60 px-[18px] py-2">
+        {/* Header block — title + Reset. Faint top border separates
+            the sidebar from the global topbar chrome; no bottom border
+            so the section blocks below flow together as one panel. */}
+        <div className="flex items-center justify-between border-t border-court-border/30 px-[18px] py-2">
           <h2 className="text-sm font-semibold text-court-fg">
             Search Candidates
           </h2>
@@ -955,7 +957,7 @@ export default function CandidatesPage() {
         {/* Scrollable body — five sections */}
         <div className="flex-1 overflow-y-auto">
           {/* Identity */}
-          <section className="border-b border-court-border/60 px-[18px] py-1.5">
+          <section className="px-[18px] py-1.5">
             <SectionTitle>Identity</SectionTitle>
             <div className="space-y-1.5">
               <div>
@@ -998,7 +1000,7 @@ export default function CandidatesPage() {
           </section>
 
           {/* Compensation — section title doubles as the field label */}
-          <section className="border-b border-court-border/60 px-[18px] py-1.5">
+          <section className="px-[18px] py-1.5">
             <SectionTitle>Compensation</SectionTitle>
             <div className="grid grid-cols-2 gap-2">
               <input
@@ -1023,7 +1025,7 @@ export default function CandidatesPage() {
               together server-side via bounding-box union. enterOnly is
               critical here: the comma in "Akron, OH" is part of the
               value, not a commit delimiter. */}
-          <section className="border-b border-court-border/60 px-[18px] py-1.5">
+          <section className="px-[18px] py-1.5">
             <SectionTitle>Location</SectionTitle>
             {/* Stacked: location pill input full-width on top, distance
                 full-width below it. Matches the matches-tab sidebar
@@ -1063,7 +1065,7 @@ export default function CandidatesPage() {
           </section>
 
           {/* Employment */}
-          <section className="border-b border-court-border/60 px-[18px] py-1.5">
+          <section className="px-[18px] py-1.5">
             <SectionTitle>Employment</SectionTitle>
             <div>
               <FieldLabel>Employer</FieldLabel>
