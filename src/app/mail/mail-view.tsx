@@ -1404,20 +1404,28 @@ export function MoveToMenu({
         setDraft("");
       }
     }
-    function onScrollOrResize() {
-      // Scroll inside the page rearranges the button — close so the
-      // menu doesn't dangle at a stale position.
+    function closeMenu() {
       setOpen(false);
       setCreating(false);
       setDraft("");
     }
+    function onScroll(e: Event) {
+      // Scrolling the label list itself (overflow-y-auto inside the
+      // portal) must not close the menu — the user is hunting for a
+      // label. Any scroll outside the menu (page, sidebar, thread
+      // list) moves the anchor button, so close to avoid a stale
+      // position.
+      const target = e.target as Node | null;
+      if (target && menuRef.current?.contains(target)) return;
+      closeMenu();
+    }
     document.addEventListener("mousedown", onDocClick);
-    window.addEventListener("resize", onScrollOrResize);
-    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", onScroll, true);
     return () => {
       document.removeEventListener("mousedown", onDocClick);
-      window.removeEventListener("resize", onScrollOrResize);
-      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", onScroll, true);
     };
   }, [open]);
 
