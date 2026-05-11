@@ -209,8 +209,13 @@ function ApplyModal(props: {
         return;
       }
       toast.success(`Applied ${props.candidateName} to ${job.jobTitle}`, { id: toastId });
-      router.refresh();
       props.onClose();
+      // Delay the RSC refetch by 500 ms so the Postgres insert (and any
+      // read-replica replication) commits before LocalPlacementRows
+      // re-reads. Immediate router.refresh() raced the commit — the
+      // refreshed jobs prop arrived without the new placement and the
+      // pill flickered out the moment the refresh landed.
+      setTimeout(() => router.refresh(), 500);
     });
   }
 

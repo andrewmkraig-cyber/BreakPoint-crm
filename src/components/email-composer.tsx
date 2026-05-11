@@ -44,6 +44,13 @@ export type EmailComposerProps = {
   onSend: (draft: EmailDraft) => Promise<void>;
   sendLabel?: string;
   sendingLabel?: string;
+  // Optional "step backward" hook. When provided, a Back button
+  // renders next to Cancel and clicking it calls this handler. Used
+  // by the interview invite chain so the recruiter can return to the
+  // previous composer (or the underlying Schedule modal) without
+  // discarding the in-flight draft entirely.
+  onBack?: () => void;
+  backLabel?: string;
   helperText?: string;
   generateLabel?: string;
   onGenerate?: (current: EmailDraft) => Promise<string>;
@@ -137,6 +144,8 @@ export function EmailComposer({
   onSend,
   sendLabel = "Send",
   sendingLabel = "Sending…",
+  onBack,
+  backLabel = "Back",
   helperText,
   generateLabel = "Generate with Claude",
   onGenerate,
@@ -812,6 +821,16 @@ export function EmailComposer({
             {footerExtras}
           </div>
           <div className="flex items-center gap-2">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                disabled={isSending}
+                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+              >
+                ← {backLabel}
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}

@@ -44,6 +44,7 @@ import {
   type SubmittalResumeVariant,
 } from "@/app/candidates/[id]/placement-actions";
 import {
+  cancelInterview,
   getInterviewSchedulingTemplates,
   rescheduleInterview,
   scheduleInterview,
@@ -263,6 +264,15 @@ export function PlacementActions({
   useEffect(() => {
     setJobsState(jobs);
   }, [jobs]);
+
+  // Optimistic removal hook for the Reapply-via-delete branch in
+  // PipelineRowActions. The row disappears from the job strip as soon
+  // as deletePlacement resolves — router.refresh() can't be used here
+  // because the candidate's RF c.jobs[] payload still backs the row;
+  // a refresh would re-surface it at the "sourced" fallback stage.
+  function handlePlacementRemoved(placementId: string) {
+    setJobsState((prev) => prev.filter((j) => j.placement?.id !== placementId));
+  }
 
   function handleApplied(opt: OpenJobOption, placementId: string) {
     setJobsState((prev) => {
@@ -504,6 +514,7 @@ export function PlacementActions({
             onClientInvite={() => setClientInviteFor(j)}
             onReject={() => setRejectFor(j)}
             onCancel={() => setCancelFor(j)}
+            onPlacementRemoved={handlePlacementRemoved}
           />
         ))}
       </div>
@@ -539,6 +550,13 @@ export function PlacementActions({
         />
       )}
       {scheduleFor && (
+        // Schedule modal stays MOUNTED while the invite composers
+        // are open on top of it — that way clicking Back on the
+        // candidate composer returns to the schedule modal with all
+        // the recruiter's date / type / interviewer / cc values still
+        // populated. onScheduled no longer closes the schedule modal;
+        // it only opens the composer. Closing for real happens after
+        // the Client composer (final step) succeeds.
         <ScheduleInterviewDialog
           candidateRef={{ candidateRfId }}
           candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
@@ -547,30 +565,18 @@ export function PlacementActions({
           aceTeam={aceTeam}
           onClose={() => setScheduleFor(null)}
           onScheduled={(ctx) => {
-            setScheduleFor(null);
-            setInviteFlow({ ...ctx, step: "client" });
+            setInviteFlow({ ...ctx, step: "candidate" });
           }}
-        />
-      )}
-      {inviteFlow && inviteFlow.step === "client" && (
-        <ClientInviteComposer
-          invite={inviteFlow}
-          candidate={{
-            firstName: candidateFirstName,
-            lastName: candidateLastName,
-            email: candidateEmail,
-            phone: candidatePhone,
-            location: candidateLocation,
-            currentTitle: candidateCurrentTitle,
-            currentEmployer: candidateCurrentEmployer,
-          }}
-          recruiter={recruiter}
-          clientContacts={findClientContactsForJob(jobsState, inviteFlow.jobTitle, inviteFlow.clientName)}
-          aceTeam={aceTeam}
-          onDone={(meetLink) => setInviteFlow({ ...inviteFlow, step: "candidate", meetLink: meetLink ?? inviteFlow.meetLink })}
         />
       )}
       {inviteFlow && inviteFlow.step === "candidate" && (
+        // First composer in the chain. Send advances to the Client
+        // composer; Back cancels the in-flight interview (so the
+        // recruiter can edit the schedule without piling up duplicate
+        // calendar events) and unmounts the composer, which reveals
+        // the Schedule modal that was sitting underneath. Cancel / X
+        // closes the whole flow without rolling back — the recruiter
+        // can manage the in-flight interview from the activity panel.
         <CandidateInviteComposer
           invite={inviteFlow}
           candidate={{
@@ -585,10 +591,52 @@ export function PlacementActions({
           recruiter={recruiter}
           clientContacts={findClientContactsForJob(jobsState, inviteFlow.jobTitle, inviteFlow.clientName)}
           aceTeam={aceTeam}
-          onDone={() => {
+          onClose={() => {
             setInviteFlow(null);
+            setScheduleFor(null);
+          }}
+          onBack={() => {
+            const interviewId = inviteFlow.interviewId;
+            setInviteFlow(null);
+            void cancelInterview(interviewId).then((res) => {
+              if (!res.ok) {
+                toast.error("Couldn't cancel in-flight interview", { description: res.error });
+              }
+            });
+          }}
+          onSent={() => setInviteFlow({ ...inviteFlow, step: "client" })}
+        />
+      )}
+      {inviteFlow && inviteFlow.step === "client" && (
+        // Final composer. Send completes the flow + closes both the
+        // composer and the underlying Schedule modal. Back returns
+        // to the Candidate composer (candidate invite has already
+        // been patched onto the event; re-patching is idempotent so
+        // the recruiter can revisit the candidate copy if needed).
+        <ClientInviteComposer
+          invite={inviteFlow}
+          candidate={{
+            firstName: candidateFirstName,
+            lastName: candidateLastName,
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
+          recruiter={recruiter}
+          clientContacts={findClientContactsForJob(jobsState, inviteFlow.jobTitle, inviteFlow.clientName)}
+          aceTeam={aceTeam}
+          onClose={() => {
+            setInviteFlow(null);
+            setScheduleFor(null);
+          }}
+          onBack={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
+          onSent={() => {
+            setInviteFlow(null);
+            setScheduleFor(null);
             toast.success("Interview scheduled", {
-              description: "Client and candidate invites processed. The interview is on everyone's calendar.",
+              description: "Candidate and client invites processed. The interview is on everyone's calendar.",
             });
           }}
         />
@@ -666,6 +714,7 @@ function JobActionRow({
   onSchedule,
   onReject,
   onCancel,
+  onPlacementRemoved,
 }: {
   job: PlacementContextJob;
   candidateRfId: number;
@@ -677,6 +726,7 @@ function JobActionRow({
   onClientInvite: () => void;
   onReject: () => void;
   onCancel: () => void;
+  onPlacementRemoved?: (placementId: string) => void;
 }) {
   // Local Neon Placement.stage is the single source of truth for which
   // action buttons render. If there's no local Placement yet, treat the
@@ -737,6 +787,7 @@ function JobActionRow({
             onConfirmStart={onConfirm}
             onCancelPlacement={onCancel}
             onRejectDialog={onReject}
+            onPlacementRemoved={onPlacementRemoved}
           />
           {isCancelled && job.placement && (
             <CancelledRowActions placementId={job.placement.id} />
@@ -3127,17 +3178,24 @@ function ClientInviteComposer({
   recruiter,
   clientContacts,
   aceTeam,
-  onDone,
+  onClose,
+  onBack,
+  onSent,
 }: {
   invite: InviteFlowState;
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   clientContacts: ClientContactRef[];
   aceTeam: AceTeamContact[];
-  // Returns the Meet link the server ended up using (either freshly
-  // minted on this send, or the existing one re-attached) so the
-  // parent can thread it into the candidate composer.
-  onDone: (meetLink: string | null) => void;
+  // Hard close — user clicked X or Cancel. Parent abandons the
+  // composer chain without auto-advancing or rolling anything back.
+  onClose: () => void;
+  // Optional "step backward" hook. Parent decides what previous
+  // step means (e.g. reopen the Candidate composer).
+  onBack?: () => void;
+  // Fired only after Send Invite succeeded — the parent advances to
+  // the next step (or closes the whole flow on the final composer).
+  onSent: () => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const values = buildInterviewMergeValues({ invite, candidate, recruiter });
@@ -3179,7 +3237,9 @@ function ClientInviteComposer({
       helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the client to the event — Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
       sendingLabel="Sending invite…"
-      onClose={() => onDone(null)}
+      onClose={onClose}
+      onBack={onBack}
+      backLabel="Back to candidate"
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
           toast.error("Add a client contact email", { description: "The recipient list is empty." });
@@ -3204,7 +3264,7 @@ function ClientInviteComposer({
         toast.success("Client calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onDone(result.value.meetLink);
+        onSent();
       }}
     />
   );
@@ -3216,14 +3276,25 @@ function CandidateInviteComposer({
   recruiter,
   clientContacts,
   aceTeam,
-  onDone,
+  onClose,
+  onBack,
+  onSent,
 }: {
   invite: InviteFlowState;
   candidate: CandidateInviteContext;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   clientContacts: ClientContactRef[];
   aceTeam: AceTeamContact[];
-  onDone: () => void;
+  // Hard close — user clicked X or Cancel. Parent abandons the
+  // composer chain without auto-advancing.
+  onClose: () => void;
+  // Optional "step backward" hook. Used here to return to the
+  // Schedule modal (the parent cancels the in-flight interview so
+  // the schedule can be edited without piling up duplicates).
+  onBack?: () => void;
+  // Fired only after Send Invite succeeded — the parent advances to
+  // the Client composer.
+  onSent: () => void;
 }) {
   const candidateFullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ");
   const candidateEmail = candidate.email;
@@ -3263,7 +3334,9 @@ function CandidateInviteComposer({
       helperText="Subject becomes the calendar event title; body becomes the event description. Sending adds the candidate to the event — Google emails them the native invite with Accept / Maybe / Decline."
       sendLabel="Send Invite"
       sendingLabel="Sending…"
-      onClose={onDone}
+      onClose={onClose}
+      onBack={onBack}
+      backLabel="Back to schedule"
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
           toast.error("Add a candidate email", { description: "No email on file for this candidate." });
@@ -3288,7 +3361,7 @@ function CandidateInviteComposer({
         toast.success("Candidate calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onDone();
+        onSent();
       }}
     />
   );

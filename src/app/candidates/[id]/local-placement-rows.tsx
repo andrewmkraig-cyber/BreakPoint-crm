@@ -17,6 +17,7 @@ import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
 import {
+  cancelInterview,
   getInterviewSchedulingTemplates,
   rescheduleInterview,
   scheduleInterview,
@@ -137,6 +138,10 @@ export function LocalPlacementRows({
       </div>
 
       {scheduleFor && (
+        // Schedule modal stays mounted while the invite composers
+        // are open on top of it — that way clicking Back on the
+        // candidate composer returns to the schedule modal with all
+        // values still populated.
         <ScheduleDialog
           candidateId={candidateId}
           candidateName={candidateName}
@@ -144,8 +149,7 @@ export function LocalPlacementRows({
           aceTeam={aceTeam}
           onClose={() => setScheduleFor(null)}
           onScheduled={(ctx) => {
-            setScheduleFor(null);
-            setInviteFlow({ ...ctx, step: "client" });
+            setInviteFlow({ ...ctx, step: "candidate" });
           }}
         />
       )}
@@ -161,25 +165,6 @@ export function LocalPlacementRows({
         <RescheduleDialog interview={rescheduleFor} onClose={() => setRescheduleFor(null)} />
       )}
 
-      {inviteFlow && inviteFlow.step === "client" && (
-        <LocalClientInviteComposer
-          invite={inviteFlow}
-          candidate={{
-            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
-            lastName: candidateName.split(/\s+/).slice(1).join(" "),
-            email: candidateEmail,
-            phone: candidatePhone,
-            location: candidateLocation,
-            currentTitle: candidateCurrentTitle,
-            currentEmployer: candidateCurrentEmployer,
-          }}
-          candidateName={candidateName}
-          candidateEmail={candidateEmail}
-          recruiter={recruiter}
-          aceTeam={aceTeam}
-          onDone={(meetLink) => setInviteFlow({ ...inviteFlow, step: "candidate", meetLink: meetLink ?? inviteFlow.meetLink })}
-        />
-      )}
       {inviteFlow && inviteFlow.step === "candidate" && (
         <LocalCandidateInviteComposer
           invite={inviteFlow}
@@ -196,10 +181,48 @@ export function LocalPlacementRows({
           candidateEmail={candidateEmail}
           recruiter={recruiter}
           aceTeam={aceTeam}
-          onDone={() => {
+          onClose={() => {
             setInviteFlow(null);
+            setScheduleFor(null);
+          }}
+          onBack={() => {
+            const interviewId = inviteFlow.interviewId;
+            setInviteFlow(null);
+            void cancelInterview(interviewId).then((res) => {
+              if (!res.ok) {
+                toast.error("Couldn't cancel in-flight interview", { description: res.error });
+              }
+            });
+          }}
+          onSent={() => setInviteFlow({ ...inviteFlow, step: "client" })}
+        />
+      )}
+      {inviteFlow && inviteFlow.step === "client" && (
+        <LocalClientInviteComposer
+          invite={inviteFlow}
+          candidate={{
+            firstName: candidateName.split(/\s+/)[0] ?? candidateName,
+            lastName: candidateName.split(/\s+/).slice(1).join(" "),
+            email: candidateEmail,
+            phone: candidatePhone,
+            location: candidateLocation,
+            currentTitle: candidateCurrentTitle,
+            currentEmployer: candidateCurrentEmployer,
+          }}
+          candidateName={candidateName}
+          candidateEmail={candidateEmail}
+          recruiter={recruiter}
+          aceTeam={aceTeam}
+          onClose={() => {
+            setInviteFlow(null);
+            setScheduleFor(null);
+          }}
+          onBack={() => setInviteFlow({ ...inviteFlow, step: "candidate" })}
+          onSent={() => {
+            setInviteFlow(null);
+            setScheduleFor(null);
             toast.success("Interview scheduled", {
-              description: "Client and candidate invites processed.",
+              description: "Candidate and client invites processed.",
             });
           }}
         />
@@ -921,7 +944,9 @@ function LocalClientInviteComposer({
   candidateEmail,
   recruiter,
   aceTeam,
-  onDone,
+  onClose,
+  onBack,
+  onSent,
 }: {
   invite: LocalInviteFlow;
   candidate: {
@@ -937,10 +962,9 @@ function LocalClientInviteComposer({
   candidateEmail: string | null;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   aceTeam: AceTeamContact[];
-  // Returns the Meet link the server ended up using so the parent can
-  // thread it into the candidate composer — without it, the candidate's
-  // email body won't show the join URL.
-  onDone: (meetLink: string | null) => void;
+  onClose: () => void;
+  onBack?: () => void;
+  onSent: () => void;
 }) {
   void candidateEmail;
   const values = buildValues({ invite, candidate, recruiter });
@@ -994,7 +1018,9 @@ function LocalClientInviteComposer({
       bccOptions={bccPickerOptions}
       mergeValues={values}
       sendLabel="Send Invite"
-      onClose={() => onDone(null)}
+      onClose={onClose}
+      onBack={onBack}
+      backLabel="Back to candidate"
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
           toast.error("Add a client contact email");
@@ -1017,7 +1043,7 @@ function LocalClientInviteComposer({
         toast.success("Client calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onDone(result.value.meetLink);
+        onSent();
       }}
     />
   );
@@ -1030,7 +1056,9 @@ function LocalCandidateInviteComposer({
   candidateEmail,
   recruiter,
   aceTeam,
-  onDone,
+  onClose,
+  onBack,
+  onSent,
 }: {
   invite: LocalInviteFlow;
   candidate: {
@@ -1046,7 +1074,9 @@ function LocalCandidateInviteComposer({
   candidateEmail: string | null;
   recruiter: { firstName: string; fullName: string; email: string; phone: string };
   aceTeam: AceTeamContact[];
-  onDone: () => void;
+  onClose: () => void;
+  onBack?: () => void;
+  onSent: () => void;
 }) {
   void candidateName;
   const values = buildValues({ invite, candidate, recruiter });
@@ -1096,7 +1126,9 @@ function LocalCandidateInviteComposer({
       bccOptions={bccPickerOptions}
       mergeValues={values}
       sendLabel="Send Invite"
-      onClose={onDone}
+      onClose={onClose}
+      onBack={onBack}
+      backLabel="Back to schedule"
       onSend={async (draft: EmailDraft) => {
         if (draft.to.length === 0) {
           toast.error("No candidate email on file");
@@ -1119,7 +1151,7 @@ function LocalCandidateInviteComposer({
         toast.success("Candidate calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        onDone();
+        onSent();
       }}
     />
   );

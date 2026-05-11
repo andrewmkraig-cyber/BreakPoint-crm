@@ -82,6 +82,14 @@ export type PipelineRowActionsProps = {
   // those rows deletes the row entirely so the candidate falls back
   // to a clean "no relationship" state for the job.
   placementId?: string | null;
+  // Optimistic-removal hook for the disqualified-Reapply branch. When
+  // provided, the parent (candidate-profile JobActionRow) filters the
+  // placement out of its local jobs state immediately so the row
+  // disappears even when the underlying RF candidate.jobs[] payload
+  // still references the job. Without this, deleting the Placement
+  // row only resets it to the "sourced" fallback — the row stayed
+  // visible after Reapply, which read as "click did nothing".
+  onPlacementRemoved?: (placementId: string) => void;
 };
 
 export function PipelineRowActions(props: PipelineRowActionsProps) {
@@ -175,9 +183,11 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
   // Reapply for the legacy "disqualified" stage value (older RF-imported
   // placements). unrejectCandidateJob only knows how to flip a "rejected"
   // row to "submitted" — these older rows skip that path entirely, so we
-  // delete the Placement outright and let the candidate fall back to a
-  // clean state for the job. Matches the Matches-tab expectation that a
-  // candidate without a Placement reappears as an unrelated profile.
+  // delete the Placement outright. We deliberately bypass runLight here:
+  // its router.refresh() fallback re-renders the row with the same RF
+  // candidate.jobs[] backing (stage falls to "sourced") which made
+  // Reapply read as a no-op. When the parent supplies
+  // onPlacementRemoved, we filter the row out of local state instead.
   function onUnrejectViaDelete() {
     if (!props.placementId) {
       toast.error("Can't reapply", {
@@ -192,7 +202,19 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     )
       return;
     const placementId = props.placementId;
-    runLight(`Reapplied ${props.candidateName}`, () => deletePlacement(placementId));
+    startTransition(async () => {
+      const result = await deletePlacement(placementId);
+      if (!result.ok) {
+        toast.error("Couldn't reapply", { description: result.error });
+        return;
+      }
+      toast.success(`Reapplied ${props.candidateName}`);
+      if (props.onPlacementRemoved) {
+        props.onPlacementRemoved(placementId);
+      } else {
+        router.refresh();
+      }
+    });
   }
 
   // Stage reversions: pull a Submitted candidate back to Kept, or
