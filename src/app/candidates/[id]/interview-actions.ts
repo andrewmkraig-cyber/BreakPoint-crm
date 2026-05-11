@@ -72,6 +72,13 @@ export type ScheduleInterviewInput = {
   jobTitle?: string;
   clientName?: string;
   candidateName?: string;
+  // IANA timezone the recruiter picked for this interview. Threaded into
+  // the tracking event (client_scheduled) and forwarded back to the
+  // invite flow so the per-party events use the same zone.
+  timeZone?: string;
+  // When true (default), the Meet is created with Open access + guests
+  // can invite others. When false, guests are locked to the invite list.
+  openMeeting?: boolean;
 };
 
 export type ScheduleInterviewResult =
@@ -234,6 +241,7 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
         createMeet: false,
         sendUpdates: false,
         location: input.location || undefined,
+        timeZone: input.timeZone,
       });
       googleEventIdMine = ev.eventId;
     } catch (e) {
@@ -544,6 +552,13 @@ export type SendInvitePartyInput = {
   bccEmails?: string[];
   subject: string; // becomes event.summary
   bodyText: string; // becomes event.description
+  // IANA timezone selected on the schedule dialog. Threaded onto both
+  // per-party events so the recipient's calendar renders the same zone.
+  timeZone?: string;
+  // When true (default), guests can invite others + Meet access is OPEN
+  // (anyone with the link joins without host approval). When false, we
+  // skip the OPEN-access PATCH so the Meet stays at TRUSTED.
+  openMeeting?: boolean;
 };
 
 export type SendInvitePartyResult =
@@ -683,6 +698,7 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
     }
   }
 
+  const openMeeting = input.openMeeting ?? true;
   let created: { eventId: string; meetLink: string | null; meetingCode: string | null };
   try {
     const ev = await createCalendarEvent({
@@ -698,6 +714,8 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
       attachConferenceData,
       sendUpdates: true,
       location: interview.location || undefined,
+      timeZone: input.timeZone,
+      openMeeting,
     });
     created = { eventId: ev.eventId, meetLink: ev.meetLink, meetingCode: ev.meetingCode };
   } catch (e) {
@@ -708,11 +726,12 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
   }
 
   // Flip the newly-created Meet to OPEN access so anyone with the link can
-  // join without host approval. Fail soft — if the Meet scope isn't granted
-  // the invite still works; we surface the reason to the UI so the user
-  // knows to re-grant.
+  // join without host approval. Skipped when openMeeting is off — that
+  // leaves the Meet at the default TRUSTED access. Fail soft on errors —
+  // if the Meet scope isn't granted the invite still works; we surface
+  // the reason to the UI so the user knows to re-grant.
   let meetAccessWarning: { reason: string; message: string } | undefined;
-  if (createMeet && created.meetingCode) {
+  if (openMeeting && createMeet && created.meetingCode) {
     const meetResult = await setMeetOpenAccess({ userId: user.id, meetingCode: created.meetingCode });
     if (!meetResult.ok) {
       console.warn(

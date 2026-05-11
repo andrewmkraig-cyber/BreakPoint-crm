@@ -19,15 +19,47 @@ export function DateTime15Picker({
   onChange,
   className,
   disabled,
+  blockPast,
 }: {
   value: string; // "" or "YYYY-MM-DDTHH:mm"
   onChange: (next: string) => void;
   className?: string;
   disabled?: boolean;
+  // When true, the date input's `min` is today and the time dropdown
+  // hides slots that have already passed (with a 30-min buffer) when
+  // today is the selected date. Used by the Schedule Interview dialog
+  // so recruiters can't accidentally book a slot in the past.
+  blockPast?: boolean;
 }) {
   const { datePart, timePart } = splitValue(value);
 
-  const timeOptions = useMemo(() => buildTimeOptions(), []);
+  // Today's date as YYYY-MM-DD via toISOString — matches Andrew's spec
+  // and is accurate in ET for the hours of day he typically schedules.
+  const todayIso = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  // Earliest allowed "HH:mm" when the picked date IS today. We add a
+  // 30-min buffer to "now" so a recruiter can't book a slot that has
+  // already started or is about to. Snap UP to the next 15-min boundary
+  // so the cutoff aligns with the option grid.
+  const minTimeToday = useMemo(() => {
+    if (!blockPast) return null;
+    const now = new Date();
+    const buffered = new Date(now.getTime() + 30 * 60 * 1000);
+    const h = buffered.getHours();
+    const m = buffered.getMinutes();
+    const totalMin = h * 60 + m;
+    const snapped = Math.ceil(totalMin / 15) * 15;
+    const clamped = Math.min(snapped, 23 * 60 + 45);
+    return `${pad2(Math.floor(clamped / 60))}:${pad2(clamped % 60)}`;
+  }, [blockPast]);
+
+  const timeOptions = useMemo(() => {
+    const all = buildTimeOptions();
+    if (!blockPast || !minTimeToday) return all;
+    if (datePart && datePart > todayIso) return all;
+    if (datePart === todayIso) return all.filter((o) => o.value >= minTimeToday);
+    return all;
+  }, [blockPast, datePart, todayIso, minTimeToday]);
 
   // Defensive snap: if the caller hands us a value whose time part isn't
   // on a 15-min boundary (e.g. a reschedule dialog initializing from a
@@ -83,6 +115,7 @@ export function DateTime15Picker({
         value={datePart}
         onChange={(e) => setDate(e.target.value)}
         disabled={disabled}
+        min={blockPast ? todayIso : undefined}
         className={cn(inputBase, "min-w-[10rem] flex-1")}
       />
       <select

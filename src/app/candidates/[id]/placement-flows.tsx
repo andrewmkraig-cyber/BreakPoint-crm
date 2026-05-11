@@ -143,6 +143,13 @@ type InviteFlowState = {
   // loop without being added separately on both composers.
   ccEmails: string[];
   bccEmails: string[];
+  // IANA timezone the recruiter picked on the schedule dialog. Passed
+  // through to the per-party invite events.
+  timeZone: string;
+  // When true, the Meet is created with Open access. Passed through to
+  // both invite composers so the toggle decision on the schedule dialog
+  // applies to both events.
+  openMeeting: boolean;
 };
 
 type CandidateInviteContext = {
@@ -1475,6 +1482,8 @@ function ScheduleInterviewDialog({
   void candidateEmail;
   const [scheduledAt, setScheduledAt] = useState<string>("");
   const [durationMin, setDurationMin] = useState<number>(30);
+  const [timeZone, setTimeZone] = useState<string>("America/New_York");
+  const [openMeeting, setOpenMeeting] = useState<boolean>(true);
   const [type, setType] = useState<InterviewType>("video");
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
@@ -1519,6 +1528,8 @@ function ScheduleInterviewDialog({
         clientName: job.clientName,
         candidateName,
         location: type === "in_person" ? location.trim() : undefined,
+        timeZone,
+        openMeeting,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1548,6 +1559,8 @@ function ScheduleInterviewDialog({
         clientContactEmail: interviewerEmail.trim(),
         ccEmails: parseEmailCsv(ccCsv),
         bccEmails: parseEmailCsv(bccCsv),
+        timeZone,
+        openMeeting,
       });
     });
   }
@@ -1562,10 +1575,39 @@ function ScheduleInterviewDialog({
               value={scheduledAt}
               onChange={setScheduledAt}
               className="mt-1"
+              blockPast
             />
           </label>
           <DurationSelect value={durationMin} onChange={setDurationMin} />
         </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm sm:col-span-2">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Timezone</span>
+            <select
+              value={timeZone}
+              onChange={(e) => setTimeZone(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="America/New_York">Eastern (ET)</option>
+              <option value="America/Chicago">Central (CT)</option>
+              <option value="America/Denver">Mountain (MT)</option>
+              <option value="America/Los_Angeles">Pacific (PT)</option>
+              <option value="America/Anchorage">Alaska (AKT)</option>
+              <option value="Pacific/Honolulu">Hawaii (HT)</option>
+            </select>
+          </label>
+        </div>
+        {type === "video" && (
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={openMeeting}
+              onChange={(e) => setOpenMeeting(e.target.checked)}
+              className="h-4 w-4 rounded border-court-border accent-brand-dark"
+            />
+            <span className="text-court-fg">Open meeting (anyone can join)</span>
+          </label>
+        )}
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
           <select
@@ -2976,6 +3018,8 @@ function ClientInviteComposer({
           bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
+          timeZone: invite.timeZone,
+          openMeeting: invite.openMeeting,
         });
         if (!result.ok) {
           toast.error("Client invite failed", { description: result.error });
@@ -3050,6 +3094,8 @@ function CandidateInviteComposer({
           bccEmails: draft.bcc,
           subject: draft.subject,
           bodyText: draft.body,
+          timeZone: invite.timeZone,
+          openMeeting: invite.openMeeting,
         });
         if (!result.ok) {
           toast.error("Candidate invite failed", { description: result.error });

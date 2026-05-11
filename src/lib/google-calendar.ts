@@ -81,6 +81,12 @@ export type CreateCalendarEventInput = {
   // created. sendUpdates=true ships the native ICS invite with RSVP buttons.
   sendUpdates?: boolean;
   location?: string;
+  // IANA timezone for the event's start/end. Defaults to America/New_York.
+  timeZone?: string;
+  // When false, guests can NOT invite others or see the guest list — used
+  // for "locked" meetings. Defaults to true, matching the recruiter's
+  // expectation that anyone on the invite can pull others in.
+  openMeeting?: boolean;
 };
 
 export type CreateCalendarEventResult = {
@@ -96,18 +102,20 @@ export async function createCalendarEvent(
   const accessToken = await getFreshAccessToken(input.userId);
   const start = new Date(input.startISO);
   const end = new Date(start.getTime() + input.durationMin * 60 * 1000);
-  const tz = "America/New_York";
+  const tz = input.timeZone || "America/New_York";
+  const openMeeting = input.openMeeting ?? true;
 
   const body: Record<string, unknown> = {
     summary: input.summary,
     description: input.description ?? "",
     start: { dateTime: start.toISOString(), timeZone: tz },
     end: { dateTime: end.toISOString(), timeZone: tz },
-    // Guest controls: invitees can invite others + see the guest list, but
-    // can't move/edit the event. Matches the "everyone knows who's on the
-    // call" default the recruiter expects.
-    guestsCanInviteOthers: true,
-    guestsCanSeeOtherGuests: true,
+    // Guest controls: when openMeeting is on (default), invitees can pull
+    // others in + see the guest list. When off, the meeting is locked to
+    // the explicit invitees only — used when the recruiter wants tighter
+    // control over who joins.
+    guestsCanInviteOthers: openMeeting,
+    guestsCanSeeOtherGuests: openMeeting,
     guestsCanModify: false,
   };
   if (input.attendees && input.attendees.length > 0) {
