@@ -12,12 +12,8 @@ import {
   ChevronRight,
   ChevronsUpDown,
   ClipboardList,
-  Download,
-  Eye,
-  ListFilter,
   Minus,
   Search,
-  Settings2,
   X,
 } from "lucide-react";
 import {
@@ -1056,7 +1052,11 @@ export default function CandidatesPage() {
               value, not a commit delimiter. */}
           <section className="border-b border-court-border/60 px-[18px] py-1.5">
             <SectionTitle>Location</SectionTitle>
-            <div className="grid grid-cols-[1fr_92px] gap-2">
+            {/* Stacked: location pill input full-width on top, distance
+                full-width below it. Matches the matches-tab sidebar
+                structure — the prior 1fr/92px grid clipped both inputs
+                on laptop-width viewports. */}
+            <div className="w-full space-y-1.5">
               <TagInput
                 // Locations have no exclude semantics — render as plain
                 // pills by upgrading the string[] state into Pill[] at
@@ -1075,6 +1075,7 @@ export default function CandidatesPage() {
                 enterOnly
               />
               <SelectField
+                className="truncate"
                 value={filters.distance}
                 onChange={(e) => setField("distance", e.target.value)}
                 aria-label="Distance"
@@ -1421,7 +1422,11 @@ export default function CandidatesPage() {
         </>
       ) : (
         <section className="flex flex-1 flex-col bg-court-bg">
-          {/* Results header strip — count + sort/columns/export */}
+          {/* Results header strip — count only. Sort/Columns/Export
+              were retired here; those affordances live on the per-job
+              Matches tab where they have an active job context to
+              scope. The /candidates page is a broad search surface and
+              doesn't need a custom-columns workflow. */}
           <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-6 py-4">
             <div className="flex items-baseline gap-2.5">
               <span className="font-serif text-[28px] font-extrabold leading-none text-court-fg">
@@ -1434,20 +1439,6 @@ export default function CandidatesPage() {
                     ? "candidates match"
                     : `candidate${total === 1 ? "" : "s"} match · sorted by Recent activity`}
               </span>
-            </div>
-            <div className="flex gap-2">
-              <Button type="button" variant="secondary" size="sm" className="rounded-full">
-                <ListFilter className="h-3.5 w-3.5" />
-                Sort
-              </Button>
-              <Button type="button" variant="secondary" size="sm" className="rounded-full">
-                <Settings2 className="h-3.5 w-3.5" />
-                Columns
-              </Button>
-              <Button type="button" variant="secondary" size="sm" className="rounded-full">
-                <Download className="h-3.5 w-3.5" />
-                Export
-              </Button>
             </div>
           </div>
 
@@ -1524,8 +1515,6 @@ export default function CandidatesPage() {
                       sort={sort}
                       onToggle={toggleSort}
                     />
-                    <SortHeader label="Score" align="center" />
-                    <th className="w-10 px-3 py-2" />
                   </tr>
                 </thead>
                 <tbody
@@ -1537,7 +1526,7 @@ export default function CandidatesPage() {
                   {sortedRows.length === 0 && !loading && (
                     <tr>
                       <td
-                        colSpan={10}
+                        colSpan={8}
                         className="px-5 py-12 text-center text-sm text-court-fg-muted"
                       >
                         No candidates match your filters
@@ -1596,19 +1585,6 @@ export default function CandidatesPage() {
                       <td className="px-3 text-court-fg-muted">
                         {c.lastAction}
                       </td>
-                      <td className="px-3 text-center text-court-fg-muted">
-                        —
-                      </td>
-                      <td className="w-10 px-3 text-right">
-                        <Link
-                          href={`/candidates/${c.id}`}
-                          aria-label={`View ${c.name}`}
-                          onClick={(e) => e.stopPropagation()}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Link>
-                      </td>
                     </tr>
                     {c.resumeSnippet ? (
                       <tr
@@ -1617,7 +1593,7 @@ export default function CandidatesPage() {
                       >
                         <td className="px-3" />
                         <td
-                          colSpan={9}
+                          colSpan={7}
                           className="px-3 pb-2 pt-0 text-[11px] italic leading-snug text-court-fg-muted"
                         >
                           <span className="font-semibold not-italic text-court-fg-muted/80">
