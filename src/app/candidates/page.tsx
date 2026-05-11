@@ -1,33 +1,62 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ChevronsUpDown, Eye, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsUpDown,
+  ClipboardList,
+  Download,
+  Eye,
+  ListFilter,
+  Search,
+  Settings2,
+  X,
+} from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from "react";
+import { Button } from "@/components/ui/button";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const TENURE_OPTIONS = [
-  { value: "any", label: "Any" },
-  { value: "lt1", label: "Under 1 yr" },
-  { value: "1to3", label: "1–3 yrs" },
-  { value: "3to5", label: "3–5 yrs" },
-  { value: "gt5", label: "5+ yrs" },
+  { value: "any", label: "Any tenure" },
+  { value: "lt1", label: "0–1 years" },
+  { value: "1to3", label: "1–3 years" },
+  { value: "3to5", label: "3–5 years" },
+  { value: "gt5", label: "5+ years" },
 ];
 const WORK_AUTH_OPTIONS = [
   { value: "all", label: "All" },
-  { value: "us-citizen", label: "US Citizen" },
+  { value: "us-citizen", label: "U.S. Citizen" },
   { value: "green-card", label: "Green Card" },
-  { value: "h1b", label: "H1B" },
+  { value: "h1b", label: "H1-B" },
   { value: "other", label: "Other" },
 ];
 const DATE_OPTIONS = [
   { value: "any", label: "Any time" },
-  { value: "7d", label: "Last 7 days" },
-  { value: "30d", label: "Last 30 days" },
-  { value: "90d", label: "Last 90 days" },
-  { value: "1y", label: "Last year" },
+  { value: "30d", label: "Past 30 days" },
+  { value: "90d", label: "Past 90 days" },
+  { value: "1y", label: "Past year" },
 ];
 
 const DEBOUNCE_MS = 300;
+
+const AVATAR_PALETTE = [
+  "#7B6CC4",
+  "#C46C8E",
+  "#3F7C9A",
+  "#5A9642",
+  "#9A7B3F",
+  "#6F8E55",
+];
 
 type Row = {
   id: string;
@@ -85,19 +114,48 @@ function buildQuery(f: Filters): string {
   return sp.toString();
 }
 
-function FilterLabel({ children }: { children: React.ReactNode }) {
+const inputCls =
+  "block h-9 w-full rounded-lg border border-court-border bg-white px-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+
+// Bare select class. Wrap with SelectField so the inline chevron paints
+// over the native arrow we strip with appearance-none.
+const selectBareCls =
+  "block h-9 w-full appearance-none rounded-lg border border-court-border bg-white pl-3 pr-8 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+
+function SelectField({
+  className,
+  children,
+  ...rest
+}: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <label className="block text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
+    <div className="relative">
+      <select className={`${selectBareCls}${className ? ` ${className}` : ""}`} {...rest}>
+        {children}
+      </select>
+      <ChevronDown
+        className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
+        strokeWidth={2}
+      />
+    </div>
+  );
+}
+
+// Sentence-case field label. Replaces the old all-caps eyebrow.
+function FieldLabel({ children }: { children: ReactNode }) {
+  return (
+    <label className="mb-1.5 block text-[11px] font-semibold tracking-normal text-court-fg-muted">
       {children}
     </label>
   );
 }
 
-const inputCls =
-  "w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent/30";
-
-const selectCls =
-  "w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent/30";
+function SectionTitle({ children }: { children: ReactNode }) {
+  return (
+    <div className="mb-2.5 text-xs font-bold tracking-wide text-court-fg">
+      {children}
+    </div>
+  );
+}
 
 // Tag-pill input. Each committed value renders as a removable pill;
 // the trailing text input stays inline so the field reads like a
@@ -144,7 +202,7 @@ function TagInput({
   }
 
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-1 focus-within:border-court-accent focus-within:ring-1 focus-within:ring-court-accent/30">
+    <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-lg border border-court-border bg-white px-2 py-1 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
       {values.map((v) => (
         <span
           key={v}
@@ -169,7 +227,7 @@ function TagInput({
         onBlur={commit}
         placeholder={values.length === 0 ? placeholder : ""}
         aria-label={ariaLabel}
-        className="min-w-[60px] flex-1 bg-transparent px-1 py-0.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:outline-none"
+        className="min-w-[60px] flex-1 bg-transparent px-1 py-0.5 text-sm text-court-fg placeholder:text-court-fg-muted focus:outline-none"
       />
     </div>
   );
@@ -214,6 +272,59 @@ function hasAnyFilter(f: Filters): boolean {
   );
 }
 
+function avatarColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_PALETTE[h % AVATAR_PALETTE.length];
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+// Best-effort bucketing on the lastAction "X mins ago" string. The
+// search API returns these as humanized relative strings, so we parse
+// back into rough buckets for the sticky sidebar group headers. Falls
+// through to "older" when the string is missing or unparseable so the
+// grouping never crashes.
+function activityBucket(s: string): "recent" | "earlier" | "older" {
+  if (!s) return "older";
+  const low = s.toLowerCase();
+  if (low.includes("just now") || low.includes("min") || low.includes("hour")) return "recent";
+  const dayM = low.match(/(\d+)\s*day/);
+  if (dayM) {
+    const d = parseInt(dayM[1], 10);
+    if (d <= 3) return "recent";
+    if (d <= 7) return "earlier";
+    return "older";
+  }
+  return "older";
+}
+
+// Compact subtitle that drops missing fields cleanly so we never render
+// a stranded ` ·  · ` separator pair.
+function joinDot(parts: Array<string | null | undefined>): string {
+  return parts
+    .map((p) => (p ?? "").trim())
+    .filter((p) => p.length > 0)
+    .join(" · ");
+}
+
+const SUGGESTIONS: Array<{
+  label: string;
+  jobTitle: string;
+  location: string;
+}> = [
+  { label: "Tax Manager · Cleveland", jobTitle: "Tax Manager", location: "Cleveland" },
+  { label: "CFO · Remote", jobTitle: "CFO", location: "Remote" },
+  { label: "Sr. Auditor · NEO", jobTitle: "Sr. Auditor", location: "NEO" },
+];
+
 export default function CandidatesPage() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [skillsBuffer, setSkillsBuffer] = useState("");
@@ -221,10 +332,16 @@ export default function CandidatesPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  // Quick / Advanced segmented control. Visual only for now — the
+  // existing rail surfaces every field by default and there's no
+  // separate Advanced surface yet, so the inactive button is a stub.
+  const [mode, setMode] = useState<"quick" | "advanced">("quick");
   // Split-view: when set, the filter rail collapses to 0 and the
   // results pane swaps to a narrow name list + iframe of the
   // candidate's profile. Cleared by the close X.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sidebarFilter, setSidebarFilter] = useState("");
+  const [sidebarTab, setSidebarTab] = useState<"all" | "submitted" | "hot">("all");
 
   // Cancel any in-flight request when a newer one starts so a slow
   // earlier response can't overwrite a fresher result set.
@@ -255,6 +372,22 @@ export default function CandidatesPage() {
     setFilters((prev) => ({
       ...prev,
       [key]: prev[key].filter((v) => v !== value),
+    }));
+  }
+
+  function resetFilters() {
+    setFilters(INITIAL_FILTERS);
+    setSkillsBuffer("");
+    setJobTitlesBuffer("");
+  }
+
+  function applySuggestion(s: { jobTitle: string; location: string }) {
+    setFilters((prev) => ({
+      ...prev,
+      jobTitles: prev.jobTitles.includes(s.jobTitle)
+        ? prev.jobTitles
+        : [...prev.jobTitles, s.jobTitle],
+      location: s.location,
     }));
   }
 
@@ -325,7 +458,7 @@ export default function CandidatesPage() {
     filters.lastAction,
   ]);
 
-  function onQuickSearch() {
+  function onRunSearch() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!hasFilters) return;
     void runFetch(filters);
@@ -353,6 +486,33 @@ export default function CandidatesPage() {
     setSelectedId(rows[currentIndex + 1].id);
   }
 
+  // Local-only filter for the sidebar list — narrows the visible rows
+  // by name / title / employer substring without re-querying the API.
+  const sidebarRows = useMemo(() => {
+    const q = sidebarFilter.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => {
+      return (
+        r.name.toLowerCase().includes(q) ||
+        (r.title || "").toLowerCase().includes(q) ||
+        (r.employer || "").toLowerCase().includes(q)
+      );
+    });
+  }, [rows, sidebarFilter]);
+
+  // Bucket the visible rows by activity recency for the sticky group
+  // headers. Insertion order inside each bucket follows rows[] so the
+  // list stays sorted by whatever the API returned.
+  const groupedSidebar = useMemo(() => {
+    const out: { recent: Row[]; earlier: Row[]; older: Row[] } = {
+      recent: [],
+      earlier: [],
+      older: [],
+    };
+    for (const r of sidebarRows) out[activityBucket(r.lastAction || "")].push(r);
+    return out;
+  }, [sidebarRows]);
+
   // Scroll the active name into view inside the narrow left pane each
   // time prev/next changes the selection. block: "nearest" only scrolls
   // when the row is actually outside the viewport, so a click on a row
@@ -371,210 +531,415 @@ export default function CandidatesPage() {
           "flex shrink-0 flex-col overflow-hidden bg-court-surface transition-[width,border] duration-200 " +
           (selectedId
             ? "w-0 border-r-0"
-            : "w-[280px] border-r border-court-border")
+            : "w-[300px] border-r border-court-border")
         }
       >
-        <div className="flex flex-col gap-3 overflow-y-auto p-4">
-          <div>
-            <FilterLabel>Keyword / Boolean</FilterLabel>
-            <input
-              type="text"
-              value={filters.q}
-              onChange={(e) => setField("q", e.target.value)}
-              placeholder='e.g. ("python" AND "aws")'
-              className={`${inputCls} mt-1`}
-            />
-          </div>
-
-          <div>
-            <FilterLabel>Skills</FilterLabel>
-            <TagInput
-              values={filters.skills}
-              buffer={skillsBuffer}
-              onBufferChange={setSkillsBuffer}
-              onCommit={(v) => addPill("skills", v)}
-              onRemove={(v) => removePill("skills", v)}
-              placeholder="Add a skill, press Enter"
-              ariaLabel="Skills"
-            />
-          </div>
-
-          <div>
-            <FilterLabel>Job Titles</FilterLabel>
-            <TagInput
-              values={filters.jobTitles}
-              buffer={jobTitlesBuffer}
-              onBufferChange={setJobTitlesBuffer}
-              onCommit={(v) => addPill("jobTitles", v)}
-              onRemove={(v) => removePill("jobTitles", v)}
-              placeholder="Add a title, press Enter"
-              ariaLabel="Job Titles"
-            />
-          </div>
-
-          <div>
-            <FilterLabel>Compensation</FilterLabel>
-            <div className="mt-1 grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                value={filters.minComp}
-                onChange={(e) => setField("minComp", e.target.value)}
-                placeholder="Min"
-                className={inputCls}
-              />
-              <input
-                type="number"
-                value={filters.maxComp}
-                onChange={(e) => setField("maxComp", e.target.value)}
-                placeholder="Max"
-                className={inputCls}
-              />
-            </div>
-          </div>
-
-          <div>
-            <FilterLabel>Location</FilterLabel>
-            <div className="mt-1 grid grid-cols-[1fr_auto] gap-2">
-              <input
-                type="text"
-                value={filters.location}
-                onChange={(e) => setField("location", e.target.value)}
-                placeholder="City, State"
-                className={inputCls}
-              />
-              <select
-                value={filters.distance}
-                onChange={(e) => setField("distance", e.target.value)}
-                className={selectCls}
-              >
-                {DISTANCE_OPTIONS.map((d) => (
-                  <option key={d} value={d}>
-                    {d} mi
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div>
-            <FilterLabel>Current Employer</FilterLabel>
-            <input
-              type="text"
-              value={filters.employer}
-              onChange={(e) => setField("employer", e.target.value)}
-              placeholder="Company name"
-              className={`${inputCls} mt-1`}
-            />
-          </div>
-
-          <div>
-            <FilterLabel>Employer Tenure</FilterLabel>
-            <select
-              value={filters.tenure}
-              onChange={(e) => setField("tenure", e.target.value)}
-              className={`${selectCls} mt-1`}
-            >
-              {TENURE_OPTIONS.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <FilterLabel>Work Authorization</FilterLabel>
-            <select
-              value={filters.workAuth}
-              onChange={(e) => setField("workAuth", e.target.value)}
-              className={`${selectCls} mt-1`}
-            >
-              {WORK_AUTH_OPTIONS.map((w) => (
-                <option key={w.value} value={w.value}>
-                  {w.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <FilterLabel>Last Apply Date</FilterLabel>
-            <select
-              value={filters.lastApply}
-              onChange={(e) => setField("lastApply", e.target.value)}
-              className={`${selectCls} mt-1`}
-            >
-              {DATE_OPTIONS.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <FilterLabel>Last Action Date</FilterLabel>
-            <select
-              value={filters.lastAction}
-              onChange={(e) => setField("lastAction", e.target.value)}
-              className={`${selectCls} mt-1`}
-            >
-              {DATE_OPTIONS.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="mt-1 flex items-center justify-between gap-3 border-t border-court-border-soft pt-3">
+        {/* Header block — title + segmented Quick / Advanced */}
+        <div className="border-b border-court-border/60 px-[18px] py-4">
+          <div className="mb-2.5 flex items-center justify-between">
+            <h2 className="text-base font-semibold text-court-fg">
+              Search Candidates
+            </h2>
             <button
               type="button"
-              onClick={onQuickSearch}
-              className="rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
+              onClick={resetFilters}
+              disabled={!hasFilters}
+              className="text-sm text-court-fg-muted transition hover:text-court-fg hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:no-underline"
             >
-              Quick Search
+              Reset
             </button>
-            <div className="flex flex-col items-end gap-0.5 leading-tight">
-              <span className="text-xs font-medium text-court-fg">
-                {total == null ? "—" : total.toLocaleString()} Candidate
-                {total === 1 ? "" : "s"}
-              </span>
-              <Link
-                href="/candidates/lists"
-                className="text-[11px] text-court-fg-muted underline underline-offset-2 hover:text-court-fg"
-              >
-                View Lists
-              </Link>
-            </div>
           </div>
+          <div className="inline-flex items-center gap-[2px] rounded-full border border-court-border bg-court-surface-subtle p-[3px]">
+            {(
+              [
+                { id: "quick", label: "Quick search" },
+                { id: "advanced", label: "Advanced" },
+              ] as const
+            ).map((m) => {
+              const active = mode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMode(m.id)}
+                  className={
+                    "rounded-full px-3.5 py-1.5 text-xs font-semibold transition " +
+                    (active
+                      ? "bg-white text-court-fg shadow-sm ring-1 ring-court-border"
+                      : "text-court-fg-muted hover:text-court-fg")
+                  }
+                >
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Scrollable body — five sections */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Identity */}
+          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+            <SectionTitle>Identity</SectionTitle>
+            <div className="space-y-3">
+              <div>
+                <FieldLabel>Keyword / Boolean</FieldLabel>
+                <input
+                  type="text"
+                  value={filters.q}
+                  onChange={(e) => setField("q", e.target.value)}
+                  placeholder='e.g. ("CPA" AND "audit")'
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <FieldLabel>Skills</FieldLabel>
+                <TagInput
+                  values={filters.skills}
+                  buffer={skillsBuffer}
+                  onBufferChange={setSkillsBuffer}
+                  onCommit={(v) => addPill("skills", v)}
+                  onRemove={(v) => removePill("skills", v)}
+                  placeholder="Add a skill, press Enter"
+                  ariaLabel="Skills"
+                />
+              </div>
+              <div>
+                <FieldLabel>Job titles</FieldLabel>
+                <TagInput
+                  values={filters.jobTitles}
+                  buffer={jobTitlesBuffer}
+                  onBufferChange={setJobTitlesBuffer}
+                  onCommit={(v) => addPill("jobTitles", v)}
+                  onRemove={(v) => removePill("jobTitles", v)}
+                  placeholder="Add a title, press Enter"
+                  ariaLabel="Job titles"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Compensation */}
+          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+            <SectionTitle>Compensation</SectionTitle>
+            <div>
+              <FieldLabel>Base salary range</FieldLabel>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  value={filters.minComp}
+                  onChange={(e) => setField("minComp", e.target.value)}
+                  placeholder="Min $"
+                  className={inputCls}
+                />
+                <input
+                  type="number"
+                  value={filters.maxComp}
+                  onChange={(e) => setField("maxComp", e.target.value)}
+                  placeholder="Max $"
+                  className={inputCls}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Location */}
+          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+            <SectionTitle>Location</SectionTitle>
+            <div>
+              <FieldLabel>City / state</FieldLabel>
+              <div className="grid grid-cols-[1fr_92px] gap-2">
+                <input
+                  type="text"
+                  value={filters.location}
+                  onChange={(e) => setField("location", e.target.value)}
+                  placeholder="City, State"
+                  className={inputCls}
+                />
+                <SelectField
+                  value={filters.distance}
+                  onChange={(e) => setField("distance", e.target.value)}
+                  aria-label="Distance"
+                >
+                  {DISTANCE_OPTIONS.map((d) => (
+                    <option key={d} value={d}>
+                      {d} mi
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+            </div>
+          </section>
+
+          {/* Employment */}
+          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+            <SectionTitle>Employment</SectionTitle>
+            <div className="space-y-3">
+              <div>
+                <FieldLabel>Current employer</FieldLabel>
+                <input
+                  type="text"
+                  value={filters.employer}
+                  onChange={(e) => setField("employer", e.target.value)}
+                  placeholder="Company name"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <FieldLabel>Tenure at employer</FieldLabel>
+                <SelectField
+                  value={filters.tenure}
+                  onChange={(e) => setField("tenure", e.target.value)}
+                  aria-label="Tenure at employer"
+                >
+                  {TENURE_OPTIONS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+              <div>
+                <FieldLabel>Work authorization</FieldLabel>
+                <SelectField
+                  value={filters.workAuth}
+                  onChange={(e) => setField("workAuth", e.target.value)}
+                  aria-label="Work authorization"
+                >
+                  {WORK_AUTH_OPTIONS.map((w) => (
+                    <option key={w.value} value={w.value}>
+                      {w.label}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+            </div>
+          </section>
+
+          {/* Activity */}
+          <section className="px-[18px] py-[14px]">
+            <SectionTitle>Activity</SectionTitle>
+            <div className="space-y-3">
+              <div>
+                <FieldLabel>Last apply</FieldLabel>
+                <SelectField
+                  value={filters.lastApply}
+                  onChange={(e) => setField("lastApply", e.target.value)}
+                  aria-label="Last apply"
+                >
+                  {DATE_OPTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+              <div>
+                <FieldLabel>Last action</FieldLabel>
+                <SelectField
+                  value={filters.lastAction}
+                  onChange={(e) => setField("lastAction", e.target.value)}
+                  aria-label="Last action"
+                >
+                  {DATE_OPTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </SelectField>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* Sticky footer — Save / Run search + Saved Lists card */}
+        <div className="flex flex-col gap-2.5 border-t border-court-border bg-white p-[14px]">
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={!hasFilters}
+              onClick={() => {
+                /* save-search flow not yet wired */
+              }}
+              className="rounded-full"
+            >
+              Save
+            </Button>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onRunSearch}
+              disabled={!hasFilters}
+              className="h-9 flex-1 rounded-full"
+            >
+              <Search className="h-4 w-4" />
+              Run search
+            </Button>
+          </div>
+          <Link
+            href="/candidates/lists"
+            className="group flex items-center justify-between rounded-xl border border-court-border bg-court-bg px-3 py-2.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="text-court-accent-dark">
+                <ClipboardList className="h-[18px] w-[18px]" strokeWidth={1.8} />
+              </span>
+              <div>
+                <div className="text-sm font-semibold text-court-fg">
+                  Saved Lists
+                </div>
+                <div className="text-[11.5px] text-court-fg-muted">
+                  Saved searches & shortlists
+                </div>
+              </div>
+            </div>
+            <ChevronRight
+              className="h-4 w-4 text-court-fg-muted transition group-hover:text-court-accent-dark"
+              strokeWidth={2}
+            />
+          </Link>
         </div>
       </aside>
 
       {selectedId ? (
         <>
-          <section className="flex h-[calc(100vh-72px)] w-[280px] shrink-0 flex-col overflow-y-auto border-r border-court-border bg-court-surface">
-            {rows.map((c) => {
-              const active = c.id === selectedId;
-              return (
-                <button
-                  key={c.id}
-                  ref={(el) => {
-                    nameRefs.current.set(c.id, el);
-                  }}
-                  type="button"
-                  onClick={() => setSelectedId(c.id)}
-                  className={
-                    "border-b border-court-border-soft px-4 py-3 text-left text-sm font-medium transition " +
-                    (active
-                      ? "bg-brand text-white"
-                      : "text-court-fg hover:bg-court-accent-tint/40")
-                  }
-                >
-                  {c.name}
-                </button>
-              );
-            })}
+          <section className="flex h-[calc(100vh-72px)] w-[300px] shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface">
+            {/* Sidebar header — title + count pill + filter input */}
+            <div className="border-b border-court-border/60 px-3.5 py-3">
+              <div className="mb-2 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-court-fg">
+                  Search results
+                </h3>
+                <span className="rounded-full bg-court-accent-tint px-2 py-0.5 text-[11px] font-bold text-court-accent-dark">
+                  {sidebarRows.length} candidate
+                  {sidebarRows.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="relative">
+                <Search
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-[14px] w-[14px] -translate-y-1/2 text-court-fg-muted"
+                  strokeWidth={2}
+                />
+                <input
+                  type="text"
+                  value={sidebarFilter}
+                  onChange={(e) => setSidebarFilter(e.target.value)}
+                  placeholder="Filter list…"
+                  aria-label="Filter list"
+                  className="h-8 w-full rounded-lg border border-court-border bg-court-surface-subtle pl-8 pr-2 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-white focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Tabs row. Submitted / Hot are presentation-only until the
+                row payload exposes per-candidate stage data — they show
+                the count but don't filter the list. */}
+            <div className="flex border-b border-court-border/60 bg-white">
+              {(
+                [
+                  { id: "all", label: "All", n: sidebarRows.length },
+                  { id: "submitted", label: "Submitted", n: 0 },
+                  { id: "hot", label: "Hot", n: 0 },
+                ] as const
+              ).map((t) => {
+                const active = sidebarTab === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setSidebarTab(t.id)}
+                    className={
+                      "flex-1 border-b-2 py-2.5 text-xs font-semibold transition " +
+                      (active
+                        ? "border-court-accent text-court-fg"
+                        : "border-transparent text-court-fg-muted hover:text-court-fg")
+                    }
+                  >
+                    {t.label}
+                    <span className="ml-1 text-court-fg-muted/70">{t.n}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Scrollable list — sticky group headers, two-line rows */}
+            <div className="flex-1 overflow-y-auto">
+              {(
+                [
+                  { key: "recent" as const, label: "Recent activity" },
+                  { key: "earlier" as const, label: "Earlier this week" },
+                  { key: "older" as const, label: "Older" },
+                ]
+              ).map((group) => {
+                const list = groupedSidebar[group.key];
+                if (list.length === 0) return null;
+                return (
+                  <div key={group.key}>
+                    <div className="sticky top-0 z-10 border-b border-court-border/60 bg-court-surface-subtle px-3.5 pb-1.5 pt-2.5 text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted/80">
+                      {group.label}
+                    </div>
+                    {list.map((c) => {
+                      const active = c.id === selectedId;
+                      const subtitle = joinDot([c.title, c.employer, c.location]);
+                      return (
+                        <button
+                          key={c.id}
+                          ref={(el) => {
+                            nameRefs.current.set(c.id, el);
+                          }}
+                          type="button"
+                          onClick={() => setSelectedId(c.id)}
+                          className={
+                            "grid w-full cursor-pointer grid-cols-[32px_1fr] items-center gap-2.5 border-b border-court-border/40 px-3.5 py-2.5 text-left transition " +
+                            (active
+                              ? "bg-court-fg text-white"
+                              : "hover:bg-court-surface-subtle")
+                          }
+                        >
+                          <span
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold text-white"
+                            style={{ backgroundColor: avatarColor(c.name) }}
+                            aria-hidden="true"
+                          >
+                            {initials(c.name)}
+                          </span>
+                          <span className="min-w-0">
+                            <span
+                              className={
+                                "block truncate text-[13.5px] font-semibold leading-tight " +
+                                (active ? "text-white" : "text-court-fg")
+                              }
+                            >
+                              {c.name}
+                            </span>
+                            {subtitle ? (
+                              <span
+                                className={
+                                  "mt-0.5 block truncate text-[11.5px] leading-tight " +
+                                  (active
+                                    ? "text-white/65"
+                                    : "text-court-fg-muted")
+                                }
+                              >
+                                {subtitle}
+                              </span>
+                            ) : null}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {sidebarRows.length === 0 && (
+                <div className="px-3.5 py-8 text-center text-xs text-court-fg-muted">
+                  No matches in this list.
+                </div>
+              )}
+            </div>
           </section>
           <section className="flex flex-1 flex-col bg-court-bg">
             {/* Split-view nav bar. Sits flush above the iframe with a
@@ -622,92 +987,173 @@ export default function CandidatesPage() {
           </section>
         </>
       ) : (
-        <section className="flex-1 overflow-x-auto bg-court-bg">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-court-border bg-court-surface-subtle">
-              <tr>
-                <th className="w-10 px-3 py-2">
-                  <input
-                    type="checkbox"
-                    aria-label="Select all"
-                    className="h-4 w-4 cursor-pointer accent-brand"
+        <section className="flex flex-1 flex-col bg-court-bg">
+          {/* Results header strip — count + sort/columns/export */}
+          <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-6 py-4">
+            <div className="flex items-baseline gap-2.5">
+              <span
+                className="text-[28px] font-bold leading-none text-court-fg"
+                style={{ fontFamily: "var(--font-playfair, ui-serif)" }}
+              >
+                {total ?? 0}
+              </span>
+              <span className="text-sm text-court-fg-muted">
+                {!hasFilters
+                  ? "No filters applied yet"
+                  : (total ?? 0) === 0
+                    ? "candidates match"
+                    : `candidate${total === 1 ? "" : "s"} match · sorted by Recent activity`}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="secondary" size="sm" className="rounded-full">
+                <ListFilter className="h-3.5 w-3.5" />
+                Sort
+              </Button>
+              <Button type="button" variant="secondary" size="sm" className="rounded-full">
+                <Settings2 className="h-3.5 w-3.5" />
+                Columns
+              </Button>
+              <Button type="button" variant="secondary" size="sm" className="rounded-full">
+                <Download className="h-3.5 w-3.5" />
+                Export
+              </Button>
+            </div>
+          </div>
+
+          {!hasFilters ? (
+            <div className="flex flex-1 items-center justify-center px-6 py-16">
+              <div className="flex max-w-md flex-col items-center text-center">
+                <div className="mb-5 flex h-[88px] w-[88px] items-center justify-center rounded-full bg-court-accent-tint">
+                  <Search
+                    className="h-7 w-7 text-court-accent-dark"
+                    strokeWidth={2}
                   />
-                </th>
-                <SortHeader label="Candidate" />
-                <SortHeader label="Current Title" />
-                <SortHeader label="Employer" />
-                <SortHeader label="Location" />
-                <SortHeader label="Salary" align="right" />
-                <SortHeader label="Last Apply" />
-                <SortHeader label="Last Action" />
-                <SortHeader label="Score" align="center" />
-                <th className="w-10 px-3 py-2" />
-              </tr>
-            </thead>
-            <tbody
-              className={
-                "divide-y divide-court-border-soft transition-opacity " +
-                (loading ? "opacity-50" : "opacity-100")
-              }
-            >
-              {rows.length === 0 && !loading && (
-                <tr>
-                  <td
-                    colSpan={10}
-                    className="px-5 py-12 text-center text-sm text-court-fg-muted"
-                  >
-                    {hasFilters
-                      ? "No candidates match your filters"
-                      : "Apply a filter to start searching"}
-                  </td>
-                </tr>
-              )}
-              {rows.map((c) => (
-                <tr
-                  key={c.id}
-                  onClick={() => setSelectedId(c.id)}
-                  className="h-12 cursor-pointer transition hover:bg-court-accent-tint/40"
+                </div>
+                <h3
+                  className="text-[23px] font-semibold text-court-fg"
+                  style={{ fontFamily: "var(--font-playfair, ui-serif)" }}
                 >
-                  <td
-                    className="w-10 px-3"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${c.name}`}
-                      className="h-4 w-4 cursor-pointer accent-brand"
-                    />
-                  </td>
-                  <td className="px-3 font-medium text-court-fg">{c.name}</td>
-                  <td className="px-3 text-court-fg-muted">
-                    {c.title || "—"}
-                  </td>
-                  <td className="px-3 text-court-fg-muted">
-                    {c.employer || "—"}
-                  </td>
-                  <td className="px-3 text-court-fg-muted">
-                    {c.location || "—"}
-                  </td>
-                  <td className="px-3 text-right tabular-nums text-court-fg-muted">
-                    {c.salary}
-                  </td>
-                  <td className="px-3 text-court-fg-muted">{c.lastApply}</td>
-                  <td className="px-3 text-court-fg-muted">{c.lastAction}</td>
-                  <td className="px-3 text-center text-court-fg-muted">—</td>
-                  <td className="w-10 px-3 text-right">
-                    <Link
-                      href={`/candidates/${c.id}`}
-                      aria-label={`View ${c.name}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+                  Apply a filter to start searching
+                </h3>
+                <p className="mt-1.5 text-sm text-court-fg-muted">
+                  Use the rail on the left to search the BreakPoint roster —
+                  accounting & finance candidates indexed across the desk.
+                </p>
+                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                  {SUGGESTIONS.map((s) => (
+                    <Button
+                      key={s.label}
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => applySuggestion(s)}
                     >
-                      <Eye className="h-4 w-4" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      {s.label}
+                    </Button>
+                  ))}
+                </div>
+                <div className="mt-3 text-[11px] uppercase tracking-wide text-court-fg-muted/80">
+                  Try a recent search
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="border-b border-court-border bg-court-surface-subtle">
+                  <tr>
+                    <th className="w-10 px-3 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all"
+                        className="h-4 w-4 cursor-pointer accent-brand"
+                      />
+                    </th>
+                    <SortHeader label="Candidate" />
+                    <SortHeader label="Current Title" />
+                    <SortHeader label="Employer" />
+                    <SortHeader label="Location" />
+                    <SortHeader label="Salary" align="right" />
+                    <SortHeader label="Last Apply" />
+                    <SortHeader label="Last Action" />
+                    <SortHeader label="Score" align="center" />
+                    <th className="w-10 px-3 py-2" />
+                  </tr>
+                </thead>
+                <tbody
+                  className={
+                    "divide-y divide-court-border-soft transition-opacity " +
+                    (loading ? "opacity-50" : "opacity-100")
+                  }
+                >
+                  {rows.length === 0 && !loading && (
+                    <tr>
+                      <td
+                        colSpan={10}
+                        className="px-5 py-12 text-center text-sm text-court-fg-muted"
+                      >
+                        No candidates match your filters
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map((c) => (
+                    <tr
+                      key={c.id}
+                      onClick={() => setSelectedId(c.id)}
+                      className="h-12 cursor-pointer transition hover:bg-court-accent-tint/40"
+                    >
+                      <td
+                        className="w-10 px-3"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${c.name}`}
+                          className="h-4 w-4 cursor-pointer accent-brand"
+                        />
+                      </td>
+                      <td className="px-3 font-medium text-court-fg">
+                        {c.name}
+                      </td>
+                      <td className="px-3 text-court-fg-muted">
+                        {c.title || "—"}
+                      </td>
+                      <td className="px-3 text-court-fg-muted">
+                        {c.employer || "—"}
+                      </td>
+                      <td className="px-3 text-court-fg-muted">
+                        {c.location || "—"}
+                      </td>
+                      <td className="px-3 text-right tabular-nums text-court-fg-muted">
+                        {c.salary}
+                      </td>
+                      <td className="px-3 text-court-fg-muted">
+                        {c.lastApply}
+                      </td>
+                      <td className="px-3 text-court-fg-muted">
+                        {c.lastAction}
+                      </td>
+                      <td className="px-3 text-center text-court-fg-muted">
+                        —
+                      </td>
+                      <td className="w-10 px-3 text-right">
+                        <Link
+                          href={`/candidates/${c.id}`}
+                          aria-label={`View ${c.name}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
     </div>
