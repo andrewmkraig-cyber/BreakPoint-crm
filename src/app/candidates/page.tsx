@@ -327,6 +327,48 @@ function joinDot(parts: Array<string | null | undefined>): string {
     .join(" · ");
 }
 
+// Mirror of the server's tokenize: split on whitespace, drop the
+// boolean connective stopwords ("and"/"or") so they don't render as
+// highlighted hits.
+const HIGHLIGHT_STOPWORDS = new Set(["and", "or"]);
+function highlightTokens(q: string): string[] {
+  return q
+    .trim()
+    .split(/\s+/)
+    .filter((s) => s.length > 0 && !HIGHLIGHT_STOPWORDS.has(s.toLowerCase()));
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Wrap any case-insensitive match of the active search tokens in a
+// <mark> so the recruiter sees at a glance which field carried the
+// match. Falls through to plain text when there are no tokens.
+function Highlight({ text, tokens }: { text: string; tokens: string[] }) {
+  if (!text) return null;
+  if (tokens.length === 0) return <>{text}</>;
+  const re = new RegExp(`(${tokens.map(escapeRegex).join("|")})`, "gi");
+  const out: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    out.push(
+      <mark
+        key={`${m.index}-${m[0]}`}
+        className="rounded-sm bg-yellow-100 px-0.5 text-yellow-900"
+      >
+        {m[0]}
+      </mark>,
+    );
+    last = m.index + m[0].length;
+    if (m[0].length === 0) re.lastIndex++;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return <>{out}</>;
+}
+
 const SUGGESTIONS: Array<{
   label: string;
   jobTitle: string;
@@ -363,6 +405,11 @@ export default function CandidatesPage() {
   const skillsKey = filters.skills.join("|");
   const jobTitlesKey = filters.jobTitles.join("|");
   const locationsKey = filters.locations.join("|");
+
+  // Tokens used to drive <mark> highlighting in the results table.
+  // Mirrors the server tokenizer so what gets highlighted matches what
+  // actually drove the row into the result set.
+  const matchTokens = useMemo(() => highlightTokens(filters.q), [filters.q]);
 
   function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -1108,16 +1155,28 @@ export default function CandidatesPage() {
                         />
                       </td>
                       <td className="px-3 font-medium text-court-fg">
-                        {c.name}
+                        <Highlight text={c.name} tokens={matchTokens} />
                       </td>
                       <td className="px-3 text-court-fg-muted">
-                        {c.title || "—"}
+                        {c.title ? (
+                          <Highlight text={c.title} tokens={matchTokens} />
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="px-3 text-court-fg-muted">
-                        {c.employer || "—"}
+                        {c.employer ? (
+                          <Highlight text={c.employer} tokens={matchTokens} />
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="px-3 text-court-fg-muted">
-                        {c.location || "—"}
+                        {c.location ? (
+                          <Highlight text={c.location} tokens={matchTokens} />
+                        ) : (
+                          "—"
+                        )}
                       </td>
                       <td className="px-3 text-right tabular-nums text-court-fg-muted">
                         {c.salary}

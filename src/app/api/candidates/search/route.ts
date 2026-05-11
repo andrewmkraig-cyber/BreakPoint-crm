@@ -99,49 +99,6 @@ function tokenize(q: string): string[] {
     .filter((s) => s.length > 0 && !BOOL_STOPWORDS.has(s.toLowerCase()));
 }
 
-function escapeRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// For each search token, pre-resolves the set of candidate ids whose
-// data contains the token anywhere — structured columns plus the raw
-// JSON payload cast to text. This is the only way to scan resume
-// content (experience, education, summary, etc.) since Prisma can't
-// run ILIKE against jsonb directly. Returns one Set per token; the
-// caller AND-composes them via `id: { in: [...] }` clauses so the
-// final result honors "every token must match somewhere".
-//
-// Uses Postgres POSIX regex (~*) with word boundaries \m and \M instead
-// of ILIKE substring so "tax" doesn't match inside "syntax" / "taxes" /
-// "exact". Word boundaries treat punctuation as a break, so "Tax,"
-// or "Tax-Senior" still match cleanly.
-async function resolveTokenIds(
-  orgId: string,
-  tokens: string[],
-): Promise<Map<string, string[]>> {
-  const out = new Map<string, string[]>();
-  for (const t of tokens) {
-    const pattern = `\\m${escapeRegex(t)}\\M`;
-    const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-      SELECT id FROM "Candidate"
-      WHERE "organizationId" = ${orgId}
-        AND (
-          "firstName" ~* ${pattern}
-          OR "lastName" ~* ${pattern}
-          OR "currentDesignation" ~* ${pattern}
-          OR "currentOrganization" ~* ${pattern}
-          OR location ~* ${pattern}
-          OR (raw IS NOT NULL AND raw::text ~* ${pattern})
-        )
-    `);
-    out.set(
-      t,
-      rows.map((r) => r.id),
-    );
-  }
-  return out;
-}
-
 function parseNumber(raw: string | null): number | null {
   if (!raw) return null;
   const n = Number(raw);
@@ -287,14 +244,35 @@ export async function GET(req: Request) {
 
     if (q) {
       const tokens = tokenize(q);
-      if (tokens.length > 0) {
-        const tokenIds = await resolveTokenIds(org.id, tokens);
-        for (const t of tokens) {
-          // Empty list short-circuits the whole query to zero rows,
-          // which is correct: if no candidate carries this token
-          // anywhere, no row can satisfy the AND across tokens.
-          andClauses.push({ id: { in: tokenIds.get(t) ?? [] } });
-        }
+      // Each token must match in at least one structured field. Scoping
+      // to firstName/lastName/currentDesignation/currentOrganization/
+      // location (contains, insensitive) plus skills (hasSome, exact)
+      // keeps recruiter-typed keywords from hitting unrelated metadata
+      // in the raw JSON payload (RF application notes, embedded job /
+      // client names, etc.) — "vending" should only match candidates
+      // whose visible profile carries the word, not someone who once
+      // applied to a vending-machine company posting.
+      for (const t of tokens) {
+        andClauses.push({
+          OR: [
+            { firstName: { contains: t, mode: "insensitive" as const } },
+            { lastName: { contains: t, mode: "insensitive" as const } },
+            {
+              currentDesignation: {
+                contains: t,
+                mode: "insensitive" as const,
+              },
+            },
+            {
+              currentOrganization: {
+                contains: t,
+                mode: "insensitive" as const,
+              },
+            },
+            { location: { contains: t, mode: "insensitive" as const } },
+            { skills: { hasSome: [t] } },
+          ],
+        });
       }
     }
 
