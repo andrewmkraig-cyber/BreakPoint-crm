@@ -144,7 +144,7 @@ function SelectField({
 // Sentence-case field label. Replaces the old all-caps eyebrow.
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label className="mb-1 block text-[10.5px] font-semibold tracking-normal text-court-fg-muted">
+    <label className="mb-0.5 block text-[10.5px] font-semibold tracking-normal text-court-fg-muted">
       {children}
     </label>
   );
@@ -152,7 +152,7 @@ function FieldLabel({ children }: { children: ReactNode }) {
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-1.5 text-xs font-semibold tracking-normal text-court-fg">
+    <div className="mb-1 text-xs font-semibold tracking-normal text-court-fg">
       {children}
     </div>
   );
@@ -532,7 +532,7 @@ export default function CandidatesPage() {
         }
       >
         {/* Header block — title + Reset */}
-        <div className="flex items-center justify-between border-b border-court-border/60 px-[18px] py-2.5">
+        <div className="flex items-center justify-between border-b border-court-border/60 px-[18px] py-2">
           <h2 className="text-sm font-semibold text-court-fg">
             Search Candidates
           </h2>
@@ -549,9 +549,9 @@ export default function CandidatesPage() {
         {/* Scrollable body — five sections */}
         <div className="flex-1 overflow-y-auto">
           {/* Identity */}
-          <section className="border-b border-court-border/60 px-[18px] py-2">
+          <section className="border-b border-court-border/60 px-[18px] py-1.5">
             <SectionTitle>Identity</SectionTitle>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div>
                 <FieldLabel>Keyword / Boolean</FieldLabel>
                 <input
@@ -589,62 +589,56 @@ export default function CandidatesPage() {
             </div>
           </section>
 
-          {/* Compensation */}
-          <section className="border-b border-court-border/60 px-[18px] py-2">
+          {/* Compensation — section title doubles as the field label */}
+          <section className="border-b border-court-border/60 px-[18px] py-1.5">
             <SectionTitle>Compensation</SectionTitle>
-            <div>
-              <FieldLabel>Base salary range</FieldLabel>
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="number"
-                  value={filters.minComp}
-                  onChange={(e) => setField("minComp", e.target.value)}
-                  placeholder="Min $"
-                  className={inputCls}
-                />
-                <input
-                  type="number"
-                  value={filters.maxComp}
-                  onChange={(e) => setField("maxComp", e.target.value)}
-                  placeholder="Max $"
-                  className={inputCls}
-                />
-              </div>
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                value={filters.minComp}
+                onChange={(e) => setField("minComp", e.target.value)}
+                placeholder="Min $"
+                className={inputCls}
+              />
+              <input
+                type="number"
+                value={filters.maxComp}
+                onChange={(e) => setField("maxComp", e.target.value)}
+                placeholder="Max $"
+                className={inputCls}
+              />
             </div>
           </section>
 
-          {/* Location */}
-          <section className="border-b border-court-border/60 px-[18px] py-2">
+          {/* Location — section title doubles as the field label */}
+          <section className="border-b border-court-border/60 px-[18px] py-1.5">
             <SectionTitle>Location</SectionTitle>
-            <div>
-              <FieldLabel>City / state</FieldLabel>
-              <div className="grid grid-cols-[1fr_92px] gap-2">
-                <input
-                  type="text"
-                  value={filters.location}
-                  onChange={(e) => setField("location", e.target.value)}
-                  placeholder="City, State"
-                  className={inputCls}
-                />
-                <SelectField
-                  value={filters.distance}
-                  onChange={(e) => setField("distance", e.target.value)}
-                  aria-label="Distance"
-                >
-                  {DISTANCE_OPTIONS.map((d) => (
-                    <option key={d} value={d}>
-                      {d} mi
-                    </option>
-                  ))}
-                </SelectField>
-              </div>
+            <div className="grid grid-cols-[1fr_92px] gap-2">
+              <input
+                type="text"
+                value={filters.location}
+                onChange={(e) => setField("location", e.target.value)}
+                placeholder="City, State"
+                className={inputCls}
+              />
+              <SelectField
+                value={filters.distance}
+                onChange={(e) => setField("distance", e.target.value)}
+                aria-label="Distance"
+              >
+                {DISTANCE_OPTIONS.map((d) => (
+                  <option key={d} value={d}>
+                    {d} mi
+                  </option>
+                ))}
+              </SelectField>
             </div>
           </section>
 
           {/* Employment */}
-          <section className="border-b border-court-border/60 px-[18px] py-2">
+          <section className="border-b border-court-border/60 px-[18px] py-1.5">
             <SectionTitle>Employment</SectionTitle>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div>
                 <FieldLabel>Current employer</FieldLabel>
                 <input
@@ -687,9 +681,9 @@ export default function CandidatesPage() {
           </section>
 
           {/* Activity */}
-          <section className="px-[18px] py-2">
+          <section className="px-[18px] py-1.5">
             <SectionTitle>Activity</SectionTitle>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <div>
                 <FieldLabel>Last apply</FieldLabel>
                 <SelectField
@@ -723,7 +717,7 @@ export default function CandidatesPage() {
         </div>
 
         {/* Sticky footer — Save / Run search + Saved Lists card */}
-        <div className="flex flex-col gap-2 border-t border-court-border bg-white px-3 py-2.5">
+        <div className="flex flex-col gap-1.5 border-t border-court-border bg-white px-3 py-2">
           <div className="flex gap-2">
             <Button
               type="button"
@@ -749,22 +743,16 @@ export default function CandidatesPage() {
               Run search
             </Button>
           </div>
+          {/* Saved Lists pill — collapsed from a two-line card to a
+              single row so the footer doesn't claim ~70px of vertical
+              space on short laptop viewports. */}
           <Link
             href="/candidates/lists"
-            className="group flex items-center justify-between rounded-lg border border-court-border bg-court-bg px-2.5 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
+            className="group flex items-center justify-between rounded-md border border-court-border bg-court-bg px-2.5 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
           >
-            <div className="flex items-center gap-2">
-              <span className="text-court-accent-dark">
-                <ClipboardList className="h-4 w-4" strokeWidth={1.8} />
-              </span>
-              <div>
-                <div className="text-xs font-semibold text-court-fg">
-                  Saved Lists
-                </div>
-                <div className="text-[10.5px] text-court-fg-muted">
-                  Saved searches & shortlists
-                </div>
-              </div>
+            <div className="flex items-center gap-1.5">
+              <ClipboardList className="h-3.5 w-3.5 text-court-accent-dark" strokeWidth={1.8} />
+              <span className="text-xs font-semibold text-court-fg">Saved Lists</span>
             </div>
             <ChevronRight
               className="h-3.5 w-3.5 text-court-fg-muted transition group-hover:text-court-accent-dark"
