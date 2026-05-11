@@ -975,10 +975,7 @@ export default function CandidatesPage() {
           {/* Results header strip — count + sort/columns/export */}
           <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-6 py-4">
             <div className="flex items-baseline gap-2.5">
-              <span
-                className="text-[28px] font-bold leading-none text-court-fg"
-                style={{ fontFamily: "var(--font-playfair, ui-serif)" }}
-              >
+              <span className="font-serif text-[28px] font-extrabold leading-none text-court-fg">
                 {total ?? 0}
               </span>
               <span className="text-sm text-court-fg-muted">
@@ -1014,10 +1011,7 @@ export default function CandidatesPage() {
                     strokeWidth={2}
                   />
                 </div>
-                <h3
-                  className="text-[23px] font-semibold text-court-fg"
-                  style={{ fontFamily: "var(--font-playfair, ui-serif)" }}
-                >
+                <h3 className="font-serif text-[23px] font-extrabold text-court-fg">
                   Apply a filter to start searching
                 </h3>
                 <p className="mt-1.5 text-sm text-court-fg-muted">
