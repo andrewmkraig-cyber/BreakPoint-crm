@@ -451,6 +451,14 @@ model CandidateResume {
   redactedAt       DateTime?
   organizationId   String
 
+  // Cached plaintext extraction of `data` (PDF → text via pdf-parse).
+  // Drives the keyword-search resume-snippet column without re-parsing
+  // bytes on every query. Capped at 50,000 chars by the backfill /
+  // upload paths so a single oversized resume can't bloat the row.
+  // null means "not yet extracted" (or extraction failed and we skipped
+  // the row); the backfill script idempotently picks those up.
+  extractedText String?
+
   uploadedBy   User         @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   candidate    Candidate?   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)

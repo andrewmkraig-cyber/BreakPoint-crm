@@ -105,6 +105,67 @@ function parseNumber(raw: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+// Earliest occurrence of any search token (case-insensitive) in the
+// extracted resume text, with 200 chars of context centered loosely on
+// the hit. Leading / trailing ellipses indicate truncation; collapsing
+// whitespace keeps tabular PDFs from rendering as huge gaps.
+const SNIPPET_LEN = 200;
+const SNIPPET_LEAD = 80;
+function buildResumeSnippet(text: string, tokens: string[]): string | null {
+  if (!text || tokens.length === 0) return null;
+  const lower = text.toLowerCase();
+  let earliest = -1;
+  for (const t of tokens) {
+    const i = lower.indexOf(t.toLowerCase());
+    if (i >= 0 && (earliest < 0 || i < earliest)) earliest = i;
+  }
+  if (earliest < 0) return null;
+  const start = Math.max(0, earliest - SNIPPET_LEAD);
+  const end = Math.min(text.length, start + SNIPPET_LEN);
+  let snip = text.slice(start, end).replace(/\s+/g, " ").trim();
+  if (!snip) return null;
+  if (start > 0) snip = "…" + snip;
+  if (end < text.length) snip = snip + "…";
+  return snip;
+}
+
+// For the visible page of candidates, pull the most-recently-uploaded
+// resume per candidate whose extracted text contains EVERY token (AND,
+// case-insensitive — Prisma `contains` on text columns). One query
+// covers the whole page; we sort newest-upload-first so a candidate
+// with multiple resume versions surfaces a snippet from the current
+// one. Returns a map of candidateId → snippet string.
+async function resumeSnippetsForCandidates(
+  orgId: string,
+  candidateIds: string[],
+  tokens: string[],
+): Promise<Map<string, string>> {
+  if (tokens.length === 0 || candidateIds.length === 0) return new Map();
+  const resumes = await prisma.candidateResume.findMany({
+    where: {
+      organizationId: orgId,
+      candidateId: { in: candidateIds },
+      extractedText: { not: null },
+      AND: tokens.map((t) => ({
+        extractedText: { contains: t, mode: "insensitive" as const },
+      })),
+    },
+    select: {
+      candidateId: true,
+      extractedText: true,
+      uploadedAt: true,
+    },
+    orderBy: { uploadedAt: "desc" },
+  });
+  const out = new Map<string, string>();
+  for (const r of resumes) {
+    if (!r.candidateId || out.has(r.candidateId)) continue;
+    const snip = buildResumeSnippet(r.extractedText ?? "", tokens);
+    if (snip) out.set(r.candidateId, snip);
+  }
+  return out;
+}
+
 function parseCsv(raw: string | null): string[] {
   if (!raw) return [];
   return raw
@@ -361,6 +422,11 @@ export async function GET(req: Request) {
 
     const tenureRange = TENURE_RANGES[tenure];
 
+    // Tokens for the resume-snippet pass. Empty when the query has no
+    // keyword (snippet enrichment becomes a no-op). Computed once so
+    // both code paths share the same token list.
+    const snippetTokens = q ? tokenize(q) : [];
+
     if (!tenureRange) {
       // No tenure filter — paginate at the DB level.
       const [rows, total] = await Promise.all([
@@ -373,8 +439,13 @@ export async function GET(req: Request) {
         }),
         prisma.candidate.count({ where }),
       ]);
+      const snippetMap = await resumeSnippetsForCandidates(
+        org.id,
+        rows.map((r) => r.id),
+        snippetTokens,
+      );
       return NextResponse.json({
-        candidates: rows.map(toRow),
+        candidates: rows.map((c) => toRow(c, snippetMap.get(c.id))),
         total,
       });
     }
@@ -400,8 +471,13 @@ export async function GET(req: Request) {
     });
     const total = filtered.length;
     const slice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    const snippetMap = await resumeSnippetsForCandidates(
+      org.id,
+      slice.map((r) => r.id),
+      snippetTokens,
+    );
     return NextResponse.json({
-      candidates: slice.map(toRow),
+      candidates: slice.map((c) => toRow(c, snippetMap.get(c.id))),
       total,
     });
   } catch (e) {
@@ -425,7 +501,7 @@ function toRow(c: {
   expectedSalary: unknown;
   createdAt: Date;
   updatedAt: Date;
-}) {
+}, resumeSnippet?: string) {
   return {
     id: c.id,
     name: composeName(c.firstName, c.lastName),
@@ -435,5 +511,6 @@ function toRow(c: {
     salary: formatSalary(c.expectedSalary),
     lastApply: relativeTime(c.createdAt),
     lastAction: relativeTime(c.updatedAt),
+    resumeSnippet: resumeSnippet ?? null,
   };
 }

@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  Fragment,
   useEffect,
   useMemo,
   useRef,
@@ -68,6 +69,9 @@ type Row = {
   salary: string;
   lastApply: string;
   lastAction: string;
+  // Server-side keyword hit inside the candidate's parsed resume text.
+  // Null when q is empty or no resume on file matched all tokens.
+  resumeSnippet: string | null;
 };
 
 type Filters = {
@@ -1139,10 +1143,13 @@ export default function CandidatesPage() {
                     </tr>
                   )}
                   {rows.map((c) => (
+                    <Fragment key={c.id}>
                     <tr
-                      key={c.id}
                       onClick={() => setSelectedId(c.id)}
-                      className="h-12 cursor-pointer transition hover:bg-court-accent-tint/40"
+                      className={
+                        "h-12 cursor-pointer transition hover:bg-court-accent-tint/40 " +
+                        (c.resumeSnippet ? "border-b-0" : "")
+                      }
                     >
                       <td
                         className="w-10 px-3"
@@ -1201,6 +1208,27 @@ export default function CandidatesPage() {
                         </Link>
                       </td>
                     </tr>
+                    {c.resumeSnippet ? (
+                      <tr
+                        onClick={() => setSelectedId(c.id)}
+                        className="cursor-pointer transition hover:bg-court-accent-tint/40"
+                      >
+                        <td className="px-3" />
+                        <td
+                          colSpan={9}
+                          className="px-3 pb-2 pt-0 text-[11px] italic leading-snug text-court-fg-muted"
+                        >
+                          <span className="font-semibold not-italic text-court-fg-muted/80">
+                            Resume:
+                          </span>{" "}
+                          <Highlight
+                            text={c.resumeSnippet}
+                            tokens={matchTokens}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
