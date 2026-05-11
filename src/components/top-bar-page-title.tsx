@@ -104,7 +104,7 @@ function resolveSpec(
 // of the page title in the topbar. Reads as a secondary affordance
 // next to the larger serif title rather than equal weight.
 const ACTION_BUTTON_CLASS =
-  "inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
+  "inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
 export function TopBarPageTitle() {
   const pathname = usePathname();
@@ -146,7 +146,7 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "link") {
     return (
       <Link href={action.href} className={ACTION_BUTTON_CLASS}>
-        <Plus className="h-3.5 w-3.5" />
+        <Plus className="h-3 w-3" />
         {action.label}
       </Link>
     );
@@ -219,7 +219,7 @@ function ComposeMailButton({ label }: { label: string }) {
 
   return (
     <button type="button" onClick={onClick} disabled={busy} className={ACTION_BUTTON_CLASS}>
-      <Plus className="h-3.5 w-3.5" />
+      <Plus className="h-3 w-3" />
       {label}
     </button>
   );
@@ -233,7 +233,7 @@ function PhoneDialButton({ label }: { label: string }) {
       onClick={phonePanels.openDialPad}
       className={ACTION_BUTTON_CLASS}
     >
-      <Plus className="h-3.5 w-3.5" />
+      <Plus className="h-3 w-3" />
       {label}
     </button>
   );

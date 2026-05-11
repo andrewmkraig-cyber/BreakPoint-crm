@@ -10,6 +10,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
+  ListPlus,
   Loader2,
   Minus,
   RotateCcw,
@@ -20,6 +21,11 @@ import {
 } from "lucide-react";
 import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
 import { saveJobSearchFilters } from "@/app/jobs/[id]/save-search-actions";
+import { BulkAddToListDialog } from "@/app/candidates/bulk-dialogs";
+import {
+  listCandidateLists,
+  type CandidateListSummary,
+} from "@/app/candidates/lists-actions";
 import {
   useEffect,
   useMemo,
@@ -606,6 +612,29 @@ export function MatchesTab({
   // Bulk action concurrency. Disables the bar while a multi-row apply
   // / keep is in flight to keep a double-click from firing N+M requests.
   const [bulkInFlight, setBulkInFlight] = useState(false);
+  // Add-to-List dialog state. Lists are lazy-fetched on first click so
+  // the tab doesn't pay the round-trip on mount; null = not fetched.
+  const [addToListOpen, setAddToListOpen] = useState(false);
+  const [bulkLists, setBulkLists] = useState<CandidateListSummary[] | null>(
+    null,
+  );
+  const [listsLoading, setListsLoading] = useState(false);
+
+  async function openAddToList() {
+    if (selectedIds.size === 0) return;
+    setListsLoading(true);
+    try {
+      if (bulkLists === null) {
+        const lists = await listCandidateLists();
+        setBulkLists(lists);
+      }
+      setAddToListOpen(true);
+    } catch {
+      toast.error("Couldn't load lists");
+    } finally {
+      setListsLoading(false);
+    }
+  }
 
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1818,6 +1847,21 @@ export function MatchesTab({
                       )}
                       Reject
                     </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void openAddToList()}
+                      disabled={bulkInFlight || listsLoading}
+                      className="rounded-full"
+                    >
+                      {listsLoading ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <ListPlus className="h-3.5 w-3.5" />
+                      )}
+                      Add to List
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1945,6 +1989,21 @@ export function MatchesTab({
             </div>
           )}
         </section>
+      )}
+
+      {addToListOpen && bulkLists !== null && (
+        <BulkAddToListDialog
+          candidateIds={Array.from(selectedIds)}
+          lists={bulkLists}
+          onClose={() => setAddToListOpen(false)}
+          onDone={() => {
+            setAddToListOpen(false);
+            setSelectedIds(new Set());
+            // Invalidate cached lists so a newly-created list shows up
+            // on next open.
+            setBulkLists(null);
+          }}
+        />
       )}
     </div>
   );

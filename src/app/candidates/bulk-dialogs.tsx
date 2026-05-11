@@ -1,0 +1,288 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import { Loader2, Send, ListPlus, X } from "lucide-react";
+import { toast } from "sonner";
+import {
+  bulkApplyCandidatesToJob,
+  bulkAddCandidatesToList,
+  bulkAddCandidatesToNewList,
+  type BulkPickerJob,
+} from "@/app/candidates/bulk-actions";
+import type { CandidateListSummary } from "@/app/candidates/lists-actions";
+
+// Shared bulk-action modals used by both the /candidates global page
+// and the job Matches tab. Extracted out of candidates-view.tsx so the
+// two surfaces share a single picker/dialog implementation.
+
+export function BulkApplyDialog({
+  candidateIds,
+  jobs,
+  onClose,
+  onDone,
+}: {
+  candidateIds: string[];
+  jobs: BulkPickerJob[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [pickKey, setPickKey] = useState("");
+  const [filter, setFilter] = useState("");
+  const [busy, setBusy] = useState(false);
+  const picked = jobs.find((j) => j.key === pickKey) ?? null;
+  const filtered = filter.trim()
+    ? jobs.filter((j) => j.label.toLowerCase().includes(filter.trim().toLowerCase()))
+    : jobs;
+
+  async function onApply() {
+    if (!picked) return;
+    setBusy(true);
+    try {
+      const res = await bulkApplyCandidatesToJob({
+        candidateIds,
+        jobCuid: picked.jobCuid,
+        jobRfId: picked.jobRfId,
+        clientCuid: picked.clientCuid,
+        clientRfId: picked.clientRfId,
+      });
+      if (!res.ok && res.applied === 0) {
+        toast.error("Couldn't apply candidates", {
+          description: res.errors[0] ?? "Unknown error",
+        });
+        return;
+      }
+      const desc = [
+        res.applied > 0 ? `${res.applied} applied` : null,
+        res.skipped > 0 ? `${res.skipped} already linked` : null,
+        res.errors.length > 0 ? `${res.errors.length} errors` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ");
+      toast.success(`Bulk apply complete${desc ? ` — ${desc}` : ""}`);
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BulkModal
+      title={`Apply ${candidateIds.length} candidate${candidateIds.length === 1 ? "" : "s"} to a job`}
+      onClose={onClose}
+    >
+      <p className="mb-2 text-xs text-court-fg-muted">
+        Already-linked candidates are skipped automatically.
+      </p>
+      <input
+        type="text"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        placeholder="Filter jobs…"
+        disabled={busy}
+        className="mb-2 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+      />
+      <select
+        value={pickKey}
+        onChange={(e) => setPickKey(e.target.value)}
+        disabled={busy}
+        size={Math.min(8, Math.max(3, filtered.length))}
+        className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+      >
+        {filtered.length === 0 && (
+          <option value="" disabled>
+            No matching jobs
+          </option>
+        )}
+        {filtered.map((j) => (
+          <option key={j.key} value={j.key}>
+            {j.label}
+          </option>
+        ))}
+      </select>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={busy || !picked}
+          className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200 disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+          Apply
+        </button>
+      </div>
+    </BulkModal>
+  );
+}
+
+export function BulkAddToListDialog({
+  candidateIds,
+  lists,
+  onClose,
+  onDone,
+}: {
+  candidateIds: string[];
+  lists: CandidateListSummary[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [mode, setMode] = useState<"existing" | "new">(
+    lists.length > 0 ? "existing" : "new",
+  );
+  const [listId, setListId] = useState<string>(lists[0]?.id ?? "");
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function onSave() {
+    setBusy(true);
+    try {
+      if (mode === "existing") {
+        if (!listId) {
+          toast.error("Pick a list");
+          return;
+        }
+        const res = await bulkAddCandidatesToList({ candidateIds, listId });
+        if (!res.ok) {
+          toast.error("Couldn't add to list", { description: res.error });
+          return;
+        }
+        toast.success(`Added ${res.added} to list`);
+      } else {
+        const res = await bulkAddCandidatesToNewList({ candidateIds, name });
+        if (!res.ok) {
+          toast.error("Couldn't create list", { description: res.error });
+          return;
+        }
+        toast.success(`Created list and added ${res.added} candidates`);
+      }
+      onDone();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <BulkModal
+      title={`Add ${candidateIds.length} candidate${candidateIds.length === 1 ? "" : "s"} to a list`}
+      onClose={onClose}
+    >
+      <div className="mb-3 flex gap-2 text-xs">
+        <button
+          type="button"
+          onClick={() => setMode("existing")}
+          disabled={lists.length === 0}
+          className={
+            "rounded-md border px-2 py-1 font-medium transition " +
+            (mode === "existing"
+              ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+              : "border-court-border text-court-fg-muted hover:text-court-fg")
+          }
+        >
+          Existing list
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("new")}
+          className={
+            "rounded-md border px-2 py-1 font-medium transition " +
+            (mode === "new"
+              ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+              : "border-court-border text-court-fg-muted hover:text-court-fg")
+          }
+        >
+          New list
+        </button>
+      </div>
+      {mode === "existing" ? (
+        <select
+          value={listId}
+          onChange={(e) => setListId(e.target.value)}
+          disabled={busy}
+          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+        >
+          <option value="">— pick a list —</option>
+          {lists.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name} ({l.memberCount})
+            </option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="New list name"
+          maxLength={80}
+          disabled={busy}
+          className="w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+        />
+      )}
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={busy || (mode === "existing" ? !listId : name.trim().length === 0)}
+          className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+        >
+          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <ListPlus className="h-3 w-3" />}
+          {mode === "existing" ? "Add" : "Create + add"}
+        </button>
+      </div>
+    </BulkModal>
+  );
+}
+
+function BulkModal({
+  title,
+  children,
+  onClose,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      role="dialog"
+      aria-label={title}
+      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-xl border border-court-border bg-court-surface p-5 shadow-2xl"
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <h2 className="font-serif text-base font-semibold text-court-fg">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}

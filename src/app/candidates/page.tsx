@@ -12,13 +12,27 @@ import {
   ChevronRight,
   ChevronsUpDown,
   ClipboardList,
+  ListPlus,
   Loader2,
   Minus,
   Search,
+  Send,
   Target,
   X,
 } from "lucide-react";
 import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
+import {
+  BulkApplyDialog,
+  BulkAddToListDialog,
+} from "@/app/candidates/bulk-dialogs";
+import {
+  getOpenJobsForBulkPicker,
+  type BulkPickerJob,
+} from "@/app/candidates/bulk-actions";
+import {
+  listCandidateLists,
+  type CandidateListSummary,
+} from "@/app/candidates/lists-actions";
 import {
   Fragment,
   useEffect,
@@ -654,6 +668,55 @@ export default function CandidatesPage() {
     setSavedSearches(loadSavedSearches());
   }, []);
 
+  // Bulk multi-select for the results table. Independent of selectedId
+  // (single-row split view) so the recruiter can build a selection set
+  // without entering the split view. Sticky bulk bar shows when at
+  // least one row is checked.
+  const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [bulkDialog, setBulkDialog] = useState<null | "apply" | "list">(null);
+  // Lazy-fetched bulk picker payloads. null = not fetched yet; [] =
+  // fetched (possibly empty). Fetched on first open of the relevant
+  // dialog so /candidates doesn't pay the round-trip on every mount.
+  const [bulkJobs, setBulkJobs] = useState<BulkPickerJob[] | null>(null);
+  const [bulkLists, setBulkLists] = useState<CandidateListSummary[] | null>(
+    null,
+  );
+  const [bulkLoading, setBulkLoading] = useState(false);
+
+  async function openBulkApply() {
+    if (bulkSelectedIds.size === 0) return;
+    setBulkLoading(true);
+    try {
+      if (bulkJobs === null) {
+        const jobs = await getOpenJobsForBulkPicker();
+        setBulkJobs(jobs);
+      }
+      setBulkDialog("apply");
+    } catch {
+      toast.error("Couldn't load jobs");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
+  async function openBulkList() {
+    if (bulkSelectedIds.size === 0) return;
+    setBulkLoading(true);
+    try {
+      if (bulkLists === null) {
+        const lists = await listCandidateLists();
+        setBulkLists(lists);
+      }
+      setBulkDialog("list");
+    } catch {
+      toast.error("Couldn't load lists");
+    } finally {
+      setBulkLoading(false);
+    }
+  }
+
   // Cancel any in-flight request when a newer one starts so a slow
   // earlier response can't overwrite a fresher result set.
   const abortRef = useRef<AbortController | null>(null);
@@ -794,6 +857,18 @@ export default function CandidatesPage() {
       const data = (await res.json()) as { candidates: Row[]; total: number };
       setRows(data.candidates ?? []);
       setTotal(data.total ?? 0);
+      // Drop any selection ids that fell out of the new result set —
+      // acting on rows that are no longer visible would silently apply
+      // to candidates the recruiter can't see.
+      setBulkSelectedIds((prev) => {
+        if (prev.size === 0) return prev;
+        const visible = new Set((data.candidates ?? []).map((c) => c.id));
+        const next = new Set<string>();
+        prev.forEach((id) => {
+          if (visible.has(id)) next.add(id);
+        });
+        return next.size === prev.size ? prev : next;
+      });
     } catch (e) {
       if ((e as Error).name === "AbortError") return;
       // On error keep prior rows so the table doesn't blank out;
@@ -1518,7 +1593,53 @@ export default function CandidatesPage() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 overflow-x-auto">
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {bulkSelectedIds.size > 0 && (
+                <div className="flex items-center justify-between gap-3 border-b border-court-border bg-court-accent-tint/40 px-4 py-2">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setBulkSelectedIds(new Set())}
+                      aria-label="Clear selection"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface/50 hover:text-court-fg"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                    <span className="text-xs font-semibold text-court-fg">
+                      {bulkSelectedIds.size} selected
+                    </span>
+                  </div>
+                  <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="apply"
+                      onClick={() => void openBulkApply()}
+                      disabled={bulkLoading}
+                      className="rounded-full"
+                    >
+                      {bulkLoading && bulkDialog === null ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                      Apply to Job
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => void openBulkList()}
+                      disabled={bulkLoading}
+                      className="rounded-full"
+                    >
+                      <ListPlus className="h-3.5 w-3.5" />
+                      Add to List
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <div className="flex-1 overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="border-b border-court-border bg-court-surface-subtle">
                   <tr>
@@ -1526,6 +1647,24 @@ export default function CandidatesPage() {
                       <input
                         type="checkbox"
                         aria-label="Select all"
+                        checked={
+                          sortedRows.length > 0 &&
+                          bulkSelectedIds.size === sortedRows.length
+                        }
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate =
+                              bulkSelectedIds.size > 0 &&
+                              bulkSelectedIds.size < sortedRows.length;
+                          }
+                        }}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setBulkSelectedIds(new Set(sortedRows.map((r) => r.id)));
+                          } else {
+                            setBulkSelectedIds(new Set());
+                          }
+                        }}
                         className="h-4 w-4 cursor-pointer accent-brand"
                       />
                     </th>
@@ -1580,6 +1719,15 @@ export default function CandidatesPage() {
                         <input
                           type="checkbox"
                           aria-label={`Select ${c.name}`}
+                          checked={bulkSelectedIds.has(c.id)}
+                          onChange={(e) => {
+                            setBulkSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (e.target.checked) next.add(c.id);
+                              else next.delete(c.id);
+                              return next;
+                            });
+                          }}
                           className="h-4 w-4 cursor-pointer accent-brand"
                         />
                       </td>
@@ -1641,9 +1789,38 @@ export default function CandidatesPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </section>
+      )}
+
+      {bulkDialog === "apply" && bulkJobs !== null && (
+        <BulkApplyDialog
+          candidateIds={Array.from(bulkSelectedIds)}
+          jobs={bulkJobs}
+          onClose={() => setBulkDialog(null)}
+          onDone={() => {
+            setBulkDialog(null);
+            setBulkSelectedIds(new Set());
+          }}
+        />
+      )}
+
+      {bulkDialog === "list" && bulkLists !== null && (
+        <BulkAddToListDialog
+          candidateIds={Array.from(bulkSelectedIds)}
+          lists={bulkLists}
+          onClose={() => setBulkDialog(null)}
+          onDone={() => {
+            setBulkDialog(null);
+            setBulkSelectedIds(new Set());
+            // Force a list refetch on next open so the new list (if
+            // created) shows up; existing-list adds don't change the
+            // list shape, but it's cheap to invalidate.
+            setBulkLists(null);
+          }}
+        />
       )}
     </div>
   );
