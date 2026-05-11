@@ -333,7 +333,7 @@ function LocalJobActionRow({
             <Button
               type="button"
               size="sm"
-              variant="secondary"
+              variant="client-invite"
               onClick={onClientInvite}
               title="Log an interview the client is scheduling themselves — adds to your calendar only"
             >

@@ -3,14 +3,21 @@ import { ButtonHTMLAttributes, forwardRef } from "react";
 
 // Semantic button variants. Pick by intent, not color:
 //   primary   — Submit / send / save (the affirming green action)
-//   secondary — neutral utility (Add Note / Add to List / Client Sending
-//               Invite / filters / view toggles / download / attach)
+//   secondary — neutral utility (Add Note / Add to List / filters /
+//               view toggles / download / attach)
 //   schedule  — Schedule Interview (soft blue, calendar-tinted)
 //   keep      — Keep / save-for-later (soft light blue, a hair lighter
 //               than schedule so the two intents sit beside each other)
 //   apply     — Apply to Job (amber, the recruiter's "candidate is now in
 //               the pipeline" gate-pass; intentionally NOT primary green
 //               so Submit stays the only affirmative-green action)
+//   client-invite — "Client Sending Invite" / tracking-only flows
+//               (slate greyish-blue). Distinct from `secondary`
+//               because `secondary` picks up court-mode tinting in
+//               Grass Light and reads almost-green next to Submit;
+//               distinct from `schedule` because Schedule Interview
+//               sits beside it on the same row and the two intents
+//               need to read as different colour families.
 //   reject    — Reject / Reapply / destructive / delete (soft red)
 //   danger    — alias for reject; preserved for back-compat with older call sites
 //   ghost     — text-only chrome action (no fill, no border)
@@ -29,6 +36,7 @@ type Variant =
   | "schedule"
   | "keep"
   | "apply"
+  | "client-invite"
   | "reject"
   | "danger"
   | "ghost"
@@ -66,6 +74,12 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
               variant === "schedule" || variant === "keep",
             "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900 dark:hover:bg-amber-950/60":
               variant === "apply",
+            // Slate greyish-blue. Sits beside schedule (light blue)
+            // and primary (green) on the candidate-profile job
+            // strip — slate is cool but neutral enough to read as
+            // its own intent without competing with either neighbor.
+            "bg-slate-100 text-slate-700 border border-slate-300 hover:bg-slate-200 dark:bg-slate-800/60 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800":
+              variant === "client-invite",
             // reject + danger collapse to the same red. reject is the
             // preferred name (destructive intent reads as "reject" in
             // recruiting contexts); danger stays as an alias.
