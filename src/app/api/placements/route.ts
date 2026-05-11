@@ -84,6 +84,50 @@ export async function POST(req: Request) {
   }
 
   if (stage === "APPLIED") {
+    // Un-reject path: if a Placement already exists at stage=rejected,
+    // bump it to applied instead of creating a duplicate via
+    // applyLocalCandidateToJob (which 409s on any existing row). This
+    // is the inverse of the Reject button on the Matches tab and
+    // routes the candidate back to the All bucket. The confirmation
+    // email is intentionally skipped — the candidate was already in
+    // the pipeline once, no need to re-trigger.
+    const existing = await prisma.placement.findUnique({
+      where: { candidateId_jobId: { candidateId: candidate.id, jobId: job.id } },
+      select: { id: true, stage: true },
+    });
+    if (existing && existing.stage === "rejected") {
+      const session = await getServerSession(authOptions);
+      const userEmail = session?.user?.email;
+      if (!userEmail) {
+        return NextResponse.json({ ok: false, error: "Not signed in." }, { status: 401 });
+      }
+      const user = await prisma.user.findUnique({
+        where: { email: userEmail },
+        select: { id: true },
+      });
+      if (!user) {
+        return NextResponse.json({ ok: false, error: "User not found." }, { status: 401 });
+      }
+      await prisma.placement.update({
+        where: { id: existing.id },
+        data: { stage: "applied", syncedToRf: false, invoicingFlagged: false },
+      });
+      await logActivity({
+        organizationId: org.id,
+        userId: user.id,
+        actionType: "candidate_unrejected_for_job",
+        targetType: "candidate",
+        targetId: candidate.id,
+        metadata: {
+          jobId: job.id,
+          jobRfId: job.legacyRfId,
+          clientId: job.clientId,
+          clientRfId,
+        },
+      });
+      return NextResponse.json({ ok: true });
+    }
+
     // Pass the resolved jobRfId (legacyRfId) when the job is RF-imported
     // so the Placement carries BOTH identity keys. Older callers were
     // hardcoded to null, which left the Placement unfindable by the

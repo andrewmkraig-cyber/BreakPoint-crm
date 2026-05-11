@@ -406,6 +406,11 @@ export async function GET(req: Request) {
   // the API can exclude candidates already rejected for that job (they
   // live in the Rejected tab and shouldn't reappear in the matches list).
   const jobId = (sp.get("jobId") ?? "").trim();
+  // Rejected tab uses the inverse filter — show ONLY candidates with a
+  // rejected placement for this job. When set, this param overrides the
+  // hide-rejected branch below and bypasses the other filter pipeline
+  // (the user is browsing the rejection bucket, not searching within it).
+  const rejectedForJobId = (sp.get("rejectedForJobId") ?? "").trim();
   // Employer pills: pipe-delimited include and exclude lists. Legacy
   // `employer=` singleton is folded into the include list so any
   // bookmarked URL or older client keeps working without a redirect.
@@ -577,11 +582,19 @@ export async function GET(req: Request) {
       }
     }
 
-    // Hide candidates already rejected for this job. Stage is stored
-    // lowercase ("rejected") — see /api/placements where the upsert
-    // writes that exact value. NOT + some-subquery composes with the
-    // rest of the where so it works alongside any other active filter.
-    if (jobId) {
+    // Rejected tab inverts the hide-rejected filter: show ONLY
+    // candidates with a rejected placement for this job. Mutually
+    // exclusive with the regular hide-rejected branch; rejected mode
+    // wins when both params are present.
+    if (rejectedForJobId) {
+      andClauses.push({
+        placements: { some: { jobId: rejectedForJobId, stage: "rejected" } },
+      });
+    } else if (jobId) {
+      // Hide candidates already rejected for this job. Stage is stored
+      // lowercase ("rejected") — see /api/placements where the upsert
+      // writes that exact value. NOT + some-subquery composes with the
+      // rest of the where so it works alongside any other active filter.
       andClauses.push({
         NOT: { placements: { some: { jobId, stage: "rejected" } } },
       });
@@ -692,7 +705,13 @@ function toRow(c: {
     location: formatLocation(c.location) || "",
     salary: formatSalary(c.expectedSalary),
     lastApply: relativeTime(c.createdAt),
+    // Raw ISO timestamps ride alongside the formatted relative strings
+    // so client-side sort can order by date without re-parsing
+    // "2 days ago" back into a Date. Existing callers that only read
+    // lastApply / lastAction keep working.
+    lastApplyAt: c.createdAt.toISOString(),
     lastAction: relativeTime(c.updatedAt),
+    lastActionAt: c.updatedAt.toISOString(),
     resumeSnippet: resumeSnippet ?? null,
   };
 }

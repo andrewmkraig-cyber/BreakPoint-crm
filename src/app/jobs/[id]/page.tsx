@@ -16,10 +16,6 @@ import {
   type JobMatchedRow,
   type JobPipelineRow,
 } from "@/app/jobs/[id]/pipeline-summary";
-import {
-  EditableJobOverview,
-  type JobOverviewInitial,
-} from "@/app/jobs/[id]/editable-job-overview";
 import { DeleteJobButton } from "@/app/jobs/[id]/delete-job-button";
 import {
   JobOverviewTab,
@@ -265,9 +261,6 @@ export default async function JobDetailPage({
     };
   });
 
-  const customFields = Array.isArray(raw.custom_fields) ? raw.custom_fields : [];
-  const billingContact = customFields.find((f) => f.name?.toLowerCase() === "billing contact")?.value as string | undefined;
-
   // Client slug for the "Client profile" button. Prefer the Client row's
   // legacyRfId (back-compat URLs); fall back to cuid for Ace-native.
   // Also pulls customFields so the Overview tab can derive fee % (no
@@ -307,12 +300,12 @@ export default async function JobDetailPage({
     });
   }
 
-  // Overview reads come from the Job table directly so saves through
-  // EditableJobOverview echo on next revalidate without having to keep
-  // Job.raw in sync. RF-imported rows have these columns populated by
-  // the importer; values fall back to the normalized RF shape (used for
-  // very old imports or partial syncs) or — last-resort — to the raw
-  // payload's salary fields.
+  // Overview reads come from the Job table directly so inline-edit
+  // saves through updateJobOverview echo on next revalidate without
+  // having to keep Job.raw in sync. RF-imported rows have these
+  // columns populated by the importer; values fall back to the
+  // normalized RF shape (used for very old imports or partial syncs)
+  // or — last-resort — to the raw payload's salary fields.
   const rawSalaryStart =
     typeof raw.salary_range_start === "number" ? raw.salary_range_start : null;
   const rawSalaryEnd =
@@ -321,18 +314,22 @@ export default async function JobDetailPage({
     typeof raw.salary_range_currency === "string" ? raw.salary_range_currency : null;
   const rawSalaryFreq =
     typeof raw.salary_frequency === "string" ? raw.salary_frequency : null;
-  const overviewInitial: JobOverviewInitial = {
+  const overviewFields = {
     salaryRangeStart: jobRow.salaryRangeStart ?? rawSalaryStart,
     salaryRangeEnd: jobRow.salaryRangeEnd ?? rawSalaryEnd,
     salaryCurrency: jobRow.salaryCurrency ?? rawSalaryCcy,
-    salaryFrequency: jobRow.salaryFrequency ?? rawSalaryFreq,
-    locations: Array.isArray(jobRow.locations) && jobRow.locations.length > 0
-      ? jobRow.locations
-      : (Array.isArray(raw.locations) ? raw.locations : []),
+    salaryFrequency:
+      (jobRow.salaryFrequency ?? rawSalaryFreq) === "hourly"
+        ? ("hourly" as const)
+        : ("yearly" as const),
+    locations:
+      Array.isArray(jobRow.locations) && jobRow.locations.length > 0
+        ? jobRow.locations
+        : Array.isArray(raw.locations)
+          ? raw.locations
+          : [],
     numberOfOpenings: jobRow.numberOfOpenings ?? raw.number_of_openings ?? null,
-    isOpen: jobRow.isOpen,
     employmentType: jobRow.employmentType ?? raw.employment_type ?? null,
-    billingContact: billingContact || "",
     lastEditedAt: jobRow.updatedAt.toISOString(),
     applyLink: typeof raw.apply_link === "string" ? raw.apply_link : null,
   };
@@ -363,14 +360,18 @@ export default async function JobDetailPage({
     jobId: jobRow.id,
     title: job.title,
     clientName: job.company || "",
-    locations: overviewInitial.locations,
+    locations: overviewFields.locations,
     lifecycle,
-    employmentType: overviewInitial.employmentType,
-    compensation: formatCompSummary(overviewInitial),
+    employmentType: overviewFields.employmentType,
+    compensation: formatCompSummary(overviewFields),
     feePct: clientFeePct,
-    numberOfOpenings: overviewInitial.numberOfOpenings,
-    lastEditedAt: overviewInitial.lastEditedAt,
-    applyLink: overviewInitial.applyLink,
+    numberOfOpenings: overviewFields.numberOfOpenings,
+    lastEditedAt: overviewFields.lastEditedAt,
+    applyLink: overviewFields.applyLink,
+    salaryRangeStart: overviewFields.salaryRangeStart,
+    salaryRangeEnd: overviewFields.salaryRangeEnd,
+    salaryCurrency: overviewFields.salaryCurrency,
+    salaryFrequency: overviewFields.salaryFrequency,
   };
 
   return (
@@ -419,63 +420,58 @@ export default async function JobDetailPage({
         }}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        <div className="space-y-4 lg:col-span-7">
-          <JobTabs slug={slug} tab={tab} />
-          {tab === "overview" ? (
-            <JobOverviewTab snapshot={overviewSnapshot} />
-          ) : tab === "description" ? (
-            <JobDescriptionTab
-              jobId={jobRow.id}
-              jobRfId={rfId}
-              jobCuid={isAceNative ? jobRow.id : null}
-              rfDescription={rfDescription}
-              initialOverride={override?.description ?? null}
-              initialSourceJobUrl={jobRow.sourceJobUrl ?? null}
-              initialRawJobDescription={jobRow.rawJobDescription ?? null}
-              initialDescription={jobRow.description ?? null}
-              initialDescriptionGeneratedAt={
-                jobRow.descriptionGeneratedAt
-                  ? jobRow.descriptionGeneratedAt.toISOString()
-                  : null
-              }
-              initialInternalRecruiterNotes={jobRow.internalRecruiterNotes ?? null}
-              jobMeta={{
-                title: job.title,
-                clientName: job.company || "",
-                location: overviewSnapshot.locations.join(", "),
-                compensation: overviewSnapshot.compensation,
-              }}
-              matchTarget={matchTarget}
-            />
-          ) : tab === "promote" ? (
-            <PromoteTab
-              jobId={jobRow.id}
-              applyLink={overviewInitial.applyLink}
-              rows={promoteRows}
-            />
-          ) : tab === "game-plan" ? (
-            <AiWorkspace entityType="job" entityId={jobRow.id} />
-          ) : tab === "activity" ? (
-            <ActivityFeed entityType="job" entityId={jobRow.id} />
-          ) : tab === "matches" ? (
-            <MatchesTab
-              jobCuid={jobRow.id}
-              jobRfId={rfId}
-              jobTitle={job.title}
-              savedFilters={jobRow.savedSearchFilters as unknown}
-            />
-          ) : (
-            <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />
-          )}
-        </div>
-        <div className="lg:col-span-3">
-          <EditableJobOverview
+      <div className="space-y-4">
+        <JobTabs slug={slug} tab={tab} />
+        {tab === "overview" ? (
+          <JobOverviewTab
+            snapshot={overviewSnapshot}
             jobRfId={rfId}
             jobCuid={isAceNative ? jobRow.id : null}
-            initial={overviewInitial}
           />
-        </div>
+        ) : tab === "description" ? (
+          <JobDescriptionTab
+            jobId={jobRow.id}
+            jobRfId={rfId}
+            jobCuid={isAceNative ? jobRow.id : null}
+            rfDescription={rfDescription}
+            initialOverride={override?.description ?? null}
+            initialSourceJobUrl={jobRow.sourceJobUrl ?? null}
+            initialRawJobDescription={jobRow.rawJobDescription ?? null}
+            initialDescription={jobRow.description ?? null}
+            initialDescriptionGeneratedAt={
+              jobRow.descriptionGeneratedAt
+                ? jobRow.descriptionGeneratedAt.toISOString()
+                : null
+            }
+            initialInternalRecruiterNotes={jobRow.internalRecruiterNotes ?? null}
+            jobMeta={{
+              title: job.title,
+              clientName: job.company || "",
+              location: overviewSnapshot.locations.join(", "),
+              compensation: overviewSnapshot.compensation,
+            }}
+            matchTarget={matchTarget}
+          />
+        ) : tab === "promote" ? (
+          <PromoteTab
+            jobId={jobRow.id}
+            applyLink={overviewFields.applyLink}
+            rows={promoteRows}
+          />
+        ) : tab === "game-plan" ? (
+          <AiWorkspace entityType="job" entityId={jobRow.id} />
+        ) : tab === "activity" ? (
+          <ActivityFeed entityType="job" entityId={jobRow.id} />
+        ) : tab === "matches" ? (
+          <MatchesTab
+            jobCuid={jobRow.id}
+            jobRfId={rfId}
+            jobTitle={job.title}
+            savedFilters={jobRow.savedSearchFilters as unknown}
+          />
+        ) : (
+          <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />
+        )}
       </div>
 
       <DeleteJobButton jobId={jobRow.id} jobTitle={job.title} />
@@ -530,10 +526,15 @@ function extractFeePct(raw: unknown): number | null {
   return null;
 }
 
-// Inline summary string for the Overview snapshot. Mirrors the Compensation
-// formatter on EditableJobOverview but lives here so the server component
-// can render it without pulling the client module.
-function formatCompSummary(state: JobOverviewInitial): string {
+// Inline summary string for the Overview snapshot. Mirrors the
+// compensation formatter inside JobOverviewTab so the server can render
+// the initial display without pulling the client module.
+function formatCompSummary(state: {
+  salaryRangeStart: number | null;
+  salaryRangeEnd: number | null;
+  salaryCurrency: string | null;
+  salaryFrequency: "yearly" | "hourly";
+}): string {
   const { salaryRangeStart: lo, salaryRangeEnd: hi, salaryCurrency, salaryFrequency } = state;
   if (lo == null && hi == null) return "—";
   const ccy = (salaryCurrency ?? "USD").toUpperCase();
