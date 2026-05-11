@@ -1,18 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Briefcase,
   CalendarClock,
   CalendarPlus,
   Loader2,
+  RotateCcw,
   Send,
   UserX,
   X,
 } from "lucide-react";
-import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
+import { reapplyLocalPlacement, rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { toast } from "sonner";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { Button } from "@/components/ui/button";
@@ -122,10 +123,23 @@ export function LocalPlacementRows({
   const [rescheduleFor, setRescheduleFor] = useState<LocalInterview | null>(null);
   const [inviteFlow, setInviteFlow] = useState<LocalInviteFlow | null>(null);
 
+  // Mirror the jobs prop into local state so Reapply can drop the row
+  // immediately on delete-success. router.refresh() would race the
+  // Postgres commit and re-render the row before the delete is visible.
+  // Mirrors the jobsState pattern in placement-flows.tsx.
+  const [jobsState, setJobsState] = useState<LocalJobRow[]>(jobs);
+  useEffect(() => {
+    setJobsState(jobs);
+  }, [jobs]);
+
+  function handlePlacementRemoved(placementId: string) {
+    setJobsState((prev) => prev.filter((j) => j.placementId !== placementId));
+  }
+
   return (
     <>
       <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
-        {jobs.map((j) => (
+        {jobsState.map((j) => (
           <LocalJobActionRow
             key={j.placementId}
             candidateId={candidateId}
@@ -133,6 +147,7 @@ export function LocalPlacementRows({
             job={j}
             onSchedule={() => setScheduleFor(j)}
             onClientInvite={() => setClientInviteFor(j)}
+            onPlacementRemoved={handlePlacementRemoved}
           />
         ))}
       </div>
@@ -237,15 +252,18 @@ function LocalJobActionRow({
   job,
   onSchedule,
   onClientInvite,
+  onPlacementRemoved,
 }: {
   candidateId: string;
   candidateName: string;
   job: LocalJobRow;
   onSchedule: () => void;
   onClientInvite: () => void;
+  onPlacementRemoved?: (placementId: string) => void;
 }) {
   const router = useRouter();
   const [isRejecting, startRejecting] = useTransition();
+  const [isReapplying, startReapplying] = useTransition();
   const [rejectOpen, setRejectOpen] = useState(false);
   const normalizedStage = (job.stage ?? "sourced").trim().toLowerCase();
   const canSchedule = normalizedStage !== "hired" && normalizedStage !== "cancelled" && normalizedStage !== "rejected";
@@ -279,8 +297,37 @@ function LocalJobActionRow({
   const canClientInvite =
     normalizedStage === "submitted" || normalizedStage === "interviewing";
 
+  // Reapply is the inverse of Reject — visible only on already-rejected
+  // rows. Deletes the Placement row entirely so the candidate gets a
+  // clean slate for that job (no submitted-fallback to manage), and
+  // drops the row from local state via onPlacementRemoved.
+  const canReapply = normalizedStage === "rejected";
+
   function onReject() {
     setRejectOpen(true);
+  }
+
+  function onReapply() {
+    if (
+      !confirm(
+        `Reapply ${candidateName} to ${job.jobTitle}? This deletes the rejected placement row so the candidate gets a clean slate for this job.`,
+      )
+    ) {
+      return;
+    }
+    startReapplying(async () => {
+      const res = await reapplyLocalPlacement({ placementId: job.placementId });
+      if (!res.ok) {
+        toast.error("Couldn't reapply", { description: res.error });
+        return;
+      }
+      toast.success(`Reapplied ${candidateName}`);
+      if (onPlacementRemoved) {
+        onPlacementRemoved(job.placementId);
+      } else {
+        router.refresh();
+      }
+    });
   }
 
   async function handleRejectConfirm({
@@ -374,6 +421,19 @@ function LocalJobActionRow({
             >
               {isRejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
               Reject
+            </Button>
+          )}
+          {canReapply && (
+            <Button
+              type="button"
+              size="sm"
+              variant="reject"
+              onClick={onReapply}
+              disabled={isReapplying}
+              title="Reapply this candidate — deletes the disqualified placement row"
+            >
+              {isReapplying ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              Reapply
             </Button>
           )}
         </div>

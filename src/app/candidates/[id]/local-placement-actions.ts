@@ -584,3 +584,57 @@ export async function rejectLocalPlacement(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to reject candidate." };
   }
 }
+
+// Reapply for an Ace-native rejected Placement. Deletes the row so the
+// candidate has a clean slate for that job — same semantics as the
+// onUnrejectViaDelete path on the RF side, mirrored here for local
+// candidates where Placement.stage is the canonical source of truth.
+// Scoped by organizationId so a recruiter on a different org can't
+// touch our rows.
+export async function reapplyLocalPlacement(input: {
+  placementId: string;
+}): Promise<Result> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
+  try {
+    const placement = await prisma.placement.findFirst({
+      where: { id: input.placementId, organizationId: org.id },
+      select: {
+        id: true,
+        stage: true,
+        candidateId: true,
+        candidateRfId: true,
+        jobId: true,
+        jobRfId: true,
+        clientId: true,
+        clientRfId: true,
+      },
+    });
+    if (!placement) return { ok: false, error: "Placement not found." };
+    if (placement.stage !== "rejected") {
+      return { ok: false, error: "Only rejected placements can be reapplied." };
+    }
+    await prisma.placement.delete({ where: { id: input.placementId } });
+    await createActionLog({
+      userId: user.id,
+      actionType: "reapply_local_placement",
+      subjectType: "candidate",
+      subjectId: placement.candidateId ?? String(placement.candidateRfId ?? ""),
+      metadata: {
+        placementId: input.placementId,
+        jobId: placement.jobId,
+        jobRfId: placement.jobRfId,
+        clientId: placement.clientId,
+        clientRfId: placement.clientRfId,
+        previousStage: "rejected",
+        local: true,
+      },
+    });
+    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
+    revalidatePath(`/pipeline`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reapply candidate." };
+  }
+}
