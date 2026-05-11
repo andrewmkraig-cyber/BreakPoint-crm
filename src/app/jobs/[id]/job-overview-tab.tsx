@@ -12,13 +12,12 @@ import { cn, formatDate } from "@/lib/utils";
 import { JobOverviewActionButtons } from "@/app/jobs/[id]/job-overview-action-buttons";
 import type { JobLifecycle } from "@/app/jobs/[id]/job-overview-actions";
 
-// Overview tab body. Snapshot of the job's key facts, top-of-tab
-// lifecycle actions (Inactivate / Make Private / Reactivate / Delete),
-// plus a Search Health placeholder. Edit-style writes still live on
-// the right-rail EditableJobOverview card so the same sticky surface
-// owns granular field saves; the buttons here are the one-shot
-// lifecycle actions (move state, nuke a mistake import) that don't
-// fit a per-field edit flow.
+// Overview tab body. Snapshot of the job's key facts plus top-of-tab
+// lifecycle actions (Inactivate / Make Private / Reactivate / Delete).
+// Edit-style writes still live on the right-rail EditableJobOverview
+// card so the same sticky surface owns granular field saves; the
+// buttons here are the one-shot lifecycle actions (move state, nuke a
+// mistake import) that don't fit a per-field edit flow.
 
 export type JobOverviewSnapshot = {
   jobId: string;
@@ -109,21 +108,6 @@ export function JobOverviewTab({ snapshot }: { snapshot: JobOverviewSnapshot }) 
         </div>
       </section>
 
-      <section className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/50 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-              Search Health
-            </div>
-            <div className="mt-1 text-sm text-court-fg-muted">
-              Signal on whether this job is actively producing matches and movement.
-            </div>
-          </div>
-          <span className="inline-flex items-center rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-            Coming soon
-          </span>
-        </div>
-      </section>
     </div>
   );
 }

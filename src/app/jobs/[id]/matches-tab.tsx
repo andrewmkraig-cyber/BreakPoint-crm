@@ -3,12 +3,14 @@
 import Link from "next/link";
 import {
   ArrowLeft,
+  Bookmark,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
   Download,
   Eye,
+  EyeOff,
   ListFilter,
   Loader2,
   Search,
@@ -17,6 +19,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
 import {
   useEffect,
   useMemo,
@@ -348,6 +351,8 @@ export function MatchesTab({
   // recruiter can't double-click and create a 409 (apply) or a no-op
   // double-update (reject).
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
+  const [keepInFlight, setKeepInFlight] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -478,8 +483,6 @@ export function MatchesTab({
       const idx = prev.findIndex((r) => r.id === id);
       if (idx === -1) return prev;
       const next = prev.slice(0, idx).concat(prev.slice(idx + 1));
-      // Advance selection: same index lands on the next row; if we
-      // popped the tail, fall back one; if the list is empty, clear.
       if (selectedId === id) {
         if (next.length === 0) {
           setSelectedId(null);
@@ -492,6 +495,66 @@ export function MatchesTab({
       return next;
     });
     setTotal((prev) => (prev == null ? prev : Math.max(0, prev - 1)));
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    setSelectedIds((prev) => {
+      if (prev.size === rows.length && rows.length > 0) return new Set();
+      return new Set(rows.map((r) => r.id));
+    });
+  }
+
+  // Client-side hide for already-reviewed candidates: pull selected
+  // rows out of the local results list. No DB write — this is a
+  // recruiter's view-state shortcut, not a soft-delete.
+  function removeSelectedFromResults() {
+    if (selectedIds.size === 0) return;
+    const removed = selectedIds.size;
+    setRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
+    setTotal((prev) => (prev == null ? prev : Math.max(0, prev - removed)));
+    if (selectedId && selectedIds.has(selectedId)) setSelectedId(null);
+    setSelectedIds(new Set());
+    toast.success(
+      removed === 1
+        ? "Removed 1 candidate from results"
+        : `Removed ${removed} candidates from results`,
+    );
+  }
+
+  async function onKeep(candidateId: string, candidateName: string) {
+    if (keepInFlight === candidateId) return;
+    setKeepInFlight(candidateId);
+    try {
+      const res = await toggleCandidateKept({ candidateId });
+      if (!res.ok) {
+        toast.error("Couldn't update Keep", { description: res.error });
+        return;
+      }
+      toast.success(
+        res.value.isKept ? `Kept ${candidateName}` : `Removed ${candidateName} from Kept`,
+      );
+    } catch (e) {
+      toast.error("Couldn't update Keep", {
+        description: e instanceof Error ? e.message : "Network error.",
+      });
+    } finally {
+      setKeepInFlight((prev) => (prev === candidateId ? null : prev));
+    }
   }
 
   async function postPlacement(
@@ -576,6 +639,8 @@ export function MatchesTab({
   );
   const inFlightForSelected =
     selectedId !== null && actionInFlight === selectedId;
+  const keepInFlightForSelected =
+    selectedId !== null && keepInFlight === selectedId;
 
   return (
     // min-h-[640px] floors the surface at a usable height even when the
@@ -974,6 +1039,24 @@ export function MatchesTab({
               <Button
                 type="button"
                 size="sm"
+                variant="keep"
+                disabled={keepInFlightForSelected || !selectedRow}
+                onClick={() => {
+                  if (!selectedRow) return;
+                  void onKeep(selectedRow.id, selectedRow.name);
+                }}
+                className="h-7 rounded-md px-2.5 text-[11px]"
+              >
+                {keepInFlightForSelected ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Bookmark className="h-3 w-3" />
+                )}
+                Keep
+              </Button>
+              <Button
+                type="button"
+                size="sm"
                 variant="reject"
                 disabled={inFlightForSelected || !selectedRow}
                 onClick={() => {
@@ -1054,7 +1137,36 @@ export function MatchesTab({
               </div>
             </div>
           ) : (
-            <div className="flex-1 overflow-x-auto">
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {selectedIds.size > 0 && (
+                <div className="flex items-center justify-between gap-3 border-b border-court-border bg-court-accent-tint/40 px-4 py-2">
+                  <span className="text-xs font-semibold text-court-fg">
+                    {selectedIds.size} selected
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setSelectedIds(new Set())}
+                      className="rounded-full"
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="reject"
+                      size="sm"
+                      onClick={removeSelectedFromResults}
+                      className="rounded-full"
+                    >
+                      <EyeOff className="h-3.5 w-3.5" />
+                      Remove from results
+                    </Button>
+                  </div>
+                </div>
+              )}
+              <div className="flex-1 overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="border-b border-court-border bg-court-surface-subtle">
                   <tr>
@@ -1062,6 +1174,14 @@ export function MatchesTab({
                       <input
                         type="checkbox"
                         aria-label="Select all"
+                        checked={rows.length > 0 && selectedIds.size === rows.length}
+                        ref={(el) => {
+                          if (el) {
+                            el.indeterminate =
+                              selectedIds.size > 0 && selectedIds.size < rows.length;
+                          }
+                        }}
+                        onChange={toggleSelectAll}
                         className="h-4 w-4 cursor-pointer accent-brand"
                       />
                     </th>
@@ -1105,6 +1225,8 @@ export function MatchesTab({
                         <input
                           type="checkbox"
                           aria-label={`Select ${c.name}`}
+                          checked={selectedIds.has(c.id)}
+                          onChange={() => toggleSelected(c.id)}
                           className="h-4 w-4 cursor-pointer accent-brand"
                         />
                       </td>
@@ -1136,6 +1258,7 @@ export function MatchesTab({
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </section>
