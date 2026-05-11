@@ -7,9 +7,17 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 // Daily Lichess puzzle for the dashboard, shared across the org. The
 // route hits Lichess at most once per (org, ET day) — first request
-// fetches /api/puzzle/next?difficulty=easiest, derives the FEN if the
+// fetches /api/puzzle/next?difficulty=easier, derives the FEN if the
 // payload only ships a PGN, and persists the result. Every later load
 // for any user in the same org returns the cached row.
+//
+// Rating target: PUZZLE_MIN_RATING..PUZZLE_MAX_RATING. Lichess varies
+// what it returns for a given difficulty, so we retry up to
+// PUZZLE_MAX_RETRIES times until the rating lands inside the band; if
+// none qualify we fall back to whatever the final attempt produced so
+// the chip never goes empty for the day. A cached row whose rating is
+// outside the current band is treated as a stale miss and refetched so
+// difficulty-band changes propagate without a manual cache clear.
 //
 // solution and themes are stored as JSON; rating + lichessId let the
 // client deep-link to lichess.org/training/{id} and show the rating
@@ -17,6 +25,11 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
+
+const PUZZLE_MIN_RATING = 1000;
+const PUZZLE_MAX_RATING = 1500;
+const PUZZLE_MAX_RETRIES = 5;
+const LICHESS_DIFFICULTY = "easier";
 
 type LichessPuzzleResponse = {
   puzzle?: {
@@ -112,7 +125,15 @@ export async function GET() {
       },
     },
   });
-  if (cached) {
+  // Serve the cached row only when its rating sits inside the current
+  // band. Today's puzzle was previously written under a lower-difficulty
+  // setting, so an in-range gate is what flips the bump live on the
+  // first request after the deploy without forcing a manual purge.
+  if (
+    cached &&
+    cached.rating >= PUZZLE_MIN_RATING &&
+    cached.rating <= PUZZLE_MAX_RATING
+  ) {
     return NextResponse.json({
       ok: true,
       cached: true,
@@ -121,34 +142,55 @@ export async function GET() {
   }
 
   let payload: PuzzlePayload | null = null;
+  let fallback: PuzzlePayload | null = null;
   try {
-    const res = await fetch(
-      "https://lichess.org/api/puzzle/next?difficulty=easiest",
-      { cache: "no-store" },
-    );
-    if (!res.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Lichess HTTP ${res.status}` },
-        { status: 502 },
+    for (let attempt = 0; attempt < PUZZLE_MAX_RETRIES; attempt++) {
+      const res = await fetch(
+        `https://lichess.org/api/puzzle/next?difficulty=${LICHESS_DIFFICULTY}`,
+        { cache: "no-store" },
       );
-    }
-    const json = (await res.json()) as LichessPuzzleResponse;
-    const id = json.puzzle?.id;
-    const solution = json.puzzle?.solution ?? [];
-    const fen = deriveFen(json);
-    if (id && solution.length > 0 && fen) {
-      payload = {
+      if (!res.ok) {
+        // First-attempt failure surfaces as a 502 below; subsequent
+        // failures simply burn a retry — we already have a fallback in
+        // hand from earlier attempts if any of them parsed cleanly.
+        if (attempt === 0) {
+          return NextResponse.json(
+            { ok: false, error: `Lichess HTTP ${res.status}` },
+            { status: 502 },
+          );
+        }
+        continue;
+      }
+      const json = (await res.json()) as LichessPuzzleResponse;
+      const id = json.puzzle?.id;
+      const solution = json.puzzle?.solution ?? [];
+      const fen = deriveFen(json);
+      if (!id || solution.length === 0 || !fen) continue;
+      const candidate: PuzzlePayload = {
         id,
         rating: json.puzzle?.rating ?? 0,
         fen,
         solution,
         themes: json.puzzle?.themes ?? [],
       };
+      fallback = candidate;
+      if (
+        candidate.rating >= PUZZLE_MIN_RATING &&
+        candidate.rating <= PUZZLE_MAX_RATING
+      ) {
+        payload = candidate;
+        break;
+      }
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Lichess fetch failed";
     return NextResponse.json({ ok: false, error: msg }, { status: 502 });
   }
+  // Prefer an in-range puzzle; if every retry came back outside the
+  // band, fall back to the last well-formed candidate rather than
+  // failing the request — better to show a slightly off-rating puzzle
+  // than a blank chip.
+  if (!payload) payload = fallback;
   if (!payload) {
     return NextResponse.json(
       { ok: false, error: "Lichess returned no usable puzzle" },
@@ -156,8 +198,10 @@ export async function GET() {
     );
   }
 
-  // Upsert in case a concurrent request beat us — the unique
-  // (org, generatedDate) constraint would otherwise throw.
+  // Upsert in case a concurrent request beat us or the prior cached row
+  // was out-of-band and we're replacing it. `update` overwrites so a
+  // stale row from yesterday's difficulty setting gets replaced rather
+  // than ignored.
   const row = await prisma.chessPuzzleOfDay.upsert({
     where: {
       organizationId_generatedDate: {
@@ -165,7 +209,13 @@ export async function GET() {
         generatedDate,
       },
     },
-    update: {},
+    update: {
+      lichessId: payload.id,
+      rating: payload.rating,
+      fen: payload.fen,
+      solution: payload.solution,
+      themes: payload.themes,
+    },
     create: {
       organizationId: org.id,
       lichessId: payload.id,

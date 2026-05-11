@@ -68,6 +68,7 @@ model User {
   // Phase 5A.4: lists the user has created. Inverse of
   // CandidateList.createdBy.
   createdCandidateLists CandidateList[]          @relation("CandidateListCreatedBy")
+  chessPuzzleStreak     ChessPuzzleStreak?
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -900,6 +901,7 @@ model Organization {
   quotesOfDay          QuoteOfDay[]
   dailyNewsFeeds       DailyNewsFeed[]
   chessPuzzlesOfDay    ChessPuzzleOfDay[]
+  chessPuzzleStreaks   ChessPuzzleStreak[]
   onThisDayEvents      OnThisDayEvent[]
 }
 
@@ -1120,6 +1122,29 @@ model ChessPuzzleOfDay {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, generatedDate])
+  @@index([organizationId])
+}
+
+// Per-user chess-puzzle streak. Lives on User (not Organization) so the
+// daily count follows the recruiter across devices — solving today's
+// puzzle on the iPad must credit the same row the laptop wrote. ET date
+// strings (YYYY-MM-DD) match the client's todayET() formatter so a
+// straight string compare drives the "solved today" / "failed today"
+// guards. organizationId is denormalized for cleanup queries; it is not
+// part of the unique key.
+model ChessPuzzleStreak {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  organizationId String
+  streak         Int      @default(0)
+  lastSolvedDate String?
+  failedDate     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
   @@index([organizationId])
 }
 

@@ -5,12 +5,12 @@ import { ArrowLeft, X } from "lucide-react";
 import { Chess, type Square } from "chess.js";
 import { Chessboard } from "react-chessboard";
 
-// Interactive Lichess puzzle in the 800-1200 rating band, shared across
-// the org. The puzzle is selected once per (org, ET day) by
+// Interactive Lichess puzzle in the 1000-1500 rating band, shared
+// across the org. The puzzle is selected once per (org, ET day) by
 // /api/chess-puzzle, which hits Lichess and persists the result so
-// every recruiter in the org sees the same board. Streak state stays
-// in localStorage per browser — solving as the org would be weird
-// (one person clicks a piece, the other gets credit).
+// every recruiter in the org sees the same board. Streak state lives
+// in Neon (per user, not per browser) so the day count follows the
+// recruiter across devices — iPad and laptop now share one row.
 //
 // Convention: solution[0] is the user's first move (FEN side-to-move
 // == user's color); odd-indexed moves are auto-played by the opponent.
@@ -43,14 +43,23 @@ type Status =
 
 type UciMove = { from: Square; to: Square; promotion?: string };
 
-// Streak state persists across reloads so the day count survives a
-// hard refresh. failedDate stops a same-day re-solve from un-doing a
-// wrong move's reset — once you blow it for the day, you're at 0
-// until tomorrow. Stays per-browser even though the puzzle itself is
-// shared org-wide.
+// Legacy localStorage keys, retained for one-shot migration only. New
+// reads/writes go through /api/chess-puzzle/streak so the state follows
+// the user across devices. Once a browser has run the migration its
+// keys are cleared and never written again.
 const STREAK_KEY = "ace.chess.streak";
 const LAST_SOLVED_KEY = "ace.chess.lastSolvedDate";
 const FAILED_DATE_KEY = "ace.chess.failedDate";
+
+type StreakSnapshot = {
+  streak: number;
+  lastSolvedDate: string | null;
+  failedDate: string | null;
+};
+
+type StreakApiResponse =
+  | ({ ok: true } & StreakSnapshot)
+  | { ok: false; error: string };
 
 function todayET(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -74,11 +83,65 @@ function yesterdayET(): string {
   return utc.toISOString().slice(0, 10);
 }
 
-function readStreak(): number {
-  if (typeof window === "undefined") return 0;
+function readLegacyLocalStreak(): StreakSnapshot | null {
+  if (typeof window === "undefined") return null;
   const raw = window.localStorage.getItem(STREAK_KEY);
+  const lastSolvedDate = window.localStorage.getItem(LAST_SOLVED_KEY);
+  const failedDate = window.localStorage.getItem(FAILED_DATE_KEY);
+  if (raw == null && !lastSolvedDate && !failedDate) return null;
   const parsed = raw ? Number.parseInt(raw, 10) : 0;
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  return {
+    streak: Number.isFinite(parsed) && parsed >= 0 ? parsed : 0,
+    lastSolvedDate,
+    failedDate,
+  };
+}
+
+function clearLegacyLocalStreak() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(STREAK_KEY);
+  window.localStorage.removeItem(LAST_SOLVED_KEY);
+  window.localStorage.removeItem(FAILED_DATE_KEY);
+}
+
+async function fetchStreak(): Promise<StreakSnapshot | null> {
+  try {
+    const res = await fetch("/api/chess-puzzle/streak", { cache: "no-store" });
+    if (!res.ok) return null;
+    const json = (await res.json()) as StreakApiResponse;
+    if (!json.ok) return null;
+    return {
+      streak: json.streak,
+      lastSolvedDate: json.lastSolvedDate,
+      failedDate: json.failedDate,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function postStreak(body: {
+  streak: number;
+  lastSolvedDate?: string | null;
+  failedDate?: string | null;
+}): Promise<StreakSnapshot | null> {
+  try {
+    const res = await fetch("/api/chess-puzzle/streak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as StreakApiResponse;
+    if (!json.ok) return null;
+    return {
+      streak: json.streak,
+      lastSolvedDate: json.lastSolvedDate,
+      failedDate: json.failedDate,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function parseUci(uci: string): UciMove {
@@ -297,45 +360,96 @@ function PuzzleBoard({ puzzle }: { puzzle: Puzzle }) {
   const oppTimeoutRef = useRef<number | null>(null);
   const answerTimeoutRef = useRef<number | null>(null);
 
-  // Hydrate streak + terminal-day status after mount. Reading
-  // localStorage during initial state would trip Next's SSR mismatch
-  // warning, so it lives in an effect. failedDate wins over
-  // lastSolved if both somehow land on today (shouldn't happen given
-  // the recordSolve guard, but defensive).
+  // Mirror the server's lastSolvedDate / failedDate into refs so the
+  // status-transition effect reads the freshest values without needing
+  // them in its dependency array. The same refs gate same-day re-solve
+  // credit and seed the consecutive-day check on the next solve.
+  const lastSolvedRef = useRef<string | null>(null);
+  const failedRef = useRef<string | null>(null);
+  // Holds back the solve/fail POSTs until after the GET completes so a
+  // race between status churn and the initial hydration can't write 0
+  // over a real server-side streak.
+  const hydratedRef = useRef<boolean>(false);
+
+  // Hydrate streak + terminal-day status from the server on mount. A
+  // GET that comes back empty AND a non-empty legacy localStorage row
+  // triggers a one-shot migration POST so existing streaks (Andrew's
+  // 2-day count from the laptop) survive the cutover. Once migrated,
+  // the localStorage keys are cleared so future devices read from the
+  // server only.
   useEffect(() => {
-    setStreak(readStreak());
-    if (typeof window === "undefined") return;
-    const today = todayET();
-    if (window.localStorage.getItem(FAILED_DATE_KEY) === today) {
-      setStatus("streak-failed");
-    } else if (window.localStorage.getItem(LAST_SOLVED_KEY) === today) {
-      setStatus("already-solved");
-    }
+    let cancelled = false;
+    void (async () => {
+      let snap = await fetchStreak();
+      if (cancelled) return;
+      const emptyServer =
+        !snap ||
+        (snap.streak === 0 && !snap.lastSolvedDate && !snap.failedDate);
+      if (emptyServer) {
+        const legacy = readLegacyLocalStreak();
+        const legacyHasData =
+          legacy &&
+          (legacy.streak > 0 || legacy.lastSolvedDate || legacy.failedDate);
+        if (legacy && legacyHasData) {
+          const migrated = await postStreak({
+            streak: legacy.streak,
+            lastSolvedDate: legacy.lastSolvedDate,
+            failedDate: legacy.failedDate,
+          });
+          if (cancelled) return;
+          if (migrated) {
+            snap = migrated;
+            clearLegacyLocalStreak();
+          }
+        }
+      }
+      if (cancelled) return;
+      const safe: StreakSnapshot = snap ?? {
+        streak: 0,
+        lastSolvedDate: null,
+        failedDate: null,
+      };
+      setStreak(safe.streak);
+      lastSolvedRef.current = safe.lastSolvedDate;
+      failedRef.current = safe.failedDate;
+      const today = todayET();
+      if (safe.failedDate === today) {
+        setStatus("streak-failed");
+      } else if (safe.lastSolvedDate === today) {
+        setStatus("already-solved");
+      }
+      hydratedRef.current = true;
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Effect-driven streak updates: status is the only signal, so the
-  // useEffect runs once per transition into "wrong" or "solved".
+  // useEffect runs once per transition into "wrong" or "solved". POSTs
+  // go to the API; refs mirror the new server state so the next
+  // transition reads fresh values without waiting for a GET.
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (!hydratedRef.current) return;
     if (status === "wrong") {
-      window.localStorage.setItem(STREAK_KEY, "0");
-      window.localStorage.setItem(FAILED_DATE_KEY, todayET());
+      const today = todayET();
       setStreak(0);
+      failedRef.current = today;
+      void postStreak({ streak: 0, failedDate: today });
       return;
     }
     if (status === "solved") {
       const today = todayET();
-      const failedToday =
-        window.localStorage.getItem(FAILED_DATE_KEY) === today;
-      if (failedToday) return; // wrong move earlier today — no credit
-      const lastSolved = window.localStorage.getItem(LAST_SOLVED_KEY);
-      if (lastSolved === today) return; // already credited today
-      const next =
-        lastSolved === yesterdayET() ? readStreak() + 1 : 1;
-      window.localStorage.setItem(STREAK_KEY, String(next));
-      window.localStorage.setItem(LAST_SOLVED_KEY, today);
+      if (failedRef.current === today) return; // wrong move earlier today — no credit
+      if (lastSolvedRef.current === today) return; // already credited today
+      const next = lastSolvedRef.current === yesterdayET() ? streak + 1 : 1;
       setStreak(next);
+      lastSolvedRef.current = today;
+      void postStreak({ streak: next, lastSolvedDate: today });
     }
+    // streak intentionally omitted from deps — solve/fail re-runs are
+    // status-driven; reading streak fresh at execution time is fine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status]);
 
   // User's color comes from the initial side-to-move; orient the
