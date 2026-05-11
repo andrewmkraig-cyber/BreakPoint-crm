@@ -636,8 +636,8 @@ export function MailView({
     setBulkBusy(false);
   }
 
-  async function bulkMove(labelId: string, labelName: string) {
-    const ids = Array.from(selectedIds);
+  async function bulkMove(labelId: string, labelName: string, explicitIds?: string[]) {
+    const ids = explicitIds ?? Array.from(selectedIds);
     if (ids.length === 0) return;
     setBulkBusy(true);
     const result = await runBulk(ids, async (id) => {
@@ -931,9 +931,13 @@ export function MailView({
                     onToggleCollapse={toggleCollapsed}
                     selectedLabel={selectedLabel}
                     onSelect={setSelectedLabel}
-                    onDropThread={({ threadId, labelId, labelName }) =>
-                      moveThread(threadId, labelId, labelName)
-                    }
+                    onDropThread={({ threadIds, labelId, labelName }) => {
+                      if (threadIds.length === 1) {
+                        void moveThread(threadIds[0], labelId, labelName);
+                      } else if (threadIds.length > 1) {
+                        void bulkMove(labelId, labelName, threadIds);
+                      }
+                    }}
                     onRenameLabel={renameLabel}
                     onDeleteLabel={deleteLabel}
                     onAddSublabel={(parentName, child) =>
@@ -1157,6 +1161,7 @@ export function MailView({
                   archiving={archiving === t.id}
                   checked={selectedIds.has(t.id)}
                   anySelected={selectedIds.size > 0}
+                  selectedIds={selectedIds}
                   onOpen={() => setSelected(t.id)}
                   onArchive={() => archiveThread(t.id)}
                   onToggle={() => toggleSelectedId(t.id)}
@@ -1226,6 +1231,7 @@ function ThreadRow({
   archiving,
   checked,
   anySelected,
+  selectedIds,
   onOpen,
   onArchive,
   onToggle,
@@ -1235,6 +1241,7 @@ function ThreadRow({
   archiving: boolean;
   checked: boolean;
   anySelected: boolean;
+  selectedIds: Set<string>;
   onOpen: () => void;
   onArchive: () => void;
   onToggle: () => void;
@@ -1249,11 +1256,38 @@ function ThreadRow({
     <div
       draggable
       onDragStart={(e) => {
-        // Custom MIME so this drag source can't be confused with file
-        // drops or other drag origins. dataTransfer.setData stores the
-        // threadId; the drop handler on each label row reads it back.
-        e.dataTransfer.setData("application/x-mail-thread-id", t.id);
+        // Drag the full selection if this row is part of it; otherwise
+        // just this single thread (without disturbing the existing
+        // checkbox selection). Custom MIME keeps file drops and other
+        // drag origins from being mistaken for a thread drag.
+        const ids =
+          selectedIds.has(t.id) && selectedIds.size > 0
+            ? Array.from(selectedIds)
+            : [t.id];
+        e.dataTransfer.setData("application/x-mail-thread-ids", JSON.stringify(ids));
         e.dataTransfer.effectAllowed = "move";
+        if (ids.length > 1) {
+          // setDragImage needs a real DOM node; render an off-screen
+          // pill with the count, then schedule its removal after the
+          // browser snapshots it for the drag cursor.
+          const ghost = document.createElement("div");
+          ghost.textContent = `${ids.length} threads`;
+          ghost.style.position = "absolute";
+          ghost.style.top = "-1000px";
+          ghost.style.left = "-1000px";
+          ghost.style.padding = "6px 10px";
+          ghost.style.borderRadius = "9999px";
+          ghost.style.background = "#5A9642";
+          ghost.style.color = "#ffffff";
+          ghost.style.fontSize = "12px";
+          ghost.style.fontWeight = "600";
+          ghost.style.boxShadow = "0 4px 12px rgba(0,0,0,0.18)";
+          document.body.appendChild(ghost);
+          e.dataTransfer.setDragImage(ghost, 20, 20);
+          setTimeout(() => {
+            document.body.removeChild(ghost);
+          }, 0);
+        }
         setDragging(true);
       }}
       onDragEnd={() => setDragging(false)}
@@ -2353,10 +2387,10 @@ function LabelTreeNode({
   onToggleCollapse: (path: string) => void;
   selectedLabel: { id: string; name: string } | null;
   onSelect: (next: { id: string; name: string } | null) => void;
-  // Drag-and-drop sink. Called when a thread row is dropped onto a
-  // real (non-synthetic) label. The MIME type the dragger sets is
-  // "application/x-mail-thread-id" — handled inside the drop handler.
-  onDropThread?: (args: { threadId: string; labelId: string; labelName: string }) => void;
+  // Drag-and-drop sink. Called when one or more thread rows are dropped
+  // onto a real (non-synthetic) label. The MIME type the dragger sets
+  // is "application/x-mail-thread-ids" (JSON-encoded array of ids).
+  onDropThread?: (args: { threadIds: string[]; labelId: string; labelName: string }) => void;
   // Per-label edit affordances. Hover the row → 3-dot button reveals
   // Rename / Add sublabel / Delete. All three skip when the row is a
   // synthetic parent (no node.id).
@@ -2421,17 +2455,27 @@ function LabelTreeNode({
           if (!droppable || !node.id) return;
           e.preventDefault();
           setDragOver(false);
-          const threadId = e.dataTransfer.getData("application/x-mail-thread-id");
-          if (!threadId) return;
+          const raw = e.dataTransfer.getData("application/x-mail-thread-ids");
+          if (!raw) return;
+          let threadIds: string[] = [];
+          try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              threadIds = parsed.filter((x): x is string => typeof x === "string");
+            }
+          } catch {
+            return;
+          }
+          if (threadIds.length === 0) return;
           onDropThread?.({
-            threadId,
+            threadIds,
             labelId: node.id,
             labelName: node.name,
           });
         }}
         className={
           "group/label flex min-h-9 items-center gap-0.5 rounded-lg " +
-          (dragOver ? "border border-[#5A9642] bg-[#EAF4E4]" : "")
+          (dragOver ? "border border-court-accent bg-court-accent-tint" : "")
         }
         style={{ paddingLeft: `${depth * 8}px` }}
       >
