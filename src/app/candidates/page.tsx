@@ -684,7 +684,13 @@ export default function CandidatesPage() {
   }, [selectedId]);
 
   return (
-    <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex min-h-[calc(100vh-72px)] md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4">
+    // Viewport-bound shell so the candidate table scrolls inside its
+    // own container instead of the page. Pinning height (h, not min-h)
+    // plus overflow-hidden keeps the sidebar's Save search + Saved
+    // Lists footer permanently visible no matter how long the result
+    // list gets — the result list scrolls within its own wrapper
+    // below.
+    <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex h-[calc(100vh-72px)] overflow-hidden md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4">
       <aside
         className={
           "flex shrink-0 flex-col overflow-hidden bg-court-surface transition-[width,border] duration-200 " +
@@ -720,7 +726,7 @@ export default function CandidatesPage() {
                   type="text"
                   value={filters.q}
                   onChange={(e) => setField("q", e.target.value)}
-                  placeholder='e.g. ("CPA" AND "audit")'
+                  placeholder=""
                   className={inputCls}
                 />
               </div>
@@ -732,7 +738,7 @@ export default function CandidatesPage() {
                   onBufferChange={setSkillsBuffer}
                   onCommit={(v) => addPill("skills", v)}
                   onRemove={(v) => removePill("skills", v)}
-                  placeholder="Add a skill, press Enter"
+                  placeholder=""
                   ariaLabel="Skills"
                 />
               </div>
@@ -744,7 +750,7 @@ export default function CandidatesPage() {
                   onBufferChange={setJobTitlesBuffer}
                   onCommit={(v) => addPill("jobTitles", v)}
                   onRemove={(v) => removePill("jobTitles", v)}
-                  placeholder="Add a title, press Enter"
+                  placeholder=""
                   ariaLabel="Job titles"
                 />
               </div>
@@ -786,7 +792,7 @@ export default function CandidatesPage() {
                 onBufferChange={setLocationsBuffer}
                 onCommit={(v) => addPill("locations", v)}
                 onRemove={(v) => removePill("locations", v)}
-                placeholder="City, ST — press Enter"
+                placeholder=""
                 ariaLabel="Locations"
                 enterOnly
               />
@@ -820,7 +826,7 @@ export default function CandidatesPage() {
                     type="text"
                     value={filters.employer}
                     onChange={(e) => setField("employer", e.target.value)}
-                    placeholder="Company name"
+                    placeholder=""
                     className={inputCls}
                   />
                   <SelectField

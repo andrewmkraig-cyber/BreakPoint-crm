@@ -756,7 +756,7 @@ export function MatchesTab({
                   type="text"
                   value={filters.q}
                   onChange={(e) => setField("q", e.target.value)}
-                  placeholder='e.g. ("CPA" AND "audit")'
+                  placeholder=""
                   className={inputCls}
                 />
               </div>
@@ -768,7 +768,7 @@ export function MatchesTab({
                   onBufferChange={setSkillsBuffer}
                   onCommit={(v) => addPill("skills", v)}
                   onRemove={(v) => removePill("skills", v)}
-                  placeholder="Add a skill, press Enter"
+                  placeholder=""
                   ariaLabel="Skills"
                 />
               </div>
@@ -780,7 +780,7 @@ export function MatchesTab({
                   onBufferChange={setJobTitlesBuffer}
                   onCommit={(v) => addPill("jobTitles", v)}
                   onRemove={(v) => removePill("jobTitles", v)}
-                  placeholder="Add a title, press Enter"
+                  placeholder=""
                   ariaLabel="Job titles"
                 />
               </div>
@@ -816,7 +816,7 @@ export function MatchesTab({
                 onBufferChange={setLocationsBuffer}
                 onCommit={(v) => addPill("locations", v)}
                 onRemove={(v) => removePill("locations", v)}
-                placeholder="City, ST — press Enter"
+                placeholder=""
                 ariaLabel="Locations"
                 enterOnly
               />
@@ -849,7 +849,7 @@ export function MatchesTab({
                     type="text"
                     value={filters.employer}
                     onChange={(e) => setField("employer", e.target.value)}
-                    placeholder="Company name"
+                    placeholder=""
                     className={inputCls}
                   />
                   <SelectField
