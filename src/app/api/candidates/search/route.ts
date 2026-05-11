@@ -255,6 +255,41 @@ function parseCsv(raw: string | null): string[] {
     .filter((s) => s.length > 0);
 }
 
+// Pipe-delimited list. Used for fields whose values can legitimately
+// contain commas (employer names like "Microsoft, Inc.").
+function parsePipe(raw: string | null): string[] {
+  if (!raw) return [];
+  return raw
+    .split("|")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+// For employer scope="any": resolve the candidate IDs whose
+// currentOrganization or experience JSON matches ANY of the supplied
+// values (case-insensitive). Returns an empty array when values is
+// empty so the caller can branch on whether to push a clause at all.
+// Same LIKE escape rules as resolveTokenCandidateIds — Postgres default
+// is backslash, and `%`/`_`/`\` in the user input are escaped so a
+// recruiter pasting "AT&T 100%" can't trigger a wildcard sweep.
+async function resolveEmployerAnyIds(
+  orgId: string,
+  values: string[],
+): Promise<string[]> {
+  if (values.length === 0) return [];
+  const patterns = values.map((v) => `%${v.replace(/([\\%_])/g, "\\$1")}%`);
+  const orParts = patterns.map(
+    (p) =>
+      Prisma.sql`("currentOrganization" ILIKE ${p} OR (experience IS NOT NULL AND experience::text ILIKE ${p}))`,
+  );
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM "Candidate"
+    WHERE "organizationId" = ${orgId}
+      AND (${Prisma.join(orParts, " OR ")})
+  `);
+  return rows.map((r) => r.id);
+}
+
 // Nominatim hits for the search-pill location are reused across requests
 // within a server process. Recruiter typing "Akron, OH" 12 times in a
 // minute only burns the Nominatim quota once. Module-level Map is fine
@@ -334,8 +369,14 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const sp = url.searchParams;
   const q = (sp.get("q") ?? "").trim();
-  const jobTitles = parseCsv(sp.get("jobTitles"));
-  const skills = parseCsv(sp.get("skills"));
+  // Job titles / skills are comma-delimited and split into include
+  // (must match at least one) and exclude (must match none) lists. The
+  // rail emits each list on its own param so the server doesn't need an
+  // in-band sigil to tell them apart.
+  const jobTitlesInclude = parseCsv(sp.get("jobTitles"));
+  const jobTitlesExclude = parseCsv(sp.get("excludeJobTitles"));
+  const skillsInclude = parseCsv(sp.get("skills"));
+  const skillsExclude = parseCsv(sp.get("excludeSkills"));
   const minComp = parseNumber(sp.get("minComp"));
   const maxComp = parseNumber(sp.get("maxComp"));
   // Locations are pipe-delimited because each pill ("Akron, OH") already
@@ -365,7 +406,15 @@ export async function GET(req: Request) {
   // the API can exclude candidates already rejected for that job (they
   // live in the Rejected tab and shouldn't reappear in the matches list).
   const jobId = (sp.get("jobId") ?? "").trim();
-  const employer = (sp.get("employer") ?? "").trim();
+  // Employer pills: pipe-delimited include and exclude lists. Legacy
+  // `employer=` singleton is folded into the include list so any
+  // bookmarked URL or older client keeps working without a redirect.
+  const employersInclude = parsePipe(sp.get("employers"));
+  const employersExclude = parsePipe(sp.get("excludeEmployers"));
+  const legacyEmployer = (sp.get("employer") ?? "").trim();
+  if (legacyEmployer && !employersInclude.includes(legacyEmployer)) {
+    employersInclude.push(legacyEmployer);
+  }
   // "current" (default) → currentOrganization contains substring only.
   // "any" → either currentOrganization or anywhere inside the
   // experience JSON. Anything other than the literal "any" falls
@@ -414,24 +463,38 @@ export async function GET(req: Request) {
       }
     }
 
-    // Job-title pills: candidate matches if currentDesignation contains
-    // ANY of the supplied titles (case-insensitive). The pills compose
-    // disjunctively against the title column and AND with all other
-    // active filters.
-    if (jobTitles.length > 0) {
+    // Job-title pills: includes are OR'd (candidate matches if
+    // currentDesignation contains ANY of the included titles); excludes
+    // are AND-NOT'd as a NOT(OR(...)) so no excluded title may appear.
+    // Both clauses compose into the outer AND alongside every other
+    // active filter.
+    if (jobTitlesInclude.length > 0) {
       andClauses.push({
-        OR: jobTitles.map((t) => ({
+        OR: jobTitlesInclude.map((t) => ({
           currentDesignation: { contains: t, mode: "insensitive" as const },
         })),
       });
     }
+    if (jobTitlesExclude.length > 0) {
+      andClauses.push({
+        NOT: {
+          OR: jobTitlesExclude.map((t) => ({
+            currentDesignation: { contains: t, mode: "insensitive" as const },
+          })),
+        },
+      });
+    }
 
-    // Skill pills: Candidate.skills is a String[] column, so OR semantics
-    // map cleanly to Prisma's `hasSome` — candidate matches if their
-    // skills array contains any of the supplied values (exact match;
-    // case-sensitive at the DB layer).
-    if (skills.length > 0) {
-      andClauses.push({ skills: { hasSome: skills } });
+    // Skill pills: includes use Prisma's `hasSome` (candidate matches
+    // if their skills array overlaps the include set); excludes flip
+    // the same operator inside a NOT so a candidate with ANY excluded
+    // skill drops out. Skills are case-sensitive at the DB layer — the
+    // rail commits the exact pill text.
+    if (skillsInclude.length > 0) {
+      andClauses.push({ skills: { hasSome: skillsInclude } });
+    }
+    if (skillsExclude.length > 0) {
+      andClauses.push({ NOT: { skills: { hasSome: skillsExclude } } });
     }
 
     // expectedSalary is JSON `{ number, currency }`; Prisma's JSON path
@@ -476,30 +539,41 @@ export async function GET(req: Request) {
       }
       andClauses.push({ OR: orClauses });
     }
-    if (employer) {
-      if (employerScope === "any") {
-        // "Current + Past": resolve the union of candidate IDs whose
-        // current employer or experience JSON carries the term, then
-        // push it as a single id-IN clause so it composes with the
-        // rest of the where (keyword tokens, locations, tenure, …).
-        // Same LIKE escape used by the keyword resolver — backslash is
-        // Postgres' default LIKE escape, and we escape %/_/\\ so a
-        // recruiter pasting "AT&T 100%" can't trigger a wildcard.
-        const escaped = employer.replace(/([\\%_])/g, "\\$1");
-        const pattern = `%${escaped}%`;
-        const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
-          SELECT id FROM "Candidate"
-          WHERE "organizationId" = ${org.id}
-            AND (
-              "currentOrganization" ILIKE ${pattern}
-              OR (experience IS NOT NULL AND experience::text ILIKE ${pattern})
-            )
-        `);
-        andClauses.push({ id: { in: rows.map((r) => r.id) } });
-      } else {
+    // Employer pills. `scope === "current"` filters against the
+    // currentOrganization column directly via Prisma (no roundtrip);
+    // `scope === "any"` widens to anywhere in the experience JSON,
+    // which requires raw SQL because Prisma can't ILIKE on a jsonb cast.
+    // For both scopes: includes OR together, excludes wrap into a NOT
+    // / `id: { notIn: ... }` so a candidate matching ANY excluded
+    // employer is dropped.
+    if (employerScope === "current") {
+      if (employersInclude.length > 0) {
         andClauses.push({
-          currentOrganization: { contains: employer, mode: "insensitive" },
+          OR: employersInclude.map((e) => ({
+            currentOrganization: { contains: e, mode: "insensitive" as const },
+          })),
         });
+      }
+      if (employersExclude.length > 0) {
+        andClauses.push({
+          NOT: {
+            OR: employersExclude.map((e) => ({
+              currentOrganization: { contains: e, mode: "insensitive" as const },
+            })),
+          },
+        });
+      }
+    } else {
+      // scope === "any" — resolve the ID set for each side via a
+      // single raw-SQL query, then plug into the where via id-IN /
+      // id-notIn so the result composes with every other AND clause.
+      if (employersInclude.length > 0) {
+        const ids = await resolveEmployerAnyIds(org.id, employersInclude);
+        andClauses.push({ id: { in: ids } });
+      }
+      if (employersExclude.length > 0) {
+        const ids = await resolveEmployerAnyIds(org.id, employersExclude);
+        andClauses.push({ id: { notIn: ids } });
       }
     }
 

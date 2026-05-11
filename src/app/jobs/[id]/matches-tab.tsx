@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Bookmark,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   EyeOff,
   ListFilter,
   Loader2,
+  Minus,
   Search,
   Settings2,
   Target,
@@ -92,15 +94,22 @@ type Row = {
   lastAction: string;
 };
 
+// Mirror of the page.tsx Pill type. Each chip on Skills / Job titles /
+// Employer carries its own include / exclude flag; the server splits
+// the lists into OR-includes and AND-NOT-excludes per field.
+type Pill = { value: string; exclude: boolean };
+
 type Filters = {
   q: string;
-  skills: string[];
-  jobTitles: string[];
+  skills: Pill[];
+  jobTitles: Pill[];
   minComp: string;
   maxComp: string;
   locations: string[];
   distance: string;
-  employer: string;
+  // Multiple employer pills with per-pill include/exclude. employerScope
+  // applies uniformly to every pill.
+  employers: Pill[];
   // "current" (default) restricts the employer filter to the candidate's
   // currentOrganization column. "any" widens to anywhere in the
   // experience JSON so former employees match. Matches the param the
@@ -120,7 +129,7 @@ const INITIAL_FILTERS: Filters = {
   maxComp: "",
   locations: [],
   distance: "25",
-  employer: "",
+  employers: [],
   employerScope: "current",
   tenure: "any",
   workAuth: "all",
@@ -128,19 +137,66 @@ const INITIAL_FILTERS: Filters = {
   lastAction: "any",
 };
 
+function partitionPills(pills: Pill[]): { include: string[]; exclude: string[] } {
+  const include: string[] = [];
+  const exclude: string[] = [];
+  for (const p of pills) (p.exclude ? exclude : include).push(p.value);
+  return { include, exclude };
+}
+
+// Coerce one of {Pill[], string[], string, undefined} into Pill[].
+// Used by coerceFilters below to migrate pre-pill snapshots stored on
+// Job.savedSearchFilters before the include/exclude split.
+function coercePills(value: unknown): Pill[] {
+  if (Array.isArray(value)) {
+    const out: Pill[] = [];
+    for (const x of value) {
+      if (typeof x === "string" && x.trim()) {
+        out.push({ value: x, exclude: false });
+      } else if (
+        x &&
+        typeof x === "object" &&
+        typeof (x as { value?: unknown }).value === "string"
+      ) {
+        out.push({
+          value: (x as { value: string }).value,
+          exclude: Boolean((x as { exclude?: unknown }).exclude),
+        });
+      }
+    }
+    return out;
+  }
+  if (typeof value === "string" && value.trim()) {
+    return [{ value: value.trim(), exclude: false }];
+  }
+  return [];
+}
+
 function buildQuery(f: Filters, jobCuid?: string): string {
   const sp = new URLSearchParams();
   if (f.q.trim()) sp.set("q", f.q.trim());
-  if (f.skills.length > 0) sp.set("skills", f.skills.join(","));
-  if (f.jobTitles.length > 0) sp.set("jobTitles", f.jobTitles.join(","));
+  // Include and exclude lists ride on separate params so the server
+  // never needs an in-band sigil to tell them apart.
+  const skills = partitionPills(f.skills);
+  if (skills.include.length > 0) sp.set("skills", skills.include.join(","));
+  if (skills.exclude.length > 0)
+    sp.set("excludeSkills", skills.exclude.join(","));
+  const titles = partitionPills(f.jobTitles);
+  if (titles.include.length > 0) sp.set("jobTitles", titles.include.join(","));
+  if (titles.exclude.length > 0)
+    sp.set("excludeJobTitles", titles.exclude.join(","));
   if (f.minComp.trim()) sp.set("minComp", f.minComp.trim());
   if (f.maxComp.trim()) sp.set("maxComp", f.maxComp.trim());
   if (f.locations.length > 0) sp.set("locations", f.locations.join("|"));
   if (f.distance) sp.set("distance", f.distance);
-  if (f.employer.trim()) sp.set("employer", f.employer.trim());
-  // Only emit scope when it's the non-default and an employer is set,
-  // keeping the URL tidy for the common case.
-  if (f.employer.trim() && f.employerScope === "any") {
+  // Employers pipe-delimited — company names ("Microsoft, Inc.") may
+  // embed commas. Scope only emitted when at least one employer pill
+  // is set and the scope is non-default.
+  const emps = partitionPills(f.employers);
+  if (emps.include.length > 0) sp.set("employers", emps.include.join("|"));
+  if (emps.exclude.length > 0)
+    sp.set("excludeEmployers", emps.exclude.join("|"));
+  if (f.employers.length > 0 && f.employerScope === "any") {
     sp.set("employerScope", "any");
   }
   if (f.tenure && f.tenure !== "any") sp.set("tenure", f.tenure);
@@ -191,21 +247,28 @@ function SectionTitle({ children }: { children: ReactNode }) {
   );
 }
 
+// Mirror of TagInput in src/app/candidates/page.tsx. Values are always
+// Pill[]; when onToggleExclude is supplied each pill renders an
+// include/exclude toggle (green check / red minus) at its head. The
+// background tint follows the pill mode — green for include, red for
+// exclude — so the rail reads as "filter to this AND not that".
 function TagInput({
   values,
   buffer,
   onBufferChange,
   onCommit,
   onRemove,
+  onToggleExclude,
   placeholder,
   ariaLabel,
   enterOnly = false,
 }: {
-  values: string[];
+  values: Pill[];
   buffer: string;
   onBufferChange: (v: string) => void;
   onCommit: (v: string) => void;
   onRemove: (v: string) => void;
+  onToggleExclude?: (v: string) => void;
   placeholder: string;
   ariaLabel: string;
   enterOnly?: boolean;
@@ -227,28 +290,51 @@ function TagInput({
     }
     if (e.key === "Backspace" && buffer === "" && values.length > 0) {
       e.preventDefault();
-      onRemove(values[values.length - 1]);
+      onRemove(values[values.length - 1].value);
     }
   }
 
   return (
     <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-white px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
-      {values.map((v) => (
-        <span
-          key={v}
-          className="inline-flex items-center gap-0.5 rounded bg-court-accent-tint px-1 py-0.5 text-[10px] font-medium text-court-accent-dark"
-        >
-          {v}
-          <button
-            type="button"
-            onClick={() => onRemove(v)}
-            aria-label={`Remove ${v}`}
-            className="rounded-sm text-court-accent-dark/70 transition hover:bg-court-surface/40 hover:text-court-accent-dark"
+      {values.map((p) => {
+        const tintCls = p.exclude
+          ? "bg-red-100 text-red-700"
+          : "bg-court-accent-tint text-court-accent-dark";
+        const subCls = p.exclude
+          ? "text-red-600/80 hover:text-red-700"
+          : "text-court-accent-dark/70 hover:text-court-accent-dark";
+        return (
+          <span
+            key={p.value}
+            className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium ${tintCls}`}
           >
-            <X className="h-2.5 w-2.5" />
-          </button>
-        </span>
-      ))}
+            {onToggleExclude ? (
+              <button
+                type="button"
+                onClick={() => onToggleExclude(p.value)}
+                aria-label={p.exclude ? `Include ${p.value}` : `Exclude ${p.value}`}
+                title={p.exclude ? "Click to include" : "Click to exclude"}
+                className={`rounded-sm transition ${subCls}`}
+              >
+                {p.exclude ? (
+                  <Minus className="h-2.5 w-2.5" strokeWidth={3} />
+                ) : (
+                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                )}
+              </button>
+            ) : null}
+            {p.value}
+            <button
+              type="button"
+              onClick={() => onRemove(p.value)}
+              aria-label={`Remove ${p.value}`}
+              className={`rounded-sm transition ${subCls}`}
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </span>
+        );
+      })}
       <input
         type="text"
         value={buffer}
@@ -294,7 +380,7 @@ function hasAnyFilter(f: Filters): boolean {
     f.minComp.trim() !== "" ||
     f.maxComp.trim() !== "" ||
     f.locations.length > 0 ||
-    f.employer.trim() !== "" ||
+    f.employers.length > 0 ||
     (f.tenure !== "" && f.tenure !== "any") ||
     (f.workAuth !== "" && f.workAuth !== "all") ||
     (f.lastApply !== "" && f.lastApply !== "any") ||
@@ -341,8 +427,10 @@ function joinDot(parts: Array<string | null | undefined>): string {
 // Defensive coerce of a persisted Filters blob (read from
 // Job.savedSearchFilters as `unknown`). Each field is validated against
 // the current schema and falls through to INITIAL_FILTERS when stale or
-// malformed — so a snapshot saved before we added employerScope (or any
-// future column) keeps loading cleanly instead of crashing the rail.
+// malformed — so a snapshot saved before we added employerScope (or
+// the pill include/exclude split) keeps loading cleanly. coercePills
+// upgrades the legacy `skills: string[]` / `jobTitles: string[]` /
+// `employer: string` shapes into Pill[] (everything reads as include).
 function asStringArr(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.filter((x): x is string => typeof x === "string");
@@ -352,15 +440,17 @@ function coerceFilters(value: unknown): Filters {
   const v = value as Record<string, unknown>;
   return {
     q: typeof v.q === "string" ? v.q : INITIAL_FILTERS.q,
-    skills: asStringArr(v.skills),
-    jobTitles: asStringArr(v.jobTitles),
+    skills: coercePills(v.skills),
+    jobTitles: coercePills(v.jobTitles),
     minComp: typeof v.minComp === "string" ? v.minComp : INITIAL_FILTERS.minComp,
     maxComp: typeof v.maxComp === "string" ? v.maxComp : INITIAL_FILTERS.maxComp,
     locations: asStringArr(v.locations),
     distance:
       typeof v.distance === "string" ? v.distance : INITIAL_FILTERS.distance,
-    employer:
-      typeof v.employer === "string" ? v.employer : INITIAL_FILTERS.employer,
+    // Prefer the new `employers` array; fall back to the legacy
+    // `employer` singleton so a pre-migration save keeps applying.
+    employers:
+      v.employers !== undefined ? coercePills(v.employers) : coercePills(v.employer),
     employerScope:
       typeof v.employerScope === "string"
         ? v.employerScope
@@ -404,6 +494,7 @@ export function MatchesTab({
   const [skillsBuffer, setSkillsBuffer] = useState("");
   const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
   const [locationsBuffer, setLocationsBuffer] = useState("");
+  const [employersBuffer, setEmployersBuffer] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -422,32 +513,58 @@ export function MatchesTab({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const hasFilters = hasAnyFilter(filters);
-  const skillsKey = filters.skills.join("|");
-  const jobTitlesKey = filters.jobTitles.join("|");
+  // Pill collapses to `value:0|1` so an exclude-toggle without an add or
+  // remove still bumps the key and retriggers the debounced fetch.
+  const pillKey = (pills: Pill[]) =>
+    pills.map((p) => `${p.value}:${p.exclude ? 1 : 0}`).join("|");
+  const skillsKey = pillKey(filters.skills);
+  const jobTitlesKey = pillKey(filters.jobTitles);
+  const employersKey = pillKey(filters.employers);
   const locationsKey = filters.locations.join("|");
 
   function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
   }
 
-  function addPill(key: "skills" | "jobTitles" | "locations", value: string) {
+  type PillKey = "skills" | "jobTitles" | "employers";
+  function addPill(key: PillKey, value: string) {
     setFilters((prev) => {
       const existing = prev[key];
-      if (existing.includes(value)) return prev;
-      return { ...prev, [key]: [...existing, value] };
+      if (existing.some((p) => p.value === value)) return prev;
+      return { ...prev, [key]: [...existing, { value, exclude: false }] };
     });
     if (key === "skills") setSkillsBuffer("");
     else if (key === "jobTitles") setJobTitlesBuffer("");
-    else setLocationsBuffer("");
+    else setEmployersBuffer("");
   }
 
-  function removePill(
-    key: "skills" | "jobTitles" | "locations",
-    value: string,
-  ) {
+  function removePill(key: PillKey, value: string) {
     setFilters((prev) => ({
       ...prev,
-      [key]: prev[key].filter((v) => v !== value),
+      [key]: prev[key].filter((p) => p.value !== value),
+    }));
+  }
+
+  function togglePill(key: PillKey, value: string) {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: prev[key].map((p) =>
+        p.value === value ? { ...p, exclude: !p.exclude } : p,
+      ),
+    }));
+  }
+
+  function addLocation(value: string) {
+    setFilters((prev) => {
+      if (prev.locations.includes(value)) return prev;
+      return { ...prev, locations: [...prev.locations, value] };
+    });
+    setLocationsBuffer("");
+  }
+  function removeLocation(value: string) {
+    setFilters((prev) => ({
+      ...prev,
+      locations: prev.locations.filter((v) => v !== value),
     }));
   }
 
@@ -456,6 +573,7 @@ export function MatchesTab({
     setSkillsBuffer("");
     setJobTitlesBuffer("");
     setLocationsBuffer("");
+    setEmployersBuffer("");
   }
 
   async function runFetch(f: Filters) {
@@ -509,7 +627,7 @@ export function MatchesTab({
     filters.maxComp,
     locationsKey,
     filters.distance,
-    filters.employer,
+    employersKey,
     filters.employerScope,
     filters.tenure,
     filters.workAuth,
@@ -771,6 +889,7 @@ export function MatchesTab({
                   onBufferChange={setSkillsBuffer}
                   onCommit={(v) => addPill("skills", v)}
                   onRemove={(v) => removePill("skills", v)}
+                  onToggleExclude={(v) => togglePill("skills", v)}
                   placeholder=""
                   ariaLabel="Skills"
                 />
@@ -783,6 +902,7 @@ export function MatchesTab({
                   onBufferChange={setJobTitlesBuffer}
                   onCommit={(v) => addPill("jobTitles", v)}
                   onRemove={(v) => removePill("jobTitles", v)}
+                  onToggleExclude={(v) => togglePill("jobTitles", v)}
                   placeholder=""
                   ariaLabel="Job titles"
                 />
@@ -814,11 +934,17 @@ export function MatchesTab({
             <SectionTitle>Location</SectionTitle>
             <div className="grid grid-cols-[1fr_84px] gap-2">
               <TagInput
-                values={filters.locations}
+                // Locations have no exclude semantics — lift the
+                // string[] state into Pill[] at the boundary and
+                // omit onToggleExclude so the toggle is hidden.
+                values={filters.locations.map((v) => ({
+                  value: v,
+                  exclude: false,
+                }))}
                 buffer={locationsBuffer}
                 onBufferChange={setLocationsBuffer}
-                onCommit={(v) => addPill("locations", v)}
-                onRemove={(v) => removePill("locations", v)}
+                onCommit={addLocation}
+                onRemove={removeLocation}
                 placeholder=""
                 ariaLabel="Locations"
                 enterOnly
@@ -842,18 +968,22 @@ export function MatchesTab({
             <div className="space-y-1.5">
               <div>
                 <FieldLabel>Employer</FieldLabel>
-                {/* Paired input + scope select. "Current only" filters
-                    on currentOrganization; "Current + Past" widens to
-                    anywhere in the experience JSON. Mirrors the same
-                    pattern on the main /candidates rail so the two
-                    sidebars stay visually consistent. */}
+                {/* Paired pill input + scope select. Per-pill toggle
+                    flips a company name between "must match" and "must
+                    NOT match"; the scope dropdown applies uniformly to
+                    every pill. enterOnly because company names embed
+                    commas ("Microsoft, Inc."). */}
                 <div className="grid grid-cols-[1fr_130px] gap-2">
-                  <input
-                    type="text"
-                    value={filters.employer}
-                    onChange={(e) => setField("employer", e.target.value)}
+                  <TagInput
+                    values={filters.employers}
+                    buffer={employersBuffer}
+                    onBufferChange={setEmployersBuffer}
+                    onCommit={(v) => addPill("employers", v)}
+                    onRemove={(v) => removePill("employers", v)}
+                    onToggleExclude={(v) => togglePill("employers", v)}
                     placeholder=""
-                    className={inputCls}
+                    ariaLabel="Employers"
+                    enterOnly
                   />
                   <SelectField
                     value={filters.employerScope}

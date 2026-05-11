@@ -4,6 +4,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Bookmark,
+  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -12,6 +13,7 @@ import {
   Download,
   Eye,
   ListFilter,
+  Minus,
   Search,
   Settings2,
   X,
@@ -76,19 +78,29 @@ type Row = {
   resumeSnippet: string | null;
 };
 
+// Pill with include/exclude semantics. Each chip on Skills / Job titles
+// / Employer carries its own toggle so the same input can express "tax
+// AND NOT manager" inline. The server OR's the includes within a field
+// and AND-NOTs the excludes — see buildQuery for the wire format and
+// /api/candidates/search/route.ts for the resolution.
+type Pill = { value: string; exclude: boolean };
+
 type Filters = {
   q: string;
-  skills: string[];
-  jobTitles: string[];
+  skills: Pill[];
+  jobTitles: Pill[];
   minComp: string;
   maxComp: string;
   // Multiple pills, each a free-form "City, ST" string. OR'd together
   // on the server — a candidate matches if they fall in ANY of the
   // resolved bounding boxes (or text-contains-match for pills that
-  // fail to geocode).
+  // fail to geocode). Locations don't carry exclude semantics, so they
+  // stay as plain strings.
   locations: string[];
   distance: string;
-  employer: string;
+  // Multiple employer pills with per-pill include/exclude. The single
+  // scope select below applies uniformly to every employer pill.
+  employers: Pill[];
   // "current" (default) restricts the employer filter to the candidate's
   // current employer column. "any" widens it to include any historical
   // employer recorded in the experience JSON.
@@ -107,7 +119,7 @@ const INITIAL_FILTERS: Filters = {
   maxComp: "",
   locations: [],
   distance: "25",
-  employer: "",
+  employers: [],
   employerScope: "current",
   tenure: "any",
   workAuth: "all",
@@ -115,22 +127,72 @@ const INITIAL_FILTERS: Filters = {
   lastAction: "any",
 };
 
+// Split a Pill[] into (includes, excludes) lists of raw string values.
+// Centralizes the inclusion/exclusion partition so buildQuery and the
+// label generator never disagree about the boundary.
+function partitionPills(pills: Pill[]): { include: string[]; exclude: string[] } {
+  const include: string[] = [];
+  const exclude: string[] = [];
+  for (const p of pills) (p.exclude ? exclude : include).push(p.value);
+  return { include, exclude };
+}
+
+// Coerce one of {Pill[], string[], single string} into Pill[]. Used to
+// migrate localStorage saved searches written before the include/exclude
+// split (skills/jobTitles were string[], employer was a single string).
+function coercePills(value: unknown): Pill[] {
+  if (Array.isArray(value)) {
+    const out: Pill[] = [];
+    for (const x of value) {
+      if (typeof x === "string" && x.trim()) {
+        out.push({ value: x, exclude: false });
+      } else if (
+        x &&
+        typeof x === "object" &&
+        typeof (x as { value?: unknown }).value === "string"
+      ) {
+        out.push({
+          value: (x as { value: string }).value,
+          exclude: Boolean((x as { exclude?: unknown }).exclude),
+        });
+      }
+    }
+    return out;
+  }
+  if (typeof value === "string" && value.trim()) {
+    return [{ value: value.trim(), exclude: false }];
+  }
+  return [];
+}
+
 function buildQuery(f: Filters): string {
   const sp = new URLSearchParams();
   if (f.q.trim()) sp.set("q", f.q.trim());
-  if (f.skills.length > 0) sp.set("skills", f.skills.join(","));
-  if (f.jobTitles.length > 0) sp.set("jobTitles", f.jobTitles.join(","));
+  // Skills/Job titles: comma-delimited since neither value family
+  // typically embeds commas. Includes and excludes ride on separate
+  // params so the server doesn't need an in-band sigil to tell them
+  // apart.
+  const skills = partitionPills(f.skills);
+  if (skills.include.length > 0) sp.set("skills", skills.include.join(","));
+  if (skills.exclude.length > 0) sp.set("excludeSkills", skills.exclude.join(","));
+  const titles = partitionPills(f.jobTitles);
+  if (titles.include.length > 0) sp.set("jobTitles", titles.include.join(","));
+  if (titles.exclude.length > 0)
+    sp.set("excludeJobTitles", titles.exclude.join(","));
   if (f.minComp.trim()) sp.set("minComp", f.minComp.trim());
   if (f.maxComp.trim()) sp.set("maxComp", f.maxComp.trim());
   // Pipe-delimited because each location ("Akron, OH") already contains
   // a comma. The server splits on `|` to recover the pill list.
   if (f.locations.length > 0) sp.set("locations", f.locations.join("|"));
   if (f.distance) sp.set("distance", f.distance);
-  if (f.employer.trim()) sp.set("employer", f.employer.trim());
-  // Scope is only meaningful with an employer value; skip emitting when
-  // the input is empty or the scope is the default to keep the URL
-  // tidy.
-  if (f.employer.trim() && f.employerScope === "any") {
+  // Employers also pipe-delimited — company names ("Microsoft, Inc.")
+  // can carry commas. Scope is only emitted when at least one employer
+  // pill is set and the scope is non-default.
+  const emps = partitionPills(f.employers);
+  if (emps.include.length > 0) sp.set("employers", emps.include.join("|"));
+  if (emps.exclude.length > 0)
+    sp.set("excludeEmployers", emps.exclude.join("|"));
+  if (f.employers.length > 0 && f.employerScope === "any") {
     sp.set("employerScope", "any");
   }
   if (f.tenure && f.tenure !== "any") sp.set("tenure", f.tenure);
@@ -185,28 +247,36 @@ function SectionTitle({ children }: { children: ReactNode }) {
 // the trailing text input stays inline so the field reads like a
 // continuation of the pill row. Enter or comma commits the buffer;
 // Backspace on an empty buffer pops the last pill (standard tag-input
-// affordance). Duplicates are silently dropped — matching against the
-// same value twice would just dedupe at query time anyway.
+// affordance). Duplicates (by value) are silently dropped.
+//
+// Values arrive as Pill[] so the same component handles include and
+// exclude modes uniformly. When onToggleExclude is supplied each pill
+// renders a checkmark (include) / minus (exclude) toggle at its head;
+// when omitted the pill is render-only (used by Locations, which has no
+// exclude semantics).
 function TagInput({
   values,
   buffer,
   onBufferChange,
   onCommit,
   onRemove,
+  onToggleExclude,
   placeholder,
   ariaLabel,
   enterOnly = false,
 }: {
-  values: string[];
+  values: Pill[];
   buffer: string;
   onBufferChange: (v: string) => void;
   onCommit: (v: string) => void;
   onRemove: (v: string) => void;
+  onToggleExclude?: (v: string) => void;
   placeholder: string;
   ariaLabel: string;
   // Skill / Job-Title pills commit on both Enter and `,` — those values
-  // never embed commas. Location pills are "City, ST" so the comma is
-  // part of the literal value; pass enterOnly to disable comma-commit.
+  // never embed commas. Location/Employer pills can ("Akron, OH" /
+  // "Microsoft, Inc.") so the caller passes enterOnly to disable
+  // comma-commit there.
   enterOnly?: boolean;
 }) {
   function commit() {
@@ -226,28 +296,51 @@ function TagInput({
     }
     if (e.key === "Backspace" && buffer === "" && values.length > 0) {
       e.preventDefault();
-      onRemove(values[values.length - 1]);
+      onRemove(values[values.length - 1].value);
     }
   }
 
   return (
     <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-white px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
-      {values.map((v) => (
-        <span
-          key={v}
-          className="inline-flex items-center gap-0.5 rounded bg-court-accent-tint px-1 py-0.5 text-[10px] font-medium text-court-accent-dark"
-        >
-          {v}
-          <button
-            type="button"
-            onClick={() => onRemove(v)}
-            aria-label={`Remove ${v}`}
-            className="rounded-sm text-court-accent-dark/70 transition hover:bg-court-surface/40 hover:text-court-accent-dark"
+      {values.map((p) => {
+        const tintCls = p.exclude
+          ? "bg-red-100 text-red-700"
+          : "bg-court-accent-tint text-court-accent-dark";
+        const subCls = p.exclude
+          ? "text-red-600/80 hover:text-red-700"
+          : "text-court-accent-dark/70 hover:text-court-accent-dark";
+        return (
+          <span
+            key={p.value}
+            className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-medium ${tintCls}`}
           >
-            <X className="h-2.5 w-2.5" />
-          </button>
-        </span>
-      ))}
+            {onToggleExclude ? (
+              <button
+                type="button"
+                onClick={() => onToggleExclude(p.value)}
+                aria-label={p.exclude ? `Include ${p.value}` : `Exclude ${p.value}`}
+                title={p.exclude ? "Click to include" : "Click to exclude"}
+                className={`rounded-sm transition ${subCls}`}
+              >
+                {p.exclude ? (
+                  <Minus className="h-2.5 w-2.5" strokeWidth={3} />
+                ) : (
+                  <Check className="h-2.5 w-2.5" strokeWidth={3} />
+                )}
+              </button>
+            ) : null}
+            {p.value}
+            <button
+              type="button"
+              onClick={() => onRemove(p.value)}
+              aria-label={`Remove ${p.value}`}
+              className={`rounded-sm transition ${subCls}`}
+            >
+              <X className="h-2.5 w-2.5" />
+            </button>
+          </span>
+        );
+      })}
       <input
         type="text"
         value={buffer}
@@ -293,7 +386,7 @@ function hasAnyFilter(f: Filters): boolean {
     f.minComp.trim() !== "" ||
     f.maxComp.trim() !== "" ||
     f.locations.length > 0 ||
-    f.employer.trim() !== "" ||
+    f.employers.length > 0 ||
     (f.tenure !== "" && f.tenure !== "any") ||
     (f.workAuth !== "" && f.workAuth !== "all") ||
     (f.lastApply !== "" && f.lastApply !== "any") ||
@@ -400,6 +493,45 @@ type SavedSearch = {
 const SAVED_SEARCHES_KEY = "ace.saved-searches";
 const SAVED_SEARCHES_MAX = 5;
 
+// Migrate a localStorage Filters blob into the current shape. Pre-pill
+// snapshots stored skills/jobTitles as string[] and employer as a
+// single string; we lift each into the new Pill[] (everything reads as
+// include) so an old saved search still applies cleanly.
+function coerceFilters(value: unknown): Filters {
+  if (!value || typeof value !== "object") return INITIAL_FILTERS;
+  const v = value as Record<string, unknown>;
+  const locations = Array.isArray(v.locations)
+    ? v.locations.filter((x): x is string => typeof x === "string")
+    : [];
+  return {
+    q: typeof v.q === "string" ? v.q : INITIAL_FILTERS.q,
+    skills: coercePills(v.skills),
+    jobTitles: coercePills(v.jobTitles),
+    minComp: typeof v.minComp === "string" ? v.minComp : INITIAL_FILTERS.minComp,
+    maxComp: typeof v.maxComp === "string" ? v.maxComp : INITIAL_FILTERS.maxComp,
+    locations,
+    distance:
+      typeof v.distance === "string" ? v.distance : INITIAL_FILTERS.distance,
+    // Prefer the new `employers` array; fall back to the legacy
+    // `employer` singleton so a pre-migration save keeps working.
+    employers:
+      v.employers !== undefined ? coercePills(v.employers) : coercePills(v.employer),
+    employerScope:
+      typeof v.employerScope === "string"
+        ? v.employerScope
+        : INITIAL_FILTERS.employerScope,
+    tenure: typeof v.tenure === "string" ? v.tenure : INITIAL_FILTERS.tenure,
+    workAuth:
+      typeof v.workAuth === "string" ? v.workAuth : INITIAL_FILTERS.workAuth,
+    lastApply:
+      typeof v.lastApply === "string" ? v.lastApply : INITIAL_FILTERS.lastApply,
+    lastAction:
+      typeof v.lastAction === "string"
+        ? v.lastAction
+        : INITIAL_FILTERS.lastAction,
+  };
+}
+
 function loadSavedSearches(): SavedSearch[] {
   if (typeof window === "undefined") return [];
   try {
@@ -407,15 +539,20 @@ function loadSavedSearches(): SavedSearch[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (e): e is SavedSearch =>
-        e &&
-        typeof e === "object" &&
-        typeof e.label === "string" &&
-        typeof e.savedAt === "string" &&
-        e.filters &&
-        typeof e.filters === "object",
-    );
+    return parsed
+      .filter(
+        (e): e is { label: string; savedAt: string; filters: unknown } =>
+          e &&
+          typeof e === "object" &&
+          typeof e.label === "string" &&
+          typeof e.savedAt === "string" &&
+          e.filters !== undefined,
+      )
+      .map((e) => ({
+        label: e.label,
+        savedAt: e.savedAt,
+        filters: coerceFilters(e.filters),
+      }));
   } catch {
     return [];
   }
@@ -437,14 +574,17 @@ function persistSavedSearches(list: SavedSearch[]): void {
 // shape so the pill row visually carries over.
 function generateSearchLabel(f: Filters): string {
   const parts: string[] = [];
+  const firstIncludeTitle = f.jobTitles.find((p) => !p.exclude)?.value;
   const headline =
-    f.jobTitles[0] ?? (f.q.trim() ? f.q.trim() : "") ?? "";
+    firstIncludeTitle ?? (f.q.trim() ? f.q.trim() : "") ?? "";
   if (headline) {
     parts.push(headline.length > 40 ? headline.slice(0, 40) + "…" : headline);
   }
   if (f.locations[0]) parts.push(f.locations[0]);
-  if (f.employer.trim() && parts.length < 3) parts.push(f.employer.trim());
-  if (parts.length === 0 && f.skills[0]) parts.push(f.skills[0]);
+  const firstIncludeEmp = f.employers.find((p) => !p.exclude)?.value;
+  if (firstIncludeEmp && parts.length < 3) parts.push(firstIncludeEmp);
+  const firstIncludeSkill = f.skills.find((p) => !p.exclude)?.value;
+  if (parts.length === 0 && firstIncludeSkill) parts.push(firstIncludeSkill);
   if (parts.length === 0) parts.push("Saved search");
   return parts.join(" · ");
 }
@@ -454,6 +594,7 @@ export default function CandidatesPage() {
   const [skillsBuffer, setSkillsBuffer] = useState("");
   const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
   const [locationsBuffer, setLocationsBuffer] = useState("");
+  const [employersBuffer, setEmployersBuffer] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -478,9 +619,14 @@ export default function CandidatesPage() {
 
   const hasFilters = hasAnyFilter(filters);
   // Stable string identity for the array filters so useEffect's dep
-  // compare retriggers on pill add/remove.
-  const skillsKey = filters.skills.join("|");
-  const jobTitlesKey = filters.jobTitles.join("|");
+  // compare retriggers on pill add/remove and on exclude-toggle. Each
+  // Pill collapses to `value:0|1` so a toggle without an add or remove
+  // still bumps the key.
+  const pillKey = (pills: Pill[]) =>
+    pills.map((p) => `${p.value}:${p.exclude ? 1 : 0}`).join("|");
+  const skillsKey = pillKey(filters.skills);
+  const jobTitlesKey = pillKey(filters.jobTitles);
+  const employersKey = pillKey(filters.employers);
   const locationsKey = filters.locations.join("|");
 
   // Tokens used to drive <mark> highlighting in the results table.
@@ -492,24 +638,49 @@ export default function CandidatesPage() {
     setFilters((prev) => ({ ...prev, [key]: value }));
   }
 
-  function addPill(key: "skills" | "jobTitles" | "locations", value: string) {
+  // Pill[] mutators (skills / jobTitles / employers). New pills default
+  // to include mode; togglePill flips a pill into exclude (or back).
+  type PillKey = "skills" | "jobTitles" | "employers";
+  function addPill(key: PillKey, value: string) {
     setFilters((prev) => {
       const existing = prev[key];
-      if (existing.includes(value)) return prev;
-      return { ...prev, [key]: [...existing, value] };
+      if (existing.some((p) => p.value === value)) return prev;
+      return { ...prev, [key]: [...existing, { value, exclude: false }] };
     });
     if (key === "skills") setSkillsBuffer("");
     else if (key === "jobTitles") setJobTitlesBuffer("");
-    else setLocationsBuffer("");
+    else setEmployersBuffer("");
   }
 
-  function removePill(
-    key: "skills" | "jobTitles" | "locations",
-    value: string,
-  ) {
+  function removePill(key: PillKey, value: string) {
     setFilters((prev) => ({
       ...prev,
-      [key]: prev[key].filter((v) => v !== value),
+      [key]: prev[key].filter((p) => p.value !== value),
+    }));
+  }
+
+  function togglePill(key: PillKey, value: string) {
+    setFilters((prev) => ({
+      ...prev,
+      [key]: prev[key].map((p) =>
+        p.value === value ? { ...p, exclude: !p.exclude } : p,
+      ),
+    }));
+  }
+
+  // Locations stay a flat string[] — no exclude semantics, dedicated
+  // helpers to keep the typing clean alongside the Pill[] mutators.
+  function addLocation(value: string) {
+    setFilters((prev) => {
+      if (prev.locations.includes(value)) return prev;
+      return { ...prev, locations: [...prev.locations, value] };
+    });
+    setLocationsBuffer("");
+  }
+  function removeLocation(value: string) {
+    setFilters((prev) => ({
+      ...prev,
+      locations: prev.locations.filter((v) => v !== value),
     }));
   }
 
@@ -518,6 +689,7 @@ export default function CandidatesPage() {
     setSkillsBuffer("");
     setJobTitlesBuffer("");
     setLocationsBuffer("");
+    setEmployersBuffer("");
   }
 
   // Restore a saved snapshot into the rail. Merge over INITIAL_FILTERS so
@@ -527,11 +699,15 @@ export default function CandidatesPage() {
   // empty rather than carrying whatever the recruiter was mid-typing
   // before they clicked the pill.
   function applySavedSearch(s: SavedSearch) {
+    // s.filters is already coerced at load time, but re-merge with
+    // INITIAL_FILTERS so anything missing from an old snapshot falls
+    // back to the default rather than `undefined`.
     const merged: Filters = { ...INITIAL_FILTERS, ...s.filters };
     setFilters(merged);
     setSkillsBuffer("");
     setJobTitlesBuffer("");
     setLocationsBuffer("");
+    setEmployersBuffer("");
     // The filter-change useEffect picks this up and fires the
     // debounced fetch; no explicit runFetch needed.
   }
@@ -615,7 +791,7 @@ export default function CandidatesPage() {
     filters.maxComp,
     locationsKey,
     filters.distance,
-    filters.employer,
+    employersKey,
     filters.employerScope,
     filters.tenure,
     filters.workAuth,
@@ -738,6 +914,7 @@ export default function CandidatesPage() {
                   onBufferChange={setSkillsBuffer}
                   onCommit={(v) => addPill("skills", v)}
                   onRemove={(v) => removePill("skills", v)}
+                  onToggleExclude={(v) => togglePill("skills", v)}
                   placeholder=""
                   ariaLabel="Skills"
                 />
@@ -750,6 +927,7 @@ export default function CandidatesPage() {
                   onBufferChange={setJobTitlesBuffer}
                   onCommit={(v) => addPill("jobTitles", v)}
                   onRemove={(v) => removePill("jobTitles", v)}
+                  onToggleExclude={(v) => togglePill("jobTitles", v)}
                   placeholder=""
                   ariaLabel="Job titles"
                 />
@@ -787,11 +965,18 @@ export default function CandidatesPage() {
             <SectionTitle>Location</SectionTitle>
             <div className="grid grid-cols-[1fr_92px] gap-2">
               <TagInput
-                values={filters.locations}
+                // Locations have no exclude semantics — render as plain
+                // pills by upgrading the string[] state into Pill[] at
+                // the boundary and omitting onToggleExclude so the
+                // toggle button is hidden.
+                values={filters.locations.map((v) => ({
+                  value: v,
+                  exclude: false,
+                }))}
                 buffer={locationsBuffer}
                 onBufferChange={setLocationsBuffer}
-                onCommit={(v) => addPill("locations", v)}
-                onRemove={(v) => removePill("locations", v)}
+                onCommit={addLocation}
+                onRemove={removeLocation}
                 placeholder=""
                 ariaLabel="Locations"
                 enterOnly
@@ -816,18 +1001,22 @@ export default function CandidatesPage() {
             <div className="space-y-1.5">
               <div>
                 <FieldLabel>Employer</FieldLabel>
-                {/* Paired input + scope select. "Current only" filters
-                    on the candidate's currentOrganization column;
-                    "Current + Past" widens to anywhere in the
-                    experience JSON. Mirrors the Location row's
-                    `[1fr 130px]` grid so the controls align. */}
+                {/* Paired pill input + scope select. Per-pill toggle
+                    flips a company name between "must match" and "must
+                    NOT match"; the scope dropdown applies uniformly to
+                    every pill. enterOnly because company names embed
+                    commas ("Microsoft, Inc."). */}
                 <div className="grid grid-cols-[1fr_130px] gap-2">
-                  <input
-                    type="text"
-                    value={filters.employer}
-                    onChange={(e) => setField("employer", e.target.value)}
+                  <TagInput
+                    values={filters.employers}
+                    buffer={employersBuffer}
+                    onBufferChange={setEmployersBuffer}
+                    onCommit={(v) => addPill("employers", v)}
+                    onRemove={(v) => removePill("employers", v)}
+                    onToggleExclude={(v) => togglePill("employers", v)}
                     placeholder=""
-                    className={inputCls}
+                    ariaLabel="Employers"
+                    enterOnly
                   />
                   <SelectField
                     value={filters.employerScope}
