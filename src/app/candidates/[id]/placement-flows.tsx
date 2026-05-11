@@ -28,6 +28,7 @@ import {
   confirmStart,
   deliverCandidateConfirmation,
   generateSubmittal,
+  getCandidatePlacementSnapshots,
   listSubmittalResumeOptions,
   moveCancelledToAceStage,
   reapplyCancelledPlacement,
@@ -242,9 +243,13 @@ export function PlacementActions({
   const [applyOpen, setApplyOpen] = useState(false);
 
   // Mirror the jobs prop into local state so Apply-to-Job can prepend an
-  // optimistic row without waiting for the server round-trip to repopulate
-  // the prop. router.refresh() still fires after a successful action — when
-  // the prop arrives we re-sync via the effect below.
+  // optimistic row. The apply path deliberately does NOT call
+  // router.refresh() — a refresh races the DB commit and re-rendered
+  // server props (still without the new row) would clobber the optimistic
+  // row and the pill would briefly disappear. Instead we wait 500 ms and
+  // re-fetch a slim snapshot list to confirm the placement, merging the
+  // server-truth id/stage into local state. Other paths still call
+  // router.refresh(); this effect handles their reconciliation.
   const [jobsState, setJobsState] = useState<PlacementContextJob[]>(jobs);
   useEffect(() => {
     setJobsState(jobs);
@@ -301,6 +306,46 @@ export function PlacementActions({
       };
       return [...prev, optimistic];
     });
+
+    // 500 ms gives the Postgres write (and any read-replica replication)
+    // time to land before we read back. The optimistic row stays visible
+    // throughout the fetch; if the server agrees we replace the id/stage
+    // in place, if it disagrees we still keep the row to avoid a flicker.
+    setTimeout(() => {
+      void (async () => {
+        try {
+          const result = await getCandidatePlacementSnapshots(candidateRfId);
+          if (!result.ok) return;
+          const byJobRfId = new Map(
+            result.value
+              .filter((p) => p.jobRfId != null)
+              .map((p) => [p.jobRfId as number, p]),
+          );
+          setJobsState((prev) =>
+            prev.map((j) => {
+              const server = byJobRfId.get(j.jobRfId);
+              if (!server || !j.placement) return j;
+              if (
+                j.placement.id === server.placementId &&
+                j.placement.stage === server.stage
+              ) {
+                return j;
+              }
+              return {
+                ...j,
+                placement: {
+                  ...j.placement,
+                  id: server.placementId,
+                  stage: server.stage as PlacementSnapshot["stage"],
+                },
+              };
+            }),
+          );
+        } catch {
+          // Swallow — optimistic row stays as-is on fetch failure.
+        }
+      })();
+    }, 500);
   }
 
   // Deep-link from /applicants and /jobs/[id] pipeline rows. The
@@ -2270,10 +2315,9 @@ function ApplyToJobDialog({
   onClose: () => void;
   // Optimistic-update hook: parent receives the picked option + the new
   // placement id so the job pill strip can render the row immediately,
-  // before router.refresh() repopulates the server-rendered prop.
+  // and a follow-up snapshot fetch reconciles with the server later.
   onApplied?: (opt: OpenJobOption, placementId: string) => void;
 }) {
-  const router = useRouter();
   const [selectedId, setSelectedId] = useState<string>("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
@@ -2317,7 +2361,9 @@ function ApplyToJobDialog({
         description: `${picked.jobTitle}${picked.clientName ? ` · ${picked.clientName}` : ""} → Applied stage.`,
       });
       onClose();
-      router.refresh();
+      // No router.refresh() — that races the DB commit and overwrites the
+      // optimistic row before the new placement is visible to RSC. The
+      // parent's handleApplied schedules a 500 ms snapshot fetch instead.
     });
   }
 

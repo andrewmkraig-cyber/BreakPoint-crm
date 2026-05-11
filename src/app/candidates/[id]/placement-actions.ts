@@ -2287,6 +2287,44 @@ export async function moveToApplied(input: StageReversionInput): Promise<Result>
 }
 
 
+// Slim placement readback used by the Apply-to-Job optimistic flow to
+// confirm the DB write committed without triggering a full RSC refresh.
+// Returns one row per Placement for this candidate (org-scoped), enough
+// for the job-strip merge to swap the optimistic id/stage for the server
+// values. Stays minimal so the round-trip is fast — no joins, no RF
+// hydration, just the columns the client merge actually consults.
+export type CandidatePlacementSnapshotLite = {
+  jobRfId: number | null;
+  jobId: string | null;
+  placementId: string;
+  stage: string;
+};
+
+export async function getCandidatePlacementSnapshots(
+  candidateRfId: number,
+): Promise<Result<CandidatePlacementSnapshotLite[]>> {
+  const userId = await requireUserId();
+  if (!userId) return { ok: false, error: "Not signed in." };
+  const org = await getCurrentOrg();
+  try {
+    const rows = await prisma.placement.findMany({
+      where: { candidateRfId, organizationId: org.id },
+      select: { id: true, jobRfId: true, jobId: true, stage: true },
+    });
+    return {
+      ok: true,
+      value: rows.map((r) => ({
+        jobRfId: r.jobRfId,
+        jobId: r.jobId,
+        placementId: r.id,
+        stage: r.stage,
+      })),
+    };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Snapshot fetch failed." };
+  }
+}
+
 // Server-side currency formatter for trigger fires (the rich
 // formatMoney variants live in client components and can't be
 // imported here). Mirrors the "$120k" condensed form used elsewhere
