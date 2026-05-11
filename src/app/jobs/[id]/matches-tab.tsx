@@ -587,7 +587,7 @@ export function MatchesTab({
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
-  const [sidebarTab, setSidebarTab] = useState<"all" | "submitted" | "hot">("all");
+  const [sidebarTab, setSidebarTab] = useState<"all" | "submitted">("all");
   // Per-candidate disable while Apply / Reject is in flight so the
   // recruiter can't double-click and create a 409 (apply) or a no-op
   // double-update (reject).
@@ -1448,7 +1448,6 @@ export function MatchesTab({
                 [
                   { id: "all", label: "All", n: sidebarRows.length },
                   { id: "submitted", label: "Submitted", n: 0 },
-                  { id: "hot", label: "Hot", n: 0 },
                 ] as const
               ).map((t) => {
                 const active = sidebarTab === t.id;
@@ -1592,7 +1591,7 @@ export function MatchesTab({
                 <Button
                   type="button"
                   size="sm"
-                  variant="primary"
+                  variant="reject"
                   disabled={inFlightForSelected || !selectedRow}
                   onClick={() => {
                     if (!selectedRow) return;
@@ -1630,7 +1629,7 @@ export function MatchesTab({
                   <Button
                     type="button"
                     size="sm"
-                    variant="keep"
+                    variant="secondary"
                     disabled={keepInFlightForSelected || !selectedRow}
                     onClick={() => {
                       if (!selectedRow) return;
@@ -1902,20 +1901,22 @@ export function MatchesTab({
                           onClick={(e) => e.stopPropagation()}
                         >
                           {view === "rejected" ? (
-                            <button
+                            <Button
                               type="button"
+                              variant="reject"
+                              size="sm"
                               onClick={() => void reapplyCandidate(c.id, c.name)}
                               disabled={rowInFlight}
                               aria-label={`Reapply ${c.name}`}
                               title="Reapply to job"
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+                              className="h-7 w-7 rounded-md p-0"
                             >
                               {rowInFlight ? (
                                 <Loader2 className="h-4 w-4 animate-spin" />
                               ) : (
                                 <RotateCcw className="h-4 w-4" />
                               )}
-                            </button>
+                            </Button>
                           ) : null}
                         </td>
                       </tr>

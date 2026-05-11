@@ -484,6 +484,13 @@ function KeptRowView({ row }: { row: KeptRow }) {
 const ROW_ACTION_BASE =
   "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
 
+// Token-aligned twins of Button "primary" / "secondary" / "reject"
+// variants so the row-action chips read identically to the shared
+// <Button> primitive without forcing every row into the larger
+// <Button> sizing. Keep is intentionally neutral grey (secondary) so
+// it sits flat next to the green Submit and red Reject — Andrew's
+// design call: Keep is a "save for later" annotation, not a
+// brand-tinted positive action.
 const ROW_ACTION_CLASS = {
   primary: cn(
     ROW_ACTION_BASE,
@@ -491,11 +498,11 @@ const ROW_ACTION_CLASS = {
   ),
   keep: cn(
     ROW_ACTION_BASE,
-    "border-cyan-200 bg-cyan-50 text-cyan-800 hover:bg-cyan-100 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-200 dark:hover:bg-cyan-950/60",
+    "border-court-border bg-court-surface-subtle text-court-fg hover:bg-court-surface",
   ),
   reject: cn(
     ROW_ACTION_BASE,
-    "border-red-200 bg-red-50 text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
+    "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
   ),
 };
 

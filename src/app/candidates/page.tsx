@@ -12,10 +12,13 @@ import {
   ChevronRight,
   ChevronsUpDown,
   ClipboardList,
+  Loader2,
   Minus,
   Search,
+  Target,
   X,
 } from "lucide-react";
+import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
 import {
   Fragment,
   useEffect,
@@ -631,6 +634,9 @@ export default function CandidatesPage() {
   // results pane swaps to a narrow name list + iframe of the
   // candidate's profile. Cleared by the close X.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Per-candidate Keep in-flight flag for the split-view chrome's Keep
+  // button so a slow round-trip can't be fired twice.
+  const [keepInFlight, setKeepInFlight] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"all" | "submitted">("all");
   // Column-sort state. Click cycles: idle → desc → asc → cleared. Null
@@ -648,6 +654,12 @@ export default function CandidatesPage() {
   // earlier response can't overwrite a fresher result set.
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Imperative handle on the split-view iframe so Apply to Job can
+  // navigate it to `?openApply=true` without remounting the iframe
+  // (a `src` prop change would only fire when React diffs, and the
+  // iframe's key is bound to selectedId so re-applying the same id
+  // wouldn't trigger a reload).
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const hasFilters = hasAnyFilter(filters);
   // Stable string identity for the array filters so useEffect's dep
@@ -881,6 +893,40 @@ export default function CandidatesPage() {
   function goNext() {
     if (!canNext) return;
     setSelectedId(sortedRows[currentIndex + 1].id);
+  }
+
+  // Apply to Job from the candidates split-view. The candidates page
+  // isn't job-specific, so we hand the picker step off to the embedded
+  // candidate profile by navigating its iframe to `?openApply=true`.
+  // local-candidate-actions.tsx already reads that param on mount and
+  // auto-opens its existing job-picker modal — keeping a single source
+  // of truth for the apply flow instead of duplicating the picker here.
+  function openApplyInIframe() {
+    if (!selectedId || !iframeRef.current) return;
+    iframeRef.current.src = `/candidates/${selectedId}?embed=true&openApply=true`;
+  }
+
+  // Keep is candidate-scoped — no job picker needed. toggleCandidateKept
+  // is the same server action used by KeepCandidateButton on the
+  // candidate profile.
+  async function onKeepSelected() {
+    if (!selectedId || keepInFlight === selectedId) return;
+    const candidateId = selectedId;
+    setKeepInFlight(candidateId);
+    try {
+      const res = await toggleCandidateKept({ candidateId });
+      if (!res.ok) {
+        toast.error("Couldn't update Keep", { description: res.error });
+        return;
+      }
+      toast.success(res.value.isKept ? "Kept" : "Removed from Kept");
+    } catch (e) {
+      toast.error("Couldn't update Keep", {
+        description: e instanceof Error ? e.message : "Network error.",
+      });
+    } finally {
+      setKeepInFlight((prev) => (prev === candidateId ? null : prev));
+    }
   }
 
   // Local-only filter for the sidebar list — narrows the visible rows
@@ -1158,8 +1204,11 @@ export default function CandidatesPage() {
       {selectedId ? (
         <>
           <section className="flex h-[calc(100vh-72px)] w-[300px] shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface">
-            {/* Sidebar header — title + count pill + filter input */}
-            <div className="border-b border-court-border/60 px-3.5 py-3">
+            {/* Sidebar header — title + count pill + filter input.
+                border-t mirrors the default-view sidebar's top divider
+                so the rule above the header reads as continuous chrome
+                whether or not the candidate-search rail is collapsed. */}
+            <div className="border-b border-b-court-border/60 border-t border-t-court-border/30 px-3.5 py-3">
               <div className="mb-2 flex items-center justify-between">
                 <h3 className="text-sm font-bold text-court-fg">
                   Search results
@@ -1333,6 +1382,36 @@ export default function CandidatesPage() {
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
+              {/* Apply / Keep mirror the matches-tab chrome treatment.
+                  Reject is intentionally absent — there's no job
+                  context on /candidates, and rejection without a job
+                  has no meaning. */}
+              <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
+              <Button
+                type="button"
+                size="sm"
+                variant="primary"
+                onClick={openApplyInIframe}
+                className="h-7 rounded-md px-2.5 text-[11px]"
+              >
+                <Target className="h-3 w-3" />
+                Apply to Job
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={() => void onKeepSelected()}
+                disabled={keepInFlight === selectedId}
+                className="h-7 rounded-md px-2.5 text-[11px]"
+              >
+                {keepInFlight === selectedId ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Bookmark className="h-3 w-3" />
+                )}
+                Keep
+              </Button>
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
@@ -1343,6 +1422,7 @@ export default function CandidatesPage() {
               </button>
             </div>
             <iframe
+              ref={iframeRef}
               key={selectedId}
               src={`/candidates/${selectedId}?embed=true`}
               title="Candidate profile"

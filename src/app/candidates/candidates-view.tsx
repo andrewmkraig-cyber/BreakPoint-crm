@@ -12,6 +12,7 @@ import {
   type DragEvent,
 } from "react";
 import { Search, Loader2, Settings, X, ListPlus, Send, Upload, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination/pagination";
@@ -260,13 +261,14 @@ export function CandidatesView({
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="primary"
               onClick={() => setBulkOpen("apply")}
-              className="inline-flex items-center gap-1.5 rounded-md border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-200"
             >
               <Send className="h-3 w-3" /> Apply to Job
-            </button>
+            </Button>
             <button
               type="button"
               onClick={() => setBulkOpen("list")}

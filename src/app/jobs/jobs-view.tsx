@@ -192,14 +192,13 @@ export function JobsView(props: JobsViewProps) {
                   onClick={() => router.push(`/jobs/${r.id}`)}
                 >
                   <td className="px-5 py-3 align-top font-medium text-court-fg">
+                    {/* Whole row navigates to the job — the client name
+                        cell intentionally has no separate <Link>, so a
+                        click anywhere in the row (including this cell)
+                        lands on /jobs/[id]. The /clients page keeps the
+                        per-row client link for the client profile. */}
                     <span className="inline-flex items-center gap-1.5">
-                      <Link
-                        href={`/jobs/${r.id}`}
-                        className="hover:text-brand-dark"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {r.company || "—"}
-                      </Link>
+                      <span>{r.company || "—"}</span>
                       {r.clientIsVerified && (
                         <span
                           className="shrink-0 text-brand"

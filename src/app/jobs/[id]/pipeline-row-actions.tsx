@@ -211,7 +211,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             href={`${profileHref}?compose=submittal&jobId=${props.jobRfId}`}
             title="Open submittal composer"
           />
-          <ActionButton icon={Plus} label="Apply" tone="apply" onClick={onApply} />
+          <ActionButton icon={Plus} label="Apply" tone="primary" onClick={onApply} />
           <ActionButton icon={Bookmark} label="Keep" tone="keep" onClick={onKeep} />
           <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
@@ -379,7 +379,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     case "rejected":
       return (
         <ActionRow disabled={isPending}>
-          <ActionButton icon={RotateCcw} label="Reapply" tone="unreject" onClick={onUnreject} />
+          <ActionButton icon={RotateCcw} label="Reapply" tone="danger" onClick={onUnreject} />
         </ActionRow>
       );
     case "cancelled":
@@ -435,8 +435,11 @@ const TONE_CLASS: Record<Tone, string> = {
     "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
   apply:
     "border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60",
+  // Keep / Move to Kept render as neutral grey to match the shared
+  // Button "secondary" variant — Andrew's design call: Keep is a
+  // "save for later" annotation rather than a tinted positive action.
   keep:
-    "border-teal-200 bg-teal-50 text-teal-700 hover:bg-teal-100 dark:border-teal-900 dark:bg-teal-950/40 dark:text-teal-200 dark:hover:bg-teal-950/60",
+    "border-court-border bg-court-surface-subtle text-court-fg hover:bg-court-surface",
   offer:
     "border-purple-200 bg-purple-50 text-purple-700 hover:bg-purple-100 dark:border-purple-900 dark:bg-purple-950/40 dark:text-purple-200 dark:hover:bg-purple-950/60",
   unreject:

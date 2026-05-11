@@ -299,6 +299,10 @@ function LocalJobActionRow({
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {canSubmit && (
+            // Anchor-shaped twin of <Button variant="primary" size="sm">.
+            // Token classes mirror the variant exactly so the Submit
+            // link reads identically to the Schedule / Reject buttons
+            // beside it without nesting a <button> inside <Link>.
             <Link
               href={`/candidates/${candidateId}?submit=${job.jobRfId}`}
               className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"

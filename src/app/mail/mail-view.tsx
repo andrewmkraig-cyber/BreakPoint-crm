@@ -211,6 +211,22 @@ export function MailView({
   // when selectedLabel + searchQuery haven't changed (Refresh button).
   const [refreshTick, setRefreshTick] = useState(0);
 
+  // Background poll: re-fetch the active label's thread list every
+  // 30s so new mail appears without a manual refresh. The existing
+  // refetch effect already guards against clearing the open thread
+  // when only refreshTick changes (filtersChanged === false), so a
+  // tick here updates the list silently without disrupting whatever
+  // the recruiter has open. Pauses while the tab is hidden so a
+  // backgrounded tab doesn't keep hammering Gmail.
+  useEffect(() => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    const id = window.setInterval(() => {
+      if (document.hidden) return;
+      setRefreshTick((n) => n + 1);
+    }, 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {

@@ -131,17 +131,19 @@ export function LocalCandidateActions(props: {
           <Button
             type="button"
             size="sm"
+            variant="primary"
             onClick={() => setModal("submit")}
           >
             <FileSignature className="h-3 w-3" /> Submit to Job
           </Button>
-          <button
+          <Button
             type="button"
+            size="sm"
+            variant="primary"
             onClick={() => setModal("apply")}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
           >
             <Target className="h-3 w-3" /> Apply to Job
-          </button>
+          </Button>
         </div>
       )}
 
@@ -229,7 +231,7 @@ function ApplyModal(props: {
         <Button
           type="button"
           size="sm"
-          variant="apply"
+          variant="primary"
           onClick={onSubmit}
           disabled={isSubmitting || !jobRfId || selectable.length === 0}
         >

@@ -296,6 +296,11 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                             other columns (Job/Client) to compress first. */}
                         <div className="flex items-center justify-end gap-1.5">
                           {r.bucket === "submitted" && (
+                            // Anchor-shaped twin of <Button variant="schedule">.
+                            // Token classes mirror the variant so the Schedule
+                            // link reads identically to other calendar actions
+                            // (e.g. Schedule Interview on the candidate
+                            // profile) without nesting a <button> in a Link.
                             <Link
                               href={`/candidates/${r.candidateId}`}
                               onClick={(e) => e.stopPropagation()}
@@ -565,17 +570,19 @@ function RejectButton({ placementId, candidateName }: { placementId: string; can
 
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="reject"
+        size="sm"
         onClick={onClick}
         disabled={isPending}
-        className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-red-200 bg-red-50 px-2.5 text-[11px] font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:opacity-60 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60"
         title="Reject this candidate for this job"
         aria-label="Reject"
+        className="h-7 whitespace-nowrap px-2.5 text-[11px]"
       >
         {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
         <span className="hidden md:inline">Reject</span>
-      </button>
+      </Button>
       {open && (
         <RejectCandidateDialog
           candidateName={candidateName}
