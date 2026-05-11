@@ -361,6 +361,10 @@ export async function GET(req: Request) {
     if (raw == null || raw <= 0) return 25;
     return Math.min(Math.round(raw), 500);
   })();
+  // Job scope: when the Matches tab calls in, it sends the job's cuid so
+  // the API can exclude candidates already rejected for that job (they
+  // live in the Rejected tab and shouldn't reappear in the matches list).
+  const jobId = (sp.get("jobId") ?? "").trim();
   const employer = (sp.get("employer") ?? "").trim();
   // "current" (default) → currentOrganization contains substring only.
   // "any" → either currentOrganization or anywhere inside the
@@ -497,6 +501,16 @@ export async function GET(req: Request) {
           currentOrganization: { contains: employer, mode: "insensitive" },
         });
       }
+    }
+
+    // Hide candidates already rejected for this job. Stage is stored
+    // lowercase ("rejected") — see /api/placements where the upsert
+    // writes that exact value. NOT + some-subquery composes with the
+    // rest of the where so it works alongside any other active filter.
+    if (jobId) {
+      andClauses.push({
+        NOT: { placements: { some: { jobId, stage: "rejected" } } },
+      });
     }
 
     if (andClauses.length > 0) where.AND = andClauses;

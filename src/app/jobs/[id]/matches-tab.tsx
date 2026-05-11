@@ -128,7 +128,7 @@ const INITIAL_FILTERS: Filters = {
   lastAction: "any",
 };
 
-function buildQuery(f: Filters): string {
+function buildQuery(f: Filters, jobCuid?: string): string {
   const sp = new URLSearchParams();
   if (f.q.trim()) sp.set("q", f.q.trim());
   if (f.skills.length > 0) sp.set("skills", f.skills.join(","));
@@ -145,6 +145,9 @@ function buildQuery(f: Filters): string {
   }
   if (f.tenure && f.tenure !== "any") sp.set("tenure", f.tenure);
   if (f.workAuth && f.workAuth !== "all") sp.set("workAuth", f.workAuth);
+  // Scope the search to this job so the API can NOT-filter candidates
+  // already rejected for it (they belong in the Rejected tab, not here).
+  if (jobCuid) sp.set("jobId", jobCuid);
   return sp.toString();
 }
 
@@ -461,7 +464,7 @@ export function MatchesTab({
     abortRef.current = ctrl;
     setLoading(true);
     try {
-      const qs = buildQuery(f);
+      const qs = buildQuery(f, jobCuid);
       const url = qs
         ? `/api/candidates/search?${qs}`
         : "/api/candidates/search";
