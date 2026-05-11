@@ -281,7 +281,7 @@ export type RFJobWithAce = RFJob & {
 
 // djb2 → 31-bit unsigned → negate so Ace-native synthetic ids land in
 // (-2^31, -1] and can never collide with positive RF ids.
-function syntheticIdFromCuid(cuid: string): number {
+export function syntheticIdFromCuid(cuid: string): number {
   let hash = 5381;
   for (let i = 0; i < cuid.length; i++) {
     hash = ((hash << 5) + hash + cuid.charCodeAt(i)) >>> 0;

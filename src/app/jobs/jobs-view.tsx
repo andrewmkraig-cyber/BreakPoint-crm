@@ -16,6 +16,11 @@ export type JobRow = {
   title: string;
   company: string;
   companyId: number | null;
+  // True when the linked Client has a signed agreement on file (same
+  // `isVerified` signal the /clients list uses). Surfaces as a small
+  // shield next to the client name in the table so the recruiter can
+  // tell at a glance which clients are under contract.
+  clientIsVerified: boolean;
   location: string;
   compensation: string;
   employmentType: string | null;
@@ -30,6 +35,29 @@ export type JobRow = {
   interviewingCount: number;
   hiredCount: number;
 };
+
+// Inline shield SVG — kept distinct from lucide ShieldCheck so the
+// design crop matches the verified badge on /clients exactly (slightly
+// thicker stroke). Copied verbatim from clients-view.tsx; sharing a
+// component would be a future refactor.
+function VerifiedShield() {
+  return (
+    <svg
+      width={14}
+      height={14}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+      <path d="m9 12 2 2 4-4" />
+    </svg>
+  );
+}
 
 type JobsViewProps = {
   rows: JobRow[];
@@ -164,9 +192,23 @@ export function JobsView(props: JobsViewProps) {
                   onClick={() => router.push(`/jobs/${r.id}`)}
                 >
                   <td className="px-5 py-3 align-top font-medium text-court-fg">
-                    <Link href={`/jobs/${r.id}`} className="hover:text-brand-dark" onClick={(e) => e.stopPropagation()}>
-                      {r.company || "—"}
-                    </Link>
+                    <span className="inline-flex items-center gap-1.5">
+                      <Link
+                        href={`/jobs/${r.id}`}
+                        className="hover:text-brand-dark"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {r.company || "—"}
+                      </Link>
+                      {r.clientIsVerified && (
+                        <span
+                          className="shrink-0 text-brand"
+                          title="Signed fee agreement on file"
+                        >
+                          <VerifiedShield />
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td className="px-5 py-3 align-top text-court-fg">
                     <div className="font-medium">{r.title}</div>

@@ -4,7 +4,12 @@ import {
   buildJobCounts,
   emptyJobCounts,
 } from "@/lib/rf-payload-shapes";
-import { getRfCandidatesForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import {
+  getRfCandidatesForOrg,
+  getRfJobsForOrg,
+  syntheticIdFromCuid,
+} from "@/lib/candidates";
+import { getClientsForOrg } from "@/lib/clients";
 
 export const dynamic = "force-dynamic";
 
@@ -61,11 +66,25 @@ export default async function JobsPage({
   try {
     // Phase 2: Jobs list reads from Neon via the broadened shim —
     // includes both RF-imported and Ace-native Jobs in one iteration.
-    const [jobs, candidates] = await Promise.all([
+    const [jobs, candidates, clients] = await Promise.all([
       getRfJobsForOrg(),
       getRfCandidatesForOrg(),
+      getClientsForOrg(),
     ]);
     const counts = buildJobCounts(candidates);
+    // Map companyId (the numeric reference each JobRow already carries)
+    // back to the client's verified flag. Two key paths so both RF-
+    // imported and Ace-native clients land in the same map: RF rows key
+    // on legacyRfId; Ace-native rows key on the synthetic djb2 of cuid
+    // (same hash the jobs shim uses to mint a numeric companyId).
+    const verifiedByCompanyId = new Map<number, boolean>();
+    for (const c of clients) {
+      if (c.legacyRfId != null) {
+        verifiedByCompanyId.set(c.legacyRfId, c.isVerified);
+      } else {
+        verifiedByCompanyId.set(syntheticIdFromCuid(c.id), c.isVerified);
+      }
+    }
     const all: JobRow[] = jobs.map((raw) => {
       const j = normalizeJob(raw);
       const c = counts.get(j.id) ?? emptyJobCounts();
@@ -87,6 +106,8 @@ export default async function JobsPage({
         submittedCount: c.submitted,
         interviewingCount: c.interviewing,
         hiredCount: c.hired,
+        clientIsVerified:
+          j.companyId != null ? verifiedByCompanyId.get(j.companyId) ?? false : false,
       };
     });
     for (const r of all) {
