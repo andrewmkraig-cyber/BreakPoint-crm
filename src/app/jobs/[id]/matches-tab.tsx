@@ -832,23 +832,20 @@ export function MatchesTab({
               </div>
             </div>
           </section>
-        </div>
 
-        {/* Footer — only the Run search action. No Save / Saved Lists
-            here; sourcing for a single job is the workflow, not building
-            a separate saved-search artifact. */}
-        <div className="border-t border-court-border bg-white px-3 py-2">
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            onClick={onRunSearch}
-            disabled={!hasFilters}
-            className="h-8 w-full rounded-full"
-          >
-            <Search className="h-3.5 w-3.5" />
-            Run search
-          </Button>
+          <section className="px-3 pb-3 pt-1">
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onRunSearch}
+              disabled={!hasFilters}
+              className="h-8 w-full rounded-full"
+            >
+              <Search className="h-3.5 w-3.5" />
+              Run search
+            </Button>
+          </section>
         </div>
       </aside>
 
