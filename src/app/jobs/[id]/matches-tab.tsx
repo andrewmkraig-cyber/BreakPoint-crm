@@ -37,6 +37,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 // Per-job sourcing surface. Structurally a clone of /candidates' rail +
 // results table + split-view from src/app/candidates/page.tsx, scoped
@@ -1801,17 +1802,18 @@ export function MatchesTab({
           ) : (
             <div className="flex flex-1 flex-col overflow-hidden">
               {selectedIds.size > 0 && (
-                <div className="flex items-center justify-between gap-3 border-b border-court-border bg-court-accent-tint/40 px-4 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-court-border bg-court-accent-tint/40 px-4 py-2">
                   <span className="text-xs font-semibold text-court-fg">
                     {selectedIds.size} selected
                   </span>
-                  <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <Button
                       type="button"
                       variant="apply"
                       size="sm"
                       onClick={() => void bulkApply()}
                       disabled={bulkInFlight}
+                      className="px-2.5 py-1 text-sm"
                     >
                       {bulkInFlight ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1826,6 +1828,7 @@ export function MatchesTab({
                       size="sm"
                       onClick={() => void bulkKeep()}
                       disabled={bulkInFlight}
+                      className="px-2.5 py-1 text-sm"
                     >
                       <Bookmark className="h-3.5 w-3.5" />
                       Keep
@@ -1836,6 +1839,7 @@ export function MatchesTab({
                       size="sm"
                       onClick={() => void bulkReject()}
                       disabled={bulkInFlight}
+                      className="px-2.5 py-1 text-sm"
                     >
                       {bulkInFlight ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1848,7 +1852,7 @@ export function MatchesTab({
                       type="button"
                       onClick={() => void openAddToList()}
                       disabled={bulkInFlight || listsLoading}
-                      className={ADD_TO_LIST_BUTTON_CLASS}
+                      className={cn(ADD_TO_LIST_BUTTON_CLASS, "px-2.5 py-1 text-sm")}
                     >
                       {listsLoading ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />

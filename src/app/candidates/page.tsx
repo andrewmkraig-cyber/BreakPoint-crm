@@ -45,6 +45,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
 const DATE_OPTIONS = [
@@ -1595,7 +1596,7 @@ export default function CandidatesPage() {
           ) : (
             <div className="flex flex-1 flex-col overflow-hidden">
               {bulkSelectedIds.size > 0 && (
-                <div className="flex items-center justify-between gap-3 border-b border-court-border bg-court-accent-tint/40 px-4 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-court-border bg-court-accent-tint/40 px-4 py-2">
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
@@ -1609,13 +1610,14 @@ export default function CandidatesPage() {
                       {bulkSelectedIds.size} selected
                     </span>
                   </div>
-                  <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
+                  <div className="flex flex-wrap items-center gap-1.5">
                     <Button
                       type="button"
                       size="sm"
                       variant="apply"
                       onClick={() => void openBulkApply()}
                       disabled={bulkLoading}
+                      className="px-2.5 py-1 text-sm"
                     >
                       {bulkLoading && bulkDialog === null ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -1628,7 +1630,7 @@ export default function CandidatesPage() {
                       type="button"
                       onClick={() => void openBulkList()}
                       disabled={bulkLoading}
-                      className={ADD_TO_LIST_BUTTON_CLASS}
+                      className={cn(ADD_TO_LIST_BUTTON_CLASS, "px-2.5 py-1 text-sm")}
                     >
                       <ListPlus className="h-3.5 w-3.5" />
                       Add to List
