@@ -1243,7 +1243,7 @@ export function MatchesTab({
 
           <section className="border-b border-court-border/60 px-3 py-1.5">
             <SectionTitle>Location</SectionTitle>
-            <div className="grid w-full grid-cols-[1fr_84px] gap-2">
+            <div className="w-full space-y-1.5">
               <TagInput
                 // Locations have no exclude semantics — lift the
                 // string[] state into Pill[] at the boundary and
