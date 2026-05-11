@@ -75,9 +75,10 @@ export default async function MailPage() {
   // banner (when present) and the inbox layout. AppShell's top
   // padding is now pt-4 globally so the page already starts 16px
   // below the topbar; no claw-up needed. Height accounts for the
-  // h-[72px] topbar plus the AppShell's pt-4 + pb-6/8 gutters.
+  // h-20 (80px) topbar plus the AppShell's pt-4 + pb-6/8 gutters
+  // (80 + 16 + 24 = 120px base, 80 + 16 + 32 = 128px md).
   return (
-    <div className="flex h-[calc(100vh-7rem)] flex-col md:h-[calc(100vh-7.5rem)]">
+    <div className="flex h-[calc(100vh-7.5rem)] flex-col md:h-[calc(100vh-8rem)]">
       {gmailStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="gmail-down"

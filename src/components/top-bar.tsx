@@ -20,8 +20,13 @@ export function TopBar() {
   const { open: youtubeOpen, toggle: toggleYouTube } = useYouTubePanel();
   const { open: spotifyOpen, toggle: toggleSpotify } = useSpotifyPanel();
 
+  // h-20 (80px) on the header — matches the sidebar's Ace/BreakPoint
+  // header so the topbar's bottom edge aligns with the sidebar
+  // header's bottom border on every page. Previously h-[72px] sat 8px
+  // above that line, making page titles (e.g. "Settings") read as
+  // floating higher than the sidebar wordmark.
   return (
-    <header className="sticky top-0 z-30 flex h-[72px] items-center justify-between gap-4 bg-court-surface px-6">
+    <header className="sticky top-0 z-30 flex h-20 items-center justify-between gap-4 bg-court-surface px-6">
       {/* MobileNav appears only below md (where the desktop sidebar is
           hidden). Click opens a left drawer with the same nav groups
           the sidebar shows so the recruiter never loses access to nav

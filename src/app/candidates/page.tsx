@@ -983,7 +983,7 @@ export default function CandidatesPage() {
     // 6px the bg-court-bg handle column shows as a green strip in dark
     // Grass mode between AppShell's nav and this aside — the aside's
     // bg-court-surface visually consumes the handle once they overlap.
-    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-72px)] overflow-hidden md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
+    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
       <aside
         className={
           "flex shrink-0 flex-col overflow-hidden bg-court-surface transition-[width,border] duration-200 " +
@@ -1213,7 +1213,7 @@ export default function CandidatesPage() {
 
       {selectedId ? (
         <>
-          <section className="flex h-[calc(100vh-72px)] w-[300px] shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface">
+          <section className="flex h-[calc(100vh-80px)] w-[300px] shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface">
             {/* Sidebar header — title + count pill + filter input.
                 border-t mirrors the default-view sidebar's top divider
                 so the rule above the header reads as continuous chrome

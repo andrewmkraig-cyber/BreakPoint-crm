@@ -37,10 +37,10 @@ export default async function PhonePage() {
   // visible area exactly without the page itself scrolling. Negative
   // AppShell's top padding is now pt-4 globally so /phone matches
   // every other page's 16px-below-topbar position without needing a
-  // negative-margin claw-up. Height accounts for the h-[72px] topbar
-  // plus the AppShell's pt-4 + pb gutters.
+  // negative-margin claw-up. Height accounts for the h-20 (80px)
+  // topbar plus the AppShell's pt-4 + pb gutters.
   return (
-    <div className="flex h-[calc(100vh-7.5rem)] flex-col md:h-[calc(100vh-8.5rem)]">
+    <div className="flex h-[calc(100vh-8rem)] flex-col md:h-[calc(100vh-9rem)]">
       {quoStatus.state !== "connected" ? (
         <ConnectorBanner
           variant="quo-down"
