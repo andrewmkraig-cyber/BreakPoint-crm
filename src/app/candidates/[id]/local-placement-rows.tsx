@@ -456,7 +456,7 @@ function ScheduleDialog({
       }
       if (type === "video" && result.value.meetLink) {
         const meetCode = extractMeetCode(result.value.meetLink);
-        if (meetCode) surfaceMeetSettingsLink(meetCode);
+        if (meetCode) surfaceMeetSettingsLink();
       }
       onScheduled({
         interviewId: result.value.interviewId,

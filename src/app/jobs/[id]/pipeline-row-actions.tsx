@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
   applyCandidateToJob,
+  deletePlacement,
   keepCandidate,
   moveToApplied,
   moveToKept,
@@ -75,6 +76,12 @@ export type PipelineRowActionsProps = {
   // optional rejection-email send) instead of the bare
   // window.confirm + server action that the Job page uses.
   onRejectDialog?: () => void;
+  // Local Placement row id. Used by the "disqualified" branch of the
+  // switch: older RF-imported placements carry stage="disqualified"
+  // (rather than the canonical "rejected") and the Reapply path for
+  // those rows deletes the row entirely so the candidate falls back
+  // to a clean "no relationship" state for the job.
+  placementId?: string | null;
 };
 
 export function PipelineRowActions(props: PipelineRowActionsProps) {
@@ -163,6 +170,29 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         targetStage: "submitted",
       }),
     );
+  }
+
+  // Reapply for the legacy "disqualified" stage value (older RF-imported
+  // placements). unrejectCandidateJob only knows how to flip a "rejected"
+  // row to "submitted" — these older rows skip that path entirely, so we
+  // delete the Placement outright and let the candidate fall back to a
+  // clean state for the job. Matches the Matches-tab expectation that a
+  // candidate without a Placement reappears as an unrelated profile.
+  function onUnrejectViaDelete() {
+    if (!props.placementId) {
+      toast.error("Can't reapply", {
+        description: "No local placement id — refresh and try again.",
+      });
+      return;
+    }
+    if (
+      !confirm(
+        `Reapply ${props.candidateName}? This deletes the disqualified placement row so the candidate gets a clean slate for this job.`,
+      )
+    )
+      return;
+    const placementId = props.placementId;
+    runLight(`Reapplied ${props.candidateName}`, () => deletePlacement(placementId));
   }
 
   // Stage reversions: pull a Submitted candidate back to Kept, or
@@ -380,6 +410,19 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
       return (
         <ActionRow disabled={isPending}>
           <ActionButton icon={RotateCcw} label="Reapply" tone="danger" onClick={onUnreject} />
+        </ActionRow>
+      );
+    // Older RF-imported placements landed with stage="disqualified"
+    // rather than the canonical "rejected", so the case "rejected"
+    // branch above didn't render Reapply for them. Match the
+    // disqualified literal explicitly and route through the delete-
+    // based reapply so the row clears out entirely (vs. flipping
+    // back to "submitted", which would leave the candidate stuck on
+    // an interview-ready stage they were never actually at).
+    case "disqualified":
+      return (
+        <ActionRow disabled={isPending}>
+          <ActionButton icon={RotateCcw} label="Reapply" tone="danger" onClick={onUnrejectViaDelete} />
         </ActionRow>
       );
     case "cancelled":

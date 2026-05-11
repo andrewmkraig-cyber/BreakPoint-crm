@@ -730,6 +730,7 @@ function JobActionRow({
             jobTitle={job.jobTitle}
             clientName={job.clientName}
             stage={effective}
+            placementId={job.placement?.id ?? null}
             onSchedule={onSchedule}
             onOffer={onOffer}
             onPlacement={onPlacement}
@@ -1673,7 +1674,7 @@ function ScheduleInterviewDialog({
       // applies to Video interviews where Calendar minted a Meet.
       if (type === "video" && result.value.meetLink) {
         const meetCode = extractMeetCode(result.value.meetLink);
-        if (meetCode) surfaceMeetSettingsLink(meetCode);
+        if (meetCode) surfaceMeetSettingsLink();
       }
       onScheduled({
         interviewId: result.value.interviewId,
@@ -2999,23 +3000,22 @@ export function extractMeetCode(meetLink: string | null | undefined): string | n
   return m?.[1] ?? null;
 }
 
-// Sticky info toast surfacing the Meet "Trusted by default" caveat
-// with a one-click jump to the room's settings page so the recruiter
-// can flip access to "Anyone with the link" without leaving Ace. We
-// keep the toast visible for 15 s — long enough to read + click on,
-// short enough to not pile up if multiple invites get scheduled in a
-// row. Exported so the Ace-native scheduler (local-placement-rows)
-// can reuse the same UX without duplicating the JSX.
-export function surfaceMeetSettingsLink(meetCode: string): void {
+// Sticky info toast surfacing the Meet "Trusted by default" caveat.
+// The direct https://meet.google.com/<code>/settings deep link 404s
+// for organizers who haven't visited the room yet, so we point at
+// Google Calendar (where the event + its Meet are already open) and
+// let the recruiter flip access from there. No params — callers
+// gate on having a Meet by checking the link separately.
+export function surfaceMeetSettingsLink(): void {
   toast.info("Meeting access is set to Trusted by default.", {
     description: (
       <a
-        href={`https://meet.google.com/${meetCode}/settings`}
+        href="https://calendar.google.com"
         target="_blank"
         rel="noreferrer"
         className="text-brand-dark underline underline-offset-2 hover:text-brand"
       >
-        Change to Open →
+        Open in Google Calendar to change access →
       </a>
     ),
     duration: 15_000,
