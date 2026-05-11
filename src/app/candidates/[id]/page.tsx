@@ -26,6 +26,7 @@ import { AddToListButton } from "@/components/lists/add-to-list-button";
 import { KeepCandidateButton } from "@/components/keep-candidate-button";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
+import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -530,6 +531,47 @@ export default async function CandidateProfilePage({
 
   const phoneValue = normalizePhone(c.phone_number);
 
+  // Embed = split-view iframe. Drops pipeline / tabs / action row and
+  // renders a tight two-column shape: compact overview + resume on the
+  // left, skills + activity in a 280px right rail. Both columns scroll
+  // independently inside the iframe viewport.
+  if (isEmbed) {
+    const compensation = formatExpectedSalaryBlob(c.expected_salary);
+    return (
+      <CandidateProfileBoundary>
+        <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
+          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            <CandidateCompactOverview
+              candidateRef={candidate.id}
+              fullName={name}
+              firstName={identityInitial.first_name || null}
+              lastName={identityInitial.last_name || null}
+              currentDesignation={identityInitial.current_designation || null}
+              currentOrganization={identityInitial.current_organization || null}
+              location={identityInitial.location || null}
+              email={identityInitial.email || null}
+              phone={phoneValue || null}
+              linkedinProfile={identityInitial.linkedin_profile || null}
+              compensation={compensation}
+            />
+            <EditableResume
+              candidateRfId={id}
+              candidateId={candidate.id}
+              versions={resumeVersions}
+            />
+          </div>
+          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
+            <EditableSkills candidateId={id} initial={skillsInitial} />
+            <CandidateActivityCard
+              candidateId={candidate.id}
+              toNumber={phoneValue || null}
+            />
+          </aside>
+        </div>
+      </CandidateProfileBoundary>
+    );
+  }
+
   return (
     <CandidateProfileBoundary>
     <div className="space-y-6">
@@ -771,6 +813,28 @@ function buildOpenJobOptions({
       if (c !== 0) return c;
       return (a.jobTitle || "").localeCompare(b.jobTitle || "");
     });
+}
+
+// expected_salary on the RF payload is { number, currency }. Render as
+// "120,000 USD" / number-only / currency-only depending on what's set.
+// Returns null when neither half is usable so the compact overview can
+// render an em-dash.
+function formatExpectedSalaryBlob(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as { number?: unknown; currency?: unknown };
+  const num =
+    typeof obj.number === "number"
+      ? obj.number
+      : typeof obj.number === "string" && obj.number.trim() !== ""
+        ? Number(obj.number)
+        : null;
+  const currency =
+    typeof obj.currency === "string" && obj.currency.trim() !== ""
+      ? obj.currency.trim()
+      : null;
+  if (num == null || !Number.isFinite(num)) return currency;
+  const formatted = new Intl.NumberFormat("en-US").format(num);
+  return currency ? `${formatted} ${currency}` : formatted;
 }
 
 function normalizeEmail(raw: RFCandidate["email"]): string {

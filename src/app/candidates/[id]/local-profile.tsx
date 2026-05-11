@@ -11,6 +11,7 @@ import { LocalEditableIdentity } from "@/app/candidates/[id]/local-editable-iden
 import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
+import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 // 5A.5.b parity: Ace-native candidates now share the same resume
@@ -63,6 +64,7 @@ export async function LocalCandidateProfile({
         notes: true,
         experience: true,
         education: true,
+        expectedSalary: true,
         // Inline single-resume columns are still read so we can lazy-
         // backfill the multi-version table for Ace-native candidates
         // created before 5A.5.b. Once a CandidateResume row exists for
@@ -287,6 +289,48 @@ export async function LocalCandidateProfile({
   resumeVersions.sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
+
+  // Embed = split-view iframe. Drops pipeline / tabs / action row and
+  // renders a tight two-column shape: compact overview + resume on the
+  // left, skills + activity in a 280px right rail. Both columns scroll
+  // independently inside the iframe viewport.
+  if (embed) {
+    const compensation = formatExpectedSalary(candidate.expectedSalary);
+    return (
+      <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
+        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+          <CandidateCompactOverview
+            candidateRef={candidate.id}
+            fullName={fullName}
+            firstName={candidate.firstName}
+            lastName={candidate.lastName}
+            currentDesignation={candidate.currentDesignation}
+            currentOrganization={candidate.currentOrganization}
+            location={candidate.location}
+            email={candidate.email}
+            phone={candidate.phone}
+            linkedinProfile={candidate.linkedinProfile}
+            compensation={compensation}
+          />
+          <EditableResume
+            candidateRfId={null}
+            candidateId={candidate.id}
+            versions={resumeVersions}
+          />
+        </div>
+        <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
+          <LocalEditableSkills
+            candidateId={candidate.id}
+            initial={candidate.skills ?? []}
+          />
+          <CandidateActivityCard
+            candidateId={candidate.id}
+            toNumber={candidate.phone || null}
+          />
+        </aside>
+      </div>
+    );
+  }
 
   // Two identity keys — RF-imported placements hash by jobRfId (numeric),
   // Ace-native placements hash by jobId (cuid string). The LocalOpenJob
@@ -651,6 +695,28 @@ type BackgroundEducation = {
   from_year?: unknown;
   to_year?: unknown;
 };
+
+// expectedSalary is stored as a Json blob shaped { number, currency } —
+// the legacy RF shape. Render as "$120,000 USD" / "120,000 USD" / number
+// when one or both halves are missing. Returns null when nothing usable
+// is set so the compact overview can render an em-dash.
+function formatExpectedSalary(raw: unknown): string | null {
+  if (!raw || typeof raw !== "object") return null;
+  const obj = raw as { number?: unknown; currency?: unknown };
+  const num =
+    typeof obj.number === "number"
+      ? obj.number
+      : typeof obj.number === "string" && obj.number.trim() !== ""
+        ? Number(obj.number)
+        : null;
+  const currency =
+    typeof obj.currency === "string" && obj.currency.trim() !== ""
+      ? obj.currency.trim()
+      : null;
+  if (num == null || !Number.isFinite(num)) return currency;
+  const formatted = new Intl.NumberFormat("en-US").format(num);
+  return currency ? `${formatted} ${currency}` : formatted;
+}
 
 function asString(v: unknown): string {
   if (v == null) return "";
