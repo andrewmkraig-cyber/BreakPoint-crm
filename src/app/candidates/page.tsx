@@ -1293,15 +1293,18 @@ export default function CandidatesPage() {
       {selectedId ? (
         // Split view = chrome bar on top, then the two-column body
         // (300px name list + iframe). Wrapping both columns in a
-        // flex-col container lets the chrome bar's bottom divider
-        // span the entire content width — earlier it sat inside the
-        // right pane only and the line stopped at the name list.
+        // flex-col container lets the chrome bar's divider span the
+        // entire content width — earlier it sat inside the right
+        // pane only and the line stopped at the name list. The
+        // divider rides as a `border-t` on the chrome bar so the
+        // line reads as the boundary between the page header above
+        // and the candidate content (action bar + profile) below.
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Full-width split-view chrome bar. h-10 chrome strip with
-              border-b extends across both the 300px middle sidebar
+              border-t extends across both the 300px middle sidebar
               and the right iframe pane. Prev/next + Apply/Keep stay
               wired to the same selectedId state as before. */}
-          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-court-border bg-court-surface px-3">
+          <div className="flex h-10 shrink-0 items-center gap-2 border-t border-court-border bg-court-surface px-3">
             <button
               type="button"
               onClick={() => setSelectedId(null)}
