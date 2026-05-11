@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { submittalMarkdownToEditorHtml } from "@/lib/submittal-format";
-import { PIPELINE_LABELS, type PipelineBucket } from "@/lib/rf-payload-shapes";
+import { type PipelineBucket } from "@/lib/rf-payload-shapes";
 import { StageBadge } from "@/components/stage-badge";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import {
@@ -2031,8 +2031,7 @@ function UnrejectDialog({
   return (
     <Modal title="Reapply candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <p className="text-sm text-court-fg-muted">
-        Reapplying sends this candidate back into the pipeline at{" "}
-        <strong>{PIPELINE_LABELS[targetStage]}</strong> and logs the action to activity.
+        They will be restored to the candidate pool for this job with a clean slate.
       </p>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
       <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reapply" />

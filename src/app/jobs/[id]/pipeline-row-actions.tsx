@@ -149,7 +149,12 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
   }
 
   function onUnreject() {
-    if (!confirm(`Reapply ${props.candidateName}? They will move back into Submitted.`)) return;
+    if (
+      !confirm(
+        `Reapply ${props.candidateName}? They will be restored to the candidate pool for this job with a clean slate.`,
+      )
+    )
+      return;
     runLight(`Reapplied ${props.candidateName}`, () =>
       unrejectCandidateJob({
         candidateRfId: props.candidateRfId,

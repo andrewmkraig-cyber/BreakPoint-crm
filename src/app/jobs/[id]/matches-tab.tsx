@@ -231,7 +231,7 @@ const inputCls =
   "block h-8 w-full rounded-md border border-court-border bg-white px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 const selectBareCls =
-  "block h-8 w-full appearance-none rounded-md border border-court-border bg-white pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-8 w-full appearance-none truncate rounded-md border border-court-border bg-white pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 function SelectField({
   className,
@@ -1283,8 +1283,11 @@ export function MatchesTab({
                     flips a company name between "must match" and "must
                     NOT match"; the scope dropdown applies uniformly to
                     every pill. enterOnly because company names embed
-                    commas ("Microsoft, Inc."). */}
-                <div className="grid grid-cols-[1fr_130px] gap-2">
+                    commas ("Microsoft, Inc."). Scope stacks below the
+                    input on a separate row so the dropdown gets the
+                    full sidebar width — "Current only" / "Current +
+                    Past" were clipping when paired in a 130px column. */}
+                <div className="space-y-1.5">
                   <TagInput
                     values={filters.employers}
                     buffer={employersBuffer}
