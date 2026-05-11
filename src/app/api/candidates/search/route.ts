@@ -230,7 +230,21 @@ export async function GET(req: Request) {
   const skills = parseCsv(sp.get("skills"));
   const minComp = parseNumber(sp.get("minComp"));
   const maxComp = parseNumber(sp.get("maxComp"));
-  const location = (sp.get("location") ?? "").trim();
+  // Locations are pipe-delimited because each pill ("Akron, OH") already
+  // contains a comma. Legacy `location` (singular, string) is still
+  // honored so any bookmarked URL or older client keeps working — the
+  // singular value is folded into the pills list.
+  const locations = (() => {
+    const multi = (sp.get("locations") ?? "").trim();
+    if (multi) {
+      return multi
+        .split("|")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+    }
+    const single = (sp.get("location") ?? "").trim();
+    return single ? [single] : [];
+  })();
   // Distance pill in miles. UI options are 10/25/50/100; we accept any
   // positive integer but clamp the resolved bounding box at 500 miles
   // so a stray "10000" can't paint the whole continent.
@@ -308,28 +322,34 @@ export async function GET(req: Request) {
       });
     }
 
-    if (location) {
-      // Geocode the pill once and run a bounding-box filter on
-      // candidate lat/lng. Rows without geocoded coordinates are
-      // excluded from the radius result on purpose — after the
-      // scripts/geocode-candidates.ts backfill every row has them, and
-      // dropping ungeocodable rows ("Remote", "—") is what the
-      // recruiter wants when they're searching by miles. If the pill
-      // itself fails to geocode (typo, unknown city, Nominatim down)
-      // we fall through to the previous text-contains behavior so the
-      // search never silently returns 0.
-      const pillHit = await geocodePill(location);
-      if (pillHit) {
-        const box = milesToBox(pillHit, distanceMi);
-        andClauses.push({
-          lat: { gte: box.latMin, lte: box.latMax },
-          lng: { gte: box.lngMin, lte: box.lngMax },
-        });
-      } else {
-        andClauses.push({
-          location: { contains: location, mode: "insensitive" },
-        });
+    if (locations.length > 0) {
+      // Each pill resolves to its own clause; the pills OR together so
+      // a candidate matches if they fall in ANY of the resolved boxes.
+      // Geocoding runs in parallel — N pills cost one network RTT, not
+      // N — and any pill that fails to geocode degrades to a
+      // text-contains match on the literal pill value rather than
+      // silently dropping out of the union.
+      const pillHits = await Promise.all(
+        locations.map(async (loc) => ({
+          loc,
+          hit: await geocodePill(loc),
+        })),
+      );
+      const orClauses: Prisma.CandidateWhereInput[] = [];
+      for (const { loc, hit } of pillHits) {
+        if (hit) {
+          const box = milesToBox(hit, distanceMi);
+          orClauses.push({
+            lat: { gte: box.latMin, lte: box.latMax },
+            lng: { gte: box.lngMin, lte: box.lngMax },
+          });
+        } else {
+          orClauses.push({
+            location: { contains: loc, mode: "insensitive" },
+          });
+        }
       }
+      andClauses.push({ OR: orClauses });
     }
     if (employer) {
       andClauses.push({

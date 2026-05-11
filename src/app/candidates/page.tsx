@@ -76,7 +76,11 @@ type Filters = {
   jobTitles: string[];
   minComp: string;
   maxComp: string;
-  location: string;
+  // Multiple pills, each a free-form "City, ST" string. OR'd together
+  // on the server — a candidate matches if they fall in ANY of the
+  // resolved bounding boxes (or text-contains-match for pills that
+  // fail to geocode).
+  locations: string[];
   distance: string;
   employer: string;
   tenure: string;
@@ -91,7 +95,7 @@ const INITIAL_FILTERS: Filters = {
   jobTitles: [],
   minComp: "",
   maxComp: "",
-  location: "",
+  locations: [],
   distance: "25",
   employer: "",
   tenure: "any",
@@ -107,7 +111,9 @@ function buildQuery(f: Filters): string {
   if (f.jobTitles.length > 0) sp.set("jobTitles", f.jobTitles.join(","));
   if (f.minComp.trim()) sp.set("minComp", f.minComp.trim());
   if (f.maxComp.trim()) sp.set("maxComp", f.maxComp.trim());
-  if (f.location.trim()) sp.set("location", f.location.trim());
+  // Pipe-delimited because each location ("Akron, OH") already contains
+  // a comma. The server splits on `|` to recover the pill list.
+  if (f.locations.length > 0) sp.set("locations", f.locations.join("|"));
   if (f.distance) sp.set("distance", f.distance);
   if (f.employer.trim()) sp.set("employer", f.employer.trim());
   if (f.tenure && f.tenure !== "any") sp.set("tenure", f.tenure);
@@ -172,6 +178,7 @@ function TagInput({
   onRemove,
   placeholder,
   ariaLabel,
+  enterOnly = false,
 }: {
   values: string[];
   buffer: string;
@@ -180,6 +187,10 @@ function TagInput({
   onRemove: (v: string) => void;
   placeholder: string;
   ariaLabel: string;
+  // Skill / Job-Title pills commit on both Enter and `,` — those values
+  // never embed commas. Location pills are "City, ST" so the comma is
+  // part of the literal value; pass enterOnly to disable comma-commit.
+  enterOnly?: boolean;
 }) {
   function commit() {
     const v = buffer.trim().replace(/,$/, "").trim();
@@ -191,7 +202,7 @@ function TagInput({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" || e.key === ",") {
+    if (e.key === "Enter" || (!enterOnly && e.key === ",")) {
       e.preventDefault();
       commit();
       return;
@@ -264,7 +275,7 @@ function hasAnyFilter(f: Filters): boolean {
     f.jobTitles.length > 0 ||
     f.minComp.trim() !== "" ||
     f.maxComp.trim() !== "" ||
-    f.location.trim() !== "" ||
+    f.locations.length > 0 ||
     f.employer.trim() !== "" ||
     (f.tenure !== "" && f.tenure !== "any") ||
     (f.workAuth !== "" && f.workAuth !== "all") ||
@@ -330,6 +341,7 @@ export default function CandidatesPage() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [skillsBuffer, setSkillsBuffer] = useState("");
   const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
+  const [locationsBuffer, setLocationsBuffer] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -350,22 +362,27 @@ export default function CandidatesPage() {
   // compare retriggers on pill add/remove.
   const skillsKey = filters.skills.join("|");
   const jobTitlesKey = filters.jobTitles.join("|");
+  const locationsKey = filters.locations.join("|");
 
   function setField<K extends keyof Filters>(key: K, value: Filters[K]) {
     setFilters((prev) => ({ ...prev, [key]: value }));
   }
 
-  function addPill(key: "skills" | "jobTitles", value: string) {
+  function addPill(key: "skills" | "jobTitles" | "locations", value: string) {
     setFilters((prev) => {
       const existing = prev[key];
       if (existing.includes(value)) return prev;
       return { ...prev, [key]: [...existing, value] };
     });
     if (key === "skills") setSkillsBuffer("");
-    else setJobTitlesBuffer("");
+    else if (key === "jobTitles") setJobTitlesBuffer("");
+    else setLocationsBuffer("");
   }
 
-  function removePill(key: "skills" | "jobTitles", value: string) {
+  function removePill(
+    key: "skills" | "jobTitles" | "locations",
+    value: string,
+  ) {
     setFilters((prev) => ({
       ...prev,
       [key]: prev[key].filter((v) => v !== value),
@@ -376,6 +393,7 @@ export default function CandidatesPage() {
     setFilters(INITIAL_FILTERS);
     setSkillsBuffer("");
     setJobTitlesBuffer("");
+    setLocationsBuffer("");
   }
 
   function applySuggestion(s: { jobTitle: string; location: string }) {
@@ -384,7 +402,9 @@ export default function CandidatesPage() {
       jobTitles: prev.jobTitles.includes(s.jobTitle)
         ? prev.jobTitles
         : [...prev.jobTitles, s.jobTitle],
-      location: s.location,
+      locations: prev.locations.includes(s.location)
+        ? prev.locations
+        : [...prev.locations, s.location],
     }));
   }
 
@@ -446,7 +466,7 @@ export default function CandidatesPage() {
     jobTitlesKey,
     filters.minComp,
     filters.maxComp,
-    filters.location,
+    locationsKey,
     filters.distance,
     filters.employer,
     filters.tenure,
@@ -610,16 +630,23 @@ export default function CandidatesPage() {
             </div>
           </section>
 
-          {/* Location — section title doubles as the field label */}
+          {/* Location — section title doubles as the field label.
+              TagInput accepts multiple "City, ST" pills which OR
+              together server-side via bounding-box union. enterOnly is
+              critical here: the comma in "Akron, OH" is part of the
+              value, not a commit delimiter. */}
           <section className="border-b border-court-border/60 px-[18px] py-1.5">
             <SectionTitle>Location</SectionTitle>
             <div className="grid grid-cols-[1fr_92px] gap-2">
-              <input
-                type="text"
-                value={filters.location}
-                onChange={(e) => setField("location", e.target.value)}
-                placeholder="City, State"
-                className={inputCls}
+              <TagInput
+                values={filters.locations}
+                buffer={locationsBuffer}
+                onBufferChange={setLocationsBuffer}
+                onCommit={(v) => addPill("locations", v)}
+                onRemove={(v) => removePill("locations", v)}
+                placeholder="City, ST — press Enter"
+                ariaLabel="Locations"
+                enterOnly
               />
               <SelectField
                 value={filters.distance}
