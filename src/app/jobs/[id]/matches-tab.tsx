@@ -1179,7 +1179,7 @@ export function MatchesTab({
           // overflow-hidden for the rounded corners, so without an
           // explicit floor a shrunk aside would silently clip its
           // dropdowns. Collapsed (split-view) state stays at w-0.
-          (selectedId ? "w-0 border-r-0" : "w-[240px] min-w-[240px]")
+          (selectedId ? "w-0 border-r-0" : "w-[220px] min-w-[220px]")
         }
       >
         <div className="flex items-center justify-between border-b border-court-border/60 px-3 py-2">

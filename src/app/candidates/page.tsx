@@ -632,7 +632,7 @@ export default function CandidatesPage() {
   // candidate's profile. Cleared by the close X.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
-  const [sidebarTab, setSidebarTab] = useState<"all" | "submitted" | "hot">("all");
+  const [sidebarTab, setSidebarTab] = useState<"all" | "submitted">("all");
   // Column-sort state. Click cycles: idle → desc → asc → cleared. Null
   // means "follow the API's default ordering" (Recent activity).
   const [sort, setSort] = useState<SortState>(null);
@@ -928,13 +928,13 @@ export default function CandidatesPage() {
     // Lists footer permanently visible no matter how long the result
     // list gets — the result list scrolls within its own wrapper
     // below.
-    <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex h-[calc(100vh-72px)] overflow-hidden md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4">
+    <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex h-[calc(100vh-72px)] overflow-hidden md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4 xl:-ml-8 xl:-mr-8 2xl:-ml-12 2xl:-mr-12">
       <aside
         className={
           "flex shrink-0 flex-col overflow-hidden bg-court-surface transition-[width,border] duration-200 " +
           (selectedId
             ? "w-0 border-r-0"
-            : "w-[300px] border-r border-court-border")
+            : "w-[220px] min-w-[220px] border-r border-court-border")
         }
       >
         {/* Header block — title + Reset. Faint top border separates
@@ -1185,15 +1185,14 @@ export default function CandidatesPage() {
               </div>
             </div>
 
-            {/* Tabs row. Submitted / Hot are presentation-only until the
-                row payload exposes per-candidate stage data — they show
-                the count but don't filter the list. */}
+            {/* Tabs row. Submitted is presentation-only until the row
+                payload exposes per-candidate stage data — it shows the
+                count but doesn't filter the list. */}
             <div className="flex border-b border-court-border/60 bg-white">
               {(
                 [
                   { id: "all", label: "All", n: sidebarRows.length },
                   { id: "submitted", label: "Submitted", n: 0 },
-                  { id: "hot", label: "Hot", n: 0 },
                 ] as const
               ).map((t) => {
                 const active = sidebarTab === t.id;
