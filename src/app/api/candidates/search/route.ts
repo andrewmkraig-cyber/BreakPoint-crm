@@ -362,6 +362,13 @@ export async function GET(req: Request) {
     return Math.min(Math.round(raw), 500);
   })();
   const employer = (sp.get("employer") ?? "").trim();
+  // "current" (default) → currentOrganization contains substring only.
+  // "any" → either currentOrganization or anywhere inside the
+  // experience JSON. Anything other than the literal "any" falls
+  // through to the safe default so a malformed query never accidentally
+  // widens the result set.
+  const employerScope =
+    (sp.get("employerScope") ?? "current").trim() === "any" ? "any" : "current";
   const tenure = (sp.get("tenure") ?? "any").trim();
   // workAuth is accepted but currently a no-op — Candidate has no
   // workAuthorization column. When/if the schema gains one this filter
@@ -466,9 +473,30 @@ export async function GET(req: Request) {
       andClauses.push({ OR: orClauses });
     }
     if (employer) {
-      andClauses.push({
-        currentOrganization: { contains: employer, mode: "insensitive" },
-      });
+      if (employerScope === "any") {
+        // "Current + Past": resolve the union of candidate IDs whose
+        // current employer or experience JSON carries the term, then
+        // push it as a single id-IN clause so it composes with the
+        // rest of the where (keyword tokens, locations, tenure, …).
+        // Same LIKE escape used by the keyword resolver — backslash is
+        // Postgres' default LIKE escape, and we escape %/_/\\ so a
+        // recruiter pasting "AT&T 100%" can't trigger a wildcard.
+        const escaped = employer.replace(/([\\%_])/g, "\\$1");
+        const pattern = `%${escaped}%`;
+        const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT id FROM "Candidate"
+          WHERE "organizationId" = ${org.id}
+            AND (
+              "currentOrganization" ILIKE ${pattern}
+              OR (experience IS NOT NULL AND experience::text ILIKE ${pattern})
+            )
+        `);
+        andClauses.push({ id: { in: rows.map((r) => r.id) } });
+      } else {
+        andClauses.push({
+          currentOrganization: { contains: employer, mode: "insensitive" },
+        });
+      }
     }
 
     if (andClauses.length > 0) where.AND = andClauses;

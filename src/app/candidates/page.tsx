@@ -87,6 +87,10 @@ type Filters = {
   locations: string[];
   distance: string;
   employer: string;
+  // "current" (default) restricts the employer filter to the candidate's
+  // current employer column. "any" widens it to include any historical
+  // employer recorded in the experience JSON.
+  employerScope: string;
   tenure: string;
   workAuth: string;
   lastApply: string;
@@ -102,6 +106,7 @@ const INITIAL_FILTERS: Filters = {
   locations: [],
   distance: "25",
   employer: "",
+  employerScope: "current",
   tenure: "any",
   workAuth: "all",
   lastApply: "any",
@@ -120,6 +125,12 @@ function buildQuery(f: Filters): string {
   if (f.locations.length > 0) sp.set("locations", f.locations.join("|"));
   if (f.distance) sp.set("distance", f.distance);
   if (f.employer.trim()) sp.set("employer", f.employer.trim());
+  // Scope is only meaningful with an employer value; skip emitting when
+  // the input is empty or the scope is the default to keep the URL
+  // tidy.
+  if (f.employer.trim() && f.employerScope === "any") {
+    sp.set("employerScope", "any");
+  }
   if (f.tenure && f.tenure !== "any") sp.set("tenure", f.tenure);
   if (f.workAuth && f.workAuth !== "all") sp.set("workAuth", f.workAuth);
   return sp.toString();
@@ -520,6 +531,7 @@ export default function CandidatesPage() {
     locationsKey,
     filters.distance,
     filters.employer,
+    filters.employerScope,
     filters.tenure,
     filters.workAuth,
     filters.lastApply,
@@ -718,14 +730,29 @@ export default function CandidatesPage() {
             <SectionTitle>Employment</SectionTitle>
             <div className="space-y-1.5">
               <div>
-                <FieldLabel>Current employer</FieldLabel>
-                <input
-                  type="text"
-                  value={filters.employer}
-                  onChange={(e) => setField("employer", e.target.value)}
-                  placeholder="Company name"
-                  className={inputCls}
-                />
+                <FieldLabel>Employer</FieldLabel>
+                {/* Paired input + scope select. "Current only" filters
+                    on the candidate's currentOrganization column;
+                    "Current + Past" widens to anywhere in the
+                    experience JSON. Mirrors the Location row's
+                    `[1fr 130px]` grid so the controls align. */}
+                <div className="grid grid-cols-[1fr_130px] gap-2">
+                  <input
+                    type="text"
+                    value={filters.employer}
+                    onChange={(e) => setField("employer", e.target.value)}
+                    placeholder="Company name"
+                    className={inputCls}
+                  />
+                  <SelectField
+                    value={filters.employerScope}
+                    onChange={(e) => setField("employerScope", e.target.value)}
+                    aria-label="Employer scope"
+                  >
+                    <option value="current">Current only</option>
+                    <option value="any">Current + Past</option>
+                  </SelectField>
+                </div>
               </div>
               <div>
                 <FieldLabel>Tenure at employer</FieldLabel>
