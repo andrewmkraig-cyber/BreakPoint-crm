@@ -84,7 +84,7 @@ export async function POST(req: Request) {
   }
 
   if (stage === "APPLIED") {
-    // Un-reject path: if a Placement already exists at stage=rejected,
+    // Reapply path: if a Placement already exists at stage=rejected,
     // bump it to applied instead of creating a duplicate via
     // applyLocalCandidateToJob (which 409s on any existing row). This
     // is the inverse of the Reject button on the Matches tab and

@@ -241,6 +241,16 @@ function describeAction(actionType: string, meta: Record<string, unknown> | null
       return `Placement cancelled${reason ? ` — ${reason}` : ""}`;
     case "reject":
       return `Candidate rejected${reason ? ` — ${reason}` : ""}`;
+    case "unreject":
+      return "Candidate reapplied";
+    case "candidate_rejected_for_job": {
+      const at = clientName ? ` at ${clientName}` : "";
+      return `Rejected for ${jobTitle ?? "a job"}${at}`;
+    }
+    case "candidate_unrejected_for_job": {
+      const at = clientName ? ` at ${clientName}` : "";
+      return `Reapplied to ${jobTitle ?? "a job"}${at}`;
+    }
     case "job_source_posting_saved": {
       const sourceUrl = readString(meta, "sourceUrl");
       const titleHead = jobTitle ?? "this job";

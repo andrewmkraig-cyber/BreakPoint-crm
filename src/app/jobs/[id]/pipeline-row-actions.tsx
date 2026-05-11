@@ -35,7 +35,7 @@ import {
 //
 // Two flavors:
 //  - "lightweight" actions (Apply / Submit / Keep / Reject /
-//    Un-reject) call the existing server actions directly with a
+//    Reapply) call the existing server actions directly with a
 //    confirmation prompt where destructive. Toast + router.refresh
 //    on success so the row hops to its new column without a full
 //    reload.
@@ -149,8 +149,8 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
   }
 
   function onUnreject() {
-    if (!confirm(`Reactivate ${props.candidateName}? They will move back into Submitted.`)) return;
-    runLight(`Reactivated ${props.candidateName}`, () =>
+    if (!confirm(`Reapply ${props.candidateName}? They will move back into Submitted.`)) return;
+    runLight(`Reapplied ${props.candidateName}`, () =>
       unrejectCandidateJob({
         candidateRfId: props.candidateRfId,
         jobRfId: props.jobRfId,
@@ -374,7 +374,7 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
     case "rejected":
       return (
         <ActionRow disabled={isPending}>
-          <ActionButton icon={RotateCcw} label="Un-reject" tone="unreject" onClick={onUnreject} />
+          <ActionButton icon={RotateCcw} label="Reapply" tone="unreject" onClick={onUnreject} />
         </ActionRow>
       );
     case "cancelled":

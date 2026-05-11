@@ -595,7 +595,7 @@ function JobActionRow({
               dialog-heavy actions (Schedule / Offer / Placement /
               Confirm / Cancel) hand back to the existing profile-side
               dialog state via the inline callbacks; the lighter ones
-              (Apply / Submit / Keep / Reject / Un-reject) call the
+              (Apply / Submit / Keep / Reject / Reapply) call the
               same server actions PipelineRowActions uses on the Job
               page. */}
           <PipelineRowActions
@@ -2019,23 +2019,23 @@ function UnrejectDialog({
       });
       if (!result.ok) {
         setErr(result.error);
-        toast.error("Couldn't reactivate candidate", { description: result.error });
+        toast.error("Couldn't reapply candidate", { description: result.error });
         return;
       }
-      toast.success("Candidate reactivated");
+      toast.success("Candidate reapplied");
       onClose();
       router.refresh();
     });
   }
 
   return (
-    <Modal title="Reactivate candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
+    <Modal title="Reapply candidate" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose}>
       <p className="text-sm text-court-fg-muted">
-        Reactivating sends this candidate back into the pipeline at{" "}
+        Reapplying sends this candidate back into the pipeline at{" "}
         <strong>{PIPELINE_LABELS[targetStage]}</strong> and logs the action to activity.
       </p>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reactivate" />
+      <ModalFooter onCancel={onClose} onSave={onConfirm} saving={isPending} saveLabel="Reapply" />
     </Modal>
   );
 }

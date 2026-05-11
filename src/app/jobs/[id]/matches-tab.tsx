@@ -12,7 +12,6 @@ import {
   ChevronRight,
   ChevronsUpDown,
   Eye,
-  EyeOff,
   Loader2,
   Minus,
   RotateCcw,
@@ -842,23 +841,6 @@ export function MatchesTab({
     });
   }
 
-  // Client-side hide for already-reviewed candidates: pull selected
-  // rows out of the local results list. No DB write — this is a
-  // recruiter's view-state shortcut, not a soft-delete.
-  function removeSelectedFromResults() {
-    if (selectedIds.size === 0) return;
-    const removed = selectedIds.size;
-    setRows((prev) => prev.filter((r) => !selectedIds.has(r.id)));
-    setTotal((prev) => (prev == null ? prev : Math.max(0, prev - removed)));
-    if (selectedId && selectedIds.has(selectedId)) setSelectedId(null);
-    setSelectedIds(new Set());
-    toast.success(
-      removed === 1
-        ? "Removed 1 candidate from results"
-        : `Removed ${removed} candidates from results`,
-    );
-  }
-
   async function onKeep(candidateId: string, candidateName: string) {
     if (keepInFlight === candidateId) return;
     setKeepInFlight(candidateId);
@@ -880,12 +862,12 @@ export function MatchesTab({
     }
   }
 
-  // Un-reject path. Single-row POST to /api/placements with
+  // Reapply path. Single-row POST to /api/placements with
   // stage=APPLIED; the server route detects an existing rejected
   // placement and flips it back to applied (skipping the confirmation
   // email since the candidate was already in the pipeline once). On
   // success the row drops out of the Rejected bucket locally.
-  async function unrejectCandidate(candidateId: string, candidateName: string) {
+  async function reapplyCandidate(candidateId: string, candidateName: string) {
     if (actionInFlight === candidateId) return;
     setActionInFlight(candidateId);
     try {
@@ -908,13 +890,13 @@ export function MatchesTab({
           typeof (data as { error: unknown }).error === "string"
             ? (data as { error: string }).error
             : `Request failed (${res.status})`;
-        toast.error("Couldn't un-reject", { description: errMsg });
+        toast.error("Couldn't reapply", { description: errMsg });
         return;
       }
       removeRowAndAdvance(candidateId);
-      toast.success(`Moved ${candidateName} back to All`);
+      toast.success(`Reapplied ${candidateName}`);
     } catch (e) {
-      toast.error("Couldn't un-reject", {
+      toast.error("Couldn't reapply", {
         description: e instanceof Error ? e.message : "Network error.",
       });
     } finally {
@@ -978,6 +960,68 @@ export function MatchesTab({
           failed === 1
             ? "Couldn't apply 1 candidate"
             : `Couldn't apply ${failed} candidates`,
+        );
+      }
+    } finally {
+      setBulkInFlight(false);
+    }
+  }
+
+  // Bulk reject — fire POST /api/placements stage=REJECTED for every
+  // selected row in parallel. The API route upserts a Placement at
+  // stage=rejected with source=recruiter_rejected (Ace-only, no RF
+  // sync) so the candidate persists on the Rejected tab and is
+  // filtered from future All-tab searches for this job. On success
+  // each row drops out of the local list immediately.
+  async function bulkReject() {
+    if (bulkInFlight || selectedIds.size === 0) return;
+    setBulkInFlight(true);
+    const ids = Array.from(selectedIds);
+    const targets = ids.map((id) => rows.find((r) => r.id === id)).filter((r): r is Row => !!r);
+    try {
+      const results = await Promise.allSettled(
+        targets.map(async (r) => {
+          const res = await fetch("/api/placements", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ candidateId: r.id, jobId: jobCuid, stage: "REJECTED" }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return r.id;
+        }),
+      );
+      let success = 0;
+      let failed = 0;
+      const successIds: string[] = [];
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          success++;
+          successIds.push(r.value);
+        } else {
+          failed++;
+        }
+      }
+      if (successIds.length > 0) {
+        const removeSet = new Set(successIds);
+        setRows((prev) => prev.filter((r) => !removeSet.has(r.id)));
+        setTotal((prev) => (prev == null ? prev : Math.max(0, prev - successIds.length)));
+        setSelectedIds((prev) => {
+          const next = new Set(prev);
+          for (const id of successIds) next.delete(id);
+          return next;
+        });
+        if (selectedId && removeSet.has(selectedId)) setSelectedId(null);
+      }
+      if (success > 0) {
+        toast.success(
+          success === 1 ? "1 candidate rejected" : `${success} candidates rejected`,
+        );
+      }
+      if (failed > 0) {
+        toast.error(
+          failed === 1
+            ? "Couldn't reject 1 candidate"
+            : `Couldn't reject ${failed} candidates`,
         );
       }
     } finally {
@@ -1509,60 +1553,88 @@ export function MatchesTab({
                 <ChevronRight className="h-4 w-4" />
               </button>
               <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
-              <Button
-                type="button"
-                size="sm"
-                variant="primary"
-                disabled={inFlightForSelected || !selectedRow}
-                onClick={() => {
-                  if (!selectedRow) return;
-                  void postPlacement(selectedRow.id, selectedRow.name, "APPLIED");
-                }}
-                className="h-7 rounded-md px-2.5 text-[11px]"
-              >
-                {inFlightForSelected ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Target className="h-3 w-3" />
-                )}
-                Apply to Job
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="keep"
-                disabled={keepInFlightForSelected || !selectedRow}
-                onClick={() => {
-                  if (!selectedRow) return;
-                  void onKeep(selectedRow.id, selectedRow.name);
-                }}
-                className="h-7 rounded-md px-2.5 text-[11px]"
-              >
-                {keepInFlightForSelected ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Bookmark className="h-3 w-3" />
-                )}
-                Keep
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="reject"
-                disabled={inFlightForSelected || !selectedRow}
-                onClick={() => {
-                  if (!selectedRow) return;
-                  void postPlacement(selectedRow.id, selectedRow.name, "REJECTED");
-                }}
-                className="h-7 rounded-md px-2.5 text-[11px]"
-              >
-                {inFlightForSelected ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <XCircle className="h-3 w-3" />
-                )}
-                Reject
-              </Button>
+              {view === "rejected" ? (
+                // Rejected split-view: the only meaningful next step is
+                // bringing this candidate back into All. Hide Apply /
+                // Keep / Reject — they're either nonsensical here
+                // (Reject would target an already-rejected row) or
+                // duplicative of Reapply.
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="primary"
+                  disabled={inFlightForSelected || !selectedRow}
+                  onClick={() => {
+                    if (!selectedRow) return;
+                    void reapplyCandidate(selectedRow.id, selectedRow.name);
+                  }}
+                  className="h-7 rounded-md px-2.5 text-[11px]"
+                >
+                  {inFlightForSelected ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <RotateCcw className="h-3 w-3" />
+                  )}
+                  Reapply
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="primary"
+                    disabled={inFlightForSelected || !selectedRow}
+                    onClick={() => {
+                      if (!selectedRow) return;
+                      void postPlacement(selectedRow.id, selectedRow.name, "APPLIED");
+                    }}
+                    className="h-7 rounded-md px-2.5 text-[11px]"
+                  >
+                    {inFlightForSelected ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Target className="h-3 w-3" />
+                    )}
+                    Apply to Job
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="keep"
+                    disabled={keepInFlightForSelected || !selectedRow}
+                    onClick={() => {
+                      if (!selectedRow) return;
+                      void onKeep(selectedRow.id, selectedRow.name);
+                    }}
+                    className="h-7 rounded-md px-2.5 text-[11px]"
+                  >
+                    {keepInFlightForSelected ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <Bookmark className="h-3 w-3" />
+                    )}
+                    Keep
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="reject"
+                    disabled={inFlightForSelected || !selectedRow}
+                    onClick={() => {
+                      if (!selectedRow) return;
+                      void postPlacement(selectedRow.id, selectedRow.name, "REJECTED");
+                    }}
+                    className="h-7 rounded-md px-2.5 text-[11px]"
+                  >
+                    {inFlightForSelected ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <XCircle className="h-3 w-3" />
+                    )}
+                    Reject
+                  </Button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
@@ -1687,14 +1759,18 @@ export function MatchesTab({
                     </Button>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="reject"
                       size="sm"
-                      onClick={removeSelectedFromResults}
+                      onClick={() => void bulkReject()}
                       disabled={bulkInFlight}
                       className="rounded-full"
                     >
-                      <EyeOff className="h-3.5 w-3.5" />
-                      Remove from results
+                      {bulkInFlight ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <XCircle className="h-3.5 w-3.5" />
+                      )}
+                      Reject
                     </Button>
                   </div>
                 </div>
@@ -1798,10 +1874,10 @@ export function MatchesTab({
                           {view === "rejected" ? (
                             <button
                               type="button"
-                              onClick={() => void unrejectCandidate(c.id, c.name)}
+                              onClick={() => void reapplyCandidate(c.id, c.name)}
                               disabled={rowInFlight}
-                              aria-label={`Un-reject ${c.name}`}
-                              title="Move back to All"
+                              aria-label={`Reapply ${c.name}`}
+                              title="Reapply to job"
                               className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
                             >
                               {rowInFlight ? (
