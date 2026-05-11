@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   Bookmark,
   Check,
   ChevronDown,
@@ -72,11 +74,20 @@ type Row = {
   location: string;
   salary: string;
   lastApply: string;
+  // Raw ISO timestamp riding alongside the formatted relative string so
+  // client-side column sort can order by date without re-parsing the
+  // display string. Optional because legacy responses may omit it.
+  lastApplyAt?: string;
   lastAction: string;
+  lastActionAt?: string;
   // Server-side keyword hit inside the candidate's parsed resume text.
   // Null when q is empty or no resume on file matched all tokens.
   resumeSnippet: string | null;
 };
+
+type SortColumn = "lastApply" | "lastAction";
+type SortDirection = "asc" | "desc";
+type SortState = { column: SortColumn; direction: SortDirection } | null;
 
 // Pill with include/exclude semantics. Each chip on Skills / Job titles
 // / Employer carries its own toggle so the same input can express "tax
@@ -372,8 +383,55 @@ function SortHeader({
     <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
       <span className={`inline-flex items-center gap-1 ${justify}`}>
         {label}
-        <ChevronsUpDown className="h-3 w-3 opacity-60" />
       </span>
+    </th>
+  );
+}
+
+// Sortable variant — mirrors the Matches tab pattern. Click cycles
+// descending → ascending → cleared. Active column shows a directional
+// arrow; inactive shows the dimmed up/down stack.
+function SortableHeader({
+  label,
+  column,
+  sort,
+  onToggle,
+}: {
+  label: string;
+  column: SortColumn;
+  sort: SortState;
+  onToggle: (column: SortColumn) => void;
+}) {
+  const active = sort?.column === column;
+  return (
+    <th
+      className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted"
+      aria-sort={
+        active ? (sort?.direction === "asc" ? "ascending" : "descending") : "none"
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onToggle(column)}
+        className={
+          "inline-flex items-center gap-1 transition " +
+          (active
+            ? "text-court-accent-dark"
+            : "text-court-fg-muted hover:text-court-fg")
+        }
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        {active ? (
+          sort?.direction === "asc" ? (
+            <ArrowUp className="h-3 w-3" />
+          ) : (
+            <ArrowDown className="h-3 w-3" />
+          )
+        ) : (
+          <ChevronsUpDown className="h-3 w-3 opacity-60" />
+        )}
+      </button>
     </th>
   );
 }
@@ -604,6 +662,9 @@ export default function CandidatesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"all" | "submitted" | "hot">("all");
+  // Column-sort state. Click cycles: idle → desc → asc → cleared. Null
+  // means "follow the API's default ordering" (Recent activity).
+  const [sort, setSort] = useState<SortState>(null);
   // Saved-search pills shown in the empty state. Hydrated from
   // localStorage in a useEffect so the first SSR pass renders the empty
   // pill row and no hydration-mismatch fires.
@@ -799,41 +860,73 @@ export default function CandidatesPage() {
     filters.lastAction,
   ]);
 
+  // Apply the column sort on top of whatever the server returned.
+  // Falls back to ISO-string compare on the raw timestamp; rows without
+  // a timestamp sink to the bottom so they don't reorder unexpectedly.
+  const sortedRows = useMemo(() => {
+    if (!sort) return rows;
+    const key: "lastApplyAt" | "lastActionAt" =
+      sort.column === "lastApply" ? "lastApplyAt" : "lastActionAt";
+    const dir = sort.direction === "asc" ? 1 : -1;
+    const withKey: Array<{ row: Row; t: string | null }> = rows.map((r) => ({
+      row: r,
+      t: r[key] ?? null,
+    }));
+    withKey.sort((a, b) => {
+      if (a.t === b.t) return 0;
+      if (a.t == null) return 1;
+      if (b.t == null) return -1;
+      return a.t < b.t ? -dir : dir;
+    });
+    return withKey.map((x) => x.row);
+  }, [rows, sort]);
+
+  function toggleSort(column: SortColumn) {
+    setSort((prev) => {
+      if (!prev || prev.column !== column) {
+        return { column, direction: "desc" };
+      }
+      if (prev.direction === "desc") return { column, direction: "asc" };
+      return null;
+    });
+  }
+
   // Split-view prev/next. The narrow name list and the iframe both
-  // index off rows[], so the position of selectedId in rows[] drives
-  // the "X of Y" counter and the disabled state of the arrows. When
-  // the active candidate falls off the filtered set (e.g. user tweaks
-  // a filter while the slide-over is open), currentIndex is -1; both
-  // arrows disable and the counter shows "— of N" rather than crashing.
+  // index off sortedRows[], so the position of selectedId in
+  // sortedRows[] drives the "X of Y" counter and the disabled state of
+  // the arrows. When the active candidate falls off the filtered set
+  // (e.g. user tweaks a filter while the slide-over is open),
+  // currentIndex is -1; both arrows disable and the counter shows
+  // "— of N" rather than crashing.
   const currentIndex = useMemo(
-    () => (selectedId ? rows.findIndex((r) => r.id === selectedId) : -1),
-    [rows, selectedId],
+    () => (selectedId ? sortedRows.findIndex((r) => r.id === selectedId) : -1),
+    [sortedRows, selectedId],
   );
   const canPrev = currentIndex > 0;
-  const canNext = currentIndex >= 0 && currentIndex < rows.length - 1;
+  const canNext = currentIndex >= 0 && currentIndex < sortedRows.length - 1;
 
   function goPrev() {
     if (!canPrev) return;
-    setSelectedId(rows[currentIndex - 1].id);
+    setSelectedId(sortedRows[currentIndex - 1].id);
   }
   function goNext() {
     if (!canNext) return;
-    setSelectedId(rows[currentIndex + 1].id);
+    setSelectedId(sortedRows[currentIndex + 1].id);
   }
 
   // Local-only filter for the sidebar list — narrows the visible rows
   // by name / title / employer substring without re-querying the API.
   const sidebarRows = useMemo(() => {
     const q = sidebarFilter.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) => {
+    if (!q) return sortedRows;
+    return sortedRows.filter((r) => {
       return (
         r.name.toLowerCase().includes(q) ||
         (r.title || "").toLowerCase().includes(q) ||
         (r.employer || "").toLowerCase().includes(q)
       );
     });
-  }, [rows, sidebarFilter]);
+  }, [sortedRows, sidebarFilter]);
 
   // Bucket the visible rows by activity recency for the sticky group
   // headers. Insertion order inside each bucket follows rows[] so the
@@ -1298,7 +1391,7 @@ export default function CandidatesPage() {
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <span className="text-xs font-medium tabular-nums text-court-fg-muted">
-                {currentIndex >= 0 ? currentIndex + 1 : "—"} of {rows.length}
+                {currentIndex >= 0 ? currentIndex + 1 : "—"} of {sortedRows.length}
               </span>
               <button
                 type="button"
@@ -1419,8 +1512,18 @@ export default function CandidatesPage() {
                     <SortHeader label="Employer" />
                     <SortHeader label="Location" />
                     <SortHeader label="Salary" align="right" />
-                    <SortHeader label="Last Apply" />
-                    <SortHeader label="Last Action" />
+                    <SortableHeader
+                      label="Last Apply"
+                      column="lastApply"
+                      sort={sort}
+                      onToggle={toggleSort}
+                    />
+                    <SortableHeader
+                      label="Last Action"
+                      column="lastAction"
+                      sort={sort}
+                      onToggle={toggleSort}
+                    />
                     <SortHeader label="Score" align="center" />
                     <th className="w-10 px-3 py-2" />
                   </tr>
@@ -1431,7 +1534,7 @@ export default function CandidatesPage() {
                     (loading ? "opacity-50" : "opacity-100")
                   }
                 >
-                  {rows.length === 0 && !loading && (
+                  {sortedRows.length === 0 && !loading && (
                     <tr>
                       <td
                         colSpan={10}
@@ -1441,7 +1544,7 @@ export default function CandidatesPage() {
                       </td>
                     </tr>
                   )}
-                  {rows.map((c) => (
+                  {sortedRows.map((c) => (
                     <Fragment key={c.id}>
                     <tr
                       onClick={() => setSelectedId(c.id)}

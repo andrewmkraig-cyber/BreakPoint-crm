@@ -111,6 +111,7 @@ function parseNumber(raw: string | null): number | null {
 // whitespace keeps tabular PDFs from rendering as huge gaps.
 const SNIPPET_LEN = 200;
 const SNIPPET_LEAD = 80;
+const SNIPPET_MIN_READABLE = 20;
 function buildResumeSnippet(text: string, tokens: string[]): string | null {
   if (!text || tokens.length === 0) return null;
   const lower = text.toLowerCase();
@@ -122,8 +123,18 @@ function buildResumeSnippet(text: string, tokens: string[]): string | null {
   if (earliest < 0) return null;
   const start = Math.max(0, earliest - SNIPPET_LEAD);
   const end = Math.min(text.length, start + SNIPPET_LEN);
-  let snip = text.slice(start, end).replace(/\s+/g, " ").trim();
-  if (!snip) return null;
+  let snip = text.slice(start, end);
+  // Strip the JSON-stringified noise that leaks through when the snippet
+  // source is the experience JSON (jsonToSearchableText converts braces
+  // and quotes to spaces but leaves "key: null" pairs intact). Drop
+  // standalone "null" tokens and "<word>:" key labels so the snippet
+  // reads as recruitable copy rather than schema scaffolding.
+  snip = snip
+    .replace(/\bnull\b/gi, " ")
+    .replace(/\b[A-Za-z_][A-Za-z0-9_]*\s*:/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (snip.length < SNIPPET_MIN_READABLE) return null;
   if (start > 0) snip = "…" + snip;
   if (end < text.length) snip = snip + "…";
   return snip;
@@ -302,39 +313,46 @@ const NOMINATIM_UA =
 type GeoHit = { lat: number; lng: number };
 type NominatimHit = { lat: string; lon: string };
 
-async function geocodePill(loc: string): Promise<GeoHit | null> {
-  const key = loc.toLowerCase().trim();
-  if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
+async function fetchNominatim(url: string): Promise<GeoHit | null> {
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`;
     const res = await fetch(url, {
       headers: { "User-Agent": NOMINATIM_UA },
       // 5s upper bound so a slow Nominatim doesn't stall the search
       // request — caller falls back to text contains on null return.
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) {
-      geocodeCache.set(key, null);
-      return null;
-    }
+    if (!res.ok) return null;
     const arr = (await res.json()) as NominatimHit[];
-    if (!Array.isArray(arr) || arr.length === 0) {
-      geocodeCache.set(key, null);
-      return null;
-    }
+    if (!Array.isArray(arr) || arr.length === 0) return null;
     const lat = Number.parseFloat(arr[0].lat);
     const lng = Number.parseFloat(arr[0].lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      geocodeCache.set(key, null);
-      return null;
-    }
-    const hit = { lat, lng };
-    geocodeCache.set(key, hit);
-    return hit;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
   } catch {
-    geocodeCache.set(key, null);
     return null;
   }
+}
+
+async function geocodePill(loc: string): Promise<GeoHit | null> {
+  const key = loc.toLowerCase().trim();
+  if (geocodeCache.has(key)) return geocodeCache.get(key) ?? null;
+  // 5-digit numeric strings are US ZIP codes — the freeform `q=` path
+  // resolves them inconsistently (Nominatim sometimes returns the ZIP
+  // boundary's POI cluster instead of the centroid, sometimes nothing).
+  // Hit the dedicated postalcode endpoint first; only fall back to the
+  // freeform text path when the postalcode lookup returns nothing.
+  if (/^\d{5}$/.test(key)) {
+    const zipUrl = `https://nominatim.openstreetmap.org/search?postalcode=${encodeURIComponent(key)}&country=us&format=json&limit=1`;
+    const zipHit = await fetchNominatim(zipUrl);
+    if (zipHit) {
+      geocodeCache.set(key, zipHit);
+      return zipHit;
+    }
+  }
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(loc)}&format=json&limit=1`;
+  const hit = await fetchNominatim(url);
+  geocodeCache.set(key, hit);
+  return hit;
 }
 
 // Approximate degrees per mile. 1° latitude ≈ 69 miles everywhere; 1°
