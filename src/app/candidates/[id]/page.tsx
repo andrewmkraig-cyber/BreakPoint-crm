@@ -27,6 +27,8 @@ import { KeepCandidateButton } from "@/components/keep-candidate-button";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
+import { TextHighlighter } from "@/components/text-highlighter";
+import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
 import { LocalCandidateProfile } from "@/app/candidates/[id]/local-profile";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getPlacementsForOrg } from "@/lib/placements";
@@ -79,7 +81,11 @@ export default async function CandidateProfilePage({
   searchParams,
 }: {
   params: { id: string };
-  searchParams?: { tab?: CandidateTab; embed?: string };
+  // `highlight` is a comma-separated list of search tokens passed by
+  // the /candidates split-view iframe so the profile can wrap matching
+  // text on mount. Optional — when absent the profile renders without
+  // any highlight overlay.
+  searchParams?: { tab?: CandidateTab; embed?: string; highlight?: string };
 }) {
   // Phase 1 candidate cutover: every candidate profile resolves through
   // Neon. The URL segment can be either a cuid (the canonical post-cutover
@@ -102,6 +108,7 @@ export default async function CandidateProfilePage({
         id={candidate.id}
         tab={searchParams?.tab}
         embed={isEmbed}
+        highlight={isEmbed ? searchParams?.highlight ?? null : null}
       />
     );
   }
@@ -537,8 +544,15 @@ export default async function CandidateProfilePage({
   // independently inside the iframe viewport.
   if (isEmbed) {
     const compensation = formatExpectedSalaryBlob(c.expected_salary);
+    const highlightTokens = parseHighlightTokens(searchParams?.highlight);
     return (
       <CandidateProfileBoundary>
+        {/* TextHighlighter walks the embed DOM on mount and wraps
+            matching tokens. Mounting it once at the top of the embed
+            shell catches text in the compact overview, resume metadata,
+            skills card, and activity feed without each component
+            opting in via prop. */}
+        {highlightTokens.length > 0 && <TextHighlighter tokens={highlightTokens} />}
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <CandidateCompactOverview

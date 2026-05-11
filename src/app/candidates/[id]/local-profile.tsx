@@ -12,6 +12,8 @@ import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
 import { CandidateCompactOverview } from "@/components/candidate-compact-overview";
+import { TextHighlighter } from "@/components/text-highlighter";
+import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
 import AiWorkspace from "@/components/AiWorkspace";
 import { cn } from "@/lib/utils";
 // 5A.5.b parity: Ace-native candidates now share the same resume
@@ -34,10 +36,17 @@ export async function LocalCandidateProfile({
   id,
   tab: tabParam,
   embed = false,
+  highlight = null,
 }: {
   id: string;
   tab?: string;
   embed?: boolean;
+  // Comma-separated search tokens passed through from the candidates
+  // split-view. Embed branch parses this into a token list and
+  // mounts <TextHighlighter> at the top so matches inside the
+  // overview, resume, skills, and activity cards get wrapped in
+  // <mark> on mount.
+  highlight?: string | null;
 }) {
   const tab: LocalCandidateTab =
     tabParam === "game-plan"
@@ -296,39 +305,47 @@ export async function LocalCandidateProfile({
   // independently inside the iframe viewport.
   if (embed) {
     const compensation = formatExpectedSalary(candidate.expectedSalary);
+    const highlightTokens = parseHighlightTokens(highlight);
     return (
-      <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
-        <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
-          <CandidateCompactOverview
-            candidateRef={candidate.id}
-            fullName={fullName}
-            firstName={candidate.firstName}
-            lastName={candidate.lastName}
-            currentDesignation={candidate.currentDesignation}
-            currentOrganization={candidate.currentOrganization}
-            location={candidate.location}
-            email={candidate.email}
-            phone={candidate.phone}
-            linkedinProfile={candidate.linkedinProfile}
-            compensation={compensation}
-          />
-          <EditableResume
-            candidateRfId={null}
-            candidateId={candidate.id}
-            versions={resumeVersions}
-          />
+      <>
+        {/* Mount once at the top of the embed shell. Walks the DOM
+            on mount and wraps any search-token match inside the
+            overview / resume metadata / skills / activity cards
+            with a styled <mark>. */}
+        {highlightTokens.length > 0 && <TextHighlighter tokens={highlightTokens} />}
+        <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
+          <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            <CandidateCompactOverview
+              candidateRef={candidate.id}
+              fullName={fullName}
+              firstName={candidate.firstName}
+              lastName={candidate.lastName}
+              currentDesignation={candidate.currentDesignation}
+              currentOrganization={candidate.currentOrganization}
+              location={candidate.location}
+              email={candidate.email}
+              phone={candidate.phone}
+              linkedinProfile={candidate.linkedinProfile}
+              compensation={compensation}
+            />
+            <EditableResume
+              candidateRfId={null}
+              candidateId={candidate.id}
+              versions={resumeVersions}
+            />
+          </div>
+          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
+            <LocalEditableSkills
+              candidateId={candidate.id}
+              initial={candidate.skills ?? []}
+            />
+            <CandidateActivityCard
+              candidateId={candidate.id}
+              toNumber={candidate.phone || null}
+            />
+          </aside>
         </div>
-        <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
-          <LocalEditableSkills
-            candidateId={candidate.id}
-            initial={candidate.skills ?? []}
-          />
-          <CandidateActivityCard
-            candidateId={candidate.id}
-            toNumber={candidate.phone || null}
-          />
-        </aside>
-      </div>
+      </>
     );
   }
 

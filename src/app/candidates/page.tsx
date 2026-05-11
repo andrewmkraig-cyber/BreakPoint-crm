@@ -983,7 +983,10 @@ export default function CandidatesPage() {
   // of truth for the apply flow instead of duplicating the picker here.
   function openApplyInIframe() {
     if (!selectedId || !iframeRef.current) return;
-    iframeRef.current.src = `/candidates/${selectedId}?embed=true&openApply=true`;
+    const highlightSuffix = matchTokens.length > 0
+      ? `&highlight=${encodeURIComponent(matchTokens.join(","))}`
+      : "";
+    iframeRef.current.src = `/candidates/${selectedId}?embed=true&openApply=true${highlightSuffix}`;
   }
 
   // Keep is candidate-scoped — no job picker needed. toggleCandidateKept
@@ -1288,8 +1291,84 @@ export default function CandidatesPage() {
       </aside>
 
       {selectedId ? (
-        <>
-          <section className="flex h-[calc(100vh-80px)] w-[300px] shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface">
+        // Split view = chrome bar on top, then the two-column body
+        // (300px name list + iframe). Wrapping both columns in a
+        // flex-col container lets the chrome bar's bottom divider
+        // span the entire content width — earlier it sat inside the
+        // right pane only and the line stopped at the name list.
+        <div className="flex min-h-0 flex-1 flex-col">
+          {/* Full-width split-view chrome bar. h-10 chrome strip with
+              border-b extends across both the 300px middle sidebar
+              and the right iframe pane. Prev/next + Apply/Keep stay
+              wired to the same selectedId state as before. */}
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-court-border bg-court-surface px-3">
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              All Candidates
+            </button>
+            <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={goPrev}
+              disabled={!canPrev}
+              aria-label="Previous candidate"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <span className="text-xs font-medium tabular-nums text-court-fg-muted">
+              {currentIndex >= 0 ? currentIndex + 1 : "—"} of {sortedRows.length}
+            </span>
+            <button
+              type="button"
+              onClick={goNext}
+              disabled={!canNext}
+              aria-label="Next candidate"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+            <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
+            <Button
+              type="button"
+              size="sm"
+              variant="apply"
+              onClick={openApplyInIframe}
+              className="h-7 rounded-md px-2.5 text-[11px]"
+            >
+              <Target className="h-3 w-3" />
+              Apply to Job
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="keep"
+              onClick={() => void onKeepSelected()}
+              disabled={keepInFlight === selectedId}
+              className="h-7 rounded-md px-2.5 text-[11px]"
+            >
+              {keepInFlight === selectedId ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <Bookmark className="h-3 w-3" />
+              )}
+              Keep
+            </Button>
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              aria-label="Close profile"
+              className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex min-h-0 flex-1">
+          <section className="flex w-[300px] shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface">
             {/* Sidebar header — title + count pill + filter input.
                 border-t mirrors the default-view sidebar's top divider
                 so the rule above the header reads as continuous chrome
@@ -1427,95 +1506,20 @@ export default function CandidatesPage() {
             </div>
           </section>
           <section className="flex flex-1 flex-col bg-court-bg">
-            {/* Split-view nav bar. Sits flush above the iframe with a
-                topbar-height (~40px) chrome strip so the prev/next +
-                counter read as a control row, not a floating widget.
-                Close X moves into this row at the far right so it
-                doesn't overlay the bar's content. */}
-            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-court-border bg-court-surface px-3">
-              {/* Bail-out back to the full two-column results layout.
-                  Pairs with the trailing X — same behavior, but framed
-                  as a labeled affordance so the recruiter knows where
-                  the click leads instead of inferring "close" from a
-                  bare X icon. */}
-              <button
-                type="button"
-                onClick={() => setSelectedId(null)}
-                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-              >
-                <ArrowLeft className="h-3.5 w-3.5" />
-                All Candidates
-              </button>
-              <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
-              <button
-                type="button"
-                onClick={goPrev}
-                disabled={!canPrev}
-                aria-label="Previous candidate"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <span className="text-xs font-medium tabular-nums text-court-fg-muted">
-                {currentIndex >= 0 ? currentIndex + 1 : "—"} of {sortedRows.length}
-              </span>
-              <button
-                type="button"
-                onClick={goNext}
-                disabled={!canNext}
-                aria-label="Next candidate"
-                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              {/* Apply / Keep mirror the matches-tab chrome treatment.
-                  Reject is intentionally absent — there's no job
-                  context on /candidates, and rejection without a job
-                  has no meaning. */}
-              <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
-              <Button
-                type="button"
-                size="sm"
-                variant="apply"
-                onClick={openApplyInIframe}
-                className="h-7 rounded-md px-2.5 text-[11px]"
-              >
-                <Target className="h-3 w-3" />
-                Apply to Job
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="keep"
-                onClick={() => void onKeepSelected()}
-                disabled={keepInFlight === selectedId}
-                className="h-7 rounded-md px-2.5 text-[11px]"
-              >
-                {keepInFlight === selectedId ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Bookmark className="h-3 w-3" />
-                )}
-                Keep
-              </Button>
-              <button
-                type="button"
-                onClick={() => setSelectedId(null)}
-                aria-label="Close profile"
-                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
             <iframe
               ref={iframeRef}
               key={selectedId}
-              src={`/candidates/${selectedId}?embed=true`}
+              src={`/candidates/${selectedId}?embed=true${
+                matchTokens.length > 0
+                  ? `&highlight=${encodeURIComponent(matchTokens.join(","))}`
+                  : ""
+              }`}
               title="Candidate profile"
               className="w-full flex-1 border-0"
             />
           </section>
-        </>
+          </div>
+        </div>
       ) : (
         <section className="flex flex-1 flex-col bg-court-bg">
           {/* Results header strip — count on the left, Saved Lists pill
@@ -1706,10 +1710,7 @@ export default function CandidatesPage() {
                     <Fragment key={c.id}>
                     <tr
                       onClick={() => setSelectedId(c.id)}
-                      className={
-                        "h-12 cursor-pointer transition hover:bg-court-accent-tint/40 " +
-                        (c.resumeSnippet ? "border-b-0" : "")
-                      }
+                      className="h-12 cursor-pointer transition hover:bg-court-accent-tint/40"
                     >
                       <td
                         className="w-10 px-3"
@@ -1765,9 +1766,14 @@ export default function CandidatesPage() {
                       </td>
                     </tr>
                     {c.resumeSnippet ? (
+                      // !border-t-0 overrides divide-y's auto top
+                      // border so the snippet flows under its data
+                      // row as one block. The visible divider then
+                      // only appears between candidates (set by
+                      // divide-y on the next candidate's data row).
                       <tr
                         onClick={() => setSelectedId(c.id)}
-                        className="cursor-pointer transition hover:bg-court-accent-tint/40"
+                        className="!border-t-0 cursor-pointer transition hover:bg-court-accent-tint/40"
                       >
                         <td className="px-3" />
                         <td
