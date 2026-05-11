@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import {
   ArrowLeft,
   ArrowUp,
@@ -11,7 +10,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
-  Eye,
   Loader2,
   Minus,
   RotateCcw,
@@ -1918,15 +1916,7 @@ export function MatchesTab({
                                 <RotateCcw className="h-4 w-4" />
                               )}
                             </button>
-                          ) : (
-                            <Link
-                              href={`/candidates/${c.id}`}
-                              aria-label={`View ${c.name}`}
-                              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                          )}
+                          ) : null}
                         </td>
                       </tr>
                     );
