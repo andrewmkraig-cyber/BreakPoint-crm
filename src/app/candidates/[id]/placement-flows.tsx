@@ -241,6 +241,68 @@ export function PlacementActions({
   const [submitInitialJobRfId, setSubmitInitialJobRfId] = useState<number | null>(null);
   const [applyOpen, setApplyOpen] = useState(false);
 
+  // Mirror the jobs prop into local state so Apply-to-Job can prepend an
+  // optimistic row without waiting for the server round-trip to repopulate
+  // the prop. router.refresh() still fires after a successful action — when
+  // the prop arrives we re-sync via the effect below.
+  const [jobsState, setJobsState] = useState<PlacementContextJob[]>(jobs);
+  useEffect(() => {
+    setJobsState(jobs);
+  }, [jobs]);
+
+  function handleApplied(opt: OpenJobOption, placementId: string) {
+    setJobsState((prev) => {
+      if (prev.some((j) => j.jobRfId === opt.jobRfId)) return prev;
+      const optimistic: PlacementContextJob = {
+        jobRfId: opt.jobRfId,
+        jobCuid: opt.jobCuid,
+        clientCuid: opt.clientCuid,
+        jobTitle: opt.jobTitle,
+        jobLocation: opt.jobLocation,
+        jobDescription: "",
+        jobSalaryRange: opt.jobCompensation,
+        clientRfId: opt.clientRfId,
+        clientName: opt.clientName,
+        clientWebsite: "",
+        clientLinkedIn: "",
+        clientFeePct: null,
+        rfStageBucket: "applied",
+        rfStageMovedAt: new Date().toISOString(),
+        clientContacts: opt.clientContacts,
+        placement: {
+          id: placementId,
+          stage: "applied",
+          cancelledAt: null,
+          cancellationReason: null,
+          cancellationDetail: null,
+          rejectedAt: null,
+          syncedToRf: false,
+          offerSalary: null,
+          offerCurrency: null,
+          offerTitle: null,
+          offerStartDate: null,
+          offerNotes: null,
+          acceptedSalary: null,
+          acceptedCurrency: null,
+          feePercentage: null,
+          feeTotal: null,
+          minFee: null,
+          guaranteePeriodDays: null,
+          billingContactName: null,
+          billingContactEmail: null,
+          billingContacts: null,
+          hiringManagerName: null,
+          hiringManagerEmail: null,
+          expectedStartDate: null,
+          placementNotes: null,
+          startConfirmedAt: null,
+        },
+        interviews: [],
+      };
+      return [...prev, optimistic];
+    });
+  }
+
   // Deep-link from /applicants and /jobs/[id] pipeline rows. The
   // expected query is ?compose=submittal&jobId=NN — when both are
   // present we open the SubmitToJobDialog with the matching job
@@ -368,14 +430,14 @@ export function PlacementActions({
 
   return (
     <>
-      {jobs.length === 0 && (
+      {jobsState.length === 0 && (
         <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/40 px-5 py-4 text-xs text-court-fg-muted">
           No jobs linked to this candidate yet — click <span className="font-semibold">Submit to Job</span> to add one.
         </div>
       )}
 
       <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
-        {jobs.map((j) => (
+        {jobsState.map((j) => (
           <JobActionRow
             key={j.jobRfId}
             job={j}
@@ -449,7 +511,7 @@ export function PlacementActions({
             currentEmployer: candidateCurrentEmployer,
           }}
           recruiter={recruiter}
-          clientContacts={findClientContactsForJob(jobs, inviteFlow.jobTitle, inviteFlow.clientName)}
+          clientContacts={findClientContactsForJob(jobsState, inviteFlow.jobTitle, inviteFlow.clientName)}
           aceTeam={aceTeam}
           onDone={(meetLink) => setInviteFlow({ ...inviteFlow, step: "candidate", meetLink: meetLink ?? inviteFlow.meetLink })}
         />
@@ -467,7 +529,7 @@ export function PlacementActions({
             currentEmployer: candidateCurrentEmployer,
           }}
           recruiter={recruiter}
-          clientContacts={findClientContactsForJob(jobs, inviteFlow.jobTitle, inviteFlow.clientName)}
+          clientContacts={findClientContactsForJob(jobsState, inviteFlow.jobTitle, inviteFlow.clientName)}
           aceTeam={aceTeam}
           onDone={() => {
             setInviteFlow(null);
@@ -533,6 +595,7 @@ export function PlacementActions({
           candidateRfId={candidateRfId}
           openJobs={openJobs}
           onClose={() => setApplyOpen(false)}
+          onApplied={handleApplied}
         />
       )}
     </>
@@ -2200,10 +2263,15 @@ function ApplyToJobDialog({
   candidateRfId,
   openJobs,
   onClose,
+  onApplied,
 }: {
   candidateRfId: number;
   openJobs: OpenJobOption[];
   onClose: () => void;
+  // Optimistic-update hook: parent receives the picked option + the new
+  // placement id so the job pill strip can render the row immediately,
+  // before router.refresh() repopulates the server-rendered prop.
+  onApplied?: (opt: OpenJobOption, placementId: string) => void;
 }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string>("");
@@ -2244,6 +2312,7 @@ function ApplyToJobDialog({
         toast.error("Apply failed silently", { description: msg });
         return;
       }
+      onApplied?.(picked, result.value.placementId);
       toast.success("Candidate applied", {
         description: `${picked.jobTitle}${picked.clientName ? ` · ${picked.clientName}` : ""} → Applied stage.`,
       });
@@ -2835,25 +2904,6 @@ function formatMoney(n: number | null, currency: string): string {
   return `${sym}${n.toLocaleString()}`;
 }
 
-// Shown alongside the success toast when Google Meet refused to set
-// accessType=OPEN — usually a missing OAuth scope. The interview itself is
-// valid; users just need to re-grant Meet permissions for future invites
-// to auto-open the room.
-function surfaceMeetWarning(warning: { reason: string; message: string }): void {
-  if (warning.reason === "scope_missing") {
-    toast.warning("Meet locked to TRUSTED access", {
-      description:
-        "Google hasn't granted the Meet settings permission yet. Revoke Ace at myaccount.google.com/permissions, sign in again, and new interviews will default to Anyone-can-join.",
-      duration: 12_000,
-    });
-  } else {
-    toast.warning("Meet access stayed TRUSTED", {
-      description: warning.message,
-      duration: 12_000,
-    });
-  }
-}
-
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const CHUNK = 8192;
@@ -3028,7 +3078,6 @@ function ClientInviteComposer({
         toast.success("Client calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
         onDone(result.value.meetLink);
       }}
     />
@@ -3104,7 +3153,6 @@ function CandidateInviteComposer({
         toast.success("Candidate calendar invite sent", {
           description: "They'll see Accept / Maybe / Decline in their inbox.",
         });
-        if (result.value.meetAccessWarning) surfaceMeetWarning(result.value.meetAccessWarning);
         onDone();
       }}
     />

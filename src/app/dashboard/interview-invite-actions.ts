@@ -370,7 +370,7 @@ export async function updateInterviewInvite(
       eventId: existingEventId,
       summary: input.subject,
       description: input.body,
-      newAttendee: { email: input.attendeeEmail.trim(), displayName: input.attendeeName },
+      newAttendees: [{ email: input.attendeeEmail.trim(), displayName: input.attendeeName }],
     });
   } catch (e) {
     return {
