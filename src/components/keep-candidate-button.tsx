@@ -10,9 +10,9 @@ import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
 // Candidate-level Keep toggle. Reads the current state from the parent
 // (whose isKept flag already merges the Candidate.tags column with the
 // RF raw payload tags) and flips it via toggleCandidateKept. Uses the
-// shared secondary variant so Keep reads as a neutral utility action
-// next to the green Apply / Submit affordances — the bookmark icon
-// switches to a filled state when toggled on.
+// shared "keep" Button variant (light blue) so Keep reads as a soft-
+// blue annotation alongside Schedule — the bookmark icon switches to a
+// filled state when toggled on.
 
 export function KeepCandidateButton({
   candidateId,
@@ -40,7 +40,7 @@ export function KeepCandidateButton({
     <Button
       type="button"
       size="sm"
-      variant="secondary"
+      variant="keep"
       onClick={onClick}
       disabled={isPending}
       aria-pressed={isKept}

@@ -190,13 +190,17 @@ function buildQuery(f: Filters): string {
   return sp.toString();
 }
 
+// bg-court-surface (not bg-white) so the fields re-skin across Court
+// Modes — dark Grass / Clay paint the panel surface dark, matching the
+// rest of the rail instead of holding a hardcoded white that glares
+// against a dark page bg.
 const inputCls =
-  "block h-8 w-full rounded-md border border-court-border bg-white px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-8 w-full rounded-md border border-court-border bg-court-surface px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 // Bare select class. Wrap with SelectField so the inline chevron paints
 // over the native arrow we strip with appearance-none.
 const selectBareCls =
-  "block h-8 w-full appearance-none rounded-md border border-court-border bg-white pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-8 w-full appearance-none rounded-md border border-court-border bg-court-surface pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 function SelectField({
   className,
@@ -291,7 +295,7 @@ function TagInput({
   }
 
   return (
-    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-white px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
+    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
       {values.map((p) => {
         const tintCls = p.exclude
           ? "bg-red-100 text-red-700"
@@ -974,7 +978,12 @@ export default function CandidatesPage() {
     // Lists footer permanently visible no matter how long the result
     // list gets — the result list scrolls within its own wrapper
     // below.
-    <div className="-mb-6 -ml-3 -mr-6 -mt-4 flex h-[calc(100vh-72px)] overflow-hidden md:-mb-8 md:-ml-4 md:-mr-8 md:-mt-4 xl:-ml-8 xl:-mr-8 2xl:-ml-12 2xl:-mr-12">
+    // Negative left margin = (main's left padding at the breakpoint) +
+    // 6px to overlap AppShell's 6px resize handle. Without the extra
+    // 6px the bg-court-bg handle column shows as a green strip in dark
+    // Grass mode between AppShell's nav and this aside — the aside's
+    // bg-court-surface visually consumes the handle once they overlap.
+    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-72px)] overflow-hidden md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
       <aside
         className={
           "flex shrink-0 flex-col overflow-hidden bg-court-surface transition-[width,border] duration-200 " +
@@ -1185,8 +1194,9 @@ export default function CandidatesPage() {
             stays visible without competing for sidebar real estate.
             Search fires on every filter change, so a separate Run
             button would be redundant; Save is the only durable
-            affordance here. */}
-        <div className="border-t border-court-border bg-white px-3 py-2">
+            affordance here. bg-court-surface so the footer re-skins
+            across Court Modes instead of holding a hardcoded white. */}
+        <div className="border-t border-court-border bg-court-surface px-3 py-2">
           <Button
             type="button"
             variant="primary"
@@ -1229,7 +1239,7 @@ export default function CandidatesPage() {
                   onChange={(e) => setSidebarFilter(e.target.value)}
                   placeholder="Filter list…"
                   aria-label="Filter list"
-                  className="h-8 w-full rounded-lg border border-court-border bg-court-surface-subtle pl-8 pr-2 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-white focus:outline-none"
+                  className="h-8 w-full rounded-lg border border-court-border bg-court-surface-subtle pl-8 pr-2 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:bg-court-surface focus:outline-none"
                 />
               </div>
             </div>
@@ -1237,7 +1247,7 @@ export default function CandidatesPage() {
             {/* Tabs row. Submitted is presentation-only until the row
                 payload exposes per-candidate stage data — it shows the
                 count but doesn't filter the list. */}
-            <div className="flex border-b border-court-border/60 bg-white">
+            <div className="flex border-b border-court-border/60 bg-court-surface">
               {(
                 [
                   { id: "all", label: "All", n: sidebarRows.length },
@@ -1390,7 +1400,7 @@ export default function CandidatesPage() {
               <Button
                 type="button"
                 size="sm"
-                variant="primary"
+                variant="apply"
                 onClick={openApplyInIframe}
                 className="h-7 rounded-md px-2.5 text-[11px]"
               >
@@ -1400,7 +1410,7 @@ export default function CandidatesPage() {
               <Button
                 type="button"
                 size="sm"
-                variant="secondary"
+                variant="keep"
                 onClick={() => void onKeepSelected()}
                 disabled={keepInFlight === selectedId}
                 className="h-7 rounded-md px-2.5 text-[11px]"

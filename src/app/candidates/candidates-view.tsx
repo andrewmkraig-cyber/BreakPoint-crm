@@ -264,18 +264,19 @@ export function CandidatesView({
             <Button
               type="button"
               size="sm"
-              variant="primary"
+              variant="apply"
               onClick={() => setBulkOpen("apply")}
             >
               <Send className="h-3 w-3" /> Apply to Job
             </Button>
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="secondary"
               onClick={() => setBulkOpen("list")}
-              className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark"
             >
               <ListPlus className="h-3 w-3" /> Add to List
-            </button>
+            </Button>
             <button
               type="button"
               onClick={() => setBulkOpen("delete")}

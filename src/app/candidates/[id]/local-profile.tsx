@@ -839,11 +839,11 @@ function BackgroundSection({
 // Used for the candidate-level action row above the resume so the buttons
 // pick up the same Court Mode tokens as <Button> without nesting a
 // <button> inside an <a> (Link wraps an <a>).
-// Mirrors the shared Button "primary" variant token set so the Apply
-// to Job link renders identically to the other primary-action buttons
-// without nesting a <button> inside an <a>.
+// Anchor-shaped twin of <Button variant="apply">. Token classes mirror
+// the amber apply variant so the Apply to Job link renders identically
+// to the matching <Button> without nesting a <button> inside an <a>.
 const APPLY_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
 
 const ADD_NOTE_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface";

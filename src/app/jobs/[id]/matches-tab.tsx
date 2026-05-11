@@ -1044,6 +1044,15 @@ export function MatchesTab({
             : `Couldn't reject ${failed} candidates`,
         );
       }
+      // Defensive re-sync: re-run the active search so the post-reject
+      // list reflects the DB filter, not just the optimistic
+      // setRows-filter above. If a reject silently failed to persist
+      // (any path that returns 2xx but doesn't write to Placement) the
+      // candidate would otherwise come back as soon as filters change;
+      // this refetch surfaces that the moment the bulk action finishes.
+      if (successIds.length > 0) {
+        void runFetch(filters, view);
+      }
     } finally {
       setBulkInFlight(false);
     }
@@ -1117,6 +1126,14 @@ export function MatchesTab({
           ? `Applied ${candidateName} to ${jobTitle}`
           : `Rejected ${candidateName} for ${jobTitle}`,
       );
+      // Defensive re-sync after REJECTED: mirror the bulk-reject
+      // refetch so the All-tab list re-runs the NOT-rejected DB filter
+      // immediately. APPLIED skips this because the row was already
+      // removed locally and the next interaction will re-fetch
+      // naturally.
+      if (stage === "REJECTED") {
+        void runFetch(filters, view);
+      }
     } catch (e) {
       toast.error(stage === "APPLIED" ? "Couldn't apply" : "Couldn't reject", {
         description: e instanceof Error ? e.message : "Network error.",
@@ -1611,7 +1628,7 @@ export function MatchesTab({
                   <Button
                     type="button"
                     size="sm"
-                    variant="primary"
+                    variant="apply"
                     disabled={inFlightForSelected || !selectedRow}
                     onClick={() => {
                       if (!selectedRow) return;
@@ -1629,7 +1646,7 @@ export function MatchesTab({
                   <Button
                     type="button"
                     size="sm"
-                    variant="secondary"
+                    variant="keep"
                     disabled={keepInFlightForSelected || !selectedRow}
                     onClick={() => {
                       if (!selectedRow) return;
@@ -1762,7 +1779,7 @@ export function MatchesTab({
                   <div className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
                     <Button
                       type="button"
-                      variant="primary"
+                      variant="apply"
                       size="sm"
                       onClick={() => void bulkApply()}
                       disabled={bulkInFlight}
@@ -1777,7 +1794,7 @@ export function MatchesTab({
                     </Button>
                     <Button
                       type="button"
-                      variant="secondary"
+                      variant="keep"
                       size="sm"
                       onClick={() => void bulkKeep()}
                       disabled={bulkInFlight}

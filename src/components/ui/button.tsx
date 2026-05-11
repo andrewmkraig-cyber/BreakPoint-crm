@@ -2,12 +2,16 @@ import { cn } from "@/lib/utils";
 import { ButtonHTMLAttributes, forwardRef } from "react";
 
 // Semantic button variants. Pick by intent, not color:
-//   primary   — create / send / submit / save (the affirming green action)
-//   secondary — neutral utility (edit / download / attach / save draft / filters / view toggles)
-//   schedule  — calendar / scheduling actions (soft blue)
-//   keep      — save-for-later / shortlist / keep-as-warm (soft cyan/teal)
-//   apply     — gate-pass / warning style (amber, used for "apply to job" + similar)
-//   reject    — destructive / dismiss / delete (soft red)
+//   primary   — Submit / send / save (the affirming green action)
+//   secondary — neutral utility (Add Note / Add to List / Client Sending
+//               Invite / filters / view toggles / download / attach)
+//   schedule  — Schedule Interview (soft blue, calendar-tinted)
+//   keep      — Keep / save-for-later (soft light blue, a hair lighter
+//               than schedule so the two intents sit beside each other)
+//   apply     — Apply to Job (amber, the recruiter's "candidate is now in
+//               the pipeline" gate-pass; intentionally NOT primary green
+//               so Submit stays the only affirmative-green action)
+//   reject    — Reject / Reapply / destructive / delete (soft red)
 //   danger    — alias for reject; preserved for back-compat with older call sites
 //   ghost     — text-only chrome action (no fill, no border)
 //   ai-primary   — Claude / AI affirmative (graphite pill, dark in every Court Mode)
@@ -53,16 +57,13 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
               variant === "primary",
             "bg-court-surface-subtle text-court-fg border border-court-border hover:bg-court-surface":
               variant === "secondary",
-            // Soft blue, intentionally outside the brand palette so
-            // schedule / calendar actions read distinctly from primary
-            // green in every Court Mode.
+            // Soft light blue. schedule + keep collapse to the same
+            // wash — both are calendar/pipeline-adjacent intents that
+            // Andrew wants reading as the same colour family,
+            // intentionally outside the brand palette so they stay
+            // distinct from primary green in every Court Mode.
             "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900 dark:hover:bg-blue-950/60":
-              variant === "schedule",
-            // Soft cyan/teal for keep / save-for-later / shortlist.
-            // Sits between primary green and schedule blue so it reads
-            // as a separate intent without crowding either.
-            "bg-cyan-50 text-cyan-800 border border-cyan-200 hover:bg-cyan-100 dark:bg-cyan-950/40 dark:text-cyan-200 dark:border-cyan-900 dark:hover:bg-cyan-950/60":
-              variant === "keep",
+              variant === "schedule" || variant === "keep",
             "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900 dark:hover:bg-amber-950/60":
               variant === "apply",
             // reject + danger collapse to the same red. reject is the

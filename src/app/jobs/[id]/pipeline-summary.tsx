@@ -582,7 +582,7 @@ function MatchedRowItem({
         <Button
           type="button"
           size="sm"
-          variant="primary"
+          variant="apply"
           onClick={onApply}
           disabled={applying || rejecting}
         >

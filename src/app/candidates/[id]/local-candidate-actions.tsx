@@ -139,7 +139,7 @@ export function LocalCandidateActions(props: {
           <Button
             type="button"
             size="sm"
-            variant="primary"
+            variant="apply"
             onClick={() => setModal("apply")}
           >
             <Target className="h-3 w-3" /> Apply to Job
@@ -231,7 +231,7 @@ function ApplyModal(props: {
         <Button
           type="button"
           size="sm"
-          variant="primary"
+          variant="apply"
           onClick={onSubmit}
           disabled={isSubmitting || !jobRfId || selectable.length === 0}
         >
