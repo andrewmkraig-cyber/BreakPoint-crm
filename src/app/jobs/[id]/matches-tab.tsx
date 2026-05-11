@@ -49,7 +49,23 @@ import { Button } from "@/components/ui/button";
 // behavior (action bar, scope) made copy-paste the lower-risk move
 // for this pass.
 
-const DISTANCE_OPTIONS = [10, 25, 50, 100];
+// "any" trails the numeric ladder so recruiters can lift the radius
+// entirely without typing a custom value. buildQuery skips emitting
+// the distance param when "any" is selected; the search route then
+// treats the location filter as a name-only match.
+const DISTANCE_OPTIONS: { value: string; label: string }[] = [
+  { value: "5", label: "5 mi" },
+  { value: "10", label: "10 mi" },
+  { value: "25", label: "25 mi" },
+  { value: "40", label: "40 mi" },
+  { value: "50", label: "50 mi" },
+  { value: "75", label: "75 mi" },
+  { value: "100", label: "100 mi" },
+  { value: "150", label: "150 mi" },
+  { value: "200", label: "200 mi" },
+  { value: "300", label: "300 mi" },
+  { value: "any", label: "Any distance" },
+];
 const TENURE_OPTIONS = [
   { value: "any", label: "Any tenure" },
   { value: "lt1", label: "0–1 years" },
@@ -202,7 +218,9 @@ function buildQuery(
   if (f.minComp.trim()) sp.set("minComp", f.minComp.trim());
   if (f.maxComp.trim()) sp.set("maxComp", f.maxComp.trim());
   if (f.locations.length > 0) sp.set("locations", f.locations.join("|"));
-  if (f.distance) sp.set("distance", f.distance);
+  // "any" widens the radius to ignored — leave the param off so the
+  // search route doesn't try to parse it as a number.
+  if (f.distance && f.distance !== "any") sp.set("distance", f.distance);
   // Employers pipe-delimited — company names ("Microsoft, Inc.") may
   // embed commas. Scope only emitted when at least one employer pill
   // is set and the scope is non-default.
@@ -1267,8 +1285,8 @@ export function MatchesTab({
                 aria-label="Distance"
               >
                 {DISTANCE_OPTIONS.map((d) => (
-                  <option key={d} value={d}>
-                    {d} mi
+                  <option key={d.value} value={d.value}>
+                    {d.label}
                   </option>
                 ))}
               </SelectField>
