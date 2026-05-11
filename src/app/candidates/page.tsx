@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  ArrowLeft,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -115,12 +116,12 @@ function buildQuery(f: Filters): string {
 }
 
 const inputCls =
-  "block h-9 w-full rounded-lg border border-court-border bg-white px-3 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-8 w-full rounded-md border border-court-border bg-white px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 // Bare select class. Wrap with SelectField so the inline chevron paints
 // over the native arrow we strip with appearance-none.
 const selectBareCls =
-  "block h-9 w-full appearance-none rounded-lg border border-court-border bg-white pl-3 pr-8 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-8 w-full appearance-none rounded-md border border-court-border bg-white pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
 
 function SelectField({
   className,
@@ -133,7 +134,7 @@ function SelectField({
         {children}
       </select>
       <ChevronDown
-        className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
+        className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg-muted"
         strokeWidth={2}
       />
     </div>
@@ -143,7 +144,7 @@ function SelectField({
 // Sentence-case field label. Replaces the old all-caps eyebrow.
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label className="mb-1.5 block text-[11px] font-semibold tracking-normal text-court-fg-muted">
+    <label className="mb-1 block text-[10.5px] font-semibold tracking-normal text-court-fg-muted">
       {children}
     </label>
   );
@@ -151,7 +152,7 @@ function FieldLabel({ children }: { children: ReactNode }) {
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-2.5 text-xs font-bold tracking-wide text-court-fg">
+    <div className="mb-1.5 text-xs font-semibold tracking-normal text-court-fg">
       {children}
     </div>
   );
@@ -202,11 +203,11 @@ function TagInput({
   }
 
   return (
-    <div className="flex min-h-9 flex-wrap items-center gap-1 rounded-lg border border-court-border bg-white px-2 py-1 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
+    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-white px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
       {values.map((v) => (
         <span
           key={v}
-          className="inline-flex items-center gap-1 rounded bg-court-accent-tint px-1.5 py-0.5 text-[11px] font-medium text-court-accent-dark"
+          className="inline-flex items-center gap-0.5 rounded bg-court-accent-tint px-1 py-0.5 text-[10px] font-medium text-court-accent-dark"
         >
           {v}
           <button
@@ -215,7 +216,7 @@ function TagInput({
             aria-label={`Remove ${v}`}
             className="rounded-sm text-court-accent-dark/70 transition hover:bg-court-surface/40 hover:text-court-accent-dark"
           >
-            <X className="h-3 w-3" />
+            <X className="h-2.5 w-2.5" />
           </button>
         </span>
       ))}
@@ -227,7 +228,7 @@ function TagInput({
         onBlur={commit}
         placeholder={values.length === 0 ? placeholder : ""}
         aria-label={ariaLabel}
-        className="min-w-[60px] flex-1 bg-transparent px-1 py-0.5 text-sm text-court-fg placeholder:text-court-fg-muted focus:outline-none"
+        className="min-w-[60px] flex-1 bg-transparent px-1 py-0.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:outline-none"
       />
     </div>
   );
@@ -332,10 +333,6 @@ export default function CandidatesPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
-  // Quick / Advanced segmented control. Visual only for now — the
-  // existing rail surfaces every field by default and there's no
-  // separate Advanced surface yet, so the inactive button is a stub.
-  const [mode, setMode] = useState<"quick" | "advanced">("quick");
   // Split-view: when set, the filter rail collapses to 0 and the
   // results pane swaps to a narrow name list + iframe of the
   // candidate's profile. Cleared by the close X.
@@ -534,54 +531,27 @@ export default function CandidatesPage() {
             : "w-[300px] border-r border-court-border")
         }
       >
-        {/* Header block — title + segmented Quick / Advanced */}
-        <div className="border-b border-court-border/60 px-[18px] py-4">
-          <div className="mb-2.5 flex items-center justify-between">
-            <h2 className="text-base font-semibold text-court-fg">
-              Search Candidates
-            </h2>
-            <button
-              type="button"
-              onClick={resetFilters}
-              disabled={!hasFilters}
-              className="text-sm text-court-fg-muted transition hover:text-court-fg hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:no-underline"
-            >
-              Reset
-            </button>
-          </div>
-          <div className="inline-flex items-center gap-[2px] rounded-full border border-court-border bg-court-surface-subtle p-[3px]">
-            {(
-              [
-                { id: "quick", label: "Quick search" },
-                { id: "advanced", label: "Advanced" },
-              ] as const
-            ).map((m) => {
-              const active = mode === m.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => setMode(m.id)}
-                  className={
-                    "rounded-full px-3.5 py-1.5 text-xs font-semibold transition " +
-                    (active
-                      ? "bg-white text-court-fg shadow-sm ring-1 ring-court-border"
-                      : "text-court-fg-muted hover:text-court-fg")
-                  }
-                >
-                  {m.label}
-                </button>
-              );
-            })}
-          </div>
+        {/* Header block — title + Reset */}
+        <div className="flex items-center justify-between border-b border-court-border/60 px-[18px] py-2.5">
+          <h2 className="text-sm font-semibold text-court-fg">
+            Search Candidates
+          </h2>
+          <button
+            type="button"
+            onClick={resetFilters}
+            disabled={!hasFilters}
+            className="text-xs text-court-fg-muted transition hover:text-court-fg hover:underline disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:no-underline"
+          >
+            Reset
+          </button>
         </div>
 
         {/* Scrollable body — five sections */}
         <div className="flex-1 overflow-y-auto">
           {/* Identity */}
-          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+          <section className="border-b border-court-border/60 px-[18px] py-2">
             <SectionTitle>Identity</SectionTitle>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
                 <FieldLabel>Keyword / Boolean</FieldLabel>
                 <input
@@ -620,7 +590,7 @@ export default function CandidatesPage() {
           </section>
 
           {/* Compensation */}
-          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+          <section className="border-b border-court-border/60 px-[18px] py-2">
             <SectionTitle>Compensation</SectionTitle>
             <div>
               <FieldLabel>Base salary range</FieldLabel>
@@ -644,7 +614,7 @@ export default function CandidatesPage() {
           </section>
 
           {/* Location */}
-          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+          <section className="border-b border-court-border/60 px-[18px] py-2">
             <SectionTitle>Location</SectionTitle>
             <div>
               <FieldLabel>City / state</FieldLabel>
@@ -672,9 +642,9 @@ export default function CandidatesPage() {
           </section>
 
           {/* Employment */}
-          <section className="border-b border-court-border/60 px-[18px] py-[14px]">
+          <section className="border-b border-court-border/60 px-[18px] py-2">
             <SectionTitle>Employment</SectionTitle>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
                 <FieldLabel>Current employer</FieldLabel>
                 <input
@@ -717,9 +687,9 @@ export default function CandidatesPage() {
           </section>
 
           {/* Activity */}
-          <section className="px-[18px] py-[14px]">
+          <section className="px-[18px] py-2">
             <SectionTitle>Activity</SectionTitle>
-            <div className="space-y-3">
+            <div className="space-y-2">
               <div>
                 <FieldLabel>Last apply</FieldLabel>
                 <SelectField
@@ -753,7 +723,7 @@ export default function CandidatesPage() {
         </div>
 
         {/* Sticky footer — Save / Run search + Saved Lists card */}
-        <div className="flex flex-col gap-2.5 border-t border-court-border bg-white p-[14px]">
+        <div className="flex flex-col gap-2 border-t border-court-border bg-white px-3 py-2.5">
           <div className="flex gap-2">
             <Button
               type="button"
@@ -763,7 +733,7 @@ export default function CandidatesPage() {
               onClick={() => {
                 /* save-search flow not yet wired */
               }}
-              className="rounded-full"
+              className="h-8 rounded-full"
             >
               Save
             </Button>
@@ -773,31 +743,31 @@ export default function CandidatesPage() {
               size="sm"
               onClick={onRunSearch}
               disabled={!hasFilters}
-              className="h-9 flex-1 rounded-full"
+              className="h-8 flex-1 rounded-full"
             >
-              <Search className="h-4 w-4" />
+              <Search className="h-3.5 w-3.5" />
               Run search
             </Button>
           </div>
           <Link
             href="/candidates/lists"
-            className="group flex items-center justify-between rounded-xl border border-court-border bg-court-bg px-3 py-2.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
+            className="group flex items-center justify-between rounded-lg border border-court-border bg-court-bg px-2.5 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2">
               <span className="text-court-accent-dark">
-                <ClipboardList className="h-[18px] w-[18px]" strokeWidth={1.8} />
+                <ClipboardList className="h-4 w-4" strokeWidth={1.8} />
               </span>
               <div>
-                <div className="text-sm font-semibold text-court-fg">
+                <div className="text-xs font-semibold text-court-fg">
                   Saved Lists
                 </div>
-                <div className="text-[11.5px] text-court-fg-muted">
+                <div className="text-[10.5px] text-court-fg-muted">
                   Saved searches & shortlists
                 </div>
               </div>
             </div>
             <ChevronRight
-              className="h-4 w-4 text-court-fg-muted transition group-hover:text-court-accent-dark"
+              className="h-3.5 w-3.5 text-court-fg-muted transition group-hover:text-court-accent-dark"
               strokeWidth={2}
             />
           </Link>
@@ -948,6 +918,20 @@ export default function CandidatesPage() {
                 Close X moves into this row at the far right so it
                 doesn't overlay the bar's content. */}
             <div className="flex h-10 shrink-0 items-center gap-2 border-b border-court-border bg-court-surface px-3">
+              {/* Bail-out back to the full two-column results layout.
+                  Pairs with the trailing X — same behavior, but framed
+                  as a labeled affordance so the recruiter knows where
+                  the click leads instead of inferring "close" from a
+                  bare X icon. */}
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                All Candidates
+              </button>
+              <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
               <button
                 type="button"
                 onClick={goPrev}
