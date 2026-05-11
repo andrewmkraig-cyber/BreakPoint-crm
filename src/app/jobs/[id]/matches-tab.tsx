@@ -1243,7 +1243,7 @@ export function MatchesTab({
 
           <section className="border-b border-court-border/60 px-3 py-1.5">
             <SectionTitle>Location</SectionTitle>
-            <div className="grid grid-cols-[1fr_84px] gap-2">
+            <div className="grid w-full grid-cols-[1fr_84px] gap-2">
               <TagInput
                 // Locations have no exclude semantics — lift the
                 // string[] state into Pill[] at the boundary and
@@ -1261,6 +1261,7 @@ export function MatchesTab({
                 enterOnly
               />
               <SelectField
+                className="truncate"
                 value={filters.distance}
                 onChange={(e) => setField("distance", e.target.value)}
                 aria-label="Distance"
@@ -1287,7 +1288,7 @@ export function MatchesTab({
                     input on a separate row so the dropdown gets the
                     full sidebar width — "Current only" / "Current +
                     Past" were clipping when paired in a 130px column. */}
-                <div className="space-y-1.5">
+                <div className="w-full space-y-1.5">
                   <TagInput
                     values={filters.employers}
                     buffer={employersBuffer}
@@ -1300,6 +1301,7 @@ export function MatchesTab({
                     enterOnly
                   />
                   <SelectField
+                    className="truncate"
                     value={filters.employerScope}
                     onChange={(e) => setField("employerScope", e.target.value)}
                     aria-label="Employer scope"
