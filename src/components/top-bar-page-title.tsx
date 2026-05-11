@@ -101,12 +101,10 @@ function resolveSpec(
 }
 
 // Action chip ("+ New Job" / "+ Compose" / etc.) sits to the right
-// of the page title in the topbar. Sized to read as a sibling of the
-// 22px serif title rather than dominating it: px-2.5 py-1 text-[11px]
-// puts the chip at ~24px tall, matching the title's optical height
-// so items-center alignment looks visually centered on every page.
+// of the page title in the topbar. Reads as a secondary affordance
+// next to the larger serif title rather than equal weight.
 const ACTION_BUTTON_CLASS =
-  "inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
+  "inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-sm font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
 export function TopBarPageTitle() {
   const pathname = usePathname();
@@ -116,11 +114,10 @@ export function TopBarPageTitle() {
 
   // Every page title runs on the Bricolage display face (font-serif
   // → --font-display) so the topbar reads in the same family as the
-  // Ace wordmark. Size dropped to 22 so the page title sits next to
-  // the Ace lockup at sidebar width without overpowering it.
+  // Ace wordmark.
   const titleClass = "font-serif font-extrabold text-court-fg";
   const titleStyle = {
-    fontSize: "22px",
+    fontSize: "30px",
     letterSpacing: "-0.035em",
     lineHeight: 1.15,
   };
@@ -149,7 +146,7 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "link") {
     return (
       <Link href={action.href} className={ACTION_BUTTON_CLASS}>
-        <Plus className="h-3 w-3" />
+        <Plus className="h-3.5 w-3.5" />
         {action.label}
       </Link>
     );
@@ -222,7 +219,7 @@ function ComposeMailButton({ label }: { label: string }) {
 
   return (
     <button type="button" onClick={onClick} disabled={busy} className={ACTION_BUTTON_CLASS}>
-      <Plus className="h-3 w-3" />
+      <Plus className="h-3.5 w-3.5" />
       {label}
     </button>
   );
@@ -236,7 +233,7 @@ function PhoneDialButton({ label }: { label: string }) {
       onClick={phonePanels.openDialPad}
       className={ACTION_BUTTON_CLASS}
     >
-      <Plus className="h-3 w-3" />
+      <Plus className="h-3.5 w-3.5" />
       {label}
     </button>
   );
