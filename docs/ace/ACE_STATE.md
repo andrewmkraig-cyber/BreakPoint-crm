@@ -1,10 +1,34 @@
 # ACE_STATE.md
-Last updated: 2026-05-09 · Ace 38.0
+Last updated: 2026-05-11 · Ace 38.1
 
 ## Current Status
-Current Version: Ace 38.0 (Spotify/YouTube/Mail polish + CSV import tightening)
-Last Shipped: Ace 38.0 — May 9, 2026
+Current Version: Ace 38.1 (Candidate Sourcing Surface)
+Last Shipped: Ace 38.1 — May 11, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 38.1
+The `/candidates` rail and the per-job Matches tab consolidated into a single sourcing surface. Postgres search indexes landed alongside it so the new faceted filters and bulk searches scale past the 30k-candidate roster without sequential scans.
+
+Filter rail (shared between /candidates and Matches):
+- Faceted filters: keyword/Boolean query, skills, job titles, min/max comp, locations with radius, employer (current-only or current+past via experience JSON), tenure at current employer, work auth, last apply, last action.
+- Tag pills with per-pill include/exclude toggle on Job Titles, Skills, and Employer. Default include renders as a green check on a court-accent-tint background; click flips to a red minus on red-tint. Server emits `field=…` / `excludeField=…` pairs so the route AND-composes includes and AND-NOTs excludes uniformly.
+- Geocoded radius search: each location pill geocodes through Nominatim with in-process cache, distance dropdown clamps at 500 mi, pills OR together via a bounding-box union; un-geocodable pills degrade to a `location ILIKE` contains-match so they never silently drop out.
+- Keyword search spans resume text + experience/education JSON + structured columns. Per-token ID resolution UNIONs across three sources (structured `firstName/lastName/currentDesignation/currentOrganization/location/skills`, `experience::text` + `education::text` casts, and `CandidateResume.extractedText`); tokens AND together at the candidate level so a multi-word query honors "every token must hit at least one source".
+- Resume snippet enrichment: one batched lookup per page of results returns the earliest 200-char window where every token appears in either the resume text or the experience JSON, surfaced under the row.
+- Live debounced filter updates (300 ms), aborted in flight on the next keystroke so a slow earlier response can't overwrite a fresher result set.
+
+Results + split-view:
+- Sortable results table (name / title / employer / location / salary / last apply / last action / score).
+- Bulk action bar: select rows via row checkboxes + select-all, hide selected from the visible list without a DB write.
+- Split-view candidate profile: clicking a row collapses the rail and opens the profile in an iframe with prev/next stepper and an "All Candidates" return. Same split applies on the job Matches tab.
+- Per-job Matches tab inherits the rail and adds Apply / Keep / Reject in the split-view chrome — Apply hits `/api/placements` at `APPLIED`, Reject creates a `stage="rejected"` Placement, Keep toggles `Candidate.tags`. Rejected candidates are then NOT-filtered out of subsequent search results (`NOT: { placements: { some: { jobId, stage: "rejected" } } }`) so the rejected list never resurfaces here. The dedicated Rejected tab UI ships next session.
+
+Save search:
+- `/candidates` parks up to 5 saved snapshots client-side in localStorage with a generated label; the saved-search pills row replaces the empty state once any save exists. Defensive coerce on load migrates pre-pill snapshots (skills/jobTitles as `string[]`, employer as a single string) into the new `Pill[]` shape.
+- Job Matches tab persists one snapshot per job to `Job.savedSearchFilters` via a tenant-scoped server action so the same job restores its filter set on the next visit. Run Search button retired everywhere — the debounced filter useEffect runs the fetch.
+
+Postgres search indexes:
+- Indexes on `Candidate(firstName)`, `Candidate(lastName)`, `Candidate(email)` plus `Contact(name)` and the parameterized $queryRaw substring search into `Contact.emails[]` so bulk imports and the new typeahead routes stop sequential-scanning. Landed before the rail wiring so the filter sidebar wasn't built on slow scans.
 
 ## Summary — Ace 38.0
 Polish day across Spotify, YouTube, Mail, and the candidate CSV import. No core schema changes; one new Json column was considered (Candidate.rawCv) but skipped because the existing experience/education columns already carry the data.
@@ -112,7 +136,23 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-Postgres search indexes (30-60 min). Build immediately so indexes are present before bulk loads — also unblocks the Candidate Sourcing Surface that follows.
+BD Engine block (12-19 hr total). Claude Design pass first for the BD tab + BD Settings + Sequence builder UI before any code. Then in order: scheduled email send (Gmail API send-at), background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (Indeed API scan for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect, dedupes), sequence engine + BD Settings (outbound sequences from Ace using warmed domains, settings for keywords/titles/limit/cadence).
+
+Follow-up that didn't make this session: candidate Rejected tab on the job page. Builds on the per-job rejected-exclusion filter already shipped — surfaces the rejected candidates as their own list so the recruiter can revisit / un-reject without leaving the Matches surface.
+
+## What Shipped in Ace 38.1 (2026-05-11)
+- **Postgres search indexes**: indexes on `Candidate(firstName)`, `Candidate(lastName)`, `Candidate(email)` plus `Contact(name)` and the substring-into-`Contact.emails[]` lookup so the rail + bulk imports + the mail typeahead routes stop sequential-scanning. Landed first so the rest of the surface wasn't built on slow scans.
+- **Candidate Sourcing Surface — left rail**: faceted filter sidebar shared between `/candidates` and `/jobs/[id]?tab=matches`. Fields: keyword/Boolean (`q`), Skills, Job titles, Min/Max comp, Locations (multi-pill, pipe-delimited, OR'd as bounding boxes via Nominatim geocoder, in-process cache, fallback to text contains), Distance (10/25/50/100 mi, clamps at 500), Employer (multi-pill, scope toggle Current only / Current + Past), Tenure at current employer (`lt1` / `1to3` / `3to5` / `gt5`), Work authorization (accepted but no-op until schema gains a column), Last apply, Last action.
+- **Tag pills with include/exclude**: every Skills / Job titles / Employer pill carries its own `{ value, exclude }`. UI: leading toggle button — green Check on `bg-court-accent-tint` (include) flips to red Minus on `bg-red-100` (exclude). Server side: `field=…` and `excludeField=…` ride on separate params; route AND-composes includes (via `OR(contains, …)` for titles, `hasSome` for skills, `OR(currentOrganization contains, …)` for employer current-scope, raw-SQL ID resolve for employer any-scope) and AND-NOTs excludes via the symmetric `NOT(...)` clause shape.
+- **Geocoded radius search**: each location pill geocodes through Nominatim with module-level cache + 5s timeout + user-agent string. Distance pill emits a degree-per-mile bounding box (1° lat ≈ 69 mi, 1° lng shrinks with cos(lat)); pills OR together so a candidate matches if they fall in any resolved box. Un-geocodable pills (e.g. "Remote") degrade to a `location ILIKE` contains-match.
+- **Keyword / Boolean search**: per-token UNION across structured columns (`firstName/lastName/currentDesignation/currentOrganization/location` ILIKE, `unnest(skills)` ILIKE), `experience::text` + `education::text` casts ILIKE (Prisma can't ILIKE jsonb directly so this branch is raw SQL), and `CandidateResume.extractedText` ILIKE. Tokens AND together at the candidate level via per-token `id: { in: [...] }` clauses so multi-word queries honor "every token in at least one source". Boolean stopwords `and` / `or` are tokenizer-dropped so "tax AND ohio" and "tax ohio" return the same set. LIKE-escape on `%`, `_`, `\` so a recruiter pasting "100%" doesn't trigger a wildcard sweep.
+- **Resume snippet enrichment**: one batched `candidateResume.findMany` per result page returns the most recent extracted text per candidate where every token co-occurs; 200-char window centered on the earliest hit, leading/trailing ellipses indicate truncation. Falls back to a snippet built off `experience::text` when no resume matches all tokens. Tokens are `<mark>`-highlighted client-side using the same tokenizer mirror so the highlights stay in lockstep with what drove the row in.
+- **Split-view profile**: clicking a result row collapses the rail to 0 and opens the candidate profile in an iframe with a prev/next stepper, "All Candidates" return, and Close X. Same pattern on the job Matches tab; iframe sources `/candidates/[id]?embed=true` so the embedded view drops chrome.
+- **Job-specific Matches tab actions**: split-view chrome on `/jobs/[id]?tab=matches` adds Apply to Job, Keep, and Reject. Apply hits `/api/placements` at `stage="APPLIED"` via the existing `applyLocalCandidateToJob` server action (auth, org scope, dupe check, ActivityLog, applied-confirmation email trigger all live there). Reject creates a `stage="rejected"` Placement (or bumps an existing one), `syncedToRf: false`, `source: "recruiter_rejected"`, with an ActivityLog entry. Keep toggles `Candidate.tags` containing "kept". Rejected candidates are then NOT-filtered out of subsequent rail searches scoped to that job via `NOT: { placements: { some: { jobId, stage: "rejected" } } }` so they don't resurface here. Dedicated Rejected tab UI ships next session.
+- **Save search**: `/candidates` parks up to 5 snapshots in localStorage (`ace.saved-searches`); generateSearchLabel composes a "Tax Manager · Cleveland · Frito Lay" label from the most distinctive include fields. Saved-search pills replace the empty state once any save exists. Defensive `coerceFilters` migrates legacy snapshots (`skills: string[]`, `jobTitles: string[]`, `employer: "X"`) into the new `Pill[]` shape on load. Job Matches tab persists one snapshot per job to `Job.savedSearchFilters` via `saveJobSearchFilters`, a tenant-scoped server action; `coerceFilters` on the matches tab does the same migration on read. Run Search button retired — the debounced filter useEffect handles every fetch.
+- **Employer scope toggle (Current only / Current + Past)**: Current branch uses Prisma `currentOrganization: { contains, mode: insensitive }`. Any branch runs raw SQL ILIKE against `currentOrganization` and `experience::text` so former-employer matches surface. New `resolveEmployerAnyIds` helper joins per-value patterns with `Prisma.join(orParts, " OR ")` (separator must be a plain string, not Sql); excludes for any-scope route through `id: { notIn: ids }`.
+- **Bulk action bar**: row checkboxes on every result row + indeterminate-aware select-all. When >0 selected the action bar lifts above the table with a Clear button and a "Remove from results" reject-variant that drops the selected rows from local `rows[]` / `total` state. No DB write — this is recruiter view-state, not a soft-delete.
+- **Sidebar pinned to viewport**: rail uses `h-[calc(100vh-72px)]` + sticky `Save search` + `Saved Lists` footer so the Save block stays visible no matter how long the result list runs.
 
 ## What Shipped in Ace 36.0 (2026-05-07)
 - **YouTube floating player**: draggable + resizable panel via YouTubePanelProvider, topbar Music-icon toggle, YouTube Data API v3 search proxied through `/api/youtube/search` (server-side API key, tenant-scoped), video-first playing state with iframe full-bleed, hover overlay controls (back / minimize / close), viewport boundary clamping on drag + window resize, minimize keeps the iframe mounted so audio continues, CSP fix adding youtube.com + youtube-nocookie.com to frame-src, 50 results per search with View More pagination via `?pageToken=`, channel search and channel view (`?channelId=` filter, `order=date`).
