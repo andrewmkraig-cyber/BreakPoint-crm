@@ -463,6 +463,7 @@ export default async function JobDetailPage({
               jobCuid={jobRow.id}
               jobRfId={rfId}
               jobTitle={job.title}
+              savedFilters={jobRow.savedSearchFilters as unknown}
             />
           ) : (
             <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   ArrowLeft,
+  Bookmark,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -25,6 +26,7 @@ import {
   type ReactNode,
   type SelectHTMLAttributes,
 } from "react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
@@ -384,15 +386,68 @@ function Highlight({ text, tokens }: { text: string; tokens: string[] }) {
   return <>{out}</>;
 }
 
-const SUGGESTIONS: Array<{
+// Saved-search persistence. Stored client-side in localStorage so the
+// recruiter can park 3-5 frequent searches behind the empty-state pill
+// row without a Postgres round-trip. Per-job saved searches live in
+// Job.savedSearchFilters and are written by /jobs/[id] Matches —
+// that's the durable shape; this is just the candidates rail's "recent
+// stops" memory.
+type SavedSearch = {
   label: string;
-  jobTitle: string;
-  location: string;
-}> = [
-  { label: "Tax Manager · Cleveland", jobTitle: "Tax Manager", location: "Cleveland" },
-  { label: "CFO · Remote", jobTitle: "CFO", location: "Remote" },
-  { label: "Sr. Auditor · NEO", jobTitle: "Sr. Auditor", location: "NEO" },
-];
+  filters: Filters;
+  savedAt: string;
+};
+const SAVED_SEARCHES_KEY = "ace.saved-searches";
+const SAVED_SEARCHES_MAX = 5;
+
+function loadSavedSearches(): SavedSearch[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(SAVED_SEARCHES_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (e): e is SavedSearch =>
+        e &&
+        typeof e === "object" &&
+        typeof e.label === "string" &&
+        typeof e.savedAt === "string" &&
+        e.filters &&
+        typeof e.filters === "object",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedSearches(list: SavedSearch[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(SAVED_SEARCHES_KEY, JSON.stringify(list));
+  } catch {
+    // Quota exceeded or storage disabled — fail silently. The current
+    // session keeps its in-memory list and a recruiter retry on a
+    // fresh tab restores from whatever did land in storage.
+  }
+}
+
+// Build a human-readable label out of the most distinctive filter
+// fields. Mirrors the previous hardcoded "Tax Manager · Cleveland"
+// shape so the pill row visually carries over.
+function generateSearchLabel(f: Filters): string {
+  const parts: string[] = [];
+  const headline =
+    f.jobTitles[0] ?? (f.q.trim() ? f.q.trim() : "") ?? "";
+  if (headline) {
+    parts.push(headline.length > 40 ? headline.slice(0, 40) + "…" : headline);
+  }
+  if (f.locations[0]) parts.push(f.locations[0]);
+  if (f.employer.trim() && parts.length < 3) parts.push(f.employer.trim());
+  if (parts.length === 0 && f.skills[0]) parts.push(f.skills[0]);
+  if (parts.length === 0) parts.push("Saved search");
+  return parts.join(" · ");
+}
 
 export default function CandidatesPage() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
@@ -408,6 +463,13 @@ export default function CandidatesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"all" | "submitted" | "hot">("all");
+  // Saved-search pills shown in the empty state. Hydrated from
+  // localStorage in a useEffect so the first SSR pass renders the empty
+  // pill row and no hydration-mismatch fires.
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  useEffect(() => {
+    setSavedSearches(loadSavedSearches());
+  }, []);
 
   // Cancel any in-flight request when a newer one starts so a slow
   // earlier response can't overwrite a fresher result set.
@@ -458,16 +520,39 @@ export default function CandidatesPage() {
     setLocationsBuffer("");
   }
 
-  function applySuggestion(s: { jobTitle: string; location: string }) {
-    setFilters((prev) => ({
-      ...prev,
-      jobTitles: prev.jobTitles.includes(s.jobTitle)
-        ? prev.jobTitles
-        : [...prev.jobTitles, s.jobTitle],
-      locations: prev.locations.includes(s.location)
-        ? prev.locations
-        : [...prev.locations, s.location],
-    }));
+  // Restore a saved snapshot into the rail. Merge over INITIAL_FILTERS so
+  // a stale save (e.g. missing employerScope from before we added it)
+  // doesn't end up with undefined values flowing into the inputs.
+  // Clearing the buffers keeps the TagInput trailing fields visually
+  // empty rather than carrying whatever the recruiter was mid-typing
+  // before they clicked the pill.
+  function applySavedSearch(s: SavedSearch) {
+    const merged: Filters = { ...INITIAL_FILTERS, ...s.filters };
+    setFilters(merged);
+    setSkillsBuffer("");
+    setJobTitlesBuffer("");
+    setLocationsBuffer("");
+    // The filter-change useEffect picks this up and fires the
+    // debounced fetch; no explicit runFetch needed.
+  }
+
+  // Push the current filter shape onto the saved-searches list. Dedupes
+  // on label (most recent save wins) and trims the oldest off the tail
+  // when the list exceeds SAVED_SEARCHES_MAX.
+  function onSaveCurrent() {
+    if (!hasFilters) return;
+    const entry: SavedSearch = {
+      label: generateSearchLabel(filters),
+      filters,
+      savedAt: new Date().toISOString(),
+    };
+    const next = [
+      entry,
+      ...savedSearches.filter((p) => p.label !== entry.label),
+    ].slice(0, SAVED_SEARCHES_MAX);
+    setSavedSearches(next);
+    persistSavedSearches(next);
+    toast.success("Saved");
   }
 
   async function runFetch(f: Filters) {
@@ -537,12 +622,6 @@ export default function CandidatesPage() {
     filters.lastApply,
     filters.lastAction,
   ]);
-
-  function onRunSearch() {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!hasFilters) return;
-    void runFetch(filters);
-  }
 
   // Split-view prev/next. The narrow name list and the iframe both
   // index off rows[], so the position of selectedId in rows[] drives
@@ -821,33 +900,22 @@ export default function CandidatesPage() {
           </section>
         </div>
 
-        {/* Sticky footer — Save / Run search + Saved Lists card */}
+        {/* Sticky footer — Save Search + Saved Lists card. Search
+            fires on every filter change, so a separate Run button
+            would be redundant; Save is the only durable affordance
+            here. */}
         <div className="flex flex-col gap-1.5 border-t border-court-border bg-white px-3 py-2">
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={!hasFilters}
-              onClick={() => {
-                /* save-search flow not yet wired */
-              }}
-              className="h-8 rounded-full"
-            >
-              Save
-            </Button>
-            <Button
-              type="button"
-              variant="primary"
-              size="sm"
-              onClick={onRunSearch}
-              disabled={!hasFilters}
-              className="h-8 flex-1 rounded-full"
-            >
-              <Search className="h-3.5 w-3.5" />
-              Run search
-            </Button>
-          </div>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={onSaveCurrent}
+            disabled={!hasFilters}
+            className="h-8 w-full rounded-full"
+          >
+            <Bookmark className="h-3.5 w-3.5" />
+            Save search
+          </Button>
           {/* Saved Lists pill — collapsed from a two-line card to a
               single row so the footer doesn't claim ~70px of vertical
               space on short laptop viewports. */}
@@ -1111,23 +1179,32 @@ export default function CandidatesPage() {
                   Use the rail on the left to search the BreakPoint roster —
                   accounting & finance candidates indexed across the desk.
                 </p>
-                <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-                  {SUGGESTIONS.map((s) => (
-                    <Button
-                      key={s.label}
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="rounded-full"
-                      onClick={() => applySuggestion(s)}
-                    >
-                      {s.label}
-                    </Button>
-                  ))}
-                </div>
-                <div className="mt-3 text-[11px] uppercase tracking-wide text-court-fg-muted/80">
-                  Try a recent search
-                </div>
+                {savedSearches.length > 0 ? (
+                  <>
+                    <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
+                      {savedSearches.map((s) => (
+                        <Button
+                          key={`${s.label}-${s.savedAt}`}
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="rounded-full"
+                          onClick={() => applySavedSearch(s)}
+                        >
+                          {s.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="mt-3 text-[11px] uppercase tracking-wide text-court-fg-muted/80">
+                      Saved searches
+                    </div>
+                  </>
+                ) : (
+                  <div className="mt-5 text-[11px] text-court-fg-muted/70">
+                    Tip — set some filters and hit Save search to park a
+                    quick pill here.
+                  </div>
+                )}
               </div>
             </div>
           ) : (

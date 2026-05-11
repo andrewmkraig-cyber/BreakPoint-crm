@@ -755,6 +755,13 @@ model Job {
   // dealbreakers, etc.). Never rendered to candidates and never fed back
   // into the JD Generate prompt — read-only sidekick to description.
   internalRecruiterNotes String? @db.Text
+  // Saved filter state for the per-job Matches tab. One snapshot per
+  // job — the Save Search button on /jobs/[id] Matches writes the
+  // current sidebar filter shape here, and the tab restores it on next
+  // mount so the recruiter can pick up where they left off. Shape
+  // mirrors the client `Filters` type; the loader coerces each field
+  // against current defaults so a stale save can't crash the tab.
+  savedSearchFilters Json?
   raw              Json?
   organizationId   String
   createdAt        DateTime  @default(now())

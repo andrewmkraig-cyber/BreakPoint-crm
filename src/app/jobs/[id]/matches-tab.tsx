@@ -20,6 +20,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
+import { saveJobSearchFilters } from "@/app/jobs/[id]/save-search-actions";
 import {
   useEffect,
   useMemo,
@@ -334,10 +335,50 @@ function joinDot(parts: Array<string | null | undefined>): string {
     .join(" · ");
 }
 
+// Defensive coerce of a persisted Filters blob (read from
+// Job.savedSearchFilters as `unknown`). Each field is validated against
+// the current schema and falls through to INITIAL_FILTERS when stale or
+// malformed — so a snapshot saved before we added employerScope (or any
+// future column) keeps loading cleanly instead of crashing the rail.
+function asStringArr(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string");
+}
+function coerceFilters(value: unknown): Filters {
+  if (!value || typeof value !== "object") return INITIAL_FILTERS;
+  const v = value as Record<string, unknown>;
+  return {
+    q: typeof v.q === "string" ? v.q : INITIAL_FILTERS.q,
+    skills: asStringArr(v.skills),
+    jobTitles: asStringArr(v.jobTitles),
+    minComp: typeof v.minComp === "string" ? v.minComp : INITIAL_FILTERS.minComp,
+    maxComp: typeof v.maxComp === "string" ? v.maxComp : INITIAL_FILTERS.maxComp,
+    locations: asStringArr(v.locations),
+    distance:
+      typeof v.distance === "string" ? v.distance : INITIAL_FILTERS.distance,
+    employer:
+      typeof v.employer === "string" ? v.employer : INITIAL_FILTERS.employer,
+    employerScope:
+      typeof v.employerScope === "string"
+        ? v.employerScope
+        : INITIAL_FILTERS.employerScope,
+    tenure: typeof v.tenure === "string" ? v.tenure : INITIAL_FILTERS.tenure,
+    workAuth:
+      typeof v.workAuth === "string" ? v.workAuth : INITIAL_FILTERS.workAuth,
+    lastApply:
+      typeof v.lastApply === "string" ? v.lastApply : INITIAL_FILTERS.lastApply,
+    lastAction:
+      typeof v.lastAction === "string"
+        ? v.lastAction
+        : INITIAL_FILTERS.lastAction,
+  };
+}
+
 export function MatchesTab({
   jobCuid,
   jobRfId,
   jobTitle,
+  savedFilters,
 }: {
   jobCuid: string;
   // jobRfId stays in the prop contract for callers that pass it in — the
@@ -345,10 +386,18 @@ export function MatchesTab({
   // jobCuid, so we don't need it here. Marked as accepted-but-unused.
   jobRfId: number | null;
   jobTitle: string;
+  // Persisted filter snapshot from Job.savedSearchFilters (one per job).
+  // Coerced through coerceFilters so a stale shape can't crash the tab.
+  savedFilters: unknown;
 }) {
   void jobRfId;
 
-  const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
+  // Initial state comes from the persisted job snapshot when present;
+  // otherwise the standard empty INITIAL_FILTERS. useState's lazy
+  // initializer keeps the coerce off the hot path.
+  const [filters, setFilters] = useState<Filters>(() =>
+    coerceFilters(savedFilters),
+  );
   const [skillsBuffer, setSkillsBuffer] = useState("");
   const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
   const [locationsBuffer, setLocationsBuffer] = useState("");
@@ -364,6 +413,7 @@ export function MatchesTab({
   const [actionInFlight, setActionInFlight] = useState<string | null>(null);
   const [keepInFlight, setKeepInFlight] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [saveInFlight, setSaveInFlight] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -464,10 +514,27 @@ export function MatchesTab({
     filters.lastAction,
   ]);
 
-  function onRunSearch() {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!hasFilters) return;
-    void runFetch(filters);
+  // Persist the current filter snapshot to Job.savedSearchFilters via
+  // the server action. One snapshot per job — overwrites whatever was
+  // there. Disabled while a save is in flight to keep a slow Neon RTT
+  // from double-firing.
+  async function onSaveSearch() {
+    if (!hasFilters || saveInFlight) return;
+    setSaveInFlight(true);
+    try {
+      const res = await saveJobSearchFilters(jobCuid, filters);
+      if (res.ok) {
+        toast.success("Saved");
+      } else {
+        toast.error("Couldn't save search", { description: res.error });
+      }
+    } catch (e) {
+      toast.error("Couldn't save search", {
+        description: e instanceof Error ? e.message : "Network error.",
+      });
+    } finally {
+      setSaveInFlight(false);
+    }
   }
 
   const currentIndex = useMemo(
@@ -860,17 +927,26 @@ export function MatchesTab({
             </div>
           </section>
 
+          {/* Save Search persists the filter snapshot to the Job row so
+              this Matches tab restores the same filters on next visit.
+              Auto-search-on-type already fires the underlying fetch, so
+              there's no separate "Run" affordance — the button is solely
+              the persistence handle. */}
           <section className="px-3 pb-3 pt-1">
             <Button
               type="button"
               variant="primary"
               size="sm"
-              onClick={onRunSearch}
-              disabled={!hasFilters}
+              onClick={onSaveSearch}
+              disabled={!hasFilters || saveInFlight}
               className="h-8 w-full rounded-full"
             >
-              <Search className="h-3.5 w-3.5" />
-              Run search
+              {saveInFlight ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Bookmark className="h-3.5 w-3.5" />
+              )}
+              Save search
             </Button>
           </section>
         </div>
