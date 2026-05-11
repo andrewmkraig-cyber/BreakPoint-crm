@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Drop-in replacement for <input type="datetime-local"> that enforces
@@ -118,19 +119,122 @@ export function DateTime15Picker({
         min={blockPast ? todayIso : undefined}
         className={cn(inputBase, "min-w-[10rem] flex-1")}
       />
-      <select
+      <TimeSelect
         value={timePart}
-        onChange={(e) => setTime(e.target.value)}
+        options={timeOptions}
+        onChange={setTime}
         disabled={disabled}
-        className={cn(inputBase, "min-w-[7rem] flex-1")}
+        className="min-w-[7rem] flex-1"
+        inputClassName={inputBase}
+      />
+    </div>
+  );
+}
+
+// Custom time dropdown — replaces the native <select> because browsers
+// open <select> panels at "natural" height, which for our 96-slot
+// 15-minute grid runs taller than the viewport and forces the user
+// to scroll the whole page to reach late times. This component caps
+// the panel at max-h-64 (~10 slots visible) and scrolls inside,
+// matching the recruiter's "keep the list shorter, let me scroll"
+// request without changing the value contract.
+function TimeSelect({
+  value,
+  options,
+  onChange,
+  disabled,
+  className,
+  inputClassName,
+}: {
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (next: string) => void;
+  disabled?: boolean;
+  className?: string;
+  inputClassName: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+
+  const selected = options.find((o) => o.value === value) ?? null;
+  const label = selected?.label ?? "— time —";
+
+  // Outside-click dismiss. Document-level listener gated by `open` so
+  // we don't slap an inset-0 overlay on top of the surrounding modal
+  // (which would eat clicks on the body text fields, same trap the
+  // contact picker hit earlier).
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const node = containerRef.current;
+      if (node && node.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
+  // On open, scroll the selected option into view so the picker
+  // doesn't always show 6:30 AM as the top item when the recruiter
+  // is reopening a previously-set 3 PM slot.
+  useEffect(() => {
+    if (!open || !value) return;
+    const list = listRef.current;
+    if (!list) return;
+    const idx = options.findIndex((o) => o.value === value);
+    if (idx < 0) return;
+    const item = list.children[idx] as HTMLElement | undefined;
+    if (item) item.scrollIntoView({ block: "center" });
+  }, [open, value, options]);
+
+  return (
+    <div ref={containerRef} className={cn("relative", className)}>
+      <button
+        type="button"
+        onClick={() => !disabled && setOpen((v) => !v)}
+        disabled={disabled}
+        className={cn(
+          inputClassName,
+          "flex w-full items-center justify-between gap-2 text-left disabled:cursor-not-allowed disabled:opacity-60",
+        )}
       >
-        <option value="">— time —</option>
-        {timeOptions.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
+        <span className={cn(!selected && "text-court-fg-muted")}>{label}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+      </button>
+      {open && (
+        // z-[70] sits above the z-50 modal backdrop the picker tends
+        // to live inside (Schedule / Reschedule dialogs). max-h-64
+        // caps the panel at ~10 rows so it never punches through the
+        // viewport, regardless of how the picker is positioned.
+        <ul
+          ref={listRef}
+          className="absolute left-0 top-full z-[70] mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-court-border bg-court-surface py-1 shadow-lg"
+        >
+          {options.map((o) => {
+            const isSelected = o.value === value;
+            return (
+              <li key={o.value}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "block w-full px-3 py-1.5 text-left text-sm transition",
+                    isSelected
+                      ? "bg-brand-tint text-court-fg"
+                      : "text-court-fg hover:bg-court-surface-subtle",
+                  )}
+                >
+                  {o.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
