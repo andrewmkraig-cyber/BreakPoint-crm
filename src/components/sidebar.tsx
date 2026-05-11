@@ -48,8 +48,8 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: "CRM",
     items: [
-      { href: "/clients", label: "Clients", icon: Building2 },
       { href: "/jobs", label: "Jobs", icon: Briefcase },
+      { href: "/clients", label: "Clients", icon: Building2 },
     ],
   },
   {
