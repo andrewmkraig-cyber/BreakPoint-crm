@@ -382,85 +382,95 @@ export function EditableResume({
     <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       {/* Wrap to multiple rows when the column is narrow (resume +
           right-rail layout on candidate profiles squeezes this toolbar
-          on smaller viewports). Previously used overflow-x-auto, but
-          horizontal scrollbars on a header row were hiding "Upload new
-          version" off-screen — the recruiter never knew it was there. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-court-border px-3 py-1.5">
+          on smaller viewports, and the embed split-view further
+          compresses the column). min-w-0 lets the version selector
+          actually shrink; without it the dropdown's intrinsic width
+          would push the row past its column. The version selector and
+          the button group are siblings inside flex-wrap so the buttons
+          break to a second line when the column is too narrow to fit
+          them all on one row. */}
+      <div className="flex min-w-0 flex-wrap items-center gap-2 border-b border-court-border px-3 py-1.5">
         <h2 className="shrink-0 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">Resume</h2>
+        {/* Version dropdown — Court Mode tokens. Architecture: any
+            ResumeVersion entry slots in here without component changes
+            (originals + redacted today; branded next prompt). Click
+            the pencil to swap the dropdown for an inline rename input
+            on the currently-selected version. min-w-0 + overflow-hidden
+            on the container plus truncate on the inner span and select
+            keeps the row from escaping its column on narrow viewports. */}
+        {renaming ? (
+          <div className="inline-flex min-w-0 max-w-full items-center gap-1 overflow-hidden text-[11px] text-court-fg-muted">
+            <span className="shrink-0 uppercase tracking-wider">Name</span>
+            <input
+              value={nameDraft}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  void commitRename();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  cancelRename();
+                }
+              }}
+              disabled={savingName}
+              autoFocus
+              placeholder="Resume name"
+              className="min-w-0 flex-1 truncate rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onClick={() => void commitRename()}
+              disabled={savingName || !nameDraft.trim()}
+              aria-label="Save resume name"
+              title="Save"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
+            >
+              {savingName ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            </button>
+            <button
+              type="button"
+              onClick={cancelRename}
+              disabled={savingName}
+              aria-label="Cancel rename"
+              title="Cancel"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ) : (
+          <label className="inline-flex min-w-0 max-w-full items-center gap-1 overflow-hidden text-[11px] text-court-fg-muted">
+            <span className="shrink-0 truncate uppercase tracking-wider">Version</span>
+            <select
+              value={selectedKey ?? ""}
+              onChange={(e) => setSelectedKey(e.target.value)}
+              disabled={isUploading || isPending}
+              className="min-w-0 max-w-full truncate rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+            >
+              {versions.map((v) => (
+                <option key={v.key} value={v.key}>
+                  {dropdownLabelFor(v)}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={startRename}
+              disabled={isUploading || isPending}
+              aria-label="Rename this version"
+              title="Rename this version"
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          </label>
+        )}
+        {/* Action buttons in their own flex-wrap container so they
+            can break to a second line when the column is too narrow
+            to fit them on one row with the version selector. ml-auto
+            pushes the group to the right edge of the toolbar. */}
         <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-          {/* Version dropdown — Court Mode tokens. Architecture: any
-              ResumeVersion entry slots in here without component
-              changes (originals + redacted today; branded next prompt).
-              Click the pencil to swap the dropdown for an inline rename
-              input on the currently-selected version. */}
-          {renaming ? (
-            <div className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
-              <span className="uppercase tracking-wider">Name</span>
-              <input
-                value={nameDraft}
-                onChange={(e) => setNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void commitRename();
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    cancelRename();
-                  }
-                }}
-                disabled={savingName}
-                autoFocus
-                placeholder="Resume name"
-                className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
-              />
-              <button
-                type="button"
-                onClick={() => void commitRename()}
-                disabled={savingName || !nameDraft.trim()}
-                aria-label="Save resume name"
-                title="Save"
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
-              >
-                {savingName ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-              </button>
-              <button
-                type="button"
-                onClick={cancelRename}
-                disabled={savingName}
-                aria-label="Cancel rename"
-                title="Cancel"
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </div>
-          ) : (
-            <label className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
-              <span className="uppercase tracking-wider">Version</span>
-              <select
-                value={selectedKey ?? ""}
-                onChange={(e) => setSelectedKey(e.target.value)}
-                disabled={isUploading || isPending}
-                className="rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
-              >
-                {versions.map((v) => (
-                  <option key={v.key} value={v.key}>
-                    {dropdownLabelFor(v)}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={startRename}
-                disabled={isUploading || isPending}
-                aria-label="Rename this version"
-                title="Rename this version"
-                className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:border-brand/40 hover:text-court-fg disabled:opacity-60"
-              >
-                <Pencil className="h-3 w-3" />
-              </button>
-            </label>
-          )}
           {canEdit && (
             <button
               type="button"

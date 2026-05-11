@@ -30,20 +30,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
-const TENURE_OPTIONS = [
-  { value: "any", label: "Any tenure" },
-  { value: "lt1", label: "0–1 years" },
-  { value: "1to3", label: "1–3 years" },
-  { value: "3to5", label: "3–5 years" },
-  { value: "gt5", label: "5+ years" },
-];
-const WORK_AUTH_OPTIONS = [
-  { value: "all", label: "All" },
-  { value: "us-citizen", label: "U.S. Citizen" },
-  { value: "green-card", label: "Green Card" },
-  { value: "h1b", label: "H1-B" },
-  { value: "other", label: "Other" },
-];
 const DATE_OPTIONS = [
   { value: "any", label: "Any time" },
   { value: "30d", label: "Past 30 days" },
@@ -112,8 +98,6 @@ type Filters = {
   // current employer column. "any" widens it to include any historical
   // employer recorded in the experience JSON.
   employerScope: string;
-  tenure: string;
-  workAuth: string;
   lastApply: string;
   lastAction: string;
 };
@@ -128,8 +112,6 @@ const INITIAL_FILTERS: Filters = {
   distance: "25",
   employers: [],
   employerScope: "current",
-  tenure: "any",
-  workAuth: "all",
   lastApply: "any",
   lastAction: "any",
 };
@@ -202,8 +184,6 @@ function buildQuery(f: Filters): string {
   if (f.employers.length > 0 && f.employerScope === "any") {
     sp.set("employerScope", "any");
   }
-  if (f.tenure && f.tenure !== "any") sp.set("tenure", f.tenure);
-  if (f.workAuth && f.workAuth !== "all") sp.set("workAuth", f.workAuth);
   return sp.toString();
 }
 
@@ -441,8 +421,6 @@ function hasAnyFilter(f: Filters): boolean {
     f.maxComp.trim() !== "" ||
     f.locations.length > 0 ||
     f.employers.length > 0 ||
-    (f.tenure !== "" && f.tenure !== "any") ||
-    (f.workAuth !== "" && f.workAuth !== "all") ||
     (f.lastApply !== "" && f.lastApply !== "any") ||
     (f.lastAction !== "" && f.lastAction !== "any")
   );
@@ -574,9 +552,6 @@ function coerceFilters(value: unknown): Filters {
       typeof v.employerScope === "string"
         ? v.employerScope
         : INITIAL_FILTERS.employerScope,
-    tenure: typeof v.tenure === "string" ? v.tenure : INITIAL_FILTERS.tenure,
-    workAuth:
-      typeof v.workAuth === "string" ? v.workAuth : INITIAL_FILTERS.workAuth,
     lastApply:
       typeof v.lastApply === "string" ? v.lastApply : INITIAL_FILTERS.lastApply,
     lastAction:
@@ -850,8 +825,6 @@ export default function CandidatesPage() {
     filters.distance,
     employersKey,
     filters.employerScope,
-    filters.tenure,
-    filters.workAuth,
     filters.lastApply,
     filters.lastAction,
   ]);
@@ -1092,62 +1065,32 @@ export default function CandidatesPage() {
           {/* Employment */}
           <section className="border-b border-court-border/60 px-[18px] py-1.5">
             <SectionTitle>Employment</SectionTitle>
-            <div className="space-y-1.5">
-              <div>
-                <FieldLabel>Employer</FieldLabel>
-                {/* Paired pill input + scope select. Per-pill toggle
-                    flips a company name between "must match" and "must
-                    NOT match"; the scope dropdown applies uniformly to
-                    every pill. enterOnly because company names embed
-                    commas ("Microsoft, Inc."). */}
-                <div className="grid grid-cols-[1fr_130px] gap-2">
-                  <TagInput
-                    values={filters.employers}
-                    buffer={employersBuffer}
-                    onBufferChange={setEmployersBuffer}
-                    onCommit={(v) => addPill("employers", v)}
-                    onRemove={(v) => removePill("employers", v)}
-                    onToggleExclude={(v) => togglePill("employers", v)}
-                    placeholder=""
-                    ariaLabel="Employers"
-                    enterOnly
-                  />
-                  <SelectField
-                    value={filters.employerScope}
-                    onChange={(e) => setField("employerScope", e.target.value)}
-                    aria-label="Employer scope"
-                  >
-                    <option value="current">Current only</option>
-                    <option value="any">Current + Past</option>
-                  </SelectField>
-                </div>
-              </div>
-              <div>
-                <FieldLabel>Tenure at employer</FieldLabel>
+            <div>
+              <FieldLabel>Employer</FieldLabel>
+              {/* Stacked: employer pill input full-width on top, scope
+                  toggle full-width below it. Matches the Location
+                  section structure — the prior 1fr/130px grid clipped
+                  both inputs on laptop-width viewports. */}
+              <div className="w-full space-y-1.5">
+                <TagInput
+                  values={filters.employers}
+                  buffer={employersBuffer}
+                  onBufferChange={setEmployersBuffer}
+                  onCommit={(v) => addPill("employers", v)}
+                  onRemove={(v) => removePill("employers", v)}
+                  onToggleExclude={(v) => togglePill("employers", v)}
+                  placeholder=""
+                  ariaLabel="Employers"
+                  enterOnly
+                />
                 <SelectField
-                  value={filters.tenure}
-                  onChange={(e) => setField("tenure", e.target.value)}
-                  aria-label="Tenure at employer"
+                  className="truncate"
+                  value={filters.employerScope}
+                  onChange={(e) => setField("employerScope", e.target.value)}
+                  aria-label="Employer scope"
                 >
-                  {TENURE_OPTIONS.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </SelectField>
-              </div>
-              <div>
-                <FieldLabel>Work authorization</FieldLabel>
-                <SelectField
-                  value={filters.workAuth}
-                  onChange={(e) => setField("workAuth", e.target.value)}
-                  aria-label="Work authorization"
-                >
-                  {WORK_AUTH_OPTIONS.map((w) => (
-                    <option key={w.value} value={w.value}>
-                      {w.label}
-                    </option>
-                  ))}
+                  <option value="current">Current only</option>
+                  <option value="any">Current + Past</option>
                 </SelectField>
               </div>
             </div>
@@ -1189,11 +1132,13 @@ export default function CandidatesPage() {
           </section>
         </div>
 
-        {/* Sticky footer — Save Search + Saved Lists card. Search
-            fires on every filter change, so a separate Run button
-            would be redundant; Save is the only durable affordance
-            here. */}
-        <div className="flex flex-col gap-1.5 border-t border-court-border bg-white px-3 py-2">
+        {/* Sticky footer — Save Search only. Saved Lists moved to the
+            results header so it pairs visually with the count row and
+            stays visible without competing for sidebar real estate.
+            Search fires on every filter change, so a separate Run
+            button would be redundant; Save is the only durable
+            affordance here. */}
+        <div className="border-t border-court-border bg-white px-3 py-2">
           <Button
             type="button"
             variant="primary"
@@ -1205,22 +1150,6 @@ export default function CandidatesPage() {
             <Bookmark className="h-3.5 w-3.5" />
             Save search
           </Button>
-          {/* Saved Lists pill — collapsed from a two-line card to a
-              single row so the footer doesn't claim ~70px of vertical
-              space on short laptop viewports. */}
-          <Link
-            href="/candidates/lists"
-            className="group flex items-center justify-between rounded-md border border-court-border bg-court-bg px-2.5 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
-          >
-            <div className="flex items-center gap-1.5">
-              <ClipboardList className="h-3.5 w-3.5 text-court-accent-dark" strokeWidth={1.8} />
-              <span className="text-xs font-semibold text-court-fg">Saved Lists</span>
-            </div>
-            <ChevronRight
-              className="h-3.5 w-3.5 text-court-fg-muted transition group-hover:text-court-accent-dark"
-              strokeWidth={2}
-            />
-          </Link>
         </div>
       </aside>
 
@@ -1422,11 +1351,11 @@ export default function CandidatesPage() {
         </>
       ) : (
         <section className="flex flex-1 flex-col bg-court-bg">
-          {/* Results header strip — count only. Sort/Columns/Export
-              were retired here; those affordances live on the per-job
-              Matches tab where they have an active job context to
-              scope. The /candidates page is a broad search surface and
-              doesn't need a custom-columns workflow. */}
+          {/* Results header strip — count on the left, Saved Lists pill
+              on the right. justify-between pins the two ends; the count
+              + label keep items-baseline alignment internally while the
+              outer row uses items-center so the pill verticals balance
+              against the big count number. */}
           <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-6 py-4">
             <div className="flex items-baseline gap-2.5">
               <span className="font-serif text-[28px] font-extrabold leading-none text-court-fg">
@@ -1440,6 +1369,17 @@ export default function CandidatesPage() {
                     : `candidate${total === 1 ? "" : "s"} match · sorted by Recent activity`}
               </span>
             </div>
+            <Link
+              href="/candidates/lists"
+              className="group inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-bg px-3 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
+            >
+              <ClipboardList className="h-3.5 w-3.5 text-court-accent-dark" strokeWidth={1.8} />
+              <span className="text-xs font-semibold text-court-fg">Saved Lists</span>
+              <ChevronRight
+                className="h-3.5 w-3.5 text-court-fg-muted transition group-hover:text-court-accent-dark"
+                strokeWidth={2}
+              />
+            </Link>
           </div>
 
           {!hasFilters ? (
