@@ -2,9 +2,97 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Building2, Forward, Reply, ReplyAll } from "lucide-react";
-import type { MailThreadMessage } from "@/lib/gmail";
+import {
+  Building2,
+  Download,
+  File as FileIcon,
+  FileText,
+  Forward,
+  Reply,
+  ReplyAll,
+} from "lucide-react";
+import type { MailAttachmentRef, MailThreadMessage } from "@/lib/gmail";
 import { EmailHtmlViewer } from "@/components/mail/email-html-viewer";
+
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Truncate to ~30 chars while preserving the extension so the eye still
+// sees ".pdf" / ".docx" — "Installation Repair Service Agreement…pdf"
+// rather than "Installation Repair Service Agreem…" with no hint of
+// type.
+function truncateFilename(name: string, max = 30): string {
+  if (name.length <= max) return name;
+  const dot = name.lastIndexOf(".");
+  if (dot > 0 && name.length - dot <= 8) {
+    const ext = name.slice(dot);
+    const keep = Math.max(1, max - ext.length - 1);
+    return `${name.slice(0, keep)}…${ext}`;
+  }
+  return `${name.slice(0, max - 1)}…`;
+}
+
+// Pick lucide icon + Court-aware tint per file family. PDF reads red,
+// Word reads blue, everything else falls back to a muted generic File
+// icon so the pill doesn't lie about an unknown mime.
+function pickAttachmentIcon(mimeType: string): {
+  Icon: typeof FileText;
+  className: string;
+} {
+  if (mimeType === "application/pdf") {
+    return { Icon: FileText, className: "text-red-600 dark:text-red-400" };
+  }
+  if (
+    mimeType ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+    mimeType === "application/msword"
+  ) {
+    return { Icon: FileText, className: "text-blue-600 dark:text-blue-400" };
+  }
+  return { Icon: FileIcon, className: "text-court-fg-muted" };
+}
+
+function AttachmentPill({
+  messageId,
+  att,
+}: {
+  messageId: string;
+  att: MailAttachmentRef;
+}) {
+  const { Icon, className } = pickAttachmentIcon(att.mimeType);
+  const href = `/api/mail/attachments/${encodeURIComponent(
+    messageId,
+  )}/${encodeURIComponent(att.attachmentId)}?filename=${encodeURIComponent(
+    att.filename,
+  )}&mimeType=${encodeURIComponent(att.mimeType)}`;
+  const size = formatBytes(att.size);
+  return (
+    <a
+      href={href}
+      download={att.filename}
+      title={att.filename}
+      className="inline-flex max-w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-xs text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+    >
+      <Icon className={`h-4 w-4 shrink-0 ${className}`} />
+      <span className="min-w-0 truncate font-medium">
+        {truncateFilename(att.filename)}
+      </span>
+      {size && (
+        <span className="shrink-0 text-[11px] text-court-fg-muted">
+          {size}
+        </span>
+      )}
+      <span className="ml-1 inline-flex shrink-0 items-center gap-1 rounded border border-court-border bg-court-surface-subtle px-1.5 py-0.5 text-[11px] font-medium text-court-fg-muted">
+        <Download className="h-3 w-3" />
+        Download
+      </span>
+    </a>
+  );
+}
 
 export type MessageBlockAction = "reply" | "replyAll" | "forward";
 
@@ -199,6 +287,17 @@ export function MessageBlock({
       <div className="min-w-0 overflow-x-auto">
         <EmailHtmlViewer html={msg.bodyHtml} />
       </div>
+      {msg.attachments && msg.attachments.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {msg.attachments.map((att) => (
+            <AttachmentPill
+              key={att.attachmentId}
+              messageId={msg.id}
+              att={att}
+            />
+          ))}
+        </div>
+      )}
     </article>
   );
 }

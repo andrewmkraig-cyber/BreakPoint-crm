@@ -490,6 +490,13 @@ export async function listGmailThreads(
     .sort((a, b) => (b.timestampIso ?? "").localeCompare(a.timestampIso ?? ""));
 }
 
+export type MailAttachmentRef = {
+  attachmentId: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+};
+
 export type MailThreadMessage = {
   id: string;
   fromName: string;
@@ -507,6 +514,11 @@ export type MailThreadMessage = {
   // Null when the sender isn't tied to any Client (or there's no
   // matching Contact at all).
   senderClient?: { slug: string; name: string } | null;
+  // User-uploaded attachments (PDFs, Word docs, images sent as files,
+  // etc.) discovered by walking the MIME tree. Inline cid: images are
+  // excluded — they live in the body via inlineCidImages. Empty array
+  // when the message has no real attachments.
+  attachments: MailAttachmentRef[];
 };
 
 export type MailThreadDetail = {
@@ -599,6 +611,7 @@ export async function getGmailThread(userId: string, threadId: string): Promise<
         dateIso: m.internalDate ? new Date(Number(m.internalDate)).toISOString() : null,
         subject: headerValue(headers, "Subject"),
         bodyHtml,
+        attachments: collectAttachments(m.payload),
       };
     }),
   );
@@ -652,6 +665,53 @@ function collectInlineParts(
   }
   if (payload.parts) for (const p of payload.parts) collectInlineParts(p, out);
   return out;
+}
+
+// Walks the MIME tree and returns every part that looks like a real
+// user-attached file. "Real" = has a non-empty filename, a fetchable
+// body.attachmentId, and is NOT an inline image (those carry a
+// Content-ID header and are inlined into the body via
+// inlineCidImages). Without the Content-ID filter, signature logos
+// would show up as attachment pills on every outbound email.
+function collectAttachments(
+  payload: GmailMessagePart | undefined,
+  out: MailAttachmentRef[] = [],
+): MailAttachmentRef[] {
+  if (!payload) return out;
+  const isInline = payload.headers?.some(
+    (h) => h.name.toLowerCase() === "content-id",
+  );
+  if (
+    payload.filename &&
+    payload.filename.length > 0 &&
+    payload.body?.attachmentId &&
+    !isInline
+  ) {
+    out.push({
+      attachmentId: payload.body.attachmentId,
+      filename: payload.filename,
+      mimeType: payload.mimeType ?? "application/octet-stream",
+      size: payload.body.size ?? 0,
+    });
+  }
+  if (payload.parts) for (const p of payload.parts) collectAttachments(p, out);
+  return out;
+}
+
+// Authenticated attachment fetcher used by the download route. Returns
+// decoded bytes ready to stream back to the browser; null when Gmail
+// rejects the fetch (deleted message, revoked token, etc.).
+export async function getGmailAttachment(
+  userId: string,
+  messageId: string,
+  attachmentId: string,
+): Promise<Buffer | null> {
+  const accessToken = await getFreshAccessToken(userId);
+  const b64 = await fetchAttachmentBase64(accessToken, messageId, attachmentId);
+  if (!b64) return null;
+  const norm = b64.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = norm.length % 4 === 0 ? norm : norm + "=".repeat(4 - (norm.length % 4));
+  return Buffer.from(pad, "base64");
 }
 
 async function fetchAttachmentBase64(
