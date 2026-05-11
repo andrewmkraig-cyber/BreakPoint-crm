@@ -13,12 +13,6 @@ import {
   updateEventAsInvite,
 } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
-import { fireTriggerAndLog } from "@/lib/trigger-fire";
-import { getRfCandidateByRfId } from "@/lib/candidates";
-import {
-  CANDIDATE_INTERVIEW_PREP_TRIGGER,
-  CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
-} from "@/app/settings/template-constants";
 
 // Unified interview actions for both RF-backed candidates (candidateRfId) and
 // Ace-local candidates (candidateId cuid). The Interview model is polymorphic
@@ -325,24 +319,10 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
 
     revalidateForCandidate(ref);
 
-    // Auto-fire the two interview-scheduled templates if the recruiter
-    // has them active. Works for both candidate types — RF candidates
-    // resolve via candidateRfId, Ace-native via the candidateId cuid.
-    // Best-effort: errors here don't fail the schedule (the Interview
-    // row + calendar event are already saved at this point).
-    void fireInterviewTriggers({
-      userId: user.id,
-      candidateRfId: ref.candidateRfId,
-      candidateId: ref.candidateId,
-      jobRfId: input.jobRfId,
-      clientRfId: input.clientRfId,
-      scheduledAtIso: when.toISOString(),
-      durationMin: input.durationMin,
-      type: input.type,
-      location: input.location ?? "",
-      clientAttendees: input.attendees ?? [],
-      organizationId: org.id,
-    });
+    // No separate confirmation email — the native Google Calendar invite
+    // is the only communication. The composer body the recruiter types
+    // becomes the event description, so the invite + custom prep tips
+    // land as a single message in the attendee's inbox.
 
     return { ok: true, value: { interviewId: interview.id, meetLink, googleEventIdMine } };
   } catch (e) {
@@ -728,129 +708,3 @@ export async function sendInterviewInvite(input: SendInvitePartyInput): Promise<
 }
 
 
-// Best-effort fire of the two Schedule-Interview templates. Runs as a
-// fire-and-forget tail off scheduleInterview's success path — the
-// recruiter's interview already saved + the calendar event exists, so
-// a missing template / no recipient / Anthropic timeout can't corrupt
-// pipeline state. Works for both candidate types: routes through
-// fireTriggerForPlacement which accepts either rfId or cuid.
-async function fireInterviewTriggers(args: {
-  userId: string;
-  candidateRfId: number | null;
-  candidateId: string | null;
-  jobRfId: number;
-  clientRfId: number;
-  scheduledAtIso: string;
-  durationMin: number;
-  type: InterviewType;
-  location: string;
-  clientAttendees: InterviewAttendee[];
-  organizationId: string;
-}): Promise<void> {
-  try {
-    const interviewOverrides = {
-      interviewDateTime: formatInterviewDateForLabel(args.scheduledAtIso),
-      interviewDuration: `${args.durationMin} min`,
-      interviewType: formatInterviewTypeLabel(args.type),
-      interviewLocation: args.location,
-    };
-    const ref = {
-      candidateRfId: args.candidateRfId,
-      candidateId: args.candidateId,
-      jobRfId: args.jobRfId,
-      clientRfId: args.clientRfId,
-    };
-
-    // Candidate prep first (defaults to the candidate's own email
-    // when no `to` is supplied).
-    await fireTriggerAndLog({
-      trigger: CANDIDATE_INTERVIEW_PREP_TRIGGER,
-      ref,
-      actionType: "candidate_interview_prep_email",
-      organizationId: args.organizationId,
-      overrides: interviewOverrides,
-      metadata: {
-        scheduledAt: args.scheduledAtIso,
-        durationMin: args.durationMin,
-        type: args.type,
-      },
-    });
-
-    // Client side fires to the picked attendees (dedupe + skip the
-    // candidate's own email in case it leaked in). When there are
-    // no attendees, the helper auto-skips with reason="no_recipient".
-    const candidateOutcome = await fireTriggerForPlacementCandidateEmail(ref);
-    const candidateEmail = candidateOutcome.toLowerCase();
-    const seen = new Set<string>();
-    const clientTo: string[] = [];
-    for (const a of args.clientAttendees) {
-      const email = (a.email ?? "").trim().toLowerCase();
-      if (!email) continue;
-      if (email === candidateEmail) continue;
-      if (seen.has(email)) continue;
-      seen.add(email);
-      clientTo.push(a.email);
-    }
-    await fireTriggerAndLog({
-      trigger: CLIENT_INTERVIEW_SCHEDULED_TRIGGER,
-      ref,
-      actionType: "client_interview_scheduled_email",
-      to: clientTo,
-      organizationId: args.organizationId,
-      overrides: interviewOverrides,
-      metadata: {
-        scheduledAt: args.scheduledAtIso,
-        durationMin: args.durationMin,
-        type: args.type,
-        attendees: args.clientAttendees.map((a) => a.email).filter(Boolean),
-      },
-    });
-  } catch {
-    // Silent — instrumentation, never blocks the schedule itself.
-  }
-}
-
-// Cheap candidate-email lookup so the client-side fire's dedupe
-// list can exclude the candidate's own address. Same lookup the
-// merge-context resolver does, just narrower so we don't pay for
-// two full merge resolves on the same schedule.
-async function fireTriggerForPlacementCandidateEmail(ref: {
-  candidateRfId: number | null;
-  candidateId: string | null;
-}): Promise<string> {
-  if (ref.candidateId) {
-    const row = await prisma.candidate.findUnique({
-      where: { id: ref.candidateId },
-      select: { email: true },
-    });
-    return row?.email ?? "";
-  }
-  if (ref.candidateRfId != null) {
-    try {
-      const c = await getRfCandidateByRfId(ref.candidateRfId);
-      if (!c) return "";
-      return Array.isArray(c.email) ? c.email[0] ?? "" : c.email ?? "";
-    } catch {
-      return "";
-    }
-  }
-  return "";
-}
-
-function formatInterviewDateForLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatInterviewTypeLabel(t: InterviewType): string {
-  if (t === "phone_screen") return "Phone screen";
-  if (t === "video") return "Video";
-  return "On-site";
-}

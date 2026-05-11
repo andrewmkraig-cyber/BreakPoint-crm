@@ -390,6 +390,10 @@ function ScheduleDialog({
   const [scheduledAt, setScheduledAt] = useState("");
   const [durationMin, setDurationMin] = useState(30);
   const [type, setType] = useState<InterviewType>("video");
+  // Defaults ON: matches Andrew's typical "anyone with the link can
+  // join" Meet for client/candidate convenience. Off locks the Meet to
+  // the invited attendees only.
+  const [openMeeting, setOpenMeeting] = useState(true);
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
   const [location, setLocation] = useState("");
@@ -424,6 +428,7 @@ function ScheduleDialog({
         clientName: job.clientName,
         candidateName,
         location: type === "in_person" ? location.trim() : undefined,
+        openMeeting,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -466,6 +471,19 @@ function ScheduleDialog({
         setLocation={setLocation}
         notes={notes}
         setNotes={setNotes}
+        typeExtras={
+          type === "video" ? (
+            <label className="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={openMeeting}
+                onChange={(e) => setOpenMeeting(e.target.checked)}
+                className="h-4 w-4 rounded border-court-border accent-brand-dark"
+              />
+              <span className="text-court-fg">Open meeting (anyone can join)</span>
+            </label>
+          ) : null
+        }
         interviewerSlot={
           <InterviewerPicker
             clientRfId={job.clientRfId}
@@ -650,16 +668,25 @@ function ScheduleFields(props: {
   setNotes: (v: string) => void;
   interviewerSlot?: React.ReactNode;
   ccBccSlot?: React.ReactNode;
+  // Renders directly under the Type select. Used by the schedule flow
+  // to surface the "Open meeting (anyone can join)" checkbox only when
+  // type === "video"; the client-scheduled tracking flow leaves it
+  // empty since no Meet is created on its behalf.
+  typeExtras?: React.ReactNode;
 }) {
   return (
     <div className="grid grid-cols-1 gap-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block text-sm sm:col-span-2">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
+          {/* blockPast keeps past dates out of the picker — past
+              interviews are scheduled via Reschedule from the activity
+              panel, never from a fresh Schedule click. */}
           <DateTime15Picker
             value={props.scheduledAt}
             onChange={props.setScheduledAt}
             className="mt-1"
+            blockPast
           />
         </label>
         <DurationSelect value={props.durationMin} onChange={props.setDurationMin} />
@@ -676,6 +703,7 @@ function ScheduleFields(props: {
           <option value="in_person">In-Person</option>
         </select>
       </label>
+      {props.typeExtras}
       {props.type === "in_person" && (
         <label className="block text-sm">
           <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Address</span>
@@ -904,8 +932,11 @@ function LocalClientInviteComposer({
   const meetLine = invite.type === "video" && invite.meetLink
     ? `\n• Join on Google Meet: [Interview Meet Link]`
     : "";
+  // Client-side title surfaces the candidate + role so the client can
+  // distinguish overlapping interviews on their calendar (matches the
+  // RF-candidate flow's fallbackClientSubject).
   const subject = applyMergeFieldsClient(
-    `Interview Confirmed - ${candidateName || "Candidate"} for ${invite.jobTitle}`,
+    `${formatType(invite.type)} Interview - ${candidateName || "Candidate"} - ${invite.jobTitle}`,
     values,
   );
   const body = applyMergeFieldsClient(
@@ -1006,8 +1037,10 @@ function LocalCandidateInviteComposer({
   const meetLine = invite.type === "video" && invite.meetLink
     ? `\n• Join on Google Meet: [Interview Meet Link]`
     : "";
+  // Candidate-side title is intentionally generic — keeps the client's
+  // name off any calendar the candidate may share publicly.
   const subject = applyMergeFieldsClient(
-    `You're confirmed - ${invite.jobTitle} with ${invite.clientName}`,
+    `${formatType(invite.type)} Interview - BreakPoint Talent`,
     values,
   );
   const body = applyMergeFieldsClient(

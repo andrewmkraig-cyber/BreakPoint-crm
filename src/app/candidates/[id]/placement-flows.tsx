@@ -3010,12 +3010,19 @@ function buildInterviewMergeValues(args: {
   };
 }
 
+// Calendar event title formats (which become the Gmail invite subject):
+//   - Client side names the candidate + role so the client recognizes
+//     the meeting at a glance ("Video Interview - Sidney Long - Tax
+//     Manager in Cleveland").
+//   - Candidate side stays generic ("Video Interview - BreakPoint
+//     Talent") so the candidate's calendar doesn't expose the client's
+//     name to whoever they share calendars with.
 function fallbackClientSubject(invite: InviteFlowState, candidateFull: string): string {
-  return `Interview Confirmed - ${candidateFull || "Candidate"} for ${invite.jobTitle}`;
+  return `${formatInterviewType(invite.type)} Interview - ${candidateFull || "Candidate"} - ${invite.jobTitle}`;
 }
 
 function fallbackCandidateSubject(invite: InviteFlowState): string {
-  return `You're confirmed - ${invite.jobTitle} with ${invite.clientName}`;
+  return `${formatInterviewType(invite.type)} Interview - BreakPoint Talent`;
 }
 
 function fallbackBody(invite: InviteFlowState, who: "client" | "candidate", candidateFull: string): string {
