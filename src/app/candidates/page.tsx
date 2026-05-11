@@ -1300,75 +1300,81 @@ export default function CandidatesPage() {
         // line reads as the boundary between the page header above
         // and the candidate content (action bar + profile) below.
         <div className="flex min-h-0 flex-1 flex-col">
-          {/* Full-width split-view chrome bar. h-10 chrome strip with
-              border-t extends across both the 300px middle sidebar
-              and the right iframe pane. Prev/next + Apply/Keep stay
-              wired to the same selectedId state as before. */}
-          <div className="flex h-10 shrink-0 items-center gap-2 border-t border-court-border bg-court-surface px-3">
-            <button
-              type="button"
-              onClick={() => setSelectedId(null)}
-              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" />
-              All Candidates
-            </button>
-            <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={goPrev}
-              disabled={!canPrev}
-              aria-label="Previous candidate"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="text-xs font-medium tabular-nums text-court-fg-muted">
-              {currentIndex >= 0 ? currentIndex + 1 : "—"} of {sortedRows.length}
-            </span>
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={!canNext}
-              aria-label="Next candidate"
-              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-            <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
-            <Button
-              type="button"
-              size="sm"
-              variant="apply"
-              onClick={openApplyInIframe}
-              className="h-7 rounded-md px-2.5 text-[11px]"
-            >
-              <Target className="h-3 w-3" />
-              Apply to Job
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="keep"
-              onClick={() => void onKeepSelected()}
-              disabled={keepInFlight === selectedId}
-              className="h-7 rounded-md px-2.5 text-[11px]"
-            >
-              {keepInFlight === selectedId ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : (
-                <Bookmark className="h-3 w-3" />
-              )}
-              Keep
-            </Button>
-            <button
-              type="button"
-              onClick={() => setSelectedId(null)}
-              aria-label="Close profile"
-              className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-            >
-              <X className="h-4 w-4" />
-            </button>
+          {/* Full-width split-view chrome bar. Two flex segments:
+              the LEFT segment is pinned to w-[300px] so it occupies
+              exactly the middle name-list column underneath, and its
+              right edge (the divider after "N of M") sits flush with
+              the name-list / iframe boundary. The RIGHT segment lives
+              over the iframe pane; pl-6 nudges Apply / Keep in to
+              line up with the candidate overview card below it. */}
+          <div className="flex h-10 shrink-0 items-center border-t border-court-border bg-court-surface">
+            <div className="flex h-full w-[300px] shrink-0 items-center gap-2 border-r border-court-border px-3">
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                All Candidates
+              </button>
+              <span className="mx-1 h-4 w-px bg-court-border" aria-hidden="true" />
+              <button
+                type="button"
+                onClick={goPrev}
+                disabled={!canPrev}
+                aria-label="Previous candidate"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <span className="text-xs font-medium tabular-nums text-court-fg-muted">
+                {currentIndex >= 0 ? currentIndex + 1 : "—"} of {sortedRows.length}
+              </span>
+              <button
+                type="button"
+                onClick={goNext}
+                disabled={!canNext}
+                aria-label="Next candidate"
+                className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-court-fg-muted"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="flex h-full flex-1 items-center gap-2 pl-6 pr-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="apply"
+                onClick={openApplyInIframe}
+                className="h-7 rounded-md px-2.5 text-[11px]"
+              >
+                <Target className="h-3 w-3" />
+                Apply to Job
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="keep"
+                onClick={() => void onKeepSelected()}
+                disabled={keepInFlight === selectedId}
+                className="h-7 rounded-md px-2.5 text-[11px]"
+              >
+                {keepInFlight === selectedId ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Bookmark className="h-3 w-3" />
+                )}
+                Keep
+              </Button>
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                aria-label="Close profile"
+                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
           <div className="flex min-h-0 flex-1">
           <section className="flex w-[300px] shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface">
