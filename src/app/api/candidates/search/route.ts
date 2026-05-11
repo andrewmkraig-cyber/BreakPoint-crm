@@ -129,18 +129,90 @@ function buildResumeSnippet(text: string, tokens: string[]): string | null {
   return snip;
 }
 
-// For the visible page of candidates, pull the most-recently-uploaded
-// resume per candidate whose extracted text contains EVERY token (AND,
-// case-insensitive — Prisma `contains` on text columns). One query
-// covers the whole page; we sort newest-upload-first so a candidate
-// with multiple resume versions surfaces a snippet from the current
-// one. Returns a map of candidateId → snippet string.
-async function resumeSnippetsForCandidates(
+// Per-token candidate ID resolution. Returns every candidate in the org
+// whose data carries the token in ANY of three sources:
+//   1. Structured columns — name, current title, current employer,
+//      location, and skills (case-insensitive substring).
+//   2. JSON profile data — experience and education, cast to text so
+//      pdl/RF-imported job titles, company names, school names, and
+//      free-form descriptions are searchable. Prisma can't ILIKE jsonb
+//      directly, hence the raw SQL.
+//   3. Parsed resume text — CandidateResume.extractedText (populated
+//      by scripts/extract-resume-text.ts and on every new upload).
+// Caller AND-composes the per-token sets via `id: { in: [...] }`
+// clauses so a multi-word query honors "every token must match in at
+// least one source for the same candidate".
+//
+// Backslash is the default Postgres LIKE escape character, so we
+// escape `%`, `_`, and `\` in the user-supplied token before wrapping
+// in `%…%` — a recruiter typing "100%" can't accidentally trigger a
+// wildcard sweep.
+async function resolveTokenCandidateIds(
   orgId: string,
-  candidateIds: string[],
+  token: string,
+): Promise<string[]> {
+  const escaped = token.replace(/([\\%_])/g, "\\$1");
+  const pattern = `%${escaped}%`;
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+    SELECT id FROM "Candidate"
+    WHERE "organizationId" = ${orgId}
+      AND (
+        "firstName" ILIKE ${pattern}
+        OR "lastName" ILIKE ${pattern}
+        OR "currentDesignation" ILIKE ${pattern}
+        OR "currentOrganization" ILIKE ${pattern}
+        OR location ILIKE ${pattern}
+        OR EXISTS (SELECT 1 FROM unnest(skills) s WHERE s ILIKE ${pattern})
+        OR (experience IS NOT NULL AND experience::text ILIKE ${pattern})
+        OR (education IS NOT NULL AND education::text ILIKE ${pattern})
+      )
+    UNION
+    SELECT cr."candidateId" AS id
+    FROM "CandidateResume" cr
+    WHERE cr."organizationId" = ${orgId}
+      AND cr."candidateId" IS NOT NULL
+      AND cr."extractedText" ILIKE ${pattern}
+  `);
+  return rows.map((r) => r.id);
+}
+
+// Strip JSON punctuation to whitespace so a buildResumeSnippet pass
+// over an experience array reads as recruitable copy ("title  Vending
+// Sales Manager  company  ABC Corp") rather than dense JSON. Whitespace
+// is collapsed by the snippet builder downstream.
+function jsonToSearchableText(value: unknown): string {
+  if (value == null) return "";
+  try {
+    return JSON.stringify(value).replace(/[{}\[\]",\\]/g, " ");
+  } catch {
+    return "";
+  }
+}
+
+function allTokensPresent(text: string, tokens: string[]): boolean {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  for (const t of tokens) {
+    if (lower.indexOf(t.toLowerCase()) < 0) return false;
+  }
+  return true;
+}
+
+// For the visible page of candidates, resolve a single highlighted
+// snippet per candidate when every token appears together in either
+// source. Priority is resume first (recruiter-shipped copy) and the
+// candidate's experience JSON as fallback (RF/Pin import data) — that
+// way a structured-field-only match (e.g. token in the candidate's
+// name) still tries to surface adjacent context from a richer source.
+// One query for resumes covers the whole page; the experience fallback
+// reads off the rows already in memory from the main candidate query.
+async function snippetsForCandidates(
+  orgId: string,
+  pageRows: Array<{ id: string; experience: unknown }>,
   tokens: string[],
 ): Promise<Map<string, string>> {
-  if (tokens.length === 0 || candidateIds.length === 0) return new Map();
+  if (tokens.length === 0 || pageRows.length === 0) return new Map();
+  const candidateIds = pageRows.map((r) => r.id);
   const resumes = await prisma.candidateResume.findMany({
     where: {
       organizationId: orgId,
@@ -162,6 +234,15 @@ async function resumeSnippetsForCandidates(
     if (!r.candidateId || out.has(r.candidateId)) continue;
     const snip = buildResumeSnippet(r.extractedText ?? "", tokens);
     if (snip) out.set(r.candidateId, snip);
+  }
+
+  // Experience-JSON fallback for any candidate still missing a snippet.
+  for (const c of pageRows) {
+    if (out.has(c.id)) continue;
+    const text = jsonToSearchableText(c.experience);
+    if (!allTokensPresent(text, tokens)) continue;
+    const snip = buildResumeSnippet(text, tokens);
+    if (snip) out.set(c.id, snip);
   }
   return out;
 }
@@ -305,35 +386,20 @@ export async function GET(req: Request) {
 
     if (q) {
       const tokens = tokenize(q);
-      // Each token must match in at least one structured field. Scoping
-      // to firstName/lastName/currentDesignation/currentOrganization/
-      // location (contains, insensitive) plus skills (hasSome, exact)
-      // keeps recruiter-typed keywords from hitting unrelated metadata
-      // in the raw JSON payload (RF application notes, embedded job /
-      // client names, etc.) — "vending" should only match candidates
-      // whose visible profile carries the word, not someone who once
-      // applied to a vending-machine company posting.
-      for (const t of tokens) {
-        andClauses.push({
-          OR: [
-            { firstName: { contains: t, mode: "insensitive" as const } },
-            { lastName: { contains: t, mode: "insensitive" as const } },
-            {
-              currentDesignation: {
-                contains: t,
-                mode: "insensitive" as const,
-              },
-            },
-            {
-              currentOrganization: {
-                contains: t,
-                mode: "insensitive" as const,
-              },
-            },
-            { location: { contains: t, mode: "insensitive" as const } },
-            { skills: { hasSome: [t] } },
-          ],
-        });
+      if (tokens.length > 0) {
+        // Per token, resolve the union of candidate IDs across all
+        // three sources (structured columns, experience/education JSON
+        // cast to text, parsed resume text). Push one `id: { in: [...] }`
+        // clause per token so the final AND across them produces the
+        // intersection — a candidate must hit every token, but each
+        // token can land in any of the sources independently. Resolved
+        // in parallel since the queries are independent per token.
+        const idSetsByToken = await Promise.all(
+          tokens.map((t) => resolveTokenCandidateIds(org.id, t)),
+        );
+        for (const ids of idSetsByToken) {
+          andClauses.push({ id: { in: ids } });
+        }
       }
     }
 
@@ -439,9 +505,9 @@ export async function GET(req: Request) {
         }),
         prisma.candidate.count({ where }),
       ]);
-      const snippetMap = await resumeSnippetsForCandidates(
+      const snippetMap = await snippetsForCandidates(
         org.id,
-        rows.map((r) => r.id),
+        rows,
         snippetTokens,
       );
       return NextResponse.json({
@@ -471,9 +537,9 @@ export async function GET(req: Request) {
     });
     const total = filtered.length;
     const slice = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-    const snippetMap = await resumeSnippetsForCandidates(
+    const snippetMap = await snippetsForCandidates(
       org.id,
-      slice.map((r) => r.id),
+      slice,
       snippetTokens,
     );
     return NextResponse.json({
