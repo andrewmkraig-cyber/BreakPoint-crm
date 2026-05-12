@@ -9,6 +9,7 @@ import {
 } from "@/lib/invoices";
 
 import { NewInvoiceButton } from "./new-invoice-button";
+import { SendTestInvoiceButton } from "./send-test-invoice-button";
 
 export const dynamic = "force-dynamic";
 
@@ -80,7 +81,10 @@ export default async function InvoicesPage({
             Draft, send, and track placement invoices. Bank details live inside each PDF — no pay links, no Mercury sync.
           </p>
         </div>
-        <NewInvoiceButton />
+        <div className="flex flex-wrap items-center gap-2">
+          <SendTestInvoiceButton />
+          <NewInvoiceButton />
+        </div>
       </header>
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">

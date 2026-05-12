@@ -245,3 +245,93 @@ export async function deleteInvoiceAction(id: string): Promise<Result> {
     return fail(e instanceof Error ? e.message : "Failed to delete");
   }
 }
+
+// Spawns a fully-populated DRAFT invoice matching the design canvas
+// (Miles Atchison · tsaADVET · Senior Accountant · $7,500 · Net 14)
+// with both billing + hiring contacts pointed at Andrew's inbox so the
+// "Draft email in Gmail" preview lands in his own mailbox. The demo
+// Candidate + Client are find-or-created (idempotent) so re-running
+// this from the dashboard doesn't stack duplicate Miles/tsaADVET rows;
+// the Invoice row itself is created fresh every click.
+export async function createTestInvoice(): Promise<Result<{ id: string }>> {
+  const userId = await requireUserId();
+  if (!userId) return fail("Not signed in");
+  const org = await getCurrentOrg();
+  try {
+    const TEST_CANDIDATE_EMAIL = "test-miles-atchison@ace.test";
+    const TEST_CLIENT_NAME = "tsaADVET";
+    const TEST_RECIPIENT_EMAIL = "andrew@breakpointtalent.com";
+
+    let candidate = await prisma.candidate.findUnique({
+      where: { email: TEST_CANDIDATE_EMAIL },
+      select: { id: true },
+    });
+    if (!candidate) {
+      candidate = await prisma.candidate.create({
+        data: {
+          firstName: "Miles",
+          lastName: "Atchison",
+          email: TEST_CANDIDATE_EMAIL,
+          currentDesignation: "Senior Accountant",
+          tags: ["test-invoice"],
+          createdById: userId,
+          organizationId: org.id,
+        },
+        select: { id: true },
+      });
+    }
+
+    let client = await prisma.client.findFirst({
+      where: { organizationId: org.id, name: TEST_CLIENT_NAME },
+      select: { id: true },
+    });
+    if (!client) {
+      client = await prisma.client.create({
+        data: {
+          name: TEST_CLIENT_NAME,
+          tags: ["test-invoice"],
+          organizationId: org.id,
+        },
+        select: { id: true },
+      });
+    }
+
+    const invoiceNumber = await nextInvoiceNumber(org.id);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(today);
+    dueDate.setDate(dueDate.getDate() + 14);
+
+    const billingContacts: InvoiceContact[] = [
+      { name: "Renee Pratt", title: "AP Lead", email: TEST_RECIPIENT_EMAIL },
+    ];
+    const hiringContacts: InvoiceContact[] = [
+      { name: "Andrea Symroth", title: "VP Finance", email: TEST_RECIPIENT_EMAIL },
+    ];
+
+    const created = await prisma.invoice.create({
+      data: {
+        organizationId: org.id,
+        invoiceNumber,
+        candidateId: candidate.id,
+        clientId: client.id,
+        roleTitle: "Senior Accountant",
+        startDate: today,
+        feeAmount: new Prisma.Decimal("7500.00"),
+        paymentTerms: "Net 14",
+        dueDate,
+        billingContacts: billingContacts as unknown as Prisma.InputJsonValue,
+        hiringContacts: hiringContacts as unknown as Prisma.InputJsonValue,
+        status: "DRAFT",
+        notes: "Test invoice — generated from the /invoices header.",
+      },
+      select: { id: true },
+    });
+
+    revalidatePath("/invoices");
+    revalidatePath("/dashboard");
+    return ok({ id: created.id });
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed to create test invoice");
+  }
+}
