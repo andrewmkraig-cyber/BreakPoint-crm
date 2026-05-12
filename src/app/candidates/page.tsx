@@ -1325,26 +1325,23 @@ export default function CandidatesPage() {
 
       {selectedId ? (
         // Split view = chrome bar on top, then the two-column body
-        // (300px name list + iframe). Wrapping both columns in a
-        // flex-col container lets the chrome bar's divider span the
-        // entire content width — earlier it sat inside the right
-        // pane only and the line stopped at the name list. The
-        // divider rides as a `border-t` on the chrome bar so the
-        // line reads as the boundary between the page header above
-        // and the candidate content (action bar + profile) below.
-        <div className="flex min-h-0 flex-1 flex-col">
-          {/* Full-width split-view chrome bar. Two flex segments:
-              the LEFT segment is pinned to w-[300px] so it occupies
-              exactly the middle name-list column underneath, and its
-              right edge (the divider after "N of M") sits flush with
-              the name-list / iframe boundary. The RIGHT segment lives
-              over the iframe pane; pl-6 nudges Apply / Keep in to
-              line up with the candidate overview card below it. */}
-          <div className="flex h-10 shrink-0 items-center border-t border-court-border bg-court-surface">
-            <div
-              className="flex h-full shrink-0 items-center gap-2 border-r border-court-border px-3"
-              style={{ width: listWidth }}
-            >
+        // (300px name list + iframe). The list column owns its own
+        // top chrome strip with the All Candidates / Prev / Next /
+        // count controls; the resume column has no strip and slides
+        // up flush with the page header — the close X floats absolute
+        // in the top-right corner so the wasted full-width chrome row
+        // it used to share with the prev/next controls is gone.
+        <div className="flex min-h-0 flex-1">
+          <section
+            className="flex shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface"
+            style={{ width: listWidth }}
+          >
+            {/* List-column chrome strip. Used to be the LEFT segment
+                of a full-width chrome bar; the RIGHT segment had only
+                an X and produced a blank strip across the resume pane.
+                Folded into the list column so the resume content rises
+                to meet the page header. */}
+            <div className="flex h-10 shrink-0 items-center gap-2 border-t border-b border-court-border bg-court-surface px-3">
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
@@ -1376,26 +1373,6 @@ export default function CandidatesPage() {
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex h-full flex-1 items-center gap-2 pl-6 pr-3">
-              {/* Apply to Job / Keep dropped from the chrome bar — the
-                  embed profile's left-column action row is the single
-                  source of truth for those actions across both the
-                  full profile and the split-view popup. */}
-              <button
-                type="button"
-                onClick={() => setSelectedId(null)}
-                aria-label="Close profile"
-                className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          </div>
-          <div className="flex min-h-0 flex-1">
-          <section
-            className="flex shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface"
-            style={{ width: listWidth }}
-          >
             {/* Sidebar header — title + count pill + filter input.
                 border-t mirrors the default-view sidebar's top divider
                 so the rule above the header reads as continuous chrome
@@ -1472,7 +1449,7 @@ export default function CandidatesPage() {
                           className={
                             "grid w-full cursor-pointer grid-cols-[32px_1fr] items-center gap-2.5 border-b border-court-border/40 px-3.5 py-2.5 text-left transition " +
                             (active
-                              ? "bg-court-fg text-white"
+                              ? "bg-court-fg text-court-bg"
                               : "hover:bg-court-surface-subtle")
                           }
                         >
@@ -1487,7 +1464,7 @@ export default function CandidatesPage() {
                             <span
                               className={
                                 "block truncate text-[13.5px] font-semibold leading-tight " +
-                                (active ? "text-white" : "text-court-fg")
+                                (active ? "text-court-bg" : "text-court-fg")
                               }
                             >
                               {c.name}
@@ -1497,7 +1474,7 @@ export default function CandidatesPage() {
                                 className={
                                   "mt-0.5 block truncate text-[11.5px] leading-tight " +
                                   (active
-                                    ? "text-white/65"
+                                    ? "text-court-bg/65"
                                     : "text-court-fg-muted")
                                 }
                               >
@@ -1533,7 +1510,20 @@ export default function CandidatesPage() {
               className="pointer-events-none absolute inset-y-0 -left-1 -right-1"
             />
           </div>
-          <section className="flex flex-1 flex-col bg-court-bg">
+          <section className="relative flex flex-1 flex-col bg-court-bg">
+            {/* Close X — floats top-right above the iframe so the
+                resume column owns its full height. Lives here instead
+                of in a top chrome strip so the embedded profile rises
+                flush with the page header. z-10 keeps it above iframe
+                content; the surface bg + shadow read it as a button. */}
+            <button
+              type="button"
+              onClick={() => setSelectedId(null)}
+              aria-label="Close profile"
+              className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
+            >
+              <X className="h-4 w-4" />
+            </button>
             <iframe
               ref={iframeRef}
               key={selectedId}
@@ -1547,7 +1537,6 @@ export default function CandidatesPage() {
               style={draggingSplit ? { pointerEvents: "none" } : undefined}
             />
           </section>
-          </div>
         </div>
       ) : (
         <section className="flex flex-1 flex-col bg-court-bg">
