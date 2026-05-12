@@ -148,14 +148,19 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
     ];
     const body = encodeURIComponent(lines.join("\n"));
     const to = encodeURIComponent(billingPrimary?.email ?? "");
-    const cc = hiringContacts
-      .map((c) => c.email)
-      .filter(Boolean)
-      .concat([props.billingArEmail])
-      .join(",");
-    const ccParam = cc ? `&cc=${encodeURIComponent(cc)}` : "";
+    const ccList = hiringContacts.map((c) => c.email).filter(Boolean).join(",");
+    // Reply-To routes any reply to Accounts Receivable so AR owns the
+    // conversation thread without needing to be on every outbound CC.
+    // Gmail's web compose reads the `reply-to` query param and pre-fills
+    // the Reply-To header on the draft.
+    const replyTo = props.billingArEmail || "ar@breakpointtalent.com";
+    const params: string[] = [];
+    if (ccList) params.push(`cc=${encodeURIComponent(ccList)}`);
+    params.push(`reply-to=${encodeURIComponent(replyTo)}`);
+    params.push(`subject=${subject}`);
+    params.push(`body=${body}`);
     if (typeof window !== "undefined") {
-      window.open(`mailto:${to}?subject=${subject}${ccParam}&body=${body}`, "_blank");
+      window.open(`mailto:${to}?${params.join("&")}`, "_blank");
     }
   }
 
@@ -309,7 +314,7 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               onClick={handleEmailDraft}
               className="rounded-full border border-court-border bg-court-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
             >
-              Draft email in Gmail
+              Draft Email
             </button>
             <button
               type="button"

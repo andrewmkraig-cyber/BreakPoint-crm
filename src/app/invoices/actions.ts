@@ -249,10 +249,10 @@ export async function deleteInvoiceAction(id: string): Promise<Result> {
 // Spawns a fully-populated DRAFT invoice matching the design canvas
 // (Miles Atchison · tsaADVET · Senior Accountant · $7,500 · Net 14)
 // with both billing + hiring contacts pointed at Andrew's inbox so the
-// "Draft email in Gmail" preview lands in his own mailbox. The demo
-// Candidate + Client are find-or-created (idempotent) so re-running
-// this from the dashboard doesn't stack duplicate Miles/tsaADVET rows;
-// the Invoice row itself is created fresh every click.
+// Draft Email preview lands in his own mailbox. The demo Candidate +
+// Client are find-or-created (idempotent) so re-running this from the
+// dashboard doesn't stack duplicate Miles/tsaADVET rows; the Invoice
+// row itself is created fresh every click.
 export async function createTestInvoice(): Promise<Result<{ id: string }>> {
   const userId = await requireUserId();
   if (!userId) return fail("Not signed in");
