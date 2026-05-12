@@ -171,6 +171,11 @@ type Props = {
   growToFill?: boolean;
   // Header text shown in modal mode.
   modalTitle?: string;
+  // When set (Reply / Reply All from a specific thread message), renders
+  // a small "Replying to [Sender] · [date]" hint above the To row so the
+  // recruiter can see which message the composer is targeting before
+  // they type anything. Omitted for Forward and fresh-compose paths.
+  replyingTo?: { senderName: string; dateIso: string | null };
   // When true (modal mode only), skip the dark backdrop and let pointer
   // events pass through the outer dialog wrapper so the user can keep
   // interacting with the rest of the app while the composer is open.
@@ -206,6 +211,7 @@ export function MailComposer({
   modalTitle = "New email",
   nonBlocking = false,
   growToFill = false,
+  replyingTo,
   onPopOut,
   onClose,
   onSent,
@@ -1171,6 +1177,17 @@ export function MailComposer({
         </div>
       </div>
       <div className="shrink-0 space-y-1 px-5 py-1">
+        {replyingTo && (
+          <div className="text-[11px] text-court-fg-muted">
+            Replying to{" "}
+            <span className="font-medium text-court-fg">
+              {replyingTo.senderName}
+            </span>
+            {replyingTo.dateIso && (
+              <> · {new Date(replyingTo.dateIso).toLocaleString()}</>
+            )}
+          </div>
+        )}
         <AddressRow
           label="To"
           value={to}

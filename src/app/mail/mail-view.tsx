@@ -1934,6 +1934,20 @@ export function ThreadDetail({
   // (legacy inline /mail layout). Computing it once also keeps the
   // textarea / draft state from getting unmounted-and-remounted just
   // because we changed where it sits in the tree.
+  // Replying-to hint shown above the composer's To row so the
+  // recruiter sees which message they're targeting. Reply / Reply All
+  // point at the replyTarget message; Forward starts a new conversation
+  // so the hint is suppressed.
+  const replyingToHint =
+    composerMode === "reply" || composerMode === "replyAll"
+      ? {
+          senderName:
+            replyTarget?.fromName ||
+            replyTarget?.fromEmail ||
+            "(unknown sender)",
+          dateIso: replyTarget?.dateIso ?? null,
+        }
+      : undefined;
   const composerNode = composerOpen ? (
     <MailComposer
       // Forward starts a new Gmail thread; Reply / Reply All stay
@@ -1950,6 +1964,7 @@ export function ThreadDetail({
       growToFill={isFloating}
       templates={templates}
       ccPickerOptions={ccPickerOptions}
+      replyingTo={replyingToHint}
       mergeContext={{
         user: {
           firstName: currentUserFirstName,
@@ -2006,6 +2021,7 @@ export function ThreadDetail({
             },
           },
           modalTitle: popOutTitle,
+          replyingTo: replyingToHint,
           onSent: () => onSent?.(),
         });
         setComposerMode(null);

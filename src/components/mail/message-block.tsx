@@ -149,10 +149,10 @@ function shortTimestamp(iso: string | null): string {
 // color so the body tracks the active mode.
 //
 // Gmail-style collapse rule:
-//   isLatest=true  → always render the full body, no toggle.
-//   isLatest=false → render a single one-line summary div (sender,
-//                    100-char snippet, short date). Click expands it
-//                    via local showFull state.
+//   On mount: the latest message renders expanded, all older messages
+//   render as a one-line summary row.
+//   After mount: clicking either state toggles it — collapsed rows
+//   expand; expanded headers collapse back to the one-line summary.
 export function MessageBlock({
   msg,
   isFirst,
@@ -166,8 +166,7 @@ export function MessageBlock({
   showReplyAll?: boolean;
   isLatest: boolean;
 }) {
-  const [showFull, setShowFull] = useState(false);
-  const expanded = isLatest || showFull;
+  const [expanded, setExpanded] = useState(isLatest);
   // Body rendering moved out of this component on 2026-05-07: rich
   // marketing/newsletter emails (Quo dark-themed templates) need their
   // own <style> sheet + page bgcolor to survive, but inline rendering
@@ -179,7 +178,7 @@ export function MessageBlock({
     return (
       <button
         type="button"
-        onClick={() => setShowFull(true)}
+        onClick={() => setExpanded(true)}
         className={
           "flex w-full items-baseline gap-3 px-4 py-2 text-left transition hover:bg-court-surface-subtle/60 " +
           (isFirst ? "" : "border-t border-court-border")
@@ -208,10 +207,13 @@ export function MessageBlock({
     >
       {/* Single tight header row: sender + date + per-message actions
           all on one line, "to ..." line underneath in muted small.
-          Pre-fix this took two rows of large text + a separate Open
-          client chip, eating most of the popup's vertical real estate
-          when the actual email body was three letters long. */}
-      <header className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+          Clicking the header (anywhere outside the inline links / action
+          buttons) collapses the message back to the one-line summary. */}
+      <header
+        onClick={() => setExpanded(false)}
+        title="Click to collapse"
+        className="mb-1.5 flex cursor-pointer flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5"
+      >
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
           <span className="truncate text-sm font-medium text-court-fg">
             {msg.fromName || msg.fromEmail || "(unknown sender)"}
@@ -220,11 +222,11 @@ export function MessageBlock({
             // Sender's address resolved to a Contact whose Client we
             // know — surface a one-click jump to that profile so the
             // recruiter can land on the company without leaving the
-            // thread first. Subtler treatment now (link, not button)
-            // so it reads as metadata next to the name instead of a
-            // chip taking its own row.
+            // thread first. stopPropagation so the click navigates
+            // instead of collapsing the message body.
             <Link
               href={`/clients/${msg.senderClient.slug}`}
+              onClick={(e) => e.stopPropagation()}
               className="inline-flex items-center gap-0.5 text-[11px] font-medium text-court-accent-dark hover:underline"
               title={`Open ${msg.senderClient.name}`}
             >
@@ -239,7 +241,10 @@ export function MessageBlock({
             </span>
           )}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="flex shrink-0 items-center gap-2"
+        >
           {onAction && (
             <div className="flex items-center gap-1">
               <button

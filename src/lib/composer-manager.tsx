@@ -54,6 +54,11 @@ export type OpenComposerInput = {
   // the active client's contacts when launched from /clients/[id] so
   // the recruiter can start typing a name and pick from a dropdown.
   toSuggestions?: Array<{ name: string; email: string }>;
+  // Carry-over for the "Replying to [Sender] · [date]" hint shown above
+  // the To row. Set when an inline reply pops out into the modal so the
+  // hint follows the draft into the popped window. Omitted for fresh
+  // compose and Forward.
+  replyingTo?: { senderName: string; dateIso: string | null };
   // Called after a successful send. The composer auto-closes on send,
   // so this is for parent-side bookkeeping (e.g., refreshing a list).
   onSent?: () => void;
@@ -103,6 +108,7 @@ export function ComposerManagerProvider({ children }: { children: ReactNode }) {
           mergeContext={s.mergeContext}
           candidateRef={s.candidateRef}
           toSuggestions={s.toSuggestions}
+          replyingTo={s.replyingTo}
           autoFocusTo
           onClose={() => close(s.id)}
           onSent={() => {
