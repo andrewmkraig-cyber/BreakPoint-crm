@@ -1,9 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Briefcase, Search, Loader2, MapPin } from "lucide-react";
+import { Search, Loader2, MapPin } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
@@ -114,21 +113,13 @@ export function JobsView(props: JobsViewProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
-        <Tabs
-          tab={tab}
-          activeCount={activeCount}
-          privateCount={privateCount}
-          inactiveCount={inactiveCount}
-          buildHref={buildHref}
-        />
-        <Link
-          href="/jobs/new"
-          className="inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
-        >
-          <Briefcase className="h-3 w-3" /> Post New Job
-        </Link>
-      </div>
+      <Tabs
+        tab={tab}
+        activeCount={activeCount}
+        privateCount={privateCount}
+        inactiveCount={inactiveCount}
+        buildHref={buildHref}
+      />
 
       <form
         onSubmit={onSubmitSearch}
