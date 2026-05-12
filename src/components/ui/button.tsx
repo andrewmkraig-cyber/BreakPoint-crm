@@ -18,8 +18,12 @@ import { ButtonHTMLAttributes, forwardRef } from "react";
 //               distinct from `schedule` because Schedule Interview
 //               sits beside it on the same row and the two intents
 //               need to read as different colour families.
-//   reject    — Reject / Reapply / destructive / delete (soft red)
+//   reject    — Reject / destructive / delete (soft red)
 //   danger    — alias for reject; preserved for back-compat with older call sites
+//   reapply   — Reapply a disqualified candidate (soft violet). Cooler than
+//               the offer-stage purple so the two intents don't blur, and
+//               clearly distinct from reject red so the inverse action
+//               reads as a different intent at a glance.
 //   ghost     — text-only chrome action (no fill, no border)
 //   ai-primary   — Claude / AI affirmative (graphite pill, dark in every Court Mode)
 //   ai-secondary — Claude / AI neutral (outlined, sits next to ai-primary as a sibling)
@@ -39,6 +43,7 @@ type Variant =
   | "client-invite"
   | "reject"
   | "danger"
+  | "reapply"
   | "ghost"
   | "ai-primary"
   | "ai-secondary";
@@ -85,6 +90,8 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             // recruiting contexts); danger stays as an alias.
             "bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900 dark:hover:bg-red-950/60":
               variant === "reject" || variant === "danger",
+            "bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 dark:bg-violet-950/40 dark:text-violet-200 dark:border-violet-900 dark:hover:bg-violet-950/60":
+              variant === "reapply",
             "bg-transparent text-court-fg-muted hover:text-court-fg hover:bg-court-surface-subtle":
               variant === "ghost",
             // AI affirmative pill - graphite-leaning dark green that

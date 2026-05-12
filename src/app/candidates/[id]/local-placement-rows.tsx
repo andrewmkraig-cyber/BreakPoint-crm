@@ -427,7 +427,7 @@ function LocalJobActionRow({
             <Button
               type="button"
               size="sm"
-              variant="reject"
+              variant="reapply"
               onClick={onReapply}
               disabled={isReapplying}
               title="Reapply this candidate — deletes the disqualified placement row"
