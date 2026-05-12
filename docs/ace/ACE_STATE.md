@@ -1,10 +1,61 @@
 # ACE_STATE.md
-Last updated: 2026-05-11 · Ace 38.1
+Last updated: 2026-05-11 · Ace 39.0
 
 ## Current Status
-Current Version: Ace 38.1 (Candidate Sourcing Surface)
-Last Shipped: Ace 38.1 — May 11, 2026
+Current Version: Ace 39.0 (Sourcing Surface Polish + Interview Scheduler v2)
+Last Shipped: Ace 39.0 — May 11, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 39.0
+Polish + workflow round on the Candidate Sourcing Surface that shipped in 38.1, plus a full rebuild of the interview scheduler around native Google Calendar invites and a new Rejected tab on the job page.
+
+Job overview + Matches polish:
+- Job Overview collapsed into a single full-width inline-editable card. The previous two-column split was redundant.
+- Matches tab cleaned up — Sort / Columns / Export pills removed (the filter rail already drives every cut), filter sidebar narrowed, bulk action bar simplified to the actions that fire (Apply to Job / Add to List / Reject / Clear).
+- Jobs list row click navigates to the job only — the inline edit pencil moved into the Job Overview card so the row stops competing with itself.
+
+Rejected tab + Reapply:
+- New Rejected tab on `/jobs/[id]` surfacing every Placement at `stage="rejected"` for the job. Each row carries a Reapply button.
+- Reapply is a clean-slate DELETE on the Placement row, not a stage flip. The candidate falls back to no-relationship for the job so the next Apply / Submit starts fresh. Mirrors `onUnrejectViaDelete` on the RF side; the Ace-native path got the same treatment via `reapplyLocalPlacement`.
+- Bulk reject from the Matches tab now writes to Neon permanently instead of pop-from-local-state — the row stays rejected across reloads and the Rejected tab picks it up.
+
+Button color sweep:
+- Restored the semantic palette across every pipeline action surface: amber = Apply to Job, light blue = Keep, red = Reject, green = Submit. Reapply got its own soft-violet variant so the inverse of Reject reads as a different intent at a glance.
+- Dark mode sidebar tokens on `/candidates` so the rail no longer reads near-white in Court Mode dark variants.
+
+Candidates page columns + snippets:
+- New sortable Last Apply + Last Action columns on `/candidates`. Header chevrons drive `ORDER BY`; nulls last.
+- Null snippet cleanup — rows with no resume + no experience match render nothing under the row instead of the "no snippet" placeholder.
+- Snippet now lives inline with the row, no internal divider — full-width divider only at the row boundary, mirroring the split-view chrome change below.
+
+Geocoding + headers:
+- Zip-code geocoding via Nominatim `postalcode` lookup. A pure zip pill ("44115") now geocodes to a real lat/lng + bounding box instead of degrading to a `location ILIKE` contains-match.
+- Page headers bumped to 30px across the app. New-item buttons (New Candidate / New Job / New Client) shrunk so the page title carries the visual weight.
+
+Bulk actions (candidates + matches):
+- Apply to Job and Add to List exposed from the bulk action bar on `/candidates` and the per-job Matches tab. Apply to Job opens a job picker; Add to List opens the list picker. Both write per-candidate via the existing single-row server actions inside a `Promise.all`, with a single toast and a row-count summary.
+
+Mail:
+- Bulk move-to dropdown is now scrollable — the label list was overflowing the viewport for users with deep nested labels.
+- Mail inbox auto-refreshes every 30 s. The poll fetches the inbox metadata, diffs against the rendered list, and reconciles in place so the scroll position survives.
+- Drag a single thread (or any currently-selected thread set) onto a label in the sidebar to apply/move it. Mirrors the bulk move-to action.
+- Email attachments display and download in the thread view. Inline rendering for images, download-on-click for everything else.
+
+Interview scheduler v2:
+- Timezone selector on the Schedule modal — the recruiter's profile timezone is the default but they can override per interview (e.g. scheduling for a candidate on the West Coast).
+- Past date blocking — `DateTime15Picker` `blockPast` flag wired in so the recruiter can't accidentally schedule into yesterday. Reschedule still allows past times (correcting a previous mistake).
+- "Open meeting (anyone can join)" toggle defaults ON when type is Video. Off locks the Meet to invited attendees only.
+- Native Google Calendar invites per party: candidate and client get separate calendar events with party-tailored descriptions (candidate gets interview prep tips, client gets candidate details + résumé link), and both render the native Gmail Accept / Decline / Maybe block.
+- Template pre-population for the invite composers — interview-scheduled templates from `Template` table seed the Subject + Body so the recruiter sees the configured copy first paint. Falls back to the hardcoded default on lookup failure.
+- Meet settings deep link surfaced after a Video interview is scheduled so the recruiter can flip Meet's Trusted vs Open access if needed.
+- Back button on the invite flow preserves values: pressing Back from the Candidate composer returns to the Schedule modal (which stays mounted) with every field intact; the in-flight calendar event is cancelled so a clean reschedule is possible.
+
+Search-driven candidate profile:
+- Search term highlighting in amber on the candidate profile when entered from the rail. Tokens come from `?q=` on the embed URL; the same client-side `<mark>`er used in the snippet runs against the resume PDF text overlay and the structured fields.
+- Full-width split-view top divider so the candidate name list (left) and the profile column (right) read as one continuous chrome bar.
+
+Reapply (Ace-native + RF):
+- Reapply available on disqualified / rejected placement rows on both code paths. RF path deletes via `onUnrejectViaDelete` (stage="disqualified") or flips to "submitted" via `unrejectCandidateJob` (stage="rejected"). Ace-native path uses the new `reapplyLocalPlacement` server action (org-scoped DELETE on the row + ActionLog entry + revalidate by candidateId cuid). `LocalPlacementRows` now mirrors `jobs` into local state and threads an `onPlacementRemoved` callback so the row disappears immediately on success.
 
 ## Summary — Ace 38.1
 The `/candidates` rail and the per-job Matches tab consolidated into a single sourcing surface. Postgres search indexes landed alongside it so the new faceted filters and bulk searches scale past the 30k-candidate roster without sequential scans.
@@ -136,9 +187,40 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-BD Engine block (12-19 hr total). Claude Design pass first for the BD tab + BD Settings + Sequence builder UI before any code. Then in order: scheduled email send (Gmail API send-at), background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (Indeed API scan for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect, dedupes), sequence engine + BD Settings (outbound sequences from Ace using warmed domains, settings for keywords/titles/limit/cadence).
+Ace 40.0 — Design prompts first, then BD Engine block.
 
-Follow-up that didn't make this session: candidate Rejected tab on the job page. Builds on the per-job rejected-exclusion filter already shipped — surfaces the rejected candidates as their own list so the recruiter can revisit / un-reject without leaving the Matches surface.
+Design pass kicks off the session: (1) Night Court light mode — a dedicated low-contrast / warm-tinted light mode option in the Court Mode selector alongside the existing 3 surfaces, paired against (2) a Dashboard + Scoreboard + Invoicing redesign brief (consolidating the dashboard premium surface, the queued Scoreboard widget tile, and the parked Invoicing workflow into a single coherent surface direction). Design prompts run through Claude chat first — no code until the visual direction is signed off.
+
+Then BD Engine block (12-19 hr total): scheduled email send (Gmail API send-at), background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (Indeed API scan for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect, dedupes), sequence engine + BD Settings (outbound sequences from Ace using warmed domains, settings for keywords/titles/limit/cadence).
+
+## What Shipped in Ace 39.0 (2026-05-11)
+- **Job Overview single card**: full-width inline-editable card on `/jobs/[id]?tab=overview`. Two-column split retired — single Edit / Save / Cancel toggle drives every field.
+- **Matches tab cleanup**: Sort / Columns / Export pills removed from the per-job Matches tab (filter rail already drives every cut). Filter sidebar narrowed. Bulk action bar simplified to Apply to Job / Add to List / Reject / Clear.
+- **Jobs row click**: clicking a row on `/jobs` navigates to the job. Inline edit moved into the Job Overview card so the row stops competing with itself.
+- **Rejected tab on `/jobs/[id]`**: new tab listing every Placement at `stage="rejected"` for the job. Each row carries a Reapply button.
+- **Reapply = clean-slate DELETE**: Reapply on the new Rejected tab and on the candidate profile deletes the Placement row entirely rather than flipping the stage. The candidate falls back to no-relationship for the job so the next Apply / Submit starts fresh. RF path uses the existing `onUnrejectViaDelete` (stage="disqualified") + `unrejectCandidateJob` (stage="rejected"). Ace-native path uses the new `reapplyLocalPlacement` server action — org-scoped, validates `stage === "rejected"`, deletes the row, writes an `ActionLog` (`actionType: "reapply_local_placement"`), revalidates `/candidates/{id}` and `/pipeline`.
+- **`LocalPlacementRows` local state**: jobs prop mirrored into `jobsState` with `useEffect` sync; new `onPlacementRemoved(placementId)` callback threaded into `LocalJobActionRow` filters the row out of local state on Reapply success so it disappears without waiting for `router.refresh()` (which would race the Postgres commit).
+- **Bulk reject permanent**: the bulk-reject action on the Matches tab now writes to Neon permanently instead of popping rows from local state. The row stays rejected across reloads and the new Rejected tab picks it up.
+- **Button color sweep**: amber = Apply to Job, light blue = Keep, red = Reject, green = Submit restored across the candidate profile pipeline rows + the Matches tab split-view chrome + the per-job pipeline rows. New `reapply` variant in `src/components/ui/button.tsx` uses the soft violet ramp (`bg-violet-50 text-violet-700 border border-violet-200`, dark counterpart `bg-violet-950/40 text-violet-200 border-violet-900`) so the inverse of Reject reads as a different intent at a glance — cooler than the offer/pending-start purple so the two intents don't blur.
+- **Dark mode sidebar tokens on `/candidates`**: filter rail rewired to `bg-court-surface-subtle` + `border-court-border` + `text-court-fg` so it tracks Court Mode dark variants instead of reading near-white.
+- **Sortable Last Apply + Last Action on `/candidates`**: new header chevrons drive `ORDER BY lastApplyAt` and `ORDER BY lastActionAt` (nulls last). Same sort state survives filter changes.
+- **Null snippet cleanup**: rows with no resume hit + no experience-JSON match render nothing under the row instead of an empty placeholder line.
+- **Snippet inline with row, no internal divider**: snippet sits flush under the row title with no internal divider; full-width horizontal divider only fires at the row boundary. Pairs with the full-width split-view top divider so the candidate name list (left) and the profile column (right) read as one continuous chrome bar.
+- **Zip-code geocoding via Nominatim postalcode lookup**: a pill that looks like a 5-digit zip ("44115") geocodes via Nominatim's `postalcode` parameter to a real lat/lng + bounding box. Falls back to city-name lookup on miss, and to `location ILIKE` contains-match on geocode failure.
+- **Page header sizing**: page-title fonts bumped to 30px across the app. New-item buttons (New Candidate / New Job / New Client) shrunk so the page title carries the visual weight.
+- **Bulk Apply to Job + Add to List**: both actions exposed from the bulk action bar on `/candidates` and the per-job Matches tab. Apply to Job opens a job picker (only jobs the recruiter has access to); Add to List opens the list picker. Each writes per-candidate via the existing single-row server actions wrapped in `Promise.all`, with one toast summarizing the row-count outcome.
+- **Mail bulk move-to scrollable**: the move-to dropdown on the mail bulk action bar now scrolls when the label list exceeds the viewport. Was overflowing for users with deep nested labels.
+- **Mail inbox auto-refresh (30 s)**: `/mail/inbox` polls the inbox metadata every 30 s, diffs against the rendered list, and reconciles in place so the scroll position survives a refresh.
+- **Drag-to-label in mail sidebar**: drag a single thread (or any currently-selected thread set) onto a label in the mail sidebar to apply/move it. Mirrors the bulk move-to action.
+- **Mail attachment display + download**: thread view now renders inline images and shows download chips for non-image attachments. Click downloads the original file.
+- **Interview scheduler timezone selector**: Schedule modal picks up the recruiter's profile timezone as the default and allows per-interview override (e.g. scheduling for a West Coast candidate).
+- **Interview scheduler past date blocking**: `DateTime15Picker` `blockPast` flag wired in on the Schedule path so the picker disables dates in the past. Reschedule deliberately still allows past times so a recruiter can correct a previous mistake.
+- **Open meeting toggle on Video interviews**: "Open meeting (anyone can join)" checkbox defaults ON for Video interviews. Off locks the Meet to invited attendees only.
+- **Native Google Calendar invites per party**: candidate and client get separate calendar events with party-tailored descriptions — candidate event includes interview prep tips, client event includes candidate details + résumé link. Both render the native Gmail Accept / Decline / Maybe block.
+- **Template pre-population for invite composers**: interview-scheduled templates pre-fetched via `getInterviewSchedulingTemplates()` and threaded into both Candidate and Client composers so the recruiter sees configured Subject + Body first paint. Falls back to the hardcoded default on lookup failure.
+- **Meet settings link after Video schedule**: after a Video interview saves, a banner / toast surfaces a deep link to Google Meet's Trusted vs Open access settings so the recruiter can flip the meeting's access mode without leaving the flow.
+- **Back button preserves invite-flow state**: pressing Back from the Candidate composer returns to the Schedule modal (which stays mounted) with every field intact. The in-flight calendar event is cancelled at that point so a clean reschedule is possible. Back from the Client composer steps to the Candidate composer (re-PATCH is idempotent).
+- **Search term highlighting on candidate profile**: when the profile opens from the rail with `?q=`, query tokens are `<mark>`-highlighted in amber on the structured fields (name, current title, current organization, location). Same tokenizer that powers the snippet enrichment so highlights stay in lockstep with what drove the row in.
 
 ## What Shipped in Ace 38.1 (2026-05-11)
 - **Postgres search indexes**: indexes on `Candidate(firstName)`, `Candidate(lastName)`, `Candidate(email)` plus `Contact(name)` and the substring-into-`Contact.emails[]` lookup so the rail + bulk imports + the mail typeahead routes stop sequential-scanning. Landed first so the rest of the surface wasn't built on slow scans.

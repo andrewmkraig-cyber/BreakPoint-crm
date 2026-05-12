@@ -1,10 +1,10 @@
 # Ace Roadmap
-Last updated: 2026-05-11 · Ace 38.1
+Last updated: 2026-05-11 · Ace 39.0
 
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
-1. **BD Engine block** — 12-19 hr total. Claude Design pass first (1-2 hr) for BD tab + BD Settings + Sequence builder UI before any code. Then in order: Scheduled email send (Gmail API send-at), Background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (6 AM scan Indeed API for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect table, deduplicates), Sequence engine + BD Settings (outbound sequences from Ace using warmed domains, Settings for keywords/titles/limit/cadence).
+1. **BD Engine block** — 12-19 hr total. Ships in Ace 40.0 after the Ace 40 design pass (Night Court light mode + Dashboard/Scoreboard/Invoicing redesign) is signed off. Claude Design pass first (1-2 hr) for BD tab + BD Settings + Sequence builder UI before any code. Then in order: Scheduled email send (Gmail API send-at), Background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (6 AM scan Indeed API for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect table, deduplicates), Sequence engine + BD Settings (outbound sequences from Ace using warmed domains, Settings for keywords/titles/limit/cadence).
 2. **Search expansion map** — geocoded map visualization over the Candidate Sourcing Surface. Render the candidates returned by the current filter set as pins on an interactive map so the recruiter can see geographic spread at a glance and lasso a region to refine. Pairs with the radius pills already shipped — same `lat`/`lng` columns power both.
 3. **Bulk email** — multi-candidate email send from the new search surface. Drives off the row-checkbox / bulk action bar shipped in 38.1; composes a single Gmail draft per selected candidate with merge fields, sends through the existing Gmail send path. Activity-logged per recipient. Builds on the scheduled-send / queue infrastructure landing in the BD Engine block.
 4. **PWA conversion** — 1.5-3 hr. Manifest, service worker, push notifications.
@@ -19,9 +19,9 @@ In this order. Each item ships start-to-finish before the next begins unless an 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
-- **Candidate Rejected tab** — dedicated list on `/jobs/[id]` surfacing candidates with a `stage="rejected"` Placement for the job. The exclusion filter that hides them from the Matches list already shipped in 38.1; this tab gives the recruiter a place to revisit / un-reject without leaving the job surface.
 - **Tighter applied-jobs strip** — PlacementActionsIsland refactor required first; needs its own scoped prompt.
 - **Skills/keywords field on Job Description tab** — feeds Find Matches scoring and Boolean search. Add to the Boolean search prompt when that ships.
+- **Resizable split-view divider on `/candidates`** — drag handle on the boundary between the candidate name list (left) and the profile iframe (right) so the recruiter can make the name list narrower or wider to suit their screen size. Persist the chosen width in localStorage so it survives reloads.
 
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.
@@ -38,6 +38,8 @@ Build soon, lower priority than the active sequence above.
 - **Stock ticker strip** — small dashboard strip (S&P, NASDAQ, Dow, plus configurable watchlist).
 - **Scoreboard widget** — daily/weekly placement + submittal scoreboard tile.
 - **Ace launch countdown** — countdown chip on the dashboard until 2026-05-15.
+- **Microsoft Teams video interviews** — add "Microsoft Teams" as a second Type option in the interview scheduler alongside "Video (Google Meet)". Creates a Teams meeting via Microsoft Graph API and returns a Teams join link embedded in the calendar event. Requires Microsoft OAuth added to Settings > Connectors so the recruiter connects their Microsoft account. Eliminates the Google Meet Open vs Trusted access issue entirely since Teams allows anonymous join by default.
+- **Resume text view with search highlighting** — add a "Text View" toggle button above the resume PDF on the candidate profile embed view. Switches from the PDF iframe to a styled HTML div rendering the candidate's extracted resume text from the DB (`CandidateResume.extractedText`). Search tokens from the active keyword / Boolean query are `<mark>`-highlighted in amber matching the search rail tokenizer (same one that drives the snippet enrichment). Toggle hidden when no extracted text exists.
 
 ## Cleanup
 Do alongside other work.
@@ -81,6 +83,30 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 39.0 Sourcing Polish + Interview Scheduler v2 + Rejected tab (May 11, 2026)
+
+Closed the candidate Rejected tab follow-up from 38.1 and the interview-scheduler queue item. Reapply landed as a clean-slate DELETE on both code paths.
+
+- **Job Overview single full-width card** with one Edit / Save / Cancel toggle.
+- **Matches tab cleanup** — Sort / Columns / Export pills removed (rail drives every cut), sidebar narrowed, bulk action bar trimmed to Apply / Add to List / Reject / Clear.
+- **Rejected tab on `/jobs/[id]`** — surfaces every `stage="rejected"` Placement for the job. Reapply on each row.
+- **Reapply = clean-slate DELETE** on every surface. RF path: `onUnrejectViaDelete` (stage="disqualified") + `unrejectCandidateJob` (stage="rejected"). Ace-native path: new `reapplyLocalPlacement` server action, org-scoped, deletes the row + writes ActionLog (`reapply_local_placement`) + revalidates by candidateId cuid. `LocalPlacementRows` mirrors jobs into local state and threads `onPlacementRemoved` so the row vanishes without waiting on `router.refresh()`.
+- **Bulk reject permanent** — Matches-tab bulk reject now writes to Neon instead of popping from local state.
+- **Button color sweep restored** — amber = Apply, light blue = Keep, red = Reject, green = Submit. New `reapply` Button variant uses soft violet (`bg-violet-50/100`, dark `bg-violet-950/40`) so the inverse of Reject reads as a different intent.
+- **Dark mode sidebar tokens on `/candidates`** so the rail tracks Court Mode dark variants.
+- **Sortable Last Apply + Last Action columns** on `/candidates`, nulls last.
+- **Null snippet cleanup** — rows with no snippet match render nothing instead of an empty placeholder.
+- **Zip-code geocoding via Nominatim `postalcode`** — 5-digit zip pills resolve to a real bounding box. Falls back to city-name lookup, then to `location ILIKE`.
+- **Page headers bumped to 30px**; new-item buttons shrunk so the title carries the weight.
+- **Bulk Apply to Job + Add to List** on both `/candidates` and the per-job Matches tab. Per-candidate writes through the existing single-row server actions wrapped in `Promise.all`, single toast summarizing the outcome.
+- **Mail bulk move-to dropdown scrollable** for deep label trees.
+- **Mail inbox auto-refresh every 30 s** with in-place reconciliation so scroll position survives.
+- **Drag-to-label** in the mail sidebar — single thread or current selection drops onto a label to apply/move.
+- **Mail attachment display + download** in the thread view — inline images, download chips for everything else.
+- **Interview scheduler v2** — timezone selector (defaults to recruiter profile), past date blocking on Schedule (Reschedule still allows past), "Open meeting (anyone can join)" toggle defaulting ON for Video, native Google Calendar invites per party (candidate gets prep tips; client gets candidate details + résumé link; both get Accept / Decline / Maybe), template pre-population for both Candidate + Client composers via `getInterviewSchedulingTemplates()`, Meet settings deep link after a Video schedule, Back button preserving values (Schedule modal stays mounted; in-flight calendar event cancelled on Back).
+- **Search term highlighting on the candidate profile** when entered from the rail (`?q=`) — same tokenizer that powers snippet enrichment.
+- **Snippet inline with row, no internal divider**; full-width divider only at the row boundary; full-width split-view top divider so name list + profile column read as one chrome bar.
 
 ## Completed - Ace 38.1 Candidate Sourcing Surface (May 11, 2026)
 
