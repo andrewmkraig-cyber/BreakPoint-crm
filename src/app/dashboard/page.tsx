@@ -3,7 +3,6 @@ import { authOptions } from "@/lib/auth";
 import { DashboardTabs, resolveDashboardTab } from "@/app/dashboard/tabs";
 import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
-import { Invoicing } from "@/app/dashboard/invoicing";
 
 export const dynamic = "force-dynamic";
 
@@ -26,7 +25,6 @@ export default async function DashboardPage({
       <DashboardTabs active={active} />
       {active === "dashboard" && <MyDashboard />}
       {active === "scoreboard" && <Scoreboard />}
-      {active === "invoicing" && <Invoicing />}
     </div>
   );
 }

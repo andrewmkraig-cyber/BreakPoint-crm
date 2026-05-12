@@ -8,6 +8,7 @@ import {
   type InvoiceListFilter,
 } from "@/lib/invoices";
 
+import { InvoiceRow } from "./invoice-row";
 import { NewInvoiceButton } from "./new-invoice-button";
 import { SendTestInvoiceButton } from "./send-test-invoice-button";
 
@@ -179,14 +180,11 @@ export default async function InvoicesPage({
                   const status = STATUS_COPY[inv.status] ?? { label: inv.status, tone: "bg-court-surface-subtle text-court-fg" };
                   const isOverdue = inv.status === "SENT" && inv.dueDate && inv.dueDate < new Date();
                   return (
-                    <tr key={inv.id} className="border-b border-court-border last:border-b-0 hover:bg-court-surface-subtle/30">
+                    <InvoiceRow key={inv.id} href={`/invoices/${inv.id}`}>
                       <td className="px-6 py-3 align-top">
-                        <Link
-                          href={`/invoices/${inv.id}`}
-                          className="font-mono text-[12px] font-semibold text-court-fg hover:text-court-brand-dark"
-                        >
+                        <span className="font-mono text-[12px] font-semibold text-court-fg">
                           {inv.invoiceNumber}
-                        </Link>
+                        </span>
                       </td>
                       <td className="px-6 py-3 align-top">
                         <div className="font-medium text-court-fg">{inv.client?.name ?? "—"}</div>
@@ -213,7 +211,7 @@ export default async function InvoicesPage({
                           {status.label}
                         </span>
                       </td>
-                    </tr>
+                    </InvoiceRow>
                   );
                 })
               )}

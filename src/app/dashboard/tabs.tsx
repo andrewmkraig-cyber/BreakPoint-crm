@@ -1,17 +1,16 @@
 import { TabStrip } from "@/components/ui/tab-strip";
 
-export type DashboardTab = "dashboard" | "scoreboard" | "invoicing";
+export type DashboardTab = "dashboard" | "scoreboard";
 
 export const DASHBOARD_TAB_LABELS: Record<DashboardTab, string> = {
   dashboard: "Dashboard",
   scoreboard: "Scoreboard",
-  invoicing: "Billing",
 };
 
-const TAB_ORDER: DashboardTab[] = ["dashboard", "scoreboard", "invoicing"];
+const TAB_ORDER: DashboardTab[] = ["dashboard", "scoreboard"];
 
 export function resolveDashboardTab(raw: string | undefined | null): DashboardTab {
-  if (raw === "scoreboard" || raw === "invoicing") return raw;
+  if (raw === "scoreboard") return raw;
   return "dashboard";
 }
 
