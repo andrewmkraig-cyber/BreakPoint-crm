@@ -45,14 +45,19 @@ export async function GET(
   //   Candidate                  ← invoice.candidate.firstName + lastName
   //   Role                       ← invoice.roleTitle
   //   Issue / Due / Terms        ← invoice.startDate, invoice.dueDate, invoice.paymentTerms
-  //   Base Salary / Fee %        ← invoice.placement.acceptedSalary + .feePercentage
-  //                                (null when no placement linked — e.g. the
-  //                                "Send test invoice" path, which doesn't
-  //                                create a Placement row. Those tiles render
-  //                                "—" by design until snapshot columns land
-  //                                on Invoice.)
+  //   Base Salary / Fee %        ← invoice.baseSalary / invoice.feePercentage
+  //                                (Decimal snapshot columns; populated
+  //                                from placement at create time or set
+  //                                directly by the test-invoice path)
+  //   Account Exec               ← invoice.placement.createdBy.name
+  //                                (still joined — AE is recruiter context,
+  //                                not a billing snapshot)
   //   Notes                      ← invoice.notes (optional memo line)
   const feeAmountUsd = invoice.feeAmount ? Number(invoice.feeAmount.toString()) : null;
+  const baseSalaryUsd = invoice.baseSalary ? Number(invoice.baseSalary.toString()) : null;
+  const feePercentageNum = invoice.feePercentage
+    ? Number(invoice.feePercentage.toString())
+    : null;
 
   const pdfBuffer = await renderInvoicePdfBuffer({
     invoiceNumber: invoice.invoiceNumber,
@@ -71,8 +76,8 @@ export async function GET(
           year: "numeric",
         })
       : "",
-    baseSalaryUsd: invoice.placement?.acceptedSalary ?? null,
-    feePercentage: invoice.placement?.feePercentage ?? null,
+    baseSalaryUsd,
+    feePercentage: feePercentageNum,
     accountExecName,
     billingContacts,
     hiringContacts,

@@ -318,6 +318,11 @@ export async function createTestInvoice(): Promise<Result<{ id: string }>> {
         roleTitle: "Senior Accountant",
         startDate: today,
         feeAmount: new Prisma.Decimal("7500.00"),
+        // Snapshot the canvas values directly — the test invoice has
+        // no linked Placement, so without these the Base Salary / Fee%
+        // tiles render "—" instead of $150,000 / 20%.
+        baseSalary: new Prisma.Decimal("150000"),
+        feePercentage: new Prisma.Decimal("20"),
         paymentTerms: "Net 14",
         dueDate,
         billingContacts: billingContacts as unknown as Prisma.InputJsonValue,

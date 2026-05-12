@@ -143,6 +143,16 @@ export async function createInvoiceForPlacement(
   const feeAmount = placement.feeTotal != null
     ? new Prisma.Decimal(placement.feeTotal.toString())
     : null;
+  // Snapshot base salary + fee % from the placement so the Invoice row
+  // is self-describing. The PDF + detail view read these columns
+  // directly (no Placement join), which means downstream edits to the
+  // placement after the invoice ships don't quietly rewrite history.
+  const baseSalary = placement.acceptedSalary != null
+    ? new Prisma.Decimal(placement.acceptedSalary.toString())
+    : null;
+  const feePercentage = placement.feePercentage != null
+    ? new Prisma.Decimal(placement.feePercentage.toString())
+    : null;
 
   const created = await prisma.invoice.create({
     data: {
@@ -154,6 +164,8 @@ export async function createInvoiceForPlacement(
       roleTitle: placement.offerTitle ?? null,
       startDate: placement.expectedStartDate ?? null,
       feeAmount,
+      baseSalary,
+      feePercentage,
       paymentTerms: termsString,
       dueDate,
       billingContacts: billingContacts as unknown as Prisma.InputJsonValue,
@@ -315,12 +327,13 @@ export async function getInvoice(id: string, organizationId: string) {
       client: {
         select: { id: true, name: true, domain: true, location: true },
       },
+      // Placement is still joined so the PDF can resolve the Account
+      // Executive name (placement.createdBy). Base salary + fee % no
+      // longer rely on this join — they live on Invoice as snapshot
+      // columns and are pulled from the top-level row instead.
       placement: {
         select: {
           id: true,
-          feeTotal: true,
-          feePercentage: true,
-          acceptedSalary: true,
           expectedStartDate: true,
           offerTitle: true,
           createdById: true,

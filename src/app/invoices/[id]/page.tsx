@@ -57,8 +57,8 @@ export default async function InvoiceDetailPage({
         clientName={invoice.client?.name ?? ""}
         clientId={invoice.client?.id ?? null}
         accountExecName={accountExecName}
-        baseSalary={invoice.placement?.acceptedSalary ?? null}
-        feePercentage={invoice.placement?.feePercentage ?? null}
+        baseSalary={invoice.baseSalary ? Number(invoice.baseSalary.toString()) : null}
+        feePercentage={invoice.feePercentage ? Number(invoice.feePercentage.toString()) : null}
         billingContacts={billingContacts}
         hiringContacts={hiringContacts}
         billingCompanyName={billing.companyName}

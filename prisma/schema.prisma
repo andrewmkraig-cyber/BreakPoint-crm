@@ -974,6 +974,13 @@ model Invoice {
   roleTitle       String?
   startDate       DateTime?
   feeAmount       Decimal?      @db.Decimal(10, 2)
+  // Snapshot columns copied from the placement at create time so the
+  // invoice stays self-describing even if the source placement is
+  // later edited or deleted. Test invoices (no linked placement) write
+  // these directly. Reads in the PDF + detail UI now hit these columns
+  // instead of joining through Placement.
+  baseSalary      Decimal?      @db.Decimal(10, 2)
+  feePercentage   Decimal?      @db.Decimal(5, 2)
   paymentTerms    String?       @default("Net 30")
   dueDate         DateTime?
   billingContacts Json          @default("[]")
