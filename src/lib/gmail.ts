@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getEmailSignature } from "@/lib/preferences";
 import {
+  ACE_SIGNATURE_MARKER,
   getUserBrandingProfile,
   renderSignatureHtml,
   renderSignatureText,
@@ -238,43 +239,70 @@ export function appendSignature(body: string, signature: string): string {
 }
 
 async function withSignature(input: SendEmailInput): Promise<SendEmailInput> {
-  // Phase 6.2: Gmail-style HTML-table signature. Pulled from the sender's
-  // UserProfile (logo, name, title, phone, website). If the signature
-  // is already embedded in the body (e.g. a template that bakes it in
-  // or a re-edit that's already signed), appendSignature / HTML guard
-  // prevents a second copy from appearing.
+  // Phase 6.2: Gmail-style HTML-table signature, pulled from the
+  // sender's UserProfile (logo, name, title, phone, website).
+  //
+  // Strict idempotence: if the inbound body already carries an Ace
+  // signature, we strip it from the marker forward and re-render fresh.
+  // Earlier versions relied on a fragile href-substring check that
+  // could miss a prior signature whose URL had been rewritten in
+  // transit, which let a second copy stack underneath the first — the
+  // double-signature symptom Andrew reported. ACE_SIGNATURE_MARKER is
+  // an HTML comment baked into renderSignatureHtml; it round-trips
+  // through our own send/draft pipeline but is never visible to a
+  // recipient.
   const branding = await getUserBrandingProfile(input.userId);
   const textSig = renderSignatureText(branding);
   const htmlSig = renderSignatureHtml(branding);
 
-  // Plain-text body: append "-- \n" + text sig, unless the sig is
-  // already in the body (fallback preserves the legacy per-email
-  // signatures map so older seed data still works).
+  // Plain-text body: strip any prior "-- " block (RFC 3676 delimiter
+  // on a line by itself), then append a single fresh block. Falls back
+  // to the legacy per-email signatures map so older seed data still
+  // works when the user has no UserProfile.
   const legacyFallback = await getEmailSignature(input.from);
   const textSigBlock = textSig.trim().length > 0
     ? `${SIGNATURE_DELIMITER_TEXT}\n${textSig}`
     : legacyFallback;
-  const bodyText = appendSignature(input.bodyText, textSigBlock);
+  const cleanedText = stripExistingTextSignature(input.bodyText);
+  const bodyText = textSigBlock
+    ? `${cleanedText.replace(/\s+$/, "")}\n\n${textSigBlock}`
+    : cleanedText;
 
-  // HTML body: splice in the delimiter + rendered HTML table. If the
-  // caller didn't supply HTML, convert the plain-text body first so the
-  // recipient still gets the formatted signature.
+  // HTML body: strip any prior Ace signature (using the marker as the
+  // canonical boundary), then append a single fresh sig block.
+  // htmlSigBlock includes the marker via htmlSig itself, so a re-run
+  // of withSignature on the resulting body will land back here with
+  // markerIdx >= 0 and produce exactly one signature again.
   const htmlSigBlock = `<br/><br/>${SIGNATURE_DELIMITER_HTML}${htmlSig}`;
   const baseHtml = input.bodyHtml ?? plainToHtml(input.bodyText);
-  const bodyHtml = containsSignature(baseHtml, htmlSig) ? baseHtml : `${baseHtml}${htmlSigBlock}`;
+  const cleanedHtml = stripExistingHtmlSignature(baseHtml);
+  const bodyHtml = `${cleanedHtml}${htmlSigBlock}`;
 
   return { ...input, bodyText, bodyHtml };
 }
 
-// Cheap guard against double-signing: if the body already includes the
-// rendered signature table's distinctive marker (the fullName line or
-// the email href), skip appending a second copy.
-function containsSignature(body: string, sig: string): boolean {
-  // Extract the first URL/email from the signature — if it's in the
-  // body we assume the signature is already there.
-  const match = sig.match(/href="(mailto:[^"]+|https?:[^"]+)"/);
-  if (!match) return false;
-  return body.includes(match[1]);
+// Returns the body with any prior Ace-rendered signature removed. We
+// anchor on ACE_SIGNATURE_MARKER and walk back to drop the leading
+// "<br/><br/><div>-- </div>" preamble + any trailing whitespace so the
+// fresh signature lands on a clean tail.
+function stripExistingHtmlSignature(body: string): string {
+  const idx = body.indexOf(ACE_SIGNATURE_MARKER);
+  if (idx < 0) return body;
+  const head = body.slice(0, idx);
+  // Drop the "<br/><br/><div>-- </div>" preamble that we prepend to the
+  // sig in htmlSigBlock so it doesn't pile up across re-signs. Anchored
+  // to end-of-string with optional whitespace.
+  return head
+    .replace(/(?:\s*<br\s*\/?>\s*){1,4}(?:<div[^>]*>\s*--\s*<\/div>\s*)?$/i, "")
+    .replace(/\s+$/, "");
+}
+
+// Returns the body with any prior "-- " plain-text signature block
+// removed. RFC 3676 signature delimiter is "-- " (dash-dash-space) on a
+// line by itself; we strip from that line through end-of-body so a
+// second appendSignature lands on a clean tail.
+function stripExistingTextSignature(body: string): string {
+  return body.replace(/(?:^|\n)--\s*\n[\s\S]*$/, "");
 }
 
 export async function sendGmail(input: SendEmailInput): Promise<SendEmailResult> {

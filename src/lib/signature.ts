@@ -152,6 +152,16 @@ function buildContactRows(p: UserProfileRecord): ContactRow[] {
   return rows;
 }
 
+// Unique sentinel that marks an Ace-rendered HTML signature in an
+// email body. HTML comments are invisible to recipients but survive
+// round-trips through our own send/draft pipeline, which lets
+// withSignature detect (and strip) a prior Ace signature before
+// appending a fresh one. Without this, any flow that fed an
+// already-signed body back through withSignature would double-sign
+// the email — the symptom Andrew hit where sent mail rendered two
+// stacked logo + contact-icon blocks.
+export const ACE_SIGNATURE_MARKER = "<!--ace-signature-->";
+
 // Render the signature as an HTML-table block. Returns just the inner
 // HTML (no <html><body>) so callers can splice it into any email body.
 export function renderSignatureHtml(profile: UserProfileRecord): string {
@@ -191,7 +201,7 @@ export function renderSignatureHtml(profile: UserProfileRecord): string {
   const dividerCell = `
     <td width="2" style="width: 2px; background: ${SIGNATURE_GREEN}; padding: 0;">&nbsp;</td>`;
 
-  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-family: Arial, Helvetica, sans-serif; color: ${SIGNATURE_DARK};">
+  return `${ACE_SIGNATURE_MARKER}<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; font-family: Arial, Helvetica, sans-serif; color: ${SIGNATURE_DARK};">
       <tr>
         ${logoCell}
         ${dividerCell}
