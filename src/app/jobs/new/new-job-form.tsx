@@ -148,13 +148,14 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     }
   }
 
+  // Picking or dropping a JD only stages the file. The recruiter must
+  // click "Parse & Generate JD with Claude" above to actually invoke
+  // Claude — otherwise an accidental drop would burn a Claude call and
+  // overwrite the Description textarea before the recruiter is ready.
   function onPickJd(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
     if (!f) return;
     setJdFile(f);
-    startGenerate(async () => {
-      await doGenerate({ fileOverride: f });
-    });
   }
 
   function acceptDroppedFile(f: File | null) {
@@ -164,9 +165,6 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
       return;
     }
     setJdFile(f);
-    startGenerate(async () => {
-      await doGenerate({ fileOverride: f });
-    });
   }
 
   function onDragEnter(e: DragEvent<HTMLDivElement>) {
@@ -433,8 +431,8 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               <UploadCloud className="h-4 w-4 shrink-0 text-court-fg-muted" />
               <span className="text-court-fg-muted">
                 {isDragOver
-                  ? "Drop the PDF or DOCX to upload."
-                  : "Drag a JD file (PDF/DOCX) here, or use Upload JD. We'll reformat it with Claude."}
+                  ? "Drop the PDF or DOCX to stage it."
+                  : "Drag a JD file (PDF/DOCX) here, or use Upload JD. Then click Parse & Generate JD with Claude above."}
               </span>
             </>
           )}
@@ -446,11 +444,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             disabled={isGenerating || isCombinedRunning}
             className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
           >
-            {isGenerating && jdFile ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <UploadCloud className="h-3.5 w-3.5" />
-            )}
+            <UploadCloud className="h-3.5 w-3.5" />
             {jdFile ? "Replace file" : "Upload JD"}
           </button>
           <input
