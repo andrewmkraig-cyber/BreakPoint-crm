@@ -35,6 +35,7 @@ export type PlacementDetails = {
 };
 
 export type NextInterview = {
+  id: string;
   scheduledAt: string;
   type: "phone_screen" | "video" | "in_person";
 };
@@ -398,10 +399,16 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                       {r.jobTitle || "—"}
                     </Link>
                     {r.bucket === "interviewing" && r.nextInterview && (
-                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-court-fg-muted">
+                      <Link
+                        href={`/candidates/${r.candidateId}?edit=interview&interviewId=${encodeURIComponent(r.nextInterview.id)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        title="Edit interview"
+                        aria-label="Edit interview"
+                        className="mt-0.5 inline-flex items-center gap-1 rounded text-[11px] text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline"
+                      >
                         <CalendarClock className="h-3 w-3" />
                         Next: {formatInterviewWhen(r.nextInterview.scheduledAt)} · {formatInterviewTypeShort(r.nextInterview.type)}
-                      </div>
+                      </Link>
                     )}
                   </td>
                   <td className="px-5 py-3 align-top text-court-fg-muted">{r.clientName || "—"}</td>

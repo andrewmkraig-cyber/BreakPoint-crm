@@ -224,6 +224,90 @@ export async function getEventConferenceData(params: {
   return json.conferenceData ?? null;
 }
 
+// Patches arbitrary event fields (summary/description/location/attendees/
+// time) with caller-controlled sendUpdates. Used by the edit-interview
+// flow which needs "notify all" vs "notify new only" semantics.
+//
+// "notify new only" is implemented by the caller in two passes:
+//   1. Patch field changes with sendUpdates="none" (existing attendees
+//      see their calendar event silently update — no email).
+//   2. Patch the attendee list adding only the new attendees with
+//      sendUpdates="all" — Google then emails only the newly added
+//      attendees, not the existing ones.
+export type PatchCalendarEventDetailsInput = {
+  userId: string;
+  eventId: string;
+  sendUpdates: "all" | "none" | "externalOnly";
+  startISO?: string;
+  durationMin?: number;
+  timeZone?: string;
+  summary?: string;
+  description?: string;
+  location?: string | null;
+  attendees?: { email: string; displayName?: string }[];
+};
+
+export async function patchCalendarEventDetails(
+  input: PatchCalendarEventDetailsInput,
+): Promise<void> {
+  const accessToken = await getFreshAccessToken(input.userId);
+  const url = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
+  );
+  url.searchParams.set("sendUpdates", input.sendUpdates);
+  const body: Record<string, unknown> = {};
+  if (input.startISO && input.durationMin != null) {
+    const start = new Date(input.startISO);
+    const end = new Date(start.getTime() + input.durationMin * 60 * 1000);
+    const tz = input.timeZone || "America/New_York";
+    body.start = { dateTime: start.toISOString(), timeZone: tz };
+    body.end = { dateTime: end.toISOString(), timeZone: tz };
+  }
+  if (input.summary !== undefined) body.summary = input.summary;
+  if (input.description !== undefined) body.description = input.description;
+  if (input.location !== undefined) body.location = input.location ?? "";
+  if (input.attendees !== undefined) body.attendees = input.attendees;
+  if (Object.keys(body).length === 0) return;
+
+  const res = await fetch(url.toString(), {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Calendar patch failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
+export async function getCalendarEventAttendees(params: {
+  userId: string;
+  eventId: string;
+}): Promise<{ email: string; displayName?: string }[]> {
+  const accessToken = await getFreshAccessToken(params.userId);
+  const url = new URL(
+    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(params.eventId)}`,
+  );
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Calendar get failed (${res.status}): ${text || "no body"}`);
+  }
+  const json = (await res.json()) as {
+    attendees?: { email?: string; displayName?: string }[];
+  };
+  return (json.attendees ?? [])
+    .filter((a): a is { email: string; displayName?: string } => typeof a.email === "string" && a.email.length > 0)
+    .map((a) => ({ email: a.email, displayName: a.displayName }));
+}
+
 export async function updateCalendarEvent(params: {
   userId: string;
   eventId: string;

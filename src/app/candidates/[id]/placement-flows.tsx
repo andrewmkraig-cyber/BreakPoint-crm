@@ -46,9 +46,9 @@ import {
 import {
   cancelInterview,
   getInterviewSchedulingTemplates,
-  rescheduleInterview,
   scheduleInterview,
   sendInterviewInvite,
+  updateInterview,
   type InterviewType,
 } from "@/app/candidates/[id]/interview-actions";
 import { createClientContact } from "@/app/candidates/[id]/contact-actions";
@@ -117,6 +117,7 @@ export type InterviewSummary = {
   meetLink: string | null;
   attendees: { name: string; email: string }[];
   candidatePhone: string | null;
+  location: string | null;
   notes: string | null;
 };
 
@@ -249,7 +250,13 @@ export function PlacementActions({
   const [confirmFor, setConfirmFor] = useState<PlacementContextJob | null>(null);
   const [scheduleFor, setScheduleFor] = useState<PlacementContextJob | null>(null);
   const [clientInviteFor, setClientInviteFor] = useState<PlacementContextJob | null>(null);
-  const [rescheduleFor, setRescheduleFor] = useState<InterviewSummary | null>(null);
+  // Edit-interview target tracks both the interview and the placement
+  // job it belongs to — the modal needs the job's client contacts so the
+  // interviewer picker can render real options, not a free-text field.
+  const [rescheduleFor, setRescheduleFor] = useState<{
+    interview: InterviewSummary;
+    job: PlacementContextJob;
+  } | null>(null);
   // Post-Schedule multi-step invite flow: after the interview is saved + on
   // the calendar, we open the client composer, then the candidate composer.
   const [inviteFlow, setInviteFlow] = useState<InviteFlowState | null>(null);
@@ -482,11 +489,11 @@ export function PlacementActions({
     const edit = searchParams?.get("edit");
     const interviewId = searchParams?.get("interviewId");
     if (edit !== "interview" || !interviewId) return;
-    let found: InterviewSummary | null = null;
+    let found: { interview: InterviewSummary; job: PlacementContextJob } | null = null;
     for (const j of jobs) {
       const hit = j.interviews.find((iv) => iv.id === interviewId);
       if (hit) {
-        found = hit;
+        found = { interview: hit, job: j };
         break;
       }
     }
@@ -523,6 +530,7 @@ export function PlacementActions({
               onClientInvite={() => setClientInviteFor(j)}
               onReject={() => setRejectFor(j)}
               onCancel={() => setCancelFor(j)}
+              onEditInterview={(interview) => setRescheduleFor({ interview, job: j })}
               onPlacementRemoved={handlePlacementRemoved}
             />
           ))}
@@ -660,8 +668,11 @@ export function PlacementActions({
         />
       )}
       {rescheduleFor && (
-        <RescheduleDialog
-          interview={rescheduleFor}
+        <EditInterviewDialog
+          candidateRef={{ candidateRfId }}
+          candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
+          interview={rescheduleFor.interview}
+          job={rescheduleFor.job}
           onClose={() => setRescheduleFor(null)}
         />
       )}
@@ -724,6 +735,7 @@ function JobActionRow({
   onSchedule,
   onReject,
   onCancel,
+  onEditInterview,
   onPlacementRemoved,
 }: {
   job: PlacementContextJob;
@@ -736,6 +748,7 @@ function JobActionRow({
   onClientInvite: () => void;
   onReject: () => void;
   onCancel: () => void;
+  onEditInterview: (interview: InterviewSummary) => void;
   onPlacementRemoved?: (placementId: string) => void;
 }) {
   // Local Neon Placement.stage is the single source of truth for which
@@ -770,7 +783,14 @@ function JobActionRow({
               without waiting for RF's stage_name to catch up. */}
           <StageBadge bucket={effective} />
           {nextInterview && (
-            <span className="truncate text-xs text-court-fg-muted">{formatNextInterview(nextInterview)}</span>
+            <button
+              type="button"
+              onClick={() => onEditInterview(nextInterview)}
+              className="truncate rounded text-xs text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/30"
+              title="Edit interview"
+            >
+              {formatNextInterview(nextInterview)}
+            </button>
           )}
         </div>
 
@@ -2069,57 +2089,205 @@ function ClientInviteDialog({
   );
 }
 
-function RescheduleDialog({
+// Full edit-interview modal. Mounted when a recruiter clicks an existing
+// interview anywhere in Ace (dashboard upcoming-interviews row, inline
+// next-interview text on the job-row, pipeline-view "Next:" link). All
+// editable fields are pre-populated from the existing Interview row; the
+// timezone selector and date/time pickers are always editable (no past
+// block — edit should allow any moment, since editing a past interview is
+// a valid recovery path).
+//
+// Two save buttons let the recruiter choose how aggressively the calendar
+// update emails go out:
+//   - "Save + notify all guests"  → sendUpdates="all" — Google emails the
+//                                    update to every attendee on the event.
+//   - "Save + notify new guests"  → sendUpdates="none" for field changes,
+//                                    then a second patch adding any new
+//                                    attendees with sendUpdates="all" so
+//                                    only newly-added emails go out.
+function EditInterviewDialog({
+  candidateRef,
+  candidateName,
   interview,
+  job,
   onClose,
 }: {
+  candidateRef: { candidateRfId?: number; candidateId?: string };
+  candidateName: string;
   interview: InterviewSummary;
+  job: PlacementContextJob;
   onClose: () => void;
 }) {
+  void candidateRef;
   const router = useRouter();
   const [scheduledAt, setScheduledAt] = useState<string>(() => toDatetimeLocalValue(interview.scheduledAt));
   const [durationMin, setDurationMin] = useState<number>(interview.durationMin);
+  const [timeZone, setTimeZone] = useState<string>("America/New_York");
+  const [type, setType] = useState<InterviewType>(interview.type);
+  const initialInterviewer = interview.attendees[0] ?? { name: "", email: "" };
+  const [interviewerName, setInterviewerName] = useState(initialInterviewer.name);
+  const [interviewerEmail, setInterviewerEmail] = useState(initialInterviewer.email);
+  const [location, setLocation] = useState(interview.location ?? "");
+  const [notes, setNotes] = useState(interview.notes ?? "");
   const [err, setErr] = useState<string | null>(null);
-  const [isPending, startSave] = useTransition();
+  const [savingMode, setSavingMode] = useState<null | "all" | "new_only">(null);
+  const saving = savingMode !== null;
 
-  function onSave() {
+  function onSave(notifyMode: "all" | "new_only") {
     setErr(null);
     if (!scheduledAt) {
       setErr("Pick a date and time.");
       return;
     }
-    startSave(async () => {
-      const result = await rescheduleInterview({
+    if (type === "in_person" && !location.trim()) {
+      setErr("Address required for in-person interviews.");
+      return;
+    }
+    setSavingMode(notifyMode);
+    void (async () => {
+      const attendees = interviewerName.trim() || interviewerEmail.trim()
+        ? [{ name: interviewerName.trim(), email: interviewerEmail.trim() }]
+        : [];
+      const snapped = snapTo15Minutes(scheduledAt);
+      const result = await updateInterview({
         interviewId: interview.id,
-        scheduledAt: snapTo15Minutes(scheduledAt).toISOString(),
+        scheduledAt: snapped.toISOString(),
         durationMin,
+        type,
+        timeZone,
+        location: type === "in_person" ? location.trim() : "",
+        attendees,
+        notes: notes.trim(),
+        notifyMode,
+        jobTitle: job.jobTitle,
+        clientName: job.clientName,
+        candidateName,
       });
+      setSavingMode(null);
       if (!result.ok) {
         setErr(result.error);
-        toast.error("Couldn't reschedule", { description: result.error });
+        toast.error("Couldn't update interview", { description: result.error });
         return;
       }
-      toast.success("Interview rescheduled");
+      toast.success(
+        notifyMode === "all"
+          ? "Interview updated — all guests notified"
+          : "Interview updated — only new guests notified",
+      );
       onClose();
       router.refresh();
-    });
+    })();
   }
 
   return (
-    <Modal title="Reschedule interview" onClose={onClose}>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <label className="block text-sm sm:col-span-2">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
-          <DateTime15Picker
-            value={scheduledAt}
-            onChange={setScheduledAt}
-            className="mt-1"
-          />
+    <Modal title="Edit interview" subtitle={`${job.jobTitle} · ${job.clientName}`} onClose={onClose} wide>
+      <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm sm:col-span-2">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
+            <DateTime15Picker
+              value={scheduledAt}
+              onChange={setScheduledAt}
+              className="mt-1"
+              disabled={saving}
+            />
+          </label>
+          <DurationSelect value={durationMin} onChange={setDurationMin} />
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <label className="block text-sm sm:col-span-2">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Timezone</span>
+            <select
+              value={timeZone}
+              onChange={(e) => setTimeZone(e.target.value)}
+              disabled={saving}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="America/New_York">Eastern (ET)</option>
+              <option value="America/Chicago">Central (CT)</option>
+              <option value="America/Denver">Mountain (MT)</option>
+              <option value="America/Los_Angeles">Pacific (PT)</option>
+              <option value="America/Anchorage">Alaska (AKT)</option>
+              <option value="Pacific/Honolulu">Hawaii (HT)</option>
+            </select>
+          </label>
+        </div>
+        <label className="block text-sm">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Type</span>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as InterviewType)}
+            disabled={saving}
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+          >
+            <option value="phone_screen">Phone Screen</option>
+            <option value="video">Video (Google Meet)</option>
+            <option value="in_person">In-Person</option>
+          </select>
         </label>
-        <DurationSelect value={durationMin} onChange={setDurationMin} />
+        {type === "video" && interview.meetLink && (
+          <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs text-court-fg-muted">
+            Existing Meet link: <a href={interview.meetLink} target="_blank" rel="noreferrer" className="font-medium text-court-fg underline-offset-2 hover:underline">{interview.meetLink}</a>
+          </div>
+        )}
+        {type === "in_person" && (
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Address</span>
+            <input
+              type="text"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+              disabled={saving}
+              placeholder="e.g. 500 Main St, Suite 300, Columbus OH 43215"
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+        )}
+        <InterviewerPicker
+          clientRfId={job.clientRfId}
+          clientName={job.clientName}
+          initialContacts={job.clientContacts}
+          name={interviewerName}
+          email={interviewerEmail}
+          onChange={(n, e) => {
+            setInterviewerName(n);
+            setInterviewerEmail(e);
+          }}
+        />
+        <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
       </div>
       {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-      <ModalFooter onCancel={onClose} onSave={onSave} saving={isPending} saveLabel="Reschedule" />
+      <div className="mt-5 flex flex-col gap-2 border-t border-court-border pt-4 sm:flex-row sm:items-center sm:justify-end">
+        <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => onSave("new_only")}
+          disabled={saving}
+        >
+          {savingMode === "new_only" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Save className="h-3.5 w-3.5" />
+          )}
+          Save + notify new guests only
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          onClick={() => onSave("all")}
+          disabled={saving}
+        >
+          {savingMode === "all" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Save className="h-3.5 w-3.5" />
+          )}
+          Save + notify all guests
+        </Button>
+      </div>
     </Modal>
   );
 }

@@ -9,6 +9,8 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
+  getCalendarEventAttendees,
+  patchCalendarEventDetails,
   updateCalendarEvent,
   updateEventAsInvite,
 } from "@/lib/google-calendar";
@@ -518,6 +520,255 @@ export async function rescheduleInterview(input: RescheduleInterviewInput): Prom
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Reschedule failed." };
   }
+}
+
+// ---- Update interview (full edit) ----
+//
+// Used by the edit-interview modal which needs to mutate every field a
+// recruiter can change (time, duration, type, location, interviewer, etc.)
+// AND offer two notify modes:
+//
+//   - notifyMode: "all"      — patches the calendar event with sendUpdates
+//                              "all", so Google emails every attendee an
+//                              update.
+//   - notifyMode: "new_only" — patches non-attendee fields silently
+//                              (sendUpdates "none"), then patches the
+//                              attendee list adding only the new attendees
+//                              with sendUpdates "all". Existing attendees
+//                              see their calendar event update silently;
+//                              new attendees get a fresh invitation email.
+//
+// The "interviewer" field in the modal is the primary client attendee.
+// Additional attendees would be plumbed via input.attendees in the future.
+
+export type UpdateInterviewInput = {
+  interviewId: string;
+  scheduledAt: string;
+  durationMin: number;
+  type: InterviewType;
+  timeZone: string;
+  location?: string;
+  attendees?: InterviewAttendee[];
+  candidatePhone?: string;
+  notes?: string;
+  notifyMode: "all" | "new_only";
+  jobTitle?: string;
+  clientName?: string;
+  candidateName?: string;
+};
+
+export async function updateInterview(input: UpdateInterviewInput): Promise<Result> {
+  const user = await requireUser();
+  if (!user) return { ok: false, error: "Not signed in." };
+  if (!input.scheduledAt) return { ok: false, error: "Date/time is required." };
+  const when = new Date(input.scheduledAt);
+  if (Number.isNaN(when.getTime())) return { ok: false, error: "Invalid date/time." };
+  if (!input.type) return { ok: false, error: "Interview type is required." };
+  if (!Number.isFinite(input.durationMin) || input.durationMin <= 0) {
+    return { ok: false, error: "Duration must be positive." };
+  }
+
+  const existing = await prisma.interview.findUnique({
+    where: { id: input.interviewId },
+    select: {
+      id: true,
+      status: true,
+      scheduledAt: true,
+      durationMin: true,
+      type: true,
+      location: true,
+      candidatePhone: true,
+      notes: true,
+      clientAttendees: true,
+      googleEventIdMine: true,
+      googleEventIdClient: true,
+      googleEventIdCandidate: true,
+      candidateRfId: true,
+      candidateId: true,
+    },
+  });
+  if (!existing) return { ok: false, error: "Interview not found." };
+  if (existing.status === "cancelled") {
+    return { ok: false, error: "Can't edit a cancelled interview." };
+  }
+
+  // Build the calendar event summary + description from the new payload
+  // so recruiters editing the title/client/role downstream of a job
+  // rename see the update reflected in the event. Falls back to the
+  // existing event values when the caller didn't pass context.
+  const calendarPayload: {
+    summary?: string;
+    description?: string;
+  } = {};
+  if (input.candidateName || input.jobTitle || input.clientName) {
+    calendarPayload.summary = calendarSummary({
+      candidateRfId: existing.candidateRfId,
+      candidateId: existing.candidateId,
+      jobRfId: 0,
+      clientRfId: 0,
+      scheduledAt: input.scheduledAt,
+      durationMin: input.durationMin,
+      type: input.type,
+      source: "ace_scheduled",
+      candidateName: input.candidateName,
+      jobTitle: input.jobTitle,
+      clientName: input.clientName,
+    });
+    calendarPayload.description = calendarDescription({
+      candidateRfId: existing.candidateRfId,
+      candidateId: existing.candidateId,
+      jobRfId: 0,
+      clientRfId: 0,
+      scheduledAt: input.scheduledAt,
+      durationMin: input.durationMin,
+      type: input.type,
+      source: "ace_scheduled",
+      candidateName: input.candidateName,
+      jobTitle: input.jobTitle,
+      clientName: input.clientName,
+      candidatePhone: input.candidatePhone,
+      location: input.location,
+      attendees: input.attendees,
+      notes: input.notes,
+    });
+  }
+
+  // De-dupe the per-party event-id columns: ace_scheduled interviews
+  // share one event across all three columns after invite delivery, so
+  // PATCHing the same id three times would trigger three notifications.
+  const allEventIds = [
+    existing.googleEventIdMine,
+    existing.googleEventIdClient,
+    existing.googleEventIdCandidate,
+  ].filter((id): id is string => Boolean(id));
+  const uniqueEventIds = Array.from(new Set(allEventIds));
+
+  try {
+    for (const eventId of uniqueEventIds) {
+      if (input.notifyMode === "all") {
+        // Single PATCH; let Google email everyone the diff. When the
+        // attendees array isn't included in the body, the existing
+        // guest list is preserved — we only force-update the time and
+        // header fields here. Adding a new interviewer via the modal
+        // is handled below via addAttendeeToEvent.
+        await patchCalendarEventDetails({
+          userId: user.id,
+          eventId,
+          sendUpdates: "all",
+          startISO: when.toISOString(),
+          durationMin: input.durationMin,
+          timeZone: input.timeZone,
+          location: input.location ?? "",
+          summary: calendarPayload.summary,
+          description: calendarPayload.description,
+        });
+      } else {
+        // Silent field patch first, then opt-in invitations for new
+        // attendees only. Existing attendees see their event update
+        // silently; new ones get a fresh invitation email.
+        await patchCalendarEventDetails({
+          userId: user.id,
+          eventId,
+          sendUpdates: "none",
+          startISO: when.toISOString(),
+          durationMin: input.durationMin,
+          timeZone: input.timeZone,
+          location: input.location ?? "",
+          summary: calendarPayload.summary,
+          description: calendarPayload.description,
+        });
+      }
+
+      // Compute new attendees and add them with sendUpdates="all" so
+      // only the newly-added attendees receive an invitation. Skip
+      // empty / malformed entries.
+      if (input.attendees && input.attendees.length > 0) {
+        const currentAttendees = await getCalendarEventAttendees({
+          userId: user.id,
+          eventId,
+        });
+        const seen = new Set(currentAttendees.map((a) => a.email.toLowerCase()));
+        const additions = input.attendees
+          .map((a) => ({ email: a.email.trim(), displayName: a.name?.trim() || undefined }))
+          .filter((a) => a.email.length > 0 && !seen.has(a.email.toLowerCase()));
+        if (additions.length > 0) {
+          const nextAttendees = [
+            ...currentAttendees,
+            ...additions,
+          ];
+          await patchCalendarEventDetails({
+            userId: user.id,
+            eventId,
+            sendUpdates: "all",
+            attendees: nextAttendees,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      error:
+        e instanceof Error ? `Calendar update failed: ${e.message}` : "Calendar update failed.",
+    };
+  }
+
+  const clientAttendeesJson =
+    input.attendees && input.attendees.length > 0
+      ? (input.attendees as unknown as object)
+      : (existing.clientAttendees as unknown as object | null) ?? undefined;
+
+  await prisma.interview.update({
+    where: { id: input.interviewId },
+    data: {
+      scheduledAt: when,
+      durationMin: input.durationMin,
+      type: input.type,
+      location: input.location ?? null,
+      candidatePhone: input.candidatePhone ?? null,
+      notes: input.notes ?? null,
+      ...(clientAttendeesJson !== undefined ? { clientAttendees: clientAttendeesJson } : {}),
+      status: "scheduled",
+    },
+  });
+
+  const subjectId =
+    existing.candidateRfId != null ? String(existing.candidateRfId) : existing.candidateId!;
+  await createActionLog({
+    userId: user.id,
+    actionType: "update_interview",
+    subjectType: "candidate",
+    subjectId,
+    metadata: {
+      interviewId: input.interviewId,
+      from: existing.scheduledAt.toISOString(),
+      to: when.toISOString(),
+      durationMin: input.durationMin,
+      type: input.type,
+      notifyMode: input.notifyMode,
+    },
+  });
+
+  const org = await getCurrentOrg();
+  await logActivity({
+    organizationId: org.id,
+    userId: user.id,
+    actionType: "interview_updated",
+    targetType: "interview",
+    targetId: input.interviewId,
+    metadata: {
+      candidateRfId: existing.candidateRfId,
+      candidateId: existing.candidateId,
+      from: existing.scheduledAt.toISOString(),
+      to: when.toISOString(),
+      durationMin: input.durationMin,
+      type: input.type,
+      notifyMode: input.notifyMode,
+    },
+  });
+
+  revalidateForCandidate({ candidateRfId: existing.candidateRfId, candidateId: existing.candidateId });
+  return { ok: true };
 }
 
 // ---- Send native Google Calendar invite (replaces Gmail send) ----

@@ -76,6 +76,7 @@ export default async function PipelinePage({
       const key = `${iv.candidateRfId}:${iv.jobRfId}`;
       if (nextByKey.has(key)) continue; // first match wins (orderBy asc)
       nextByKey.set(key, {
+        id: iv.id,
         scheduledAt: iv.scheduledAt.toISOString(),
         type: iv.type as NextInterview["type"],
       });

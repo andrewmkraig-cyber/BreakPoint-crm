@@ -932,6 +932,7 @@ function toInterviewSummary(iv: InterviewRow): InterviewSummary {
     meetLink: iv.meetLink,
     attendees,
     candidatePhone: iv.candidatePhone,
+    location: iv.location,
     notes: iv.notes,
   };
 }
