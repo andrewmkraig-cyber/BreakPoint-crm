@@ -25,7 +25,7 @@ export function SendTestInvoiceButton() {
             router.push(`/invoices/${result.data.id}`);
           })
         }
-        className="inline-flex shrink-0 items-center gap-2 rounded-full border border-court-border bg-court-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
       >
         {isPending ? "Creating…" : "Send test invoice to myself"}
       </button>

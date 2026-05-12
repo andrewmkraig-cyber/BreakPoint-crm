@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useTransition } from "react";
 import { Plus } from "lucide-react";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { DASHBOARD_TAB_LABELS, resolveDashboardTab } from "@/app/dashboard/tabs";
+import { createBlankInvoiceAction } from "@/app/invoices/actions";
 
 // Pathname-driven page title rendered on the left side of the
 // TopBar. Mirrors the Jobot pattern Andrew showed: the section title
@@ -28,7 +29,8 @@ type TitleSpec = {
 type ActionSpec =
   | { kind: "link"; label: string; href: string }
   | { kind: "compose-mail"; label: string }
-  | { kind: "phone-dial"; label: string };
+  | { kind: "phone-dial"; label: string }
+  | { kind: "new-invoice"; label: string };
 
 function resolveSpec(
   pathname: string | null,
@@ -92,6 +94,16 @@ function resolveSpec(
       title: { label: "Calls & Texts" },
       action: { kind: "phone-dial", label: "New Text/Call" },
     };
+  }
+
+  if (pathname === "/invoices") {
+    return {
+      title: { label: "Invoices" },
+      action: { kind: "new-invoice", label: "New Invoice" },
+    };
+  }
+  if (/^\/invoices\/[^/]+/.test(pathname)) {
+    return { title: { label: "Invoices", href: "/invoices" } };
   }
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
@@ -178,7 +190,31 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "phone-dial") {
     return <PhoneDialButton label={action.label} />;
   }
+  if (action.kind === "new-invoice") {
+    return <NewInvoiceTopBarButton label={action.label} />;
+  }
   return null;
+}
+
+function NewInvoiceTopBarButton({ label }: { label: string }) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const result = await createBlankInvoiceAction({});
+          if (result.ok) router.push(`/invoices/${result.data.id}`);
+        })
+      }
+      className={ACTION_BUTTON_CLASS}
+    >
+      <Plus className="h-3 w-3" />
+      {pending ? "Creating…" : label}
+    </button>
+  );
 }
 
 // Mail-compose trigger. Lazy-fetches /api/mail/compose-init the first

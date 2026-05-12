@@ -9,7 +9,6 @@ import {
 } from "@/lib/invoices";
 
 import { InvoiceRow } from "./invoice-row";
-import { NewInvoiceButton } from "./new-invoice-button";
 import { SendTestInvoiceButton } from "./send-test-invoice-button";
 
 export const dynamic = "force-dynamic";
@@ -69,25 +68,7 @@ export default async function InvoicesPage({
   ]);
 
   return (
-    <div className="flex w-full flex-col gap-6 px-6 py-7 lg:px-10">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-            Billing Tower
-          </p>
-          <h1 className="mt-1 font-serif text-3xl font-bold tracking-tight text-court-fg">
-            Invoices
-          </h1>
-          <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-            Draft, send, and track placement invoices. Bank details live inside each PDF — no pay links, no Mercury sync.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SendTestInvoiceButton />
-          <NewInvoiceButton />
-        </div>
-      </header>
-
+    <div className="flex w-full flex-col gap-6">
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <KpiCard
           label="Outstanding"
@@ -218,6 +199,10 @@ export default async function InvoicesPage({
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="flex justify-end">
+        <SendTestInvoiceButton />
       </div>
     </div>
   );
