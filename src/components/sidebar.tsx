@@ -24,11 +24,12 @@ import { usePhoneContext } from "@/lib/phone-context";
 // Main nav grouped into recruiter workflow sections:
 //   Dashboard (ungrouped overview at top)
 //   ATS — Pipeline → Applicants → Candidates (active recruiting work)
-//   CRM — Clients → Jobs (reference surfaces)
-//   Inbox — Mail → Phone (inbox check, sits just above Settings)
-// The inbox block lives toward the bottom because the recruiter
-// spends most of the day in ATS/CRM and only dips into the inbox
-// when an alert pulls them there.
+//   CRM — Clients → Jobs → BD (reference surfaces)
+//   Inbox — Mail → Phone (inbox check)
+//   Ops — Invoices (back-office surfaces; Calendar lands here next session)
+// The inbox + ops blocks live toward the bottom because the recruiter
+// spends most of the day in ATS/CRM and only dips into them when an
+// alert (or a billing task) pulls them there.
 type NavGroup = {
   title: string | null;
   items: ReadonlyArray<{ href: string; label: string; icon: NavItem["icon"] }>;
@@ -53,7 +54,6 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
       { href: "/jobs", label: "Jobs", icon: Briefcase },
       { href: "/clients", label: "Clients", icon: Building2 },
       { href: "/bd", label: "BD", icon: Megaphone },
-      { href: "/invoices", label: "Invoices", icon: Receipt },
     ],
   },
   {
@@ -61,6 +61,14 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     items: [
       { href: "/mail", label: "Mail", icon: Mail },
       { href: "/phone", label: "Phone", icon: Phone },
+    ],
+  },
+  // OPS — back-office surfaces. Invoices today; Calendar lands here
+  // next session.
+  {
+    title: "Ops",
+    items: [
+      { href: "/invoices", label: "Invoices", icon: Receipt },
     ],
   },
 ];

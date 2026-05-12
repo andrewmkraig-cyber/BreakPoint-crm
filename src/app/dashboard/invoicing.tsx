@@ -64,7 +64,7 @@ function InvoicingHeader() {
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-          Invoicing
+          Billing Summary
         </p>
         <h2 className="mt-1 font-serif text-2xl font-extrabold tracking-tight text-court-fg sm:text-3xl">
           Bill, collect, automate.

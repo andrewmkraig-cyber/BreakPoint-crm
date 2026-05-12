@@ -5,7 +5,7 @@ export type DashboardTab = "dashboard" | "scoreboard" | "invoicing";
 export const DASHBOARD_TAB_LABELS: Record<DashboardTab, string> = {
   dashboard: "Dashboard",
   scoreboard: "Scoreboard",
-  invoicing: "Invoicing",
+  invoicing: "Billing",
 };
 
 const TAB_ORDER: DashboardTab[] = ["dashboard", "scoreboard", "invoicing"];
