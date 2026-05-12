@@ -1510,19 +1510,19 @@ export default function CandidatesPage() {
               className="pointer-events-none absolute inset-y-0 -left-1 -right-1"
             />
           </div>
-          <section className="relative flex flex-1 flex-col bg-court-bg">
-            {/* Close X — floats top-right above the iframe so the
-                resume column owns its full height. Lives here instead
-                of in a top chrome strip so the embedded profile rises
-                flush with the page header. z-10 keeps it above iframe
-                content; the surface bg + shadow read it as a button. */}
+          <section className="relative flex flex-1 flex-col bg-court-bg pt-5">
+            {/* Close X — a discrete glyph in the small bg-court-bg
+                gap above the embedded profile so it doesn't crowd the
+                right-rail card's top-right corner. No border / no fill
+                so it reads as page chrome, not a button glued to the
+                card. The 20px pt on the section reserves the strip. */}
             <button
               type="button"
               onClick={() => setSelectedId(null)}
               aria-label="Close profile"
-              className="absolute right-3 top-3 z-10 inline-flex h-7 w-7 items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted shadow-sm transition hover:text-court-fg"
+              className="absolute right-2 top-1 z-10 inline-flex h-5 w-5 items-center justify-center rounded text-court-fg-muted/70 transition hover:text-court-fg"
             >
-              <X className="h-4 w-4" />
+              <X className="h-3 w-3" />
             </button>
             <iframe
               ref={iframeRef}
