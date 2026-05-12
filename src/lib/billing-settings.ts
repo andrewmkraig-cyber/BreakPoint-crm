@@ -39,7 +39,7 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
   website: "breakpointtalent.com",
   defaultPaymentTerms: "Net 30",
   bankName: "",
-  bankBeneficiary: "BreakPoint Talent LLC",
+  bankBeneficiary: "Kraig Talent LLC",
   bankRouting: "",
   bankAccount: "",
   bankSwift: "",
