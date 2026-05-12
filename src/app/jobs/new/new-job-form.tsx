@@ -329,17 +329,18 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
 
   return (
     <div className="space-y-4">
-      {/* 1. Source Job Link card — URL input + single dark-green Claude
-            pill (Parse & Generate JD with Claude). No secondary button. */}
+      {/* 1. Source Material card — merges Source Job Link URL input and
+            Upload JD drop zone into one container, separated by an "or"
+            divider. Parse & Generate JD with Claude lives with the URL row. */}
       <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
-          Source Job Link
+          Source Material
         </label>
         <p className="mt-0.5 text-[11px] text-court-fg-muted">
-          Paste a careers-page URL and click Parse & Generate JD with Claude — auto-fills Title / Location / Salary and
-          writes the JD in one step.
+          Paste a URL, upload a file, or both — then click Parse & Generate JD with Claude.
         </p>
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             type="url"
             value={sourceUrl}
@@ -394,66 +395,70 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             </div>
           </div>
         )}
-      </div>
 
-      {/* 2. Upload JD row — drag-and-drop drop zone. Picking or dropping a
-            PDF/DOCX auto-runs generate-jd; there is no separate Generate
-            button on /jobs/new anymore. */}
-      <div
-        onDragEnter={onDragEnter}
-        onDragOver={onDragOver}
-        onDragLeave={onDragLeave}
-        onDrop={onDrop}
-        className={cn(
-          "flex flex-col gap-2 rounded-xl border-2 border-dashed p-4 transition sm:flex-row sm:items-center sm:justify-between",
-          isDragOver
-            ? "border-brand bg-brand/10"
-            : "border-court-border bg-court-surface-subtle/40",
-        )}
-      >
-        <div className="flex min-w-0 items-center gap-2 text-sm">
-          {jdFile ? (
-            <>
-              <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
-              <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
-              <span className="text-xs text-court-fg-muted">{formatSize(jdFile.size)}</span>
-              <button
-                type="button"
-                onClick={clearJd}
-                className="ml-1 rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
-                aria-label="Remove uploaded JD"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </>
-          ) : (
-            <>
-              <UploadCloud className="h-4 w-4 shrink-0 text-court-fg-muted" />
-              <span className="text-court-fg-muted">
-                {isDragOver
-                  ? "Drop the PDF or DOCX to stage it."
-                  : "Drag a JD file (PDF/DOCX) here, or use Upload JD. Then click Parse & Generate JD with Claude above."}
-              </span>
-            </>
-          )}
+        {/* "or" divider between URL row and Upload JD drop zone */}
+        <div className="my-4 flex items-center gap-3" aria-hidden="true">
+          <div className="h-px flex-1 bg-court-border" />
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">or</span>
+          <div className="h-px flex-1 bg-court-border" />
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => jdInputRef.current?.click()}
-            disabled={isGenerating || isCombinedRunning}
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
-          >
-            <UploadCloud className="h-3.5 w-3.5" />
-            {jdFile ? "Replace file" : "Upload JD"}
-          </button>
-          <input
-            ref={jdInputRef}
-            type="file"
-            accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            className="hidden"
-            onChange={onPickJd}
-          />
+
+        <div
+          onDragEnter={onDragEnter}
+          onDragOver={onDragOver}
+          onDragLeave={onDragLeave}
+          onDrop={onDrop}
+          className={cn(
+            "flex flex-col gap-2 rounded-xl border-2 border-dashed p-4 transition sm:flex-row sm:items-center sm:justify-between",
+            isDragOver
+              ? "border-brand bg-brand/10"
+              : "border-court-border bg-court-surface-subtle/40",
+          )}
+        >
+          <div className="flex min-w-0 items-center gap-2 text-sm">
+            {jdFile ? (
+              <>
+                <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
+                <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
+                <span className="text-xs text-court-fg-muted">{formatSize(jdFile.size)}</span>
+                <button
+                  type="button"
+                  onClick={clearJd}
+                  className="ml-1 rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+                  aria-label="Remove uploaded JD"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </>
+            ) : (
+              <>
+                <UploadCloud className="h-4 w-4 shrink-0 text-court-fg-muted" />
+                <span className="text-court-fg-muted">
+                  {isDragOver
+                    ? "Drop the PDF or DOCX to stage it."
+                    : "Drop a PDF or DOCX here, or click to browse."}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => jdInputRef.current?.click()}
+              disabled={isGenerating || isCombinedRunning}
+              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+            >
+              <UploadCloud className="h-3.5 w-3.5" />
+              {jdFile ? "Replace file" : "Upload JD"}
+            </button>
+            <input
+              ref={jdInputRef}
+              type="file"
+              accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              className="hidden"
+              onChange={onPickJd}
+            />
+          </div>
         </div>
       </div>
 
