@@ -99,15 +99,13 @@ export function Sidebar({ width }: { width?: number } = {}) {
         {NAV_GROUPS.map((group, idx) => (
           <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-5"}>
             {group.title && (
-              <div className="mb-1.5 flex items-center gap-2 px-3 pt-2">
-                <span
-                  aria-hidden="true"
-                  className="h-2.5 w-px shrink-0 rounded-full bg-court-sidebar-rail/60"
-                />
-                <div className="font-serif text-[10px] font-semibold uppercase tracking-[0.14em] text-court-sidebar-fg-dim">
-                  {group.title}
-                </div>
-                <div className="ml-1 h-px flex-1 bg-court-sidebar-border/60" />
+              // Clean section eyebrow — no rail dot, no trailing rule.
+              // Matches the design mock: Inter, tiny, uppercase, wide
+              // tracking. Display face (font-serif / Bricolage) reads
+              // chunky at 10–11px; Inter holds its shape at this scale
+              // and feels crisper.
+              <div className="mb-1.5 px-3 pt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-court-sidebar-fg-dim">
+                {group.title}
               </div>
             )}
             <div className="space-y-0.5">
