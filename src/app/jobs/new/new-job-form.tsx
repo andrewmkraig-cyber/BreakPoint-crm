@@ -6,7 +6,7 @@ import { Check, FileText, Loader2, Save, Sparkles, UploadCloud, X } from "lucide
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
+import { LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import { createJob, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -464,96 +464,69 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
 
       {/* 3. Structured fields card. 4. Description textarea (with Parse &
             Edit JD button beneath when it has content) and Preview at the
-            bottom of the same card. */}
-      <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <LabeledField label="Job title" value={title} onChange={setTitle} placeholder="e.g. Senior Full Stack Engineer" />
-          </div>
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Client</span>
-            <select
-              value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-            >
-              <option value="">Select a client…</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <LabeledField label="Location" value={location} onChange={setLocation} placeholder="Remote, New York, NY" />
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Job type</span>
-            <select
-              value={jobType}
-              onChange={(e) => setJobType(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-            >
-              {JOB_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Employment type</span>
-            <select
-              value={employmentType}
-              onChange={(e) => setEmploymentType(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-            >
-              {EMPLOYMENT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm md:col-span-2">
-            <span className="block text-[11px] uppercase tracking-wider text-court-fg-muted">Salary type</span>
-            <select
+            bottom of the same card. The compensation row (Salary Type /
+            Low / High / Currency / Openings) sits in a single 5-col sub-
+            grid on md+ so the form doesn't burn rows on small fields. */}
+      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <CompactField label="Job title" value={title} onChange={setTitle} placeholder="e.g. Senior Full Stack Engineer" />
+          <CompactSelect
+            label="Client"
+            value={clientId}
+            onChange={setClientId}
+          >
+            <option value="">Select a client…</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </CompactSelect>
+          <CompactField label="Location" value={location} onChange={setLocation} placeholder="Remote, New York, NY" />
+          <CompactSelect label="Job type" value={jobType} onChange={setJobType}>
+            {JOB_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </CompactSelect>
+          <CompactSelect label="Employment type" value={employmentType} onChange={setEmploymentType}>
+            {EMPLOYMENT_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </CompactSelect>
+          <div className="md:col-span-2 grid grid-cols-2 gap-3 md:grid-cols-5">
+            <CompactSelect
+              label="Salary type"
               value={salaryFrequency}
-              onChange={(e) => setSalaryFrequency(e.target.value === "hourly" ? "hourly" : "yearly")}
-              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 md:w-1/2"
+              onChange={(v) => setSalaryFrequency(v === "hourly" ? "hourly" : "yearly")}
             >
               <option value="yearly">Salary</option>
               <option value="hourly">Hourly</option>
-            </select>
-          </label>
-          <SalaryField
-            label={salaryFrequency === "hourly" ? "Hourly low" : "Salary low"}
-            value={salaryLow}
-            onChange={setSalaryLow}
-            onBlur={onSalaryLowBlur}
-            invalid={rangeInvalid}
-            placeholder={salaryFrequency === "hourly" ? "20.00" : "80000"}
-            step={salaryFrequency === "hourly" ? "0.01" : "1"}
-          />
-          <SalaryField
-            label={salaryFrequency === "hourly" ? "Hourly high" : "Salary high"}
-            value={salaryHigh}
-            onChange={setSalaryHigh}
-            onBlur={onSalaryHighBlur}
-            invalid={rangeInvalid}
-            placeholder={salaryFrequency === "hourly" ? "30.00" : "120000"}
-            step={salaryFrequency === "hourly" ? "0.01" : "1"}
-          />
-          <LabeledField label="Currency" value={currency} onChange={setCurrency} placeholder="USD" />
-          <label className="block text-sm">
-            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Openings</span>
-            <input
-              type="number"
-              min={1}
-              value={openings}
-              onChange={(e) => setOpenings(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            </CompactSelect>
+            <SalaryField
+              label={salaryFrequency === "hourly" ? "Hourly low" : "Salary low"}
+              value={salaryLow}
+              onChange={setSalaryLow}
+              onBlur={onSalaryLowBlur}
+              invalid={rangeInvalid}
+              placeholder={salaryFrequency === "hourly" ? "20.00" : "80000"}
+              step={salaryFrequency === "hourly" ? "0.01" : "1"}
             />
-          </label>
+            <SalaryField
+              label={salaryFrequency === "hourly" ? "Hourly high" : "Salary high"}
+              value={salaryHigh}
+              onChange={setSalaryHigh}
+              onBlur={onSalaryHighBlur}
+              invalid={rangeInvalid}
+              placeholder={salaryFrequency === "hourly" ? "30.00" : "120000"}
+              step={salaryFrequency === "hourly" ? "0.01" : "1"}
+            />
+            <CompactField label="Currency" value={currency} onChange={setCurrency} placeholder="USD" />
+            <CompactNumber label="Openings" value={openings} onChange={setOpenings} min={1} />
+          </div>
           <div className="md:col-span-2 space-y-2">
             <LabeledTextarea
               label="Description"
@@ -653,6 +626,87 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// The "Compact*" helpers below mirror LabeledField/LabeledSelect but with
+// tighter padding (py-1.5 / mt-0.5) so the structured-fields card stays
+// dense on /jobs/new without affecting other pages that depend on the
+// roomier shared LabeledField helpers.
+const COMPACT_LABEL_CLASS = "text-[11px] uppercase tracking-wider text-court-fg-muted";
+const COMPACT_INPUT_CLASS =
+  "mt-0.5 w-full rounded-lg border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+
+function CompactField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className={COMPACT_LABEL_CLASS}>{label}</span>
+      <input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className={COMPACT_INPUT_CLASS}
+      />
+    </label>
+  );
+}
+
+function CompactSelect({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className={COMPACT_LABEL_CLASS}>{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={COMPACT_INPUT_CLASS}>
+        {children}
+      </select>
+    </label>
+  );
+}
+
+function CompactNumber({
+  label,
+  value,
+  onChange,
+  min,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  min?: number;
+}) {
+  return (
+    <label className="block text-sm">
+      <span className={COMPACT_LABEL_CLASS}>{label}</span>
+      <input
+        type="number"
+        min={min}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={COMPACT_INPUT_CLASS}
+      />
+    </label>
+  );
+}
+
 function SalaryField({
   label,
   value,
@@ -672,7 +726,7 @@ function SalaryField({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
+      <span className={COMPACT_LABEL_CLASS}>{label}</span>
       <input
         type="number"
         min={0}
@@ -685,7 +739,7 @@ function SalaryField({
         }}
         onBlur={onBlur}
         className={cn(
-          "mt-1 w-full rounded-lg border px-3 py-2 text-sm text-court-fg focus:outline-none focus:ring-2",
+          "mt-0.5 w-full rounded-lg border px-3 py-1.5 text-sm text-court-fg focus:outline-none focus:ring-2",
           invalid
             ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-amber-200"
             : "border-court-border bg-court-surface focus:border-brand focus:ring-brand/20",
