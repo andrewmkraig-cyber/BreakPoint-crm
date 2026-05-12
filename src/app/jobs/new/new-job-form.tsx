@@ -138,14 +138,18 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
       toast.error("Couldn't generate job description", { description: result.error });
       return;
     }
-    setDescription(result.value.text);
+    // The server action returns { fallback: true, text: JD_FALLBACK_TEXT }
+    // whenever the Claude call throws (529 overload, network blip, missing
+    // API key, etc.). Loading that placeholder into Description would clobber
+    // whatever the recruiter has so far, including a URL-parsed JD or the
+    // freshly staged file's context. Surface the busy state instead and
+    // leave the form exactly as it was so the user can retry.
     if (result.value.fallback) {
-      toast.info("Claude unavailable — template loaded", {
-        description: result.value.reason ?? "Write the JD manually using the template below.",
-      });
-    } else {
-      toast.success("Job description generated", { description: "Edit before saving if needed." });
+      toast.error("Claude API is busy — try again in a moment. Your file is still staged.");
+      return;
     }
+    setDescription(result.value.text);
+    toast.success("Job description generated", { description: "Edit before saving if needed." });
   }
 
   // Picking or dropping a JD only stages the file. The recruiter must
