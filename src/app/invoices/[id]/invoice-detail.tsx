@@ -144,10 +144,10 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       const subject = `Invoice from ${props.billingCompanyName} - ${lastName} placement (${props.invoiceNumber})`;
       const paragraphs = [
         `Hi ${firstName},`,
-        `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}. We're glad to have helped, and we're looking forward to seeing the impact.`,
+        `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}.`,
         `Attached is invoice ${props.invoiceNumber} for the placement fee of ${formatUsd(feeAmount)}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
         `ACH, wire, and check details are inside the PDF. Please reference ${props.invoiceNumber} on payment. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.`,
-        `Thanks again for trusting ${props.billingCompanyName} with this search.`,
+        `We appreciate you trusting ${props.billingCompanyName} with this search, and we hope to continue to support your hiring needs in the future.`,
         `Best,<br />${signer}`,
       ];
       const body = paragraphs.map((p) => `<p>${p}</p>`).join("");
