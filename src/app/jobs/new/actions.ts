@@ -97,6 +97,11 @@ export type NewJobInput = {
   salaryRangeStart: number | null;
   salaryRangeEnd: number | null;
   salaryCurrency: string;
+  // "yearly" or "hourly" — matches the existing Job.salaryFrequency
+  // column already consumed by the Overview tab + JD generator.
+  // Default on the form is "yearly" so historical create-paths that
+  // omit this field aren't affected at runtime.
+  salaryFrequency?: "yearly" | "hourly";
   openings: number | null;
   description: string;
 };
@@ -143,6 +148,11 @@ export async function createJob(
     const jobType = input.jobType.trim();
     const employmentType = input.employmentType.trim();
 
+    const salaryFrequency =
+      input.salaryFrequency === "hourly" || input.salaryFrequency === "yearly"
+        ? input.salaryFrequency
+        : "yearly";
+
     const job = await prisma.job.create({
       data: {
         title,
@@ -154,6 +164,7 @@ export async function createJob(
         salaryRangeStart: lo ?? null,
         salaryRangeEnd: hi ?? null,
         salaryCurrency: (input.salaryCurrency || "USD").trim().toUpperCase().slice(0, 3),
+        salaryFrequency,
         numberOfOpenings: input.openings ?? null,
         description: description || null,
         organizationId: org.id,

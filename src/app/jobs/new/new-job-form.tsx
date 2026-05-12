@@ -12,6 +12,13 @@ import { cn } from "@/lib/utils";
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
 const EMPLOYMENT_TYPES = ["Full time", "Part time", "Contract"] as const;
 
+// Backed by Job.salaryFrequency on the schema (existing column). "yearly"
+// is the canonical default for new jobs — recruiters can flip to hourly
+// for trades / temp / contract roles where the comp is quoted by the
+// hour. The label flip on the salary inputs surfaces the unit choice so
+// "20" doesn't get misread as $20k.
+type SalaryFrequency = "yearly" | "hourly";
+
 // Phase 2: clients dropdown carries cuids (Ace-native + RF-imported) — the
 // form submits clientId directly to the Neon-native createJob action.
 export function NewJobForm({ clients }: { clients: Array<{ id: string; name: string }> }) {
@@ -21,6 +28,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   const [location, setLocation] = useState("");
   const [jobType, setJobType] = useState<string>(JOB_TYPES[0]);
   const [employmentType, setEmploymentType] = useState<string>(EMPLOYMENT_TYPES[0]);
+  const [salaryFrequency, setSalaryFrequency] = useState<SalaryFrequency>("yearly");
   const [salaryLow, setSalaryLow] = useState("");
   const [salaryHigh, setSalaryHigh] = useState("");
   const [currency, setCurrency] = useState("USD");
@@ -122,6 +130,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         salaryRangeStart: loNum,
         salaryRangeEnd: hiNum,
         salaryCurrency: currency.trim().toUpperCase().slice(0, 3) || "USD",
+        salaryFrequency,
         openings: openings ? Number(openings) : null,
         description,
       });
@@ -186,19 +195,34 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             ))}
           </select>
         </label>
+        <label className="block text-sm md:col-span-2">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Salary type</span>
+          <select
+            value={salaryFrequency}
+            onChange={(e) => setSalaryFrequency(e.target.value === "hourly" ? "hourly" : "yearly")}
+            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 md:w-1/2"
+          >
+            <option value="yearly">Salary</option>
+            <option value="hourly">Hourly</option>
+          </select>
+        </label>
         <SalaryField
-          label="Salary low"
+          label={salaryFrequency === "hourly" ? "Hourly low" : "Salary low"}
           value={salaryLow}
           onChange={setSalaryLow}
           onBlur={onSalaryLowBlur}
           invalid={rangeInvalid}
+          placeholder={salaryFrequency === "hourly" ? "20.00" : "80000"}
+          step={salaryFrequency === "hourly" ? "0.01" : "1"}
         />
         <SalaryField
-          label="Salary high"
+          label={salaryFrequency === "hourly" ? "Hourly high" : "Salary high"}
           value={salaryHigh}
           onChange={setSalaryHigh}
           onBlur={onSalaryHighBlur}
           invalid={rangeInvalid}
+          placeholder={salaryFrequency === "hourly" ? "30.00" : "120000"}
+          step={salaryFrequency === "hourly" ? "0.01" : "1"}
         />
         <LabeledField label="Currency" value={currency} onChange={setCurrency} placeholder="USD" />
         <label className="block text-sm">
@@ -333,12 +357,16 @@ function SalaryField({
   onChange,
   onBlur,
   invalid,
+  placeholder,
+  step,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   onBlur: () => void;
   invalid: boolean;
+  placeholder?: string;
+  step?: string;
 }) {
   return (
     <label className="block text-sm">
@@ -346,6 +374,8 @@ function SalaryField({
       <input
         type="number"
         min={0}
+        step={step}
+        placeholder={placeholder}
         value={value}
         onChange={(e) => {
           const n = e.target.value;

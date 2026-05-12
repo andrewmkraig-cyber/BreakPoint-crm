@@ -88,6 +88,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<GenerateJdRes
   const location = (meta.location ?? formatLocations(job.locations)).trim();
   const compensation = (meta.compensation ?? formatCompensation(job)).trim();
 
+  // Normalize to the two values the prompt understands. Legacy rows
+  // created before the /jobs/new toggle landed have null here — default
+  // them to yearly so existing salary figures don't get mis-described.
+  const salaryFrequency: "yearly" | "hourly" =
+    job.salaryFrequency === "hourly" ? "hourly" : "yearly";
+
   let generated: string;
   try {
     generated = await runGenerate({
@@ -97,6 +103,7 @@ export async function POST(req: NextRequest): Promise<NextResponse<GenerateJdRes
       location,
       compensation,
       employmentType: job.employmentType ?? null,
+      salaryFrequency,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Claude call failed.";
@@ -174,14 +181,23 @@ async function runGenerate(params: {
   location: string;
   compensation: string;
   employmentType: string | null;
+  salaryFrequency: "yearly" | "hourly";
 }): Promise<string> {
   const anthropic = getClaude();
+
+  // Salary type comes from the explicit Job.salaryFrequency column, not
+  // from amount-size heuristics. Past prompts inferred "looks like an
+  // hourly rate" from the dollar figure, which broke for low-end annual
+  // salaries (e.g. $35,000) and high-end hourly rates ($120/hr). The
+  // explicit flag eliminates that guess.
+  const salaryTypeLabel = params.salaryFrequency === "hourly" ? "HOURLY" : "SALARY";
 
   const metaBlock =
     `Title: ${params.title || "(unspecified)"}\n` +
     `Client: ${params.clientName || "(unspecified)"}\n` +
     `Location: ${params.location || "(unspecified)"}\n` +
     `Compensation: ${params.compensation || "(unspecified)"}\n` +
+    `Salary Type: ${salaryTypeLabel}\n` +
     (params.employmentType ? `Employment Type: ${params.employmentType}\n` : "");
 
   const system =
@@ -199,8 +215,12 @@ async function runGenerate(params: {
     "If a piece of metadata is unspecified, omit that line entirely (do not write 'unspecified').\n\n" +
     "Output MUST follow this EXACT structure, in this order, with the literal section titles shown. " +
     "Top-level sections use '## ' (H2). Sub-sections under Job Details use '### ' (H3). The Location/Salary lines and the pitch header are plain paragraphs — no heading markers.\n\n" +
+    "Salary Type rules — use the 'Salary Type' field in the metadata block below. " +
+    "If Salary Type is HOURLY: write the Salary line as e.g. 'Salary: $25.00 to $30.00 per hour' and write any compensation bullets under 'Why Join Us' in hourly terms (e.g. 'Competitive hourly pay starting at $25.00 per hour'). " +
+    "If Salary Type is SALARY: write the Salary line as e.g. 'Salary: $80,000 to $120,000 per year' and write compensation bullets in annual terms (e.g. 'Competitive salary starting at $80,000'). " +
+    "Never call an hourly number a 'salary' or an annual figure 'per hour'. Do not infer hourly vs. annual from the dollar amount — trust the Salary Type field.\n\n" +
     "Location: [location]\n" +
-    "Salary: [salary or compensation range if available]\n" +
+    "Salary: [salary or compensation range if available, formatted per the Salary Type rule]\n" +
     "\n" +
     "[Short pitch header — one punchy candidate-facing reason to apply, single line, no quotes, no exclamation points]\n" +
     "\n" +
