@@ -359,7 +359,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           Paste a URL, upload a file, or both — then click Parse & Generate JD with Claude.
         </p>
 
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="mt-3">
           <input
             type="url"
             value={sourceUrl}
@@ -370,28 +370,10 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             }}
             placeholder="https://…"
             className={cn(
-              "flex-1 rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
+              "w-full rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
               "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
             )}
           />
-          <button
-            type="button"
-            onClick={onParseAndGenerate}
-            disabled={
-              isCombinedRunning ||
-              isParsing ||
-              isGenerating ||
-              (!sourceUrl.trim() && !description.trim() && !jdFile)
-            }
-            className={cn(CLAUDE_PILL_CLASS, (isCombinedRunning || isParsing) && "opacity-60")}
-          >
-            {isCombinedRunning || isParsing ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3" />
-            )}
-            {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate JD with Claude"}
-          </button>
         </div>
         {parseInlineError && (
           <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
@@ -479,6 +461,29 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             />
           </div>
         </div>
+
+        <button
+          type="button"
+          onClick={onParseAndGenerate}
+          disabled={
+            isCombinedRunning ||
+            isParsing ||
+            isGenerating ||
+            (!sourceUrl.trim() && !description.trim() && !jdFile)
+          }
+          className={cn(
+            CLAUDE_PILL_CLASS,
+            "mt-4 w-full justify-center",
+            (isCombinedRunning || isParsing) && "opacity-60",
+          )}
+        >
+          {isCombinedRunning || isParsing ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3" />
+          )}
+          {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate JD with Claude"}
+        </button>
       </div>
 
       {/* 3. Structured fields card. 4. Description textarea (with Parse &
