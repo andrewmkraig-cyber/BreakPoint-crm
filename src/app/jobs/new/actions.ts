@@ -108,6 +108,12 @@ export type NewJobInput = {
   // Job.sourceJobUrl so a failed parse doesn't lose the link, and so
   // the Job's later JD tab can re-parse from the same source.
   sourceJobUrl?: string | null;
+  // Free-form recruiter notes. /jobs/new's Save Link affordance (shown
+  // when Indeed/LinkedIn block server-side fetches) drops a
+  // "Client Job Link: <url>" line here so the URL isn't lost when the
+  // parse can't run — the recruiter then writes the rest of the form
+  // and clicks Create job.
+  internalRecruiterNotes?: string | null;
 };
 
 // Ace-native create path. Writes a new Job row to Neon with the current
@@ -159,6 +165,7 @@ export async function createJob(
 
     const sourceJobUrl = input.sourceJobUrl?.trim();
     const sourceJobUrlForCreate = sourceJobUrl && /^https?:\/\//i.test(sourceJobUrl) ? sourceJobUrl : null;
+    const internalRecruiterNotes = input.internalRecruiterNotes?.trim() || null;
 
     const job = await prisma.job.create({
       data: {
@@ -175,6 +182,7 @@ export async function createJob(
         numberOfOpenings: input.openings ?? null,
         description: description || null,
         sourceJobUrl: sourceJobUrlForCreate,
+        internalRecruiterNotes,
         organizationId: org.id,
       },
       select: { id: true, legacyRfId: true },

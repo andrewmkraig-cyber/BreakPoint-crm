@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState, useTransition, type ChangeEvent } from "react";
+import { useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, Loader2, Save, Sparkles, UploadCloud, X } from "lucide-react";
+import { Check, FileText, Loader2, Save, Sparkles, UploadCloud, X } from "lucide-react";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -83,74 +83,25 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   const [isParsing, setParsing] = useState(false);
   const [parseInlineError, setParseInlineError] = useState<string | null>(null);
   const [isCombinedRunning, setCombinedRunning] = useState(false);
+  const [linkSaved, setLinkSaved] = useState(false);
+  const [internalRecruiterNotes, setInternalRecruiterNotes] = useState("");
+  const [isDragOver, setDragOver] = useState(false);
+  // Drag events bubble from child elements, so a naive onDragLeave on the
+  // outer row flips the highlight off whenever the cursor crosses a child.
+  // The counter tracks net enters vs. leaves and only clears the highlight
+  // when the cursor truly exits the drop zone.
+  const dragCounter = useRef(0);
 
-  // Returns true on a successful parse so the combined Parse & Generate
-  // flow can bail before kicking off the JD generation step.
-  async function onParseSourceUrl(): Promise<boolean> {
-    const url = sourceUrl.trim();
-    if (!url) {
-      toast.message("Paste a URL first.");
-      return false;
-    }
-    setParseInlineError(null);
-    setParsing(true);
-    try {
-      const res = await fetch("/api/jobs/parse-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      const data: unknown = await res.json();
-      const okRes = isParseSuccess(data) ? data : null;
-      if (!okRes) {
-        const errRes = isParseError(data) ? data : null;
-        const code = errRes?.error ?? null;
-        const message = errRes?.message ?? "Parse failed.";
-        if (code === "indeed_blocked" || code === "linkedin_blocked") {
-          // Inline below the URL input so the recruiter sees the next-step
-          // instruction in context (paste the JD text manually).
-          setParseInlineError(message);
-        } else {
-          toast.error("Couldn't parse the link", { description: message });
-        }
-        return false;
-      }
-      const f = okRes.fields ?? {};
-      const filled: string[] = [];
-      if (f.title && !title.trim()) {
-        setTitle(f.title);
-        filled.push("Title");
-      }
-      if (f.location && !location.trim()) {
-        setLocation(f.location);
-        filled.push("Location");
-      }
-      if (typeof f.salaryLow === "number" && salaryLow === "") {
-        setSalaryLow(String(f.salaryLow));
-        filled.push("Salary low");
-      }
-      if (typeof f.salaryHigh === "number" && salaryHigh === "") {
-        setSalaryHigh(String(f.salaryHigh));
-        filled.push("Salary high");
-      }
-      setDescription(okRes.extracted);
-      toast.success("Link parsed", {
-        description: filled.length > 0 ? `Filled: ${filled.join(", ")}` : "Source text dropped into Description.",
-      });
-      return true;
-    } catch (e) {
-      toast.error("Couldn't parse the link", {
-        description: e instanceof Error ? e.message : "Network error.",
-      });
-      return false;
-    } finally {
-      setParsing(false);
-    }
-  }
-
-  function onPickJd(e: ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0] ?? null;
-    setJdFile(f);
+  function isAcceptedJdFile(f: File): boolean {
+    const name = f.name.toLowerCase();
+    return (
+      f.type === "application/pdf" ||
+      f.type === "application/msword" ||
+      f.type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      name.endsWith(".pdf") ||
+      name.endsWith(".doc") ||
+      name.endsWith(".docx")
+    );
   }
 
   function clearJd() {
@@ -158,21 +109,28 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     if (jdInputRef.current) jdInputRef.current.value = "";
   }
 
-  // The actual generate-JD work, with no transition wrapper. onGenerate
-  // wraps it in startGenerate for the standalone button; onParseAndGenerate
-  // awaits it directly so the combined flow can serialize parse → generate
-  // under a single loading indicator. sourceTextOverride lets the combined
-  // flow pass the freshly parsed text without waiting for setState.
-  async function doGenerate(sourceTextOverride?: string): Promise<void> {
+  // The actual generate-JD work, with no transition wrapper. Callers pass
+  // overrides to avoid racing setState — e.g. on file pick we already
+  // have the File in hand, and onParseAndGenerate has fresh source text
+  // from the route before React has flushed the description state.
+  // fileOverride === null means "this generate is from typed text, ignore
+  // any previously uploaded jdFile" (used by Parse & Edit JD).
+  type GenerateOptions = { fileOverride?: File | null; sourceTextOverride?: string };
+  async function doGenerate(opts: GenerateOptions = {}): Promise<void> {
+    const fileToUse = opts.fileOverride !== undefined ? opts.fileOverride : jdFile;
     let filePayload: { filename: string; mimeType: string; base64: string } | null = null;
-    if (jdFile) {
-      const buffer = await jdFile.arrayBuffer();
+    if (fileToUse) {
+      const buffer = await fileToUse.arrayBuffer();
       const base64 = arrayBufferToBase64(buffer);
-      filePayload = { filename: jdFile.name, mimeType: jdFile.type || "application/octet-stream", base64 };
+      filePayload = {
+        filename: fileToUse.name,
+        mimeType: fileToUse.type || "application/octet-stream",
+        base64,
+      };
     }
     const result = await generateJobDescriptionFromSource({
       jobTitle: title.trim(),
-      sourceText: sourceTextOverride ?? description,
+      sourceText: opts.sourceTextOverride ?? description,
       file: filePayload,
     });
     if (!result.ok) {
@@ -190,16 +148,78 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     }
   }
 
-  function onGenerate() {
+  function onPickJd(e: ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0] ?? null;
+    if (!f) return;
+    setJdFile(f);
+    startGenerate(async () => {
+      await doGenerate({ fileOverride: f });
+    });
+  }
+
+  function acceptDroppedFile(f: File | null) {
+    if (!f) return;
+    if (!isAcceptedJdFile(f)) {
+      toast.error("Unsupported file type", { description: "Drop a PDF or DOCX." });
+      return;
+    }
+    setJdFile(f);
+    startGenerate(async () => {
+      await doGenerate({ fileOverride: f });
+    });
+  }
+
+  function onDragEnter(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current += 1;
+    if (dragCounter.current === 1) setDragOver(true);
+  }
+
+  function onDragLeave(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = Math.max(0, dragCounter.current - 1);
+    if (dragCounter.current === 0) setDragOver(false);
+  }
+
+  function onDragOver(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  function onDrop(e: DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounter.current = 0;
+    setDragOver(false);
+    const f = e.dataTransfer.files?.[0] ?? null;
+    acceptDroppedFile(f);
+  }
+
+  function onParseAndEditJd() {
     setErr(null);
     startGenerate(async () => {
-      await doGenerate();
+      await doGenerate({ fileOverride: null });
     });
+  }
+
+  function onSaveLink() {
+    const url = sourceUrl.trim();
+    if (!url) return;
+    const note = `Client Job Link: ${url}`;
+    setInternalRecruiterNotes((prev) => {
+      if (!prev.trim()) return note;
+      if (prev.includes(note)) return prev;
+      return `${prev}\n${note}`;
+    });
+    setLinkSaved(true);
   }
 
   async function onParseAndGenerate() {
     setErr(null);
     setParseInlineError(null);
+    setLinkSaved(false);
     setCombinedRunning(true);
     try {
       let parsedText: string | undefined;
@@ -237,7 +257,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           setParsing(false);
         }
       }
-      await doGenerate(parsedText);
+      await doGenerate({ sourceTextOverride: parsedText });
     } finally {
       setCombinedRunning(false);
     }
@@ -296,6 +316,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         openings: openings ? Number(openings) : null,
         description,
         sourceJobUrl: sourceUrl.trim() || null,
+        internalRecruiterNotes: internalRecruiterNotes.trim() || null,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -310,13 +331,15 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
 
   return (
     <div className="space-y-4">
+      {/* 1. Source Job Link card — URL input + single dark-green Claude
+            pill (Parse & Generate JD with Claude). No secondary button. */}
       <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Source Job Link
         </label>
         <p className="mt-0.5 text-[11px] text-court-fg-muted">
-          Paste a careers-page URL and click Parse & Generate to auto-fill Title / Location / Salary and write the JD in
-          one step. Use Parse Link alone for source text only.
+          Paste a careers-page URL and click Parse & Generate JD with Claude — auto-fills Title / Location / Salary and
+          writes the JD in one step.
         </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
@@ -325,6 +348,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             onChange={(e) => {
               setSourceUrl(e.target.value);
               if (parseInlineError) setParseInlineError(null);
+              if (linkSaved) setLinkSaved(false);
             }}
             placeholder="https://…"
             className={cn(
@@ -334,26 +358,6 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           />
           <button
             type="button"
-            onClick={onParseSourceUrl}
-            disabled={isParsing || isCombinedRunning}
-            className={cn(CLAUDE_PILL_CLASS, (isParsing || isCombinedRunning) && "opacity-60")}
-          >
-            {isParsing && !isCombinedRunning ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <Sparkles className="h-3 w-3" />
-            )}
-            {isParsing && !isCombinedRunning ? "Parsing…" : "Parse Link"}
-          </button>
-        </div>
-        {parseInlineError && (
-          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            {parseInlineError}
-          </div>
-        )}
-        <div className="mt-3 flex justify-end">
-          <button
-            type="button"
             onClick={onParseAndGenerate}
             disabled={
               isCombinedRunning ||
@@ -361,216 +365,275 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               isGenerating ||
               (!sourceUrl.trim() && !description.trim() && !jdFile)
             }
-            className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+            className={cn(CLAUDE_PILL_CLASS, (isCombinedRunning || isParsing) && "opacity-60")}
           >
-            {isCombinedRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-            {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate"}
+            {isCombinedRunning || isParsing ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate JD with Claude"}
+          </button>
+        </div>
+        {parseInlineError && (
+          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <span className="min-w-0">{parseInlineError}</span>
+              {linkSaved ? (
+                <span className="inline-flex shrink-0 items-center gap-1 font-semibold text-amber-900">
+                  <Check className="h-3 w-3" /> Link saved
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onSaveLink}
+                  disabled={!sourceUrl.trim()}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-amber-900 shadow-sm transition hover:bg-amber-100 disabled:opacity-60"
+                >
+                  Save Link
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. Upload JD row — drag-and-drop drop zone. Picking or dropping a
+            PDF/DOCX auto-runs generate-jd; there is no separate Generate
+            button on /jobs/new anymore. */}
+      <div
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        className={cn(
+          "flex flex-col gap-2 rounded-xl border-2 border-dashed p-4 transition sm:flex-row sm:items-center sm:justify-between",
+          isDragOver
+            ? "border-brand bg-brand/10"
+            : "border-court-border bg-court-surface-subtle/40",
+        )}
+      >
+        <div className="flex min-w-0 items-center gap-2 text-sm">
+          {jdFile ? (
+            <>
+              <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
+              <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
+              <span className="text-xs text-court-fg-muted">{formatSize(jdFile.size)}</span>
+              <button
+                type="button"
+                onClick={clearJd}
+                className="ml-1 rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+                aria-label="Remove uploaded JD"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </>
+          ) : (
+            <>
+              <UploadCloud className="h-4 w-4 shrink-0 text-court-fg-muted" />
+              <span className="text-court-fg-muted">
+                {isDragOver
+                  ? "Drop the PDF or DOCX to upload."
+                  : "Drag a JD file (PDF/DOCX) here, or use Upload JD. We'll reformat it with Claude."}
+              </span>
+            </>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => jdInputRef.current?.click()}
+            disabled={isGenerating || isCombinedRunning}
+            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+          >
+            {isGenerating && jdFile ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <UploadCloud className="h-3.5 w-3.5" />
+            )}
+            {jdFile ? "Replace file" : "Upload JD"}
+          </button>
+          <input
+            ref={jdInputRef}
+            type="file"
+            accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="hidden"
+            onChange={onPickJd}
+          />
+        </div>
+      </div>
+
+      {/* 3. Structured fields card. 4. Description textarea (with Parse &
+            Edit JD button beneath when it has content) and Preview at the
+            bottom of the same card. */}
+      <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="md:col-span-2">
+            <LabeledField label="Job title" value={title} onChange={setTitle} placeholder="e.g. Senior Full Stack Engineer" />
+          </div>
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Client</span>
+            <select
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            >
+              <option value="">Select a client…</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <LabeledField label="Location" value={location} onChange={setLocation} placeholder="Remote, New York, NY" />
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Job type</span>
+            <select
+              value={jobType}
+              onChange={(e) => setJobType(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            >
+              {JOB_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Employment type</span>
+            <select
+              value={employmentType}
+              onChange={(e) => setEmploymentType(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            >
+              {EMPLOYMENT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm md:col-span-2">
+            <span className="block text-[11px] uppercase tracking-wider text-court-fg-muted">Salary type</span>
+            <select
+              value={salaryFrequency}
+              onChange={(e) => setSalaryFrequency(e.target.value === "hourly" ? "hourly" : "yearly")}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 md:w-1/2"
+            >
+              <option value="yearly">Salary</option>
+              <option value="hourly">Hourly</option>
+            </select>
+          </label>
+          <SalaryField
+            label={salaryFrequency === "hourly" ? "Hourly low" : "Salary low"}
+            value={salaryLow}
+            onChange={setSalaryLow}
+            onBlur={onSalaryLowBlur}
+            invalid={rangeInvalid}
+            placeholder={salaryFrequency === "hourly" ? "20.00" : "80000"}
+            step={salaryFrequency === "hourly" ? "0.01" : "1"}
+          />
+          <SalaryField
+            label={salaryFrequency === "hourly" ? "Hourly high" : "Salary high"}
+            value={salaryHigh}
+            onChange={setSalaryHigh}
+            onBlur={onSalaryHighBlur}
+            invalid={rangeInvalid}
+            placeholder={salaryFrequency === "hourly" ? "30.00" : "120000"}
+            step={salaryFrequency === "hourly" ? "0.01" : "1"}
+          />
+          <LabeledField label="Currency" value={currency} onChange={setCurrency} placeholder="USD" />
+          <label className="block text-sm">
+            <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Openings</span>
+            <input
+              type="number"
+              min={1}
+              value={openings}
+              onChange={(e) => setOpenings(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+            />
+          </label>
+          <div className="md:col-span-2 space-y-2">
+            <LabeledTextarea
+              label="Description"
+              value={description}
+              onChange={setDescription}
+              rows={10}
+              placeholder="Blank canvas. Paste or write the job description — or drop a JD file above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
+            />
+            {description.trim() && (
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={onParseAndEditJd}
+                  disabled={isGenerating || isCombinedRunning}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+                >
+                  {isGenerating ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3.5 w-3.5" />
+                  )}
+                  Parse & Edit JD
+                </button>
+              </div>
+            )}
+            {description.trim() && (
+              <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 p-4">
+                <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                  Preview
+                </div>
+                <div
+                  className={cn(
+                    "text-sm leading-relaxed text-court-fg",
+                    "[&_p]:mb-3 [&_p]:text-sm [&_p]:leading-relaxed",
+                    "[&_strong]:font-bold [&_strong]:text-court-fg",
+                    "[&_em]:italic",
+                    "[&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_h1]:text-court-fg first:[&_h1]:mt-0",
+                    "[&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-extrabold [&_h2]:tracking-tight [&_h2]:text-court-fg first:[&_h2]:mt-0",
+                    "[&_h3]:mb-1.5 [&_h3]:mt-4 [&_h3]:font-serif [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-court-fg",
+                    "[&_ul]:mb-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
+                    "[&_ul>li]:text-sm [&_ul>li]:leading-relaxed [&_ul>li]:text-court-fg",
+                    "[&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5",
+                    "[&_ol>li]:text-sm [&_ol>li]:leading-relaxed [&_ol>li]:text-court-fg",
+                  )}
+                >
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {rangeInvalid && (
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            Salary low is greater than salary high. We&apos;ll swap them automatically when you tab out.
+          </div>
+        )}
+        {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
+
+        <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
+          <button
+            type="button"
+            onClick={() => router.push("/jobs")}
+            disabled={isPending || isCombinedRunning}
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={isPending || isCombinedRunning || rangeInvalid}
+            className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+          >
+            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+            Create job
           </button>
         </div>
       </div>
-
-    <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="md:col-span-2">
-          <LabeledField label="Job title" value={title} onChange={setTitle} placeholder="e.g. Senior Full Stack Engineer" />
-        </div>
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Client</span>
-          <select
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          >
-            <option value="">Select a client…</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <LabeledField label="Location" value={location} onChange={setLocation} placeholder="Remote, New York, NY" />
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Job type</span>
-          <select
-            value={jobType}
-            onChange={(e) => setJobType(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          >
-            {JOB_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Employment type</span>
-          <select
-            value={employmentType}
-            onChange={(e) => setEmploymentType(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          >
-            {EMPLOYMENT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="block text-sm md:col-span-2">
-          <span className="block text-[11px] uppercase tracking-wider text-court-fg-muted">Salary type</span>
-          <select
-            value={salaryFrequency}
-            onChange={(e) => setSalaryFrequency(e.target.value === "hourly" ? "hourly" : "yearly")}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 md:w-1/2"
-          >
-            <option value="yearly">Salary</option>
-            <option value="hourly">Hourly</option>
-          </select>
-        </label>
-        <SalaryField
-          label={salaryFrequency === "hourly" ? "Hourly low" : "Salary low"}
-          value={salaryLow}
-          onChange={setSalaryLow}
-          onBlur={onSalaryLowBlur}
-          invalid={rangeInvalid}
-          placeholder={salaryFrequency === "hourly" ? "20.00" : "80000"}
-          step={salaryFrequency === "hourly" ? "0.01" : "1"}
-        />
-        <SalaryField
-          label={salaryFrequency === "hourly" ? "Hourly high" : "Salary high"}
-          value={salaryHigh}
-          onChange={setSalaryHigh}
-          onBlur={onSalaryHighBlur}
-          invalid={rangeInvalid}
-          placeholder={salaryFrequency === "hourly" ? "30.00" : "120000"}
-          step={salaryFrequency === "hourly" ? "0.01" : "1"}
-        />
-        <LabeledField label="Currency" value={currency} onChange={setCurrency} placeholder="USD" />
-        <label className="block text-sm">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Openings</span>
-          <input
-            type="number"
-            min={1}
-            value={openings}
-            onChange={(e) => setOpenings(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
-          />
-        </label>
-        <div className="md:col-span-2 space-y-2">
-          <div className="flex flex-col gap-2 rounded-lg border border-dashed border-court-border bg-court-surface-subtle/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-2 text-sm">
-              {jdFile ? (
-                <>
-                  <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
-                  <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
-                  <span className="text-xs text-court-fg-muted">{formatSize(jdFile.size)}</span>
-                  <button
-                    type="button"
-                    onClick={clearJd}
-                    className="ml-1 rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
-                    aria-label="Remove uploaded JD"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <UploadCloud className="h-4 w-4 shrink-0 text-court-fg-muted" />
-                  <span className="text-court-fg-muted">Upload a JD file (PDF/DOCX) to reformat with Claude, or skip and write below.</span>
-                </>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => jdInputRef.current?.click()}
-                disabled={isGenerating || isCombinedRunning}
-                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
-              >
-                <UploadCloud className="h-3.5 w-3.5" />
-                {jdFile ? "Replace file" : "Upload JD"}
-              </button>
-              <button
-                type="button"
-                onClick={onGenerate}
-                disabled={isGenerating || isCombinedRunning || (!jdFile && !description.trim())}
-                className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
-              >
-                {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                Generate Job Description with Claude
-              </button>
-              <input
-                ref={jdInputRef}
-                type="file"
-                accept="application/pdf,.pdf,.doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                className="hidden"
-                onChange={onPickJd}
-              />
-            </div>
-          </div>
-          <LabeledTextarea
-            label="Description"
-            value={description}
-            onChange={setDescription}
-            rows={10}
-            placeholder="Blank canvas. Paste or write the job description — or upload a JD above and let Claude reformat it into the BreakPoint format (A Bit About Us / Why Join Us / Job Details)."
-          />
-          {description.trim() && (
-            <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 p-4">
-              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
-                Preview
-              </div>
-              <div
-                className={cn(
-                  "text-sm leading-relaxed text-court-fg",
-                  "[&_p]:mb-3 [&_p]:text-sm [&_p]:leading-relaxed",
-                  "[&_strong]:font-bold [&_strong]:text-court-fg",
-                  "[&_em]:italic",
-                  "[&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_h1]:text-court-fg first:[&_h1]:mt-0",
-                  "[&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-extrabold [&_h2]:tracking-tight [&_h2]:text-court-fg first:[&_h2]:mt-0",
-                  "[&_h3]:mb-1.5 [&_h3]:mt-4 [&_h3]:font-serif [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-court-fg",
-                  "[&_ul]:mb-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
-                  "[&_ul>li]:text-sm [&_ul>li]:leading-relaxed [&_ul>li]:text-court-fg",
-                  "[&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5",
-                  "[&_ol>li]:text-sm [&_ol>li]:leading-relaxed [&_ol>li]:text-court-fg",
-                )}
-              >
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{description}</ReactMarkdown>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {rangeInvalid && (
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-          Salary low is greater than salary high. We&apos;ll swap them automatically when you tab out.
-        </div>
-      )}
-      {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
-
-      <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
-        <button
-          type="button"
-          onClick={() => router.push("/jobs")}
-          disabled={isPending || isCombinedRunning}
-          className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={isPending || isCombinedRunning || rangeInvalid}
-          className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
-        >
-          {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-          Create job
-        </button>
-      </div>
-    </div>
     </div>
   );
 }
