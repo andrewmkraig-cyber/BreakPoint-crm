@@ -1,13 +1,261 @@
+import Link from "next/link";
+import { ExternalLink, MapPin, Clock, Mail } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
+import { cn } from "@/lib/utils";
+
 export const dynamic = "force-dynamic";
 
-export default function ClientSignalPage() {
+type Filter = "all" | "new-week" | "acted" | "dismissed";
+
+const FILTER_IDS: ReadonlyArray<Filter> = ["all", "new-week", "acted", "dismissed"];
+
+function resolveFilter(raw: string | undefined): Filter {
+  return FILTER_IDS.includes(raw as Filter) ? (raw as Filter) : "all";
+}
+
+export default async function ClientSignalPage({
+  searchParams,
+}: {
+  searchParams?: { filter?: string };
+}) {
+  const org = await getCurrentOrg();
+  const filter = resolveFilter(searchParams?.filter);
+
+  // "New this week" cutoff. detectedAt is timestamptz; truncating to UTC
+  // start-of-day-7-days-ago is close enough for a recruiter-facing
+  // "since Sunday" feel without dragging timezone math in.
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const where = (() => {
+    switch (filter) {
+      case "new-week":
+        return { organizationId: org.id, status: "NEW" as const, detectedAt: { gte: weekAgo } };
+      case "acted":
+        return { organizationId: org.id, status: "ACTED" as const };
+      case "dismissed":
+        return { organizationId: org.id, status: "DISMISSED" as const };
+      default:
+        return { organizationId: org.id };
+    }
+  })();
+
+  const [signals, newThisWeekCount, allCount, actedCount, dismissedCount] = await Promise.all([
+    prisma.clientSignal.findMany({
+      where,
+      orderBy: { detectedAt: "desc" },
+      take: 100,
+      select: {
+        id: true,
+        externalUrl: true,
+        jobTitle: true,
+        location: true,
+        detectedAt: true,
+        status: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            contacts: {
+              orderBy: { lastActivityAt: "desc" },
+              take: 1,
+              select: {
+                name: true,
+                firstName: true,
+                lastName: true,
+                emails: true,
+                currentDesignation: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.clientSignal.count({
+      where: { organizationId: org.id, status: "NEW", detectedAt: { gte: weekAgo } },
+    }),
+    prisma.clientSignal.count({ where: { organizationId: org.id } }),
+    prisma.clientSignal.count({ where: { organizationId: org.id, status: "ACTED" } }),
+    prisma.clientSignal.count({ where: { organizationId: org.id, status: "DISMISSED" } }),
+  ]);
+
+  const tabs: ReadonlyArray<TabStripItem<Filter>> = [
+    { id: "all", label: "All", count: allCount, href: "/bd/client-signal" },
+    {
+      id: "new-week",
+      label: "New this week",
+      count: newThisWeekCount,
+      href: "/bd/client-signal?filter=new-week",
+    },
+    { id: "acted", label: "Acted on", count: actedCount, href: "/bd/client-signal?filter=acted" },
+    {
+      id: "dismissed",
+      label: "Dismissed",
+      count: dismissedCount,
+      href: "/bd/client-signal?filter=dismissed",
+    },
+  ];
+
   return (
-    <div className="rounded-lg border border-court-border bg-court-surface p-8 text-center text-sm text-court-fg-muted">
-      <p className="font-semibold text-court-fg">Client Signal</p>
-      <p className="mt-1">
-        Indeed-detected job postings at existing Clients will surface here. Wired in the next BD
-        session.
-      </p>
+    <section className="flex flex-col gap-5">
+      <header className="flex flex-col gap-2">
+        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
+          Client Signal
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="font-serif text-2xl font-bold text-court-fg sm:text-3xl">
+            Existing clients hiring publicly
+          </h1>
+          <span className="inline-flex items-center rounded-full border border-court-brand/30 bg-court-brand-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark">
+            {newThisWeekCount} new this week
+          </span>
+        </div>
+        <p className="max-w-2xl text-sm text-court-fg-muted">
+          Daily Indeed scan flags clients posting publicly — that usually means they aren&apos;t
+          filling it internally. Reach out before someone else does.
+        </p>
+      </header>
+
+      <TabStrip<Filter> items={tabs} activeId={filter} ariaLabel="Client Signal filters" />
+
+      {signals.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
+          {signals.map((s) => (
+            <SignalRow
+              key={s.id}
+              clientName={s.client?.name ?? "Unknown client"}
+              primaryContact={s.client?.contacts[0] ?? null}
+              jobTitle={s.jobTitle}
+              location={s.location}
+              detectedAt={s.detectedAt}
+              externalUrl={s.externalUrl}
+              status={s.status}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
+      <p className="text-sm font-semibold text-court-fg">No new client job postings detected.</p>
+      <p className="mt-1 text-sm text-court-fg-muted">We scan every morning at 6 AM.</p>
     </div>
   );
+}
+
+type ContactSummary = {
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  emails: string[];
+  currentDesignation: string | null;
+};
+
+function SignalRow({
+  clientName,
+  primaryContact,
+  jobTitle,
+  location,
+  detectedAt,
+  externalUrl,
+  status,
+}: {
+  clientName: string;
+  primaryContact: ContactSummary | null;
+  jobTitle: string | null;
+  location: string | null;
+  detectedAt: Date;
+  externalUrl: string;
+  status: "NEW" | "ACTED" | "DISMISSED";
+}) {
+  const reachedOut = status !== "NEW";
+  return (
+    <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1.5fr)_auto] sm:items-center sm:p-5">
+      <div className="flex items-center gap-3">
+        <LogoMark name={clientName} />
+        <div className="min-w-0">
+          <p className="truncate text-sm font-semibold text-court-fg">{clientName}</p>
+          <p className="truncate text-xs text-court-fg-muted">
+            {formatContact(primaryContact) ?? "No primary contact on file"}
+          </p>
+        </div>
+      </div>
+
+      <div className="min-w-0 text-sm">
+        <p className="truncate font-medium text-court-fg">{jobTitle ?? "Untitled posting"}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-court-fg-muted">
+          {location && (
+            <span className="inline-flex items-center gap-1">
+              <MapPin className="h-3.5 w-3.5" /> {location}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-1">
+            <Clock className="h-3.5 w-3.5" /> Posted {formatPostedRelative(detectedAt)} · via Indeed
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <Link
+          href={externalUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+        >
+          <ExternalLink className="h-3.5 w-3.5" /> View listing
+        </Link>
+        <button
+          type="button"
+          disabled
+          title="Mail composer pre-fill ships in Phase 4"
+          className={cn(
+            "inline-flex cursor-not-allowed items-center gap-1.5 rounded-full border border-court-brand bg-court-brand-tint px-3.5 py-1.5 text-xs font-semibold text-court-brand-dark opacity-60",
+          )}
+        >
+          <Mail className="h-3.5 w-3.5" />
+          {reachedOut ? "Reached out" : "Reach out"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function LogoMark({ name }: { name: string }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
+  return (
+    <span
+      className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-court-fg font-mono text-xs font-bold tracking-wider text-court-surface"
+      aria-hidden="true"
+    >
+      {initials || "?"}
+    </span>
+  );
+}
+
+function formatContact(c: ContactSummary | null): string | null {
+  if (!c) return null;
+  const name = c.name?.trim() || [c.firstName, c.lastName].filter(Boolean).join(" ").trim();
+  const email = c.emails[0]?.trim();
+  const title = c.currentDesignation?.trim();
+  const parts = [name, title, email].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+function formatPostedRelative(d: Date): string {
+  const days = Math.max(0, Math.floor((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000)));
+  if (days === 0) return "today";
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
 }

@@ -274,7 +274,7 @@ function PreviewChip({
     <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-2 text-[13px] text-court-brand-dark">
       <span className="font-semibold">{estimatedCompanies} companies</span>
       <span className="text-court-brand-dark/60">→</span>
-      <span className="font-semibold">~{contactCap} contacts</span>
+      <span className="font-semibold">up to {contactCap} contacts</span>
       <span className="text-court-brand-dark/60">·</span>
       <span>{sequenceName}</span>
       <span className="text-court-brand-dark/60">·</span>
