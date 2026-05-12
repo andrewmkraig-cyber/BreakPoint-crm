@@ -303,6 +303,10 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       locations: true,
       description: true,
       clientId: true,
+      salaryRangeStart: true,
+      salaryRangeEnd: true,
+      salaryCurrency: true,
+      salaryFrequency: true,
       client: { select: { id: true, legacyRfId: true, name: true } },
     },
   });
@@ -312,14 +316,16 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
     if (r.legacyRfId != null) {
       // RF-imported row: hand back the original payload keyed by its
       // legacyRfId so every existing indexer (jobs.find(j => j.id === rfId))
-      // keeps working unchanged.
+      // keeps working unchanged. Carry `_aceJobId` so the cuid is
+      // available for slug-based navigation alongside the legacy id.
       if (raw && typeof raw === "object") {
-        out.push({ ...raw, id: r.legacyRfId, _lifecycle: r.lifecycle ?? null });
+        out.push({ ...raw, id: r.legacyRfId, _aceJobId: r.id, _lifecycle: r.lifecycle ?? null });
       } else {
         out.push({
           id: r.legacyRfId,
           title: r.title,
           is_open: r.isOpen,
+          _aceJobId: r.id,
           _lifecycle: r.lifecycle ?? null,
         });
       }
@@ -342,6 +348,10 @@ export async function getRfJobsForOrg(): Promise<RFJobWithAce[]> {
       locations: Array.isArray(r.locations) ? r.locations : [],
       company: companyRef,
       description: r.description ?? undefined,
+      salary_range_start: r.salaryRangeStart ?? null,
+      salary_range_end: r.salaryRangeEnd ?? null,
+      salary_range_currency: r.salaryCurrency ?? null,
+      salary_frequency: r.salaryFrequency ?? null,
       _aceJobId: r.id,
       _aceClientId: r.client && r.client.legacyRfId == null ? r.client.id : undefined,
       _lifecycle: r.lifecycle ?? null,

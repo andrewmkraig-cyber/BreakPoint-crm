@@ -13,6 +13,11 @@ export type JobLifecycle = "active" | "private" | "inactive";
 
 export type JobRow = {
   id: number;
+  // Stable URL segment for /jobs/[id] — cuid for Ace-native rows,
+  // String(legacyRfId) for RF-imported rows. The synthetic negative
+  // id used as the React key is never routable; using it as the link
+  // target sends the page to 404 via the legacyRfId lookup path.
+  slug: string;
   title: string;
   company: string;
   companyId: number | null;
@@ -181,7 +186,7 @@ export function JobsView(props: JobsViewProps) {
                 <tr
                   key={r.id}
                   className="cursor-pointer transition hover:bg-court-accent-tint/50"
-                  onClick={() => router.push(`/jobs/${r.id}`)}
+                  onClick={() => router.push(`/jobs/${r.slug}`)}
                 >
                   <td className="px-5 py-3 align-top font-medium text-court-fg">
                     {/* Whole row navigates to the job — the client name

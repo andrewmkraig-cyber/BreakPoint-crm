@@ -100,8 +100,15 @@ export default async function JobsPage({
             : j.isOpen
               ? "active"
               : "inactive";
+      // RF-imported rows route via the positive legacyRfId (j.id is the
+      // real RF id). Ace-native rows have a synthetic negative id that
+      // would 404 against /jobs/[id]; route via the cuid carried on
+      // `_aceJobId` instead.
+      const aceJobId = (raw as { _aceJobId?: string })._aceJobId;
+      const slug = j.id < 0 && aceJobId ? aceJobId : String(j.id);
       return {
         ...j,
+        slug,
         lifecycle,
         submittedCount: c.submitted,
         interviewingCount: c.interviewing,

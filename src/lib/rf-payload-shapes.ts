@@ -196,18 +196,27 @@ export function normalizeCandidate(c: RFCandidate) {
   };
 }
 
-export function formatCompensation(job: Pick<RFJob, "salary_range_start" | "salary_range_end" | "salary_range_currency">): string {
+export function formatCompensation(
+  job: Pick<RFJob, "salary_range_start" | "salary_range_end" | "salary_range_currency" | "salary_frequency">,
+): string {
   const { salary_range_start: s, salary_range_end: e, salary_range_currency: ccy } = job;
   if (!s && !e) return "";
-  const fmt = (n: number) => {
+  // "hour" covers both legacy seeded "hour" and the form's canonical
+  // "hourly" — recruiter quotes are dollars-per-hour so we render raw,
+  // not the k-suffix used for annual salary.
+  const isHourly = typeof job.salary_frequency === "string" && job.salary_frequency.toLowerCase().startsWith("hour");
+  const fmtAnnual = (n: number) => {
     if (n >= 1000) return `${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
     return String(n);
   };
+  const fmtHourly = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(2));
+  const fmt = isHourly ? fmtHourly : fmtAnnual;
   const currency = ccy ?? "USD";
   const symbol = currency === "USD" ? "$" : `${currency} `;
-  if (s && e && s !== e) return `${symbol}${fmt(s)}–${fmt(e)}`;
+  const suffix = isHourly ? "/hr" : "";
+  if (s && e && s !== e) return `${symbol}${fmt(s)}–${fmt(e)}${suffix}`;
   const only = s ?? e!;
-  return `${symbol}${fmt(only)}`;
+  return `${symbol}${fmt(only)}${suffix}`;
 }
 
 export function normalizeJob(j: RFJob) {
