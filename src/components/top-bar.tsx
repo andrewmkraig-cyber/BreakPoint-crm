@@ -4,7 +4,7 @@ import { Music, Play } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
-import { TopBarPageTitle } from "@/components/top-bar-page-title";
+import { TopBarPageAction, TopBarPageTitle } from "@/components/top-bar-page-title";
 import { MobileNav } from "@/components/mobile-nav";
 import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 import { InConversation } from "@/components/icons/in-conversation";
@@ -32,24 +32,27 @@ export function TopBar() {
           the sidebar shows so the recruiter never loses access to nav
           on a phone or shrunk window. */}
       <MobileNav />
-      {/* Page title + inline action button — pathname-driven. Replaces
-          the previous in-page PageHeader pattern; pages render their
-          content flush with the topbar now. */}
+      {/* Page title (breadcrumb "Group › Page") sits to the left, search
+          bar tucks immediately to its right, and the page's +Add action
+          (when present) sits just to the right of search — that whole
+          cluster is the left half of the topbar. The flex-1 spacer
+          pushes the right cluster (four buttons + weather + profile)
+          out to the right edge. */}
       <div className="hidden min-w-0 items-center lg:flex">
         <TopBarPageTitle />
       </div>
 
-      {/* Search hugs the page title on the left; the flex-1 wrapper
-          eats the remaining width so the action-icon cluster (the
-          four buttons + weather + profile) is pushed flush right. On
-          mobile (no title block) the search itself fills the space. */}
-      <div className="flex min-w-0 flex-1 items-center justify-end md:justify-start">
-        <div className="min-w-0 flex-1 md:flex-none md:w-56 lg:w-64 xl:w-80 2xl:w-96">
-          <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
-            <TopBarSearch />
-          </div>
+      <div className="min-w-0 flex-1 md:flex-none md:w-56 lg:w-64 xl:w-80 2xl:w-96">
+        <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
+          <TopBarSearch />
         </div>
       </div>
+
+      <div className="hidden shrink-0 lg:block">
+        <TopBarPageAction />
+      </div>
+
+      <div className="hidden flex-1 lg:block" />
 
       <div className="flex items-center gap-3">
         <ComposeFAB />

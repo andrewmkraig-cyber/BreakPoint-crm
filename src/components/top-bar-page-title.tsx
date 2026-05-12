@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState, useTransition } from "react";
-import { Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
@@ -32,10 +32,50 @@ type ActionSpec =
   | { kind: "phone-dial"; label: string }
   | { kind: "new-invoice"; label: string };
 
+type Spec = { group?: string; title: TitleSpec; action?: ActionSpec };
+
+// Sidebar-group label rendered as a muted breadcrumb prefix before the
+// page title ("Ops > Calendar"). Mirrors NAV_GROUPS in
+// src/components/sidebar.tsx — duplicated here so this module stays a
+// pure consumer of the pathname without importing the sidebar tree.
+function resolveGroup(pathname: string): string | undefined {
+  if (
+    pathname.startsWith("/pipeline")
+    || pathname.startsWith("/applicants")
+    || pathname.startsWith("/candidates")
+  ) {
+    return "ATS";
+  }
+  if (
+    pathname.startsWith("/jobs")
+    || pathname.startsWith("/clients")
+    || pathname.startsWith("/bd")
+  ) {
+    return "CRM";
+  }
+  if (pathname.startsWith("/mail") || pathname.startsWith("/phone")) {
+    return "Inbox";
+  }
+  if (pathname.startsWith("/invoices")) {
+    return "Ops";
+  }
+  return undefined;
+}
+
 function resolveSpec(
   pathname: string | null,
   searchParams: URLSearchParams | null,
-): { title: TitleSpec; action?: ActionSpec } {
+): Spec {
+  const base = resolveBaseSpec(pathname, searchParams);
+  if (!pathname) return base;
+  const group = resolveGroup(pathname);
+  return group ? { ...base, group } : base;
+}
+
+function resolveBaseSpec(
+  pathname: string | null,
+  searchParams: URLSearchParams | null,
+): Spec {
   if (!pathname) return { title: { label: "" } };
 
   // Detail page → section title links back to the list
@@ -138,6 +178,18 @@ export function TopBarPageTitle() {
   );
 }
 
+// Sibling renderer for the +Add affordance. The TopBar positions this
+// to the right of the search bar (not in the title cluster) so the
+// action stays adjacent to the search affordance instead of trailing
+// the page title. Returns null on pages that don't have an action.
+export function TopBarPageAction() {
+  return (
+    <Suspense fallback={null}>
+      <TopBarPageActionInner />
+    </Suspense>
+  );
+}
+
 function TopBarPageTitleInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -147,16 +199,27 @@ function TopBarPageTitleInner() {
 
   // Every page title runs on the Bricolage display face (font-serif
   // → --font-display) so the topbar reads in the same family as the
-  // Ace wordmark.
-  const titleClass = "font-serif font-extrabold text-court-fg";
+  // Ace wordmark. The group breadcrumb prefix uses the same family but
+  // muted + regular weight so the current page reads as the dominant
+  // term.
   const titleStyle = {
-    fontSize: "30px",
+    fontSize: "26px",
     letterSpacing: "-0.035em",
     lineHeight: 1.15,
   };
+  const groupClass = "font-serif font-medium text-court-fg-muted";
+  const titleClass = "font-serif font-extrabold text-court-fg";
 
   return (
-    <div className="flex min-w-0 items-center gap-4">
+    <div className="flex min-w-0 items-center gap-2">
+      {spec.group && (
+        <>
+          <span className={groupClass} style={titleStyle}>
+            {spec.group}
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0 text-court-fg-muted" />
+        </>
+      )}
       {spec.title.href ? (
         <Link
           href={spec.title.href}
@@ -170,9 +233,16 @@ function TopBarPageTitleInner() {
           {spec.title.label}
         </h1>
       )}
-      {spec.action ? <ActionButton action={spec.action} /> : null}
     </div>
   );
+}
+
+function TopBarPageActionInner() {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const spec = resolveSpec(pathname, searchParams);
+  if (!spec.action) return null;
+  return <ActionButton action={spec.action} />;
 }
 
 function ActionButton({ action }: { action: ActionSpec }) {

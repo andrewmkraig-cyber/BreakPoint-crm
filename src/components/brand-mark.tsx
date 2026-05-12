@@ -37,15 +37,20 @@ export function BrandMark({
       </svg>
       <div className="leading-tight">
         <div
-          className="font-serif text-[24px] font-black leading-none text-court-fg [[data-in-sidebar]_&]:text-court-sidebar-fg"
+          className="font-serif text-[24px] font-black leading-none text-court-fg [[data-in-sidebar]_&]:text-court-sidebar-fg-muted"
           style={{ letterSpacing: "-0.03em" }}
         >
           Ace
         </div>
         {withTag && (
+          // "by" stays a separate word so it can wrap to its own line
+          // when the sidebar is squished, but "BreakPoint Talent" gets
+          // whitespace-nowrap so the brand name never splits mid-words
+          // — at the default 60w (240px) sidebar there's plenty of room
+          // to render "by BreakPoint Talent" on a single line.
           <div className="mt-1 font-serif text-[12px] font-medium text-court-fg-muted [[data-in-sidebar]_&]:text-court-sidebar-fg-muted">
             by{" "}
-            <span className="font-bold text-court-accent-dark [[data-in-sidebar]_&]:text-court-sidebar-fg">
+            <span className="whitespace-nowrap font-bold text-court-accent-dark [[data-in-sidebar]_&]:text-court-sidebar-fg-muted">
               BreakPoint Talent
             </span>
           </div>
