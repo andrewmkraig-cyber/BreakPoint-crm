@@ -1,10 +1,36 @@
 # ACE_STATE.md
-Last updated: 2026-05-11 · Ace 39.0
+Last updated: 2026-05-11 · Ace 39.1
 
 ## Current Status
-Current Version: Ace 39.0 (Sourcing Surface Polish + Interview Scheduler v2)
-Last Shipped: Ace 39.0 — May 11, 2026
+Current Version: Ace 39.1 (BD Phase 1 — schema + /bd shell + Today's Launch)
+Last Shipped: Ace 39.1 — May 11, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 39.1
+First slice of the BD Engine block — schema + UI shell + Launch flow. No Indeed / Apollo wiring yet; the morning cron, webhook, and reach-out composer are deferred to subsequent BD phases.
+
+Prisma schema:
+- New BD models, all org-scoped: Vertical, SavedSearch, SavedSearchVersion, SendingDomain, BDRun, Campaign, CampaignEvent, BDActivity, ClientSignal.
+- New enums: BDRunStatus (QUEUED / RUNNING / COMPLETE / FAILED), SendingDomainStatus (HEALTHY / WARMING / COOLED), BDActivityKind (SCAN_COMPLETE / ENRICH / ENROLL / OPEN / REPLY / BOUNCE / UNSUB / DOMAIN_COOLED / DOMAIN_RESUMED), ClientSignalStatus (NEW / ACTED / DISMISSED).
+- BDRun.plan / BDRun.metrics / Campaign event counters / CampaignEvent metadata stay as Json so shape can drift while Apollo wiring is being prototyped without per-iteration migrations.
+- Schema applied via `prisma db push` (project convention — there is no `prisma/migrations` directory; `npm run db:push` is the canonical workflow).
+
+Sidebar + /bd shell:
+- BD entry added to the CRM group in `src/components/sidebar.tsx` (Megaphone icon, lucide-react) — sits after Clients, before the Inbox section break.
+- `src/app/bd/layout.tsx` renders the unified TabStrip with 4 tabs (Today's Launch / Client Signal / Active Campaigns / Activity) plus a right-aligned BD Settings link to `/settings/bd` (route stub).
+- `src/app/bd/page.tsx` redirects to `/bd/launch` so the sidebar BD entry lands on the default tab.
+- Client Signal, Active Campaigns, and Activity tabs ship as minimal placeholder pages so the tab strip clicks don't 404; they pick up content as subsequent BD phases land.
+
+Today's Launch page (`/bd/launch`):
+- Server component reads verticals + saved searches + sending domains + last BDRun for the caller's org via `getCurrentOrg()`.
+- Hero card with eyebrow, display title, right-aligned Last Run status chip, vertical segmented control, saved-search select, green preview chip (companies → contacts · sequence · 5 rotating domain dots), and amber Launch CTA.
+- Confirmation modal opens on Launch click, re-renders the same preview chip, Cancel/Launch buttons.
+- POST `/api/bd/runs` validates verticalId + savedSearchId belong to the caller's org, snapshots up to 5 HEALTHY sending domains by `lastUsedAt` into BDRun.plan, and inserts the row at status=QUEUED. Returns the new row id + createdAt for the client to render.
+- Launch CTA disabled when no saved search is selected, when daily contact cap is hit (cap enforcement wired but inert in Phase 1 — `metrics.contacts` only populates after a real cron run completes), or when pause-all is on (hardcoded false until BD Settings ships).
+- Amber #F59E0B / #D97706 is the only hardcoded hex in BD pages — reserved exclusively for the Launch CTA per the BD handoff. Everywhere else uses Court Mode tokens (court-brand, court-brand-tint, court-brand-dark, court-surface, court-border, court-fg families).
+
+Browser verification depends on seeded data:
+- The schema is live but no Verticals / SavedSearches / SendingDomains are seeded yet. To test the Launch flow end-to-end, open `npm run db:studio` and add at least one Vertical row (organizationId = `cmobj8dxz00012gliequ53kvc`, name + slug) and at least one SavedSearch row pointing at it (organizationId + verticalId + name + criteria `{}`). 5 SendingDomain rows are optional — the preview chip renders empty-outline dots when no domains exist.
 
 ## Summary — Ace 39.0
 Polish + workflow round on the Candidate Sourcing Surface that shipped in 38.1, plus a full rebuild of the interview scheduler around native Google Calendar invites and a new Rejected tab on the job page.
@@ -187,11 +213,19 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-Ace 40.0 — Design prompts first, then BD Engine block.
+BD Phase 2 — BD Settings page at `/settings/bd` for CRUD on Verticals, SavedSearches, and SendingDomains so the Today's Launch flow has data to act on without manual prisma studio writes. Then queue the remaining BD sub-items: Apollo enrichment helper, Indeed scan helper, 6 AM ET Vercel cron picking up QUEUED BDRuns, Apollo webhook for opens/replies/bounces, reach-out mail composer pre-fill from Client Signal, Active Campaigns counters wired, Activity tab feed, scheduled email send (Gmail API send-at), sequence engine + Apollo sequence template wiring.
 
-Design pass kicks off the session: (1) Night Court light mode — a dedicated low-contrast / warm-tinted light mode option in the Court Mode selector alongside the existing 3 surfaces, paired against (2) a Dashboard + Scoreboard + Invoicing redesign brief (consolidating the dashboard premium surface, the queued Scoreboard widget tile, and the parked Invoicing workflow into a single coherent surface direction). Design prompts run through Claude chat first — no code until the visual direction is signed off.
+Still parked from before BD: (1) Night Court light mode — a dedicated low-contrast / warm-tinted light mode option in the Court Mode selector alongside the existing 3 surfaces, paired against (2) a Dashboard + Scoreboard + Invoicing redesign brief (consolidating the dashboard premium surface, the queued Scoreboard widget tile, and the parked Invoicing workflow into a single coherent surface direction). Design prompts run through Claude chat first — no code until the visual direction is signed off.
 
-Then BD Engine block (12-19 hr total): scheduled email send (Gmail API send-at), background job queue (Job table + Vercel Cron), BD tab surface (`/bd` page, Prospect table, BD feed), Apollo enrichment helper as standalone before cron, BD daily cron (Indeed API scan for public-accounting firms matching criteria, Apollo finds best contact, writes to Prospect, dedupes), sequence engine + BD Settings (outbound sequences from Ace using warmed domains, settings for keywords/titles/limit/cadence).
+## What Shipped in Ace 39.1 (2026-05-11)
+- **BD Prisma schema (Phase 1)**: 9 new models (`Vertical`, `SavedSearch`, `SavedSearchVersion`, `SendingDomain`, `BDRun`, `Campaign`, `CampaignEvent`, `BDActivity`, `ClientSignal`) and 4 enums (`BDRunStatus`, `SendingDomainStatus`, `BDActivityKind`, `ClientSignalStatus`) all `organizationId`-scoped per architecture rule 8. Inverse relations on `Organization` (9 new) and `Client` (1 new — `clientSignals`). `BDRun.plan` and `BDRun.metrics` stay as `Json` so the cron-side shape can drift while Apollo wiring is prototyped. `(organizationId, slug)` unique on `Vertical`, `(organizationId, domain)` on `SendingDomain`, `(organizationId, externalUrl)` on `ClientSignal`. Schema applied via `prisma db push` — there is no `prisma/migrations/` directory in this project, the canonical workflow is `npm run db:push` (caught and avoided `prisma migrate dev` which would have offered to reset the live Neon database).
+- **Sidebar BD entry**: `src/components/sidebar.tsx` CRM group now `Jobs → Clients → BD` (Megaphone icon from lucide-react). Sits in the CRM group between Jobs and the Inbox section break per the brief.
+- **`/bd` layout shell**: `src/app/bd/layout.tsx` renders the unified `TabStrip` with 4 tabs (Today's Launch / Client Signal / Active Campaigns / Activity) plus a right-aligned BD Settings link to `/settings/bd` (route stub — page lands in BD Phase 2). `usePathname()` resolves the active tab. `src/app/bd/page.tsx` redirects to `/bd/launch`. Note: the prompt called for `src/app/(app)/bd/layout.tsx`, but no `(app)` route group exists in this codebase — every other route sits directly under `src/app/`, so BD matches that convention at `src/app/bd/`.
+- **Tab placeholder pages**: `client-signal`, `campaigns`, `activity` ship as minimal "coming soon" pages so the tab strip click navigation never 404s while the real surfaces are deferred.
+- **Today's Launch page (`/bd/launch`)**: `src/app/bd/launch/page.tsx` (server component) loads verticals + saved searches + first 5 sending domains + the most recent BDRun for the caller's org via `getCurrentOrg()`. Renders `LaunchView` (`src/app/bd/launch/launch-view.tsx`, client component) with vertical segmented control (chip-style toggle group with active-state Court Mode brand-tint surface), saved-search `<select>` filtered to the active vertical, preview chip (companies → contacts · sequence · 5 rotating domain dots; empty-outline dots fill the slot count when fewer than 5 domains exist), and amber Launch CTA. On launch click a confirmation modal opens with the same preview chip and Cancel/Launch buttons.
+- **`POST /api/bd/runs`**: `src/app/api/bd/runs/route.ts` validates `verticalId` and `savedSearchId` both belong to the caller's org (cross-tenant guard), snapshots up to 5 HEALTHY sending domains by `lastUsedAt` into the BDRun.plan blob, and inserts the row at status=QUEUED. Returns `{ id, createdAt, status }` so the client can confirm. The morning cron (BD Phase 3) will pick up QUEUED rows and walk them through Indeed → Apollo.
+- **Court Mode compliance**: only one hardcoded hex in BD pages — amber #F59E0B + hover #D97706 on the Launch CTA (reserved per the BD handoff and BreakPoint button-color convention). Every other surface in BD uses Court Mode tokens (`court-brand`, `court-brand-tint`, `court-brand-dark`, `court-surface`, `court-border`, `court-fg`, `court-fg-muted`, `court-fg-dim`).
+- **Daily contact cap + pause-all toggle scaffold**: the Launch CTA disables when `contactsUsedToday >= contactCap` (cap reads from `SavedSearch.contactCap` with a default of 80) and when `PAUSE_ALL` is on (hardcoded `false` in Phase 1 — lifts to a `Setting` row when `/settings/bd` ships in Phase 2). `metrics.contacts` is only populated after a real cron run completes, so the cap-hit branch never trips in Phase 1.
 
 ## What Shipped in Ace 39.0 (2026-05-11)
 - **Job Overview single card**: full-width inline-editable card on `/jobs/[id]?tab=overview`. Two-column split retired — single Edit / Save / Cancel toggle drives every field.
