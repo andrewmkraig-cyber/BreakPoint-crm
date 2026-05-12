@@ -690,6 +690,7 @@ model Client {
   placements    Placement[]
   interviews    Interview[]
   gmailTags     GmailThreadTag[]
+  clientSignals ClientSignal[]
 
   @@index([name])
   @@index([organizationId])
@@ -926,6 +927,15 @@ model Organization {
   chessPuzzlesOfDay    ChessPuzzleOfDay[]
   chessPuzzleStreaks   ChessPuzzleStreak[]
   funFacts             FunFact[]
+  verticals            Vertical[]
+  savedSearches        SavedSearch[]
+  savedSearchVersions  SavedSearchVersion[]
+  sendingDomains       SendingDomain[]
+  bdRuns               BDRun[]
+  campaigns            Campaign[]
+  campaignEvents       CampaignEvent[]
+  bdActivities         BDActivity[]
+  clientSignals        ClientSignal[]
 }
 
 model ClaudePanelMessage {
@@ -1229,4 +1239,268 @@ model DailyNewsFeed {
 
   @@unique([organizationId, tab, generatedDate])
   @@index([organizationId])
+}
+
+// ---- BD (Business Development) ----
+// Outbound sequence orchestration. Ace = control center, Apollo =
+// execution, Indeed = discovery. The morning cron picks up BDRuns with
+// status=QUEUED and walks them through Indeed → Apollo. All BD models
+// are tenant-scoped via organizationId per architecture rule 8.
+
+enum BDRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+enum SendingDomainStatus {
+  HEALTHY
+  WARMING
+  COOLED
+}
+
+enum BDActivityKind {
+  SCAN_COMPLETE
+  ENRICH
+  ENROLL
+  OPEN
+  REPLY
+  BOUNCE
+  UNSUB
+  DOMAIN_COOLED
+  DOMAIN_RESUMED
+}
+
+enum ClientSignalStatus {
+  NEW
+  ACTED
+  DISMISSED
+}
+
+// Highest-level BD grouping. Drives the segmented control on Today's
+// Launch and scopes saved searches + campaigns. Slug is the URL-safe
+// identifier (e.g. "tax", "audit", "fpa"); name is the display label.
+model Vertical {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  slug           String
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  savedSearches SavedSearch[]
+  bdRuns        BDRun[]
+  campaigns     Campaign[]
+  clientSignals ClientSignal[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId])
+}
+
+// A recruiter-defined BD search — the criteria the morning Indeed scan
+// uses to discover target companies. `criteria` Json is opaque to Ace
+// (Indeed query shape lives there). `contactCap` overrides the org-level
+// daily contact cap when set; null inherits.
+model SavedSearch {
+  id             String   @id @default(cuid())
+  organizationId String
+  verticalId     String
+  name           String
+  criteria       Json
+  active         Boolean  @default(true)
+  contactCap     Int?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vertical     Vertical             @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  versions     SavedSearchVersion[]
+  bdRuns       BDRun[]
+  campaigns    Campaign[]
+
+  @@index([organizationId])
+  @@index([verticalId])
+}
+
+// Append-only history of SavedSearch.criteria. One row per edit so
+// later we can answer "what criteria did the 2026-03-04 run use?".
+model SavedSearchVersion {
+  id             String   @id @default(cuid())
+  organizationId String
+  savedSearchId  String
+  criteria       Json
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  savedSearch  SavedSearch  @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([savedSearchId, createdAt])
+}
+
+// One of the warmed sending domains Apollo rotates outbound across.
+// Status WARMING / COOLED short-circuits the rotation; lastUsedAt
+// drives round-robin selection at enroll time. apolloMailboxId pins
+// the rotation slot to a specific Apollo sender.
+model SendingDomain {
+  id              String              @id @default(cuid())
+  organizationId  String
+  domain          String
+  status          SendingDomainStatus @default(HEALTHY)
+  apolloMailboxId String?
+  dailyCap        Int?
+  lastUsedAt      DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, domain])
+  @@index([organizationId])
+}
+
+// One row per Launch BD Run. Created on Launch click (status=QUEUED).
+// The morning cron flips QUEUED → RUNNING, then COMPLETE / FAILED with
+// metrics JSON capturing the actual scan/enrich/enroll counts so the
+// Active Campaigns + Activity tabs can render the daily breakdown
+// without re-hitting Indeed/Apollo on every load.
+model BDRun {
+  id             String      @id @default(cuid())
+  organizationId String
+  verticalId     String
+  savedSearchId  String
+  status         BDRunStatus @default(QUEUED)
+  // Launch-time snapshot the cron reads when it picks the run up:
+  // contact cap, sequence id, rotation pool, etc. Shape will drift
+  // as we wire Apollo, so it stays as Json instead of a column wave.
+  plan           Json?
+  // Cron writes the final breakdown here on completion:
+  // { companies, contacts, enrolled, errors }. Null until complete.
+  metrics        Json?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?     @db.Text
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vertical     Vertical     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  savedSearch  SavedSearch  @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
+  campaigns    Campaign[]
+  activities   BDActivity[]
+
+  @@index([organizationId, createdAt])
+  @@index([status])
+  @@index([verticalId])
+  @@index([savedSearchId])
+}
+
+// An active outbound campaign in Apollo, tracked from the Ace side.
+// apolloSequenceId is the Apollo sequence id contacts get enrolled into
+// — Ace never edits Apollo's copy, only records the linkage. Counters
+// are denormalized for the Active Campaigns table; CampaignEvent has
+// the granular per-contact log if a recompute is ever needed.
+model Campaign {
+  id               String   @id @default(cuid())
+  organizationId   String
+  verticalId       String
+  savedSearchId    String
+  bdRunId          String?
+  apolloSequenceId String
+  name             String
+  enrolled         Int      @default(0)
+  opens            Int      @default(0)
+  replies          Int      @default(0)
+  bounces          Int      @default(0)
+  unsubs           Int      @default(0)
+  active           Boolean  @default(true)
+  startedAt        DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vertical     Vertical        @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  savedSearch  SavedSearch     @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
+  bdRun        BDRun?          @relation(fields: [bdRunId], references: [id], onDelete: SetNull)
+  events       CampaignEvent[]
+
+  @@index([organizationId])
+  @@index([verticalId])
+  @@index([active])
+}
+
+// Granular per-contact event log within a campaign. Apollo webhook
+// writes one row per open/reply/bounce/unsub. Powers the Activity tab
+// feed and lets us recompute Campaign counters if drift is suspected.
+// apolloContactId is free-form because Apollo is the source of truth
+// for outbound contacts — Ace doesn't ingest them into Contact.
+model CampaignEvent {
+  id              String         @id @default(cuid())
+  organizationId  String
+  campaignId      String
+  kind            BDActivityKind
+  apolloContactId String?
+  metadata        Json?
+  occurredAt      DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, occurredAt])
+  @@index([campaignId, occurredAt])
+  @@index([kind])
+}
+
+// BD-specific audit feed for the Activity tab. Mirrors ActivityLog's
+// pattern but kept on a separate table so BD events don't dilute the
+// general activity surface. Polymorphic target via targetType/targetId
+// (e.g. "company", "campaign", "domain") with no DB-level FK so
+// retention can tombstone targets without cascade.
+model BDActivity {
+  id             String         @id @default(cuid())
+  organizationId String
+  bdRunId        String?
+  kind           BDActivityKind
+  targetType     String?
+  targetId       String?
+  metadata       Json?
+  occurredAt     DateTime       @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  bdRun        BDRun?       @relation(fields: [bdRunId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt(sort: Desc)])
+  @@index([bdRunId])
+  @@index([kind])
+}
+
+// Indeed-detected public job posting at an existing Client. Surfaced
+// on the Client Signal tab so the recruiter can act before a competitor
+// does. NEW → ACTED (reach-out sent) or DISMISSED. externalUrl is
+// unique per org so re-scanning the same posting upserts cleanly.
+model ClientSignal {
+  id             String             @id @default(cuid())
+  organizationId String
+  clientId       String
+  verticalId     String?
+  externalUrl    String
+  externalId     String?
+  jobTitle       String?
+  location       String?
+  status         ClientSignalStatus @default(NEW)
+  detectedAt     DateTime           @default(now())
+  actedAt        DateTime?
+  dismissedAt    DateTime?
+  raw            Json?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  vertical     Vertical?    @relation(fields: [verticalId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, externalUrl])
+  @@index([organizationId, status])
+  @@index([clientId])
 }
