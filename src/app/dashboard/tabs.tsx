@@ -1,7 +1,4 @@
-"use client";
-
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 export type DashboardTab = "dashboard" | "scoreboard" | "invoicing";
@@ -47,15 +44,11 @@ function TabLink({
   active: boolean;
   count?: number;
 }) {
-  // Build the href using the live searchParams so unrelated params survive
-  // a tab switch — there shouldn't be many, but if Andrew lands on
-  // /dashboard?ref=email we don't want to drop that hint.
-  const params = useSearchParams();
-  const next = new URLSearchParams(params?.toString());
-  if (tab === "dashboard") next.delete("tab");
-  else next.set("tab", tab);
-  const qs = next.toString();
-  const href = qs ? `/dashboard?${qs}` : "/dashboard";
+  // Static hrefs by tab. We could preserve other ?params via
+  // useSearchParams() here, but that would force this component into
+  // a client + Suspense pair for a benefit no caller actually relies
+  // on today — /dashboard isn't linked to with auxiliary params.
+  const href = tab === "dashboard" ? "/dashboard" : `/dashboard?tab=${tab}`;
 
   return (
     <Link

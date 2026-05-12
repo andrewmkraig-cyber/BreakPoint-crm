@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
@@ -111,7 +111,22 @@ function resolveSpec(
 const ACTION_BUTTON_CLASS =
   "inline-flex shrink-0 items-center justify-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2 py-1 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
 
+// `useSearchParams()` requires the closest parent to be a
+// <Suspense> boundary in Next.js 14 — without it, the hook causes
+// the entire tree to bail out of static rendering and can throw at
+// runtime. TopBar mounts on every page, not just /dashboard, so the
+// crash showed up app-wide once `useSearchParams` was added here.
+// The exported component wraps the search-params-reading internals
+// in Suspense so callers don't need to know.
 export function TopBarPageTitle() {
+  return (
+    <Suspense fallback={null}>
+      <TopBarPageTitleInner />
+    </Suspense>
+  );
+}
+
+function TopBarPageTitleInner() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const spec = resolveSpec(pathname, searchParams);
