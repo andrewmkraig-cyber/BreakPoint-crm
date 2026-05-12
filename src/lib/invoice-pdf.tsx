@@ -5,15 +5,19 @@
 // of the way down the page.
 //
 // Visual order top → bottom:
-//   Header band         · logo wordmark + "INVOICE" + INV-NNNN
+//   Header band         · company wordmark + address stack ⟂ big "Invoice" + INV-NNNN
 //   Meta strip          · Issue Date / Due Date / Terms / Amount Due
 //   Bill To · Hiring    · billing contact + address ⟂ hiring contact
 //   Placement Summary   · candidate / role / start / fee details
 //   Services table      · single line item with rate × qty = amount
 //   Totals              · right-aligned subtotal + amount due
-//   Payment Instructions· three columns: ACH/Wire · Check · Questions
+//   Payment Instructions· three columns: ACH/Wire · Check · Questions (9pt)
 //   Note (optional)     · small muted "Note: …" line if invoice.notes set
-//   Footer              · EIN + "Thank you." (right-aligned)
+//   Footer              · one muted line: "EIN <ein> · Thank you for your business."
+//
+// Spacing was tightened in Ace 42 so the entire document fits on a single
+// US Letter page — section margins were reduced ~30% across the board and
+// the prior two-row footer was collapsed into a single inline line.
 //
 // Helvetica is the @react-pdf built-in — no font fetch needed. Playfair
 // Display + Inter from the design tokens require a runtime font fetch
@@ -43,115 +47,122 @@ const CREAM = "#FAF8F3";
 
 const styles = StyleSheet.create({
   page: {
-    paddingTop: 47,
-    paddingBottom: 47,
-    paddingHorizontal: 50,
+    paddingTop: 36,
+    paddingBottom: 36,
+    paddingHorizontal: 48,
     fontFamily: "Helvetica",
     fontSize: 10,
     color: INK,
-    lineHeight: 1.4,
+    lineHeight: 1.35,
   },
   // --- Header band ---
+  // Two-column flex row. Left = company wordmark + address stack.
+  // Right = big "Invoice" wordmark + smaller muted INV-NNNN beneath.
+  // alignItems:flex-end pins the bottom of the right stack to the bottom
+  // of the left stack so the brand-green hairline rule reads as a clean
+  // baseline across both columns.
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-end",
-    paddingBottom: 14,
+    paddingBottom: 10,
     borderBottomWidth: 2,
     borderBottomColor: BRAND_GREEN,
   },
-  brand: { flexDirection: "column", gap: 2 },
+  brand: { flexDirection: "column" },
   brandName: {
     fontSize: 18,
     fontFamily: "Helvetica-Bold",
     letterSpacing: -0.4,
     color: INK,
   },
-  brandLine: { fontSize: 9, color: MUTED, marginTop: 2 },
+  brandLine: { fontSize: 9, color: MUTED, marginTop: 1 },
   headerRight: { alignItems: "flex-end" },
   invoiceWord: {
-    fontSize: 22,
+    fontSize: 32,
     fontFamily: "Helvetica-Bold",
     color: INK,
-    letterSpacing: 4,
+    letterSpacing: -0.5,
+    lineHeight: 1,
   },
   invoiceNum: {
-    fontSize: 11,
-    color: INK_700,
+    fontSize: 10,
+    color: MUTED,
     marginTop: 4,
-    fontFamily: "Helvetica-Bold",
+    fontFamily: "Helvetica",
+    letterSpacing: 0.8,
   },
   // --- Meta strip ---
   meta: {
     flexDirection: "row",
-    marginTop: 18,
-    paddingVertical: 10,
+    marginTop: 12,
+    paddingVertical: 7,
     borderBottomWidth: 1,
     borderBottomColor: LINE,
   },
-  metaCol: { flex: 1, paddingRight: 12 },
+  metaCol: { flex: 1, paddingRight: 10 },
   metaLabel: {
-    fontSize: 7,
-    color: MUTED,
-    letterSpacing: 1.4,
-    fontFamily: "Helvetica-Bold",
-    marginBottom: 4,
-  },
-  metaValue: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK },
-  metaValueAmount: {
-    fontSize: 13,
-    fontFamily: "Helvetica-Bold",
-    color: INK,
-  },
-  // --- Bill To / Hiring ---
-  twoCol: { flexDirection: "row", marginTop: 22, gap: 28 },
-  col: { flex: 1 },
-  sectionHeader: {
-    fontSize: 8,
-    color: BRAND_GREEN_DARK,
-    letterSpacing: 1.6,
-    fontFamily: "Helvetica-Bold",
-    marginBottom: 8,
-  },
-  contactName: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK },
-  contactCompany: {
-    fontSize: 11,
-    fontFamily: "Helvetica-Bold",
-    color: INK,
-    marginBottom: 2,
-  },
-  contactLine: { fontSize: 9.5, color: INK_700, marginTop: 1 },
-  helperLine: { fontSize: 8, color: MUTED, marginTop: 10, fontStyle: "italic" },
-  // --- Placement Summary ---
-  summary: {
-    marginTop: 22,
-    backgroundColor: CREAM,
-    borderRadius: 4,
-    padding: 14,
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  summaryItem: { width: "25%", paddingVertical: 4, paddingRight: 8 },
-  summaryLabel: {
     fontSize: 7,
     color: MUTED,
     letterSpacing: 1.2,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 2,
+    marginBottom: 3,
   },
-  summaryValue: { fontSize: 10, color: INK, fontFamily: "Helvetica-Bold" },
+  metaValue: { fontSize: 10.5, fontFamily: "Helvetica-Bold", color: INK },
+  metaValueAmount: {
+    fontSize: 12,
+    fontFamily: "Helvetica-Bold",
+    color: INK,
+  },
+  // --- Bill To / Hiring ---
+  twoCol: { flexDirection: "row", marginTop: 14, gap: 24 },
+  col: { flex: 1 },
+  sectionHeader: {
+    fontSize: 8,
+    color: BRAND_GREEN_DARK,
+    letterSpacing: 1.4,
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 6,
+  },
+  contactName: { fontSize: 10.5, fontFamily: "Helvetica-Bold", color: INK },
+  contactCompany: {
+    fontSize: 10.5,
+    fontFamily: "Helvetica-Bold",
+    color: INK,
+    marginBottom: 1,
+  },
+  contactLine: { fontSize: 9, color: INK_700, marginTop: 1 },
+  helperLine: { fontSize: 7.5, color: MUTED, marginTop: 6, fontStyle: "italic" },
+  // --- Placement Summary ---
+  summary: {
+    marginTop: 14,
+    backgroundColor: CREAM,
+    borderRadius: 4,
+    padding: 10,
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  summaryItem: { width: "25%", paddingVertical: 3, paddingRight: 8 },
+  summaryLabel: {
+    fontSize: 7,
+    color: MUTED,
+    letterSpacing: 1.1,
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 1,
+  },
+  summaryValue: { fontSize: 9.5, color: INK, fontFamily: "Helvetica-Bold" },
   // --- Services table ---
   tableHeader: {
     flexDirection: "row",
-    marginTop: 22,
-    paddingBottom: 6,
-    borderBottomWidth: 1.4,
+    marginTop: 14,
+    paddingBottom: 5,
+    borderBottomWidth: 1.2,
     borderBottomColor: INK,
   },
   th: {
     fontSize: 7,
     color: MUTED,
-    letterSpacing: 1.4,
+    letterSpacing: 1.3,
     fontFamily: "Helvetica-Bold",
   },
   thDesc: { flex: 5 },
@@ -160,14 +171,14 @@ const styles = StyleSheet.create({
   thAmount: { flex: 2, textAlign: "right" },
   tableRow: {
     flexDirection: "row",
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: LINE,
     alignItems: "flex-start",
   },
   tdDesc: { flex: 5, paddingRight: 12 },
-  tdDescTitle: { fontSize: 11, color: INK, fontFamily: "Helvetica-Bold" },
-  tdDescSub: { fontSize: 9, color: MUTED, marginTop: 3 },
+  tdDescTitle: { fontSize: 10.5, color: INK, fontFamily: "Helvetica-Bold" },
+  tdDescSub: { fontSize: 8.5, color: MUTED, marginTop: 2 },
   tdQty: { flex: 1, textAlign: "right", fontSize: 10, color: INK },
   tdRate: { flex: 2, textAlign: "right", fontSize: 10, color: INK },
   tdAmount: {
@@ -178,30 +189,34 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
   },
   // --- Totals ---
-  totals: { alignItems: "flex-end", marginTop: 14 },
+  totals: { alignItems: "flex-end", marginTop: 10 },
   totalRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    width: 260,
-    paddingVertical: 3,
+    width: 240,
+    paddingVertical: 2,
   },
   totalLabel: { fontSize: 10, color: INK_700 },
   totalValue: { fontSize: 10, color: INK, fontFamily: "Helvetica-Bold" },
   totalDueRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    width: 260,
-    paddingVertical: 8,
-    marginTop: 4,
-    borderTopWidth: 1.4,
+    width: 240,
+    paddingVertical: 6,
+    marginTop: 3,
+    borderTopWidth: 1.2,
     borderTopColor: INK,
   },
-  totalDueLabel: { fontSize: 13, color: INK, fontFamily: "Helvetica-Bold" },
-  totalDueValue: { fontSize: 16, color: INK, fontFamily: "Helvetica-Bold" },
+  totalDueLabel: { fontSize: 12, color: INK, fontFamily: "Helvetica-Bold" },
+  totalDueValue: { fontSize: 14, color: INK, fontFamily: "Helvetica-Bold" },
   // --- Payment Instructions ---
+  // Tightened cream panel: 9pt body, 10px gap between the 3 columns,
+  // smaller paddings. Same content (ACH/Wire · Check · Questions) but
+  // ~30% less vertical real estate so the whole invoice stays on one
+  // US Letter page.
   payment: {
-    marginTop: 22,
-    padding: 16,
+    marginTop: 14,
+    padding: 11,
     backgroundColor: CREAM,
     borderRadius: 4,
   },
@@ -209,30 +224,30 @@ const styles = StyleSheet.create({
     fontSize: 9,
     color: INK,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 10,
+    marginBottom: 7,
   },
-  paymentCols: { flexDirection: "row", gap: 14 },
+  paymentCols: { flexDirection: "row", gap: 10 },
   paymentCol: { flex: 1 },
   paymentHeader: {
-    fontSize: 8,
+    fontSize: 7.5,
     color: BRAND_GREEN_DARK,
-    letterSpacing: 1.4,
+    letterSpacing: 1.3,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 6,
+    marginBottom: 4,
   },
-  paymentLine: { fontSize: 9, color: INK_700, marginBottom: 2 },
+  paymentLine: { fontSize: 9, color: INK_700, marginBottom: 1 },
   paymentLineBold: {
     fontSize: 9,
     color: INK,
     fontFamily: "Helvetica-Bold",
-    marginBottom: 2,
+    marginBottom: 1,
   },
   // --- Optional Note line (renders below Payment Instructions when
   // invoice.notes is populated). Small muted single-line label + body
   // so a short memo can ride along without crowding the page chrome.
   note: {
     flexDirection: "row",
-    marginTop: 14,
+    marginTop: 9,
     gap: 4,
     paddingHorizontal: 2,
   },
@@ -242,25 +257,20 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     letterSpacing: 0.4,
   },
-  noteBody: { fontSize: 8, color: MUTED, lineHeight: 1.5, flex: 1 },
+  noteBody: { fontSize: 8, color: MUTED, lineHeight: 1.4, flex: 1 },
   // --- Footer ---
+  // Single muted line: "EIN <ein> · Thank you for your business."
+  // Collapsed from the prior two-row footer block in Ace 42 so the
+  // document fits cleanly on one page.
   footer: {
-    marginTop: 18,
-    paddingTop: 12,
+    marginTop: 10,
+    paddingTop: 7,
     borderTopWidth: 1,
     borderTopColor: LINE,
     flexDirection: "row",
     justifyContent: "flex-end",
-    alignItems: "flex-end",
   },
-  footerRight: { alignItems: "flex-end" },
-  footerSmall: { fontSize: 8, color: MUTED, lineHeight: 1.5 },
-  footerThanks: {
-    fontSize: 10,
-    color: INK,
-    fontFamily: "Helvetica-Bold",
-    marginTop: 4,
-  },
+  footerLine: { fontSize: 8, color: MUTED },
 });
 
 export type InvoicePdfInput = {
@@ -378,7 +388,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
         createElement(
           View,
           { style: styles.headerRight },
-          createElement(Text, { style: styles.invoiceWord }, "INVOICE"),
+          createElement(Text, { style: styles.invoiceWord }, "Invoice"),
           createElement(Text, { style: styles.invoiceNum }, invoiceNumber),
         ),
       ),
@@ -595,17 +605,17 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
             createElement(Text, { style: styles.noteBody }, trimmedNotes),
           )
         : null,
-      // Footer (guarantee clause removed in Ace 42; EIN + Thanks only)
+      // Footer — single muted line: "EIN <ein> · Thank you for your business."
+      // Falls back to the BreakPoint EIN if the workspace hasn't saved
+      // one yet so the footer always renders complete on the test invoice
+      // and on legacy invoices created before the EIN default landed.
       createElement(
         View,
         { style: styles.footer },
         createElement(
-          View,
-          { style: styles.footerRight },
-          billing.ein
-            ? createElement(Text, { style: styles.footerSmall }, `EIN ${billing.ein}`)
-            : null,
-          createElement(Text, { style: styles.footerThanks }, "Thank you."),
+          Text,
+          { style: styles.footerLine },
+          `EIN ${billing.ein || "41-4887871"} · Thank you for your business.`,
         ),
       ),
     ),

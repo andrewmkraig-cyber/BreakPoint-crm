@@ -33,7 +33,7 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
   city: "Solon",
   state: "OH",
   zip: "44139",
-  ein: "",
+  ein: "41-4887871",
   arEmail: "ar@breakpointtalent.com",
   arPhone: "216-340-9511",
   website: "breakpointtalent.com",

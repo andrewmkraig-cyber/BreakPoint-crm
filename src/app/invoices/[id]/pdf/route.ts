@@ -36,6 +36,22 @@ export async function GET(
         .join(", ")
     : "";
 
+  // Field map — Invoice → PDF renderer. Kept explicit so a future reader
+  // can trace any "—" rendering back to the column it reads from.
+  //   Amount Due / Subtotal      ← invoice.feeAmount     (Decimal)
+  //   Bill To / Hiring Contact   ← invoice.billingContacts + invoice.hiringContacts
+  //                                (Json arrays; first entry is the primary)
+  //                              ← invoice.client.name   (BILL TO heading)
+  //   Candidate                  ← invoice.candidate.firstName + lastName
+  //   Role                       ← invoice.roleTitle
+  //   Issue / Due / Terms        ← invoice.startDate, invoice.dueDate, invoice.paymentTerms
+  //   Base Salary / Fee %        ← invoice.placement.acceptedSalary + .feePercentage
+  //                                (null when no placement linked — e.g. the
+  //                                "Send test invoice" path, which doesn't
+  //                                create a Placement row. Those tiles render
+  //                                "—" by design until snapshot columns land
+  //                                on Invoice.)
+  //   Notes                      ← invoice.notes (optional memo line)
   const feeAmountUsd = invoice.feeAmount ? Number(invoice.feeAmount.toString()) : null;
 
   const pdfBuffer = await renderInvoicePdfBuffer({
