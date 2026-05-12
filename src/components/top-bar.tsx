@@ -39,16 +39,19 @@ export function TopBar() {
         <TopBarPageTitle />
       </div>
 
-      <div className="flex min-w-0 flex-1 items-center justify-end gap-3 md:flex-none md:justify-start">
-        {/* Search width scales with viewport so the title block on
-            the left and the action-icon row on the right don't get
-            squeezed into overlap on lg-but-not-xl viewports. Below
-            md it stays full-width (mobile flow). */}
+      {/* Search hugs the page title on the left; the flex-1 wrapper
+          eats the remaining width so the action-icon cluster (the
+          four buttons + weather + profile) is pushed flush right. On
+          mobile (no title block) the search itself fills the space. */}
+      <div className="flex min-w-0 flex-1 items-center justify-end md:justify-start">
         <div className="min-w-0 flex-1 md:flex-none md:w-56 lg:w-64 xl:w-80 2xl:w-96">
           <div className="rounded-lg border border-court-border bg-court-surface-subtle/60 transition focus-within:border-court-accent focus-within:bg-court-surface">
             <TopBarSearch />
           </div>
         </div>
+      </div>
+
+      <div className="flex items-center gap-3">
         <ComposeFAB />
         {/* Matches ComposeFAB's icon-button vocabulary: same h-10 w-10
             footprint, same rounded-full + brand border + brand-tint
@@ -120,9 +123,6 @@ export function TopBar() {
           </span>
           <Music className="h-4 w-4" />
         </button>
-      </div>
-
-      <div className="flex items-center gap-3">
         <WeatherWidget />
         <TopBarProfileCard name={user?.name ?? null} imageUrl={user?.image ?? null} />
       </div>
