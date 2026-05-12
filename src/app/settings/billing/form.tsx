@@ -45,10 +45,6 @@ const CHECK_FIELDS: FieldDef[] = [
   { key: "checkMailingAddress", label: "Check mailing address", type: "textarea" },
 ];
 
-const GUARANTEE_FIELDS: FieldDef[] = [
-  { key: "guaranteeClause", label: "Guarantee clause (footer)", type: "textarea" },
-];
-
 export function BillingSettingsForm({ initial }: { initial: BillingSettings }) {
   const [values, setValues] = useState<BillingSettings>(initial);
   const [isPending, startTransition] = useTransition();
@@ -76,7 +72,6 @@ export function BillingSettingsForm({ initial }: { initial: BillingSettings }) {
       <FieldGroup title="Company identity" fields={COMPANY_FIELDS} values={values} update={update} />
       <FieldGroup title="ACH / Wire" fields={BANK_FIELDS} values={values} update={update} />
       <FieldGroup title="Check" fields={CHECK_FIELDS} values={values} update={update} />
-      <FieldGroup title="Footer" fields={GUARANTEE_FIELDS} values={values} update={update} />
 
       <div className="flex items-center gap-3 border-t border-court-border pt-5">
         <button

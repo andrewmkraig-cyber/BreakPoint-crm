@@ -12,7 +12,8 @@
 //   Services table      · single line item with rate × qty = amount
 //   Totals              · right-aligned subtotal + amount due
 //   Payment Instructions· three columns: ACH/Wire · Check · Questions
-//   Footer              · guarantee clause + EIN + "Thank you."
+//   Note (optional)     · small muted "Note: …" line if invoice.notes set
+//   Footer              · EIN + "Thank you." (right-aligned)
 //
 // Helvetica is the @react-pdf built-in — no font fetch needed. Playfair
 // Display + Inter from the design tokens require a runtime font fetch
@@ -226,17 +227,32 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     marginBottom: 2,
   },
+  // --- Optional Note line (renders below Payment Instructions when
+  // invoice.notes is populated). Small muted single-line label + body
+  // so a short memo can ride along without crowding the page chrome.
+  note: {
+    flexDirection: "row",
+    marginTop: 14,
+    gap: 4,
+    paddingHorizontal: 2,
+  },
+  noteLabel: {
+    fontSize: 8,
+    color: MUTED,
+    fontFamily: "Helvetica-Bold",
+    letterSpacing: 0.4,
+  },
+  noteBody: { fontSize: 8, color: MUTED, lineHeight: 1.5, flex: 1 },
   // --- Footer ---
   footer: {
-    marginTop: 24,
+    marginTop: 18,
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: LINE,
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     alignItems: "flex-end",
   },
-  footerLeft: { flex: 1.4, paddingRight: 24 },
   footerRight: { alignItems: "flex-end" },
   footerSmall: { fontSize: 8, color: MUTED, lineHeight: 1.5 },
   footerThanks: {
@@ -264,6 +280,11 @@ export type InvoicePdfInput = {
   billingContacts: InvoiceContact[];
   hiringContacts: InvoiceContact[];
   billing: BillingSettings;
+  // Optional memo line written from the detail page's Internal Notes
+  // field (Invoice.notes column). Falsy → the note row is skipped
+  // entirely so a blank-notes invoice has clean whitespace under the
+  // payment instructions panel.
+  notes?: string | null;
 };
 
 function formatDate(d: Date | null | undefined): string {
@@ -312,7 +333,9 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
     billingContacts,
     hiringContacts,
     billing,
+    notes,
   } = props;
+  const trimmedNotes = notes?.trim() || "";
 
   const primaryBilling = billingContacts[0];
   const primaryHiring = hiringContacts[0];
@@ -563,15 +586,19 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           ),
         ),
       ),
-      // Footer
+      // Optional Note line (renders only when invoice.notes is set)
+      trimmedNotes
+        ? createElement(
+            View,
+            { style: styles.note },
+            createElement(Text, { style: styles.noteLabel }, "Note:"),
+            createElement(Text, { style: styles.noteBody }, trimmedNotes),
+          )
+        : null,
+      // Footer (guarantee clause removed in Ace 42; EIN + Thanks only)
       createElement(
         View,
         { style: styles.footer },
-        createElement(
-          View,
-          { style: styles.footerLeft },
-          createElement(Text, { style: styles.footerSmall }, billing.guaranteeClause),
-        ),
         createElement(
           View,
           { style: styles.footerRight },

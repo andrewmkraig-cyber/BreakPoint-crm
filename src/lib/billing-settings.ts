@@ -25,7 +25,6 @@ export type BillingSettings = {
   bankSwift: string;
   checkPayableTo: string;
   checkMailingAddress: string;
-  guaranteeClause: string;
 };
 
 export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
@@ -44,10 +43,8 @@ export const DEFAULT_BILLING_SETTINGS: BillingSettings = {
   bankRouting: "",
   bankAccount: "",
   bankSwift: "",
-  checkPayableTo: "BreakPoint Talent LLC",
+  checkPayableTo: "Kraig Talent LLC",
   checkMailingAddress: "5074 Hidden Creek Circle\nSolon, OH 44139",
-  guaranteeClause:
-    "Replacement guarantee: 90 days from start date. Full terms in your signed engagement letter.",
 };
 
 function normalize(raw: unknown): BillingSettings {

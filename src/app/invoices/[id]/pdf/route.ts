@@ -61,6 +61,7 @@ export async function GET(
     billingContacts,
     hiringContacts,
     billing,
+    notes: invoice.notes,
   });
 
   const filename = `${billing.companyName} - ${invoice.invoiceNumber}.pdf`;
