@@ -237,6 +237,44 @@ export async function deleteJob(args: { jobId: string }): Promise<Result> {
   }
 }
 
+// Save a recruiter-edited Generated JD back onto Job.description. The
+// Generated JD lives on Job.description (the generate-jd route writes
+// there), so the Edit toggle on the JD tab persists straight to the
+// same column. descriptionGeneratedAt is left alone — it tracks the
+// last AI generation, not manual edits.
+export async function saveJobGeneratedDescription(args: {
+  jobId: string;
+  description: string;
+}): Promise<Result> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return { ok: false, error: "Not signed in." };
+
+  const next = args.description;
+  if (next.length > 200_000) {
+    return { ok: false, error: "Description too long." };
+  }
+
+  try {
+    const org = await getCurrentOrg();
+    const job = await prisma.job.findFirst({
+      where: { id: args.jobId, organizationId: org.id },
+      select: { id: true, legacyRfId: true },
+    });
+    if (!job) return { ok: false, error: "Job not found." };
+
+    await prisma.job.update({
+      where: { id: job.id },
+      data: { description: next.trim() ? next : null },
+    });
+
+    if (job.legacyRfId != null) revalidatePath(`/jobs/${job.legacyRfId}`);
+    revalidatePath(`/jobs/${job.id}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
 // Save the recruiter-pasted source URL onto the Job. Tenant-scoped per
 // CLAUDE.md rule #8 — the lookup filters on organizationId so a stale
 // jobId from another tenant cannot land a write here. Successful saves

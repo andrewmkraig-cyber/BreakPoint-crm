@@ -12,12 +12,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 // Parse a recruiter-pasted source URL into a clean text dump the JD
-// Generate flow can consume. The Save URL action is folded in here:
-// regardless of whether the fetch + parse succeed, we persist the URL
-// onto Job.sourceJobUrl so the recruiter never has to re-paste it after
-// a failed parse.
+// Generate flow can consume. When called from an existing Job's JD tab
+// (jobId set), the URL is also persisted onto Job.sourceJobUrl so a
+// failed parse doesn't lose the link. When called from /jobs/new
+// (jobId absent — the Job row doesn't exist yet), the URL save is
+// skipped and the route is pure parse.
 
-type ParseUrlRequest = { jobId: string; url: string };
+type ParseUrlRequest = { jobId?: string | null; url: string };
 type ParseUrlResponse =
   | { ok: true; extracted: string; urlSaved: boolean }
   | { ok: false; error: string; urlSaved: boolean };
@@ -37,9 +38,6 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
 
   const jobId = (body.jobId ?? "").trim();
   const url = (body.url ?? "").trim();
-  if (!jobId) {
-    return NextResponse.json({ ok: false, error: "Missing job id.", urlSaved: false }, { status: 400 });
-  }
   if (!url || !/^https?:\/\//i.test(url)) {
     return NextResponse.json(
       { ok: false, error: "URL must start with http:// or https://.", urlSaved: false },
@@ -50,25 +48,28 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
     return NextResponse.json({ ok: false, error: "URL too long.", urlSaved: false }, { status: 400 });
   }
 
-  // Always persist the URL first — the user explicitly asked for this so
-  // a failed parse doesn't lose the link.
+  // Persist the URL when we have an existing Job row. /jobs/new posts
+  // without a jobId because the Job hasn't been created yet — the URL
+  // sticks to Job.sourceJobUrl later via createJob if we wire it through.
   let urlSaved = false;
-  try {
-    const org = await getCurrentOrg();
-    const job = await prisma.job.findFirst({
-      where: { id: jobId, organizationId: org.id },
-      select: { id: true },
-    });
-    if (!job) {
-      return NextResponse.json({ ok: false, error: "Job not found.", urlSaved: false }, { status: 404 });
+  if (jobId) {
+    try {
+      const org = await getCurrentOrg();
+      const job = await prisma.job.findFirst({
+        where: { id: jobId, organizationId: org.id },
+        select: { id: true },
+      });
+      if (!job) {
+        return NextResponse.json({ ok: false, error: "Job not found.", urlSaved: false }, { status: 404 });
+      }
+      await prisma.job.update({ where: { id: job.id }, data: { sourceJobUrl: url } });
+      urlSaved = true;
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : "Couldn't save URL.", urlSaved: false },
+        { status: 500 },
+      );
     }
-    await prisma.job.update({ where: { id: job.id }, data: { sourceJobUrl: url } });
-    urlSaved = true;
-  } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "Couldn't save URL.", urlSaved: false },
-      { status: 500 },
-    );
   }
 
   // Fetch the page. Many job boards return 403 to bare-metal fetches,

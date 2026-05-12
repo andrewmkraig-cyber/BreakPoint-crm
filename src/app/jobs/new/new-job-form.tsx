@@ -8,6 +8,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LabeledField, LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
 import { createJob, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
+import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
@@ -41,6 +42,57 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   const jdInputRef = useRef<HTMLInputElement>(null);
   const [jdFile, setJdFile] = useState<File | null>(null);
   const [isGenerating, startGenerate] = useTransition();
+
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [isParsing, setParsing] = useState(false);
+
+  async function onParseSourceUrl() {
+    const url = sourceUrl.trim();
+    if (!url) {
+      toast.message("Paste a URL first.");
+      return;
+    }
+    setParsing(true);
+    try {
+      const res = await fetch("/api/jobs/parse-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url }),
+      });
+      const data: unknown = await res.json();
+      const okRes =
+        data && typeof data === "object" && "ok" in data && (data as { ok: boolean }).ok === true
+          ? (data as { ok: true; extracted: string; urlSaved: boolean })
+          : null;
+      if (!okRes) {
+        const errorMsg =
+          data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string"
+            ? (data as { error: string }).error
+            : "Parse failed.";
+        toast.error("Couldn't parse the link", { description: errorMsg });
+        return;
+      }
+      // parse-url currently returns only a text blob (extracted: string)
+      // even though the route's Claude pass extracts structured fields
+      // internally (title / location / salary / etc) before collapsing
+      // them via formatExtractedAsPlain. Auto-fill of Title / Location /
+      // Salary is parked until the route exposes the structured object;
+      // for now drop the text blob into Description so Generate with
+      // Claude has source material to reformat.
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[parse-url] returned text blob only — structured fields (title/location/salary) not exposed yet; skipping auto-fill of Job Title / Location / Salary Low / Salary High",
+      );
+      setDescription(okRes.extracted);
+      toast.success("Link parsed. Source text dropped into Description below.");
+    } catch (e) {
+      toast.error("Couldn't parse the link", {
+        description: e instanceof Error ? e.message : "Network error.",
+      });
+    } finally {
+      setParsing(false);
+    }
+  }
 
   function onPickJd(e: ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null;
@@ -147,6 +199,37 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   }
 
   return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
+        <label className="block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+          Source Job Link
+        </label>
+        <p className="mt-0.5 text-[11px] text-court-fg-muted">
+          Paste an Indeed / LinkedIn / client URL and Parse Link to drop the source text into Description below.
+        </p>
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            type="url"
+            value={sourceUrl}
+            onChange={(e) => setSourceUrl(e.target.value)}
+            placeholder="https://…"
+            className={cn(
+              "flex-1 rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
+              "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+            )}
+          />
+          <button
+            type="button"
+            onClick={onParseSourceUrl}
+            disabled={isParsing}
+            className={cn(CLAUDE_PILL_CLASS, isParsing && "opacity-60")}
+          >
+            {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+            {isParsing ? "Parsing…" : "Parse Link"}
+          </button>
+        </div>
+      </div>
+
     <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="md:col-span-2">
@@ -348,6 +431,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           Create job
         </button>
       </div>
+    </div>
     </div>
   );
 }

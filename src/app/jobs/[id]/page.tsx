@@ -74,10 +74,9 @@ export default async function JobDetailPage({
   const rfId = jobRow.legacyRfId;
   const isAceNative = rfId == null;
 
-  const [jobs, candidates, override, localPlacements] = await Promise.all([
+  const [jobs, candidates, localPlacements] = await Promise.all([
     getRfJobsForOrg(),
     getRfCandidatesForOrg(),
-    rfId != null ? prisma.jobOverride.findUnique({ where: { jobRfId: rfId } }) : Promise.resolve(null),
     // Phase 4a: Placement read routed through the tenant-scoped
     // helper. The helper picks the right identity shape (jobRfId
     // numeric for RF-imported; jobId cuid for Ace-native) from the
@@ -278,10 +277,6 @@ export default async function JobDetailPage({
     : null;
   const clientFeePct = extractFeePct(clientRow?.customFields ?? null);
 
-  // Description read order: JobOverride (RF-imported only) > Job.description
-  // (Ace-native native column) > raw.description (RF payload fallback).
-  const rfDescription = typeof raw.description === "string" ? raw.description : null;
-
   // Tab selection from ?tab=. Default Overview so the recruiter lands
   // on a snapshot + quick actions before drilling into a specific surface.
   const tab: JobTab = parseTab(searchParams?.tab);
@@ -437,19 +432,12 @@ export default async function JobDetailPage({
         ) : tab === "description" ? (
           <JobDescriptionTab
             jobId={jobRow.id}
-            jobRfId={rfId}
-            jobCuid={isAceNative ? jobRow.id : null}
-            rfDescription={rfDescription}
-            initialOverride={override?.description ?? null}
-            initialSourceJobUrl={jobRow.sourceJobUrl ?? null}
-            initialRawJobDescription={jobRow.rawJobDescription ?? null}
             initialDescription={jobRow.description ?? null}
             initialDescriptionGeneratedAt={
               jobRow.descriptionGeneratedAt
                 ? jobRow.descriptionGeneratedAt.toISOString()
                 : null
             }
-            initialInternalRecruiterNotes={jobRow.internalRecruiterNotes ?? null}
             jobMeta={{
               title: job.title,
               clientName: job.company || "",
