@@ -538,10 +538,14 @@ export default async function CandidateProfilePage({
 
   const phoneValue = normalizePhone(c.phone_number);
 
-  // Embed = split-view iframe. Drops pipeline / tabs / action row and
-  // renders a tight two-column shape: compact overview + resume on the
-  // left, skills + activity in a 280px right rail. Both columns scroll
-  // independently inside the iframe viewport.
+  // Embed = split-view iframe. Mirrors the non-embed left column
+  // (compact overview + action row + resume) with a 280px right rail
+  // for skills + activity. The candidates-page chrome bar dropped its
+  // Apply / Keep duplicates so the left-column action row is the
+  // single source of truth for Apply / Keep / Add to List / Add Note
+  // across both surfaces. PlacementActionsIsland mounts chromeless
+  // here so its Apply modal + ?openApply=true searchParams handler
+  // stay alive without rendering the per-job pipeline row markup.
   if (isEmbed) {
     const compensation = formatExpectedSalaryBlob(c.expected_salary);
     const highlightTokens = parseHighlightTokens(searchParams?.highlight);
@@ -553,6 +557,29 @@ export default async function CandidateProfilePage({
             skills card, and activity feed without each component
             opting in via prop. */}
         {highlightTokens.length > 0 && <TextHighlighter tokens={highlightTokens} />}
+        <PlacementActionsIsland
+          chromeless
+          candidateRfId={id}
+          candidateFirstName={extractedName.firstName}
+          candidateLastName={extractedName.lastName}
+          candidateEmail={extractedName.email}
+          candidatePhone={phoneValue}
+          candidateLocation={locationLabel ?? ""}
+          candidateCurrentTitle={c.current_designation ?? ""}
+          candidateCurrentEmployer={c.current_organization ?? ""}
+          recruiter={(() => {
+            const email = session?.user?.email ?? "";
+            const fullName = session?.user?.name ?? "";
+            const firstName = fullName.split(/\s+/)[0] ?? "";
+            const phone = email
+              ? prefs.recruiterPhones[email] ?? prefs.recruiterPhones[email.toLowerCase()] ?? ""
+              : "";
+            return { firstName, fullName, email, phone };
+          })()}
+          jobs={placementJobs}
+          openJobs={buildOpenJobOptions({ allJobs, clients, contacts, linkedJobIds: new Set(placementJobs.map((j) => j.jobRfId)), jobCuidByRfId, clientCuidByRfId })}
+          aceTeam={aceTeam}
+        />
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <CandidateCompactOverview
@@ -568,6 +595,23 @@ export default async function CandidateProfilePage({
               linkedinProfile={identityInitial.linkedin_profile || null}
               compensation={compensation}
             />
+            <div className="flex flex-wrap items-center gap-2">
+              <AddToListButton candidateId={candidate.id} candidateName={name} />
+              <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
+              <Link
+                href={`/candidates/${id}?embed=true&openApply=1`}
+                className={APPLY_LINK_CLASS}
+              >
+                <Target className="h-3 w-3" /> Apply to Job
+              </Link>
+              <Link
+                href={`/candidates/${id}?tab=notes`}
+                target="_top"
+                className={ADD_NOTE_LINK_CLASS}
+              >
+                <NotebookPen className="h-3 w-3" /> Add Note
+              </Link>
+            </div>
             <EditableResume
               candidateRfId={id}
               candidateId={candidate.id}
@@ -629,37 +673,54 @@ export default async function CandidateProfilePage({
       </section>
       )}
 
-      {/* Two-column main. Left (30%) is the consolidated candidate-
-          identity sidebar: name + title + employer + location at the
-          top, then Contact / Employment / Activity stacked below.
-          Right (70%) holds the sticky tab + actions toolbar plus the
-          Profile / Game Plan / Notes content. The column order was
-          flipped so all identity info lives in one place on the
-          left, and the resume + actions read like the work surface
-          on the right. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        <aside className="space-y-4 lg:col-span-3">
-          {/* Single consolidated identity card: name + contact +
-              employment all editable from one Edit/Save flow. The old
-              standalone header band, the separate Contact card, and
-              the separate Employment card collapsed into this one
-              surface so identity info lives in one place. */}
-          <EditableIdentity candidateId={id} initial={identityInitial} />
-          <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
-          {/* Skills feeds search + Find Matches, so the card is
-              always-on and inline-editable (chips + Add input).
-              EditableSkills ships its own SectionCard shell so we
-              don't double-wrap it in ProfileAccordion. */}
-          <EditableSkills candidateId={id} initial={skillsInitial} />
-        </aside>
-
+      {/* Unified two-column layout. Left column is the work surface
+          (compact overview + action row + resume) and stays visible
+          regardless of which right-column tab is active. Right column
+          owns the tab strip + per-tab content. The embed split-view
+          above mirrors this same left column so the full profile and
+          search-popup profile read identically. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-7">
-          {/* Sticky tabs strip. Tabs read as navigation only — the
-              candidate-level action buttons (Add to List / Keep / Apply
-              / Add Note) live in their own row above the resume below
-              so the workspace and the navigation feel distinct. The
-              Submit-to-different-job button was retired in favor of
-              Apply to Job. */}
+          <CandidateCompactOverview
+            candidateRef={candidate.id}
+            fullName={name}
+            firstName={identityInitial.first_name || null}
+            lastName={identityInitial.last_name || null}
+            currentDesignation={identityInitial.current_designation || null}
+            currentOrganization={identityInitial.current_organization || null}
+            location={identityInitial.location || null}
+            email={identityInitial.email || null}
+            phone={phoneValue || null}
+            linkedinProfile={identityInitial.linkedin_profile || null}
+            compensation={formatExpectedSalaryBlob(c.expected_salary)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <AddToListButton candidateId={candidate.id} candidateName={name} />
+            <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
+            <Link
+              href={`/candidates/${id}?openApply=1`}
+              className={APPLY_LINK_CLASS}
+            >
+              <Target className="h-3 w-3" /> Apply to Job
+            </Link>
+            <Link
+              href={`/candidates/${id}?tab=notes`}
+              className={ADD_NOTE_LINK_CLASS}
+            >
+              <NotebookPen className="h-3 w-3" /> Add Note
+            </Link>
+          </div>
+          <EditableResume
+            candidateRfId={id}
+            candidateId={candidate.id}
+            versions={resumeVersions}
+          />
+        </div>
+
+        <div className="space-y-4 lg:col-span-5">
+          {/* Sticky tabs strip. Tabs scope only the right column —
+              the left column resume + actions stay put as the user
+              flips between Profile / Game Plan / Notes. */}
           <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={id} />
             {displayTags.slice(0, 3).map((t) => (
@@ -677,39 +738,13 @@ export default async function CandidateProfilePage({
           ) : tab === "notes" ? (
             <EditableNotes candidateId={id} initial={notesInitial} />
           ) : (
-            <div className="space-y-3">
-              {/* Candidate-level action row. Sits directly above the
-                  resume header so the buttons read as part of the
-                  resume workspace rather than the tab navigation.
-                  Keep is a candidate-wide bookmark (not per-job);
-                  Add Note jumps into the Notes tab. flex-wrap so the
-                  row collapses cleanly on narrow viewports without
-                  overlapping the resume header. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <AddToListButton candidateId={candidate.id} candidateName={name} />
-                <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
-                <Link
-                  href={`/candidates/${id}?openApply=1`}
-                  className={APPLY_LINK_CLASS}
-                >
-                  <Target className="h-3 w-3" /> Apply to Job
-                </Link>
-                <Link
-                  href={`/candidates/${id}?tab=notes`}
-                  className={ADD_NOTE_LINK_CLASS}
-                >
-                  <NotebookPen className="h-3 w-3" /> Add Note
-                </Link>
-              </div>
-              {/* Skills lives on the left sidebar now (below Activity).
-                  Experience / Education accordions were retired - the
-                  resume itself already covers them, and the second
-                  copy under the resume was visual noise. */}
-              <EditableResume
-                candidateRfId={id}
-                candidateId={candidate.id}
-                versions={resumeVersions}
-              />
+            <div className="space-y-4">
+              {/* Profile tab. The editable identity card stays the
+                  canonical edit surface — CompactOverview on the left
+                  is the read-only header for the same fields. */}
+              <EditableIdentity candidateId={id} initial={identityInitial} />
+              <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
+              <EditableSkills candidateId={id} initial={skillsInitial} />
             </div>
           )}
         </div>

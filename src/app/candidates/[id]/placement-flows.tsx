@@ -222,6 +222,7 @@ export function PlacementActions({
   jobs,
   openJobs,
   aceTeam,
+  chromeless = false,
 }: {
   candidateRfId: number;
   candidateFirstName: string;
@@ -235,6 +236,13 @@ export function PlacementActions({
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
   aceTeam: AceTeamContact[];
+  /**
+   * Embed split-view mounts this component only for its dialog modals +
+   * searchParams handler (so ?openApply=true opens the apply picker). When
+   * chromeless, suppress the visible empty-state card and per-job row list
+   * — the left-column action row is the only visible surface in embed.
+   */
+  chromeless?: boolean;
 }) {
   const [offerFor, setOfferFor] = useState<PlacementContextJob | null>(null);
   const [placementFor, setPlacementFor] = useState<PlacementContextJob | null>(null);
@@ -494,30 +502,32 @@ export function PlacementActions({
 
   return (
     <>
-      {jobsState.length === 0 && (
+      {!chromeless && jobsState.length === 0 && (
         <div className="rounded-xl border border-dashed border-court-border bg-court-surface-subtle/40 px-5 py-4 text-xs text-court-fg-muted">
           No jobs linked to this candidate yet — click <span className="font-semibold">Submit to Job</span> to add one.
         </div>
       )}
 
-      <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
-        {jobsState.map((j) => (
-          <JobActionRow
-            key={j.jobRfId}
-            job={j}
-            candidateRfId={candidateRfId}
-            candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
-            onOffer={() => setOfferFor(j)}
-            onPlacement={() => setPlacementFor(j)}
-            onConfirm={() => setConfirmFor(j)}
-            onSchedule={() => setScheduleFor(j)}
-            onClientInvite={() => setClientInviteFor(j)}
-            onReject={() => setRejectFor(j)}
-            onCancel={() => setCancelFor(j)}
-            onPlacementRemoved={handlePlacementRemoved}
-          />
-        ))}
-      </div>
+      {!chromeless && (
+        <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
+          {jobsState.map((j) => (
+            <JobActionRow
+              key={j.jobRfId}
+              job={j}
+              candidateRfId={candidateRfId}
+              candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
+              onOffer={() => setOfferFor(j)}
+              onPlacement={() => setPlacementFor(j)}
+              onConfirm={() => setConfirmFor(j)}
+              onSchedule={() => setScheduleFor(j)}
+              onClientInvite={() => setClientInviteFor(j)}
+              onReject={() => setRejectFor(j)}
+              onCancel={() => setCancelFor(j)}
+              onPlacementRemoved={handlePlacementRemoved}
+            />
+          ))}
+        </div>
+      )}
 
       {offerFor && (
         <OfferDialog

@@ -299,13 +299,79 @@ export async function LocalCandidateProfile({
 
   const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ") || "(unnamed)";
 
-  // Embed = split-view iframe. Drops pipeline / tabs / action row and
-  // renders a tight two-column shape: compact overview + resume on the
-  // left, skills + activity in a 280px right rail. Both columns scroll
-  // independently inside the iframe viewport.
+  // Embed = split-view iframe. Renders the same left column as the full
+  // profile (compact overview + action row + resume) and a 280px right
+  // rail with skills + activity. The action row is the single source of
+  // truth for Apply / Keep / Add to List / Add Note — the candidates-page
+  // chrome bar dropped its Apply / Keep duplicates in favor of this row.
+  // LocalCandidateActions mounts with hideButtons so its modals stay
+  // alive (Apply dialog + searchParams trigger) without rendering a
+  // second visible button row.
   if (embed) {
     const compensation = formatExpectedSalary(candidate.expectedSalary);
     const highlightTokens = parseHighlightTokens(highlight);
+    const isKeptEmbed = (candidate.tags ?? []).some((t) => {
+      const lower = t.trim().toLowerCase();
+      return lower === "kept" || lower === "keep";
+    });
+    // Same openJobs assembly as the non-embed branch below — embed needs
+    // it so LocalCandidateActions has a list to render in its Apply
+    // modal. Kept inline (small enough to not warrant a helper) and
+    // tolerant of empty fetches so a Neon hiccup doesn't 500 the iframe.
+    const linkedByRfJobE = new Map<number, string>();
+    const linkedByAceJobE = new Map<string, string>();
+    for (const p of placements) {
+      if (p.jobRfId != null) linkedByRfJobE.set(p.jobRfId, p.stage);
+      else if (p.jobId) linkedByAceJobE.set(p.jobId, p.stage);
+    }
+    const clientByIdE = new Map<number, (typeof allClients)[number]>();
+    for (const cl of allClients) clientByIdE.set(cl.id, cl);
+    const openJobsEmbed: LocalOpenJob[] = allJobs
+      .filter((j) => j.is_open !== false)
+      .map((raw) => {
+        const j = normalizeJob(raw);
+        const client = j.companyId != null ? clientByIdE.get(j.companyId) : null;
+        const aceJobId = (raw as { _aceJobId?: string })._aceJobId ?? null;
+        const aceClientId = (raw as { _aceClientId?: string })._aceClientId ?? null;
+        const clientContacts = j.companyId != null
+          ? allContacts
+              .filter((ct) => ct.client_company_id === j.companyId)
+              .map((ct) => ({
+                id: ct.id,
+                name:
+                  [ct.first_name, ct.last_name].filter(Boolean).join(" ") ||
+                  ct.name ||
+                  "(unnamed)",
+                title: ct.current_designation ?? "",
+                email: Array.isArray(ct.email) ? ct.email[0] ?? "" : ct.email ?? "",
+              }))
+          : [];
+        const alreadyLinked = aceJobId
+          ? linkedByAceJobE.has(aceJobId)
+          : linkedByRfJobE.has(j.id);
+        const linkedStage = aceJobId
+          ? linkedByAceJobE.get(aceJobId) ?? null
+          : linkedByRfJobE.get(j.id) ?? null;
+        return {
+          jobRfId: j.id,
+          jobCuid: aceJobId,
+          jobTitle: j.title,
+          jobLocation: j.location,
+          jobCompensation: j.compensation,
+          clientRfId: j.companyId ?? 0,
+          clientCuid: aceClientId,
+          clientName: client ? normalizeClient(client).name : j.company,
+          alreadyLinked,
+          linkedStage,
+          clientContacts,
+        };
+      })
+      .sort((a, b) => {
+        if (a.alreadyLinked !== b.alreadyLinked) return a.alreadyLinked ? 1 : -1;
+        const c = (a.clientName || "").localeCompare(b.clientName || "");
+        if (c !== 0) return c;
+        return (a.jobTitle || "").localeCompare(b.jobTitle || "");
+      });
     return (
       <>
         {/* Mount once at the top of the embed shell. Walks the DOM
@@ -313,6 +379,14 @@ export async function LocalCandidateProfile({
             overview / resume metadata / skills / activity cards
             with a styled <mark>. */}
         {highlightTokens.length > 0 && <TextHighlighter tokens={highlightTokens} />}
+        <LocalCandidateActions
+          candidateId={candidate.id}
+          candidateName={fullName}
+          candidateFirstName={candidate.firstName}
+          candidateEmail={candidate.email}
+          openJobs={openJobsEmbed}
+          hideButtons
+        />
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <CandidateCompactOverview
@@ -328,6 +402,23 @@ export async function LocalCandidateProfile({
               linkedinProfile={candidate.linkedinProfile}
               compensation={compensation}
             />
+            <div className="flex flex-wrap items-center gap-2">
+              <AddToListButton candidateId={candidate.id} candidateName={fullName} />
+              <KeepCandidateButton candidateId={candidate.id} isKept={isKeptEmbed} />
+              <Link
+                href={`/candidates/${candidate.id}?embed=true&openApply=1`}
+                className={APPLY_LINK_CLASS}
+              >
+                <Target className="h-3 w-3" /> Apply to Job
+              </Link>
+              <Link
+                href={`/candidates/${candidate.id}?tab=notes`}
+                target="_top"
+                className={ADD_NOTE_LINK_CLASS}
+              >
+                <NotebookPen className="h-3 w-3" /> Add Note
+              </Link>
+            </div>
             <EditableResume
               candidateRfId={null}
               candidateId={candidate.id}
@@ -541,52 +632,62 @@ export async function LocalCandidateProfile({
         </section>
       )}
 
-      {/* Two-column main. Same shape as the RF page: left is the
-          consolidated identity sidebar (name + title + employer +
-          contact + activity); right is the sticky tabs / actions
-          toolbar plus tab content. */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-10">
-        <aside className="space-y-4 lg:col-span-3">
-          {/* Single consolidated identity card: name + contact +
-              employment all editable from one Edit/Save flow. The old
-              standalone header band, the inline Contact dl, and the
-              separate LocalEmployment card collapsed into this one
-              surface so identity info lives in one place. */}
-          <LocalEditableIdentity
-            candidateId={candidate.id}
-            initial={{
-              firstName: candidate.firstName ?? "",
-              lastName: candidate.lastName ?? "",
-              email: candidate.email ?? "",
-              phone: candidate.phone ?? "",
-              location: candidate.location ?? "",
-              linkedinProfile: candidate.linkedinProfile ?? "",
-              currentDesignation: candidate.currentDesignation ?? "",
-              currentOrganization: candidate.currentOrganization ?? "",
-            }}
-          />
-          <BackgroundSection
-            experience={candidate.experience}
-            education={candidate.education}
-          />
-          <CandidateActivityCard candidateId={candidate.id} toNumber={candidate.phone || null} />
-          {/* Skills feeds the search + Find Matches surfaces, so it's
-              always editable. The card stays mounted even when empty
-              so a recruiter can add the first skill without needing
-              to re-run a parser. */}
-          <LocalEditableSkills
-            candidateId={candidate.id}
-            initial={candidate.skills ?? []}
-          />
-        </aside>
-
+      {/* Unified two-column layout. The left column is now the work
+          surface: compact overview + the candidate-level action row +
+          the resume — visible regardless of which right-column tab is
+          active. The right column owns the tab strip + per-tab
+          working content (identity editor / skills / activity on
+          Profile; AiWorkspace on Game Plan; notes on Notes). The
+          embed split-view above mirrors the same left column so both
+          surfaces read identically. */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
         <div className="space-y-4 lg:col-span-7">
-          {/* Sticky tabs strip. Tabs read as navigation only — the
-              candidate-level action buttons (Add to List / Keep / Apply
-              / Add Note) live in their own row above the resume below
-              so the workspace and the navigation feel distinct. The
-              Submit-to-different-job button was retired in favor of
-              Apply to Job. */}
+          <CandidateCompactOverview
+            candidateRef={candidate.id}
+            fullName={fullName}
+            firstName={candidate.firstName}
+            lastName={candidate.lastName}
+            currentDesignation={candidate.currentDesignation}
+            currentOrganization={candidate.currentOrganization}
+            location={candidate.location}
+            email={candidate.email}
+            phone={candidate.phone}
+            linkedinProfile={candidate.linkedinProfile}
+            compensation={formatExpectedSalary(candidate.expectedSalary)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <AddToListButton candidateId={candidate.id} candidateName={fullName} />
+            <KeepCandidateButton
+              candidateId={candidate.id}
+              isKept={(candidate.tags ?? []).some((t) => {
+                const lower = t.trim().toLowerCase();
+                return lower === "kept" || lower === "keep";
+              })}
+            />
+            <Link
+              href={`/candidates/${candidate.id}?openApply=1`}
+              className={APPLY_LINK_CLASS}
+            >
+              <Target className="h-3 w-3" /> Apply to Job
+            </Link>
+            <Link
+              href={`/candidates/${candidate.id}?tab=notes`}
+              className={ADD_NOTE_LINK_CLASS}
+            >
+              <NotebookPen className="h-3 w-3" /> Add Note
+            </Link>
+          </div>
+          <EditableResume
+            candidateRfId={null}
+            candidateId={candidate.id}
+            versions={resumeVersions}
+          />
+        </div>
+
+        <div className="space-y-4 lg:col-span-5">
+          {/* Sticky tabs strip. Tabs scope only the right column —
+              the left column resume + actions stay put as the user
+              flips between Profile / Game Plan / Notes. */}
           <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
             <UnderlineTabs tab={tab} candidateId={candidate.id} />
           </div>
@@ -602,40 +703,34 @@ export async function LocalCandidateProfile({
               initialNotes={candidate.notes}
             />
           ) : (
-            <div className="space-y-3">
-              {/* Candidate-level action row. Sits directly above the
-                  resume header so the buttons read as part of the
-                  resume workspace rather than the tab navigation. */}
-              <div className="flex flex-wrap items-center gap-2">
-                <AddToListButton candidateId={candidate.id} candidateName={fullName} />
-                <KeepCandidateButton
-                  candidateId={candidate.id}
-                  isKept={(candidate.tags ?? []).some((t) => {
-                    const lower = t.trim().toLowerCase();
-                    return lower === "kept" || lower === "keep";
-                  })}
-                />
-                <Link
-                  href={`/candidates/${candidate.id}?openApply=1`}
-                  className={APPLY_LINK_CLASS}
-                >
-                  <Target className="h-3 w-3" /> Apply to Job
-                </Link>
-                <Link
-                  href={`/candidates/${candidate.id}?tab=notes`}
-                  className={ADD_NOTE_LINK_CLASS}
-                >
-                  <NotebookPen className="h-3 w-3" /> Add Note
-                </Link>
-              </div>
-              {/* Skills lives on the left sidebar now (below Activity).
-                  Experience / Education accordions were retired - the
-                  resume itself already covers them, and the second
-                  copy under the resume was visual noise. */}
-              <EditableResume
-                candidateRfId={null}
+            <div className="space-y-4">
+              {/* Profile tab. The editable identity card stays the
+                  canonical edit surface — CompactOverview on the
+                  left is the read-only header for the same fields. */}
+              <LocalEditableIdentity
                 candidateId={candidate.id}
-                versions={resumeVersions}
+                initial={{
+                  firstName: candidate.firstName ?? "",
+                  lastName: candidate.lastName ?? "",
+                  email: candidate.email ?? "",
+                  phone: candidate.phone ?? "",
+                  location: candidate.location ?? "",
+                  linkedinProfile: candidate.linkedinProfile ?? "",
+                  currentDesignation: candidate.currentDesignation ?? "",
+                  currentOrganization: candidate.currentOrganization ?? "",
+                }}
+              />
+              <BackgroundSection
+                experience={candidate.experience}
+                education={candidate.education}
+              />
+              <CandidateActivityCard
+                candidateId={candidate.id}
+                toNumber={candidate.phone || null}
+              />
+              <LocalEditableSkills
+                candidateId={candidate.id}
+                initial={candidate.skills ?? []}
               />
             </div>
           )}

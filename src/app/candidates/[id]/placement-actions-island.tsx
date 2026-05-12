@@ -42,6 +42,7 @@ export function PlacementActionsIsland(props: {
   jobs: PlacementContextJob[];
   openJobs: OpenJobOption[];
   aceTeam: { id: string; name: string; email: string }[];
+  chromeless?: boolean;
 }) {
   return <PlacementActionsLazy {...props} />;
 }

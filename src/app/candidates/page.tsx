@@ -17,10 +17,8 @@ import {
   Minus,
   Search,
   Send,
-  Target,
   X,
 } from "lucide-react";
-import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
 import {
   BulkApplyDialog,
   BulkAddToListDialog,
@@ -654,9 +652,6 @@ export default function CandidatesPage() {
   // results pane swaps to a narrow name list + iframe of the
   // candidate's profile. Cleared by the close X.
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Per-candidate Keep in-flight flag for the split-view chrome's Keep
-  // button so a slow round-trip can't be fired twice.
-  const [keepInFlight, setKeepInFlight] = useState<string | null>(null);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"all" | "submitted">("all");
   // Column-sort state. Click cycles: idle → desc → asc → cleared. Null
@@ -976,42 +971,12 @@ export default function CandidatesPage() {
     setSelectedId(sortedRows[currentIndex + 1].id);
   }
 
-  // Apply to Job from the candidates split-view. The candidates page
-  // isn't job-specific, so we hand the picker step off to the embedded
-  // candidate profile by navigating its iframe to `?openApply=true`.
-  // local-candidate-actions.tsx already reads that param on mount and
-  // auto-opens its existing job-picker modal — keeping a single source
-  // of truth for the apply flow instead of duplicating the picker here.
-  function openApplyInIframe() {
-    if (!selectedId || !iframeRef.current) return;
-    const highlightSuffix = matchTokens.length > 0
-      ? `&highlight=${encodeURIComponent(matchTokens.join(","))}`
-      : "";
-    iframeRef.current.src = `/candidates/${selectedId}?embed=true&openApply=true${highlightSuffix}`;
-  }
-
-  // Keep is candidate-scoped — no job picker needed. toggleCandidateKept
-  // is the same server action used by KeepCandidateButton on the
-  // candidate profile.
-  async function onKeepSelected() {
-    if (!selectedId || keepInFlight === selectedId) return;
-    const candidateId = selectedId;
-    setKeepInFlight(candidateId);
-    try {
-      const res = await toggleCandidateKept({ candidateId });
-      if (!res.ok) {
-        toast.error("Couldn't update Keep", { description: res.error });
-        return;
-      }
-      toast.success(res.value.isKept ? "Kept" : "Removed from Kept");
-    } catch (e) {
-      toast.error("Couldn't update Keep", {
-        description: e instanceof Error ? e.message : "Network error.",
-      });
-    } finally {
-      setKeepInFlight((prev) => (prev === candidateId ? null : prev));
-    }
-  }
+  // Apply to Job / Keep moved out of the split-view chrome bar — those
+  // actions now live in the candidate profile's left-column action row,
+  // which is the same action row the full profile renders. The embed
+  // page mounts LocalCandidateActions / PlacementActionsIsland with the
+  // chromeless flag so ?openApply=1 deep links keep opening the picker
+  // modal inside the iframe.
 
   // Local-only filter for the sidebar list — narrows the visible rows
   // by name / title / employer substring without re-querying the API.
@@ -1342,31 +1307,10 @@ export default function CandidatesPage() {
               </button>
             </div>
             <div className="flex h-full flex-1 items-center gap-2 pl-6 pr-3">
-              <Button
-                type="button"
-                size="sm"
-                variant="apply"
-                onClick={openApplyInIframe}
-                className="h-7 rounded-md px-2.5 text-[11px]"
-              >
-                <Target className="h-3 w-3" />
-                Apply to Job
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="keep"
-                onClick={() => void onKeepSelected()}
-                disabled={keepInFlight === selectedId}
-                className="h-7 rounded-md px-2.5 text-[11px]"
-              >
-                {keepInFlight === selectedId ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Bookmark className="h-3 w-3" />
-                )}
-                Keep
-              </Button>
+              {/* Apply to Job / Keep dropped from the chrome bar — the
+                  embed profile's left-column action row is the single
+                  source of truth for those actions across both the
+                  full profile and the split-view popup. */}
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
