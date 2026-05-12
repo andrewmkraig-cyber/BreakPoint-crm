@@ -1,10 +1,25 @@
 # ACE_STATE.md
-Last updated: 2026-05-12 · Ace 39.2
+Last updated: 2026-05-12 · Ace 39.3
 
 ## Current Status
-Current Version: Ace 39.2 (BD Phase 2 — Client Signal, Active Campaigns, Activity pages)
-Last Shipped: Ace 39.2 — May 12, 2026
+Current Version: Ace 39.3 (BD Phase 2 hotfix — hydration + settings placeholder)
+Last Shipped: Ace 39.3 — May 12, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 39.3
+Production hotfix on top of 39.2. The /bd/client-signal page was crashing on hydration with React #418/#423/#425 the moment real ClientSignal rows existed in the DB. Two root causes addressed plus one supporting fix.
+
+Hydration fix — pre-format every date string on the server:
+- New `src/app/bd/date-format.ts` module exports `formatBdDate`, `formatBdTime`, `formatBdDateTime`, `formatDaysAgo`, and `bucketForOccurredAt`. Every formatter uses `Intl.DateTimeFormat` with explicit `"en-US"` locale + `timeZone: "America/New_York"` so Node's ICU output matches the browser's ICU output byte-for-byte. The "X days ago" + Today/Yesterday/2-days-ago bucket helpers take an explicit `nowMs` so a single Date.now() snapshot drives every row's relative-time math.
+- All three BD pages (client-signal, campaigns, activity) now compute every date-derived string at the top of the page render and pass plain `postedLabel`, `startedLabel`, `timeLabel`, `titleLabel`, and `bucket` strings (never Date objects) to their inner row helpers. No locale-dependent `toLocaleString` / `toLocaleDateString` / `toLocaleTimeString` call survives in any rendered output.
+
+Hydration fix — invalid nested interactive elements:
+- The Active Campaigns row was a `<Link>` containing a `<button onClick={(e) => e.preventDefault()}>` (the pause stub). `<a>` cannot legally contain interactive descendants — browsers re-shuffle this DOM during hydration and React surfaces it as a mismatch. The pause stub is now a `<span>` with `aria-label`, same visual treatment, no nested interactive.
+- Client-signal "View listing" swapped from Next `<Link>` to a plain `<a>` — external URLs (Indeed) don't need Next's client-side router, and the swap removes one client-component boundary from the row.
+
+BD Settings placeholder:
+- `/settings/bd` now exists. Server component using the existing `CollapsibleSection` chrome that the other Settings pages use, with a "shipping in next session" placeholder listing what BD Phase 3 will land (Verticals / SavedSearches / SendingDomains CRUD + the global pause toggle currently hardcoded false in `/bd/launch/page.tsx`).
+- `SETTINGS_CATEGORIES` in `settings-nav.tsx` gained a `{ slug: "bd", label: "BD Engine" }` entry between Triggers and Connectors so the placeholder shows up in the Settings left rail and the BD Settings link from the /bd layout top-right no longer 404s.
 
 ## Summary — Ace 39.2
 Second slice of the BD Engine block — three previously-placeholder pages built out. Still no Indeed / Apollo wiring; each page renders the empty state until Phase 4 cron + webhook lights up real data.
@@ -248,6 +263,14 @@ Then BD Phase 4 — the data wiring that lights up every Phase 2 page: Indeed sc
 Then BD Phase 5 — scheduled email send (Gmail API send-at) and the Sequence engine + Apollo sequence template wiring.
 
 Still parked from before BD: (1) Night Court light mode — a dedicated low-contrast / warm-tinted light mode option in the Court Mode selector alongside the existing 3 surfaces, paired against (2) a Dashboard + Scoreboard + Invoicing redesign brief (consolidating the dashboard premium surface, the queued Scoreboard widget tile, and the parked Invoicing workflow into a single coherent surface direction). Design prompts run through Claude chat first — no code until the visual direction is signed off.
+
+## What Shipped in Ace 39.3 (2026-05-12)
+- **`src/app/bd/date-format.ts`**: shared formatter module for the BD module. Exports `formatBdDate` / `formatBdTime` / `formatBdDateTime` (Intl.DateTimeFormat with explicit `"en-US"` locale + `timeZone: "America/New_York"` so Node + browser ICU emit identical text), `formatDaysAgo(d, nowMs)` (pure integer day math against an explicit reference), and `bucketForOccurredAt(d, nowMs)` (Today / Yesterday / 2 days ago / Older via en-CA `YYYY-MM-DD` ET date keys).
+- **`/bd/client-signal` hydration hardening**: every date-derived string is now pre-computed at page level against a single `nowMs = Date.now()` reference and passed to `SignalRow` as a plain `postedLabel` string. Row component no longer receives a Date object. The "View listing" affordance swapped from Next `<Link>` to a native `<a target="_blank" rel="noopener noreferrer">` since the destination is always external. Unused `Link` import dropped.
+- **`/bd/campaigns` hydration hardening**: `startedLabel` and `dayNumber` are pre-computed at page level via `formatBdDate(run.createdAt)` and `computeDayNumber(run.createdAt, nowMs)`. The pause stub flipped from `<button disabled onClick={(e) => e.preventDefault()}>` (illegally nested inside the row's `<Link>`) to a non-interactive `<span aria-label="Pause campaign">` — same visual, but no more invalid nested-interactive DOM that browsers were re-shuffling during hydration. Metric values render `.toString()` instead of `.toLocaleString()` so number formatting is locale-independent too.
+- **`/bd/activity` hydration hardening**: `timeLabel`, `titleLabel`, and `bucket` are pre-computed per row using the shared formatters; row component receives plain strings. `groupByBucket` now keys off the pre-computed `bucket` field instead of recomputing from `occurredAt` at render time. The `<time>` element keeps `dateTime` as ISO and renders the pre-formatted ET hh:mm label.
+- **`/settings/bd` placeholder**: new page at `src/app/settings/bd/page.tsx` using the existing `CollapsibleSection` chrome. Renders a "BD Settings — shipping in next session" callout with a bullet list of what Phase 3 covers (Verticals / SavedSearches / SendingDomains CRUD + global pause toggle), a workaround note pointing at `npm run db:studio` and the Today's Launch flow, and a Back-to-BD link.
+- **Settings nav**: `SETTINGS_CATEGORIES` in `src/app/settings/settings-nav.tsx` gained `{ slug: "bd", label: "BD Engine" }` between Triggers and Connectors so the placeholder shows in the Settings left rail and the BD Settings link from `/bd`'s top-right no longer 404s.
 
 ## What Shipped in Ace 39.2 (2026-05-12)
 - **Client Signal page (`/bd/client-signal`)**: Replaces the Phase 1 placeholder. Server component reads `ClientSignal` rows via `getCurrentOrg()` with `?filter=` search-param-driven where clause (`all` / `new-week` for status=NEW and detectedAt within 7 days / `acted` / `dismissed`). Unified `TabStrip` filter pills with per-bucket counts. Each row inside one `divide-y` card: square dark `LogoMark` placeholder with 2-letter mono initials, client name + primary contact summary (first `Contact` ordered by `lastActivityAt desc`, rendered as `name · currentDesignation · firstEmail`), `jobTitle` + MapPin `location` + Clock "Posted X days ago · via Indeed", right column with `View listing` (`externalUrl`, target=_blank, rel=noopener) + disabled "Reach out" pill (tooltip "Mail composer pre-fill ships in Phase 4"; flips to "Reached out" when row.status !== NEW). Empty state copy "No new client job postings detected. We scan every morning at 6 AM."
