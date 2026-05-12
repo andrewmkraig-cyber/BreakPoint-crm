@@ -62,11 +62,19 @@ function ScoreboardHeader({ periodLabel, periodRange }: { periodLabel: string; p
 type Kpis = Awaited<ReturnType<typeof getScoreboardData>>["kpis"];
 
 function KpiRow({ kpis }: { kpis: Kpis }) {
+  // When there are open deals but every one has a null/zero fee, the
+  // dashboard would otherwise read "$0 · Active offers + pending starts"
+  // and hide the gap. Surface the count + "fee unset" instead so the
+  // missing data is obvious enough to act on.
+  const pipelineFeeMissing = kpis.pipelineValueUsd == null && kpis.pipelineCount > 0;
+  const pipelineSub = pipelineFeeMissing
+    ? `${kpis.pipelineCount} ${kpis.pipelineCount === 1 ? "deal" : "deals"} · fee unset`
+    : "Active offers + pending starts";
   const tiles: Array<{ label: string; value: string; sub: string }> = [
     {
       label: "Pipeline Value",
       value: kpis.pipelineValueUsd != null ? formatMoneyShort(kpis.pipelineValueUsd) : "—",
-      sub: "Active offers + pending starts",
+      sub: pipelineSub,
     },
     {
       label: "Avg Fee Size",

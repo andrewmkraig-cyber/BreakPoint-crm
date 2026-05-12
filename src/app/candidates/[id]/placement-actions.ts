@@ -124,11 +124,20 @@ export type RecordOfferInput = {
   title: string;
   startDate: string | null; // ISO date
   notes: string;
+  // Fee terms locked in at offer time. feeTotal is required (>0) because
+  // the Scoreboard Pipeline Value KPI sums it across offer + pending_start
+  // rows — a null fee silently drops the deal out of the forecast.
+  feePercentage: number | null;
+  feeTotal: number;
+  minFee: number | null;
 };
 
 export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id: string; syncedToRf: boolean }>> {
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
+  if (input.feeTotal == null || input.feeTotal <= 0) {
+    return { ok: false, error: "Fee amount is required at this stage." };
+  }
   const org = await getCurrentOrg();
   const startDate = input.startDate ? new Date(input.startDate) : null;
 
@@ -168,6 +177,9 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         // (its own save call writes acceptedSalary explicitly).
         acceptedSalary: input.salary ?? null,
         acceptedCurrency: input.currency || "USD",
+        feePercentage: input.feePercentage,
+        feeTotal: input.feeTotal,
+        minFee: input.minFee,
         syncedToRf: sync.synced,
         createdById: userId,
         organizationId: org.id,
@@ -182,6 +194,9 @@ export async function recordOffer(input: RecordOfferInput): Promise<Result<{ id:
         offerNotes: input.notes || null,
         acceptedSalary: input.salary ?? null,
         acceptedCurrency: input.currency || "USD",
+        feePercentage: input.feePercentage,
+        feeTotal: input.feeTotal,
+        minFee: input.minFee,
         syncedToRf: sync.synced,
       },
       select: { id: true, syncedToRf: true },
@@ -281,6 +296,9 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
   const userId = await requireUserId();
   if (!userId) return { ok: false, error: "Not signed in." };
   if (!input.expectedStartDate) return { ok: false, error: "Expected start date is required." };
+  if (input.feeTotal == null || input.feeTotal <= 0) {
+    return { ok: false, error: "Fee amount is required at this stage." };
+  }
   const org = await getCurrentOrg();
 
   const sync = await trySyncRfStage({
@@ -421,6 +439,9 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
         expectedStartDate: true,
       },
     });
+    if (!existing || existing.feeTotal == null || existing.feeTotal <= 0) {
+      return { ok: false, error: "Fee amount is required at this stage." };
+    }
     const sync = existing && existing.candidateRfId != null && existing.jobRfId != null
       ? await trySyncRfStage({
           candidateRfId: existing.candidateRfId,

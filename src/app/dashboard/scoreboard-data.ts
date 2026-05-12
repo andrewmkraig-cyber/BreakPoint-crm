@@ -19,6 +19,11 @@ export type ScoreboardData = {
   period: { label: string; start: Date; endExclusive: Date };
   kpis: {
     pipelineValueUsd: number | null;
+    // Count of placements in offer + pending_start, regardless of whether
+    // their feeTotal is set. Lets the tile distinguish "no deals" from
+    // "deals exist but fees aren't logged" so a missing fee doesn't
+    // silently hide an open offer from the dashboard.
+    pipelineCount: number;
     avgFeeSizeUsd: number | null;
     placementsQtd: number;
     winRatePct: number | null;
@@ -315,6 +320,7 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
     period: { label: "This Quarter", start: Q2_START, endExclusive: Q2_END_EXCLUSIVE },
     kpis: {
       pipelineValueUsd: pipelineValueUsd > 0 ? pipelineValueUsd : null,
+      pipelineCount: pipelinePlacementsRaw.length,
       avgFeeSizeUsd,
       placementsQtd: placementsQtdCount,
       winRatePct,

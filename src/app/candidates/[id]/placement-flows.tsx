@@ -956,17 +956,52 @@ function OfferDialog({
     job.placement?.offerStartDate ? job.placement.offerStartDate.slice(0, 10) : "",
   );
   const [notes, setNotes] = useState(job.placement?.offerNotes ?? "");
+  // Fee terms are required at offer time so the Scoreboard Pipeline Value
+  // KPI has a number to sum. Seeding mirrors PlacementDialog: existing
+  // placement fee % wins, else the client agreement default.
+  const seedFeePct = job.placement?.feePercentage ?? job.clientFeePct ?? null;
+  const [feePct, setFeePct] = useState(seedFeePct != null ? String(seedFeePct) : "");
+  const [minFee, setMinFee] = useState(job.placement?.minFee ? String(job.placement.minFee) : "");
+  const [feeAmountOverride, setFeeAmountOverride] = useState(
+    job.placement?.feeTotal ? String(job.placement.feeTotal) : "",
+  );
   const [accepted, setAccepted] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
 
   const primaryContact = job.clientContacts.find((c) => c.email) ?? null;
 
+  const salaryNum = parseCompensation(salary);
+  const pctNum = parseFloat(feePct) || 0;
+  const minFeeNum = parseCompensation(minFee);
+  const overrideNum = parseCompensation(feeAmountOverride);
+  const rawFee = salaryNum && pctNum ? Math.round(salaryNum * (pctNum / 100)) : 0;
+  // Fee resolution priority matches PlacementDialog: override > min-vs-calc > calc.
+  const calcFee = minFeeNum && rawFee < minFeeNum ? minFeeNum : rawFee;
+  const feeTotal = overrideNum != null ? overrideNum : calcFee;
+  const usedMinFee = overrideNum == null && minFeeNum != null && rawFee < minFeeNum;
+  const usedOverride = overrideNum != null;
+
   function onSave() {
     setErr(null);
-    const salaryNum = parseCompensation(salary);
     if (salaryNum != null && salaryNum < 0) {
       setErr("Salary can't be negative.");
+      return;
+    }
+    if (overrideNum != null && overrideNum < 0) {
+      setErr("Fee amount can't be negative.");
+      return;
+    }
+    if (minFeeNum != null && minFeeNum < 0) {
+      setErr("Minimum fee can't be negative.");
+      return;
+    }
+    if (pctNum < 0) {
+      setErr("Fee percentage can't be negative.");
+      return;
+    }
+    if (feeTotal <= 0) {
+      setErr("Fee amount is required at this stage.");
       return;
     }
     if (accepted) {
@@ -995,6 +1030,9 @@ function OfferDialog({
         title: title.trim(),
         startDate: startDate || null,
         notes: notes.trim(),
+        feePercentage: pctNum > 0 ? pctNum : null,
+        feeTotal,
+        minFee: minFeeNum,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1057,9 +1095,41 @@ function OfferDialog({
           <LabeledField label="Offered title" value={title} onChange={setTitle} />
         </div>
         <LabeledField label="Proposed start date" type="date" value={startDate} onChange={setStartDate} />
+        <NumericField label="Fee %" value={feePct} onChange={setFeePct} placeholder="25" min={0} step="0.1" />
+        <NumericField label="Min fee" value={minFee} onChange={setMinFee} placeholder="20000 (optional)" min={0} />
+        <NumericField
+          label="Fee amount (flat, overrides calc)"
+          value={feeAmountOverride}
+          onChange={setFeeAmountOverride}
+          placeholder="7500 — wins over salary × fee %"
+          min={0}
+        />
         <div className="sm:col-span-2">
           <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
         </div>
+      </div>
+      <div className="mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3">
+        <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          {usedOverride ? "Fee (flat override)" : "Calculated fee"}
+        </div>
+        <div className="mt-1 font-serif text-2xl font-semibold text-court-fg">
+          {formatMoney(feeTotal, currency)}
+          {usedMinFee && <span className="ml-2 text-xs text-amber-700">(min fee applied)</span>}
+          {usedOverride && <span className="ml-2 text-xs text-brand-dark">(flat override)</span>}
+        </div>
+        {usedOverride ? (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            Flat-fee amount; salary × fee % calc is ignored while this is set.
+          </div>
+        ) : salaryNum && pctNum ? (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            {formatMoney(salaryNum, currency)} × {pctNum}% = {formatMoney(rawFee, currency)}
+          </div>
+        ) : (
+          <div className="mt-1 text-xs text-court-fg-muted">
+            Enter salary + fee % to calculate, or type a flat fee amount above.
+          </div>
+        )}
       </div>
       <label className="mt-4 flex items-start gap-2 rounded-lg border border-court-border bg-court-surface-subtle/60 p-3 text-xs">
         <input
@@ -1204,6 +1274,9 @@ function PlacementDialog({
       return "Guarantee period can't be negative.";
     }
     if (!startDate) return "Expected start date required.";
+    // Final guard so a 0% fee or a salary-only entry can't sneak a zero
+    // through — the Scoreboard Pipeline Value KPI relies on this.
+    if (feeTotal <= 0) return "Fee amount is required at this stage.";
     return null;
   }
 
