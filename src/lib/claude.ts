@@ -504,25 +504,31 @@ export async function summarizeAgreementTerms(params: {
 }
 
 // Takes an uploaded job description (PDF / DOCX / pasted text) and produces
-// an anonymous BreakPoint-formatted JD in plain text with four sections.
-// Output uses plain text only — no markdown symbols (no ##, no **, no -):
+// an anonymous BreakPoint-formatted JD as GitHub-flavored markdown. Mirrors
+// the format spec used by the /api/jobs/generate-jd route (Path A) so the
+// downstream ReactMarkdown renderer on the JD tab and the /jobs/new preview
+// can share styling. Output structure:
 //
-//   A Bit About Us
+//   ## A Bit About Us
 //   (paragraph)
 //
-//   Why Join Us
-//   • bullet
+//   ## Why Join Us
+//   - bullet
 //
-//   Job Details
+//   ## Job Details
 //
-//   Key Responsibilities and Duties
-//   • bullet
+//   ### Key Responsibilities and Duties
+//   - bullet
 //
-//   You Should Have Most of the Following
-//   • bullet
+//   ### You Should Have Most of the Following
+//   - bullet
 //
-// Section headers are on their own line, capitalized; bullets use the • glyph.
-// The downstream renderer (ProseFromPlain) bolds headers and keeps bullets.
+//   ### Nice to Have    (optional — omitted entirely if the source has none)
+//   - bullet
+//
+// Top-level sections use '## ', sub-sections under Job Details use '### ',
+// bullets use '- ' (hyphen + space). No preamble before the first heading,
+// no trailing sign-off after the final bullet.
 export async function generateJobDescription(params: {
   sourceFile?: { filename: string; mimeType: string; data: Buffer };
   sourceText?: string;
@@ -581,49 +587,54 @@ export async function generateJobDescription(params: {
   content.push({
     type: "text",
     text:
-      "Reformat the source above into an anonymous BreakPoint Talent job description. " +
+      "Reformat the source above into an anonymous BreakPoint Talent job description, as GitHub-flavored markdown. " +
       "Strip any client name, logos, recruiter names, email addresses, and phone numbers." +
       titleHint +
       "\n\n" +
-      "HARD FORMAT RULES — the grader rejects any output that violates these:\n" +
-      "1. Plain text ONLY. No markdown anywhere.\n" +
-      "2. No '#' characters. No '##'. No '###'. Section titles sit on their own line, unadorned.\n" +
-      "3. No '**' anywhere. Not around headers, not around labels, nowhere.\n" +
-      "4. Bullet lines start with the glyph '•' followed by a single space. Never '-'. Never '*'. Never '1.'.\n" +
-      "5. One blank line between sections. No leading or trailing blank lines.\n\n" +
-      "Produce EXACTLY this structure (the literal section titles below, nothing more, nothing less):\n\n" +
-      "A Bit About Us\n" +
-      "<2–4 sentence paragraph describing the company in generic terms — industry, size, stage, mission. Neutral phrasing like 'Our client is…' or 'The team is…'. No client name. No fabrication.>\n\n" +
-      "Why Join Us\n" +
-      "• <selling point>\n" +
-      "• <selling point>\n" +
-      "• <selling point>\n" +
-      "• <selling point>\n" +
-      "(4–6 total bullets — growth, team, mission, comp, culture, remote/hybrid, etc.)\n\n" +
-      "Job Details\n\n" +
-      "Key Responsibilities and Duties\n" +
-      "• <verb-led responsibility>\n" +
-      "• <verb-led responsibility>\n" +
-      "• <verb-led responsibility>\n" +
-      "(5–8 total bullets, concrete and day-to-day)\n\n" +
-      "You Should Have Most of the Following\n" +
-      "• <qualification / skill / experience>\n" +
-      "• <qualification / skill / experience>\n" +
-      "• <qualification / skill / experience>\n" +
-      "(5–10 total bullets — hard requirements and preferred alike)\n\n" +
-      "The words 'Job Details' appear alone on their own line; the only body under 'Job Details' is the two subsections. " +
-      "Do NOT write a 'Job Details' paragraph or bullets beyond the two subsections. " +
+      "Output MUST follow this EXACT structure, in this order, with the literal section titles shown. " +
+      "Top-level sections use '## ' (H2). Sub-sections under Job Details use '### ' (H3). Bullets use '- ' (hyphen + space). " +
+      "No preamble before the first '## A Bit About Us'. No trailing sign-off after the final bullet.\n\n" +
+      "## A Bit About Us\n" +
+      "<2 to 4 sentence paragraph describing the company in generic terms — industry, size, stage, mission. Neutral phrasing like 'Our client is…' or 'The team is…'. No client name. No fabrication.>\n\n" +
+      "## Why Join Us\n" +
+      "- <selling point>\n" +
+      "- <selling point>\n" +
+      "- <selling point>\n" +
+      "- <selling point>\n" +
+      "(4 to 7 bullets — growth, team, mission, comp, culture, remote/hybrid, etc. Skip topics the source does not support — never fabricate.)\n\n" +
+      "## Job Details\n" +
+      "(No body copy directly under this header — only the sub-sections below.)\n\n" +
+      "### Key Responsibilities and Duties\n" +
+      "- <verb-led responsibility>\n" +
+      "- <verb-led responsibility>\n" +
+      "- <verb-led responsibility>\n" +
+      "(5 to 10 bullets, concrete and day-to-day, pulled from the source.)\n\n" +
+      "### You Should Have Most of the Following\n" +
+      "- <qualification / skill / experience>\n" +
+      "- <qualification / skill / experience>\n" +
+      "- <qualification / skill / experience>\n" +
+      "(5 to 10 bullets — hard requirements: years, certifications, core skills.)\n\n" +
+      "### Nice to Have\n" +
+      "- <optional qualification>\n" +
+      "OMIT this entire sub-section (heading and all) if no preferred / nice-to-have items are present in the source — do not write 'None' or 'N/A'.\n\n" +
       "Never mention 'BreakPoint' or 'the recruiter' in the body. Confident, concise recruiter voice.",
   });
 
   const system =
-    "You turn client-supplied job descriptions into anonymous plain-text write-ups for BreakPoint Talent. " +
-    "CRITICAL: output is plain text, never markdown. Never emit #, ##, **, or hyphen bullets. " +
-    "Bullets always use the • glyph. Section titles sit on their own line, unadorned. " +
-    "NEVER use em dashes (the long `—` character) anywhere in the output. Use a colon, comma, parentheses, or a period plus new sentence instead. Hyphens are also banned (no `-` separators). " +
-    "Every response must contain all four headers: 'A Bit About Us', 'Why Join Us', 'Job Details', " +
-    "'Key Responsibilities and Duties', AND 'You Should Have Most of the Following'. " +
-    "Stick to the structure the user specifies. Never fabricate facts.";
+    "You are BreakPoint Talent's recruiter copy assistant. You turn client-supplied job descriptions into polished, anonymous candidate-facing write-ups in the BreakPoint voice — professional, recruiter-friendly, never cheesy. " +
+    "Output is GitHub-flavored markdown.\n\n" +
+    "MARKDOWN HEADING RULES (these are non-negotiable):\n" +
+    "- The top-level sections 'A Bit About Us', 'Why Join Us', and 'Job Details' MUST each start with '## ' (two hash characters plus a space).\n" +
+    "- The sub-sections under Job Details — 'Key Responsibilities and Duties', 'You Should Have Most of the Following', and 'Nice to Have' (when present) — MUST each start with '### ' (three hash characters plus a space).\n" +
+    "- NEVER omit the '## ' prefix on a top-level section. NEVER use '### ' for a top-level section. NEVER use '## ' for a sub-section.\n" +
+    "- NEVER use plain text (e.g. 'Job Details' on its own line, or 'Job Details:'). The heading must always be a markdown heading.\n" +
+    "- Use the EXACT section titles shown above — do not paraphrase to 'About Us' / 'What you'll do' / etc.\n" +
+    "- Bullets always use '- ' (hyphen + space). Never '•'. Never '*'. Never '1.'.\n" +
+    "- No preamble before the first heading. No sign-off after the final bullet.\n" +
+    "- Do NOT use bold/italic emphasis on body copy. Do not add code fences. Do not add horizontal rules.\n" +
+    "- NEVER use em dashes (the long '—' character) or en dashes ('–'). Use a comma, colon, parentheses, or period instead.\n" +
+    "- Never fabricate compensation, benefits, or details that aren't in the source. " +
+    "Every response must contain all five required headers: 'A Bit About Us', 'Why Join Us', 'Job Details', 'Key Responsibilities and Duties', AND 'You Should Have Most of the Following'.";
 
   async function runOnce(messages: Anthropic.Messages.MessageParam[]): Promise<string> {
     const response = await anthropic.messages.create({
@@ -639,7 +650,10 @@ export async function generateJobDescription(params: {
       .map((b) => b.text)
       .join("\n")
       .trim();
-    return stripMarkdownToPlain(raw);
+    // JD is stored as markdown so the JD preview can render H2/H3 hierarchy.
+    // Merge-field resolvers ([Job Description] / {{job.description}}) strip
+    // the markdown back to plain text on email send.
+    return raw;
   }
 
   const firstPass = await runOnce([{ role: "user", content }]);
@@ -657,8 +671,8 @@ export async function generateJobDescription(params: {
         "The previous draft is missing these required section headers: " +
         missing.join(", ") +
         ". " +
-        "Please produce the full JD again with ALL required sections present, using plain text (no #, no **, no hyphen bullets — only • glyphs). " +
-        "Keep the structure: A Bit About Us, Why Join Us, Job Details (containing Key Responsibilities and Duties AND You Should Have Most of the Following).",
+        "Please produce the full JD again with ALL required sections present, as GitHub-flavored markdown: every top-level section starts with '## ', every sub-section under Job Details starts with '### ', every bullet starts with '- ' (hyphen + space). " +
+        "Keep the structure: ## A Bit About Us, ## Why Join Us, ## Job Details (containing ### Key Responsibilities and Duties AND ### You Should Have Most of the Following).",
     },
   ];
   const secondPass = await runOnce([

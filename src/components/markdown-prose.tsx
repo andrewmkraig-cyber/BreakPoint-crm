@@ -4,12 +4,10 @@ import { cn } from "@/lib/utils";
 
 // Renders Claude-generated summaries that may carry markdown syntax —
 // `**bold**`, `*italic*`, `- bullets`, `# headers`, links, tables —
-// into properly-formatted prose. Replaces PlainProse on tabs where
-// the AI prompt emits markdown rather than the plain-text bullet
-// format PlainProse was built for (Benefits, Agreements). Tailwind
-// arbitrary-variant selectors style each emitted element so the
-// rendered block matches the surrounding court-mode palette without
-// pulling in @tailwindcss/typography.
+// into properly-formatted prose. Tailwind arbitrary-variant selectors
+// style each emitted element so the rendered block matches the
+// surrounding court-mode palette without pulling in
+// @tailwindcss/typography.
 export function MarkdownProse({ content, className }: { content: string; className?: string }) {
   return (
     <div

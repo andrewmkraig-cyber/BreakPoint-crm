@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Loader2, Pencil, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { marked } from "marked";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
@@ -373,12 +374,35 @@ function GeneratedJdPreview({
 
   async function onCopy() {
     if (!generated) return;
-    try {
-      await navigator.clipboard.writeText(generated);
+    const markdown = generated;
+    const markPasted = () => {
       setCopied(true);
       if (copyTimer.current) clearTimeout(copyTimer.current);
       copyTimer.current = setTimeout(() => setCopied(false), 1600);
       toast.success("Copied to clipboard");
+    };
+
+    // Write HTML alongside plain text so a paste into Gmail / Word lands
+    // with proper bold headers and bullets rather than literal '##' chars.
+    // Plain text fallback covers apps that don't accept HTML paste.
+    if (typeof window !== "undefined" && typeof ClipboardItem !== "undefined" && navigator.clipboard?.write) {
+      try {
+        const html = await Promise.resolve(marked.parse(markdown, { gfm: true }));
+        const item = new ClipboardItem({
+          "text/html": new Blob([String(html)], { type: "text/html" }),
+          "text/plain": new Blob([markdown], { type: "text/plain" }),
+        });
+        await navigator.clipboard.write([item]);
+        markPasted();
+        return;
+      } catch {
+        // Fall through to plain-text fallback below.
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+      markPasted();
     } catch {
       toast.error("Couldn't copy. Select the text manually.");
     }
