@@ -1,24 +1,21 @@
 # Ace Roadmap
-Last updated: 2026-05-12 · Ace 40.0
+Last updated: 2026-05-12 · Ace 41.0
 
-## Active Build Sequence (v5)
-In this order, per Ace_Final_Roadmap_v5.pdf. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
+## Active Build Sequence
+In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full specs for items 1-3 live in ACE_STATE.md Next Task.
 
-1. **BD Engine Phase 4 — Apollo + TheirStack wiring** *(next session)*. Wire the live data plane behind the Phases 1-3 UI: TheirStack job-discovery feed (per the JobDiscoveryProvider abstraction), Apollo enrichment + sequence enrollment, 6 AM ET Vercel cron picking up QUEUED BDRuns, Apollo webhook for opens / replies / bounces writing CampaignEvent + BDActivity rows, Reach-out mail composer pre-fill from Client Signal, scheduled email send via Gmail API. Approval queue: discovered companies park the BDRun at status `AWAITING_APPROVAL`, Andrew reviews on Today's Launch, Approve & Enroll fires Apollo.
-2. **BD Engine Phase 5 — cleanup**. Secure storage for `APOLLO_API_KEY` so the Rotate button can move it out of env, real Instantly reputation pull for the Sending Domains reputation bar, real domain-cooldown derivation from DOMAIN_COOLED BDActivity events, Client Signal dismiss / acted-on flows, mapped Apollo sequence id pull (replaces the Phase 3 placeholder list).
-3. **JD/email markdown architecture unification** *(pulled forward as workflow-blocking)*. Path A (`/api/jobs/generate-jd`) and Path B (`src/lib/claude.ts` `generateJobDescription`) both emit markdown. Single renderer (`react-markdown`) everywhere — `PlainProse` for Job.description is deprecated. Copy JD button puts HTML on the clipboard alongside plain text so it pastes bold into Gmail / Word. `[Job Description]` merge field in the Candidate Recruit template (and every other template) injects the HTML version into the email body so the recruiter doesn't have to manually re-bold sections after pasting.
-4. **Mail composer dropdown clipping fix** *(pulled forward as workflow-blocking)*. `Use Template` and `Insert Field` dropdowns currently open downward and clip below the composer viewport. Open upward (or portal out) when the composer is anchored near the bottom of the viewport.
-5. **Invoicing backend + Mercury integration**. Real invoicing workflow behind the new Invoicing tab on the dashboard. Mercury account integration so cash collected reads from the live bank balance, not a manual entry.
-6. **Bulk email to candidates** — multi-candidate email send from the search surface. Drives off the row-checkbox / bulk action bar shipped in 38.1; composes a single Gmail draft per selected candidate with merge fields. **Scheduled send + 30-60 sec throttle + 5-domain rotation sharing the same warmed pool as BD outbound** so per-domain warm capacity isn't blown by combined volume. Activity-logged per recipient. Builds on the scheduled-send / queue infrastructure from BD Phase 4.
-7. **Search expansion map** — geocoded map visualization over the Candidate Sourcing Surface. Render the candidates returned by the current filter set as pins on an interactive map so the recruiter can see geographic spread at a glance and lasso a region to refine. Pairs with the radius pills already shipped — same `lat`/`lng` columns power both.
-8. **PWA conversion** — 1.5-3 hr. Manifest, service worker, push notifications.
-9. **Quiet Clients tab** — 1-2 hr. New tab on `/clients`. Lists clients where the last touchpoint exceeded threshold (default 21 days, configurable in Settings). Columns: client name, days since last activity, last activity type, last activity date. Sortable by days, default longest first. Tiers: Check in soon 14-30 days / Going cold 30-60 / Cold 60+. Optional Claude summary at tab open. Reads from existing ActivityLog, no new schema.
-10. **APRO / job order worksheet** — 2-3 hr. Structured intake form.
-11. **Client preference learning system + Personal Trainer suggestions** — 6.5-9 hr combined. Replaces the killed auto-updating client preference memory and Ace learning layer Phase 1. Phases: Phase 0a client-side email thread tagging (1.5-2 hr prereq), Phase 0b client-side Quo call/SMS tagging (1-1.5 hr prereq), Phase 1 email preference scan + propose UI with daily cron and dashboard card (2-3 hr), Phase 2 Quo transcript preference scan (1.5-2 hr), Phase 3 note-write inline extraction (30-45 min), Personal Trainer rule suggestions bundled (1-1.5 hr). ClientPreference schema + right rail on client profile + submittal composer right rail. Monthly drift review first Monday of each month.
-12. **Interview scheduler enhancements** — 1-2 hr. Edit/cancel/reschedule flows. **Verify Ace 39 reschedule status first** before opening new work here.
-13. **One-click interview prep packet** — 1-2 hr. PDF for candidate pre-interview.
-14. **Calendar tab** — 2-4 hr. Month/week/day, Google Calendar read-write sync, create-meeting modal.
-15. **Market Insights + daily brief** — 2-4 hr. Word of day already built in Ace 36.0; this bundle covers the remaining market-insights pieces.
+1. **Invoicing** — Ace owns invoice PDF + email, manual paid tracking, no Mercury, test invoice to Austin button. Full spec in ACE_STATE.md Next Task section.
+2. **Interview scheduler enhancements + Calendar tab** — bundled. Edit/cancel/reschedule, full calendar view, click-to-edit interviews, Google Calendar read/write sync, month/week/day views. Full spec in ACE_STATE.md.
+3. **BD Engine Phase 4** — ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts. Full rules in ACE_RULES.md and ACE_STATE.md.
+4. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.
+5. **JD/email markdown architecture** — [Job Description] merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
+6. **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
+7. **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
+8. **PWA conversion** — manifest, service worker, push notifications.
+9. **Quiet Clients tab** — clients past 21-day threshold, tiered 14-30/30-60/60+, optional Claude summary.
+10. **APRO / job order worksheet** — structured intake form.
+11. **Client preference learning system + Personal Trainer suggestions**.
+12. **Mercury + QuickBooks integration** — after manual invoicing is stable.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
@@ -88,6 +85,14 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 41.0 JD markdown unification + mail composer fixes + new job form redesign + Candidate Recruit template wiring (May 12, 2026)
+
+JD markdown unification (Path B emits markdown, PlainProse deprecated, Copy JD HTML clipboard). Job Description tab cleanup (single card). New job form Source Material card (URL + drag-drop + Parse & Generate JD consolidated, field extraction, hourly detection, location specificity, 529 safe fallback, Indeed/LinkedIn Save Link). Mail Reply All CC fix. Duplicate signature fix. Thread collapse/expand toggle. Reply clarity header. Mail composer HTML paste (h1-h6 to strong preprocessing). Use Template + Insert Field dropdowns open upward. Candidate Recruit template merge fields wired end-to-end with job picker and HTML injection.
+
+## Completed - Ace 40.0 Night Court themes + BD Engine Phases 1-3 + dashboard tabs + workflow polish (May 12, 2026)
+
+Night Court Light + Dark themes, unified TabStrip component, Dashboard / Scoreboard / Invoicing tabs, candidate profile unified layout, Ace Assistant data-reset tools, Deal Funnel cleanup, JD header hierarchy fix, Ethan Larocca placement fee backfill + 5 fee guards, Salary type field (SALARY|HOURLY) wired end-to-end, new-job redirect bug fix, Candidate Recruit template seeded, /jobs Last Edited reads derived lastTouchedAt, BD Engine Phases 1-3 (schema, sidebar nav, /bd layout, Launch flow, Client Signal, Active Campaigns, Activity, /settings/bd with 5 CollapsibleSections, visual seed data), hydration crash hotfix on /bd/client-signal.
 
 ## Completed - Ace 39.0 Sourcing Polish + Interview Scheduler v2 + Rejected tab (May 11, 2026)
 

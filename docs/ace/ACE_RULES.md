@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-12 · Ace 40.0
+Last updated: 2026-05-12 · Ace 41.0
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
@@ -77,6 +77,9 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 11. Git author email: andrew@breakpointtalent.com OR andrewmkraig@gmail.com.
 12. Court Mode theme tokens. No hardcoded colors.
 13. Pipeline stage source of truth: Neon only.
+
+## BD Phase 4 Rule (added 2026-05-12 · Ace 41.0 — permanent, never skip)
+Claude must ask Andrew a full set of scoping questions before writing any BD Phase 4 prompt. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Andrew's standing direction is that Discovery + Client Signals + approval queue matters more than fully automated send magic, and not every Phase 4 automation ships for launch. The required questions are listed in ACE_STATE.md under the BD Phase 4 Rules section of Next Task. Re-read that section every time the next session opens against BD Phase 4 — the questions are the gate, not a suggestion.
 
 ## BD Engine Rules (added 2026-05-12 · Ace 40.0)
 - **Data provider stack**: TheirStack is the Phase 4 job-discovery provider. The architecture is the `JobDiscoveryProvider` abstraction — every discovery feed (TheirStack now, possibly more later) implements the same interface so swaps don't ripple through caller code. Adzuna is a possible later addition as a coverage benchmark. JSearch is fallback only. Indeed Publisher API is gated and likely rejected — do not block the BD roadmap on it. ZipRecruiter Partner application was sent in parallel; if it's approved, it slots in as a secondary provider behind the same abstraction.

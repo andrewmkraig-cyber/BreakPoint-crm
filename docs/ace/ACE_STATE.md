@@ -1,10 +1,26 @@
 # ACE_STATE.md
-Last updated: 2026-05-12 · Ace 40.0
+Last updated: 2026-05-12 · Ace 41.0
 
 ## Current Status
-Current Version: Ace 40.0 (Night Court + BD Engine Phases 1-3 + Ace 40 polish bundle)
-Last Shipped: Ace 40.0 — May 12, 2026
+Current Version: Ace 41.0
+Last Shipped: 2026-05-12
 Live at: ace.breakpointtalent.com
+
+## Known Issues Carrying Into Ace 42
+- None open. All workflow-blocking items from Ace 40 cleared this session.
+
+## Summary — Ace 41.0
+Ace 41 cleared both workflow-blocking items from Ace 40 and shipped a full JD workflow overhaul, mail composer fixes, new job form redesign, and Candidate Recruit template wiring.
+
+JD markdown unification: Path B (src/lib/claude.ts generateJobDescription) now emits GitHub-flavored markdown matching Path A. PlainProse deprecated and removed. react-markdown renders Job.description everywhere. Copy JD button writes text/html + text/plain ClipboardItem so pasting into Gmail or Word preserves bold headers. Mail composer HTML paste handler added — TipTap accepts text/html from clipboard, preprocesses h1-h6 to p+strong so heading tags survive TipTap parsing. Bold survives both in the composer and in the received Gmail email.
+
+Job Description tab cleanup: stripped to a single card — JD rendered via react-markdown, Copy JD, Edit toggle (inline textarea + Save/Cancel), Regenerate with Claude. Source URL input, raw paste textarea, Internal Recruiter Notes, and duplicate Description card all removed.
+
+New job form Source Material card: URL input + "or" divider + drag-drop upload zone + full-width Parse & Generate JD with Claude button consolidated into one Source Material card at the top of the form. Drag-and-drop file upload (PDF/DOCX) with dashed border highlight on hover. Parse & Generate JD with Claude fires parse-url (if URL present) → auto-fills Title/Location/SalaryLow/SalaryHigh/SalaryType → generates JD → extracts fields from generated markdown non-blocking and fills form fields. Source URL persists to Job.sourceJobUrl. Internal recruiter notes field wired to Job.internalRecruiterNotes via createJob. Indeed/LinkedIn blocked URLs show inline amber error with Save Link button that appends "Client Job Link: [url]" to recruiter notes. 529 overload on generation shows toast only, does not overwrite Description field. Field extraction improved: location prefers most specific (city/state/zip over region), salary type detects HOURLY vs SALARY from JD language.
+
+Mail fixes: Reply All now correctly populates CC from original To + CC headers minus andrew@breakpointtalent.com. Duplicate signature block fixed via ACE_SIGNATURE_MARKER strip-and-append pattern. Thread messages toggle open/closed — click expanded header collapses it. Reply composer shows "Replying to [Name] · [date]" above TO field. Mail composer Use Template + Insert Field dropdowns open upward via side="top" so they no longer clip below the viewport.
+
+Candidate Recruit template: merge fields wired end-to-end. Job picker appears when template is selected in mail composer. All variables resolve from live Job + Client + Candidate records. Job description sections (benefits, responsibilities, requirements) inject as HTML bullet lists not raw markdown. 1900 character limit enforced with truncation on longest bullet section first. Template visible and active in Settings > Templates.
 
 ## Summary — Ace 40.0
 Ace 40 bundles the Night Court visual refresh, the BD Engine Phases 1-3 build-out, and a tail of workflow polish + bug fixes into a single named release. The four canonical themes from the Court Mode system are joined by Night Court Light (warm cream #FAF8F5 + forest sidebar + brand-green accents) and Night Court Dark — both shipped end-to-end with full token coverage. The Dashboard splits into three tabs (Dashboard / Scoreboard / Invoicing) on a new unified `TabStrip` component that is now the single source of truth for every tab strip in the app. The candidate profile collapses to a single unified layout (resume + action row on the left, contextual content on the right). Ace Assistant gains data-reset tools, the Deal Funnel scoreboard is decluttered, and a long list of workflow fixes lands underneath.
@@ -16,10 +32,6 @@ JD pipeline fix: the `/jobs/[id]` JD preview no longer renders "Job Details" as 
 Placement fee correctness: backfilled Ethan Larocca's missing fee and added 5 fee guards at the offer / pending_start / hired stages so a placement can't advance without the fee fields populated. The /jobs `Last Edited` column now reads a derived `lastTouchedAt` rolled up across Job.updatedAt + Job.descriptionGeneratedAt + max(Placement.updatedAt) + max(ActivityLog.timestamp) per job, so a JD regen or pipeline stage move now bumps the column.
 
 New-job redirect fix: `createJob` returns the Job cuid as the slug (never `legacyRfId`), and `/jobs` row clicks navigate via the cuid carried on `_aceJobId` instead of the synthetic negative djb2 hash that was minting `/jobs/-309396680` 404s. Salary type lands as a `SALARY | HOURLY` field wired end-to-end (schema column, /jobs/new toggle with label flip on the comp inputs, Overview edit form, JD generator branching the Salary line + compensation bullets). The Candidate Recruit template is seeded into the EmailTemplate table (manual-only, audience=candidate, category=outreach, body leans on `[Job Description]` for the structured content).
-
-## Known Issues Carrying Into Ace 41
-- **Mail composer dropdown clipping** — `Use Template` and `Insert Field` dropdowns on the composer open downward and clip below the composer viewport. Needs to open upward (or portal out) when the composer is anchored near the bottom of the viewport.
-- **JD copy/paste loses bold** — Path B (`src/lib/claude.ts` `generateJobDescription`, used by the `/jobs/new` "Generate Job Description with Claude" button) intentionally emits plain text with `•` bullets, not markdown. Path A (`src/app/api/jobs/generate-jd/route.ts`, used by the JD-tab "Generate with Claude" button) emits markdown correctly. The split breaks Copy JD pasting bold into Gmail / Word, and the `[Job Description]` merge field can't inject formatted HTML into emails. Architectural unification of Path A + Path B is queued for Ace 41 — both paths should emit markdown, both render via react-markdown, Copy JD puts HTML on the clipboard alongside plain text, and the merge field injects the HTML version into email body.
 
 ## What Shipped in Ace 40.0 (2026-05-12)
 - **Night Court Light + Dark themes** — warm cream surface (#FAF8F5), forest-green sidebar, brand-green accents. Added as the 4th and 5th Court Mode options alongside the existing Hard / Clay / Grass surfaces. Full token coverage across every page.
@@ -331,15 +343,94 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 - Weather widget on the topbar (Open-Meteo + geolocation, hover popover with current / 6-hour / 7-day forecast).
 - Final user-facing RecruiterFlow string removed from the UI.
 
-## Known Issues
-None open. Browser verification of the new flows is Andrew's after deploy.
-
 ## Next Task
-BD Phase 4 — the data-wiring slice that lights up every Phase 2 page with real data. In order: (1) Indeed scan helper that walks SavedSearch.criteria and writes new ClientSignal rows for matching public postings at existing Clients; (2) Apollo enrichment helper (standalone, called from a script first so we can verify against a real API key before wiring it to a cron) — reads SavedSearch.criteria, queries `/api/v1/people/search`, returns up to N contacts per company; (3) 6 AM ET Vercel cron picking up `BDRun.status=QUEUED` rows, walking them through Indeed → Apollo → enroll-in-sequence, flipping status to RUNNING then COMPLETE with metrics JSON; (4) Apollo webhook handler at `/api/webhooks/apollo/reply` (+ companion handlers for open/bounce/unsub) that writes `CampaignEvent` + `BDActivity` rows the Active Campaigns + Activity pages already render. Once webhook is in, wire the Reach-out mail composer pre-fill from Client Signal, dismiss/acted-on flows on Client Signal, and pause/resume on Active Campaigns rows.
+Next session opens a NEW CHAT. Priority order for upcoming sessions:
 
-Then BD Phase 5 — scheduled email send (Gmail API send-at), Sequence engine + Apollo sequence template wiring, secure storage for `APOLLO_API_KEY` so the Rotate button can move it out of env, real Instantly reputation pull for the Sending Domains reputation bar.
+- **SESSION 1 (next)**: Invoicing — full spec below.
+- **SESSION 2**: Interview scheduler enhancements + Calendar tab — full spec below.
+- **SESSION 3 (tomorrow)**: BD Engine Phase 4 — ASK QUESTIONS FIRST. Full rules below.
 
-Still parked from before BD: (1) Night Court light mode — a dedicated low-contrast / warm-tinted light mode option in the Court Mode selector alongside the existing 3 surfaces, paired against (2) a Dashboard + Scoreboard + Invoicing redesign brief (consolidating the dashboard premium surface, the queued Scoreboard widget tile, and the parked Invoicing workflow into a single coherent surface direction). Design prompts run through Claude chat first — no code until the visual direction is signed off.
+### Invoicing spec — Session 1
+Invoicing replaces the Mercury payment link flow entirely for launch. No Mercury links anywhere.
+
+Flow:
+1. Confirm Start page collects: billing contact(s), hiring contact(s), candidate, client, role/title, start date, fee amount, due date/payment terms.
+2. Ace creates: invoice draft, invoice email draft, branded invoice PDF attachment, activity log on client + placement.
+3. Andrew reviews and approves before anything sends.
+4. Email sends: To = billing contact(s), CC = hiring contact(s), From = Accounts Receivable / BreakPoint Talent, attachment = branded invoice PDF. No Mercury link anywhere.
+5. Paid status marked manually for launch. No payment automation.
+
+Test invoice button: add a "Send Test Invoice to Austin" button on the invoicing page that fires a test invoice email with a fake placement to austin@breakpointtalent.com (Austin Barnard, Slack ID U0AJB4AM631).
+
+Invoice email template (exact):
+
+```
+Subject: Invoice from BreakPoint Talent - {{candidate.full_name}} Placement
+
+Body:
+Hi {{billing_contact.first_name}},
+
+Congratulations again on {{candidate.full_name}}'s start with {{client.name}}. We're excited to have helped with this search.
+
+Attached is invoice {{invoice.number}} for the placement fee related to {{candidate.full_name}}'s start date of {{placement.start_date}}.
+
+Payment instructions are included on the invoice. Please let us know if your team needs anything else for processing.
+
+Thanks again for trusting BreakPoint Talent with this search.
+
+Best,
+Accounts Receivable
+BreakPoint Talent
+ar@breakpointtalent.com
+```
+
+Invoice PDF design:
+- BreakPoint branded, clean, premium, one page.
+- Logo top left, large INVOICE top right.
+- Amount due prominent.
+- Sections: Invoice Details / Bill To / Placement Details / Services / Payment Instructions.
+- Charcoal headers, white/soft gray rows, restrained BreakPoint green accents only.
+- ACH/wire payment instructions inside the PDF (not in the email body).
+- No Mercury wording anywhere, no "Pay invoice online here".
+- ACH details: Bank: Column National Association (via Mercury), ABA: 121145433, Account: 404438299016503, Beneficiary: Kraig Talent LLC.
+- Check payment instructions also included.
+
+Ace invoicing dashboard copy changes:
+- Replace "Mercury sync" with "Manual payment tracking".
+- Replace "One click, attaches PDF + pay-link" with "One click, attaches invoice PDF".
+- Replace "Mercury webhook · auto" with "Manual paid check".
+- Keep flow: Confirm start date → Draft invoice email → Approve & send → Follow up if unpaid → Mark paid.
+
+### Interview scheduler + Calendar spec — Session 2
+Bundle interview scheduler enhancements and Calendar tab together in one session.
+
+Interview scheduler needs:
+- Edit / cancel / reschedule from within Ace (not just create).
+- Click any interview anywhere in Ace to open and edit it.
+
+Calendar tab:
+- Full calendar view that feels like Google Calendar living inside Ace.
+- Month / week / day views.
+- Google Calendar read/write sync.
+- Click any interview on the calendar to open and edit it inline.
+- Create meeting modal from the calendar.
+- Replaces jumping to Google Calendar externally.
+
+### BD Phase 4 Rules — Session 3 (PERMANENT — see ACE_RULES.md)
+**CRITICAL**: Before writing a single BD Phase 4 prompt, Claude MUST stop and ask Andrew a full set of scoping questions. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Ask the questions first, always.
+
+Andrew's standing direction: "BD has at least a usable launch version I would ship. BD Phase 4 carefully, but maybe not every automation. Discovery + Client Signals + approval queue matters more than fully automated send magic."
+
+Required questions before any BD Phase 4 code:
+1. Which specific parts of Phase 4 do you want for launch vs defer?
+2. Do you want the full cron auto-enrollment or manual approval queue only?
+3. Is TheirStack access confirmed and credentials available?
+4. What does "usable launch version" mean to you specifically for BD?
+5. Any changes to the approval queue flow since it was originally designed?
+6. Do you want Client Signals to surface before or after the approval queue?
+7. Any budget or rate limit concerns with Apollo enrollment volume?
+
+Do not write any BD Phase 4 code prompts until Andrew has answered all of these in the new chat.
 
 ## What Shipped in Ace 39.4 (2026-05-12)
 - **Schema bumps** (applied via `npm run db:push`): `Vertical.dailyCap Int?` (per-vertical override on the BD contact cap), `SendingDomain.inboxOwner String?` (free-form so Andrew/Austin can both own slots without enum churn), new `BdOrgConfig` model keyed on organizationId with `globalDailyCap Int @default(80)`, `pauseAll Boolean @default(false)`, 4 blackout booleans (`blackoutWeekends` / `blackoutHolidays` / `blackoutBefore7am` / `blackoutAfter530pm`), and 3 reply-routing booleans (`replyForwardApollo` default false, `replyAutoCreateCandidate` default true, `replyOooFilter` default true). `Organization` gained the inverse `bdOrgConfig BdOrgConfig?` relation.
