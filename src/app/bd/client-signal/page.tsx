@@ -1,9 +1,9 @@
-import Link from "next/link";
 import { ExternalLink, MapPin, Clock, Mail } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
+import { formatDaysAgo } from "../date-format";
 
 export const dynamic = "force-dynamic";
 
@@ -23,10 +23,13 @@ export default async function ClientSignalPage({
   const org = await getCurrentOrg();
   const filter = resolveFilter(searchParams?.filter);
 
-  // "New this week" cutoff. detectedAt is timestamptz; truncating to UTC
-  // start-of-day-7-days-ago is close enough for a recruiter-facing
-  // "since Sunday" feel without dragging timezone math in.
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // One reference point for every relative-time computation on this
+  // render so each row's "Posted X days ago" derives from the same
+  // baseline. Without this, server SSR and the RSC payload could each
+  // call Date.now() at slightly different ticks and produce drifting
+  // text — the hydration mismatch trigger we're guarding against.
+  const nowMs = Date.now();
+  const weekAgo = new Date(nowMs - 7 * 24 * 60 * 60 * 1000);
 
   const where = (() => {
     switch (filter) {
@@ -41,7 +44,7 @@ export default async function ClientSignalPage({
     }
   })();
 
-  const [signals, newThisWeekCount, allCount, actedCount, dismissedCount] = await Promise.all([
+  const [signalRows, newThisWeekCount, allCount, actedCount, dismissedCount] = await Promise.all([
     prisma.clientSignal.findMany({
       where,
       orderBy: { detectedAt: "desc" },
@@ -79,6 +82,20 @@ export default async function ClientSignalPage({
     prisma.clientSignal.count({ where: { organizationId: org.id, status: "ACTED" } }),
     prisma.clientSignal.count({ where: { organizationId: org.id, status: "DISMISSED" } }),
   ]);
+
+  // Pre-format every date-derived string here so the row component
+  // receives only plain strings — never a Date object — and the SSR
+  // output cannot drift from the RSC payload.
+  const signals = signalRows.map((s) => ({
+    id: s.id,
+    clientName: s.client?.name ?? "Unknown client",
+    primaryContact: formatContact(s.client?.contacts[0] ?? null),
+    jobTitle: s.jobTitle,
+    location: s.location,
+    postedLabel: formatDaysAgo(s.detectedAt, nowMs),
+    externalUrl: s.externalUrl,
+    status: s.status,
+  }));
 
   const tabs: ReadonlyArray<TabStripItem<Filter>> = [
     { id: "all", label: "All", count: allCount, href: "/bd/client-signal" },
@@ -124,16 +141,7 @@ export default async function ClientSignalPage({
       ) : (
         <div className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
           {signals.map((s) => (
-            <SignalRow
-              key={s.id}
-              clientName={s.client?.name ?? "Unknown client"}
-              primaryContact={s.client?.contacts[0] ?? null}
-              jobTitle={s.jobTitle}
-              location={s.location}
-              detectedAt={s.detectedAt}
-              externalUrl={s.externalUrl}
-              status={s.status}
-            />
+            <SignalRow key={s.id} {...s} />
           ))}
         </div>
       )}
@@ -163,15 +171,15 @@ function SignalRow({
   primaryContact,
   jobTitle,
   location,
-  detectedAt,
+  postedLabel,
   externalUrl,
   status,
 }: {
   clientName: string;
-  primaryContact: ContactSummary | null;
+  primaryContact: string | null;
   jobTitle: string | null;
   location: string | null;
-  detectedAt: Date;
+  postedLabel: string;
   externalUrl: string;
   status: "NEW" | "ACTED" | "DISMISSED";
 }) {
@@ -183,7 +191,7 @@ function SignalRow({
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-court-fg">{clientName}</p>
           <p className="truncate text-xs text-court-fg-muted">
-            {formatContact(primaryContact) ?? "No primary contact on file"}
+            {primaryContact ?? "No primary contact on file"}
           </p>
         </div>
       </div>
@@ -197,20 +205,20 @@ function SignalRow({
             </span>
           )}
           <span className="inline-flex items-center gap-1">
-            <Clock className="h-3.5 w-3.5" /> Posted {formatPostedRelative(detectedAt)} · via Indeed
+            <Clock className="h-3.5 w-3.5" /> Posted {postedLabel} · via Indeed
           </span>
         </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-2">
-        <Link
+        <a
           href={externalUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
         >
           <ExternalLink className="h-3.5 w-3.5" /> View listing
-        </Link>
+        </a>
         <button
           type="button"
           disabled
@@ -251,11 +259,4 @@ function formatContact(c: ContactSummary | null): string | null {
   const title = c.currentDesignation?.trim();
   const parts = [name, title, email].filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : null;
-}
-
-function formatPostedRelative(d: Date): string {
-  const days = Math.max(0, Math.floor((Date.now() - d.getTime()) / (24 * 60 * 60 * 1000)));
-  if (days === 0) return "today";
-  if (days === 1) return "1 day ago";
-  return `${days} days ago`;
 }

@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
+import { bucketForOccurredAt, formatBdDateTime, formatBdTime, type DayBucket } from "../date-format";
 
 export const dynamic = "force-dynamic";
 
@@ -56,6 +57,7 @@ export default async function ActivityPage({
   const filter = resolveFilter(searchParams?.filter);
   const before = searchParams?.before ? new Date(searchParams.before) : null;
   const kindFilter = FILTER_KINDS[filter];
+  const nowMs = Date.now();
 
   const where = {
     organizationId: org.id,
@@ -65,7 +67,7 @@ export default async function ActivityPage({
 
   // Pull PAGE_SIZE+1 so we know whether to render a Load earlier pill
   // without a second query. The +1 is dropped before rendering.
-  const rows = await prisma.bDActivity.findMany({
+  const rawRows = await prisma.bDActivity.findMany({
     where,
     orderBy: { occurredAt: "desc" },
     take: PAGE_SIZE + 1,
@@ -76,9 +78,26 @@ export default async function ActivityPage({
       occurredAt: true,
     },
   });
-  const hasMore = rows.length > PAGE_SIZE;
-  const visible = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
-  const oldestVisible = visible[visible.length - 1];
+  const hasMore = rawRows.length > PAGE_SIZE;
+  const visibleRaw = hasMore ? rawRows.slice(0, PAGE_SIZE) : rawRows;
+  const oldestVisible = visibleRaw[visibleRaw.length - 1];
+
+  // Pre-format every per-row string here so the row component receives
+  // plain strings only. Date math + Intl formatting all happens in one
+  // place against the single `nowMs` reference.
+  const visible = visibleRaw.map((r) => {
+    const kind = r.kind as BDKind;
+    const meta = r.metadata as Record<string, unknown> | null;
+    return {
+      id: r.id,
+      kind,
+      bucket: bucketForOccurredAt(r.occurredAt, nowMs),
+      text: formatEvent(kind, meta),
+      timeIso: r.occurredAt.toISOString(),
+      timeLabel: formatBdTime(r.occurredAt),
+      titleLabel: formatBdDateTime(r.occurredAt),
+    };
+  });
 
   const tabs: ReadonlyArray<TabStripItem<Filter>> = [
     { id: "all", label: "All", href: "/bd/activity" },
@@ -118,12 +137,7 @@ export default async function ActivityPage({
               </p>
               <ul className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
                 {bucket.entries.map((row) => (
-                  <ActivityRow
-                    key={row.id}
-                    kind={row.kind as BDKind}
-                    metadata={row.metadata as Record<string, unknown> | null}
-                    occurredAt={row.occurredAt}
-                  />
+                  <ActivityRow key={row.id} {...row} />
                 ))}
               </ul>
             </div>
@@ -182,12 +196,16 @@ const TONE_CLASS: Record<GlyphTone, string> = {
 
 function ActivityRow({
   kind,
-  metadata,
-  occurredAt,
+  text,
+  timeIso,
+  timeLabel,
+  titleLabel,
 }: {
   kind: BDKind;
-  metadata: Record<string, unknown> | null;
-  occurredAt: Date;
+  text: string;
+  timeIso: string;
+  timeLabel: string;
+  titleLabel: string;
 }) {
   const cfg = GLYPHS[kind] ?? { icon: CheckCircle2, tone: "info" as GlyphTone };
   const Icon = cfg.icon;
@@ -202,13 +220,13 @@ function ActivityRow({
       >
         <Icon className="h-3 w-3" />
       </span>
-      <p className="min-w-0 flex-1 truncate text-sm text-court-fg">{formatEvent(kind, metadata)}</p>
+      <p className="min-w-0 flex-1 truncate text-sm text-court-fg">{text}</p>
       <time
-        dateTime={occurredAt.toISOString()}
+        dateTime={timeIso}
         className="shrink-0 text-xs tabular-nums text-court-fg-muted"
-        title={occurredAt.toLocaleString()}
+        title={titleLabel}
       >
-        {occurredAt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+        {timeLabel}
       </time>
     </li>
   );
@@ -273,11 +291,19 @@ function formatEvent(kind: BDKind, m: Record<string, unknown> | null): string {
   }
 }
 
-type Bucket = { label: string; entries: Array<{ id: string; kind: string; metadata: unknown; occurredAt: Date }> };
+type BucketRow = {
+  id: string;
+  kind: BDKind;
+  bucket: DayBucket;
+  text: string;
+  timeIso: string;
+  timeLabel: string;
+  titleLabel: string;
+};
 
-function groupByBucket(rows: Array<{ id: string; kind: string; metadata: unknown; occurredAt: Date }>): Bucket[] {
-  const now = new Date();
-  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+type Bucket = { label: DayBucket; entries: BucketRow[] };
+
+function groupByBucket(rows: ReadonlyArray<BucketRow>): Bucket[] {
   const buckets: Bucket[] = [
     { label: "Today", entries: [] },
     { label: "Yesterday", entries: [] },
@@ -285,12 +311,8 @@ function groupByBucket(rows: Array<{ id: string; kind: string; metadata: unknown
     { label: "Older", entries: [] },
   ];
   for (const r of rows) {
-    const t = r.occurredAt.getTime();
-    const daysAgo = Math.floor((startOfToday - t) / (24 * 60 * 60 * 1000));
-    if (t >= startOfToday) buckets[0].entries.push(r);
-    else if (daysAgo < 1) buckets[1].entries.push(r);
-    else if (daysAgo < 2) buckets[2].entries.push(r);
-    else buckets[3].entries.push(r);
+    const target = buckets.find((b) => b.label === r.bucket);
+    target?.entries.push(r);
   }
   return buckets.filter((b) => b.entries.length > 0);
 }

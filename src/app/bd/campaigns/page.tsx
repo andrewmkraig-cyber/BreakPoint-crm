@@ -3,6 +3,7 @@ import { ChevronRight, Pause } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { cn } from "@/lib/utils";
+import { formatBdDate } from "../date-format";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ type EventKind = "OPEN" | "REPLY" | "BOUNCE" | "UNSUB" | "ENROLL";
 
 export default async function CampaignsPage() {
   const org = await getCurrentOrg();
+  const nowMs = Date.now();
 
   const runs = await prisma.bDRun.findMany({
     where: { organizationId: org.id },
@@ -61,6 +63,35 @@ export default async function CampaignsPage() {
   });
   const domainStatusByName = new Map(domainRows.map((d) => [d.domain, d.status]));
 
+  // Pre-shape every row into plain-string props so SignalRow / row
+  // helpers never receive Date objects — eliminates any risk of locale
+  // or timezone drift between SSR and the RSC payload.
+  const rows = runs.map((run) => {
+    const planDomains: string[] = Array.isArray((run.plan as { domains?: unknown } | null)?.domains)
+      ? (((run.plan as { domains?: unknown }).domains as unknown[]).filter(
+          (d): d is string => typeof d === "string",
+        ) ?? [])
+      : [];
+    const totals = aggregateEvents(
+      run.campaigns.map((c) => c.id),
+      eventsByCampaign,
+    );
+    return {
+      runId: run.id,
+      verticalName: run.vertical.name,
+      campaignName: run.savedSearch.name,
+      sequenceName: run.campaigns[0]?.name ?? "BD Outbound v1",
+      startedLabel: formatBdDate(run.createdAt),
+      dayNumber: computeDayNumber(run.createdAt, nowMs),
+      totals,
+      planDomains,
+      domains: planDomains.slice(0, 5).map((name) => ({
+        name,
+        status: domainStatusByName.get(name) ?? "HEALTHY",
+      })),
+    };
+  });
+
   return (
     <section className="flex flex-col gap-5">
       <header className="flex flex-col gap-2">
@@ -76,34 +107,13 @@ export default async function CampaignsPage() {
         </p>
       </header>
 
-      {runs.length === 0 ? (
+      {rows.length === 0 ? (
         <EmptyState />
       ) : (
         <div className="divide-y divide-court-border rounded-2xl border border-court-border bg-court-surface shadow-sm">
-          {runs.map((run) => {
-            const planDomains: string[] = Array.isArray((run.plan as { domains?: unknown } | null)?.domains)
-              ? (((run.plan as { domains?: unknown }).domains as unknown[]).filter(
-                  (d): d is string => typeof d === "string",
-                ) ?? [])
-              : [];
-            const totals = aggregateEvents(run.campaigns.map((c) => c.id), eventsByCampaign);
-            const sequenceName = run.campaigns[0]?.name ?? "BD Outbound v1";
-            const dayNumber = computeDayNumber(run.createdAt);
-            return (
-              <CampaignRow
-                key={run.id}
-                runId={run.id}
-                verticalName={run.vertical.name}
-                campaignName={run.savedSearch.name}
-                sequenceName={sequenceName}
-                startedAt={run.createdAt}
-                dayNumber={dayNumber}
-                totals={totals}
-                planDomains={planDomains}
-                domainStatusByName={domainStatusByName}
-              />
-            );
-          })}
+          {rows.map((row) => (
+            <CampaignRow key={row.runId} {...row} />
+          ))}
         </div>
       )}
     </section>
@@ -148,26 +158,26 @@ function aggregateEvents(
   return { sent, opened, replied, bounced, unsub };
 }
 
+type DomainSlot = { name: string; status: string };
+
 function CampaignRow({
   runId,
   verticalName,
   campaignName,
   sequenceName,
-  startedAt,
+  startedLabel,
   dayNumber,
   totals,
-  planDomains,
-  domainStatusByName,
+  domains,
 }: {
   runId: string;
   verticalName: string;
   campaignName: string;
   sequenceName: string;
-  startedAt: Date;
+  startedLabel: string;
   dayNumber: number;
   totals: EventTotals;
-  planDomains: string[];
-  domainStatusByName: Map<string, string>;
+  domains: ReadonlyArray<DomainSlot>;
 }) {
   const openedPct = totals.sent === 0 ? 0 : totals.opened / totals.sent;
   const repliedPct = totals.sent === 0 ? 0 : totals.replied / totals.sent;
@@ -190,26 +200,26 @@ function CampaignRow({
           </div>
           <p className="mt-1 truncate text-sm font-semibold text-court-fg">{campaignName}</p>
           <p className="mt-0.5 truncate text-xs text-court-fg-muted">
-            Started {startedAt.toLocaleDateString()} · Sequence {sequenceName}
+            Started {startedLabel} · Sequence {sequenceName}
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs">
-            <Metric label="Sent" value={totals.sent.toLocaleString()} />
+            <Metric label="Sent" value={totals.sent.toString()} />
             <Metric
               label="Opened"
-              value={`${totals.opened.toLocaleString()} · ${formatPct(openedPct)}`}
+              value={`${totals.opened.toString()} · ${formatPct(openedPct)}`}
             />
             <Metric
               label="Replied"
-              value={`${totals.replied.toLocaleString()} · ${formatPct(repliedPct)}`}
+              value={`${totals.replied.toString()} · ${formatPct(repliedPct)}`}
               accent="brand"
             />
             <Metric
               label="Bounced"
-              value={`${totals.bounced.toLocaleString()} · ${formatPct(bouncedPct)}`}
+              value={`${totals.bounced.toString()} · ${formatPct(bouncedPct)}`}
               accent={bouncedPct > BOUNCE_RED_THRESHOLD ? "red" : undefined}
             />
-            <Metric label="Unsub" value={totals.unsub.toLocaleString()} />
+            <Metric label="Unsub" value={totals.unsub.toString()} />
             <span className="text-court-fg-dim" aria-label="Sparkline placeholder">
               —
             </span>
@@ -217,17 +227,14 @@ function CampaignRow({
         </div>
 
         <div className="flex items-center gap-3">
-          <DomainDots names={planDomains} statusByName={domainStatusByName} />
-          <button
-            type="button"
-            disabled
+          <DomainDots slots={domains} />
+          <span
             title="Pause/resume ships in Phase 4"
             className="inline-flex h-8 w-8 cursor-not-allowed items-center justify-center rounded-md border border-court-border bg-court-surface text-court-fg-muted opacity-60"
             aria-label="Pause campaign"
-            onClick={(e) => e.preventDefault()}
           >
             <Pause className="h-3.5 w-3.5" />
-          </button>
+          </span>
           <ChevronRight className="h-4 w-4 text-court-fg-dim transition-transform group-hover:translate-x-0.5" />
         </div>
       </div>
@@ -263,24 +270,14 @@ function Metric({
   );
 }
 
-function DomainDots({
-  names,
-  statusByName,
-}: {
-  names: string[];
-  statusByName: Map<string, string>;
-}) {
-  const slots: ReadonlyArray<{ name: string; status: string } | null> = Array.from(
+function DomainDots({ slots }: { slots: ReadonlyArray<DomainSlot> }) {
+  const filled: ReadonlyArray<DomainSlot | null> = Array.from(
     { length: 5 },
-    (_, i) => {
-      const name = names[i];
-      if (!name) return null;
-      return { name, status: statusByName.get(name) ?? "HEALTHY" };
-    },
+    (_, i) => slots[i] ?? null,
   );
   return (
     <span className="inline-flex items-center gap-1" aria-label="Sending domain health">
-      {slots.map((slot, i) => (
+      {filled.map((slot, i) => (
         <span
           key={i}
           title={slot ? `${slot.name} · ${slot.status}` : "unassigned slot"}
@@ -300,8 +297,8 @@ function DomainDots({
   );
 }
 
-function computeDayNumber(startedAt: Date): number {
-  const days = Math.floor((Date.now() - startedAt.getTime()) / (24 * 60 * 60 * 1000));
+function computeDayNumber(startedAt: Date, nowMs: number): number {
+  const days = Math.floor((nowMs - startedAt.getTime()) / (24 * 60 * 60 * 1000));
   return Math.min(SEQUENCE_DAYS, Math.max(1, days + 1));
 }
 
