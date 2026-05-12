@@ -1452,7 +1452,15 @@ export function MailComposer({
           </div>
         )}
 
-        <div className="flex shrink-0 items-center justify-between border-t border-court-border/50 bg-court-surface-subtle/40 px-3 py-2">
+        <div
+          className={cn(
+            "flex shrink-0 items-center justify-between border-t border-court-border/50 bg-court-surface-subtle/40 py-2 pl-3",
+            // In popped-out (modal) mode the resize handle sits in the
+            // bottom-right corner. Bump right padding so Send doesn't
+            // crowd up against the diagonal indicator.
+            asModal ? "pr-7" : "pr-3",
+          )}
+        >
           {/* Footer integrated into the editor card so Attach + Send
               read as part of the same surface as the body. */}
           <div className="flex items-center gap-2">
@@ -1575,14 +1583,14 @@ export function MailComposer({
             onMouseDown={onResizeMouseDown}
             aria-label="Resize composer"
             className={cn(
-              "absolute bottom-1 right-1 h-4 w-4 rounded-sm",
+              "absolute bottom-0.5 right-0.5 h-3 w-3 rounded-sm",
               isResizing ? "cursor-nwse-resize bg-court-fg/10" : "cursor-nwse-resize hover:bg-court-fg/5",
             )}
             style={{
               backgroundImage:
                 "linear-gradient(135deg, transparent 0 35%, currentColor 35% 45%, transparent 45% 65%, currentColor 65% 75%, transparent 75%)",
               color: "var(--court-fg-muted, #888)",
-              opacity: 0.6,
+              opacity: 0.5,
             }}
           />
         </div>
