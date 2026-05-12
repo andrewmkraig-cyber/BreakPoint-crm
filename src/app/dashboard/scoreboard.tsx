@@ -147,10 +147,8 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
         <EmptyBlock>No submit activity logged in the last 90 days yet.</EmptyBlock>
       ) : (
         <div className="mt-6 space-y-3">
-          {stages.map((s, i) => {
+          {stages.map((s) => {
             const widthPct = top > 0 ? Math.max(8, Math.round((s.n / top) * 100)) : 8;
-            const prev = i > 0 ? stages[i - 1].n : null;
-            const stepThru = prev && prev > 0 ? Math.round((s.n / prev) * 100) : null;
             return (
               <div key={s.name} className="flex items-center gap-3">
                 <div className="w-28 shrink-0 text-[12px] font-medium text-court-fg">{s.name}</div>
@@ -161,27 +159,7 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
                   <span className="text-[22px] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
                     {s.n}
                   </span>
-                  <span className="ml-2 text-[11px] opacity-80 tabular-nums">
-                    {top > 0 ? Math.round((s.n / top) * 100) : 0}% of top
-                  </span>
                 </div>
-                {stepThru != null && (
-                  <div className="shrink-0 text-[11px] tabular-nums text-court-fg-muted">
-                    <span
-                      className={
-                        "font-semibold " +
-                        (stepThru >= 50
-                          ? "text-court-brand-dark"
-                          : stepThru >= 25
-                            ? "text-amber-700"
-                            : "text-red-600")
-                      }
-                    >
-                      {stepThru}%
-                    </span>{" "}
-                    step-thru
-                  </div>
-                )}
               </div>
             );
           })}
