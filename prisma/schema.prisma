@@ -702,6 +702,13 @@ model Job {
   title            String
   clientId         String?
   locations        String[]  @default([])
+  // Structured location parts, written by the /jobs/new form so search
+  // can filter by city / state / zip independently. The legacy
+  // `locations` array continues to carry the composed "City, ST Zip"
+  // string for callers that render free-form location text.
+  locationCity     String?
+  locationState    String?
+  locationZip      String?
   // Canonical "is this job currently active in the pipeline" signal.
   // Active + Private both stay isOpen=true so search_jobs / find-matches
   // / pipeline reads keep surfacing private jobs (the recruiter is
@@ -781,6 +788,9 @@ model Job {
   @@index([isOpen])
   @@index([title])
   @@index([organizationId])
+  @@index([locationCity])
+  @@index([locationState])
+  @@index([locationZip])
 }
 
 // Per-job posting status across job boards. Powers the Promote tab on

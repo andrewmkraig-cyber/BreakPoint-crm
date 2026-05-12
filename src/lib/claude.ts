@@ -685,7 +685,14 @@ export async function generateJobDescription(params: {
 
 export type ExtractedJdFields = {
   title?: string;
+  // Composed free-form location (e.g. "Florence, KY 41042"). Kept for
+  // callers that render a single location string.
   location?: string;
+  // Structured location parts so the /jobs/new form can fill City /
+  // State / Zip inputs separately for downstream search filtering.
+  city?: string;
+  state?: string;
+  zip?: string;
   salaryLow?: number;
   salaryHigh?: number;
   salaryType?: "SALARY" | "HOURLY";
@@ -715,6 +722,9 @@ export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise
           "Fields:\n" +
           "- title: string — the job title\n" +
           "- location: string — the single most specific location mentioned. Prefer a format like 'Florence, KY' or 'Florence, KY 41042' over region descriptions like 'Cincinnati/Northern Kentucky'. If a commute requirement lists a specific city/zip, use that.\n" +
+          "- city: string — just the city name (e.g. 'Florence'). Omit if no specific city is mentioned.\n" +
+          "- state: string — the 2-letter abbreviation if US (e.g. 'KY'), or the full state/province name otherwise. Omit if no specific state is mentioned.\n" +
+          "- zip: string — the 5-digit US postal code if present (e.g. '41042'). Omit otherwise.\n" +
           "- salaryLow: number — the lower bound of compensation, in dollars. If hourly, convert to the hourly rate as a number (e.g. 20 for $20/hr).\n" +
           "- salaryHigh: number — the upper bound of compensation, in dollars. If hourly, use the hourly rate.\n" +
           "- salaryType: string — either 'SALARY' or 'HOURLY'. Use 'HOURLY' if the compensation is described as per hour, /hr, hourly, or an hourly rate. Use 'SALARY' if annual or salaried.\n\n" +
@@ -736,6 +746,9 @@ export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise
   const fields: ExtractedJdFields = {};
   if (typeof parsed.title === "string" && parsed.title.trim()) fields.title = parsed.title.trim();
   if (typeof parsed.location === "string" && parsed.location.trim()) fields.location = parsed.location.trim();
+  if (typeof parsed.city === "string" && parsed.city.trim()) fields.city = parsed.city.trim();
+  if (typeof parsed.state === "string" && parsed.state.trim()) fields.state = parsed.state.trim();
+  if (typeof parsed.zip === "string" && parsed.zip.trim()) fields.zip = parsed.zip.trim();
   if (typeof parsed.salaryLow === "number" && Number.isFinite(parsed.salaryLow) && parsed.salaryLow >= 0) {
     fields.salaryLow = parsed.salaryLow;
   }

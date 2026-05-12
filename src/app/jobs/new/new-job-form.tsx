@@ -17,7 +17,15 @@ const EMPLOYMENT_TYPES = ["Full time", "Part time", "Contract"] as const;
 type ParseUrlSuccess = {
   ok: true;
   extracted: string;
-  fields: { title?: string; location?: string; salaryLow?: number; salaryHigh?: number };
+  fields: {
+    title?: string;
+    location?: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    salaryLow?: number;
+    salaryHigh?: number;
+  };
   urlSaved: boolean;
 };
 
@@ -63,7 +71,13 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [clientId, setClientId] = useState<string>("");
-  const [location, setLocation] = useState("");
+  // Location is split into three searchable parts. The createJob action
+  // composes the legacy `locations` array string ("City, ST Zip") from
+  // these so existing readers stay untouched. State accepts the 2-letter
+  // abbreviation or the full state name.
+  const [locationCity, setLocationCity] = useState("");
+  const [locationState, setLocationState] = useState("");
+  const [locationZip, setLocationZip] = useState("");
   const [jobType, setJobType] = useState<string>(JOB_TYPES[0]);
   const [employmentType, setEmploymentType] = useState<string>(EMPLOYMENT_TYPES[0]);
   const [salaryFrequency, setSalaryFrequency] = useState<SalaryFrequency>("yearly");
@@ -158,7 +172,9 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     void extractFieldsFromGeneratedJd(result.value.text)
       .then((f) => {
         if (f.title && !title.trim()) setTitle(f.title);
-        if (f.location && !location.trim()) setLocation(f.location);
+        if (f.city && !locationCity.trim()) setLocationCity(f.city);
+        if (f.state && !locationState.trim()) setLocationState(f.state);
+        if (f.zip && !locationZip.trim()) setLocationZip(f.zip);
         if (typeof f.salaryLow === "number" && salaryLow === "") setSalaryLow(String(f.salaryLow));
         if (typeof f.salaryHigh === "number" && salaryHigh === "") setSalaryHigh(String(f.salaryHigh));
         // Salary Type dropdown — flip whenever Claude tells us the comp is
@@ -272,7 +288,9 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           }
           const f = data.fields ?? {};
           if (f.title && !title.trim()) setTitle(f.title);
-          if (f.location && !location.trim()) setLocation(f.location);
+          if (f.city && !locationCity.trim()) setLocationCity(f.city);
+          if (f.state && !locationState.trim()) setLocationState(f.state);
+          if (f.zip && !locationZip.trim()) setLocationZip(f.zip);
           if (typeof f.salaryLow === "number" && salaryLow === "") setSalaryLow(String(f.salaryLow));
           if (typeof f.salaryHigh === "number" && salaryHigh === "") setSalaryHigh(String(f.salaryHigh));
           setDescription(data.extracted);
@@ -330,7 +348,9 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
       const result = await createJob({
         title: title.trim(),
         clientId,
-        locations: location.trim() ? [location.trim()] : [],
+        locationCity: locationCity.trim(),
+        locationState: locationState.trim(),
+        locationZip: locationZip.trim(),
         jobType,
         employmentType,
         salaryRangeStart: loNum,
@@ -513,16 +533,30 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               </option>
             ))}
           </CompactSelect>
-          <CompactField label="Location" value={location} onChange={setLocation} placeholder="Remote, New York, NY" />
-          <CompactSelect label="Job type" value={jobType} onChange={setJobType}>
-            {JOB_TYPES.map((t) => (
+          {/* Location is split into three searchable inputs on a single
+              row. City takes the most horizontal space; State and Zip
+              are narrower because their content is short. The composed
+              "City, ST Zip" string is reassembled server-side. */}
+          <div className="md:col-span-2 grid grid-cols-1 gap-2 sm:grid-cols-6">
+            <div className="sm:col-span-3">
+              <CompactField label="City" value={locationCity} onChange={setLocationCity} placeholder="Florence" />
+            </div>
+            <div className="sm:col-span-2">
+              <CompactField label="State" value={locationState} onChange={setLocationState} placeholder="KY or Kentucky" />
+            </div>
+            <div className="sm:col-span-1">
+              <CompactField label="Zip" value={locationZip} onChange={setLocationZip} placeholder="41042" />
+            </div>
+          </div>
+          <CompactSelect label="Employment type" value={employmentType} onChange={setEmploymentType}>
+            {EMPLOYMENT_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>
             ))}
           </CompactSelect>
-          <CompactSelect label="Employment type" value={employmentType} onChange={setEmploymentType}>
-            {EMPLOYMENT_TYPES.map((t) => (
+          <CompactSelect label="Job type" value={jobType} onChange={setJobType}>
+            {JOB_TYPES.map((t) => (
               <option key={t} value={t}>
                 {t}
               </option>

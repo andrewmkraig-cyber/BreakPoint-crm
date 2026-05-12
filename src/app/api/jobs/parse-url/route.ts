@@ -29,6 +29,13 @@ type ParseUrlErrorCode =
 type ParsedFields = {
   title?: string;
   location?: string;
+  // Structured location parts so the /jobs/new form can fill the City /
+  // State / Zip inputs separately for downstream search filtering. The
+  // legacy `location` string stays populated for callers that still
+  // render free-form location text.
+  city?: string;
+  state?: string;
+  zip?: string;
   salaryLow?: number;
   salaryHigh?: number;
 };
@@ -218,6 +225,9 @@ function stripHtmlForClaude(html: string): string {
 type ExtractedJob = {
   title: string | null;
   location: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
   salary: string | null;
   salary_low: number | null;
   salary_high: number | null;
@@ -245,6 +255,9 @@ async function extractJobFields(pageText: string): Promise<{ extracted: string; 
           "{\n" +
           '  "title": string|null,\n' +
           '  "location": string|null,\n' +
+          '  "city": string|null,\n' +
+          '  "state": string|null,\n' +
+          '  "zip": string|null,\n' +
           '  "salary": string|null,\n' +
           '  "salary_low": number|null,\n' +
           '  "salary_high": number|null,\n' +
@@ -257,6 +270,8 @@ async function extractJobFields(pageText: string): Promise<{ extracted: string; 
           "}\n\n" +
           "Rules:\n" +
           "- Use null for any single-string or number field not present. Use [] for missing list fields.\n" +
+          "- 'location' is the human-readable composed location (e.g. 'Florence, KY 41042').\n" +
+          "- 'city' is just the city name (e.g. 'Florence'). 'state' is the 2-letter abbreviation if US (e.g. 'KY'), full state name otherwise. 'zip' is the 5-digit postal code if present. Prefer a specific city / state / zip over region descriptions like 'Cincinnati/Northern Kentucky'. If a commute requirement lists a specific city/zip, use that.\n" +
           "- 'salary' is the comp range or single number, including currency and period if shown.\n" +
           "- 'salary_low' and 'salary_high' are the numeric comp bounds parsed from the listing. For '$80,000-$120,000' return 80000 and 120000. For '$25-35/hr' return 25 and 35. If only one value is shown, set both to that value. If no comp info, both null. Never invent values.\n" +
           "- 'employment_type' is e.g. 'Full-time', 'Contract', 'Part-time'.\n" +
@@ -284,6 +299,9 @@ async function extractJobFields(pageText: string): Promise<{ extracted: string; 
   const fields: ParsedFields = {};
   if (parsed.title && parsed.title.trim()) fields.title = parsed.title.trim();
   if (parsed.location && parsed.location.trim()) fields.location = parsed.location.trim();
+  if (parsed.city && parsed.city.trim()) fields.city = parsed.city.trim();
+  if (parsed.state && parsed.state.trim()) fields.state = parsed.state.trim();
+  if (parsed.zip && parsed.zip.trim()) fields.zip = parsed.zip.trim();
   if (typeof parsed.salary_low === "number" && Number.isFinite(parsed.salary_low) && parsed.salary_low >= 0) {
     fields.salaryLow = parsed.salary_low;
   }

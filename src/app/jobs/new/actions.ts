@@ -109,7 +109,13 @@ export type NewJobInput = {
   // "Select a client…" option). Both Ace-native and RF-imported Clients
   // are identified by their cuid — the dropdown carries cuids now.
   clientId: string;
-  locations: string[];
+  // Structured location parts captured by the /jobs/new form (split out
+  // for searchable filtering). The action composes Job.locations from
+  // these so legacy readers that render the free-form locations[] string
+  // keep working unchanged.
+  locationCity: string;
+  locationState: string;
+  locationZip: string;
   jobType: string;
   employmentType: string;
   salaryRangeStart: number | null;
@@ -176,6 +182,21 @@ export async function createJob(
     const jobType = input.jobType.trim();
     const employmentType = input.employmentType.trim();
 
+    // Normalize the new structured-location parts and compose the legacy
+    // free-form "City, ST Zip" string from them. Empty parts collapse —
+    // a job in just KY (no city/zip) yields locations=["KY"]; an empty
+    // form yields locations=[] (same as before).
+    const locationCity = input.locationCity.trim();
+    const locationState = input.locationState.trim();
+    const locationZip = input.locationZip.trim();
+    const composedLocation = [
+      [locationCity, locationState].filter(Boolean).join(", "),
+      locationZip,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+
     const salaryFrequency =
       input.salaryFrequency === "hourly" || input.salaryFrequency === "yearly"
         ? input.salaryFrequency
@@ -189,7 +210,10 @@ export async function createJob(
       data: {
         title,
         clientId,
-        locations: input.locations.filter((l) => l.trim().length > 0),
+        locations: composedLocation ? [composedLocation] : [],
+        locationCity: locationCity || null,
+        locationState: locationState || null,
+        locationZip: locationZip || null,
         isOpen: true,
         employmentType: employmentType || null,
         jobType: jobType ? { name: jobType } : undefined,
