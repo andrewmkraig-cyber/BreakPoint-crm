@@ -190,7 +190,7 @@ export function TopBarSearch() {
           // with the recruiter's stored profile.
           autoComplete="off"
           name="__breakpoint-quick-search"
-          className="w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-lg bg-transparent py-2 pl-10 pr-10 text-sm text-court-fg placeholder:text-court-fg-muted focus:outline-none"
+          className="w-full overflow-hidden text-ellipsis whitespace-nowrap rounded-full bg-transparent py-1.5 pl-10 pr-10 text-sm text-court-fg placeholder:text-court-fg-muted focus:outline-none"
         />
         {isSearching && (
           <Loader2 className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-court-fg-muted" />

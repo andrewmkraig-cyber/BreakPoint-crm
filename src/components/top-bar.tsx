@@ -45,7 +45,7 @@ export function TopBar() {
           mobile (no title block) the search itself fills the space. */}
       <div className="flex min-w-0 flex-1 items-center justify-end md:justify-start">
         <div className="min-w-0 flex-1 md:flex-none md:w-56 lg:w-64 xl:w-80 2xl:w-96">
-          <div className="rounded-lg border border-court-border bg-court-surface-subtle/60 transition focus-within:border-court-accent focus-within:bg-court-surface">
+          <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
             <TopBarSearch />
           </div>
         </div>
