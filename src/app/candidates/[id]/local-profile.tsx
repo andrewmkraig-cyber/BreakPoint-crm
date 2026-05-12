@@ -7,7 +7,6 @@ import { getRfClientsForOrg, getRfContactsForOrg, getRfJobsForOrg } from "@/lib/
 import { LocalCandidateActions, type LocalOpenJob } from "@/app/candidates/[id]/local-candidate-actions";
 import { LocalPlacementRows, type LocalJobRow, type LocalInterview } from "@/app/candidates/[id]/local-placement-rows";
 import { listAceTeam } from "@/lib/ace-team";
-import { LocalEditableIdentity } from "@/app/candidates/[id]/local-editable-identity";
 import { LocalEditableSkills } from "@/app/candidates/[id]/local-editable-skills";
 import { CandidateActivityCard } from "@/components/candidate-activity-card";
 import { CandidateProfileNav } from "@/components/candidate-profile-nav";
@@ -388,7 +387,37 @@ export async function LocalCandidateProfile({
           hideButtons
         />
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
+          {/* Left column. Resume sits as high as possible — the action
+              row above it is the only thing between the iframe top and
+              the resume PDF. CompactOverview moved to the right rail
+              so it's not duplicated against the resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/candidates/${candidate.id}?embed=true&openApply=1`}
+                className={APPLY_LINK_CLASS}
+              >
+                <Target className="h-3 w-3" /> Apply to Job
+              </Link>
+              <KeepCandidateButton candidateId={candidate.id} isKept={isKeptEmbed} />
+              <Link
+                href={`/candidates/${candidate.id}?tab=notes`}
+                target="_top"
+                className={ADD_NOTE_LINK_CLASS}
+              >
+                <NotebookPen className="h-3 w-3" /> Add Note
+              </Link>
+              <AddToListButton candidateId={candidate.id} candidateName={fullName} />
+            </div>
+            <EditableResume
+              candidateRfId={null}
+              candidateId={candidate.id}
+              versions={resumeVersions}
+            />
+          </div>
+          {/* Right rail. CompactOverview as a single tight summary box,
+              then skills, then the call/email/text activity card. */}
+          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
             <CandidateCompactOverview
               candidateRef={candidate.id}
               fullName={fullName}
@@ -402,30 +431,6 @@ export async function LocalCandidateProfile({
               linkedinProfile={candidate.linkedinProfile}
               compensation={compensation}
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <AddToListButton candidateId={candidate.id} candidateName={fullName} />
-              <KeepCandidateButton candidateId={candidate.id} isKept={isKeptEmbed} />
-              <Link
-                href={`/candidates/${candidate.id}?embed=true&openApply=1`}
-                className={APPLY_LINK_CLASS}
-              >
-                <Target className="h-3 w-3" /> Apply to Job
-              </Link>
-              <Link
-                href={`/candidates/${candidate.id}?tab=notes`}
-                target="_top"
-                className={ADD_NOTE_LINK_CLASS}
-              >
-                <NotebookPen className="h-3 w-3" /> Add Note
-              </Link>
-            </div>
-            <EditableResume
-              candidateRfId={null}
-              candidateId={candidate.id}
-              versions={resumeVersions}
-            />
-          </div>
-          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
             <LocalEditableSkills
               candidateId={candidate.id}
               initial={candidate.skills ?? []}
@@ -632,31 +637,25 @@ export async function LocalCandidateProfile({
         </section>
       )}
 
-      {/* Unified two-column layout. The left column is now the work
-          surface: compact overview + the candidate-level action row +
-          the resume — visible regardless of which right-column tab is
-          active. The right column owns the tab strip + per-tab
-          working content (identity editor / skills / activity on
-          Profile; AiWorkspace on Game Plan; notes on Notes). The
-          embed split-view above mirrors the same left column so both
-          surfaces read identically. */}
+      {/* Two-column layout. Left column is the working surface — the
+          Profile/Game Plan/Notes tab strip, then the action row, then
+          the tab content (Resume on Profile, AiWorkspace on Game Plan,
+          notes editor on Notes). The right column is a tight reference
+          rail (compact overview + skills + activity). The redundant
+          large identity card was dropped in favor of the single
+          CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="space-y-4 lg:col-span-7">
-          <CandidateCompactOverview
-            candidateRef={candidate.id}
-            fullName={fullName}
-            firstName={candidate.firstName}
-            lastName={candidate.lastName}
-            currentDesignation={candidate.currentDesignation}
-            currentOrganization={candidate.currentOrganization}
-            location={candidate.location}
-            email={candidate.email}
-            phone={candidate.phone}
-            linkedinProfile={candidate.linkedinProfile}
-            compensation={formatExpectedSalary(candidate.expectedSalary)}
-          />
+        <div className="space-y-4 lg:col-span-8">
+          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+            <UnderlineTabs tab={tab} candidateId={candidate.id} />
+          </div>
           <div className="flex flex-wrap items-center gap-2">
-            <AddToListButton candidateId={candidate.id} candidateName={fullName} />
+            <Link
+              href={`/candidates/${candidate.id}?openApply=1`}
+              className={APPLY_LINK_CLASS}
+            >
+              <Target className="h-3 w-3" /> Apply to Job
+            </Link>
             <KeepCandidateButton
               candidateId={candidate.id}
               isKept={(candidate.tags ?? []).some((t) => {
@@ -665,31 +664,12 @@ export async function LocalCandidateProfile({
               })}
             />
             <Link
-              href={`/candidates/${candidate.id}?openApply=1`}
-              className={APPLY_LINK_CLASS}
-            >
-              <Target className="h-3 w-3" /> Apply to Job
-            </Link>
-            <Link
               href={`/candidates/${candidate.id}?tab=notes`}
               className={ADD_NOTE_LINK_CLASS}
             >
               <NotebookPen className="h-3 w-3" /> Add Note
             </Link>
-          </div>
-          <EditableResume
-            candidateRfId={null}
-            candidateId={candidate.id}
-            versions={resumeVersions}
-          />
-        </div>
-
-        <div className="space-y-4 lg:col-span-5">
-          {/* Sticky tabs strip. Tabs scope only the right column —
-              the left column resume + actions stay put as the user
-              flips between Profile / Game Plan / Notes. */}
-          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
-            <UnderlineTabs tab={tab} candidateId={candidate.id} />
+            <AddToListButton candidateId={candidate.id} candidateName={fullName} />
           </div>
           {tab === "game-plan" ? (
             <AiWorkspace
@@ -703,37 +683,36 @@ export async function LocalCandidateProfile({
               initialNotes={candidate.notes}
             />
           ) : (
-            <div className="space-y-4">
-              {/* Profile tab. The editable identity card stays the
-                  canonical edit surface — CompactOverview on the
-                  left is the read-only header for the same fields. */}
-              <LocalEditableIdentity
-                candidateId={candidate.id}
-                initial={{
-                  firstName: candidate.firstName ?? "",
-                  lastName: candidate.lastName ?? "",
-                  email: candidate.email ?? "",
-                  phone: candidate.phone ?? "",
-                  location: candidate.location ?? "",
-                  linkedinProfile: candidate.linkedinProfile ?? "",
-                  currentDesignation: candidate.currentDesignation ?? "",
-                  currentOrganization: candidate.currentOrganization ?? "",
-                }}
-              />
-              <BackgroundSection
-                experience={candidate.experience}
-                education={candidate.education}
-              />
-              <CandidateActivityCard
-                candidateId={candidate.id}
-                toNumber={candidate.phone || null}
-              />
-              <LocalEditableSkills
-                candidateId={candidate.id}
-                initial={candidate.skills ?? []}
-              />
-            </div>
+            <EditableResume
+              candidateRfId={null}
+              candidateId={candidate.id}
+              versions={resumeVersions}
+            />
           )}
+        </div>
+
+        <div className="space-y-4 lg:col-span-4">
+          <CandidateCompactOverview
+            candidateRef={candidate.id}
+            fullName={fullName}
+            firstName={candidate.firstName}
+            lastName={candidate.lastName}
+            currentDesignation={candidate.currentDesignation}
+            currentOrganization={candidate.currentOrganization}
+            location={candidate.location}
+            email={candidate.email}
+            phone={candidate.phone}
+            linkedinProfile={candidate.linkedinProfile}
+            compensation={formatExpectedSalary(candidate.expectedSalary)}
+          />
+          <LocalEditableSkills
+            candidateId={candidate.id}
+            initial={candidate.skills ?? []}
+          />
+          <CandidateActivityCard
+            candidateId={candidate.id}
+            toNumber={candidate.phone || null}
+          />
         </div>
       </div>
 
@@ -781,33 +760,6 @@ function LocalNotesTab({
   );
 }
 
-// Read-only Work History + Education card. Reads candidate.experience
-// and candidate.education (both Json?). Tolerates the two shapes we
-// write — Pin CSV import (title/company/startDate/endDate) and the
-// existing AI parser (designation/organization/from_year/to_year) —
-// so a single render path handles both. The first experience row is
-// already surfaced as Current Title/Employer in LocalEditableIdentity,
-// so we drop it here to avoid the duplicate.
-type BackgroundExperience = {
-  title?: unknown;
-  company?: unknown;
-  designation?: unknown;
-  organization?: unknown;
-  startDate?: unknown;
-  endDate?: unknown;
-  from_year?: unknown;
-  to_year?: unknown;
-};
-type BackgroundEducation = {
-  degree?: unknown;
-  major?: unknown;
-  school?: unknown;
-  schoolStartDate?: unknown;
-  schoolEndDate?: unknown;
-  from_year?: unknown;
-  to_year?: unknown;
-};
-
 // expectedSalary is stored as a Json blob shaped { number, currency } —
 // the legacy RF shape. Render as "$120,000 USD" / "120,000 USD" / number
 // when one or both halves are missing. Returns null when nothing usable
@@ -828,123 +780,6 @@ function formatExpectedSalary(raw: unknown): string | null {
   if (num == null || !Number.isFinite(num)) return currency;
   const formatted = new Intl.NumberFormat("en-US").format(num);
   return currency ? `${formatted} ${currency}` : formatted;
-}
-
-function asString(v: unknown): string {
-  if (v == null) return "";
-  if (typeof v === "string") return v.trim();
-  if (typeof v === "number") return String(v);
-  return "";
-}
-
-// Pull a 4-digit year out of a string. Pin's CSV ships full ISO dates
-// ("2020-01-01") and sometimes plain years ("2020") or "Present"; the
-// brief specifies a year-only display, so we collapse anything down
-// to the year. Returns "" when no 4-digit year is found — callers
-// substitute "Present" / "?" for the missing-end case.
-function yearFrom(s: string): string {
-  if (!s) return "";
-  if (/^\d{4}$/.test(s)) return s;
-  const m = s.match(/\b(19|20)\d{2}\b/);
-  return m ? m[0] : "";
-}
-
-function dashRange(start: string, end: string): string {
-  if (!start && !end) return "";
-  return `${start || "?"} – ${end || "Present"}`;
-}
-
-function BackgroundSection({
-  experience,
-  education,
-}: {
-  experience: unknown;
-  education: unknown;
-}) {
-  const expArr = Array.isArray(experience)
-    ? (experience as BackgroundExperience[])
-    : [];
-  const eduArr = Array.isArray(education)
-    ? (education as BackgroundEducation[])
-    : [];
-
-  // Drop the head experience — already shown as Current Title/Employer.
-  const priorRoles = expArr
-    .slice(1)
-    .map((r) => {
-      const title = asString(r.title) || asString(r.designation);
-      const company = asString(r.company) || asString(r.organization);
-      // Year-only per brief: prefer the pre-extracted from_year/to_year
-      // when import already populated them, else regex out a 4-digit
-      // year from the raw startDate/endDate string.
-      const startRaw = asString(r.startDate) || asString(r.from_year);
-      const endRaw = asString(r.endDate) || asString(r.to_year);
-      const start = yearFrom(startRaw);
-      const end = yearFrom(endRaw);
-      return { title, company, start, end };
-    })
-    .filter((r) => r.title || r.company);
-
-  const eduRows = eduArr
-    .map((r) => {
-      const degree = asString(r.degree);
-      const major = asString(r.major);
-      const school = asString(r.school);
-      const startRaw = asString(r.schoolStartDate) || asString(r.from_year);
-      const endRaw = asString(r.schoolEndDate) || asString(r.to_year);
-      const year = yearFrom(endRaw) || yearFrom(startRaw);
-      return { degree, major, school, year };
-    })
-    .filter((r) => r.school);
-
-  if (priorRoles.length === 0 && eduRows.length === 0) return null;
-
-  return (
-    <section className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
-      {priorRoles.length > 0 && (
-        <div>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
-            Work History
-          </h3>
-          <ul className="mt-2 space-y-1.5 text-sm text-court-fg">
-            {priorRoles.map((r, i) => {
-              const label = [r.title, r.company].filter(Boolean).join(" at ");
-              const range = dashRange(r.start, r.end);
-              return (
-                <li key={i} className="leading-snug">
-                  <span>{label || "—"}</span>
-                  {range && (
-                    <span className="text-court-fg-muted"> ({range})</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-      {eduRows.length > 0 && (
-        <div className={priorRoles.length > 0 ? "mt-4" : undefined}>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
-            Education
-          </h3>
-          <ul className="mt-2 space-y-1.5 text-sm text-court-fg">
-            {eduRows.map((r, i) => {
-              const left = [r.degree, r.major].filter(Boolean).join(" in ");
-              const head = [left, r.school].filter(Boolean).join(", ");
-              return (
-                <li key={i} className="leading-snug">
-                  <span>{head || r.school}</span>
-                  {r.year && (
-                    <span className="text-court-fg-muted"> ({r.year})</span>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </section>
-  );
 }
 
 // Anchor-shaped twins of the shared Button "apply" / "secondary" variants.

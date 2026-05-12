@@ -16,7 +16,7 @@ import {
   type RFClient,
 } from "@/lib/rf-payload-shapes";
 import { getRfShapedContactsForOrg } from "@/lib/contacts";
-import { EditableIdentity, type IdentityState } from "@/app/candidates/[id]/editable-identity";
+import { type IdentityState } from "@/app/candidates/[id]/editable-identity";
 import { EditableSkills } from "@/app/candidates/[id]/editable-skills";
 import { EditableNotes, type NoteRow } from "@/app/candidates/[id]/editable-notes";
 import { EditableResume, type ResumeVersion } from "@/app/candidates/[id]/editable-resume";
@@ -581,7 +581,37 @@ export default async function CandidateProfilePage({
           aceTeam={aceTeam}
         />
         <div className="flex h-[calc(100vh-3rem)] gap-4 md:h-[calc(100vh-4rem)]">
+          {/* Left column. Resume sits as high as possible — the action
+              row above it is the only thing between the iframe top and
+              the resume PDF. CompactOverview moved to the right rail
+              so it's not duplicated against the resume header. */}
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/candidates/${id}?embed=true&openApply=1`}
+                className={APPLY_LINK_CLASS}
+              >
+                <Target className="h-3 w-3" /> Apply to Job
+              </Link>
+              <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
+              <Link
+                href={`/candidates/${id}?tab=notes`}
+                target="_top"
+                className={ADD_NOTE_LINK_CLASS}
+              >
+                <NotebookPen className="h-3 w-3" /> Add Note
+              </Link>
+              <AddToListButton candidateId={candidate.id} candidateName={name} />
+            </div>
+            <EditableResume
+              candidateRfId={id}
+              candidateId={candidate.id}
+              versions={resumeVersions}
+            />
+          </div>
+          {/* Right rail. CompactOverview as a single tight summary box,
+              then skills, then the call/email/text activity card. */}
+          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
             <CandidateCompactOverview
               candidateRef={candidate.id}
               fullName={name}
@@ -595,30 +625,6 @@ export default async function CandidateProfilePage({
               linkedinProfile={identityInitial.linkedin_profile || null}
               compensation={compensation}
             />
-            <div className="flex flex-wrap items-center gap-2">
-              <AddToListButton candidateId={candidate.id} candidateName={name} />
-              <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
-              <Link
-                href={`/candidates/${id}?embed=true&openApply=1`}
-                className={APPLY_LINK_CLASS}
-              >
-                <Target className="h-3 w-3" /> Apply to Job
-              </Link>
-              <Link
-                href={`/candidates/${id}?tab=notes`}
-                target="_top"
-                className={ADD_NOTE_LINK_CLASS}
-              >
-                <NotebookPen className="h-3 w-3" /> Add Note
-              </Link>
-            </div>
-            <EditableResume
-              candidateRfId={id}
-              candidateId={candidate.id}
-              versions={resumeVersions}
-            />
-          </div>
-          <aside className="flex w-[280px] shrink-0 flex-col gap-4 overflow-y-auto">
             <EditableSkills candidateId={id} initial={skillsInitial} />
             <CandidateActivityCard
               candidateId={candidate.id}
@@ -673,14 +679,57 @@ export default async function CandidateProfilePage({
       </section>
       )}
 
-      {/* Unified two-column layout. Left column is the work surface
-          (compact overview + action row + resume) and stays visible
-          regardless of which right-column tab is active. Right column
-          owns the tab strip + per-tab content. The embed split-view
-          above mirrors this same left column so the full profile and
-          search-popup profile read identically. */}
+      {/* Two-column layout. Left column is the working surface — the
+          Profile/Game Plan/Notes tab strip, then the action row, then
+          the tab content (Resume on Profile, AiWorkspace on Game Plan,
+          notes editor on Notes). The right column is a tight reference
+          rail (compact overview + skills + activity). The redundant
+          large identity card was dropped in favor of the single
+          CompactOverview box. */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-        <div className="space-y-4 lg:col-span-7">
+        <div className="space-y-4 lg:col-span-8">
+          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
+            <UnderlineTabs tab={tab} candidateId={id} />
+            {displayTags.slice(0, 3).map((t) => (
+              <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
+                {t}
+              </span>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/candidates/${id}?openApply=1`}
+              className={APPLY_LINK_CLASS}
+            >
+              <Target className="h-3 w-3" /> Apply to Job
+            </Link>
+            <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
+            <Link
+              href={`/candidates/${id}?tab=notes`}
+              className={ADD_NOTE_LINK_CLASS}
+            >
+              <NotebookPen className="h-3 w-3" /> Add Note
+            </Link>
+            <AddToListButton candidateId={candidate.id} candidateName={name} />
+          </div>
+          {tab === "game-plan" ? (
+            <AiWorkspace
+              entityType="candidate"
+              entityId={String(id)}
+              recipientEmail={candidate.email ?? null}
+            />
+          ) : tab === "notes" ? (
+            <EditableNotes candidateId={id} initial={notesInitial} />
+          ) : (
+            <EditableResume
+              candidateRfId={id}
+              candidateId={candidate.id}
+              versions={resumeVersions}
+            />
+          )}
+        </div>
+
+        <div className="space-y-4 lg:col-span-4">
           <CandidateCompactOverview
             candidateRef={candidate.id}
             fullName={name}
@@ -694,59 +743,8 @@ export default async function CandidateProfilePage({
             linkedinProfile={identityInitial.linkedin_profile || null}
             compensation={formatExpectedSalaryBlob(c.expected_salary)}
           />
-          <div className="flex flex-wrap items-center gap-2">
-            <AddToListButton candidateId={candidate.id} candidateName={name} />
-            <KeepCandidateButton candidateId={candidate.id} isKept={isKept} />
-            <Link
-              href={`/candidates/${id}?openApply=1`}
-              className={APPLY_LINK_CLASS}
-            >
-              <Target className="h-3 w-3" /> Apply to Job
-            </Link>
-            <Link
-              href={`/candidates/${id}?tab=notes`}
-              className={ADD_NOTE_LINK_CLASS}
-            >
-              <NotebookPen className="h-3 w-3" /> Add Note
-            </Link>
-          </div>
-          <EditableResume
-            candidateRfId={id}
-            candidateId={candidate.id}
-            versions={resumeVersions}
-          />
-        </div>
-
-        <div className="space-y-4 lg:col-span-5">
-          {/* Sticky tabs strip. Tabs scope only the right column —
-              the left column resume + actions stay put as the user
-              flips between Profile / Game Plan / Notes. */}
-          <div className="sticky top-20 z-10 -mx-2 flex flex-wrap items-center gap-3 rounded-lg bg-court-bg/85 px-2 py-2 backdrop-blur supports-[backdrop-filter]:bg-court-bg/75">
-            <UnderlineTabs tab={tab} candidateId={id} />
-            {displayTags.slice(0, 3).map((t) => (
-              <span key={t} className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
-                {t}
-              </span>
-            ))}
-          </div>
-          {tab === "game-plan" ? (
-            <AiWorkspace
-              entityType="candidate"
-              entityId={String(id)}
-              recipientEmail={candidate.email ?? null}
-            />
-          ) : tab === "notes" ? (
-            <EditableNotes candidateId={id} initial={notesInitial} />
-          ) : (
-            <div className="space-y-4">
-              {/* Profile tab. The editable identity card stays the
-                  canonical edit surface — CompactOverview on the left
-                  is the read-only header for the same fields. */}
-              <EditableIdentity candidateId={id} initial={identityInitial} />
-              <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
-              <EditableSkills candidateId={id} initial={skillsInitial} />
-            </div>
-          )}
+          <EditableSkills candidateId={id} initial={skillsInitial} />
+          <CandidateActivityCard candidateId={candidate.id} toNumber={phoneValue || null} />
         </div>
       </div>
 
