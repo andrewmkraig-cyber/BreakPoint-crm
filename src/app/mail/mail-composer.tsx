@@ -644,9 +644,15 @@ export function MailComposer({
         const html = data.getData("text/html");
         if (html && html.trim()) {
           event.preventDefault();
-          editor?.commands.insertContent(html, {
-            parseOptions: { preserveWhitespace: false },
-          });
+          // Defer the insertContent to the next tick so TipTap's DOM
+          // mutation doesn't fire mid-React-render-cycle. Synchronous
+          // insertContent inside the paste handler triggers React
+          // hydration errors #418/#423/#425.
+          setTimeout(() => {
+            editor?.commands.insertContent(html, {
+              parseOptions: { preserveWhitespace: false },
+            });
+          }, 0);
           return true;
         }
         return false;
