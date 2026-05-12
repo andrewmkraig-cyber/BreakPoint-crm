@@ -67,7 +67,9 @@ const SYSTEM_PROMPT =
   "- 'Recently added candidates' / 'candidates I just imported' / 'newest candidates' → call search_candidates with sortBy='createdAt' (and an empty query string when no keyword filter applies). Use limit to honor counts the recruiter mentions ('the 25 candidates I just imported' → limit 25).\n" +
   "Pass the user's wording through; the tools handle stop-word stripping, plural collapsing, and ranking on their side.\n" +
   "Tool results may include markdown links like [Name](/candidates/abc) and [Title](/jobs/xyz). Quote those links as-is in your answer so the recruiter can click straight to the record — never strip the link, never paraphrase the URL.\n" +
-  "Action tools — move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job / delete_candidate — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job and delete_candidate are destructive and cascade — only use them when the recruiter explicitly says 'delete' or 'permanently remove' the named record. After calling an action tool do not write any more text — the card speaks for itself.";
+  "Action tools — move_candidate_stage / add_note / draft_email / inactivate_job / privatize_job / reactivate_job / delete_job / delete_candidate / reset_activity_log / reset_placements / update_placement_field — are PROPOSALS, not executions. Calling one stops your turn and the recruiter gets a Confirm/Cancel card. Never call an action tool with invented ids; resolve real candidates / placements / clients / jobs via the search tools first. Job lifecycle routing: 'close out' / 'mark inactive' → inactivate_job; 'make private' / 'hide from active' → privatize_job; 'reopen' / 'reactivate' → reactivate_job. delete_job and delete_candidate are destructive and cascade — only use them when the recruiter explicitly says 'delete' or 'permanently remove' the named record. " +
+  "Data-reset tools — reset_activity_log / reset_placements / update_placement_field — are destructive and require explicit recruiter intent. reset_activity_log wipes ActionLog rows in a date range (omit dateFrom/dateTo to wipe everything). reset_placements deletes Placements matching dateFrom/dateTo/stage filters and cascades to dependent Interview rows. update_placement_field edits exactly one field on one placement; the only editable fields are placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Resolve the placementId via search_candidates → get_pipeline first; never invent it. Use ISO 8601 (YYYY-MM-DD or full ISO timestamp) for any date value. Today's date is {{TODAY}} — use it to resolve relative phrases like 'this week' / 'last month' into ISO dates. " +
+  "After calling an action tool do not write any more text — the card speaks for itself.";
 
 // Custom data tools — exposed to Claude so it can pull live records
 // from Neon. Schemas mirror the parameters Andrew is most likely to ask
@@ -318,6 +320,76 @@ const DATA_TOOLS: Anthropic.Tool[] = [
       required: ["candidateId"],
     },
   },
+  {
+    name: "reset_activity_log",
+    description:
+      "Propose deleting ActionLog (activity log) rows in a date range. The recruiter must Confirm before anything lands. Use when the recruiter says 'clear / delete / reset' the activity log or audit trail. Pass dateFrom and/or dateTo as ISO 8601 (YYYY-MM-DD or full timestamp) — omit both to wipe every activity log entry in the org. After the delete completes, a single audit row (actionType=data_reset_activity_log) lands so the reset itself is traceable.",
+    input_schema: {
+      type: "object",
+      properties: {
+        dateFrom: {
+          type: "string",
+          description:
+            "Optional ISO 8601 lower bound (inclusive). Omit for no lower bound.",
+        },
+        dateTo: {
+          type: "string",
+          description:
+            "Optional ISO 8601 upper bound (exclusive — pass the day AFTER the last day to include). Omit for no upper bound.",
+        },
+      },
+    },
+  },
+  {
+    name: "reset_placements",
+    description:
+      "Propose deleting Placement rows matching a filter, plus any dependent Interview rows for the same (candidate, job) pairs. The recruiter must Confirm before anything lands. Use when the recruiter says 'delete / wipe / reset' placements. Pass optional dateFrom / dateTo filters on placedAt, plus optional stage (one of: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled). Omit all three to match every placement in the org.",
+    input_schema: {
+      type: "object",
+      properties: {
+        dateFrom: {
+          type: "string",
+          description:
+            "Optional ISO 8601 lower bound on Placement.placedAt (inclusive). Omit for no lower bound.",
+        },
+        dateTo: {
+          type: "string",
+          description:
+            "Optional ISO 8601 upper bound on Placement.placedAt (exclusive). Omit for no upper bound.",
+        },
+        stage: {
+          type: "string",
+          description:
+            "Optional stage filter. One of: sourced, applied, kept, submitted, interviewing, offer, pending_start, hired, rejected, cancelled.",
+        },
+      },
+    },
+  },
+  {
+    name: "update_placement_field",
+    description:
+      "Propose editing one field on a single Placement. The recruiter must Confirm before this lands. Only these fields may be edited: placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt. Date fields take an ISO 8601 string; stage takes one of the canonical stage strings; feeAmount takes a number in whole US dollars. Resolve the placementId via search_candidates → get_pipeline first; never invent it.",
+    input_schema: {
+      type: "object",
+      properties: {
+        placementId: {
+          type: "string",
+          description: "Placement cuid from get_pipeline.",
+        },
+        fieldName: {
+          type: "string",
+          description:
+            "Which field to edit. One of: placedAt, startConfirmedAt, stage, feeAmount, offerReceivedAt.",
+        },
+        newValue: {
+          type: "string",
+          description:
+            "The new value as a string. Dates: ISO 8601. Stage: a canonical stage label. feeAmount: a whole-dollar integer encoded as a numeric string.",
+        },
+      },
+      required: ["placementId", "fieldName", "newValue"],
+    },
+  },
 ];
 
 // Names of the client-managed action tools. The streaming loop matches
@@ -332,6 +404,9 @@ const ACTION_TOOL_NAMES = new Set([
   "reactivate_job",
   "delete_job",
   "delete_candidate",
+  "reset_activity_log",
+  "reset_placements",
+  "update_placement_field",
 ]);
 
 const MAX_TOOL_ROUNDS = 4;
@@ -1306,9 +1381,113 @@ type ActionResolution =
       candidateName: string;
     }
   | {
+      kind: "reset_activity_log";
+      description: string;
+      count: number;
+      // ISO strings so the action route can re-run the same filter at
+      // confirm time. Labels are pre-formatted for display.
+      dateFromIso: string | null;
+      dateToIso: string | null;
+      dateFromLabel: string;
+      dateToLabel: string;
+    }
+  | {
+      kind: "reset_placements";
+      description: string;
+      count: number;
+      // Carry the cuid list at describe time so confirm executes on
+      // exactly the rows the recruiter saw — not "whatever matches the
+      // filter now" (which could drift if new placements land between
+      // preview and confirm).
+      placementIds: string[];
+      previewRows: Array<{
+        id: string;
+        candidateName: string;
+        jobTitle: string;
+        stage: string;
+        placedAtLabel: string;
+      }>;
+      dateFromIso: string | null;
+      dateToIso: string | null;
+      stage: string | null;
+    }
+  | {
+      kind: "update_placement_field";
+      description: string;
+      placementId: string | null;
+      candidateName: string;
+      jobTitle: string;
+      fieldName: PlacementEditableField;
+      oldValueLabel: string;
+      newValueLabel: string;
+      // Raw parsed value the action route writes. Stage is a string;
+      // dates serialize as ISO; feeAmount serializes as a number.
+      newValueRaw: string | number | null;
+      validationError: string | null;
+    }
+  | {
       kind: "unknown";
       description: string;
     };
+
+// Fields the assistant is allowed to edit on a Placement via
+// update_placement_field. We restrict to this short list because every
+// other Placement column either: (a) is computed from another column,
+// (b) is a backfill artifact that shouldn't be edited from the panel,
+// or (c) carries multi-field invariants the panel can't enforce.
+const PLACEMENT_EDITABLE_FIELDS = [
+  "placedAt",
+  "startConfirmedAt",
+  "stage",
+  "feeAmount", // public name; maps to Placement.feeTotal in Prisma
+  "offerReceivedAt",
+] as const;
+type PlacementEditableField = (typeof PLACEMENT_EDITABLE_FIELDS)[number];
+
+function isEditablePlacementField(s: string): s is PlacementEditableField {
+  return (PLACEMENT_EDITABLE_FIELDS as ReadonlyArray<string>).includes(s);
+}
+
+const PLACEMENT_STAGES = [
+  "sourced",
+  "applied",
+  "kept",
+  "submitted",
+  "interviewing",
+  "offer",
+  "pending_start",
+  "hired",
+  "rejected",
+  "cancelled",
+] as const;
+
+function isAllowedStageValue(s: string): boolean {
+  return (PLACEMENT_STAGES as ReadonlyArray<string>).includes(s);
+}
+
+function formatDateLabel(d: Date | null | undefined): string {
+  if (!d) return "—";
+  return d.toISOString().slice(0, 10);
+}
+
+function formatMoneyLabel(n: number | null | undefined): string {
+  if (n == null) return "—";
+  return `$${n.toLocaleString("en-US")}`;
+}
+
+// Parse a user-supplied date input. Accepts YYYY-MM-DD (treated as UTC
+// midnight) or any full ISO timestamp. Returns null on garbage.
+function parseIsoDate(raw: string): Date | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  // Bare date → anchor to UTC midnight so the same day boundary holds
+  // regardless of server tz.
+  const bare = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? `${trimmed}T00:00:00.000Z` : trimmed;
+  const d = new Date(bare);
+  if (Number.isNaN(d.getTime())) return null;
+  return d;
+}
 
 async function describeAction(
   name: string,
@@ -1477,6 +1656,210 @@ async function describeAction(
         description: `Permanently delete ${candidateName}. This cannot be undone.`,
         candidateId: candidate?.id ?? null,
         candidateName,
+      };
+    }
+
+    if (name === "reset_activity_log") {
+      const dateFromIn = typeof input.dateFrom === "string" ? input.dateFrom : "";
+      const dateToIn = typeof input.dateTo === "string" ? input.dateTo : "";
+      const dateFrom = dateFromIn ? parseIsoDate(dateFromIn) : null;
+      const dateTo = dateToIn ? parseIsoDate(dateToIn) : null;
+      const where: Prisma.ActionLogWhereInput = { organizationId: orgId };
+      if (dateFrom || dateTo) {
+        where.createdAt = {};
+        if (dateFrom) where.createdAt.gte = dateFrom;
+        if (dateTo) where.createdAt.lt = dateTo;
+      }
+      const count = await prisma.actionLog.count({ where });
+      const fromLabel = dateFrom ? formatDateLabel(dateFrom) : "(beginning)";
+      const toLabel = dateTo ? formatDateLabel(dateTo) : "(now)";
+      return {
+        kind: "reset_activity_log",
+        description: `Delete ${count} activity log ${
+          count === 1 ? "entry" : "entries"
+        } from ${fromLabel} to ${toLabel}.`,
+        count,
+        dateFromIso: dateFrom?.toISOString() ?? null,
+        dateToIso: dateTo?.toISOString() ?? null,
+        dateFromLabel: fromLabel,
+        dateToLabel: toLabel,
+      };
+    }
+
+    if (name === "reset_placements") {
+      const dateFromIn = typeof input.dateFrom === "string" ? input.dateFrom : "";
+      const dateToIn = typeof input.dateTo === "string" ? input.dateTo : "";
+      const stageIn = typeof input.stage === "string" ? input.stage.trim() : "";
+      const dateFrom = dateFromIn ? parseIsoDate(dateFromIn) : null;
+      const dateTo = dateToIn ? parseIsoDate(dateToIn) : null;
+      const stage = stageIn && isAllowedStageValue(stageIn) ? stageIn : null;
+
+      const where: Prisma.PlacementWhereInput = { organizationId: orgId };
+      if (dateFrom || dateTo) {
+        where.placedAt = {};
+        if (dateFrom) where.placedAt.gte = dateFrom;
+        if (dateTo) where.placedAt.lt = dateTo;
+      }
+      if (stage) where.stage = stage;
+
+      // Cap the preview list — the card has to stay readable even when
+      // the filter matches hundreds of rows. count() is still the true
+      // total so the recruiter sees "Delete 142 placements" with the
+      // first 10 listed below.
+      const PREVIEW_CAP = 10;
+      const [allMatching, totalCount] = await Promise.all([
+        prisma.placement.findMany({
+          where,
+          select: {
+            id: true,
+            stage: true,
+            placedAt: true,
+            candidate: { select: { firstName: true, lastName: true } },
+            job: { select: { title: true } },
+          },
+          orderBy: [{ placedAt: "desc" }, { updatedAt: "desc" }],
+        }),
+        prisma.placement.count({ where }),
+      ]);
+
+      const previewRows = allMatching.slice(0, PREVIEW_CAP).map((p) => ({
+        id: p.id,
+        candidateName: p.candidate
+          ? joinName(p.candidate.firstName, p.candidate.lastName)
+          : "(unnamed candidate)",
+        jobTitle: p.job?.title ?? "(no job)",
+        stage: p.stage,
+        placedAtLabel: p.placedAt ? formatDateLabel(p.placedAt) : "—",
+      }));
+
+      const fromLabel = dateFrom ? formatDateLabel(dateFrom) : null;
+      const toLabel = dateTo ? formatDateLabel(dateTo) : null;
+      const filterBits = [
+        fromLabel || toLabel
+          ? `placedAt ${fromLabel ?? "(beginning)"} → ${toLabel ?? "(now)"}`
+          : null,
+        stage ? `stage=${stage}` : null,
+      ].filter(Boolean);
+      const filterTail = filterBits.length > 0 ? ` (${filterBits.join(", ")})` : "";
+
+      return {
+        kind: "reset_placements",
+        description: `Delete ${totalCount} placement${totalCount === 1 ? "" : "s"}${filterTail}. Dependent Interview rows for the same candidate / job pairs are removed too.`,
+        count: totalCount,
+        placementIds: allMatching.map((p) => p.id),
+        previewRows,
+        dateFromIso: dateFrom?.toISOString() ?? null,
+        dateToIso: dateTo?.toISOString() ?? null,
+        stage,
+      };
+    }
+
+    if (name === "update_placement_field") {
+      const placementId = typeof input.placementId === "string" ? input.placementId : "";
+      const fieldNameRaw = typeof input.fieldName === "string" ? input.fieldName : "";
+      const newValueRawIn =
+        typeof input.newValue === "string"
+          ? input.newValue
+          : typeof input.newValue === "number"
+            ? String(input.newValue)
+            : "";
+
+      const placement = placementId
+        ? await prisma.placement.findFirst({
+            where: { id: placementId, organizationId: orgId },
+            select: {
+              id: true,
+              stage: true,
+              placedAt: true,
+              startConfirmedAt: true,
+              offerReceivedAt: true,
+              feeTotal: true,
+              candidate: { select: { firstName: true, lastName: true } },
+              job: { select: { title: true } },
+            },
+          })
+        : null;
+      const candidateName = placement?.candidate
+        ? joinName(placement.candidate.firstName, placement.candidate.lastName)
+        : "(unknown candidate)";
+      const jobTitle = placement?.job?.title ?? "(unknown job)";
+
+      // Field whitelist check first so a bogus fieldName surfaces in
+      // the card preview instead of silently being treated as "unknown".
+      if (!isEditablePlacementField(fieldNameRaw)) {
+        return {
+          kind: "update_placement_field",
+          description: `update_placement_field: invalid fieldName "${fieldNameRaw}".`,
+          placementId: placement?.id ?? null,
+          candidateName,
+          jobTitle,
+          fieldName: "stage",
+          oldValueLabel: "(n/a)",
+          newValueLabel: "(n/a)",
+          newValueRaw: null,
+          validationError: `fieldName must be one of: ${PLACEMENT_EDITABLE_FIELDS.join(", ")}.`,
+        };
+      }
+      const fieldName: PlacementEditableField = fieldNameRaw;
+
+      let oldValueLabel = "—";
+      let newValueLabel = newValueRawIn;
+      let newValueRaw: string | number | null = newValueRawIn;
+      let validationError: string | null = null;
+
+      if (!placement) {
+        validationError = "Placement not found in this org.";
+      } else if (fieldName === "stage") {
+        oldValueLabel = placement.stage;
+        const stageStr = newValueRawIn.trim();
+        if (!isAllowedStageValue(stageStr)) {
+          validationError = `Stage must be one of: ${PLACEMENT_STAGES.join(", ")}.`;
+        } else {
+          newValueRaw = stageStr;
+          newValueLabel = stageStr;
+        }
+      } else if (fieldName === "feeAmount") {
+        oldValueLabel = formatMoneyLabel(placement.feeTotal);
+        const parsed = Number(newValueRawIn);
+        if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
+          validationError = "feeAmount must be a non-negative whole-dollar integer.";
+        } else {
+          newValueRaw = parsed;
+          newValueLabel = formatMoneyLabel(parsed);
+        }
+      } else {
+        // Date fields: placedAt | startConfirmedAt | offerReceivedAt.
+        const currentVal =
+          fieldName === "placedAt"
+            ? placement.placedAt
+            : fieldName === "startConfirmedAt"
+              ? placement.startConfirmedAt
+              : placement.offerReceivedAt;
+        oldValueLabel = formatDateLabel(currentVal);
+        const parsed = parseIsoDate(newValueRawIn);
+        if (!parsed) {
+          validationError = "Date must be ISO 8601 (e.g. 2026-05-11).";
+        } else {
+          newValueRaw = parsed.toISOString();
+          newValueLabel = formatDateLabel(parsed);
+        }
+      }
+
+      const description = validationError
+        ? `Cannot update ${fieldName} on ${candidateName} · ${jobTitle}: ${validationError}`
+        : `Update ${fieldName} on ${candidateName} · ${jobTitle}: ${oldValueLabel} → ${newValueLabel}.`;
+
+      return {
+        kind: "update_placement_field",
+        description,
+        placementId: placement?.id ?? null,
+        candidateName,
+        jobTitle,
+        fieldName,
+        oldValueLabel,
+        newValueLabel,
+        newValueRaw,
+        validationError,
       };
     }
   } catch {
@@ -1664,8 +2047,11 @@ export async function POST(req: NextRequest) {
   // from Settings > Personal Trainer. Appended last so they sit
   // closest to the model's response and override any earlier prompt
   // that drifts. Same pattern as /api/ai-workspace/route.ts.
+  const today = new Date().toISOString().slice(0, 10);
   const fullSystemPrompt =
-    entityBlock + SYSTEM_PROMPT + (await buildPersonalTrainerBlock(org.id));
+    entityBlock +
+    SYSTEM_PROMPT.replace("{{TODAY}}", today) +
+    (await buildPersonalTrainerBlock(org.id));
 
   // Mixed tool list: the existing server-managed web_search plus the
   // four Phase 4 client-managed data tools. Claude picks per turn.

@@ -94,6 +94,43 @@ type DeleteCandidateResolved = {
   candidateId: string | null;
   candidateName: string;
 };
+type ResetActivityLogResolved = {
+  kind: "reset_activity_log";
+  description: string;
+  count: number;
+  dateFromIso: string | null;
+  dateToIso: string | null;
+  dateFromLabel: string;
+  dateToLabel: string;
+};
+type ResetPlacementsResolved = {
+  kind: "reset_placements";
+  description: string;
+  count: number;
+  placementIds: string[];
+  previewRows: Array<{
+    id: string;
+    candidateName: string;
+    jobTitle: string;
+    stage: string;
+    placedAtLabel: string;
+  }>;
+  dateFromIso: string | null;
+  dateToIso: string | null;
+  stage: string | null;
+};
+type UpdatePlacementFieldResolved = {
+  kind: "update_placement_field";
+  description: string;
+  placementId: string | null;
+  candidateName: string;
+  jobTitle: string;
+  fieldName: "placedAt" | "startConfirmedAt" | "stage" | "feeAmount" | "offerReceivedAt";
+  oldValueLabel: string;
+  newValueLabel: string;
+  newValueRaw: string | number | null;
+  validationError: string | null;
+};
 type UnknownResolved = { kind: "unknown"; description: string };
 type ActionResolved =
   | MoveResolved
@@ -102,6 +139,9 @@ type ActionResolved =
   | LifecycleJobResolved
   | DeleteJobResolved
   | DeleteCandidateResolved
+  | ResetActivityLogResolved
+  | ResetPlacementsResolved
+  | UpdatePlacementFieldResolved
   | UnknownResolved;
 
 type ActionToolName =
@@ -112,7 +152,10 @@ type ActionToolName =
   | "privatize_job"
   | "reactivate_job"
   | "delete_job"
-  | "delete_candidate";
+  | "delete_candidate"
+  | "reset_activity_log"
+  | "reset_placements"
+  | "update_placement_field";
 
 type ActionCard = {
   kind: "action";
@@ -545,7 +588,10 @@ export function ClaudePanel() {
             event.name === "privatize_job" ||
             event.name === "reactivate_job" ||
             event.name === "delete_job" ||
-            event.name === "delete_candidate")
+            event.name === "delete_candidate" ||
+            event.name === "reset_activity_log" ||
+            event.name === "reset_placements" ||
+            event.name === "update_placement_field")
         ) {
           const input =
             event.input && typeof event.input === "object"
@@ -1020,7 +1066,10 @@ function ActionConfirmCard({
         <span
           className={
             "mt-0.5 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider " +
-            (card.name === "delete_job" || card.name === "delete_candidate"
+            (card.name === "delete_job" ||
+            card.name === "delete_candidate" ||
+            card.name === "reset_activity_log" ||
+            card.name === "reset_placements"
               ? "bg-red-100 text-red-700"
               : "bg-court-surface-subtle text-court-fg-muted")
           }
@@ -1039,7 +1088,13 @@ function ActionConfirmCard({
                       ? "Reactivate"
                       : card.name === "delete_candidate"
                         ? "Delete candidate"
-                        : "Delete job"}
+                        : card.name === "reset_activity_log"
+                          ? "Reset activity log"
+                          : card.name === "reset_placements"
+                            ? "Reset placements"
+                            : card.name === "update_placement_field"
+                              ? "Update placement"
+                              : "Delete job"}
         </span>
         <div className="min-w-0 flex-1 text-court-fg">
           <ActionCardLabel card={card} />
@@ -1180,6 +1235,97 @@ function ActionCardLabel({ card }: { card: ActionCard }) {
         <span className="text-xs italic text-red-600">
           This cannot be undone.
         </span>
+      </div>
+    );
+  }
+  if (r.kind === "reset_activity_log") {
+    return (
+      <div className="text-sm leading-snug">
+        Delete{" "}
+        <span className="font-semibold">{r.count}</span> activity log{" "}
+        {r.count === 1 ? "entry" : "entries"} from{" "}
+        <span className="rounded bg-court-surface-subtle px-1 text-xs">
+          {r.dateFromLabel}
+        </span>{" "}
+        to{" "}
+        <span className="rounded bg-court-surface-subtle px-1 text-xs">
+          {r.dateToLabel}
+        </span>
+        .{" "}
+        <span className="text-xs italic text-red-600">
+          This cannot be undone.
+        </span>
+      </div>
+    );
+  }
+  if (r.kind === "reset_placements") {
+    const filterBits = [
+      r.dateFromIso || r.dateToIso
+        ? `${r.dateFromIso ? new Date(r.dateFromIso).toISOString().slice(0, 10) : "(beginning)"} → ${
+            r.dateToIso ? new Date(r.dateToIso).toISOString().slice(0, 10) : "(now)"
+          }`
+        : null,
+      r.stage ? `stage=${r.stage}` : null,
+    ].filter(Boolean);
+    return (
+      <div className="text-sm leading-snug">
+        <div>
+          Delete <span className="font-semibold">{r.count}</span> placement
+          {r.count === 1 ? "" : "s"}
+          {filterBits.length > 0 && (
+            <span className="text-xs text-court-fg-muted"> ({filterBits.join(", ")})</span>
+          )}{" "}
+          plus dependent Interview rows.{" "}
+          <span className="text-xs italic text-red-600">
+            This cannot be undone.
+          </span>
+        </div>
+        {r.previewRows.length > 0 && (
+          <ul className="mt-2 space-y-0.5 rounded-md border border-court-border bg-court-surface-subtle px-2 py-1.5 text-xs text-court-fg-muted">
+            {r.previewRows.map((p) => (
+              <li key={p.id} className="truncate">
+                <span className="text-court-fg">{p.candidateName}</span>
+                {" · "}
+                <span>{p.jobTitle}</span>
+                {" · "}
+                <span className="rounded bg-court-surface px-1">{p.stage}</span>
+                {" · "}
+                <span>{p.placedAtLabel}</span>
+              </li>
+            ))}
+            {r.count > r.previewRows.length && (
+              <li className="italic">
+                +{r.count - r.previewRows.length} more
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+    );
+  }
+  if (r.kind === "update_placement_field") {
+    if (r.validationError) {
+      return (
+        <div className="text-sm leading-snug text-red-700">
+          Cannot update <span className="font-semibold">{r.fieldName}</span> on{" "}
+          <span className="font-semibold">{r.candidateName}</span>:{" "}
+          <span className="italic">{r.validationError}</span>
+        </div>
+      );
+    }
+    return (
+      <div className="text-sm leading-snug">
+        Update <span className="font-semibold">{r.fieldName}</span> on{" "}
+        <span className="font-semibold">{r.candidateName}</span> ·{" "}
+        <span className="font-medium">{r.jobTitle}</span>:{" "}
+        <span className="rounded bg-court-surface-subtle px-1 text-xs">
+          {r.oldValueLabel}
+        </span>{" "}
+        →{" "}
+        <span className="rounded bg-court-brand-tint px-1 text-xs font-semibold text-court-brand-dark">
+          {r.newValueLabel}
+        </span>
+        .
       </div>
     );
   }

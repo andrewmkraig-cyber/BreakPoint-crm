@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { logActivity } from "@/lib/activity";
@@ -642,6 +643,309 @@ export async function POST(req: Request) {
       ok: true,
       message: `Deleted ${candName}.`,
       redirect: "/candidates",
+    });
+  }
+
+  if (name === "reset_activity_log") {
+    // The card shipped the parsed ISO bounds; we re-derive a Date here
+    // to feed Prisma. Tenant scope is org-only — we never trust the
+    // panel to scope this for us.
+    const fromIso =
+      typeof resolved.dateFromIso === "string" ? resolved.dateFromIso : "";
+    const toIso = typeof resolved.dateToIso === "string" ? resolved.dateToIso : "";
+    const fromLabel =
+      typeof resolved.dateFromLabel === "string" ? resolved.dateFromLabel : "(beginning)";
+    const toLabel =
+      typeof resolved.dateToLabel === "string" ? resolved.dateToLabel : "(now)";
+
+    const where: Prisma.ActionLogWhereInput = { organizationId: org.id };
+    if (fromIso || toIso) {
+      const range: Prisma.DateTimeFilter = {};
+      if (fromIso) {
+        const d = new Date(fromIso);
+        if (!Number.isNaN(d.getTime())) range.gte = d;
+      }
+      if (toIso) {
+        const d = new Date(toIso);
+        if (!Number.isNaN(d.getTime())) range.lt = d;
+      }
+      if (range.gte || range.lt) where.createdAt = range;
+    }
+
+    const result = await prisma.actionLog.deleteMany({ where });
+
+    // Audit row lands AFTER the deleteMany so the reset itself isn't
+    // wiped by the same query. Records what was just removed in
+    // metadata for forensics.
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "data_reset_activity_log",
+      targetType: "organization",
+      targetId: org.id,
+      metadata: {
+        deletedCount: result.count,
+        dateFromIso: fromIso || null,
+        dateToIso: toIso || null,
+        source: "claude_panel",
+      },
+    });
+
+    return NextResponse.json({
+      ok: true,
+      message: `Deleted ${result.count} activity log ${
+        result.count === 1 ? "entry" : "entries"
+      } from ${fromLabel} to ${toLabel}.`,
+    });
+  }
+
+  if (name === "reset_placements") {
+    // Confirm executes on the exact ids the recruiter saw in the card,
+    // not on a re-evaluated filter — that way a placement created after
+    // the preview but before confirm doesn't get caught in the sweep.
+    const rawIds = Array.isArray(resolved.placementIds) ? resolved.placementIds : [];
+    const placementIds = rawIds.filter((v): v is string => typeof v === "string" && v.length > 0);
+    if (placementIds.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No placements selected to delete." },
+        { status: 400 },
+      );
+    }
+
+    // Re-verify every id belongs to this org. The chat route already
+    // org-scoped them but the action route can't trust client payloads.
+    const rows = await prisma.placement.findMany({
+      where: { id: { in: placementIds }, organizationId: org.id },
+      select: {
+        id: true,
+        candidateId: true,
+        candidateRfId: true,
+        jobId: true,
+        jobRfId: true,
+      },
+    });
+    if (rows.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "None of the selected placements are in this org." },
+        { status: 404 },
+      );
+    }
+
+    // Build the (candidate, job) tuples we'll use to clear dependent
+    // Interview rows. Interview has no FK to Placement — the link is
+    // implicit through the matching candidate + job pair.
+    const interviewOr: Prisma.InterviewWhereInput[] = [];
+    for (const r of rows) {
+      const part: Prisma.InterviewWhereInput = {};
+      if (r.candidateId != null) part.candidateId = r.candidateId;
+      else if (r.candidateRfId != null) part.candidateRfId = r.candidateRfId;
+      else continue;
+      if (r.jobId != null) part.jobId = r.jobId;
+      else if (r.jobRfId != null) part.jobRfId = r.jobRfId;
+      else continue;
+      interviewOr.push(part);
+    }
+
+    // Transaction so a mid-flight failure can't leave us with deleted
+    // placements but orphaned interviews (or vice versa).
+    const ids = rows.map((r) => r.id);
+    const interviewDelete = interviewOr.length > 0
+      ? prisma.interview.deleteMany({
+          where: { organizationId: org.id, OR: interviewOr },
+        })
+      : prisma.interview.deleteMany({ where: { id: "__never_matches__" } });
+    const [interviewDel, placementDel] = await prisma.$transaction([
+      interviewDelete,
+      prisma.placement.deleteMany({
+        where: { id: { in: ids }, organizationId: org.id },
+      }),
+    ]);
+
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "data_reset_placements",
+      targetType: "organization",
+      targetId: org.id,
+      metadata: {
+        deletedPlacements: placementDel.count,
+        deletedInterviews: interviewDel.count,
+        placementIds: ids,
+        source: "claude_panel",
+      },
+    });
+
+    revalidatePath("/pipeline");
+    revalidatePath("/dashboard");
+
+    return NextResponse.json({
+      ok: true,
+      message: `Deleted ${placementDel.count} placement${
+        placementDel.count === 1 ? "" : "s"
+      } and ${interviewDel.count} dependent interview row${
+        interviewDel.count === 1 ? "" : "s"
+      }.`,
+    });
+  }
+
+  if (name === "update_placement_field") {
+    const placementId =
+      typeof resolved.placementId === "string" && resolved.placementId.length > 0
+        ? resolved.placementId
+        : typeof input.placementId === "string"
+          ? input.placementId
+          : "";
+    const fieldName = typeof resolved.fieldName === "string" ? resolved.fieldName : "";
+    const newValueRaw =
+      typeof resolved.newValueRaw === "string"
+        ? resolved.newValueRaw
+        : typeof resolved.newValueRaw === "number"
+          ? resolved.newValueRaw
+          : null;
+    const validationError =
+      typeof resolved.validationError === "string" ? resolved.validationError : null;
+
+    if (validationError) {
+      return NextResponse.json(
+        { ok: false, error: validationError },
+        { status: 400 },
+      );
+    }
+    if (!placementId) {
+      return NextResponse.json(
+        { ok: false, error: "placementId is required." },
+        { status: 400 },
+      );
+    }
+
+    const ALLOWED_FIELDS = [
+      "placedAt",
+      "startConfirmedAt",
+      "stage",
+      "feeAmount",
+      "offerReceivedAt",
+    ] as const;
+    if (!(ALLOWED_FIELDS as ReadonlyArray<string>).includes(fieldName)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `fieldName must be one of: ${ALLOWED_FIELDS.join(", ")}.`,
+        },
+        { status: 400 },
+      );
+    }
+
+    const placement = await prisma.placement.findFirst({
+      where: { id: placementId, organizationId: org.id },
+      select: {
+        id: true,
+        stage: true,
+        placedAt: true,
+        startConfirmedAt: true,
+        offerReceivedAt: true,
+        feeTotal: true,
+        candidateRfId: true,
+        candidateId: true,
+        candidate: { select: { firstName: true, lastName: true } },
+        job: { select: { title: true } },
+      },
+    });
+    if (!placement) {
+      return NextResponse.json(
+        { ok: false, error: "Placement not found in this org." },
+        { status: 404 },
+      );
+    }
+
+    // Translate to the actual Prisma column + parsed value. The chat
+    // route already validated shape; we just shuttle the value into
+    // the right field. feeAmount maps to feeTotal (Int, whole dollars).
+    const updateData: Prisma.PlacementUpdateInput = {};
+    let oldValueLabel: string;
+    let newValueLabel: string;
+    if (fieldName === "stage") {
+      if (typeof newValueRaw !== "string" || !isAllowedStage(newValueRaw)) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid stage value." },
+          { status: 400 },
+        );
+      }
+      oldValueLabel = placement.stage;
+      newValueLabel = newValueRaw;
+      updateData.stage = newValueRaw;
+      // Stage edits clear the RF sync flag so the next push to RF (if
+      // ever re-enabled) recognizes this row drifted.
+      updateData.syncedToRf = false;
+    } else if (fieldName === "feeAmount") {
+      if (typeof newValueRaw !== "number" || !Number.isInteger(newValueRaw) || newValueRaw < 0) {
+        return NextResponse.json(
+          { ok: false, error: "feeAmount must be a non-negative integer." },
+          { status: 400 },
+        );
+      }
+      oldValueLabel = placement.feeTotal != null ? `$${placement.feeTotal.toLocaleString("en-US")}` : "—";
+      newValueLabel = `$${newValueRaw.toLocaleString("en-US")}`;
+      updateData.feeTotal = newValueRaw;
+    } else {
+      // Date fields. newValueRaw is an ISO string from the resolver.
+      if (typeof newValueRaw !== "string") {
+        return NextResponse.json(
+          { ok: false, error: "Date value missing." },
+          { status: 400 },
+        );
+      }
+      const parsed = new Date(newValueRaw);
+      if (Number.isNaN(parsed.getTime())) {
+        return NextResponse.json(
+          { ok: false, error: "Invalid date value." },
+          { status: 400 },
+        );
+      }
+      const currentVal =
+        fieldName === "placedAt"
+          ? placement.placedAt
+          : fieldName === "startConfirmedAt"
+            ? placement.startConfirmedAt
+            : placement.offerReceivedAt;
+      oldValueLabel = currentVal ? currentVal.toISOString().slice(0, 10) : "—";
+      newValueLabel = parsed.toISOString().slice(0, 10);
+      if (fieldName === "placedAt") updateData.placedAt = parsed;
+      else if (fieldName === "startConfirmedAt") updateData.startConfirmedAt = parsed;
+      else if (fieldName === "offerReceivedAt") updateData.offerReceivedAt = parsed;
+    }
+
+    await prisma.placement.update({
+      where: { id: placement.id },
+      data: updateData,
+    });
+
+    const candName =
+      [placement.candidate?.firstName, placement.candidate?.lastName]
+        .filter(Boolean)
+        .join(" ") || "(unnamed)";
+    const jobTitle = placement.job?.title ?? "(unknown job)";
+
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "data_update_placement_field",
+      targetType: "placement",
+      targetId: placement.id,
+      metadata: {
+        fieldName,
+        oldValueLabel,
+        newValueLabel,
+        source: "claude_panel",
+      },
+    });
+
+    revalidatePath("/pipeline");
+    if (placement.candidateId) revalidatePath(`/candidates/${placement.candidateId}`);
+    if (placement.candidateRfId) revalidatePath(`/candidates/${placement.candidateRfId}`);
+
+    return NextResponse.json({
+      ok: true,
+      message: `Updated ${fieldName} on ${candName} · ${jobTitle}: ${oldValueLabel} → ${newValueLabel}.`,
     });
   }
 
