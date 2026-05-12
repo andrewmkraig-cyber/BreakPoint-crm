@@ -354,11 +354,11 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {/* 1. Source Material card — merges Source Job Link URL input and
             Upload JD drop zone into one container, separated by an "or"
             divider. Parse & Generate JD with Claude lives with the URL row. */}
-      <div className="rounded-xl border border-court-border bg-court-surface p-6 shadow-sm">
+      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Source Material
         </label>
@@ -366,7 +366,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           Paste a URL, upload a file, or both — then click Parse & Generate JD with Claude.
         </p>
 
-        <div className="mt-3">
+        <div className="mt-2">
           <input
             type="url"
             value={sourceUrl}
@@ -377,7 +377,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             }}
             placeholder="https://…"
             className={cn(
-              "w-full rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
+              "w-full rounded-md border border-court-border bg-court-bg px-3 py-1.5 text-xs text-court-fg shadow-sm",
               "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
             )}
           />
@@ -405,7 +405,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         )}
 
         {/* "or" divider between URL row and Upload JD drop zone */}
-        <div className="my-4 flex items-center gap-3" aria-hidden="true">
+        <div className="my-2.5 flex items-center gap-3" aria-hidden="true">
           <div className="h-px flex-1 bg-court-border" />
           <span className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">or</span>
           <div className="h-px flex-1 bg-court-border" />
@@ -417,18 +417,18 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           className={cn(
-            "flex flex-col gap-2 rounded-xl border-2 border-dashed p-4 transition sm:flex-row sm:items-center sm:justify-between",
+            "flex flex-col gap-2 rounded-lg border-2 border-dashed px-3 py-2.5 transition sm:flex-row sm:items-center sm:justify-between",
             isDragOver
               ? "border-brand bg-brand/10"
               : "border-court-border bg-court-surface-subtle/40",
           )}
         >
-          <div className="flex min-w-0 items-center gap-2 text-sm">
+          <div className="flex min-w-0 items-center gap-2 text-xs">
             {jdFile ? (
               <>
-                <FileText className="h-4 w-4 shrink-0 text-brand-dark" />
+                <FileText className="h-3.5 w-3.5 shrink-0 text-brand-dark" />
                 <span className="truncate font-medium text-court-fg">{jdFile.name}</span>
-                <span className="text-xs text-court-fg-muted">{formatSize(jdFile.size)}</span>
+                <span className="text-[11px] text-court-fg-muted">{formatSize(jdFile.size)}</span>
                 <button
                   type="button"
                   onClick={clearJd}
@@ -440,7 +440,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               </>
             ) : (
               <>
-                <UploadCloud className="h-4 w-4 shrink-0 text-court-fg-muted" />
+                <UploadCloud className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
                 <span className="text-court-fg-muted">
                   {isDragOver
                     ? "Drop the PDF or DOCX to stage it."
@@ -480,7 +480,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           }
           className={cn(
             CLAUDE_PILL_CLASS,
-            "mt-4 w-full justify-center",
+            "mt-3 w-full justify-center py-1.5",
             (isCombinedRunning || isParsing) && "opacity-60",
           )}
         >
@@ -498,8 +498,8 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             bottom of the same card. The compensation row (Salary Type /
             Low / High / Currency / Openings) sits in a single 5-col sub-
             grid on md+ so the form doesn't burn rows on small fields. */}
-      <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           <CompactField label="Job title" value={title} onChange={setTitle} placeholder="e.g. Senior Full Stack Engineer" />
           <CompactSelect
             label="Client"
@@ -528,7 +528,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               </option>
             ))}
           </CompactSelect>
-          <div className="md:col-span-2 grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="md:col-span-2 grid grid-cols-2 gap-2 md:grid-cols-5">
             <CompactSelect
               label="Salary type"
               value={salaryFrequency}
@@ -617,12 +617,12 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         )}
         {err && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
 
-        <div className="mt-5 flex items-center justify-end gap-2 border-t border-court-border pt-4">
+        <div className="mt-4 flex items-center justify-end gap-2 border-t border-court-border pt-3">
           <button
             type="button"
             onClick={() => router.push("/jobs")}
             disabled={isPending || isCombinedRunning}
-            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
           >
             Cancel
           </button>
@@ -630,7 +630,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             type="button"
             onClick={onSubmit}
             disabled={isPending || isCombinedRunning || rangeInvalid}
-            className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+            className="inline-flex items-center gap-1 rounded-md bg-brand px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
           >
             {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
             Create job
@@ -661,9 +661,9 @@ function formatSize(bytes: number): string {
 // tighter padding (py-1.5 / mt-0.5) so the structured-fields card stays
 // dense on /jobs/new without affecting other pages that depend on the
 // roomier shared LabeledField helpers.
-const COMPACT_LABEL_CLASS = "text-[11px] uppercase tracking-wider text-court-fg-muted";
+const COMPACT_LABEL_CLASS = "text-[10px] uppercase tracking-wider text-court-fg-muted";
 const COMPACT_INPUT_CLASS =
-  "mt-0.5 w-full rounded-lg border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
+  "mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1 text-xs text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20";
 
 function CompactField({
   label,
@@ -770,7 +770,7 @@ function SalaryField({
         }}
         onBlur={onBlur}
         className={cn(
-          "mt-0.5 w-full rounded-lg border px-3 py-1.5 text-sm text-court-fg focus:outline-none focus:ring-2",
+          "mt-0.5 w-full rounded-md border px-2.5 py-1 text-xs text-court-fg focus:outline-none focus:ring-2",
           invalid
             ? "border-amber-300 bg-amber-50 focus:border-amber-400 focus:ring-amber-200"
             : "border-court-border bg-court-surface focus:border-brand focus:ring-brand/20",
