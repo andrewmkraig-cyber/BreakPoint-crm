@@ -127,11 +127,18 @@ model EmailTemplate {
   // variants) from one dropdown.
   category  String? // "interview" | "submittal" | "offer" | "rejection" | "reference"
   isActive  Boolean  @default(true)
+  // Manual display order. Lower = earlier in the list. Settings ▸
+  // Templates uses up/down chevrons to swap adjacent rows; the mail
+  // composer's Use Template dropdown reads templates in this order so
+  // recruiter favorites sit at the top. Seeded rows are spaced 10
+  // apart so new templates can slot in between without renumbering.
+  sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([trigger])
   @@index([category])
+  @@index([sortOrder])
 }
 
 model Setting {

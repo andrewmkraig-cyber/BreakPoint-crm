@@ -2,13 +2,18 @@
 
 import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronDown, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronUp, Loader2, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { MERGE_FIELDS } from "@/lib/merge-fields";
 import { TRIGGER_OPTIONS, labelForTrigger } from "@/app/settings/template-constants";
-import { deleteEmailTemplate, upsertEmailTemplate, type EmailTemplateInput } from "@/app/settings/templates-actions";
+import {
+  deleteEmailTemplate,
+  reorderEmailTemplate,
+  upsertEmailTemplate,
+  type EmailTemplateInput,
+} from "@/app/settings/templates-actions";
 
 export type TemplateRow = {
   id: string;
@@ -19,6 +24,7 @@ export type TemplateRow = {
   audience: string | null;
   category: string | null;
   isActive: boolean;
+  sortOrder: number;
   updatedAt: string;
 };
 
@@ -76,8 +82,14 @@ export function TemplatesView({ initial }: { initial: TemplateRow[] }) {
       </div>
 
       <ul className="space-y-3">
-        {visible.map((tpl) => (
-          <TemplateCard key={tpl.id} tpl={tpl} onEdit={() => setEditing(tpl)} />
+        {visible.map((tpl, i) => (
+          <TemplateCard
+            key={tpl.id}
+            tpl={tpl}
+            isFirst={i === 0}
+            isLast={i === visible.length - 1}
+            onEdit={() => setEditing(tpl)}
+          />
         ))}
       </ul>
 
@@ -126,15 +138,38 @@ function newTemplate(): TemplateRow {
     audience: null,
     category: null,
     isActive: true,
+    sortOrder: 0,
     updatedAt: new Date().toISOString(),
   };
 }
 
-function TemplateCard({ tpl, onEdit }: { tpl: TemplateRow; onEdit: () => void }) {
+function TemplateCard({
+  tpl,
+  isFirst,
+  isLast,
+  onEdit,
+}: {
+  tpl: TemplateRow;
+  isFirst: boolean;
+  isLast: boolean;
+  onEdit: () => void;
+}) {
   const router = useRouter();
   const [isDeleting, startDelete] = useTransition();
   const [isToggling, startToggle] = useTransition();
+  const [isReordering, startReorder] = useTransition();
   const [active, setActive] = useState(tpl.isActive);
+
+  function onMove(direction: "up" | "down") {
+    startReorder(async () => {
+      const result = await reorderEmailTemplate(tpl.id, direction);
+      if (!result.ok) {
+        toast.error("Couldn't reorder template", { description: result.error });
+        return;
+      }
+      router.refresh();
+    });
+  }
 
   function onDelete() {
     if (!confirm(`Delete "${tpl.name}"? This can't be undone.`)) return;
@@ -200,28 +235,53 @@ function TemplateCard({ tpl, onEdit }: { tpl: TemplateRow; onEdit: () => void })
           </pre>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <label className="inline-flex items-center gap-2 text-[11px] text-court-fg">
-            <button
-              type="button"
-              role="switch"
-              aria-checked={active}
-              onClick={() => onToggleActive(!active)}
-              disabled={isToggling}
-              className={cn(
-                "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-                active ? "bg-brand" : "bg-court-fg-muted/40",
-                isToggling && "opacity-60",
-              )}
-            >
-              <span
+          <div className="flex items-center gap-2">
+            {/* Up/down chevrons drive the manual order picked up by the
+                mail composer's Use Template dropdown. Disabled at the
+                top/bottom of the visible (active or inactive) list. */}
+            <div className="inline-flex overflow-hidden rounded-md border border-court-border bg-court-surface shadow-sm">
+              <button
+                type="button"
+                onClick={() => onMove("up")}
+                disabled={isFirst || isReordering}
+                aria-label="Move template up"
+                className="inline-flex items-center justify-center px-1.5 py-1 text-court-fg-muted transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronUp className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => onMove("down")}
+                disabled={isLast || isReordering}
+                aria-label="Move template down"
+                className="inline-flex items-center justify-center border-l border-court-border px-1.5 py-1 text-court-fg-muted transition hover:text-court-fg disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <ChevronDown className="h-3 w-3" />
+              </button>
+            </div>
+            <label className="inline-flex items-center gap-2 text-[11px] text-court-fg">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={active}
+                onClick={() => onToggleActive(!active)}
+                disabled={isToggling}
                 className={cn(
-                  "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
-                  active ? "translate-x-4" : "translate-x-0.5",
+                  "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                  active ? "bg-brand" : "bg-court-fg-muted/40",
+                  isToggling && "opacity-60",
                 )}
-              />
-            </button>
-            {active ? "Active" : "Inactive"}
-          </label>
+              >
+                <span
+                  className={cn(
+                    "inline-block h-4 w-4 transform rounded-full bg-white shadow transition",
+                    active ? "translate-x-4" : "translate-x-0.5",
+                  )}
+                />
+              </button>
+              {active ? "Active" : "Inactive"}
+            </label>
+          </div>
           <div className="flex items-center gap-2">
             <button
               type="button"

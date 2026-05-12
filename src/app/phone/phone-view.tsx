@@ -21,6 +21,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { usePhonePanels, type PhoneContact } from "@/lib/phone-panels-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import { matchContactByPhone, markThreadRead, type PhoneMatch } from "@/app/phone/actions";
@@ -1055,19 +1056,16 @@ function InlineSmsComposer({
         rows={1}
         className="max-h-32 min-h-9 flex-1 resize-none rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
       />
-      <button
+      <Button
         type="button"
+        size="sm"
         onClick={() => void send()}
         disabled={sendDisabled}
-        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md bg-[#5A9642] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
+        className="shrink-0"
       >
-        {sending ? (
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Send className="h-3.5 w-3.5" />
-        )}
+        {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
         Send
-      </button>
+      </Button>
     </div>
   );
 }
@@ -1565,19 +1563,15 @@ export function NewTextPanel({
         >
           Call instead
         </button>
-        <button
+        <Button
           type="button"
+          size="sm"
           onClick={onSend}
           disabled={sendDisabled}
-          className="inline-flex h-9 items-center gap-1.5 rounded-md bg-[#5A9642] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#3F7030] disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {sending ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Send className="h-3.5 w-3.5" />
-          )}
+          {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
           Send text
-        </button>
+        </Button>
       </div>
     </div>
   );

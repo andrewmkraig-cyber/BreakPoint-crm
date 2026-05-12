@@ -2209,13 +2209,19 @@ function ComposerAddonToolbar({
 
       {/* Generate with Claude — canonical CLAUDE_PILL_CLASS so this
           button reads identically wherever Ace asks Claude to write
-          (mail, submittals, agreements, summaries, find matches). */}
+          (mail, submittals, agreements, summaries, find matches).
+          Leading icon is a chevron pointing down so the affordance
+          telegraphs "click → look below for the prompt field". When
+          the panel is open the chevron flips up to read as a close. */}
       <button
         type="button"
         onClick={() => setOpenAi(!openAi)}
         className={CLAUDE_PILL_CLASS}
       >
-        <Sparkles className="h-3 w-3" /> Generate with Claude
+        <ChevronDown
+          className={cn("h-3 w-3 transition-transform", openAi && "rotate-180")}
+        />{" "}
+        Generate with Claude
       </button>
 
       {/* Edit with Claude — separate from Generate. Revises the

@@ -9,7 +9,10 @@ export default async function TemplatesSettingsPage() {
   await ensureDefaultTemplates();
 
   const templates = await prisma.emailTemplate.findMany({
-    orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+    // Manual sortOrder drives display order; Active tab still groups
+    // first via isActive desc so the count in the segmented control
+    // matches the visible list.
+    orderBy: [{ isActive: "desc" }, { sortOrder: "asc" }, { updatedAt: "desc" }],
   });
 
   const rows: TemplateRow[] = templates.map((t) => ({
@@ -21,6 +24,7 @@ export default async function TemplatesSettingsPage() {
     audience: t.audience,
     category: t.category,
     isActive: t.isActive,
+    sortOrder: t.sortOrder,
     updatedAt: t.updatedAt.toISOString(),
   }));
 

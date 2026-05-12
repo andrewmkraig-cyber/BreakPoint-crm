@@ -20,7 +20,9 @@ export type ActiveTemplateSummary = {
 export async function listActiveTemplates(): Promise<ActiveTemplateSummary[]> {
   const rows = await prisma.emailTemplate.findMany({
     where: { isActive: true },
-    orderBy: [{ name: "asc" }],
+    // Manual sort order set in Settings ▸ Templates wins; name is the
+    // stable tiebreaker for rows that never got a custom order.
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     select: {
       id: true,
       name: true,

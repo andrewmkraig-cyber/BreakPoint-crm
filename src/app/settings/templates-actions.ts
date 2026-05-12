@@ -44,6 +44,18 @@ export async function upsertEmailTemplate(input: EmailTemplateInput): Promise<Re
   if (!input.body.trim()) return { ok: false, error: "Body is required." };
 
   try {
+    // On create, push the new template to the bottom of the list by
+    // taking max(sortOrder) + 10. Updates leave sortOrder untouched —
+    // ordering is changed through reorderEmailTemplate, never as a
+    // side-effect of edits.
+    const isCreate = !input.id;
+    let createSortOrder = 10;
+    if (isCreate) {
+      const top = await prisma.emailTemplate.aggregate({
+        _max: { sortOrder: true },
+      });
+      createSortOrder = (top._max.sortOrder ?? 0) + 10;
+    }
     const row = await prisma.emailTemplate.upsert({
       where: { id: input.id ?? "__new__" },
       create: {
@@ -54,6 +66,7 @@ export async function upsertEmailTemplate(input: EmailTemplateInput): Promise<Re
         audience: input.audience?.trim() || null,
         category: input.category?.trim() || null,
         isActive: input.isActive,
+        sortOrder: createSortOrder,
       },
       update: {
         name: input.name.trim(),
@@ -70,6 +83,53 @@ export async function upsertEmailTemplate(input: EmailTemplateInput): Promise<Re
     return { ok: true, value: { id: row.id } };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to save template." };
+  }
+}
+
+// Swap the sortOrder of the given template with its neighbor in the
+// requested direction. Scope = the same tab the row lives in (active
+// templates reorder among active rows; inactive among inactive). This
+// is the up/down chevron handler in Settings ▸ Templates.
+export async function reorderEmailTemplate(
+  id: string,
+  direction: "up" | "down",
+): Promise<Result> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  try {
+    const row = await prisma.emailTemplate.findUnique({
+      where: { id },
+      select: { id: true, sortOrder: true, isActive: true },
+    });
+    if (!row) return { ok: false, error: "Template not found." };
+
+    const neighbor = await prisma.emailTemplate.findFirst({
+      where: {
+        isActive: row.isActive,
+        id: { not: row.id },
+        sortOrder:
+          direction === "up" ? { lt: row.sortOrder } : { gt: row.sortOrder },
+      },
+      orderBy: { sortOrder: direction === "up" ? "desc" : "asc" },
+      select: { id: true, sortOrder: true },
+    });
+    if (!neighbor) {
+      // Already at the edge — no-op success.
+      return { ok: true };
+    }
+
+    // Two-step swap so the unique nothing-but-index constraint never
+    // sees duplicate sortOrders mid-transaction. Park the row at
+    // -row.id-ish negative space, move the neighbor, then place row.
+    const parkValue = -Math.abs(row.sortOrder) - 1;
+    await prisma.$transaction([
+      prisma.emailTemplate.update({ where: { id: row.id }, data: { sortOrder: parkValue } }),
+      prisma.emailTemplate.update({ where: { id: neighbor.id }, data: { sortOrder: row.sortOrder } }),
+      prisma.emailTemplate.update({ where: { id: row.id }, data: { sortOrder: neighbor.sortOrder } }),
+    ]);
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to reorder template." };
   }
 }
 
@@ -300,7 +360,12 @@ export async function ensureDefaultTemplates(): Promise<void> {
     REFERENCE_CHECK_DEFAULT,
   ] as const;
 
-  for (const tpl of defaults) {
+  for (let i = 0; i < defaults.length; i++) {
+    const tpl = defaults[i];
+    // Seed rows are spaced 10 apart so the recruiter can drop new
+    // templates between them without renumbering. New rows created
+    // via upsertEmailTemplate land at max(sortOrder)+10.
+    const seedSortOrder = (i + 1) * 10;
     // Manual-only templates (trigger=null) can't be looked up by trigger
     // — fall back to identifying them by name so the seed stays
     // idempotent. Trigger-bearing templates still use trigger as the
@@ -308,20 +373,23 @@ export async function ensureDefaultTemplates(): Promise<void> {
     const existing = tpl.trigger
       ? await prisma.emailTemplate.findFirst({
           where: { trigger: tpl.trigger },
-          select: { id: true, category: true },
+          select: { id: true, category: true, sortOrder: true },
         })
       : await prisma.emailTemplate.findFirst({
           where: { name: tpl.name },
-          select: { id: true, category: true },
+          select: { id: true, category: true, sortOrder: true },
         });
     if (existing) {
+      const patch: { category?: string; sortOrder?: number } = {};
       // Backfill category on existing rows that predate the column so the
       // composer's category filter picks them up.
-      if (!existing.category) {
-        await prisma.emailTemplate.update({
-          where: { id: existing.id },
-          data: { category: tpl.category },
-        });
+      if (!existing.category) patch.category = tpl.category;
+      // Backfill sortOrder on rows that predate the column. Anything at
+      // the default (0) gets the seed value; recruiter-customized
+      // values (non-zero) are left untouched.
+      if (!existing.sortOrder) patch.sortOrder = seedSortOrder;
+      if (Object.keys(patch).length > 0) {
+        await prisma.emailTemplate.update({ where: { id: existing.id }, data: patch });
       }
       continue;
     }
@@ -334,12 +402,33 @@ export async function ensureDefaultTemplates(): Promise<void> {
         audience: tpl.audience,
         category: tpl.category,
         isActive: true,
+        sortOrder: seedSortOrder,
       },
     });
   }
 
   await migrateClientNameToken();
   await stripSignatureBlocksFromTemplates();
+  await backfillSortOrderForLegacyRows();
+}
+
+// Any non-seed row that still has the default sortOrder=0 gets an
+// auto-assigned value below the seeded rows so the up/down arrows have
+// something to swap with. Idempotent — only touches rows where
+// sortOrder=0.
+async function backfillSortOrderForLegacyRows(): Promise<void> {
+  const orphans = await prisma.emailTemplate.findMany({
+    where: { sortOrder: 0 },
+    orderBy: [{ isActive: "desc" }, { updatedAt: "desc" }],
+    select: { id: true },
+  });
+  if (orphans.length === 0) return;
+  const top = await prisma.emailTemplate.aggregate({ _max: { sortOrder: true } });
+  let next = (top._max.sortOrder ?? 0) + 10;
+  for (const row of orphans) {
+    await prisma.emailTemplate.update({ where: { id: row.id }, data: { sortOrder: next } });
+    next += 10;
+  }
 }
 
 // Scrubs the trailing "[Recruiter Name] / Managing Partner / [Recruiter Email]
