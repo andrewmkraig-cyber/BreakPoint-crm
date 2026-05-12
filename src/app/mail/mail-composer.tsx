@@ -1957,7 +1957,7 @@ function ComposerAddonToolbar({
         {openTemplate && (
           <div
             role="menu"
-            className="absolute left-0 top-full z-20 mt-1 max-h-72 w-64 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+            className="absolute left-0 bottom-full z-20 mb-1 max-h-72 w-64 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
           >
             {templates.length === 0 ? (
               <div className="px-3 py-2 text-xs text-court-fg-muted">
@@ -1999,7 +1999,7 @@ function ComposerAddonToolbar({
         {openField && (
           <div
             role="menu"
-            className="absolute left-0 top-full z-20 mt-1 max-h-72 w-72 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+            className="absolute left-0 bottom-full z-20 mb-1 max-h-72 w-72 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
           >
             {MAIL_MERGE_FIELDS.map((f) => (
               <button
