@@ -196,7 +196,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           </select>
         </label>
         <label className="block text-sm md:col-span-2">
-          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Salary type</span>
+          <span className="block text-[11px] uppercase tracking-wider text-court-fg-muted">Salary type</span>
           <select
             value={salaryFrequency}
             onChange={(e) => setSalaryFrequency(e.target.value === "hourly" ? "hourly" : "yearly")}
