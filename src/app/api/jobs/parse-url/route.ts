@@ -19,38 +19,60 @@ export const maxDuration = 60;
 // skipped and the route is pure parse.
 
 type ParseUrlRequest = { jobId?: string | null; url: string };
+type ParseUrlErrorCode =
+  | "auth_required"
+  | "bad_request"
+  | "indeed_blocked"
+  | "linkedin_blocked"
+  | "fetch_failed"
+  | "parse_failed";
+type ParsedFields = {
+  title?: string;
+  location?: string;
+  salaryLow?: number;
+  salaryHigh?: number;
+};
 type ParseUrlResponse =
-  | { ok: true; extracted: string; urlSaved: boolean }
-  | { ok: false; error: string; urlSaved: boolean };
+  | { ok: true; extracted: string; fields: ParsedFields; urlSaved: boolean }
+  | { ok: false; error: ParseUrlErrorCode; message: string; urlSaved: boolean };
 
 export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlResponse>> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) {
-    return NextResponse.json({ ok: false, error: "Not signed in.", urlSaved: false }, { status: 401 });
+    return NextResponse.json(
+      { ok: false, error: "auth_required", message: "Not signed in.", urlSaved: false },
+      { status: 401 },
+    );
   }
 
   let body: ParseUrlRequest;
   try {
     body = (await req.json()) as ParseUrlRequest;
   } catch {
-    return NextResponse.json({ ok: false, error: "Invalid JSON body.", urlSaved: false }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "bad_request", message: "Invalid JSON body.", urlSaved: false },
+      { status: 400 },
+    );
   }
 
   const jobId = (body.jobId ?? "").trim();
   const url = (body.url ?? "").trim();
   if (!url || !/^https?:\/\//i.test(url)) {
     return NextResponse.json(
-      { ok: false, error: "URL must start with http:// or https://.", urlSaved: false },
+      { ok: false, error: "bad_request", message: "URL must start with http:// or https://.", urlSaved: false },
       { status: 400 },
     );
   }
   if (url.length > 2000) {
-    return NextResponse.json({ ok: false, error: "URL too long.", urlSaved: false }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "bad_request", message: "URL too long.", urlSaved: false },
+      { status: 400 },
+    );
   }
 
   // Persist the URL when we have an existing Job row. /jobs/new posts
   // without a jobId because the Job hasn't been created yet — the URL
-  // sticks to Job.sourceJobUrl later via createJob if we wire it through.
+  // sticks to Job.sourceJobUrl via createJob's sourceJobUrl input.
   let urlSaved = false;
   if (jobId) {
     try {
@@ -60,13 +82,21 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
         select: { id: true },
       });
       if (!job) {
-        return NextResponse.json({ ok: false, error: "Job not found.", urlSaved: false }, { status: 404 });
+        return NextResponse.json(
+          { ok: false, error: "bad_request", message: "Job not found.", urlSaved: false },
+          { status: 404 },
+        );
       }
       await prisma.job.update({ where: { id: job.id }, data: { sourceJobUrl: url } });
       urlSaved = true;
     } catch (e) {
       return NextResponse.json(
-        { ok: false, error: e instanceof Error ? e.message : "Couldn't save URL.", urlSaved: false },
+        {
+          ok: false,
+          error: "fetch_failed",
+          message: e instanceof Error ? e.message : "Couldn't save URL.",
+          urlSaved: false,
+        },
         { status: 500 },
       );
     }
@@ -90,10 +120,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
       },
     }).finally(() => clearTimeout(timer));
     if (!res.ok) {
-      return NextResponse.json(
-        { ok: false, error: `Couldn't fetch the page (HTTP ${res.status}).`, urlSaved },
-        { status: 200 },
-      );
+      const { code, message } = classifyFetchError(url, res.status);
+      return NextResponse.json({ ok: false, error: code, message, urlSaved }, { status: 200 });
     }
     html = await res.text();
   } catch (e) {
@@ -103,7 +131,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
         : e instanceof Error
           ? e.message
           : "Couldn't fetch the page.";
-    return NextResponse.json({ ok: false, error: msg, urlSaved }, { status: 200 });
+    return NextResponse.json(
+      { ok: false, error: "fetch_failed", message: msg, urlSaved },
+      { status: 200 },
+    );
   }
 
   // Strip scripts/styles + collapse tags to give Claude a smaller, cheaper
@@ -111,22 +142,56 @@ export async function POST(req: NextRequest): Promise<NextResponse<ParseUrlRespo
   const stripped = stripHtmlForClaude(html).slice(0, 80_000);
   if (!stripped.trim()) {
     return NextResponse.json(
-      { ok: false, error: "The page returned no readable text.", urlSaved },
+      { ok: false, error: "fetch_failed", message: "The page returned no readable text.", urlSaved },
       { status: 200 },
     );
   }
 
   let extracted: string;
+  let fields: ParsedFields;
   try {
-    extracted = await extractJobFieldsAsPlain(stripped);
+    const parsed = await extractJobFields(stripped);
+    extracted = parsed.extracted;
+    fields = parsed.fields;
   } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "Claude couldn't parse the page.", urlSaved },
+      {
+        ok: false,
+        error: "parse_failed",
+        message: e instanceof Error ? e.message : "Claude couldn't parse the page.",
+        urlSaved,
+      },
       { status: 200 },
     );
   }
 
-  return NextResponse.json({ ok: true, extracted, urlSaved });
+  return NextResponse.json({ ok: true, extracted, fields, urlSaved });
+}
+
+function classifyFetchError(url: string, status: number): { code: ParseUrlErrorCode; message: string } {
+  let host = "";
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    host = "";
+  }
+  const isIndeed = host.includes("indeed.");
+  const isLinkedIn = host.includes("linkedin.");
+  if (isIndeed) {
+    return {
+      code: "indeed_blocked",
+      message:
+        "Indeed blocks server-side fetches. Paste the job description text into the Description field below instead.",
+    };
+  }
+  if (isLinkedIn) {
+    return {
+      code: "linkedin_blocked",
+      message:
+        "LinkedIn blocks server-side fetches. Paste the job description text into the Description field below instead.",
+    };
+  }
+  return { code: "fetch_failed", message: `Couldn't fetch the page (HTTP ${status}).` };
 }
 
 function stripHtmlForClaude(html: string): string {
@@ -154,6 +219,8 @@ type ExtractedJob = {
   title: string | null;
   location: string | null;
   salary: string | null;
+  salary_low: number | null;
+  salary_high: number | null;
   employment_type: string | null;
   company_info: string | null;
   responsibilities: string[];
@@ -162,7 +229,7 @@ type ExtractedJob = {
   skills: string[];
 };
 
-async function extractJobFieldsAsPlain(pageText: string): Promise<string> {
+async function extractJobFields(pageText: string): Promise<{ extracted: string; fields: ParsedFields }> {
   const anthropic = getClaude();
   const response = await anthropic.messages.create({
     model: CLAUDE_MODEL,
@@ -179,6 +246,8 @@ async function extractJobFieldsAsPlain(pageText: string): Promise<string> {
           '  "title": string|null,\n' +
           '  "location": string|null,\n' +
           '  "salary": string|null,\n' +
+          '  "salary_low": number|null,\n' +
+          '  "salary_high": number|null,\n' +
           '  "employment_type": string|null,\n' +
           '  "company_info": string|null,\n' +
           '  "responsibilities": string[],\n' +
@@ -187,8 +256,9 @@ async function extractJobFieldsAsPlain(pageText: string): Promise<string> {
           '  "skills": string[]\n' +
           "}\n\n" +
           "Rules:\n" +
-          "- Use null for any single-string field not present. Use [] for missing list fields.\n" +
+          "- Use null for any single-string or number field not present. Use [] for missing list fields.\n" +
           "- 'salary' is the comp range or single number, including currency and period if shown.\n" +
+          "- 'salary_low' and 'salary_high' are the numeric comp bounds parsed from the listing. For '$80,000-$120,000' return 80000 and 120000. For '$25-35/hr' return 25 and 35. If only one value is shown, set both to that value. If no comp info, both null. Never invent values.\n" +
           "- 'employment_type' is e.g. 'Full-time', 'Contract', 'Part-time'.\n" +
           "- 'company_info' is a short factual blurb about the hiring company (industry, size, mission).\n" +
           "- List items are short factual phrases pulled from the source — no paraphrasing flourishes.\n" +
@@ -211,7 +281,17 @@ async function extractJobFieldsAsPlain(pageText: string): Promise<string> {
     throw new Error("Claude returned a non-JSON response. Try Parse Link again or paste the JD manually.");
   }
 
-  return formatExtractedAsPlain(parsed);
+  const fields: ParsedFields = {};
+  if (parsed.title && parsed.title.trim()) fields.title = parsed.title.trim();
+  if (parsed.location && parsed.location.trim()) fields.location = parsed.location.trim();
+  if (typeof parsed.salary_low === "number" && Number.isFinite(parsed.salary_low) && parsed.salary_low >= 0) {
+    fields.salaryLow = parsed.salary_low;
+  }
+  if (typeof parsed.salary_high === "number" && Number.isFinite(parsed.salary_high) && parsed.salary_high >= 0) {
+    fields.salaryHigh = parsed.salary_high;
+  }
+
+  return { extracted: formatExtractedAsPlain(parsed), fields };
 }
 
 function formatExtractedAsPlain(p: ExtractedJob): string {

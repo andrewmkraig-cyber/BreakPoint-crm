@@ -104,6 +104,10 @@ export type NewJobInput = {
   salaryFrequency?: "yearly" | "hourly";
   openings: number | null;
   description: string;
+  // The Source Job Link the recruiter pasted on /jobs/new. Persists to
+  // Job.sourceJobUrl so a failed parse doesn't lose the link, and so
+  // the Job's later JD tab can re-parse from the same source.
+  sourceJobUrl?: string | null;
 };
 
 // Ace-native create path. Writes a new Job row to Neon with the current
@@ -153,6 +157,9 @@ export async function createJob(
         ? input.salaryFrequency
         : "yearly";
 
+    const sourceJobUrl = input.sourceJobUrl?.trim();
+    const sourceJobUrlForCreate = sourceJobUrl && /^https?:\/\//i.test(sourceJobUrl) ? sourceJobUrl : null;
+
     const job = await prisma.job.create({
       data: {
         title,
@@ -167,6 +174,7 @@ export async function createJob(
         salaryFrequency,
         numberOfOpenings: input.openings ?? null,
         description: description || null,
+        sourceJobUrl: sourceJobUrlForCreate,
         organizationId: org.id,
       },
       select: { id: true, legacyRfId: true },

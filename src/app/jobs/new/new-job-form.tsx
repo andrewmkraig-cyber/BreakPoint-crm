@@ -14,6 +14,42 @@ import { cn } from "@/lib/utils";
 const JOB_TYPES = ["Permanent", "Contract", "Contract to Hire", "Temporary", "Internship"] as const;
 const EMPLOYMENT_TYPES = ["Full time", "Part time", "Contract"] as const;
 
+type ParseUrlSuccess = {
+  ok: true;
+  extracted: string;
+  fields: { title?: string; location?: string; salaryLow?: number; salaryHigh?: number };
+  urlSaved: boolean;
+};
+
+type ParseUrlFailure = {
+  ok: false;
+  error: "auth_required" | "bad_request" | "indeed_blocked" | "linkedin_blocked" | "fetch_failed" | "parse_failed";
+  message: string;
+  urlSaved: boolean;
+};
+
+function isParseSuccess(data: unknown): data is ParseUrlSuccess {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    "ok" in data &&
+    (data as { ok: unknown }).ok === true &&
+    "extracted" in data &&
+    typeof (data as { extracted: unknown }).extracted === "string"
+  );
+}
+
+function isParseError(data: unknown): data is ParseUrlFailure {
+  return (
+    !!data &&
+    typeof data === "object" &&
+    "ok" in data &&
+    (data as { ok: unknown }).ok === false &&
+    "error" in data &&
+    typeof (data as { error: unknown }).error === "string"
+  );
+}
+
 // Backed by Job.salaryFrequency on the schema (existing column). "yearly"
 // is the canonical default for new jobs — recruiters can flip to hourly
 // for trades / temp / contract roles where the comp is quoted by the
@@ -45,13 +81,18 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
 
   const [sourceUrl, setSourceUrl] = useState("");
   const [isParsing, setParsing] = useState(false);
+  const [parseInlineError, setParseInlineError] = useState<string | null>(null);
+  const [isCombinedRunning, setCombinedRunning] = useState(false);
 
-  async function onParseSourceUrl() {
+  // Returns true on a successful parse so the combined Parse & Generate
+  // flow can bail before kicking off the JD generation step.
+  async function onParseSourceUrl(): Promise<boolean> {
     const url = sourceUrl.trim();
     if (!url) {
       toast.message("Paste a URL first.");
-      return;
+      return false;
     }
+    setParseInlineError(null);
     setParsing(true);
     try {
       const res = await fetch("/api/jobs/parse-url", {
@@ -60,35 +101,48 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         body: JSON.stringify({ url }),
       });
       const data: unknown = await res.json();
-      const okRes =
-        data && typeof data === "object" && "ok" in data && (data as { ok: boolean }).ok === true
-          ? (data as { ok: true; extracted: string; urlSaved: boolean })
-          : null;
+      const okRes = isParseSuccess(data) ? data : null;
       if (!okRes) {
-        const errorMsg =
-          data && typeof data === "object" && "error" in data && typeof (data as { error: unknown }).error === "string"
-            ? (data as { error: string }).error
-            : "Parse failed.";
-        toast.error("Couldn't parse the link", { description: errorMsg });
-        return;
+        const errRes = isParseError(data) ? data : null;
+        const code = errRes?.error ?? null;
+        const message = errRes?.message ?? "Parse failed.";
+        if (code === "indeed_blocked" || code === "linkedin_blocked") {
+          // Inline below the URL input so the recruiter sees the next-step
+          // instruction in context (paste the JD text manually).
+          setParseInlineError(message);
+        } else {
+          toast.error("Couldn't parse the link", { description: message });
+        }
+        return false;
       }
-      // parse-url currently returns only a text blob (extracted: string)
-      // even though the route's Claude pass extracts structured fields
-      // internally (title / location / salary / etc) before collapsing
-      // them via formatExtractedAsPlain. Auto-fill of Title / Location /
-      // Salary is parked until the route exposes the structured object;
-      // for now drop the text blob into Description so Generate with
-      // Claude has source material to reformat.
-      // eslint-disable-next-line no-console
-      console.warn(
-        "[parse-url] returned text blob only — structured fields (title/location/salary) not exposed yet; skipping auto-fill of Job Title / Location / Salary Low / Salary High",
-      );
+      const f = okRes.fields ?? {};
+      const filled: string[] = [];
+      if (f.title && !title.trim()) {
+        setTitle(f.title);
+        filled.push("Title");
+      }
+      if (f.location && !location.trim()) {
+        setLocation(f.location);
+        filled.push("Location");
+      }
+      if (typeof f.salaryLow === "number" && salaryLow === "") {
+        setSalaryLow(String(f.salaryLow));
+        filled.push("Salary low");
+      }
+      if (typeof f.salaryHigh === "number" && salaryHigh === "") {
+        setSalaryHigh(String(f.salaryHigh));
+        filled.push("Salary high");
+      }
       setDescription(okRes.extracted);
-      toast.success("Link parsed. Source text dropped into Description below.");
+      toast.success("Link parsed", {
+        description: filled.length > 0 ? `Filled: ${filled.join(", ")}` : "Source text dropped into Description.",
+      });
+      return true;
     } catch (e) {
       toast.error("Couldn't parse the link", {
         description: e instanceof Error ? e.message : "Network error.",
       });
+      return false;
     } finally {
       setParsing(false);
     }
@@ -104,34 +158,89 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     if (jdInputRef.current) jdInputRef.current.value = "";
   }
 
+  // The actual generate-JD work, with no transition wrapper. onGenerate
+  // wraps it in startGenerate for the standalone button; onParseAndGenerate
+  // awaits it directly so the combined flow can serialize parse → generate
+  // under a single loading indicator. sourceTextOverride lets the combined
+  // flow pass the freshly parsed text without waiting for setState.
+  async function doGenerate(sourceTextOverride?: string): Promise<void> {
+    let filePayload: { filename: string; mimeType: string; base64: string } | null = null;
+    if (jdFile) {
+      const buffer = await jdFile.arrayBuffer();
+      const base64 = arrayBufferToBase64(buffer);
+      filePayload = { filename: jdFile.name, mimeType: jdFile.type || "application/octet-stream", base64 };
+    }
+    const result = await generateJobDescriptionFromSource({
+      jobTitle: title.trim(),
+      sourceText: sourceTextOverride ?? description,
+      file: filePayload,
+    });
+    if (!result.ok) {
+      setErr(result.error);
+      toast.error("Couldn't generate job description", { description: result.error });
+      return;
+    }
+    setDescription(result.value.text);
+    if (result.value.fallback) {
+      toast.info("Claude unavailable — template loaded", {
+        description: result.value.reason ?? "Write the JD manually using the template below.",
+      });
+    } else {
+      toast.success("Job description generated", { description: "Edit before saving if needed." });
+    }
+  }
+
   function onGenerate() {
     setErr(null);
     startGenerate(async () => {
-      let filePayload: { filename: string; mimeType: string; base64: string } | null = null;
-      if (jdFile) {
-        const buffer = await jdFile.arrayBuffer();
-        const base64 = arrayBufferToBase64(buffer);
-        filePayload = { filename: jdFile.name, mimeType: jdFile.type || "application/octet-stream", base64 };
-      }
-      const result = await generateJobDescriptionFromSource({
-        jobTitle: title.trim(),
-        sourceText: description,
-        file: filePayload,
-      });
-      if (!result.ok) {
-        setErr(result.error);
-        toast.error("Couldn't generate job description", { description: result.error });
-        return;
-      }
-      setDescription(result.value.text);
-      if (result.value.fallback) {
-        toast.info("Claude unavailable — template loaded", {
-          description: result.value.reason ?? "Write the JD manually using the template below.",
-        });
-      } else {
-        toast.success("Job description generated", { description: "Edit before saving if needed." });
-      }
+      await doGenerate();
     });
+  }
+
+  async function onParseAndGenerate() {
+    setErr(null);
+    setParseInlineError(null);
+    setCombinedRunning(true);
+    try {
+      let parsedText: string | undefined;
+      if (sourceUrl.trim()) {
+        // Capture the parsed text from the route response so doGenerate
+        // doesn't race a stale `description` state read before React flushes.
+        const url = sourceUrl.trim();
+        setParsing(true);
+        try {
+          const res = await fetch("/api/jobs/parse-url", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url }),
+          });
+          const data: unknown = await res.json();
+          if (!isParseSuccess(data)) {
+            const errRes = isParseError(data) ? data : null;
+            const code = errRes?.error ?? null;
+            const message = errRes?.message ?? "Parse failed.";
+            if (code === "indeed_blocked" || code === "linkedin_blocked") {
+              setParseInlineError(message);
+            } else {
+              toast.error("Couldn't parse the link", { description: message });
+            }
+            return;
+          }
+          const f = data.fields ?? {};
+          if (f.title && !title.trim()) setTitle(f.title);
+          if (f.location && !location.trim()) setLocation(f.location);
+          if (typeof f.salaryLow === "number" && salaryLow === "") setSalaryLow(String(f.salaryLow));
+          if (typeof f.salaryHigh === "number" && salaryHigh === "") setSalaryHigh(String(f.salaryHigh));
+          setDescription(data.extracted);
+          parsedText = data.extracted;
+        } finally {
+          setParsing(false);
+        }
+      }
+      await doGenerate(parsedText);
+    } finally {
+      setCombinedRunning(false);
+    }
   }
 
   const loNum = salaryLow === "" ? null : Number(salaryLow);
@@ -186,6 +295,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         salaryFrequency,
         openings: openings ? Number(openings) : null,
         description,
+        sourceJobUrl: sourceUrl.trim() || null,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -205,13 +315,17 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           Source Job Link
         </label>
         <p className="mt-0.5 text-[11px] text-court-fg-muted">
-          Paste an Indeed / LinkedIn / client URL and Parse Link to drop the source text into Description below.
+          Paste a careers-page URL and click Parse & Generate to auto-fill Title / Location / Salary and write the JD in
+          one step. Use Parse Link alone for source text only.
         </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <input
             type="url"
             value={sourceUrl}
-            onChange={(e) => setSourceUrl(e.target.value)}
+            onChange={(e) => {
+              setSourceUrl(e.target.value);
+              if (parseInlineError) setParseInlineError(null);
+            }}
             placeholder="https://…"
             className={cn(
               "flex-1 rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
@@ -221,11 +335,36 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
           <button
             type="button"
             onClick={onParseSourceUrl}
-            disabled={isParsing}
-            className={cn(CLAUDE_PILL_CLASS, isParsing && "opacity-60")}
+            disabled={isParsing || isCombinedRunning}
+            className={cn(CLAUDE_PILL_CLASS, (isParsing || isCombinedRunning) && "opacity-60")}
           >
-            {isParsing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-            {isParsing ? "Parsing…" : "Parse Link"}
+            {isParsing && !isCombinedRunning ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Sparkles className="h-3 w-3" />
+            )}
+            {isParsing && !isCombinedRunning ? "Parsing…" : "Parse Link"}
+          </button>
+        </div>
+        {parseInlineError && (
+          <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            {parseInlineError}
+          </div>
+        )}
+        <div className="mt-3 flex justify-end">
+          <button
+            type="button"
+            onClick={onParseAndGenerate}
+            disabled={
+              isCombinedRunning ||
+              isParsing ||
+              isGenerating ||
+              (!sourceUrl.trim() && !description.trim() && !jdFile)
+            }
+            className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+          >
+            {isCombinedRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+            {isCombinedRunning ? "Parsing and generating…" : "Parse & Generate"}
           </button>
         </div>
       </div>
@@ -347,7 +486,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               <button
                 type="button"
                 onClick={() => jdInputRef.current?.click()}
-                disabled={isGenerating}
+                disabled={isGenerating || isCombinedRunning}
                 className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
               >
                 <UploadCloud className="h-3.5 w-3.5" />
@@ -356,7 +495,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               <button
                 type="button"
                 onClick={onGenerate}
-                disabled={isGenerating || (!jdFile && !description.trim())}
+                disabled={isGenerating || isCombinedRunning || (!jdFile && !description.trim())}
                 className="inline-flex items-center gap-1.5 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
               >
                 {isGenerating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -416,7 +555,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         <button
           type="button"
           onClick={() => router.push("/jobs")}
-          disabled={isPending}
+          disabled={isPending || isCombinedRunning}
           className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
         >
           Cancel
@@ -424,7 +563,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         <button
           type="button"
           onClick={onSubmit}
-          disabled={isPending || rangeInvalid}
+          disabled={isPending || isCombinedRunning || rangeInvalid}
           className="inline-flex items-center gap-1 rounded-md bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
         >
           {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
