@@ -37,7 +37,7 @@ export function BrandMark({
       </svg>
       <div className="leading-tight">
         <div
-          className="font-serif text-[24px] font-extrabold leading-none text-court-fg [[data-in-sidebar]_&]:text-court-sidebar-fg"
+          className="font-serif text-[24px] font-black leading-none text-court-fg [[data-in-sidebar]_&]:text-court-sidebar-fg"
           style={{ letterSpacing: "-0.03em" }}
         >
           Ace

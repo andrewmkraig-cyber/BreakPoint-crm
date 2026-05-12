@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Inter } from "next/font/google";
+import { Outfit, Inter } from "next/font/google";
 import { getServerSession } from "next-auth";
 import "./globals.css";
 import { Providers } from "@/components/providers";
@@ -12,13 +12,15 @@ import {
   CourtModeProvider,
 } from "@/lib/court-mode";
 
-// Bricolage Grotesque is a chunky modern grotesque — heavy weights
-// land in the same "friendly premium display sans" register as
-// Yahoo's wordmark, which the recruiter pointed at as the look they
-// wanted for the Ace mark and page headers.
-const bricolage = Bricolage_Grotesque({
+// Outfit is a geometric sans with single-story `a`, perfectly round
+// `o`, and a heavy 900 weight — the closest free analog to Yahoo's
+// wordmark, which is the look Andrew wanted for the Ace mark and
+// every page header. Loaded weights cover every font-serif callsite
+// (medium 500 / semibold 600 / bold 700 / extrabold 800) plus the
+// 900 reserve for display lockups.
+const outfit = Outfit({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700", "800", "900"],
   variable: "--font-display",
 });
 
@@ -64,7 +66,7 @@ export default async function RootLayout({
   }
 
   return (
-    <html lang="en" className={`${bricolage.variable} ${inter.variable}`}>
+    <html lang="en" className={`${outfit.variable} ${inter.variable}`}>
       <body className="font-sans">
         {/* Runs before React hydrates and stamps data-surface +
             data-theme onto <html> based on the persisted court mode.
