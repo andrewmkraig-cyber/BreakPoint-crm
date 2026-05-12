@@ -10,6 +10,8 @@ import {
   syntheticIdFromCuid,
 } from "@/lib/candidates";
 import { getClientsForOrg } from "@/lib/clients";
+import { prisma } from "@/lib/prisma";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
 export const dynamic = "force-dynamic";
 
@@ -66,10 +68,16 @@ export default async function JobsPage({
   try {
     // Phase 2: Jobs list reads from Neon via the broadened shim —
     // includes both RF-imported and Ace-native Jobs in one iteration.
-    const [jobs, candidates, clients] = await Promise.all([
+    const [jobs, candidates, clients, lastTouchedByCuid] = await Promise.all([
       getRfJobsForOrg(),
       getRfCandidatesForOrg(),
       getClientsForOrg(),
+      // "Last Edited" rolls up signals beyond Job.updatedAt — placements
+      // moving stages and activity-log entries against the job both
+      // count, otherwise a job that's only seen pipeline traffic shows
+      // a stale date. Computed here (page-only) so other getRfJobsForOrg
+      // callers don't pay for the joins.
+      buildLastTouchedByJobCuid(),
     ]);
     const counts = buildJobCounts(candidates);
     // Map companyId (the numeric reference each JobRow already carries)
@@ -106,8 +114,17 @@ export default async function JobsPage({
       // `_aceJobId` instead.
       const aceJobId = (raw as { _aceJobId?: string })._aceJobId;
       const slug = j.id < 0 && aceJobId ? aceJobId : String(j.id);
+      // Prefer the rolled-up signal over the RF payload's last_opened /
+      // created_at (which froze at import for RF rows and is undefined
+      // for Ace-native rows). Falls back to the legacy values so a job
+      // with no activity still surfaces its created date.
+      const touchedMs = aceJobId ? lastTouchedByCuid.get(aceJobId) ?? null : null;
+      const lastEditedAt = touchedMs
+        ? new Date(touchedMs).toISOString()
+        : j.lastEditedAt;
       return {
         ...j,
+        lastEditedAt,
         slug,
         lifecycle,
         submittedCount: c.submitted,
@@ -163,6 +180,79 @@ export default async function JobsPage({
       />
     </div>
   );
+}
+
+// Rolls up the "most recent activity per job" map keyed by Job cuid.
+// Sources: Job.updatedAt (covers Prisma's auto-bump on any Job row
+// edit), Job.descriptionGeneratedAt (covers the JD regen path),
+// Placement.updatedAt grouped by jobId (covers stage moves on the
+// pipeline tab), and ActivityLog.timestamp where targetType='job'
+// (covers everything that calls logActivity — Mail sends, JD generated,
+// etc.). All four signals are merged into a single max-timestamp per
+// job. Tenant-scoped via getCurrentOrg() so /jobs never sees another
+// org's rollup.
+async function buildLastTouchedByJobCuid(): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const org = await getCurrentOrg();
+  const jobRows = await prisma.job.findMany({
+    where: { organizationId: org.id },
+    select: { id: true, legacyRfId: true, updatedAt: true, descriptionGeneratedAt: true },
+  });
+  const cuids = jobRows.map((r) => r.id);
+  const rfIdToCuid = new Map<number, string>();
+  for (const r of jobRows) {
+    if (r.legacyRfId != null) rfIdToCuid.set(r.legacyRfId, r.id);
+  }
+
+  const bump = (cuid: string | null | undefined, when: Date | null | undefined) => {
+    if (!cuid || !when) return;
+    const ms = when.getTime();
+    if (!Number.isFinite(ms)) return;
+    const cur = out.get(cuid) ?? 0;
+    if (ms > cur) out.set(cuid, ms);
+  };
+
+  for (const r of jobRows) {
+    bump(r.id, r.updatedAt);
+    bump(r.id, r.descriptionGeneratedAt);
+  }
+
+  if (cuids.length === 0) return out;
+
+  // Phase 0 backfilled Placement.jobId (cuid) for every row, so the
+  // cuid-keyed group covers Ace-native + RF-imported. The legacyRfId
+  // fallback below picks up any straggler rows that still only carry
+  // jobRfId (pre-backfill or hand-inserted).
+  const [placementByCuid, placementByRf, activityByTarget] = await Promise.all([
+    prisma.placement.groupBy({
+      by: ["jobId"],
+      where: { organizationId: org.id, jobId: { in: cuids } },
+      _max: { updatedAt: true },
+    }),
+    prisma.placement.groupBy({
+      by: ["jobRfId"],
+      where: {
+        organizationId: org.id,
+        jobRfId: { in: Array.from(rfIdToCuid.keys()) },
+        jobId: null,
+      },
+      _max: { updatedAt: true },
+    }),
+    prisma.activityLog.groupBy({
+      by: ["targetId"],
+      where: { organizationId: org.id, targetType: "job", targetId: { in: cuids } },
+      _max: { timestamp: true },
+    }),
+  ]);
+
+  for (const p of placementByCuid) bump(p.jobId, p._max.updatedAt);
+  for (const p of placementByRf) {
+    if (p.jobRfId == null) continue;
+    bump(rfIdToCuid.get(p.jobRfId), p._max.updatedAt);
+  }
+  for (const a of activityByTarget) bump(a.targetId, a._max.timestamp);
+
+  return out;
 }
 
 function compareRow(a: JobRow, b: JobRow, key: SortKey, dir: "asc" | "desc"): number {

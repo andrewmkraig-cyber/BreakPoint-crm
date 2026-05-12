@@ -112,9 +112,17 @@ export async function POST(req: NextRequest): Promise<NextResponse<GenerateJdRes
 
   const generatedAt = new Date();
   try {
+    // Prisma's @updatedAt directive auto-bumps the column on any
+    // update, but we set it explicitly so the /jobs board's
+    // "Last Edited" rollup has an unambiguous signal and the
+    // ordering matches the generated-at timestamp by the millisecond.
     await prisma.job.update({
       where: { id: job.id },
-      data: { description: generated, descriptionGeneratedAt: generatedAt },
+      data: {
+        description: generated,
+        descriptionGeneratedAt: generatedAt,
+        updatedAt: generatedAt,
+      },
     });
 
     const userId =
