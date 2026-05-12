@@ -1,10 +1,55 @@
 # ACE_STATE.md
-Last updated: 2026-05-12 · Ace 39.3
+Last updated: 2026-05-12 · Ace 39.4
 
 ## Current Status
-Current Version: Ace 39.3 (BD Phase 2 hotfix — hydration + settings placeholder)
-Last Shipped: Ace 39.3 — May 12, 2026
+Current Version: Ace 39.4 (BD Phase 3 — full BD Settings page)
+Last Shipped: Ace 39.4 — May 12, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 39.4
+Real BD Settings page replaces the 39.3 placeholder. Five CollapsibleSection cards on `/settings/bd` covering Verticals + Saved Searches, Apollo Integration, Sending Domains, Daily Limits, and Reply Routing. Schema gained per-vertical caps, sending-domain inbox-owner, and a new org-level config row that the `/bd/launch` Launch CTA now reads instead of a hardcoded `false`/`80` pair.
+
+Schema bumps (applied via `npm run db:push`):
+- `Vertical.dailyCap Int?` — per-vertical contact cap override; null inherits from `BdOrgConfig.globalDailyCap`.
+- `SendingDomain.inboxOwner String?` — Andrew / Austin per warmed slot, surfaced in the Sending Domains table.
+- New `BdOrgConfig` model (one row per organization, keyed on organizationId): `globalDailyCap Int @default(80)`, `pauseAll Boolean @default(false)`, 4 blackout-window booleans (Weekends / US Federal Holidays / Before 7am / After 5:30pm), 3 reply-routing booleans (`replyForwardApollo` off by default, `replyAutoCreateCandidate` on, `replyOooFilter` on), plus `createdAt` + `updatedAt`. `Organization` got the inverse `bdOrgConfig BdOrgConfig?` relation.
+
+Section 1 — Verticals & Saved Searches:
+- Accordion per `Vertical`. Each expanded vertical lists its `SavedSearch` rows with name, criteria summary (target titles · top locations · company size), last-run timestamp from the most recent BDRun joined by savedSearchId, and a version chip showing the number of SavedSearchVersion rows for that search.
+- The first search in the first vertical opens to its edit form by default so first-paint shows what edit/create looks like (per the BD Phase 3 brief).
+- Edit form fields: Name (text), Mapped Apollo sequence (dropdown — hardcoded "BD Outbound v1" / "Public Accounting Cold Sequence" / "Legal Outreach v2" until Apollo sequence pull lands), Daily contact cap (number), Target titles (chip input — comma or Enter adds, Backspace on empty draft removes the last chip, x button on each chip removes), Locations (compound rows of City + State + Radius miles, "+ Add location"), Company size min/max, Boolean keywords (monospace textarea), Min posting freshness (3 / 7 / 14 / 30 days).
+- Save button is brand-green and reads "Save · creates v{nextVersion}". Server action `updateSavedSearch` wraps the SavedSearch update + SavedSearchVersion create in a Prisma `$transaction` so either both writes land or neither — the version history is always in sync with the current row.
+- `+ New saved search` button per vertical opens the same edit form in create mode (no version preview since the Phase 3 brief says first save is v1).
+- `+ New vertical` form below the accordion list captures Name + Slug (slug auto-derives from name when left blank).
+- `deleteVertical` server action blocks deletion if the vertical has any saved searches (button disabled with explanatory tooltip in the UI as well).
+
+Section 2 — Apollo Integration:
+- Connection status pill: brand-green "Connected" when `APOLLO_API_KEY` env var is set, red "Not connected" otherwise. Does not ping Apollo for the pill — just env presence (per the brief).
+- API key row renders the masked value as `apl_{12 dots}{last 4 chars}` when configured, or "Not configured" otherwise.
+- Test connection button calls new `GET /api/bd/apollo/test`, which hits Apollo's `https://api.apollo.io/api/v1/users/me` with the `X-Api-Key` header. Returns one of three envelopes: `{ ok: true, email, name }` on 200, `{ ok: false, error }` on non-2xx (with the upstream error trimmed), or 501 `{ ok: false, error: "not configured" }` when the env var is missing. Result renders inline below the button as a brand-tinted success card or a red-tinted error card.
+- Rotate button is intentionally disabled with a tooltip pointing the user at Vercel project env — secure storage for the rotated key is deferred to a follow-up to avoid stashing API keys in plaintext rows.
+- Mapped sequences table renders the three placeholder sequence names with Apollo ID column reading "Pending API connection" until Phase 4 pulls real sequence ids.
+
+Section 3 — Sending Domains:
+- Table queried from `SendingDomain` ordered by `lastUsedAt asc` so priority 1 (next in rotation) is on top. Columns: Priority (1-based row index), Domain (monospace), Status pill (HEALTHY = brand-green / WARMING = amber / COOLED = red), Reputation bar (hardcoded 85 in Phase 3 — real value comes from Instantly in Phase 4, color tier ≥80 brand-green / ≥50 amber / else red), Inbox owner, Last cooldown (currently always "—" since the column doesn't exist; derived from DOMAIN_COOLED BDActivity events in Phase 4).
+- `+ Add domain` modal: Domain text input + Inbox owner dropdown (Andrew / Austin) + starting status radio (Warming / Healthy).
+- Inline edit per row swaps the static cells for a small form (domain text input, status select, owner select) with Cancel / Save controls; server actions `createSendingDomain` / `updateSendingDomain` / `deleteSendingDomain` are tenant-scoped and revalidate every BD path.
+
+Section 4 — Daily Limits:
+- Pause all sends row at top: brand toggle that flips `BdOrgConfig.pauseAll`. When ON, the row's border + bg shifts to red ramp and a "Paused" pill renders next to the toggle. `/bd/launch/page.tsx` now reads `BdOrgConfig.pauseAll` instead of the hardcoded `false`, so flipping this toggle disables the Launch BD Run CTA on the next render.
+- Global daily contact cap row: inline edit (pencil → number input + Save). Writes `BdOrgConfig.globalDailyCap`. `/bd/launch` reads this as the fallback contact cap when no `SavedSearch.contactCap` is set.
+- Per-vertical caps grid (4-column on lg, 1-column on mobile). Each card shows the vertical name, the cap (or "inherits" when null), and an inline pencil → input → Save flow. Writes `Vertical.dailyCap`.
+- Blackout windows row: 4 toggle pills (Weekends, US Federal Holidays, Before 7 AM ET, After 5:30 PM ET) wired to the matching `BdOrgConfig.blackout*` columns. On = brand-tint pill with Check icon, Off = mute pill with X.
+
+Section 5 — Reply Routing:
+- Confirmation banner in brand-tint: "All BD replies route into Ace Mail", webhook path `/api/webhooks/apollo/reply` rendered as monospace, last-reply timestamp queried from the most recent `BDActivity` row where `kind=REPLY` (falls back to "No replies yet"). Health pill is hardcoded "Healthy" since the route file exists — Phase 4 will swap to a real health check after the webhook handler ships.
+- Three toggle pills below the banner: "Also forward to Apollo inbox" (off default), "Auto-create candidate on positive reply" (on default), "Out-of-office filter" (on default). All three persist via `updateBdOrgConfig` to `BdOrgConfig.reply*`.
+
+Cross-section:
+- In-page TOC at the top of `/settings/bd` (sticky pill row) using the existing `SettingsTocLink` component so clicking a pill scrolls + expands the matching CollapsibleSection. Pills: Verticals & Searches / Apollo / Sending Domains / Daily Limits / Reply Routing.
+- All five sections wrapped in the existing `CollapsibleSection` chrome that other settings pages use, so the visual treatment matches Triggers / Templates / etc.
+- Court Mode tokens exclusively — only Tailwind ramps allowed are amber and red where they map to existing button-variant semantics (Reject / Apply equivalents). No hardcoded green; the brand color comes from `court-brand` family.
+- The `/settings/bd` left-rail entry from Ace 39.3 (between Triggers and Connectors) is unchanged.
 
 ## Summary — Ace 39.3
 Production hotfix on top of 39.2. The /bd/client-signal page was crashing on hydration with React #418/#423/#425 the moment real ClientSignal rows existed in the DB. Two root causes addressed plus one supporting fix.
@@ -256,13 +301,24 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-BD Phase 3 — BD Settings page at `/settings/bd` for CRUD on Verticals, SavedSearches, and SendingDomains so the Today's Launch flow has data to act on without manual prisma studio writes. Pause-all toggle lives here too (currently hardcoded false in `/bd/launch/page.tsx`).
+BD Phase 4 — the data-wiring slice that lights up every Phase 2 page with real data. In order: (1) Indeed scan helper that walks SavedSearch.criteria and writes new ClientSignal rows for matching public postings at existing Clients; (2) Apollo enrichment helper (standalone, called from a script first so we can verify against a real API key before wiring it to a cron) — reads SavedSearch.criteria, queries `/api/v1/people/search`, returns up to N contacts per company; (3) 6 AM ET Vercel cron picking up `BDRun.status=QUEUED` rows, walking them through Indeed → Apollo → enroll-in-sequence, flipping status to RUNNING then COMPLETE with metrics JSON; (4) Apollo webhook handler at `/api/webhooks/apollo/reply` (+ companion handlers for open/bounce/unsub) that writes `CampaignEvent` + `BDActivity` rows the Active Campaigns + Activity pages already render. Once webhook is in, wire the Reach-out mail composer pre-fill from Client Signal, dismiss/acted-on flows on Client Signal, and pause/resume on Active Campaigns rows.
 
-Then BD Phase 4 — the data wiring that lights up every Phase 2 page: Indeed scan helper (writes ClientSignal rows + feeds BDRun discovery), Apollo enrichment helper (resolves contacts per discovered company), 6 AM ET Vercel cron picking up QUEUED BDRuns, Apollo webhook for opens/replies/bounces (writes CampaignEvent + BDActivity rows that Active Campaigns + Activity pages already render). Once webhook is in, wire the Reach-out mail composer pre-fill from Client Signal, dismiss/acted-on flows on Client Signal, and pause/resume on Active Campaigns rows.
-
-Then BD Phase 5 — scheduled email send (Gmail API send-at) and the Sequence engine + Apollo sequence template wiring.
+Then BD Phase 5 — scheduled email send (Gmail API send-at), Sequence engine + Apollo sequence template wiring, secure storage for `APOLLO_API_KEY` so the Rotate button can move it out of env, real Instantly reputation pull for the Sending Domains reputation bar.
 
 Still parked from before BD: (1) Night Court light mode — a dedicated low-contrast / warm-tinted light mode option in the Court Mode selector alongside the existing 3 surfaces, paired against (2) a Dashboard + Scoreboard + Invoicing redesign brief (consolidating the dashboard premium surface, the queued Scoreboard widget tile, and the parked Invoicing workflow into a single coherent surface direction). Design prompts run through Claude chat first — no code until the visual direction is signed off.
+
+## What Shipped in Ace 39.4 (2026-05-12)
+- **Schema bumps** (applied via `npm run db:push`): `Vertical.dailyCap Int?` (per-vertical override on the BD contact cap), `SendingDomain.inboxOwner String?` (free-form so Andrew/Austin can both own slots without enum churn), new `BdOrgConfig` model keyed on organizationId with `globalDailyCap Int @default(80)`, `pauseAll Boolean @default(false)`, 4 blackout booleans (`blackoutWeekends` / `blackoutHolidays` / `blackoutBefore7am` / `blackoutAfter530pm`), and 3 reply-routing booleans (`replyForwardApollo` default false, `replyAutoCreateCandidate` default true, `replyOooFilter` default true). `Organization` gained the inverse `bdOrgConfig BdOrgConfig?` relation.
+- **`/settings/bd` server page** (`src/app/settings/bd/page.tsx`): one server render fetches verticals + their saved searches with criteria, sending domains ordered by `lastUsedAt asc`, `BdOrgConfig` (null on first visit until first save creates the row), most-recent REPLY BDActivity for the Reply Routing banner, version counts per saved search (`prisma.savedSearchVersion.groupBy` by savedSearchId), and last-run timestamps per saved search (`prisma.bDRun.groupBy` by savedSearchId with `_max.createdAt`). All five sections receive plain-data props (no Date objects cross client boundaries) — same hydration discipline established in Ace 39.3.
+- **Sticky in-page TOC** (`src/app/settings/bd/in-page-nav.tsx`): horizontal pill row at the top using `SettingsTocLink` so each section id (`verticals`, `apollo`, `sending-domains`, `daily-limits`, `reply-routing`) gets a scroll-and-expand link without disrupting the main Settings left rail.
+- **Section 1 — Verticals & Saved Searches** (`verticals-section.tsx`): accordion per Vertical with chevron toggle + saved-search count chip + Delete vertical button (disabled when vertical has any saved searches, tooltip explains why). Each expanded vertical renders its saved-search rows with a compact header (name, criteria summary, last-run timestamp, version chip "vN") + Edit pencil + Delete trash. Edit form ships with chip input (`,` / Enter / Backspace), compound location rows (City + State + Radius), monospace boolean keywords textarea, freshness dropdown (3/7/14/30), Save button reading "Save · creates v{n+1}". `+ New saved search` per vertical and `+ New vertical` modal at the page bottom.
+- **Section 2 — Apollo Integration** (`apollo-section.tsx`): Connected/Not connected pill driven solely by `APOLLO_API_KEY` env presence (no Apollo ping for the pill itself), masked-key row, Test connection button hitting `/api/bd/apollo/test`, Rotate disabled with tooltip, mapped sequences table with Apollo ID column reading "Pending API connection" until Phase 4 wires real ids.
+- **Section 3 — Sending Domains** (`domains-section.tsx`): table of domains with Priority (1-5 from `lastUsedAt asc`), Domain (monospace), Status pill (Healthy / Warming / Cooled), Reputation bar (hardcoded 85 with brand-green/amber/red tiers), Inbox owner, Last cooldown (currently always "—" — derived from DOMAIN_COOLED BDActivity events in Phase 4). Inline edit + Add domain modal + Remove confirmation.
+- **Section 4 — Daily Limits** (`limits-section.tsx`): Pause-all toggle at top (brand toggle, flips to red surface + "Paused" pill when ON), Global daily cap row with inline edit, per-vertical caps grid (4-col on lg), 4 blackout-window pills (brand-tint + Check when ON, mute + X when OFF). Every toggle writes via `updateBdOrgConfig` server action; `router.refresh()` re-pulls `BdOrgConfig` so the state survives navigation.
+- **Section 5 — Reply Routing** (`reply-routing-section.tsx`): brand-tint banner with webhook path `/api/webhooks/apollo/reply` as monospace, last-reply timestamp from BDActivity, hardcoded "Healthy" pill, three downstream-behavior toggle pills (forward to Apollo / auto-create candidate / OOO filter).
+- **`/api/bd/apollo/test`** (`route.ts`): GET endpoint that pings Apollo's `/v1/users/me` with `X-Api-Key`. Returns `{ ok: true, email, name }` on 200, `{ ok: false, error, status }` on non-2xx, or 501 `{ ok: false, error: "APOLLO_API_KEY not set in environment" }` when env is missing. Auth-gated via `getServerSession`.
+- **Server actions** (`actions.ts`): `createVertical`, `updateVerticalDailyCap`, `deleteVertical` (blocks when vertical has saved searches), `createSavedSearch` (also writes v1 SavedSearchVersion so history starts on creation, not first edit), `updateSavedSearch` (transactional update + SavedSearchVersion append, returns new version number for the toast), `deleteSavedSearch` (hard delete — schema has no `deletedAt` column yet), `createSendingDomain` / `updateSendingDomain` / `deleteSendingDomain`, and the catch-all `updateBdOrgConfig(patch)` that upserts the org's `BdOrgConfig` row. Every action is tenant-scoped via `getCurrentOrg()` and revalidates `/settings/bd`, `/bd/launch`, `/bd/campaigns`, `/bd/client-signal`, `/bd/activity`.
+- **`/bd/launch` Pause-all wiring**: `src/app/bd/launch/page.tsx` now reads `BdOrgConfig.pauseAll` + `BdOrgConfig.globalDailyCap` via a parallel `findUnique`, passes the values through to `LaunchView`. The hardcoded `PAUSE_ALL = false` and `DEFAULT_DAILY_CONTACT_CAP` constants are gone — toggling Pause all sends in Section 4 disables the Launch BD Run CTA on the next render.
 
 ## What Shipped in Ace 39.3 (2026-05-12)
 - **`src/app/bd/date-format.ts`**: shared formatter module for the BD module. Exports `formatBdDate` / `formatBdTime` / `formatBdDateTime` (Intl.DateTimeFormat with explicit `"en-US"` locale + `timeZone: "America/New_York"` so Node + browser ICU emit identical text), `formatDaysAgo(d, nowMs)` (pure integer day math against an explicit reference), and `bucketForOccurredAt(d, nowMs)` (Today / Yesterday / 2 days ago / Older via en-CA `YYYY-MM-DD` ET date keys).
