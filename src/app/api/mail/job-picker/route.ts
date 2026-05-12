@@ -31,9 +31,11 @@ export async function GET(req: NextRequest): Promise<NextResponse<JobPickerRespo
   const org = await getCurrentOrg();
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
 
+  // No status filter — the picker surfaces every job in the org
+  // regardless of isOpen / lifecycle. Recruiters often want to recruit
+  // for inactive or private jobs too. Most-recently-updated first.
   const where = {
     organizationId: org.id,
-    isOpen: true,
     ...(q
       ? {
           OR: [
