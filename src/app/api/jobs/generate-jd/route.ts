@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { revalidatePath } from "next/cache";
 import { authOptions } from "@/lib/auth";
-import { CLAUDE_MODEL, getClaude, stripMarkdownToPlain } from "@/lib/claude";
+import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { logActivity } from "@/lib/activity";
@@ -187,46 +187,47 @@ async function runGenerate(params: {
   const system =
     "You are BreakPoint Talent's recruiter copy assistant. You turn raw, often-unedited job postings into polished, " +
     "candidate-facing job descriptions in the BreakPoint voice — professional, recruiter-friendly, polished, never cheesy. " +
-    "Output is plain text only — no markdown, no asterisks, no hash headers, no code fences. " +
-    "Section titles sit on their own line, unadorned. Bullets use a leading dash followed by a space ('- '). " +
+    "Output is GitHub-flavored markdown. Use '## ' for top-level section headings and '### ' for sub-section headings. " +
+    "Use markdown bullet lists ('- item'). Do NOT use bold/italic emphasis on body copy, do not add code fences, do not add horizontal rules. " +
     "NEVER use em dashes (the long '—' character) or en dashes ('–'). Use a comma, colon, parentheses, or period instead. " +
     "Never include Jobot branding, 'Are you a fit?', legal/EEO boilerplate, recruiter signoffs, cheesy corporate language, or salesy filler. " +
     "Never invent compensation, benefits, or details that aren't in the source.";
 
   const userPrompt =
-    "Rewrite the raw job posting below as a BreakPoint Talent job description. " +
+    "Rewrite the raw job posting below as a BreakPoint Talent job description, as GitHub-flavored markdown. " +
     "Use the structured metadata to fill the Location and Salary header lines. " +
     "If a piece of metadata is unspecified, omit that line entirely (do not write 'unspecified').\n\n" +
-    "Output MUST follow this EXACT structure, in this order, with the literal section titles shown:\n\n" +
-    "Job Description\n" +
+    "Output MUST follow this EXACT structure, in this order, with the literal section titles shown. " +
+    "Top-level sections use '## ' (H2). Sub-sections under Job Details use '### ' (H3). The Location/Salary lines and the pitch header are plain paragraphs — no heading markers.\n\n" +
     "Location: [location]\n" +
     "Salary: [salary or compensation range if available]\n" +
     "\n" +
     "[Short pitch header — one punchy candidate-facing reason to apply, single line, no quotes, no exclamation points]\n" +
     "\n" +
-    "A bit about us:\n" +
+    "## A Bit About Us\n" +
     "Must start with: 'Our client, a [descriptor], is looking to add a [position title] to the growing team in [location].' " +
     "Pick a descriptor that fits the source: examples include 'growing CPA firm', 'well-established accounting firm', " +
     "'fast-growing manufacturing company', 'respected local employer', 'mission-driven organization', " +
     "'national wealth management practice', 'middle-market private-equity-backed company'. " +
     "Use natural, factual language — never cheesy. Follow that opener with 1 to 2 short sentences expanding on the company.\n" +
     "\n" +
-    "Why join us?\n" +
+    "## Why Join Us\n" +
     "Bullet list (4 to 7 bullets). Topics to draw from when the source supports them: compensation, benefits, " +
     "flexibility / hybrid / remote, growth opportunity, culture, stability, leadership access, interesting work. " +
     "Skip any topic the source does not support — never fabricate.\n" +
     "\n" +
-    "Job Details\n" +
+    "## Job Details\n" +
+    "(No body copy directly under this header — only the sub-sections below.)\n" +
     "\n" +
-    "What you'll do:\n" +
+    "### Key Responsibilities and Duties\n" +
     "Bullet list of responsibilities (5 to 10 bullets). Concrete, verb-led, day-to-day tasks pulled from the source.\n" +
     "\n" +
-    "What we're looking for:\n" +
+    "### You Should Have Most of the Following\n" +
     "Bullet list of must-have requirements (5 to 10 bullets). Hard requirements — years, certifications, core skills.\n" +
     "\n" +
-    "Nice to have:\n" +
+    "### Nice to Have\n" +
     "Bullet list of optional qualifications. " +
-    "OMIT this entire section (header and all) if no preferred / nice-to-have items are present in the source — " +
+    "OMIT this entire sub-section (heading and all) if no preferred / nice-to-have items are present in the source — " +
     "do not write 'None' or 'N/A'.\n\n" +
     "=== Job metadata ===\n" +
     metaBlock +
@@ -247,5 +248,8 @@ async function runGenerate(params: {
     .trim();
 
   if (!text) throw new Error("Claude returned no description. Try again.");
-  return stripMarkdownToPlain(text);
+  // JD is stored as markdown so the JD preview can render H2/H3 hierarchy.
+  // Merge-field resolvers ([Job Description] / {{job.description}}) strip
+  // the markdown back to plain text so emails don't paste literal `##`.
+  return text;
 }

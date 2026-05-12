@@ -2,6 +2,8 @@
 // human-readable labels so recruiters see e.g. "[Candidate First Name]" in
 // the editor. Resolved at send time by applyMergeFields().
 
+import { stripMarkdownToPlain } from "@/lib/markdown-to-plain";
+
 export const MERGE_FIELDS = [
   // Candidate
   { token: "[Candidate First Name]", label: "Candidate First Name", group: "Candidate" },
@@ -138,7 +140,10 @@ export function applyMergeFields(text: string, values: MergeFieldValues): string
     // Job
     "[Job Title]": values.jobTitle ?? "",
     "[Job Location]": values.jobLocation ?? "",
-    "[Job Description]": values.jobDescription ?? "",
+    // JD is stored as markdown for the rich JD preview render — convert
+    // back to plain text here so the token pastes cleanly into email body
+    // copy without literal `##` characters.
+    "[Job Description]": values.jobDescription ? stripMarkdownToPlain(values.jobDescription) : "",
     "[Job Salary Range]": values.jobSalaryRange ?? "",
     // Interview
     "[Interview Date]": values.interviewDate ?? "",

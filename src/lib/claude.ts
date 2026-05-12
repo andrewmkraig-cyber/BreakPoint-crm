@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { normalizeToE164 } from "@/lib/rf-payload-shapes";
+import { stripMarkdownToPlain as stripMarkdownToPlainImpl } from "@/lib/markdown-to-plain";
 
 // DOCX mime types and filename suffixes we can extract text from via mammoth.
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -100,33 +101,11 @@ function decodeXmlEntities(s: string): string {
 }
 
 // Strip any residual markdown Claude may emit even when instructed not to.
-// Converts # / ## / ### headers into plain text, collapses **bold** and _italic_
-// markers, and rewrites "- " / "* " bullet lines to use the • glyph.
-export function stripMarkdownToPlain(text: string): string {
-  const lines = text.split(/\r?\n/);
-  const out: string[] = [];
-  for (const raw of lines) {
-    let line = raw;
-    // Drop leading heading markers (## / ### / # etc).
-    line = line.replace(/^\s{0,3}#{1,6}\s*/, "");
-    // Convert "* text" / "- text" bullets to "• text" (leading whitespace preserved).
-    line = line.replace(/^(\s*)[-*+]\s+/, "$1• ");
-    // Drop **bold** / __bold__ wrappers while keeping inner text.
-    line = line.replace(/\*\*(.+?)\*\*/g, "$1");
-    line = line.replace(/__(.+?)__/g, "$1");
-    // Drop single-* italic wrappers only when they look like pairs, not inside words.
-    line = line.replace(/(^|\s)\*(?!\s)(.+?)(?<!\s)\*(?=\s|$|[.,;:!?)])/g, "$1$2");
-    line = line.replace(/(^|\s)_(?!\s)(.+?)(?<!\s)_(?=\s|$|[.,;:!?)])/g, "$1$2");
-    // Banned punctuation: em dashes (`—`) and en dashes (`–`). Andrew
-    // reads them as ChatGPT-flavored writing, so strip them codebase-
-    // wide. Replace with a comma + space, which is what the model
-    // usually meant.
-    line = line.replace(/\s*[–—]\s*/g, ", ");
-    out.push(line);
-  }
-  // Collapse 3+ blank lines into 2 blanks.
-  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
-}
+// Implementation lives in @/lib/markdown-to-plain so client-side modules
+// (merge-fields.ts and friends) can call it without pulling the Anthropic
+// SDK into the browser bundle. Re-exported here so existing callers keep
+// working unchanged.
+export const stripMarkdownToPlain = stripMarkdownToPlainImpl;
 
 // Sonnet 4.6 — single shared model across every Claude caller in Ace
 // (lib/claude generators, /api/mail/ai-compose, /api/email/edit-with-

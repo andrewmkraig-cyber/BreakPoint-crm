@@ -4,6 +4,8 @@
 // src/lib/merge-fields.ts so the submittal / interview composers that
 // depend on the old convention aren't affected.
 
+import { stripMarkdownToPlain } from "@/lib/markdown-to-plain";
+
 export type MailMergeContext = {
   candidate?: {
     firstName?: string | null;
@@ -139,7 +141,10 @@ function resolveOne(tag: string, ctx: MailMergeContext): string | undefined {
     case "{{job.state}}":
       return trimOr(ctx.job?.state);
     case "{{job.description}}":
-      return trimOr(ctx.job?.description);
+      // JD is stored as markdown for the rich JD preview render — strip
+      // back to plain text here so the token pastes cleanly into email
+      // body copy without literal `##` characters.
+      return trimOr(ctx.job?.description ? stripMarkdownToPlain(ctx.job.description) : "");
     case "{{client.name}}":
       return trimOr(ctx.client?.name);
     case "{{client.primary_contact_first_name}}":

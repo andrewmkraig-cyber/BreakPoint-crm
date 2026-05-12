@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Copy, Loader2, Pencil, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
@@ -398,9 +400,28 @@ function GeneratedJdPreview({
           {copied ? "Copied" : "Copy JD"}
         </Button>
       </div>
-      <pre className="mt-3 whitespace-pre-wrap font-sans text-sm leading-relaxed text-court-fg">
-        {generated}
-      </pre>
+      <div
+        className={cn(
+          "mt-3 text-sm leading-relaxed text-court-fg",
+          // Paragraphs + inline marks. Bullets default to disc list-style;
+          // headings get an explicit two-step scale so H2 (top-level
+          // sections like "A Bit About Us") sit visibly heavier than H3
+          // (sub-sections like "Key Responsibilities and Duties"). H1 is
+          // unused in the JD format but styled for safety.
+          "[&_p]:mb-3 [&_p]:text-sm [&_p]:leading-relaxed",
+          "[&_strong]:font-bold [&_strong]:text-court-fg",
+          "[&_em]:italic",
+          "[&_h1]:mb-3 [&_h1]:mt-6 [&_h1]:font-serif [&_h1]:text-2xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_h1]:text-court-fg first:[&_h1]:mt-0",
+          "[&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-serif [&_h2]:text-xl [&_h2]:font-extrabold [&_h2]:tracking-tight [&_h2]:text-court-fg first:[&_h2]:mt-0",
+          "[&_h3]:mb-1.5 [&_h3]:mt-4 [&_h3]:font-serif [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-court-fg",
+          "[&_ul]:mb-3 [&_ul]:list-disc [&_ul]:space-y-1 [&_ul]:pl-5",
+          "[&_ul>li]:text-sm [&_ul>li]:leading-relaxed [&_ul>li]:text-court-fg",
+          "[&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:space-y-1 [&_ol]:pl-5",
+          "[&_ol>li]:text-sm [&_ol>li]:leading-relaxed [&_ol>li]:text-court-fg",
+        )}
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{generated}</ReactMarkdown>
+      </div>
     </div>
   );
 }
