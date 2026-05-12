@@ -144,7 +144,7 @@ function TopBarPageTitleInner() {
   };
 
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
+    <div className="flex min-w-0 items-center gap-4">
       {spec.title.href ? (
         <Link
           href={spec.title.href}
