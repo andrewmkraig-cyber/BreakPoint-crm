@@ -3,6 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import { useComposerManager } from "@/lib/composer-manager";
+import type { AttachmentDraft } from "@/app/mail/mail-composer";
+
 import {
   deleteInvoiceAction,
   markInvoicePaidAction,
@@ -62,8 +65,10 @@ export type InvoiceDetailProps = {
 
 export function InvoiceDetail(props: InvoiceDetailProps) {
   const router = useRouter();
+  const composer = useComposerManager();
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [draftingEmail, setDraftingEmail] = useState(false);
 
   const [roleTitle, setRoleTitle] = useState(props.roleTitle);
   const [startDate, setStartDate] = useState(props.startDate);
@@ -124,43 +129,82 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
     });
   }
 
-  function handleEmailDraft() {
-    const subject = encodeURIComponent(
-      `Invoice from ${props.billingCompanyName} — ${props.candidateName ? props.candidateName.split(" ").slice(-1)[0] : "placement"} (${props.invoiceNumber})`,
-    );
-    const firstName = billingPrimary?.name?.split(" ")[0] ?? "team";
-    const pdfUrl = typeof window !== "undefined" ? `${window.location.origin}/invoices/${props.id}/pdf` : "";
-    const lines = [
-      `Hi ${firstName},`,
-      "",
-      `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}. We're glad to have helped, and we're looking forward to seeing the impact.`,
-      "",
-      `Attached is invoice ${props.invoiceNumber} for the placement fee of ${formatUsd(feeAmount)}, with a start date of ${startDate ? new Date(startDate).toLocaleDateString() : "TBD"}. Payment is due ${dueDate ? new Date(dueDate).toLocaleDateString() : "TBD"} (${paymentTerms}).`,
-      "",
-      `ACH, wire, and check details are inside the PDF — please reference ${props.invoiceNumber} on payment. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it.`,
-      "",
-      `Thanks again for trusting ${props.billingCompanyName} with this search.`,
-      "",
-      "Best,",
-      props.accountExecName || "BreakPoint Talent",
-      "",
-      `PDF: ${pdfUrl}`,
-    ];
-    const body = encodeURIComponent(lines.join("\n"));
-    const to = encodeURIComponent(billingPrimary?.email ?? "");
-    const ccList = hiringContacts.map((c) => c.email).filter(Boolean).join(",");
-    // Reply-To routes any reply to Accounts Receivable so AR owns the
-    // conversation thread without needing to be on every outbound CC.
-    // Gmail's web compose reads the `reply-to` query param and pre-fills
-    // the Reply-To header on the draft.
-    const replyTo = props.billingArEmail || "ar@breakpointtalent.com";
-    const params: string[] = [];
-    if (ccList) params.push(`cc=${encodeURIComponent(ccList)}`);
-    params.push(`reply-to=${encodeURIComponent(replyTo)}`);
-    params.push(`subject=${subject}`);
-    params.push(`body=${body}`);
-    if (typeof window !== "undefined") {
-      window.open(`mailto:${to}?${params.join("&")}`, "_blank");
+  async function handleEmailDraft() {
+    if (draftingEmail) return;
+    setError(null);
+    setDraftingEmail(true);
+    try {
+      const lastName = props.candidateName
+        ? (props.candidateName.split(" ").slice(-1)[0] ?? "placement")
+        : "placement";
+      const firstName = billingPrimary?.name?.split(" ")[0] ?? "team";
+      const startLabel = startDate ? new Date(startDate).toLocaleDateString() : "TBD";
+      const dueLabel = dueDate ? new Date(dueDate).toLocaleDateString() : "TBD";
+      const signer = props.accountExecName || "Andrew";
+      const subject = `Invoice from ${props.billingCompanyName} - ${lastName} placement (${props.invoiceNumber})`;
+      const paragraphs = [
+        `Hi ${firstName},`,
+        `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}. We're glad to have helped, and we're looking forward to seeing the impact.`,
+        `Attached is invoice ${props.invoiceNumber} for the placement fee of ${formatUsd(feeAmount)}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
+        `ACH, wire, and check details are inside the PDF. Please reference ${props.invoiceNumber} on payment. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.`,
+        `Thanks again for trusting ${props.billingCompanyName} with this search.`,
+        `Best,<br />${signer}`,
+      ];
+      const body = paragraphs.map((p) => `<p>${p}</p>`).join("");
+      const to = billingPrimary?.email ?? "";
+      const cc = hiringContacts.map((c) => c.email).filter(Boolean).join(", ");
+
+      // Fetch the rendered invoice PDF and attach as a base64 draft so
+      // the recruiter doesn't have to re-attach by hand. The composer
+      // accepts AttachmentDraft[] via defaultAttachments and surfaces
+      // them in the attachments row exactly as if the user had dragged
+      // the file in.
+      let attachments: AttachmentDraft[] = [];
+      try {
+        const res = await fetch(`/invoices/${props.id}/pdf`, { cache: "no-store" });
+        if (res.ok) {
+          const blob = await res.blob();
+          const dataBase64 = await blobToBase64(blob);
+          attachments = [
+            {
+              key: `inv-${props.id}-${Date.now()}`,
+              filename: `${props.billingCompanyName} - ${props.invoiceNumber}.pdf`,
+              mimeType: "application/pdf",
+              sizeBytes: blob.size,
+              dataBase64,
+            },
+          ];
+        } else {
+          setError(`Couldn't attach PDF (status ${res.status}). You can attach it manually.`);
+        }
+      } catch (err) {
+        setError(
+          `Couldn't attach PDF: ${err instanceof Error ? err.message : "fetch failed"}. You can attach it manually.`,
+        );
+      }
+
+      const init = await fetch("/api/mail/compose-init", { cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+
+      composer.open({
+        defaultTo: to,
+        defaultCc: cc,
+        defaultSubject: subject,
+        defaultBody: body,
+        defaultAttachments: attachments,
+        templates: init?.templates ?? [],
+        mergeContext: {
+          user: {
+            firstName: init?.user?.firstName ?? "",
+            fullName: init?.user?.fullName ?? "",
+          },
+        },
+        modalTitle: "Draft invoice email",
+        nonBlocking: true,
+      });
+    } finally {
+      setDraftingEmail(false);
     }
   }
 
@@ -310,11 +354,11 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
             </button>
             <button
               type="button"
-              disabled={isPending}
+              disabled={isPending || draftingEmail}
               onClick={handleEmailDraft}
               className="rounded-full border border-court-border bg-court-surface px-4 py-2 text-[12px] font-semibold uppercase tracking-wider text-court-fg shadow-sm hover:bg-court-surface-subtle disabled:opacity-60"
             >
-              Draft Email
+              {draftingEmail ? "Opening…" : "Draft Email"}
             </button>
             <button
               type="button"
@@ -430,6 +474,23 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       </aside>
     </div>
   );
+}
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("FileReader did not return a string"));
+        return;
+      }
+      const comma = result.indexOf(",");
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("FileReader error"));
+    reader.readAsDataURL(blob);
+  });
 }
 
 const inputCls =

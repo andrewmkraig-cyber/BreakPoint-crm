@@ -1,7 +1,7 @@
 // Server-only PDF invoice template rendered with @react-pdf/renderer.
 // One-page US Letter, BreakPoint Talent branded. Charcoal + cream + a
 // single brand-green hairline rule under the header. No payment URLs,
-// no QR code — ACH/Wire/Check details live in a cream panel two-thirds
+// no QR code - ACH/Wire/Check details live in a cream panel two-thirds
 // of the way down the page.
 //
 // Visual order top → bottom:
@@ -16,10 +16,10 @@
 //   Footer              · one muted line: "EIN <ein> · Thank you for your business."
 //
 // Spacing was tightened in Ace 42 so the entire document fits on a single
-// US Letter page — section margins were reduced ~30% across the board and
+// US Letter page - section margins were reduced ~30% across the board and
 // the prior two-row footer was collapsed into a single inline line.
 //
-// Helvetica is the @react-pdf built-in — no font fetch needed. Playfair
+// Helvetica is the @react-pdf built-in - no font fetch needed. Playfair
 // Display + Inter from the design tokens require a runtime font fetch
 // which we skip in this MVP for reliability; the visual hierarchy is
 // preserved via weight + size + color.
@@ -66,20 +66,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "flex-end",
     paddingBottom: 10,
-    borderBottomWidth: 2,
+    borderBottomWidth: 1,
     borderBottomColor: BRAND_GREEN,
   },
-  brand: { flexDirection: "column" },
+  brand: { flexDirection: "column", maxWidth: "60%" },
   brandName: {
-    fontSize: 18,
+    fontSize: 14,
     fontFamily: "Helvetica-Bold",
-    letterSpacing: -0.4,
+    letterSpacing: -0.2,
     color: INK,
+    marginBottom: 3,
   },
   brandLine: { fontSize: 9, color: MUTED, marginTop: 1 },
   headerRight: { alignItems: "flex-end" },
   invoiceWord: {
-    fontSize: 32,
+    fontSize: 28,
     fontFamily: "Helvetica-Bold",
     color: INK,
     letterSpacing: -0.5,
@@ -298,7 +299,7 @@ export type InvoicePdfInput = {
 };
 
 function formatDate(d: Date | null | undefined): string {
-  if (!d) return "—";
+  if (!d) return "-";
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -307,7 +308,7 @@ function formatDate(d: Date | null | undefined): string {
 }
 
 function formatUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "-";
   return n.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
@@ -317,7 +318,7 @@ function formatUsd(n: number | null | undefined): string {
 }
 
 function formatUsdCompact(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
+  if (n == null || !Number.isFinite(n)) return "-";
   return n.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
@@ -429,9 +430,9 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           View,
           { style: styles.col },
           createElement(Text, { style: styles.sectionHeader }, "BILL TO"),
-          createElement(Text, { style: styles.contactCompany }, clientName || "—"),
+          createElement(Text, { style: styles.contactCompany }, clientName || "-"),
           primaryBilling
-            ? createElement(Text, { style: styles.contactLine }, primaryBilling.name || "—")
+            ? createElement(Text, { style: styles.contactLine }, primaryBilling.name || "-")
             : null,
           primaryBilling?.title
             ? createElement(Text, { style: styles.contactLine }, primaryBilling.title)
@@ -451,9 +452,9 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
             ? createElement(
                 Text,
                 { style: styles.contactName },
-                primaryHiring.name || "—",
+                primaryHiring.name || "-",
               )
-            : createElement(Text, { style: styles.contactLine }, "—"),
+            : createElement(Text, { style: styles.contactLine }, "-"),
           primaryHiring?.title
             ? createElement(Text, { style: styles.contactLine }, primaryHiring.title)
             : null,
@@ -471,13 +472,13 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
       createElement(
         View,
         { style: styles.summary },
-        summaryItem("CANDIDATE", candidateName || "—"),
-        summaryItem("ROLE", roleTitle || "—"),
-        summaryItem("START DATE", startDateLabel || "—"),
+        summaryItem("CANDIDATE", candidateName || "-"),
+        summaryItem("ROLE", roleTitle || "-"),
+        summaryItem("START DATE", startDateLabel || "-"),
         summaryItem("PLACEMENT TYPE", "Direct Hire"),
-        summaryItem("ACCOUNT EXEC", accountExecName || "—"),
+        summaryItem("ACCOUNT EXEC", accountExecName || "-"),
         summaryItem("BASE SALARY", formatUsdCompact(baseSalaryUsd)),
-        summaryItem("FEE %", feePercentage != null ? `${feePercentage}%` : "—"),
+        summaryItem("FEE %", feePercentage != null ? `${feePercentage}%` : "-"),
         summaryItem("GUARANTEE", "90 days"),
       ),
       // Services table
@@ -498,7 +499,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           createElement(
             Text,
             { style: styles.tdDescTitle },
-            `Placement Fee — ${candidateName || "candidate"}`,
+            `Placement Fee - ${candidateName || "candidate"}`,
           ),
           lineSub ? createElement(Text, { style: styles.tdDescSub }, lineSub) : null,
         ),
@@ -520,7 +521,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           View,
           { style: styles.totalRow },
           createElement(Text, { style: styles.totalLabel }, "Tax"),
-          createElement(Text, { style: styles.totalValue }, "—"),
+          createElement(Text, { style: styles.totalValue }, "-"),
         ),
         createElement(
           View,
@@ -548,22 +549,22 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
             createElement(
               Text,
               { style: styles.paymentLine },
-              `Beneficiary: ${billing.bankBeneficiary || "—"}`,
+              `Beneficiary: ${billing.bankBeneficiary || "-"}`,
             ),
             createElement(
               Text,
               { style: styles.paymentLine },
-              `Bank: ${billing.bankName || "—"}`,
+              `Bank: ${billing.bankName || "-"}`,
             ),
             createElement(
               Text,
               { style: styles.paymentLine },
-              `Routing: ${billing.bankRouting || "—"}`,
+              `Routing: ${billing.bankRouting || "-"}`,
             ),
             createElement(
               Text,
               { style: styles.paymentLine },
-              `Account: ${billing.bankAccount || "—"}`,
+              `Account: ${billing.bankAccount || "-"}`,
             ),
             billing.bankSwift
               ? createElement(
@@ -605,7 +606,7 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
             createElement(Text, { style: styles.noteBody }, trimmedNotes),
           )
         : null,
-      // Footer — single muted line: "EIN <ein> · Thank you for your business."
+      // Footer - single muted line: "EIN <ein> · Thank you for your business."
       // Falls back to the BreakPoint EIN if the workspace hasn't saved
       // one yet so the footer always renders complete on the test invoice
       // and on legacy invoices created before the EIN default landed.
