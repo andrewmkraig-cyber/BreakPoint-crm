@@ -8,6 +8,7 @@ import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import { TabStrip } from "@/components/ui/tab-strip";
 
 export type JobLifecycle = "active" | "private" | "inactive";
 
@@ -267,33 +268,15 @@ function Tabs({
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      <TabLink label="Active" count={activeCount} active={tab === "active"} href={buildHref({ tab: "active", page: 1 })} />
-      <TabLink label="Private" count={privateCount} active={tab === "private"} href={buildHref({ tab: "private", page: 1 })} />
-      <TabLink label="Inactive" count={inactiveCount} active={tab === "inactive"} href={buildHref({ tab: "inactive", page: 1 })} />
-    </div>
-  );
-}
-
-function TabLink({ label, count, active, href }: { label: string; count: number; active: boolean; href: string }) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-court-accent-tint text-court-accent-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
-      )}
-    >
-      <span>{label}</span>
-      <span
-        className={cn(
-          "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          active ? "bg-court-accent text-court-surface" : "bg-court-surface-subtle text-court-fg-muted",
-        )}
-      >
-        {count.toLocaleString()}
-      </span>
-    </Link>
+    <TabStrip<JobLifecycle>
+      ariaLabel="Job lifecycle"
+      activeId={tab}
+      items={[
+        { id: "active", label: "Active", count: activeCount, href: buildHref({ tab: "active", page: 1 }) },
+        { id: "private", label: "Private", count: privateCount, href: buildHref({ tab: "private", page: 1 }) },
+        { id: "inactive", label: "Inactive", count: inactiveCount, href: buildHref({ tab: "inactive", page: 1 }) },
+      ]}
+    />
   );
 }
 

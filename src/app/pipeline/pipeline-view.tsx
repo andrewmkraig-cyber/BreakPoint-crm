@@ -12,6 +12,7 @@ import { EmailPopupLauncher } from "@/components/email-popup-launcher";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import { TabStrip } from "@/components/ui/tab-strip";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
@@ -483,46 +484,16 @@ function StageTabs({
   buildHref: (overrides: Record<string, string | number | undefined>) => string;
 }) {
   return (
-    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      {STAGE_ORDER.map((s) => (
-        <StageTab
-          key={s}
-          label={PIPELINE_LABELS[s]}
-          count={counts[s]}
-          active={stage === s}
-          href={buildHref({ stage: s, page: 1 })}
-        />
-      ))}
-    </div>
-  );
-}
-
-function StageTab({ label, count, active, href }: { label: string; count: number; active: boolean; href: string }) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active
-          ? "bg-court-accent-tint text-court-accent-dark"
-          : "text-court-fg-muted hover:bg-court-surface-subtle",
-      )}
-    >
-      <span>{label}</span>
-      <span
-        className={cn(
-          "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          // Active pill uses the same two-tone emerald shared across
-          // the app's primary buttons; inactive pill tracks the
-          // muted court palette.
-          active
-            ? "border border-court-brand bg-court-brand-tint text-court-brand-dark"
-            : "bg-court-surface-subtle text-court-fg-muted",
-        )}
-      >
-        {count.toLocaleString()}
-      </span>
-    </Link>
+    <TabStrip<Stage>
+      ariaLabel="Pipeline stage"
+      activeId={stage}
+      items={STAGE_ORDER.map((s) => ({
+        id: s,
+        label: PIPELINE_LABELS[s],
+        count: counts[s],
+        href: buildHref({ stage: s, page: 1 }),
+      }))}
+    />
   );
 }
 

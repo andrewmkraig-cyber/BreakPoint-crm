@@ -37,6 +37,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 
 // Per-job sourcing surface. Structurally a clone of /candidates' rail +
@@ -1490,31 +1491,17 @@ export function MatchesTab({
               </div>
             </div>
 
-            <div className="flex border-b border-court-border/60 bg-white">
-              {(
-                [
-                  { id: "all", label: "All", n: sidebarRows.length },
-                  { id: "submitted", label: "Submitted", n: 0 },
-                ] as const
-              ).map((t) => {
-                const active = sidebarTab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setSidebarTab(t.id)}
-                    className={
-                      "flex-1 border-b-2 py-2.5 text-xs font-semibold transition " +
-                      (active
-                        ? "border-court-accent text-court-fg"
-                        : "border-transparent text-court-fg-muted hover:text-court-fg")
-                    }
-                  >
-                    {t.label}
-                    <span className="ml-1 text-court-fg-muted/70">{t.n}</span>
-                  </button>
-                );
-              })}
+            <div className="border-b border-court-border/60 bg-court-surface px-3 py-2">
+              <TabStrip<"all" | "submitted">
+                ariaLabel="Candidate scope"
+                activeId={sidebarTab}
+                onChange={setSidebarTab}
+                fullWidth
+                items={[
+                  { id: "all", label: "All", count: sidebarRows.length },
+                  { id: "submitted", label: "Submitted", count: 0 },
+                ]}
+              />
             </div>
 
             <div className="flex-1 overflow-y-auto">
@@ -1734,34 +1721,16 @@ export function MatchesTab({
               pulls the rejected bucket for this job (no filter
               required). Rejected count surfaces here once a fetch
               lands so the recruiter can see triage volume at a glance. */}
-          <div className="flex border-b border-court-border bg-court-surface">
-            {(
-              [
-                { id: "all" as const, label: "All" },
-                { id: "rejected" as const, label: "Rejected" },
-              ]
-            ).map((t) => {
-              const active = view === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setView(t.id)}
-                  className={
-                    "border-b-2 px-4 py-2.5 text-xs font-semibold transition " +
-                    (active
-                      ? "border-court-accent text-court-fg"
-                      : "border-transparent text-court-fg-muted hover:text-court-fg")
-                  }
-                  aria-current={active ? "page" : undefined}
-                >
-                  {t.label}
-                  {active && total != null ? (
-                    <span className="ml-1.5 text-court-fg-muted/70">{total}</span>
-                  ) : null}
-                </button>
-              );
-            })}
+          <div className="border-b border-court-border bg-court-surface px-4 py-2.5">
+            <TabStrip<ResultsView>
+              ariaLabel="Match results scope"
+              activeId={view}
+              onChange={setView}
+              items={[
+                { id: "all", label: "All", count: view === "all" && total != null ? total : undefined },
+                { id: "rejected", label: "Rejected", count: view === "rejected" && total != null ? total : undefined },
+              ]}
+            />
           </div>
 
           <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-4 py-3">

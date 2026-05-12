@@ -28,7 +28,7 @@ import AiWorkspace from "@/components/AiWorkspace";
 import { ActivityFeed } from "@/components/activity-feed";
 import { ensureMajorBoardsSeeded, listJobBoardStatuses } from "@/lib/job-boards";
 import { prisma } from "@/lib/prisma";
-import { cn } from "@/lib/utils";
+import { TabStrip } from "@/components/ui/tab-strip";
 
 export const dynamic = "force-dynamic";
 
@@ -487,16 +487,15 @@ export default async function JobDetailPage({
 
 function JobTabs({ slug, tab }: { slug: string; tab: JobTab }) {
   return (
-    <div className="inline-flex flex-wrap items-center gap-1 rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      {JOB_TABS.map((t) => (
-        <JobTabLink
-          key={t.id}
-          label={t.label}
-          href={t.id === "overview" ? `/jobs/${slug}` : `/jobs/${slug}?tab=${t.id}`}
-          active={tab === t.id}
-        />
-      ))}
-    </div>
+    <TabStrip<JobTab>
+      ariaLabel="Job sections"
+      activeId={tab}
+      items={JOB_TABS.map((t) => ({
+        id: t.id,
+        label: t.label,
+        href: t.id === "overview" ? `/jobs/${slug}` : `/jobs/${slug}?tab=${t.id}`,
+      }))}
+    />
   );
 }
 
@@ -552,20 +551,4 @@ function formatCompSummary(state: {
   return `${fmt(only)}${suffix}`;
 }
 
-function JobTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
-        active
-          ? "bg-court-accent-tint text-court-accent-dark ring-1 ring-court-accent/40"
-          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
-      )}
-    >
-      {label}
-    </Link>
-  );
-}
 

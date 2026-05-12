@@ -7,6 +7,7 @@ import { LayoutGrid, List, Search } from "lucide-react";
 import { ClientLogo } from "@/components/clients/client-logo";
 import { PipelinePill } from "@/components/clients/pipeline-pill";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import { TabStrip } from "@/components/ui/tab-strip";
 
 // Existing data shape — unchanged. Owned by the server side; the
 // client-side renderer reads it directly. id is the Neon cuid (for
@@ -264,30 +265,15 @@ export function ClientsView({
           the tab strip. */}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <div className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface p-1">
-          {([
-            { k: "active" as const, l: "Active", n: activeCards.length },
-            { k: "inactive" as const, l: "Inactive", n: inactiveCards.length },
-          ]).map((t) => (
-            <button
-              key={t.k}
-              type="button"
-              onClick={() => setTab(t.k)}
-              className={`flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
-                tab === t.k ? "bg-brand text-white" : "text-court-fg-muted hover:text-court-fg"
-              }`}
-            >
-              {t.l}
-              <span
-                className={`flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
-                  tab === t.k ? "bg-white/25 text-white" : "bg-court-surface-subtle text-court-fg"
-                }`}
-              >
-                {t.n}
-              </span>
-            </button>
-          ))}
-        </div>
+        <TabStrip<"active" | "inactive">
+          ariaLabel="Client status"
+          activeId={tab}
+          onChange={setTab}
+          items={[
+            { id: "active", label: "Active", count: activeCards.length },
+            { id: "inactive", label: "Inactive", count: inactiveCards.length },
+          ]}
+        />
 
         <div className="relative min-w-[280px] flex-1">
           <Search size={14} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-court-fg-muted" />

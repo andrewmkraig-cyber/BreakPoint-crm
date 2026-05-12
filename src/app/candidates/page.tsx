@@ -45,6 +45,7 @@ import {
 } from "react";
 import { toast } from "sonner";
 import { Button, ADD_TO_LIST_BUTTON_CLASS } from "@/components/ui/button";
+import { TabStrip } from "@/components/ui/tab-strip";
 import { cn } from "@/lib/utils";
 
 const DISTANCE_OPTIONS = [10, 25, 50, 100];
@@ -1411,31 +1412,17 @@ export default function CandidatesPage() {
             {/* Tabs row. Submitted is presentation-only until the row
                 payload exposes per-candidate stage data — it shows the
                 count but doesn't filter the list. */}
-            <div className="flex border-b border-court-border/60 bg-court-surface">
-              {(
-                [
-                  { id: "all", label: "All", n: sidebarRows.length },
-                  { id: "submitted", label: "Submitted", n: 0 },
-                ] as const
-              ).map((t) => {
-                const active = sidebarTab === t.id;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => setSidebarTab(t.id)}
-                    className={
-                      "flex-1 border-b-2 py-2.5 text-xs font-semibold transition " +
-                      (active
-                        ? "border-court-accent text-court-fg"
-                        : "border-transparent text-court-fg-muted hover:text-court-fg")
-                    }
-                  >
-                    {t.label}
-                    <span className="ml-1 text-court-fg-muted/70">{t.n}</span>
-                  </button>
-                );
-              })}
+            <div className="border-b border-court-border/60 bg-court-surface px-3 py-2">
+              <TabStrip<"all" | "submitted">
+                ariaLabel="Candidate scope"
+                activeId={sidebarTab}
+                onChange={setSidebarTab}
+                fullWidth
+                items={[
+                  { id: "all", label: "All", count: sidebarRows.length },
+                  { id: "submitted", label: "Submitted", count: 0 },
+                ]}
+              />
             </div>
 
             {/* Scrollable list — sticky group headers, two-line rows */}
