@@ -1,16 +1,19 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  GripVertical,
   Mail,
   MessageSquare,
   PhoneCall,
   Plus,
   Search,
+  Send,
   StickyNote,
   X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useComposerManager } from "@/lib/composer-manager";
 import {
   usePhonePanels,
@@ -101,6 +104,67 @@ export function ComposeFAB() {
   const [phoneMode, setPhoneMode] = useState<"text" | "call">("text");
 
   const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  // Drag state for the New text / New call sub-view. The FAB's other
+  // sub-views (menu / notes) stay as anchored popovers — only the
+  // phone composer can be dragged around because it's where the
+  // recruiter parks for a while typing.
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef<{ offX: number; offY: number } | null>(null);
+  // Reset the drag position when the popover closes so the next open
+  // re-anchors top-right under the header instead of remembering the
+  // last drop spot from a prior open.
+  useEffect(() => {
+    if (!open) setDragPos(null);
+  }, [open]);
+  const clampPos = useCallback((x: number, y: number, w: number, h: number) => {
+    if (typeof window === "undefined") return { x, y };
+    const maxX = Math.max(0, window.innerWidth - w);
+    const maxY = Math.max(0, window.innerHeight - h);
+    return { x: Math.min(Math.max(0, x), maxX), y: Math.min(Math.max(0, y), maxY) };
+  }, []);
+  useEffect(() => {
+    if (!isDragging) return;
+    function onMove(e: MouseEvent) {
+      const node = popoverRef.current;
+      if (!dragRef.current || !node) return;
+      const rect = node.getBoundingClientRect();
+      const next = clampPos(
+        e.clientX - dragRef.current.offX,
+        e.clientY - dragRef.current.offY,
+        rect.width,
+        rect.height,
+      );
+      setDragPos(next);
+    }
+    function onUp() {
+      setIsDragging(false);
+      dragRef.current = null;
+    }
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    const prevSelect = document.body.style.userSelect;
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.userSelect = prevSelect;
+    };
+  }, [isDragging, clampPos]);
+  function onDragHandleMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    // Don't kick off a drag when the user clicks an interactive child
+    // (Back / Close buttons live in the same header strip).
+    if ((e.target as HTMLElement).closest("button")) return;
+    const node = popoverRef.current;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    // Seed dragPos with the current anchored position so the first
+    // mousemove doesn't jump the popover to (0,0).
+    if (!dragPos) setDragPos({ x: rect.left, y: rect.top });
+    dragRef.current = { offX: e.clientX - rect.left, offY: e.clientY - rect.top };
+    setIsDragging(true);
+  }
 
   const composer = useComposerManager();
   const phonePanels = usePhonePanels();
@@ -389,6 +453,11 @@ export function ComposeFAB() {
       if (e.key === "Escape") closeAll();
     }
     function onClick(e: MouseEvent) {
+      // The New Text / New Call sub-view is treated as a sticky modal
+      // — the recruiter parks there to compose, so an off-popover
+      // click shouldn't dismiss it. Only the menu and notes sub-views
+      // (transient picker affordances) auto-close on outside click.
+      if (view === "phone") return;
       const node = popoverRef.current;
       if (!node) return;
       if (e.target instanceof Node && !node.contains(e.target)) {
@@ -402,7 +471,7 @@ export function ComposeFAB() {
       document.removeEventListener("mousedown", onClick);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, view]);
 
   function closeAll() {
     setOpen(false);
@@ -568,10 +637,15 @@ export function ComposeFAB() {
           ref={popoverRef}
           role="dialog"
           aria-label="Quick action"
-          // Anchored to the top-right under the header (h-24 = 96px)
-          // since the trigger now sits in the user-info cluster on the
-          // right side of the TopBar. Plus 4px so the popover sits just
-          // below the header's bottom border.
+          // Anchored to the top-right under the header until the
+          // recruiter drags it — once dragPos is set, switch to
+          // explicit positioning. The phone sub-view's header is the
+          // drag handle (see onDragHandleMouseDown below).
+          style={
+            dragPos
+              ? { left: dragPos.x, top: dragPos.y, right: "auto" }
+              : undefined
+          }
           className="fixed right-6 top-[100px] z-[1001] w-80 rounded-xl border border-court-border bg-court-surface shadow-2xl"
         >
           {view === "menu" && (
@@ -618,19 +692,28 @@ export function ComposeFAB() {
 
           {view === "phone" && (
             <div className="p-3">
-              <div className="flex items-center justify-between pb-2">
+              <div
+                onMouseDown={onDragHandleMouseDown}
+                className={
+                  "flex items-center justify-between pb-2 select-none " +
+                  (isDragging ? "cursor-grabbing" : "cursor-grab")
+                }
+              >
                 <button
                   type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={() => setView("menu")}
                   className="text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg"
                 >
                   ← Back
                 </button>
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                  <GripVertical className="h-3 w-3" aria-hidden="true" />
                   {phoneMode === "call" ? "New call" : "New text"}
                 </span>
                 <button
                   type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={closeAll}
                   aria-label="Close"
                   className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
@@ -785,24 +868,26 @@ export function ComposeFAB() {
               </div>
               <div className="mt-3 flex items-center gap-2 border-t border-court-border pt-3">
                 {phoneMode === "call" ? (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={commitCall}
                     disabled={!pendingContact}
-                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-court-brand text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full justify-center"
                   >
-                    <PhoneCall className="h-3.5 w-3.5" />
+                    <PhoneCall className="h-3 w-3" />
                     Make call
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     type="button"
+                    size="sm"
                     onClick={commitText}
-                    className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-md bg-court-brand text-xs font-semibold text-white shadow-sm transition hover:bg-court-brand-dark"
+                    className="w-full justify-center"
                   >
-                    <MessageSquare className="h-3.5 w-3.5" />
+                    <Send className="h-3 w-3" />
                     Send text
-                  </button>
+                  </Button>
                 )}
               </div>
             </div>
