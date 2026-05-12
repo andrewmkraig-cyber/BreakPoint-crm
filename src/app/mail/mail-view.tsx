@@ -70,6 +70,7 @@ export function MailView({
   // popped-out FloatingThreadWindow.
   const [archiving, setArchiving] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
+  const [markingUnread, setMarkingUnread] = useState<string | null>(null);
   // Bulk-selection set: thread IDs the user has checkbox-ticked.
   // Stays a Set so add/remove is cheap and Set identity changes
   // trigger re-renders only when the contents actually change.
@@ -608,6 +609,40 @@ export function MailView({
       });
     } finally {
       setArchiving(null);
+    }
+  }
+
+  // Re-applies UNREAD to a thread the recruiter has already opened.
+  // Use case: "I read it but want it to pop back to bold so I remember
+  // to act on it later." Flips the row back to unread, closes the
+  // detail pane, and force-refreshes the sidebar badge count so the
+  // counter bumps immediately instead of lagging on the 30s poll.
+  async function markThreadUnread(id: string) {
+    setMarkingUnread(id);
+    try {
+      const res = await fetch(`/api/mail/threads/${encodeURIComponent(id)}/unread`, {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error("Couldn't mark unread", { description: body?.error ?? `HTTP ${res.status}` });
+        return;
+      }
+      setThreads((prev) =>
+        prev.map((t) => (t.id === id && !t.unread ? { ...t, unread: true } : t)),
+      );
+      if (selected === id) {
+        setSelected(null);
+        setDetail(null);
+      }
+      void refreshUnread();
+      toast.success("Marked unread");
+    } catch (e) {
+      toast.error("Couldn't mark unread", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setMarkingUnread(null);
     }
   }
 
@@ -1205,12 +1240,14 @@ export function MailView({
             selectedThread={selectedThread}
             archiving={archiving === detail.id}
             moving={moving === detail.id}
+            markingUnread={markingUnread === detail.id}
             labels={userLabels}
             currentUserEmail={currentUserEmail}
             currentUserFirstName={currentUserFirstName}
             currentUserFullName={currentUserFullName}
             templates={templates}
             onArchive={() => archiveThread(detail.id)}
+            onMarkUnread={() => markThreadUnread(detail.id)}
             onMove={(labelId, labelName) => moveThread(detail.id, labelId, labelName)}
             onCreateAndApplyLabel={(name) => createLabelAndApplyToThread(detail.id, name)}
             onSent={() => {
@@ -1603,12 +1640,14 @@ export type ThreadDetailProps = {
   selectedThread: MailListThread | null;
   archiving: boolean;
   moving: boolean;
+  markingUnread: boolean;
   labels: Array<{ id: string; name: string }> | null;
   currentUserEmail: string;
   currentUserFirstName: string;
   currentUserFullName: string;
   templates: ActiveTemplateSummary[];
   onArchive: () => void;
+  onMarkUnread: () => void;
   onMove: (labelId: string, labelName: string) => void;
   // Optional: when provided, the Move To dropdown shows a "New label…"
   // option that creates the label in Gmail and applies it to this
@@ -1642,12 +1681,14 @@ export function ThreadDetail({
   selectedThread,
   archiving,
   moving,
+  markingUnread,
   labels,
   currentUserEmail,
   currentUserFirstName,
   currentUserFullName,
   templates,
   onArchive,
+  onMarkUnread,
   onMove,
   onCreateAndApplyLabel,
   onSent,
@@ -2046,6 +2087,16 @@ export function ThreadDetail({
           >
             {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
             Archive
+          </button>
+          <button
+            type="button"
+            onClick={onMarkUnread}
+            disabled={markingUnread}
+            title="Mark this thread unread"
+            className="inline-flex items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg disabled:opacity-60"
+          >
+            {markingUnread ? <Loader2 className="h-3 w-3 animate-spin" /> : <MailIcon className="h-3 w-3" />}
+            Mark Unread
           </button>
           <MoveToMenu
             labels={labels}

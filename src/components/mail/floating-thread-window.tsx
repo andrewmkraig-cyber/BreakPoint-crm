@@ -64,6 +64,7 @@ export function FloatingThreadWindow() {
   const [error, setError] = useState<string | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [markingUnread, setMarkingUnread] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   // composerMode lives here (not in ThreadDetail) so the action toolbar
   // can ride on this window's title bar instead of duplicating chrome
@@ -272,6 +273,32 @@ export function FloatingThreadWindow() {
     }
   }
 
+  async function markUnreadCurrent() {
+    if (!detail) return;
+    setMarkingUnread(true);
+    try {
+      const res = await fetch(
+        `/api/mail/threads/${encodeURIComponent(detail.id)}/unread`,
+        { method: "POST" },
+      );
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error("Couldn't mark unread", {
+          description: body?.error ?? `HTTP ${res.status}`,
+        });
+        return;
+      }
+      toast.success("Marked unread");
+      close();
+    } catch (e) {
+      toast.error("Couldn't mark unread", {
+        description: e instanceof Error ? e.message : "unknown error",
+      });
+    } finally {
+      setMarkingUnread(false);
+    }
+  }
+
   async function moveCurrent(labelId: string, labelName: string) {
     if (!detail) return;
     setMoving(true);
@@ -460,12 +487,14 @@ export function FloatingThreadWindow() {
                 selectedThread={selectedThreadShim}
                 archiving={archiving}
                 moving={moving}
+                markingUnread={markingUnread}
                 labels={toolkit.labels}
                 currentUserEmail={toolkit.currentUserEmail}
                 currentUserFirstName={toolkit.currentUserFirstName}
                 currentUserFullName={toolkit.currentUserFullName}
                 templates={toolkit.templates}
                 onArchive={archiveCurrent}
+                onMarkUnread={markUnreadCurrent}
                 onMove={moveCurrent}
                 onSent={() => {
                   setComposerMode(null);

@@ -69,6 +69,7 @@ model User {
   // CandidateList.createdBy.
   createdCandidateLists CandidateList[]          @relation("CandidateListCreatedBy")
   chessPuzzleStreak     ChessPuzzleStreak?
+  funFactFeedback       FunFactFeedback[]
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -924,7 +925,7 @@ model Organization {
   dailyNewsFeeds       DailyNewsFeed[]
   chessPuzzlesOfDay    ChessPuzzleOfDay[]
   chessPuzzleStreaks   ChessPuzzleStreak[]
-  onThisDayEvents      OnThisDayEvent[]
+  funFacts             FunFact[]
 }
 
 model ClaudePanelMessage {
@@ -1170,23 +1171,44 @@ model ChessPuzzleStreak {
   @@index([organizationId])
 }
 
-// One Wikipedia "on this day" event per (org, ET day). The route picks
-// a single event server-side (preferring older + substantive entries)
-// and persists it so everyone in the org sees the same fun fact. Year
-// is nullable on Wikipedia's payload but always present after our
-// pickEvent filter — store as Int.
-model OnThisDayEvent {
+// One Claude-generated fun fact per (org, ET day). The route rotates
+// through topic categories (history, technology, science, geography,
+// trivia) with weights biased by each user's recent thumbs feedback —
+// so liked topics surface more often, disliked topics fade. Year is
+// optional because non-history topics often don't have one.
+model FunFact {
   id             String   @id @default(cuid())
   organizationId String
-  year           Int
+  topic          String
+  year           Int?
   text           String   @db.Text
   generatedDate  DateTime @db.Date
   createdAt      DateTime @default(now())
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  feedback     FunFactFeedback[]
 
   @@unique([organizationId, generatedDate])
   @@index([organizationId])
+}
+
+// Per-user thumbs up/down feedback on a FunFact. The next day's
+// generator reads this to bias topic selection toward the user's
+// likes. One vote per (factId, userId); re-voting overwrites.
+model FunFactFeedback {
+  id        String   @id @default(cuid())
+  factId    String
+  userId    String
+  vote      Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  fact FunFact @relation(fields: [factId], references: [id], onDelete: Cascade)
+  user User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([factId, userId])
+  @@index([userId])
+  @@index([factId])
 }
 
 // One row per (org, tab, ET day). The /api/news-feed route checks for

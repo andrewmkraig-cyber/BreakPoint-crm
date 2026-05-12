@@ -5,7 +5,7 @@ import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { WordOfDayCard } from "@/components/word-of-day-card";
 import { ChessPuzzle } from "@/components/chess-puzzle";
-import { OnThisDay } from "@/components/on-this-day";
+import { FunFact } from "@/components/fun-fact";
 import { Horoscope } from "@/components/horoscope";
 
 // Editorial briefing layout: header, four tabs, one lead story, three
@@ -13,8 +13,8 @@ import { Horoscope } from "@/components/horoscope";
 // backs all four tabs. Collapse persists in localStorage so the
 // recruiter's choice survives reload.
 //
-// The header also hosts the daily-companion chips (Chess, Word, On
-// This Day, Horoscope) at the top-right of the bubble — chess leads
+// The header also hosts the daily-companion chips (Chess, Word, Fun
+// Fact, Horoscope) at the top-right of the bubble — chess leads
 // because it's the one Andrew interacts with most. Quote of the Day
 // was dropped from this row to keep four chips fitting cleanly. Their
 // popovers anchor `bottom-full` so they open up into the dashboard
@@ -226,7 +226,7 @@ export function NewsFeed() {
         <div className="flex flex-wrap items-center justify-end gap-1.5">
           <ChessPuzzle />
           <WordOfDayCard />
-          <OnThisDay />
+          <FunFact />
           <Horoscope />
           <button
             type="button"

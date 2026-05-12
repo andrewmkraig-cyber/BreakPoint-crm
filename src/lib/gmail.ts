@@ -1123,6 +1123,29 @@ export async function markGmailThreadRead(userId: string, threadId: string): Pro
   }
 }
 
+// Inverse of markGmailThreadRead — re-applies UNREAD so a recruiter
+// who has already opened a thread can flag it for follow-up in their
+// native Gmail inbox view.
+export async function markGmailThreadUnread(userId: string, threadId: string): Promise<void> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/threads/${encodeURIComponent(threadId)}/modify`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ addLabelIds: ["UNREAD"] }),
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail thread.markUnread failed (${res.status}): ${text || "no body"}`);
+  }
+}
+
 // ---- Mail Tab reply (Phase 6.1) ----
 // Fetches the Message-ID of the latest message in a thread so outbound
 // replies can set the standard In-Reply-To / References headers. Gmail
