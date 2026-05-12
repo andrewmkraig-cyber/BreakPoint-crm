@@ -609,26 +609,45 @@ export function MailComposer({
           "min-h-[200px] w-full whitespace-pre-wrap bg-transparent px-4 py-3 font-sans text-sm leading-relaxed text-court-fg outline-none [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-6 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_li]:my-0.5 [&_li>p]:my-0 [&_a]:text-brand [&_a]:underline",
       },
       handlePaste(view, event) {
-        const items = event.clipboardData?.items;
-        if (!items) return false;
-        for (const item of Array.from(items)) {
-          if (item.kind === "file" && item.type.startsWith("image/")) {
-            const file = item.getAsFile();
-            if (!file) continue;
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result;
-              if (typeof result !== "string") return;
-              view.dispatch(
-                view.state.tr.replaceSelectionWith(
-                  view.state.schema.nodes.image.create({ src: result }),
-                ),
-              );
-            };
-            reader.readAsDataURL(file);
-            event.preventDefault();
-            return true;
+        const data = event.clipboardData;
+        if (!data) return false;
+        // Image paste: convert blobs to inline data: URLs so the
+        // pasted screenshot lands in the sent email.
+        const items = data.items;
+        if (items) {
+          for (const item of Array.from(items)) {
+            if (item.kind === "file" && item.type.startsWith("image/")) {
+              const file = item.getAsFile();
+              if (!file) continue;
+              const reader = new FileReader();
+              reader.onload = () => {
+                const result = reader.result;
+                if (typeof result !== "string") return;
+                view.dispatch(
+                  view.state.tr.replaceSelectionWith(
+                    view.state.schema.nodes.image.create({ src: result }),
+                  ),
+                );
+              };
+              reader.readAsDataURL(file);
+              event.preventDefault();
+              return true;
+            }
           }
+        }
+        // HTML paste: tiptap's default paste path can flatten unsupported
+        // structures (e.g. Copy JD's markdown-derived HTML, Google Docs
+        // spans, Gmail quoted blocks) down to plain text. Pulling the
+        // text/html clipboard item explicitly and feeding it to
+        // editor.commands.insertContent lets tiptap parse it into the
+        // schema so bold headers + bullet lists render formatted inline.
+        const html = data.getData("text/html");
+        if (html && html.trim()) {
+          event.preventDefault();
+          editor?.commands.insertContent(html, {
+            parseOptions: { preserveWhitespace: false },
+          });
+          return true;
         }
         return false;
       },

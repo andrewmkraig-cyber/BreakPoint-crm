@@ -2241,17 +2241,28 @@ function computeReplyRecipients(
   }
 
   // Someone else sent the last message to me; reply to them.
-  // Cc anyone who was on the Cc line of that inbound message, minus me.
-  const ccMinusMe = ccAddresses
-    .filter((a) => a.email.toLowerCase() !== myLower)
-    .map((a) => a.original)
-    .join(", ");
+  // Cc anyone who was on the To OR Cc lines of that inbound message,
+  // minus me and minus the sender (who's already in To). Dedupe by
+  // lowercased email so the same person can't appear twice if they
+  // landed on both To and Cc.
   const to = fromEmail || selectedThread?.fromEmail || "";
+  const fromLower = (fromEmail || "").toLowerCase();
+  const seen = new Set<string>();
+  const ccCombined: string[] = [];
+  for (const a of [...toAddresses, ...ccAddresses]) {
+    const lower = a.email.toLowerCase();
+    if (!lower) continue;
+    if (lower === myLower) continue;
+    if (lower === fromLower) continue;
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+    ccCombined.push(a.original);
+  }
   return {
     // Belt-and-suspenders guard against still landing on my own email
     // (e.g. a truly self-addressed thread — rare but possible).
     defaultTo: to.toLowerCase() === myLower ? "" : to,
-    defaultCc: ccMinusMe,
+    defaultCc: ccCombined.join(", "),
   };
 }
 
