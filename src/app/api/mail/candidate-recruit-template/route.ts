@@ -80,8 +80,10 @@ export async function POST(
   };
 
   // Render once with everything, then iteratively trim the priority
-  // sections until under the limit. Each trim drops the last bullet
-  // from the chosen section and ensures the section ends with "...".
+  // sections until under the limit. Each iteration drops the last
+  // bullet from the longest section — no ellipsis marker, no
+  // trailing "..." bullet. The last visible bullet stays a complete
+  // sentence; the recruiter sees a clean list with fewer items.
   let rendered = render({
     jobTitle,
     jobCity,
@@ -97,24 +99,8 @@ export async function POST(
     const longest = pickSectionToTrim(sections);
     if (!longest) break;
     const arr = sections[longest];
-    if (arr.length === 0) {
-      // Section is already empty; remove it from rotation by clearing the
-      // sentinel and continuing — the next iteration will pick another.
-      // (Setting to empty array means pickSectionToTrim filters it out.)
-      continue;
-    }
-    // Drop the last bullet; keep "..." as the new trailing bullet to
-    // signal truncation. If a "..." is already there, drop the bullet
-    // BEFORE it so the marker stays.
-    const last = arr[arr.length - 1];
-    if (last === "…" || last === "...") {
-      // Need to remove the bullet just before the marker.
-      if (arr.length >= 2) arr.splice(arr.length - 2, 1);
-      else arr.pop();
-    } else {
-      arr.pop();
-      arr.push("…");
-    }
+    if (arr.length === 0) continue;
+    arr.pop();
     truncated = true;
     rendered = render({
       jobTitle,
@@ -261,15 +247,13 @@ function textLength(html: string): number {
 function pickSectionToTrim(sections: Record<SectionKey, string[]>): SectionKey | null {
   // Choose the longest section by character count. Ties resolve by the
   // user-specified priority order: responsibilities > requirements >
-  // benefits. Empty sections (or sections with just the "…" marker) are
-  // skipped — nothing left to trim.
+  // benefits. Empty sections are skipped — nothing left to trim.
   let best: SectionKey | null = null;
   let bestLen = -1;
   for (const key of TRUNCATION_PRIORITY) {
     const arr = sections[key];
-    const trimmable = arr.filter((b) => b !== "…" && b !== "...");
-    if (trimmable.length === 0) continue;
-    const len = trimmable.join(" ").length;
+    if (arr.length === 0) continue;
+    const len = arr.join(" ").length;
     if (len > bestLen) {
       best = key;
       bestLen = len;
