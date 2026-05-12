@@ -20,6 +20,7 @@ export const SETTINGS_CATEGORIES = [
   { slug: "branding",          label: "Branding" },
   { slug: "templates",         label: "Templates" },
   { slug: "triggers",          label: "Triggers" },
+  { slug: "billing",           label: "Billing" },
   { slug: "bd",                label: "BD Engine" },
   { slug: "connectors",        label: "Connectors" },
   { slug: "personal-info",     label: "Personal Info" },

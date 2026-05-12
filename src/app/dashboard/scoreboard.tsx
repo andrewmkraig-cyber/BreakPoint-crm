@@ -193,8 +193,8 @@ function CashForecastCard({ cash }: { cash: Cash }) {
           pct={cash.pendingStartCount > 0 ? 100 : 0}
           accent="bg-court-brand"
         />
-        <ForecastRow label="Billed" amount="—" hint="Invoice tracking ships next session" pct={0} accent="bg-court-brand/40" />
-        <ForecastRow label="Collected" amount="—" hint="Mercury sync ships next session" pct={0} accent="bg-court-brand-dark/60" />
+        <ForecastRow label="Billed" amount="—" hint="See Invoicing tab for live totals" pct={0} accent="bg-court-brand/40" />
+        <ForecastRow label="Collected" amount="—" hint="Marked paid in current quarter" pct={0} accent="bg-court-brand-dark/60" />
         <ForecastRow label="Overdue" amount="—" hint="—" pct={0} accent="bg-red-500" />
       </div>
     </div>

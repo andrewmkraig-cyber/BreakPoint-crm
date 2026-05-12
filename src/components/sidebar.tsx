@@ -13,6 +13,7 @@ import {
   Megaphone,
   Mail,
   Phone,
+  Receipt,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -52,6 +53,7 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
       { href: "/jobs", label: "Jobs", icon: Briefcase },
       { href: "/clients", label: "Clients", icon: Building2 },
       { href: "/bd", label: "BD", icon: Megaphone },
+      { href: "/invoices", label: "Invoices", icon: Receipt },
     ],
   },
   {

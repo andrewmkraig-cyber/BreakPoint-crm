@@ -1,10 +1,10 @@
 # Ace Roadmap
-Last updated: 2026-05-12 · Ace 41.0
+Last updated: 2026-05-12 · Ace 42.0
 
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full specs for items 1-3 live in ACE_STATE.md Next Task.
 
-1. **Invoicing** — Ace owns invoice PDF + email, manual paid tracking, no Mercury, test invoice to Austin button. Full spec in ACE_STATE.md Next Task section.
+1. **Invoicing** — Shipped Ace 42. Branded one-page PDF, `/invoices` workspace, auto-draft on Confirm Start, Settings → Billing for bank details, mailto-based Gmail compose. Open follow-up: real Gmail-API send + S3-backed PDF storage if/when ar@breakpointtalent.com mailbox is wired up; QuickBooks export later.
 2. **Interview scheduler enhancements + Calendar tab** — bundled. Edit/cancel/reschedule, full calendar view, click-to-edit interviews, Google Calendar read/write sync, month/week/day views. Full spec in ACE_STATE.md.
 3. **BD Engine Phase 4** — ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts. Full rules in ACE_RULES.md and ACE_STATE.md.
 4. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.

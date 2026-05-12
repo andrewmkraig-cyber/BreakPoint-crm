@@ -330,6 +330,7 @@ model Placement {
   job            Job?         @relation(fields: [jobId], references: [id], onDelete: Cascade)
   client         Client?      @relation(fields: [clientId], references: [id], onDelete: Cascade)
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
 
   @@unique([candidateRfId, jobRfId])
   @@unique([candidateId, jobRfId])
@@ -398,6 +399,7 @@ model Candidate {
   organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   placements      Placement[]
   interviews      Interview[]
+  invoices        Invoice[]
   // Phase 5A.5.a: now 1:N — multiple resume versions per candidate.
   resumes         CandidateResume[]
   // Phase 5A.4: candidate-list memberships. Cascade-delete on the
@@ -696,6 +698,7 @@ model Client {
   benefitsFiles ClientBenefitsFile[]
   placements    Placement[]
   interviews    Interview[]
+  invoices      Invoice[]
   gmailTags     GmailThreadTag[]
   clientSignals ClientSignal[]
 
@@ -923,6 +926,7 @@ model Organization {
   contacts             Contact[]
   placements           Placement[]
   interviews           Interview[]
+  invoices             Invoice[]
   clientAgreements     ClientAgreement[]
   clientBenefits       ClientBenefits[]
   clientBenefitsFiles  ClientBenefitsFile[]
@@ -954,6 +958,44 @@ model Organization {
   bdActivities         BDActivity[]
   clientSignals        ClientSignal[]
   bdOrgConfig          BdOrgConfig?
+}
+
+model Invoice {
+  id              String        @id @default(cuid())
+  organizationId  String
+  organization    Organization  @relation(fields: [organizationId], references: [id])
+  invoiceNumber   String
+  placementId     String?
+  placement       Placement?    @relation(fields: [placementId], references: [id])
+  candidateId     String?
+  candidate       Candidate?    @relation(fields: [candidateId], references: [id])
+  clientId        String?
+  client          Client?       @relation(fields: [clientId], references: [id])
+  roleTitle       String?
+  startDate       DateTime?
+  feeAmount       Decimal?      @db.Decimal(10, 2)
+  paymentTerms    String?       @default("Net 30")
+  dueDate         DateTime?
+  billingContacts Json          @default("[]")
+  hiringContacts  Json          @default("[]")
+  status          InvoiceStatus @default(DRAFT)
+  pdfPath         String?
+  sentAt          DateTime?
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([organizationId])
+  @@index([clientId])
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PAID
+  VOID
 }
 
 model ClaudePanelMessage {

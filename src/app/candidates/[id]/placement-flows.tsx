@@ -1632,7 +1632,7 @@ function ConfirmStartDialog({
         return;
       }
       toast.success("Start confirmed — candidate moved to Hired", {
-        description: "Invoicing flag set. Invoice workflow lands later.",
+        description: "Draft invoice created. Open Invoicing to review and send.",
       });
       onClose();
       router.refresh();

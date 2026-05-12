@@ -25,6 +25,7 @@ import { fireTriggerAndLog } from "@/lib/trigger-fire";
 import { extractCandidateFields } from "@/lib/candidate-fields";
 import { formatLocation } from "@/lib/utils";
 import { formatCompensation, type RFJob } from "@/lib/rf-payload-shapes";
+import { createInvoiceForPlacement } from "@/lib/invoices";
 import {
   CANDIDATE_APPLIED_CONFIRMATION_TRIGGER,
   CANDIDATE_CONFIRMATION_TRIGGER,
@@ -480,6 +481,25 @@ export async function confirmStart(input: ConfirmStartInput): Promise<Result> {
 
     revalidatePath(`/candidates/${placement.candidateRfId}`);
     revalidatePath(`/pipeline`);
+
+    // Auto-create a DRAFT invoice keyed to this placement so the
+    // Invoicing tab and /invoices list have something to send. The
+    // helper is idempotent — if an invoice already exists for this
+    // placement, it returns the existing id instead of stacking
+    // duplicates on re-uploads. We catch and log so a transient
+    // failure here never breaks the Confirm Start flow.
+    try {
+      await createInvoiceForPlacement({
+        placementId: input.placementId,
+        organizationId: org.id,
+      });
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error("[confirmStart] invoice draft failed", {
+        placementId: input.placementId,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
 
     // Auto-fire the Hired — Welcome / Next Steps template. Routes
     // through fireTriggerAndLog so it works for either candidate

@@ -1,13 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-12 · Ace 41.0
+Last updated: 2026-05-12 · Ace 42.0
 
 ## Current Status
-Current Version: Ace 41.0
+Current Version: Ace 42.0
 Last Shipped: 2026-05-12
 Live at: ace.breakpointtalent.com
 
-## Known Issues Carrying Into Ace 42
-- None open. All workflow-blocking items from Ace 40 cleared this session.
+## Known Issues Carrying Into Ace 43
+- None open.
+
+## Summary — Ace 42.0
+Ace 42 ships the full Invoicing module end-to-end: branded one-page PDF generator, real `/invoices` workspace (list + detail + status transitions + bank-detail-only payment instructions inside the PDF), auto-draft on Confirm Start, dashboard Invoicing tab wired to live data, and `/settings/billing` for company identity + ACH/wire/check details. The Mercury / pay-link language is gone from every surface (dashboard, scoreboard forecast, Confirm Start toast). Schema gained the `Invoice` model + `InvoiceStatus` enum (DRAFT / SENT / PAID / VOID) with relations on Organization / Candidate / Client / Placement; invoice numbers monotonic per workspace starting at INV-1051. Sent from "Accounts Receivable" — the AE signs the body, the PDF carries the ACH/Wire/Check blocks, no payment URLs anywhere. The detail page exposes a "Draft email in Gmail" action that opens a pre-filled mailto with the merged template body + PDF URL, and the sidebar gains an Invoices entry under CRM.
 
 ## Summary — Ace 41.0
 Ace 41 cleared both workflow-blocking items from Ace 40 and shipped a full JD workflow overhaul, mail composer fixes, new job form redesign, and Candidate Recruit template wiring.
