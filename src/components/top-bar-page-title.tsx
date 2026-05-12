@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { useComposerManager } from "@/lib/composer-manager";
 import { usePhonePanels } from "@/lib/phone-panels-context";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
+import { DASHBOARD_TAB_LABELS, resolveDashboardTab } from "@/app/dashboard/tabs";
 
 // Pathname-driven page title rendered on the left side of the
 // TopBar. Mirrors the Jobot pattern Andrew showed: the section title
@@ -31,6 +32,7 @@ type ActionSpec =
 
 function resolveSpec(
   pathname: string | null,
+  searchParams: URLSearchParams | null,
 ): { title: TitleSpec; action?: ActionSpec } {
   if (!pathname) return { title: { label: "" } };
 
@@ -94,7 +96,10 @@ function resolveSpec(
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
   if (pathname === "/applicants") return { title: { label: "Applicants" } };
-  if (pathname === "/dashboard") return { title: { label: "Activity Dashboard" } };
+  if (pathname === "/dashboard") {
+    const tab = resolveDashboardTab(searchParams?.get("tab"));
+    return { title: { label: DASHBOARD_TAB_LABELS[tab] } };
+  }
   if (pathname.startsWith("/settings")) return { title: { label: "Settings" } };
 
   return { title: { label: "" } };
@@ -108,7 +113,8 @@ const ACTION_BUTTON_CLASS =
 
 export function TopBarPageTitle() {
   const pathname = usePathname();
-  const spec = resolveSpec(pathname);
+  const searchParams = useSearchParams();
+  const spec = resolveSpec(pathname, searchParams);
 
   if (!spec.title.label) return null;
 
