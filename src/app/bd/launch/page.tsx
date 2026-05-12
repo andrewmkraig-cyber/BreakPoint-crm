@@ -4,19 +4,15 @@ import { LaunchView, type VerticalOption, type SavedSearchOption, type LastRun }
 
 export const dynamic = "force-dynamic";
 
-// Default daily contact cap when neither the SavedSearch nor a future
-// org-level Setting overrides it. Mirrors the workflow note in the BD
-// handoff: ~80 contacts/day across 5 domains rotating ~16 each.
+// Default daily contact cap when neither the SavedSearch nor BdOrgConfig
+// overrides it. Mirrors the workflow note in the BD handoff: ~80
+// contacts/day across 5 domains rotating ~16 each.
 const DEFAULT_DAILY_CONTACT_CAP = 80;
-
-// Phase 1: BD Settings page doesn't exist yet, so the pause-all toggle
-// is hardcoded off. Lifts out to a Setting row when /settings/bd ships.
-const PAUSE_ALL = false;
 
 export default async function LaunchPage() {
   const org = await getCurrentOrg();
 
-  const [verticalRows, savedSearchRows, domains, lastRunRow, todaysRuns] = await Promise.all([
+  const [verticalRows, savedSearchRows, domains, lastRunRow, todaysRuns, orgConfig] = await Promise.all([
     prisma.vertical.findMany({
       where: { organizationId: org.id, active: true },
       orderBy: { name: "asc" },
@@ -50,7 +46,13 @@ export default async function LaunchPage() {
       },
       select: { metrics: true },
     }),
+    // /settings/bd writes here. pauseAll gates the Launch CTA;
+    // globalDailyCap is the fallback when neither SavedSearch.contactCap
+    // nor the legacy DEFAULT_DAILY_CONTACT_CAP applies.
+    prisma.bdOrgConfig.findUnique({ where: { organizationId: org.id } }),
   ]);
+  const PAUSE_ALL = orgConfig?.pauseAll ?? false;
+  const orgDailyCap = orgConfig?.globalDailyCap ?? DEFAULT_DAILY_CONTACT_CAP;
 
   const verticals: VerticalOption[] = verticalRows.map((v) => ({
     id: v.id,
@@ -62,7 +64,7 @@ export default async function LaunchPage() {
     id: s.id,
     verticalId: s.verticalId,
     name: s.name,
-    contactCap: s.contactCap ?? DEFAULT_DAILY_CONTACT_CAP,
+    contactCap: s.contactCap ?? orgDailyCap,
   }));
 
   const contactsUsedToday = todaysRuns.reduce((sum, r) => {
@@ -87,7 +89,7 @@ export default async function LaunchPage() {
       savedSearches={savedSearches}
       domains={domains.map((d) => ({ domain: d.domain, status: d.status }))}
       lastRun={lastRun}
-      defaultContactCap={DEFAULT_DAILY_CONTACT_CAP}
+      defaultContactCap={orgDailyCap}
       contactsUsedToday={contactsUsedToday}
       pauseAll={PAUSE_ALL}
     />

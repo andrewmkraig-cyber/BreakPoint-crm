@@ -1,0 +1,122 @@
+"use client";
+
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Mailbox, CheckCircle2, Check, X } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { formatBdDateTime } from "@/app/bd/date-format";
+import { updateBdOrgConfig } from "./actions";
+
+export type ReplyRoutingConfig = {
+  replyForwardApollo: boolean;
+  replyAutoCreateCandidate: boolean;
+  replyOooFilter: boolean;
+};
+
+export function ReplyRoutingSection({
+  config,
+  lastReplyIso,
+  webhookPath,
+}: {
+  config: ReplyRoutingConfig;
+  lastReplyIso: string | null;
+  webhookPath: string;
+}) {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+
+  const toggle = (key: keyof ReplyRoutingConfig, value: boolean) => {
+    startTransition(async () => {
+      await updateBdOrgConfig({ [key]: value });
+      router.refresh();
+    });
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="rounded-lg border border-court-brand/30 bg-court-brand-tint p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <Mailbox className="h-4 w-4 text-court-brand-dark" />
+            <p className="text-sm font-semibold text-court-brand-dark">
+              All BD replies route into Ace Mail
+            </p>
+          </div>
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-court-brand/30 bg-court-surface px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark">
+            <CheckCircle2 className="h-3 w-3" />
+            Healthy
+          </span>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-court-brand-dark/80">
+          <span>
+            Webhook:{" "}
+            <code className="rounded bg-court-surface px-1.5 py-0.5 font-mono text-[11px] text-court-fg">
+              {webhookPath}
+            </code>
+          </span>
+          <span>
+            Last reply received:{" "}
+            <span className="font-medium text-court-brand-dark">
+              {lastReplyIso ? formatBdDateTime(new Date(lastReplyIso)) : "No replies yet"}
+            </span>
+          </span>
+        </div>
+      </div>
+
+      <div>
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+          Downstream behavior
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <RoutingPill
+            label="Also forward to Apollo inbox"
+            on={config.replyForwardApollo}
+            disabled={pending}
+            onChange={(v) => toggle("replyForwardApollo", v)}
+          />
+          <RoutingPill
+            label="Auto-create candidate on positive reply"
+            on={config.replyAutoCreateCandidate}
+            disabled={pending}
+            onChange={(v) => toggle("replyAutoCreateCandidate", v)}
+          />
+          <RoutingPill
+            label="Out-of-office filter"
+            on={config.replyOooFilter}
+            disabled={pending}
+            onChange={(v) => toggle("replyOooFilter", v)}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RoutingPill({
+  label,
+  on,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  on: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => onChange(!on)}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition disabled:opacity-60",
+        on
+          ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
+          : "border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg",
+      )}
+    >
+      {on ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
+      {label}
+    </button>
+  );
+}

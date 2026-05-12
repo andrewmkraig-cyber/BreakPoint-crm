@@ -936,6 +936,7 @@ model Organization {
   campaignEvents       CampaignEvent[]
   bdActivities         BDActivity[]
   clientSignals        ClientSignal[]
+  bdOrgConfig          BdOrgConfig?
 }
 
 model ClaudePanelMessage {
@@ -1287,6 +1288,9 @@ model Vertical {
   name           String
   slug           String
   active         Boolean  @default(true)
+  // Optional per-vertical override on the BD daily contact cap. Null
+  // means inherit from BdOrgConfig.globalDailyCap.
+  dailyCap       Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -1352,6 +1356,10 @@ model SendingDomain {
   status          SendingDomainStatus @default(HEALTHY)
   apolloMailboxId String?
   dailyCap        Int?
+  // Recruiter who owns the inbox tied to this warmed domain. Free-form
+  // string so the UI can let either Andrew/Austin (or anyone added
+  // later) own a slot without enum churn.
+  inboxOwner      String?
   lastUsedAt      DateTime?
   createdAt       DateTime            @default(now())
   updatedAt       DateTime            @updatedAt
@@ -1475,6 +1483,32 @@ model BDActivity {
   @@index([organizationId, occurredAt(sort: Desc)])
   @@index([bdRunId])
   @@index([kind])
+}
+
+// Org-level BD configuration: global daily contact cap, pause-all
+// kill switch, blackout windows, and Reply Routing toggles. One row
+// per organization, keyed on organizationId so reads are a single
+// findUnique. UI in /settings/bd writes here; /bd/launch reads
+// pauseAll + globalDailyCap on every render to gate the Launch CTA.
+model BdOrgConfig {
+  organizationId String @id
+
+  globalDailyCap Int     @default(80)
+  pauseAll       Boolean @default(false)
+
+  blackoutWeekends   Boolean @default(false)
+  blackoutHolidays   Boolean @default(false)
+  blackoutBefore7am  Boolean @default(false)
+  blackoutAfter530pm Boolean @default(false)
+
+  replyForwardApollo       Boolean @default(false)
+  replyAutoCreateCandidate Boolean @default(true)
+  replyOooFilter           Boolean @default(true)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 // Indeed-detected public job posting at an existing Client. Surfaced
