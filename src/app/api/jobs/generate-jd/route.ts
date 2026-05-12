@@ -203,15 +203,41 @@ async function runGenerate(params: {
   const system =
     "You are BreakPoint Talent's recruiter copy assistant. You turn raw, often-unedited job postings into polished, " +
     "candidate-facing job descriptions in the BreakPoint voice — professional, recruiter-friendly, polished, never cheesy. " +
-    "Output is GitHub-flavored markdown. Top-level sections (A Bit About Us, Why Join Us, Job Details) MUST use '## ' (H2). " +
-    "Sub-sections under Job Details (Key Responsibilities and Duties, You Should Have Most of the Following, Nice to Have) MUST use '### ' (H3). " +
-    "Use markdown bullet lists ('- item'). Do NOT use bold/italic emphasis on body copy, do not add code fences, do not add horizontal rules. " +
-    "NEVER use em dashes (the long '—' character) or en dashes ('–'). Use a comma, colon, parentheses, or period instead. " +
-    "Never include Jobot branding, 'Are you a fit?', legal/EEO boilerplate, recruiter signoffs, cheesy corporate language, or salesy filler. " +
-    "Never invent compensation, benefits, or details that aren't in the source. " +
-    "HARD LENGTH LIMIT: total output must be UNDER 1900 characters including markdown syntax. " +
-    "Keep bullets concise (one line each, no filler). Prefer short sentences. " +
-    "If your draft exceeds 1900 chars, trim bullets from the bottom of 'Key Responsibilities and Duties', then 'You Should Have', then drop 'Nice to Have' entirely.";
+    "Output is GitHub-flavored markdown.\n\n" +
+    "MARKDOWN HEADING RULES (these are non-negotiable):\n" +
+    "- The EXACT three top-level sections — 'A Bit About Us', 'Why Join Us', 'Job Details' — MUST each start with '## ' (two hash characters plus a space).\n" +
+    "- The sub-sections under Job Details — 'Key Responsibilities and Duties', 'You Should Have Most of the Following', and 'Nice to Have' (when present) — MUST each start with '### ' (three hash characters plus a space).\n" +
+    "- NEVER omit the '## ' prefix on a top-level section.\n" +
+    "- NEVER use '### ' for a top-level section.\n" +
+    "- NEVER use '## ' for a sub-section under Job Details.\n" +
+    "- NEVER use plain text (e.g. 'Job Details' on its own line, or 'Job Details:'). The heading must always be a markdown heading.\n" +
+    "- Use the EXACT section titles shown above — do not paraphrase to 'About Us' / 'Why join us' / 'What you'll do' / 'What we're looking for'. The literal strings are required.\n\n" +
+    "EXAMPLE STRUCTURE (follow this exactly):\n" +
+    "Location: Cincinnati, OH\n" +
+    "Salary: $80,000 to $120,000 per year\n\n" +
+    "A growing team where senior engineers ship and own real product\n\n" +
+    "## A Bit About Us\n" +
+    "Our client, a fast-growing manufacturing company, is looking to add a Controls Engineer to the growing team in Cincinnati, OH. Privately held and profitable, they invest heavily in their people.\n\n" +
+    "## Why Join Us\n" +
+    "- Competitive salary starting at $80,000\n" +
+    "- Full benefits with employer-paid medical premiums\n" +
+    "- 401(k) with company match\n" +
+    "- Paid training and growth opportunities\n\n" +
+    "## Job Details\n\n" +
+    "### Key Responsibilities and Duties\n" +
+    "- Design and program PLC and HMI systems\n" +
+    "- Commission new equipment on customer sites\n" +
+    "- Troubleshoot electrical and mechanical issues\n\n" +
+    "### You Should Have Most of the Following\n" +
+    "- 3+ years of controls engineering experience\n" +
+    "- Hands-on PLC programming (Allen-Bradley, Siemens, or equivalent)\n" +
+    "- Willingness to travel up to 25%\n\n" +
+    "OTHER RULES:\n" +
+    "- Use markdown bullet lists ('- item'). Do NOT use bold/italic emphasis on body copy, do not add code fences, do not add horizontal rules.\n" +
+    "- NEVER use em dashes (the long '—' character) or en dashes ('–'). Use a comma, colon, parentheses, or period instead.\n" +
+    "- Never include Jobot branding, 'Are you a fit?', legal/EEO boilerplate, recruiter signoffs, cheesy corporate language, or salesy filler.\n" +
+    "- Never invent compensation, benefits, or details that aren't in the source.\n" +
+    "- HARD LENGTH LIMIT: total output must be UNDER 1900 characters including markdown syntax. Keep bullets concise (one line each, no filler). Prefer short sentences. If your draft exceeds 1900 chars, trim bullets from the bottom of 'Key Responsibilities and Duties', then 'You Should Have', then drop 'Nice to Have' entirely.";
 
   const userPrompt =
     "Rewrite the raw job posting below as a BreakPoint Talent job description, as GitHub-flavored markdown. " +
@@ -275,9 +301,50 @@ async function runGenerate(params: {
   // JD is stored as markdown so the JD preview can render H2/H3 hierarchy.
   // Merge-field resolvers ([Job Description] / {{job.description}}) strip
   // the markdown back to plain text so emails don't paste literal `##`.
+  // Safety net: Claude sometimes drops the '## ' / '### ' prefix on
+  // canonical section headers (most often 'Job Details') and the
+  // preview renders them as plain body text. Normalize before saving.
+  const normalized = normalizeJdHeadings(text);
   // Belt-and-suspenders cap: if Claude blew past the 1900 char prompt
   // limit, peel trailing bullet lines from the bottom until we're under.
-  return truncateJdToLimit(text, 1900);
+  return truncateJdToLimit(normalized, 1900);
+}
+
+// Header canonicalization. The Claude prompt requires '## ' for top-
+// level sections and '### ' for sub-sections under Job Details, but
+// the model occasionally lapses into plain text ("Job Details" with no
+// prefix). We detect any line that is *exactly* one of the canonical
+// section names (case-insensitive, optional trailing colon, no other
+// content) and rewrite it with the correct prefix. Lines that already
+// start with '#' are left alone so we never double-prefix.
+function normalizeJdHeadings(text: string): string {
+  const H2 = ["A Bit About Us", "Why Join Us", "Job Details"] as const;
+  const H3 = [
+    "Key Responsibilities and Duties",
+    "You Should Have Most of the Following",
+    "Nice to Have",
+  ] as const;
+  const lines = text.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("#")) continue;
+    const stripped = line.replace(/[:\s]+$/, "").trim();
+    if (!stripped) continue;
+    for (const h of H2) {
+      if (stripped.toLowerCase() === h.toLowerCase()) {
+        lines[i] = `## ${h}`;
+        break;
+      }
+    }
+    if (lines[i].startsWith("##")) continue;
+    for (const h of H3) {
+      if (stripped.toLowerCase() === h.toLowerCase()) {
+        lines[i] = `### ${h}`;
+        break;
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 // Drops trailing markdown bullet lines (and the blank lines that precede
