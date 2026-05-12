@@ -1,10 +1,38 @@
 # ACE_STATE.md
-Last updated: 2026-05-11 · Ace 39.1
+Last updated: 2026-05-12 · Ace 39.2
 
 ## Current Status
-Current Version: Ace 39.1 (BD Phase 1 — schema + /bd shell + Today's Launch)
-Last Shipped: Ace 39.1 — May 11, 2026
+Current Version: Ace 39.2 (BD Phase 2 — Client Signal, Active Campaigns, Activity pages)
+Last Shipped: Ace 39.2 — May 12, 2026
 Live at: ace.breakpointtalent.com
+
+## Summary — Ace 39.2
+Second slice of the BD Engine block — three previously-placeholder pages built out. Still no Indeed / Apollo wiring; each page renders the empty state until Phase 4 cron + webhook lights up real data.
+
+Client Signal (`/bd/client-signal`):
+- Eyebrow + display title "Existing clients hiring publicly" + brand-tinted count badge "X new this week" + subtitle copy explaining the daily-scan workflow.
+- Unified TabStrip filter pills: All / New this week / Acted on / Dismissed. Filter state lives in `?filter=` search param — pills are `<Link>` and server-render the filtered list, so the URL is shareable and reloads.
+- Each row inside one parent `divide-y` card: square dark logo placeholder with 2-letter mono initials, client name + primary contact line (first Contact by lastActivityAt — name · title · email), middle column with job title + MapPin location + Clock "Posted X days ago · via Indeed", right column with View listing (links to `externalUrl` target=_blank) + disabled "Reach out" pill (tooltip "Mail composer pre-fill ships in Phase 4"; flips label to "Reached out" when status=ACTED).
+- Empty state: "No new client job postings detected. We scan every morning at 6 AM."
+
+Active Campaigns (`/bd/campaigns`):
+- One row per BDRun, ordered newest-first, limit 100. Each row: vertical mute pill, Day X of Y eyebrow (saturates at 7), campaign name = SavedSearch.name, sub-line "Started {date} · Sequence {name}", inline metric strip (Sent / Opened · X% / Replied · X% (brand-green) / Bounced · X% (red >8%) / Unsub) computed from a single `prisma.campaignEvent.groupBy({ by: ['campaignId', 'kind'] })` query across every Campaign linked to a BDRun in the page, sparkline "—" placeholder, domain health 5-dot strip (looks up current SendingDomain.status by name from BDRun.plan.domains), disabled pause stub, chevron pointing into the detail page.
+- Click row → `/bd/campaigns/[id]` detail stub: back link + vertical eyebrow + title + status/started line + BDRun.plan and BDRun.metrics rendered as pretty JSON in tokenized code blocks + "Contact list ships in Phase 4" placeholder.
+- Empty state: "No active campaigns. Launch one from Today's Launch."
+
+Activity (`/bd/activity`):
+- Unified TabStrip filter pills: All / Sends (ENROLL) / Replies (REPLY) / Bounces (BOUNCE) / Domains (DOMAIN_COOLED + DOMAIN_RESUMED). Filter state in `?filter=`.
+- Grouped chronologically into Today / Yesterday / 2 days ago / Older buckets (UTC-based); empty buckets are dropped so the page never shows a header with no rows.
+- Each entry: 20px circular glyph (reply = brand-green tint, send = blue, info = neutral, warn = amber, bounce = red) + lucide icon matched to kind, payload-derived event text (e.g. `"Reply from ${contactName} at ${company}"`, `"Bounce on ${email}"`, `"${domain} cooled (${reason})"`), right-aligned hh:mm timestamp.
+- Cursor pagination via `?before=<ISO>` — PAGE_SIZE+1 lookahead drives the "Load earlier activity" pill at the bottom without a second query.
+- Empty state: "No BD activity yet. Activity will appear here once your first BD run completes."
+
+Today's Launch preview chip copy:
+- `~80 contacts` flipped to `up to 80 contacts` per the BD Phase 2 brief. The daily cap is a ceiling, not a target — actual contacts surfaced per run varies based on how many qualified contacts Apollo finds per company.
+
+Court Mode + token discipline:
+- Every BD page reads from court-* tokens (court-brand, court-brand-tint, court-brand-dark, court-surface, court-surface-subtle, court-border, court-border-soft, court-fg, court-fg-muted, court-fg-dim). Bounce-red and warn-amber on Activity glyphs are the Tailwind ramps already in use across the rest of the app (red-100/600 + amber-100/700 with the matching dark counterparts) — same as the Reject / Apply button variants on candidate profile pipeline rows.
+- Amber #F59E0B remains scoped to the Today's Launch CTA exclusively. No new hardcoded hex landed in Phase 2.
 
 ## Summary — Ace 39.1
 First slice of the BD Engine block — schema + UI shell + Launch flow. No Indeed / Apollo wiring yet; the morning cron, webhook, and reach-out composer are deferred to subsequent BD phases.
@@ -213,9 +241,21 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 None open. Browser verification of the new flows is Andrew's after deploy.
 
 ## Next Task
-BD Phase 2 — BD Settings page at `/settings/bd` for CRUD on Verticals, SavedSearches, and SendingDomains so the Today's Launch flow has data to act on without manual prisma studio writes. Then queue the remaining BD sub-items: Apollo enrichment helper, Indeed scan helper, 6 AM ET Vercel cron picking up QUEUED BDRuns, Apollo webhook for opens/replies/bounces, reach-out mail composer pre-fill from Client Signal, Active Campaigns counters wired, Activity tab feed, scheduled email send (Gmail API send-at), sequence engine + Apollo sequence template wiring.
+BD Phase 3 — BD Settings page at `/settings/bd` for CRUD on Verticals, SavedSearches, and SendingDomains so the Today's Launch flow has data to act on without manual prisma studio writes. Pause-all toggle lives here too (currently hardcoded false in `/bd/launch/page.tsx`).
+
+Then BD Phase 4 — the data wiring that lights up every Phase 2 page: Indeed scan helper (writes ClientSignal rows + feeds BDRun discovery), Apollo enrichment helper (resolves contacts per discovered company), 6 AM ET Vercel cron picking up QUEUED BDRuns, Apollo webhook for opens/replies/bounces (writes CampaignEvent + BDActivity rows that Active Campaigns + Activity pages already render). Once webhook is in, wire the Reach-out mail composer pre-fill from Client Signal, dismiss/acted-on flows on Client Signal, and pause/resume on Active Campaigns rows.
+
+Then BD Phase 5 — scheduled email send (Gmail API send-at) and the Sequence engine + Apollo sequence template wiring.
 
 Still parked from before BD: (1) Night Court light mode — a dedicated low-contrast / warm-tinted light mode option in the Court Mode selector alongside the existing 3 surfaces, paired against (2) a Dashboard + Scoreboard + Invoicing redesign brief (consolidating the dashboard premium surface, the queued Scoreboard widget tile, and the parked Invoicing workflow into a single coherent surface direction). Design prompts run through Claude chat first — no code until the visual direction is signed off.
+
+## What Shipped in Ace 39.2 (2026-05-12)
+- **Client Signal page (`/bd/client-signal`)**: Replaces the Phase 1 placeholder. Server component reads `ClientSignal` rows via `getCurrentOrg()` with `?filter=` search-param-driven where clause (`all` / `new-week` for status=NEW and detectedAt within 7 days / `acted` / `dismissed`). Unified `TabStrip` filter pills with per-bucket counts. Each row inside one `divide-y` card: square dark `LogoMark` placeholder with 2-letter mono initials, client name + primary contact summary (first `Contact` ordered by `lastActivityAt desc`, rendered as `name · currentDesignation · firstEmail`), `jobTitle` + MapPin `location` + Clock "Posted X days ago · via Indeed", right column with `View listing` (`externalUrl`, target=_blank, rel=noopener) + disabled "Reach out" pill (tooltip "Mail composer pre-fill ships in Phase 4"; flips to "Reached out" when row.status !== NEW). Empty state copy "No new client job postings detected. We scan every morning at 6 AM."
+- **Active Campaigns page (`/bd/campaigns`)**: Replaces the Phase 1 placeholder. Server component lists newest-first `BDRun`s scoped to org (limit 100), each row carrying its vertical mute pill, "Day X of Y" eyebrow (saturates at `SEQUENCE_DAYS = 7`), `SavedSearch.name` as the campaign label, sub-line "Started {date} · Sequence {name}" (sequence name falls back to "BD Outbound v1" until a real Campaign row exists), and an inline metric strip (Sent / Opened · % / Replied · % / Bounced · % / Unsub) computed from a single `prisma.campaignEvent.groupBy({ by: ['campaignId', 'kind'], _count: { _all: true } })` across every Campaign linked to the page's BDRuns. Replied % uses `text-court-brand-dark`; Bounced % flips to red ramp above 8% (`BOUNCE_RED_THRESHOLD`). Trailing sparkline "—" placeholder. Domain health 5-dot strip overlays current `SendingDomain.status` (looked up by name from `BDRun.plan.domains`) — HEALTHY = brand green, WARMING = brand/40, COOLED = red-500, empty slot = transparent ring. Disabled pause stub (`<button disabled title="Pause/resume ships in Phase 4">`), chevron with hover translate. Whole row is a `<Link>` to `/bd/campaigns/[id]`. Empty state: "No active campaigns. Launch one from Today's Launch."
+- **Campaign detail stub (`/bd/campaigns/[id]`)**: New route. Server component scoped to org (404s for foreign BDRuns), back link to Active Campaigns, vertical eyebrow + SavedSearch name as title + status/started subtitle, `BDRun.plan` and `BDRun.metrics` rendered as pretty JSON inside tokenized `<pre>` code blocks (`bg-court-surface-subtle`), and a dashed-border note "Contact list ships in Phase 4."
+- **Activity page (`/bd/activity`)**: Replaces the Phase 1 placeholder. Server component reads `BDActivity` rows scoped to org with `?filter=` mapped to enum kinds (`sends` → ENROLL, `replies` → REPLY, `bounces` → BOUNCE, `domains` → DOMAIN_COOLED + DOMAIN_RESUMED) and `?before=<ISO>` cursor for pagination. Unified `TabStrip` filter pills. Rows grouped client-side into Today / Yesterday / 2 days ago / Older buckets (UTC start-of-day math); empty buckets are dropped so the page never renders a header over nothing. Each entry is a 20px circular glyph + payload-aware event text + right-aligned hh:mm timestamp. Glyph tone palette: reply → `bg-court-brand-tint text-court-brand-dark`, send → blue-100/700 (dark blue-950/40 / blue-200), info → court-surface-subtle / court-fg-muted, warn → amber-100/700, bounce → red-100/600. `PAGE_SIZE+1` (51) lookahead drives a "Load earlier activity" pill that links to `?before=<oldest.occurredAt>` so no second count query is needed. Empty state: "No BD activity yet. Activity will appear here once your first BD run completes."
+- **Today's Launch preview chip copy fix**: `src/app/bd/launch/launch-view.tsx` — the green preview chip now reads `up to 80 contacts` instead of `~80 contacts`. The contact cap is a ceiling, not a target; actual contacts surfaced per run varies based on how many qualified contacts Apollo finds per company.
+- **Court Mode token discipline**: every new BD page reads exclusively from court-* tokens. Bounce-red + warn-amber glyph tones on Activity use the Tailwind ramps already established by the Reject / Apply button variants. Amber `#F59E0B` is still scoped to the Today's Launch CTA only — no new hardcoded hex landed in Phase 2.
 
 ## What Shipped in Ace 39.1 (2026-05-11)
 - **BD Prisma schema (Phase 1)**: 9 new models (`Vertical`, `SavedSearch`, `SavedSearchVersion`, `SendingDomain`, `BDRun`, `Campaign`, `CampaignEvent`, `BDActivity`, `ClientSignal`) and 4 enums (`BDRunStatus`, `SendingDomainStatus`, `BDActivityKind`, `ClientSignalStatus`) all `organizationId`-scoped per architecture rule 8. Inverse relations on `Organization` (9 new) and `Client` (1 new — `clientSignals`). `BDRun.plan` and `BDRun.metrics` stay as `Json` so the cron-side shape can drift while Apollo wiring is prototyped. `(organizationId, slug)` unique on `Vertical`, `(organizationId, domain)` on `SendingDomain`, `(organizationId, externalUrl)` on `ClientSignal`. Schema applied via `prisma db push` — there is no `prisma/migrations/` directory in this project, the canonical workflow is `npm run db:push` (caught and avoided `prisma migrate dev` which would have offered to reset the live Neon database).
