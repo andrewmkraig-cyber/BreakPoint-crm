@@ -644,12 +644,22 @@ export function MailComposer({
         const html = data.getData("text/html");
         if (html && html.trim()) {
           event.preventDefault();
+          // The Heading extension isn't enabled on this editor, so pasted
+          // <h1>-<h6> tags get flattened to plain paragraphs and the
+          // "bold section header" visual is lost. Convert headings to
+          // <p><strong>…</strong></p> up-front so JD section titles
+          // ("A Bit About Us", "Key Responsibilities and Duties", …)
+          // survive tiptap parsing as bold paragraphs.
+          const processedHtml = html.replace(
+            /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi,
+            "<p><strong>$1</strong></p>",
+          );
           // Defer the insertContent to the next tick so TipTap's DOM
           // mutation doesn't fire mid-React-render-cycle. Synchronous
           // insertContent inside the paste handler triggers React
           // hydration errors #418/#423/#425.
           setTimeout(() => {
-            editor?.commands.insertContent(html, {
+            editor?.commands.insertContent(processedHtml, {
               parseOptions: { preserveWhitespace: false },
             });
           }, 0);
