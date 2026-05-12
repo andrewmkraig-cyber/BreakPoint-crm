@@ -1,3 +1,5 @@
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
@@ -35,7 +37,11 @@ export async function MyDashboard() {
   const q2Start = new Date("2026-04-01T00:00:00.000Z");
   const q2EndExclusive = new Date("2026-07-01T00:00:00.000Z");
 
-  const org = await getCurrentOrg();
+  const [org, session] = await Promise.all([
+    getCurrentOrg(),
+    getServerSession(authOptions),
+  ]);
+  const firstName = session?.user?.name?.split(" ")[0]?.trim() ?? null;
 
   const [
     upcomingInterviews,
@@ -138,21 +144,32 @@ export async function MyDashboard() {
     };
   });
 
-  return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="flex flex-col gap-2">
-        <p className="font-serif text-[13px] font-semibold tracking-tight text-court-fg-muted">
-          Activity for {formatEasternWeekRange(weekStart, weekEnd)}
-        </p>
+  const greeting = firstName ? `Welcome back, ${firstName}.` : "Welcome back.";
+  const weekRange = formatEasternWeekRange(weekStart, weekEnd);
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
-          <KpiTile label="New Clients" value={newClientsCount} icon={Building2} />
-          <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} />
-          <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
-          <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
-          <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
-          <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
+  return (
+    <div className="flex w-full flex-col gap-7">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+            This Week
+          </p>
+          <h2 className="mt-1 font-serif text-2xl font-extrabold tracking-tight text-court-fg sm:text-3xl">
+            {greeting}
+          </h2>
+          <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
+            Activity for {weekRange}. Everything here is live — no targets, just actuals.
+          </p>
         </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+        <KpiTile label="New Clients" value={newClientsCount} icon={Building2} />
+        <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} />
+        <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} />
+        <KpiTile label="Interviews Scheduled" value={interviewsScheduledCount} icon={CalendarDays} />
+        <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
+        <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
 
       <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
