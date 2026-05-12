@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
-import { generateJobDescription } from "@/lib/claude";
+import { extractJobFieldsFromGeneratedJd, generateJobDescription, type ExtractedJdFields } from "@/lib/claude";
 import { ensureMajorBoardsSeeded } from "@/lib/job-boards";
 
 type ActionResult<T = void> =
@@ -82,6 +82,24 @@ export async function generateJobDescriptionFromSource(
     // eslint-disable-next-line no-console
     console.error("[generate-jd] threw:", e);
     return { ok: true, value: { text: JD_FALLBACK_TEXT, fallback: true, reason: reason.slice(0, 200) } };
+  }
+}
+
+// Best-effort follow-up extractor — /jobs/new fires this after
+// generateJobDescriptionFromSource succeeds so the form's Job Title /
+// Location / Salary Low / Salary High inputs can auto-fill from the
+// generated markdown. Returns {} on any failure (no API key, Claude
+// error, non-JSON response) — callers fail silently.
+export async function extractFieldsFromGeneratedJd(
+  markdown: string,
+): Promise<ExtractedJdFields> {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.email) return {};
+  if (!process.env.ANTHROPIC_API_KEY) return {};
+  try {
+    return await extractJobFieldsFromGeneratedJd(markdown);
+  } catch {
+    return {};
   }
 }
 

@@ -683,6 +683,79 @@ export async function generateJobDescription(params: {
   return secondPass || firstPass;
 }
 
+export type ExtractedJdFields = {
+  title?: string;
+  location?: string;
+  salaryLow?: number;
+  salaryHigh?: number;
+};
+
+// Lightweight follow-up extractor that runs after generateJobDescription
+// produces the markdown JD. The /jobs/new form auto-fills empty Job Title /
+// Location / Salary Low / Salary High inputs from whatever Claude can find
+// in the generated text. Best-effort — callers ignore failures silently.
+export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise<ExtractedJdFields> {
+  const text = (markdown ?? "").trim();
+  if (!text) return {};
+
+  const anthropic = getClaude();
+  const response = await anthropic.messages.create({
+    model: CLAUDE_MODEL,
+    max_tokens: 400,
+    system:
+      "You extract structured fields from a job description for a recruiting CRM. " +
+      "Return STRICT JSON only — no prose, no markdown fences. Never invent values.",
+    messages: [
+      {
+        role: "user",
+        content:
+          "Extract the following fields from this job description if present. " +
+          "Return JSON only with these keys: title, location, salaryLow (number), salaryHigh (number). " +
+          "If a field is not found, omit it.\n\n" +
+          "=== Job Description ===\n" +
+          text.slice(0, 50_000),
+      },
+    ],
+  });
+
+  const raw = response.content
+    .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n")
+    .trim();
+
+  const parsed = safeExtractJson(raw);
+  if (!parsed) return {};
+
+  const fields: ExtractedJdFields = {};
+  if (typeof parsed.title === "string" && parsed.title.trim()) fields.title = parsed.title.trim();
+  if (typeof parsed.location === "string" && parsed.location.trim()) fields.location = parsed.location.trim();
+  if (typeof parsed.salaryLow === "number" && Number.isFinite(parsed.salaryLow) && parsed.salaryLow >= 0) {
+    fields.salaryLow = parsed.salaryLow;
+  }
+  if (typeof parsed.salaryHigh === "number" && Number.isFinite(parsed.salaryHigh) && parsed.salaryHigh >= 0) {
+    fields.salaryHigh = parsed.salaryHigh;
+  }
+  return fields;
+}
+
+function safeExtractJson(raw: string): Record<string, unknown> | null {
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const tryParse = (s: string): Record<string, unknown> | null => {
+    try {
+      const v = JSON.parse(s);
+      return v && typeof v === "object" ? (v as Record<string, unknown>) : null;
+    } catch {
+      return null;
+    }
+  };
+  const direct = tryParse(cleaned);
+  if (direct) return direct;
+  const m = cleaned.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  return tryParse(m[0]);
+}
+
 const REQUIRED_JD_HEADERS = [
   "A Bit About Us",
   "Why Join Us",

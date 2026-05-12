@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { LabeledTextarea } from "@/app/candidates/[id]/editable-helpers";
-import { createJob, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
+import { createJob, extractFieldsFromGeneratedJd, generateJobDescriptionFromSource } from "@/app/jobs/new/actions";
 import { CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -150,6 +150,21 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
     }
     setDescription(result.value.text);
     toast.success("Job description generated", { description: "Edit before saving if needed." });
+    // Fire-and-forget structured-field extraction. The JD preview renders
+    // immediately above; this Claude follow-up backfills empty Job Title /
+    // Location / Salary inputs a beat later. Same only-if-empty rules as the
+    // URL parse path. Any failure (no key, Claude error, non-JSON) is
+    // swallowed — auto-fill is best-effort, not a blocker.
+    void extractFieldsFromGeneratedJd(result.value.text)
+      .then((f) => {
+        if (f.title && !title.trim()) setTitle(f.title);
+        if (f.location && !location.trim()) setLocation(f.location);
+        if (typeof f.salaryLow === "number" && salaryLow === "") setSalaryLow(String(f.salaryLow));
+        if (typeof f.salaryHigh === "number" && salaryHigh === "") setSalaryHigh(String(f.salaryHigh));
+      })
+      .catch(() => {
+        // silent — field auto-fill is best-effort
+      });
   }
 
   // Picking or dropping a JD only stages the file. The recruiter must
