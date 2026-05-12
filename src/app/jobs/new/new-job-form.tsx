@@ -520,7 +520,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             grid on md+ so the form doesn't burn rows on small fields. */}
       <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-          <CompactField label="Job title" value={title} onChange={setTitle} placeholder="e.g. Senior Full Stack Engineer" />
+          <CompactField label="Job title" value={title} onChange={setTitle} />
           <CompactSelect
             label="Client"
             value={clientId}
@@ -539,13 +539,13 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               "City, ST Zip" string is reassembled server-side. */}
           <div className="md:col-span-2 grid grid-cols-1 gap-2 sm:grid-cols-6">
             <div className="sm:col-span-3">
-              <CompactField label="City" value={locationCity} onChange={setLocationCity} placeholder="Florence" />
+              <CompactField label="City" value={locationCity} onChange={setLocationCity} />
             </div>
             <div className="sm:col-span-2">
-              <CompactField label="State" value={locationState} onChange={setLocationState} placeholder="KY or Kentucky" />
+              <CompactField label="State" value={locationState} onChange={setLocationState} />
             </div>
             <div className="sm:col-span-1">
-              <CompactField label="Zip" value={locationZip} onChange={setLocationZip} placeholder="41042" />
+              <CompactField label="Zip" value={locationZip} onChange={setLocationZip} />
             </div>
           </div>
           <CompactSelect label="Employment type" value={employmentType} onChange={setEmploymentType}>
@@ -577,7 +577,6 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               onChange={setSalaryLow}
               onBlur={onSalaryLowBlur}
               invalid={rangeInvalid}
-              placeholder={salaryFrequency === "hourly" ? "20.00" : "80000"}
               step={salaryFrequency === "hourly" ? "0.01" : "1"}
             />
             <SalaryField
@@ -586,10 +585,9 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               onChange={setSalaryHigh}
               onBlur={onSalaryHighBlur}
               invalid={rangeInvalid}
-              placeholder={salaryFrequency === "hourly" ? "30.00" : "120000"}
               step={salaryFrequency === "hourly" ? "0.01" : "1"}
             />
-            <CompactField label="Currency" value={currency} onChange={setCurrency} placeholder="USD" />
+            <CompactField label="Currency" value={currency} onChange={setCurrency} />
             <CompactNumber label="Openings" value={openings} onChange={setOpenings} min={1} />
           </div>
           <div className="md:col-span-2 space-y-2">
