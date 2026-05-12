@@ -241,6 +241,27 @@ const CLIENT_INTERVIEW_SCHEDULED_DEFAULT = {
     "If anything changes on your end, just reply to this email and I'll get it updated. Otherwise, have a great conversation!",
 } as const;
 
+// Manual-only outreach template — recruiter picks it from the composer
+// when reaching out to a candidate about a specific job. Body leans on
+// the [Job Description] merge field so the generated JD (already capped
+// at ~1900 chars by the generator) carries the bulk of the structured
+// content (A Bit About Us / Why Join Us / Job Details / etc.).
+const CANDIDATE_RECRUIT_DEFAULT = {
+  name: "Candidate Recruit",
+  subject: "[Job Title] - Immediate Opportunity in [Job Location]",
+  // Null trigger = manual only; identified by `name` in the seed loop
+  // since there's no trigger key to match on.
+  trigger: null as string | null,
+  audience: "candidate",
+  category: "outreach",
+  body:
+    "Hi [Candidate First Name],\n\n" +
+    "My client, [Client Company Name], is looking to add a [Job Title] to the growing team in [Job Location].\n\n" +
+    "Are you interested?\n\n\n" +
+    "[Job Title]:\n" +
+    "[Job Description]",
+} as const;
+
 const CANDIDATE_INTERVIEW_PREP_DEFAULT = {
   name: "Interview Scheduled — Candidate Prep",
   subject: "You're confirmed - [Job Title] with [Client Company Name]",
@@ -266,6 +287,7 @@ export async function ensureDefaultTemplates(): Promise<void> {
   const defaults = [
     // Pipeline-ordered so a fresh org sees them in funnel order in
     // Settings → Email Templates.
+    CANDIDATE_RECRUIT_DEFAULT,
     CANDIDATE_APPLIED_CONFIRMATION_DEFAULT,
     CLIENT_SUBMITTAL_DEFAULT,
     CANDIDATE_CONFIRMATION_DEFAULT,
@@ -279,10 +301,19 @@ export async function ensureDefaultTemplates(): Promise<void> {
   ] as const;
 
   for (const tpl of defaults) {
-    const existing = await prisma.emailTemplate.findFirst({
-      where: { trigger: tpl.trigger },
-      select: { id: true, category: true },
-    });
+    // Manual-only templates (trigger=null) can't be looked up by trigger
+    // — fall back to identifying them by name so the seed stays
+    // idempotent. Trigger-bearing templates still use trigger as the
+    // unique key so renames don't accidentally create dupes.
+    const existing = tpl.trigger
+      ? await prisma.emailTemplate.findFirst({
+          where: { trigger: tpl.trigger },
+          select: { id: true, category: true },
+        })
+      : await prisma.emailTemplate.findFirst({
+          where: { name: tpl.name },
+          select: { id: true, category: true },
+        });
     if (existing) {
       // Backfill category on existing rows that predate the column so the
       // composer's category filter picks them up.

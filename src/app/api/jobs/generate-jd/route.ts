@@ -203,11 +203,15 @@ async function runGenerate(params: {
   const system =
     "You are BreakPoint Talent's recruiter copy assistant. You turn raw, often-unedited job postings into polished, " +
     "candidate-facing job descriptions in the BreakPoint voice — professional, recruiter-friendly, polished, never cheesy. " +
-    "Output is GitHub-flavored markdown. Use '## ' for top-level section headings and '### ' for sub-section headings. " +
+    "Output is GitHub-flavored markdown. Top-level sections (A Bit About Us, Why Join Us, Job Details) MUST use '## ' (H2). " +
+    "Sub-sections under Job Details (Key Responsibilities and Duties, You Should Have Most of the Following, Nice to Have) MUST use '### ' (H3). " +
     "Use markdown bullet lists ('- item'). Do NOT use bold/italic emphasis on body copy, do not add code fences, do not add horizontal rules. " +
     "NEVER use em dashes (the long '—' character) or en dashes ('–'). Use a comma, colon, parentheses, or period instead. " +
     "Never include Jobot branding, 'Are you a fit?', legal/EEO boilerplate, recruiter signoffs, cheesy corporate language, or salesy filler. " +
-    "Never invent compensation, benefits, or details that aren't in the source.";
+    "Never invent compensation, benefits, or details that aren't in the source. " +
+    "HARD LENGTH LIMIT: total output must be UNDER 1900 characters including markdown syntax. " +
+    "Keep bullets concise (one line each, no filler). Prefer short sentences. " +
+    "If your draft exceeds 1900 chars, trim bullets from the bottom of 'Key Responsibilities and Duties', then 'You Should Have', then drop 'Nice to Have' entirely.";
 
   const userPrompt =
     "Rewrite the raw job posting below as a BreakPoint Talent job description, as GitHub-flavored markdown. " +
@@ -271,5 +275,30 @@ async function runGenerate(params: {
   // JD is stored as markdown so the JD preview can render H2/H3 hierarchy.
   // Merge-field resolvers ([Job Description] / {{job.description}}) strip
   // the markdown back to plain text so emails don't paste literal `##`.
-  return text;
+  // Belt-and-suspenders cap: if Claude blew past the 1900 char prompt
+  // limit, peel trailing bullet lines from the bottom until we're under.
+  return truncateJdToLimit(text, 1900);
+}
+
+// Drops trailing markdown bullet lines (and the blank lines that precede
+// them) until the JD fits under `limit` characters. Preserves heading
+// rows and body paragraphs — only the easily-shortened bullet lists at
+// the bottom of each section get pruned.
+function truncateJdToLimit(text: string, limit: number): string {
+  if (text.length <= limit) return text;
+  const lines = text.split("\n");
+  while (lines.length > 0 && lines.join("\n").length > limit) {
+    let lastBullet = -1;
+    for (let i = lines.length - 1; i >= 0; i--) {
+      if (/^\s*[-*]\s+/.test(lines[i])) {
+        lastBullet = i;
+        break;
+      }
+    }
+    if (lastBullet === -1) break;
+    lines.splice(lastBullet, 1);
+  }
+  let out = lines.join("\n");
+  if (out.length > limit) out = out.slice(0, limit).replace(/\s+\S*$/, "");
+  return out.trimEnd();
 }

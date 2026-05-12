@@ -178,7 +178,11 @@ export async function createJob(
     // retried create-call won't stack duplicates.
     await ensureMajorBoardsSeeded({ jobId: job.id, organizationId: org.id });
 
-    const slug = job.legacyRfId != null ? String(job.legacyRfId) : job.id;
+    // Always redirect to the Job's cuid. legacyRfId is only set on RF-
+    // imported rows (and historically a couple of corrupt rows ended up
+    // with negative values, yielding /jobs/-309396680 404s). Ace-native
+    // jobs route via cuid forever.
+    const slug = job.id;
     revalidatePath("/jobs");
     revalidatePath(`/jobs/${slug}`);
     return { ok: true, value: { slug, jobCuid: job.id } };

@@ -25,7 +25,7 @@ export type TemplateRow = {
 type TabId = "active" | "inactive";
 
 const AUDIENCE_OPTIONS = ["client", "candidate", "internal"] as const;
-const CATEGORY_OPTIONS = ["interview", "submittal", "offer", "rejection", "reference"] as const;
+const CATEGORY_OPTIONS = ["outreach", "interview", "submittal", "offer", "rejection", "reference"] as const;
 
 // Shared input/select/textarea class so every form field in the template
 // editor tracks the active court mode. Keeping this in one place makes it
