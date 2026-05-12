@@ -128,7 +128,7 @@ async function fetchEvent(userId: string, eventId: string): Promise<CalendarEven
 function defaultSubject(party: Party, candidateName: string, jobTitle: string, clientName: string): string {
   const prefix = party === "client" ? "Interview" : `Interview with ${clientName || "the team"}`;
   const tail = party === "client"
-    ? `${candidateName || "candidate"} — ${jobTitle || "role"}`
+    ? `${candidateName || "candidate"} - ${jobTitle || "role"}`
     : `${jobTitle || "role"}`;
   return `${prefix}: ${tail}`;
 }
@@ -169,8 +169,10 @@ export async function getInterviewInviteState(interviewId: string): Promise<Inte
       clientId: true,
       scheduledAt: true,
       durationMin: true,
+      googleEventIdMine: true,
       googleEventIdClient: true,
       googleEventIdCandidate: true,
+      clientAttendees: true,
     },
   });
   if (!interview) return { ok: false, error: "Interview not found." };
@@ -257,6 +259,30 @@ export async function getInterviewInviteState(interviewId: string): Promise<Inte
     ? await fetchEvent(user.id, interview.googleEventIdCandidate).catch(() => null)
     : null;
 
+  // For ace_scheduled interviews the per-party event ids are populated
+  // only AFTER the first Send Invite. Until then, the source of truth is
+  // googleEventIdMine plus the Interview.clientAttendees JSON the
+  // scheduler wrote at create time. Walk that chain so editing an
+  // interview before any invites have shipped still pre-populates the To:
+  // field with the recruiter-picked interviewer email.
+  const mineEvent = !clientEvent && interview.googleEventIdMine
+    ? await fetchEvent(user.id, interview.googleEventIdMine).catch(() => null)
+    : null;
+  const localClientAttendees = Array.isArray(interview.clientAttendees)
+    ? (interview.clientAttendees as { name?: string; email?: string }[])
+    : [];
+  const firstLocalClientEmail = localClientAttendees
+    .map((a) => a.email?.trim())
+    .find((e): e is string => Boolean(e));
+  const mineFirstNonOrganizerEmail = mineEvent?.attendees
+    ?.map((a) => a.email)
+    .find((e) => e && e.toLowerCase() !== (candidateEmail || "").toLowerCase());
+  const clientPrefillTo =
+    clientEvent?.attendees[0]?.email
+    ?? mineFirstNonOrganizerEmail
+    ?? firstLocalClientEmail
+    ?? "";
+
   // Pull every Contact at this client so the To: field on the Client
   // Invite can autocomplete to real names instead of forcing the
   // recruiter to remember + retype each address. Only contacts that
@@ -302,7 +328,7 @@ export async function getInterviewInviteState(interviewId: string): Promise<Inte
       client: {
         party: "client",
         hasEvent: Boolean(clientEvent),
-        to: clientEvent?.attendees[0]?.email ?? "",
+        to: clientPrefillTo,
         subject: clientEvent?.summary || defaultSubject("client", candidateName, jobTitle, clientName),
         body: clientEvent?.description || defaultBody("client", candidateName, jobTitle, clientName),
       },

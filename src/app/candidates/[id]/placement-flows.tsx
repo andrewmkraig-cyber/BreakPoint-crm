@@ -55,6 +55,12 @@ import { createClientContact } from "@/app/candidates/[id]/contact-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
+import {
+  formatInterviewDate as formatInterviewDateShared,
+  formatInterviewTime as formatInterviewTimeShared,
+  formatInterviewWhen as formatInterviewWhenShared,
+  formatInterviewNextLine,
+} from "@/lib/interview-format";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 
 export type ClientContactRef = {
@@ -839,13 +845,10 @@ function JobActionRow({
 // Inline "· Apr 19 · 8:59 AM · Video" formatter — the next-upcoming
 // interview surfaces on the row title line. Cancelled / past rows are
 // hidden upstream; this only renders for an iv we already know is in
-// the future and still scheduled.
+// the future and still scheduled. Uses the shared en-US/ET deterministic
+// formatter so SSR and client hydrate to identical strings.
 function formatNextInterview(iv: InterviewSummary): string {
-  const d = new Date(iv.scheduledAt);
-  const date = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  const time = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-  const type = iv.type === "phone_screen" ? "Phone" : iv.type === "video" ? "Video" : "In-Person";
-  return `· ${date} · ${time} · ${type}`;
+  return formatInterviewNextLine(iv.scheduledAt, iv.type);
 }
 
 const CANCEL_REASON_LABELS: Record<string, string> = {
@@ -2303,23 +2306,18 @@ function formatInterviewType(t: InterviewType): string {
   return "In-Person";
 }
 
+// Locale-explicit ET formatters live in src/lib/interview-format.ts so SSR
+// and hydration always produce byte-identical strings.
 function formatInterviewWhen(d: Date): string {
-  const sameYear = d.getFullYear() === new Date().getFullYear();
-  return d.toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: sameYear ? undefined : "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatInterviewWhenShared(d);
 }
 
 function formatInterviewDate(d: Date): string {
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  return formatInterviewDateShared(d);
 }
 
 function formatInterviewTime(d: Date): string {
-  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return formatInterviewTimeShared(d);
 }
 
 function toDatetimeLocalValue(iso: string): string {

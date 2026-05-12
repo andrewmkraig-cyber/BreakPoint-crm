@@ -9,6 +9,7 @@ import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { formatUpcomingInterviewWhen } from "@/lib/interview-format";
 import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
 import {
   Building2,
@@ -137,6 +138,7 @@ export async function MyDashboard() {
       jobTitle: iv.jobRfId != null ? rfJobTitle.get(iv.jobRfId) ?? "(job)" : "(job)",
       clientName: iv.clientRfId != null ? rfClientName.get(iv.clientRfId) ?? "" : "",
       scheduledAt: iv.scheduledAt.toISOString(),
+      whenLabel: formatUpcomingInterviewWhen(iv.scheduledAt),
       durationMin: iv.durationMin,
       type: iv.type as UpcomingInterviewRow["type"],
       source: iv.source as UpcomingInterviewRow["source"],

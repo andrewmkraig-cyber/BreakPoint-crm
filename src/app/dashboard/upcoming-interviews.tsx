@@ -24,6 +24,10 @@ export type UpcomingInterviewRow = {
   jobTitle: string;
   clientName: string;
   scheduledAt: string;
+  // Pre-formatted en-US/ET label rendered on the server so SSR matches
+  // hydration byte-for-byte (no toLocaleString drift between Node ICU
+  // and the browser ICU).
+  whenLabel: string;
   durationMin: number;
   type: "phone_screen" | "video" | "in_person";
   source: "ace_scheduled" | "client_scheduled";
@@ -99,7 +103,6 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
         <ul id="upcoming-interviews-body" className="mt-2">
           {rows.map((r, idx) => {
             const Icon = r.type === "phone_screen" ? PhoneCall : r.type === "video" ? Video : MapPin;
-            const when = new Date(r.scheduledAt);
             const isLast = idx === rows.length - 1;
             const editHref = buildEditInterviewHref(r.candidateHref, r.id);
             return (
@@ -128,7 +131,7 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <div className="text-sm font-semibold text-court-fg">{formatWhen(when)}</div>
+                    <div className="text-sm font-semibold text-court-fg">{r.whenLabel}</div>
                     <div className="text-xs text-court-fg-muted">
                       {r.durationMin}m · {formatType(r.type)}
                     </div>
@@ -166,23 +169,13 @@ export function UpcomingInterviews({ rows }: { rows: UpcomingInterviewRow[] }) {
       {popupRow && (
         <InterviewInvitePopup
           interviewId={popupRow.id}
-          whenLabel={formatWhen(new Date(popupRow.scheduledAt))}
+          whenLabel={popupRow.whenLabel}
           jobLabel={[popupRow.jobTitle, popupRow.clientName].filter(Boolean).join(" · ")}
           onClose={() => setPopupRow(null)}
         />
       )}
     </section>
   );
-}
-
-function formatWhen(d: Date): string {
-  return d.toLocaleString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function formatType(t: UpcomingInterviewRow["type"]): string {

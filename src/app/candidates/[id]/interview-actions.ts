@@ -139,20 +139,46 @@ async function upsertInterviewingStage(args: {
           })
         : Promise.resolve(null),
     ]);
-    await prisma.placement.create({
-      data: {
-        candidateRfId: args.candidateRfId,
-        candidateId: args.candidateId,
-        jobRfId: args.jobRfId,
-        jobId: jobRow?.id ?? null,
-        clientRfId: args.clientRfId,
-        clientId: clientRow?.id ?? null,
-        stage: "interviewing",
-        createdById: args.userId,
-        organizationId: args.organizationId,
-        syncedToRf: false,
-      },
-    });
+    // Placement has three @@unique tuples: (candidateRfId,jobRfId),
+    // (candidateId,jobRfId), and (candidateId,jobId). The findUnique above
+    // probes the first two, but an existing row keyed on (candidateId,
+    // jobId) can still collide here — e.g. when a recruiter rescheduled
+    // off an Ace-native Job whose jobRfId was synthetic-negative on the
+    // earlier row and zero/different on this one. Catch P2002 and treat
+    // it as "placement already exists, just bump the stage if it's
+    // earlier" so a new interview still saves instead of bubbling a hard
+    // Prisma error to the recruiter.
+    try {
+      await prisma.placement.create({
+        data: {
+          candidateRfId: args.candidateRfId,
+          candidateId: args.candidateId,
+          jobRfId: args.jobRfId,
+          jobId: jobRow?.id ?? null,
+          clientRfId: args.clientRfId,
+          clientId: clientRow?.id ?? null,
+          stage: "interviewing",
+          createdById: args.userId,
+          organizationId: args.organizationId,
+          syncedToRf: false,
+        },
+      });
+    } catch (e: unknown) {
+      const code = (e as { code?: string })?.code;
+      if (code !== "P2002") throw e;
+      if (args.candidateId && jobRow?.id) {
+        const conflict = await prisma.placement.findUnique({
+          where: { candidateId_jobId: { candidateId: args.candidateId, jobId: jobRow.id } },
+          select: { id: true, stage: true },
+        });
+        if (conflict && EARLIER_STAGES.has(conflict.stage)) {
+          await prisma.placement.update({
+            where: { id: conflict.id },
+            data: { stage: "interviewing", syncedToRf: false },
+          });
+        }
+      }
+    }
     return;
   }
   if (EARLIER_STAGES.has(existing.stage)) {
@@ -176,7 +202,7 @@ function calendarSummary(input: ScheduleInterviewInput): string {
   const client = input.clientName ? ` (${input.clientName})` : "";
   const kind =
     input.type === "phone_screen" ? "Phone Screen" : input.type === "video" ? "Interview" : "Onsite";
-  return `${kind}: ${who} — ${job}${client}`;
+  return `${kind}: ${who} - ${job}${client}`;
 }
 
 function calendarDescription(input: ScheduleInterviewInput): string {

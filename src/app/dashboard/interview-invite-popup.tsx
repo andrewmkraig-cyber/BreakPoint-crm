@@ -13,6 +13,7 @@ import {
   cancelInterview,
   rescheduleInterview,
 } from "@/app/candidates/[id]/interview-actions";
+import { DateTime15Picker } from "@/components/datetime-15-picker";
 
 // Inline edit-and-resend popup mounted on the dashboard. Loads the live
 // calendar event for each party so the recruiter is editing what's
@@ -334,25 +335,22 @@ function ScheduleEditor({
         </button>
       </header>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <label className="block">
-          <span className="mb-0.5 block text-[11px] font-medium text-court-fg-muted">Date</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+        <label className="block md:col-span-1">
+          <span className="mb-0.5 block text-[11px] font-medium text-court-fg-muted">Date &amp; time</span>
+          <DateTime15Picker
+            value={date && time ? `${date}T${time}` : ""}
+            onChange={(next) => {
+              if (!next) {
+                setDate("");
+                setTime("");
+                return;
+              }
+              const [d, t] = next.split("T");
+              setDate(d ?? "");
+              setTime(t ?? "");
+            }}
             disabled={busy}
-            className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg outline-none focus:ring-2 focus:ring-court-accent/30"
-          />
-        </label>
-        <label className="block">
-          <span className="mb-0.5 block text-[11px] font-medium text-court-fg-muted">Time</span>
-          <input
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
-            disabled={busy}
-            className="w-full rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-sm text-court-fg outline-none focus:ring-2 focus:ring-court-accent/30"
           />
         </label>
         <label className="block">
