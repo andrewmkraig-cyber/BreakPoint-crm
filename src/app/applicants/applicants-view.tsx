@@ -7,6 +7,7 @@ import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX } from "lucide-r
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import { TabStrip } from "@/components/ui/tab-strip";
 import {
   keepCandidateForJob,
   keepLocalCandidateForJob,
@@ -130,22 +131,15 @@ export function ApplicantsView({
 
   return (
     <div className="space-y-4">
-      {/* Segmented tab box, mirrors the Active/Private/Inactive
-          control on /jobs so the two list surfaces read as a pair. */}
-      <div className="inline-flex rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-        <TabButton
-          label="Applied"
-          count={applied.length}
-          active={tab === "applied"}
-          onClick={() => setTab("applied")}
-        />
-        <TabButton
-          label="Kept"
-          count={kept.length}
-          active={tab === "kept"}
-          onClick={() => setTab("kept")}
-        />
-      </div>
+      <TabStrip<Tab>
+        ariaLabel="Applicant scope"
+        activeId={tab}
+        onChange={setTab}
+        items={[
+          { id: "applied", label: "Applied", count: applied.length },
+          { id: "kept", label: "Kept", count: kept.length },
+        ]}
+      />
 
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
@@ -186,48 +180,6 @@ export function ApplicantsView({
         </div>
       </div>
     </div>
-  );
-}
-
-function TabButton({
-  label,
-  count,
-  active,
-  onClick,
-}: {
-  label: string;
-  count: number;
-  active: boolean;
-  onClick: () => void;
-}) {
-  // Mirrors the TabLink in jobs-view.tsx so /applicants and /jobs
-  // share one segmented-control language: rounded-md tabs nested in
-  // a rounded-lg shell, accent-tint background on the active tab,
-  // count chip flips palette to read as primary on active.
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active
-          ? "bg-court-accent-tint text-court-accent-dark"
-          : "text-court-fg-muted hover:bg-court-surface-subtle",
-      )}
-    >
-      <span>{label}</span>
-      <span
-        className={cn(
-          "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-          active
-            ? "bg-court-accent text-court-surface"
-            : "bg-court-surface-subtle text-court-fg-muted",
-        )}
-      >
-        {count.toLocaleString()}
-      </span>
-    </button>
   );
 }
 
