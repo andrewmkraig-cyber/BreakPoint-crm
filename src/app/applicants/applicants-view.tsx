@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 import {
@@ -16,6 +17,7 @@ import {
   removeLocalKeptCandidate,
 } from "@/app/applicants/actions";
 import { rejectCandidateJob } from "@/app/candidates/[id]/placement-actions";
+import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
 import { setCandidateNavList } from "@/lib/candidate-nav";
 
 // candidateId is polymorphic: RF-imported rows carry the numeric RF id;
@@ -89,6 +91,41 @@ type Tab = "applied" | "kept";
 type SortKey = "name" | "job" | "when" | "source";
 type SortDir = "asc" | "desc";
 
+function rowKey(r: { candidateId: number | string; jobId: number | string }): string {
+  return `${r.candidateId}-${r.jobId}`;
+}
+
+// Single source of truth for dispatching a per-row reject — used by
+// both the row-level Reject button (Applied tab) and the bulk handler.
+// Returns the action result so callers can tally ok/fail counts.
+async function rejectOneApplicant(
+  r: { candidateId: number | string; jobId: number | string; clientRfId: number | null },
+  previousStage: "applied" | "kept",
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const isAceJob = typeof r.jobId === "string";
+  const jobRfId = isAceJob ? null : (r.jobId as number);
+  const jobId = isAceJob ? (r.jobId as string) : null;
+  const clientRfId = r.clientRfId;
+  if (typeof r.candidateId === "string") {
+    return rejectLocalCandidateJob({
+      candidateId: r.candidateId,
+      jobRfId,
+      clientRfId,
+      jobId,
+      previousStage,
+      reason: "",
+    });
+  }
+  return rejectCandidateJob({
+    candidateRfId: r.candidateId,
+    jobRfId: jobRfId ?? 0,
+    clientRfId: clientRfId ?? 0,
+    jobCuid: jobId,
+    previousStage,
+    reason: "",
+  });
+}
+
 export function ApplicantsView({
   applied,
   kept,
@@ -96,6 +133,7 @@ export function ApplicantsView({
   applied: AppliedRow[];
   kept: KeptRow[];
 }) {
+  const router = useRouter();
   const [tab, setTab] = useState<Tab>("applied");
   const [sortKey, setSortKey] = useState<SortKey>("when");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -105,6 +143,91 @@ export function ApplicantsView({
     [applied, sortKey, sortDir],
   );
   const sortedKept = useMemo(() => sortKept(kept, sortKey, sortDir), [kept, sortKey, sortDir]);
+
+  // Bulk selection — keyed by `${candidateId}-${jobId}` (same key as
+  // the table row). Selection clears on tab switch so a stale set
+  // can't bulk-reject rows the recruiter can no longer see.
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => {
+    setSelectedKeys(new Set());
+  }, [tab]);
+
+  const visibleRows: Array<AppliedRow | KeptRow> =
+    tab === "applied" ? sortedApplied : sortedKept;
+  const visibleKeys = useMemo(() => visibleRows.map((r) => rowKey(r)), [visibleRows]);
+  const allSelected =
+    visibleKeys.length > 0 && visibleKeys.every((k) => selectedKeys.has(k));
+  const someSelected = selectedKeys.size > 0 && !allSelected;
+  const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
+  function toggleRow(key: string) {
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelectedKeys((prev) => {
+      if (prev.size === visibleKeys.length && visibleKeys.length > 0) {
+        return new Set();
+      }
+      return new Set(visibleKeys);
+    });
+  }
+
+  async function onBulkRejectConfirm({ sendRejectionEmail: _sendRejectionEmail }: { sendRejectionEmail: boolean }) {
+    // Applicant-tab reject actions don't yet support a send-email
+    // toggle (only the placement-id-keyed pipeline reject does), so
+    // the dialog's checkbox is informational here. Underscored param
+    // documents the intentional drop.
+    void _sendRejectionEmail;
+    const keys = new Set(selectedKeys);
+    if (keys.size === 0) return;
+    setBulkBusy(true);
+    const previousStage: "applied" | "kept" = tab === "applied" ? "applied" : "kept";
+    const targets = visibleRows.filter((r) => keys.has(rowKey(r)));
+    let ok = 0;
+    let fail = 0;
+    for (const r of targets) {
+      try {
+        const isAceJob = typeof r.jobId === "string";
+        const clientRfId = "clientRfId" in r ? r.clientRfId : null;
+        const res = await rejectOneApplicant(
+          {
+            candidateId: r.candidateId,
+            jobId: r.jobId,
+            clientRfId,
+          },
+          previousStage,
+        );
+        if (res.ok) ok += 1;
+        else fail += 1;
+        void isAceJob;
+      } catch {
+        fail += 1;
+      }
+    }
+    setBulkBusy(false);
+    setBulkRejectOpen(false);
+    setSelectedKeys(new Set());
+    if (fail === 0) {
+      toast.success(`Rejected ${ok}`);
+    } else if (ok === 0) {
+      toast.error(`Couldn't reject (${fail} failed)`);
+    } else {
+      toast.warning(`Rejected ${ok}, ${fail} failed`);
+    }
+    router.refresh();
+  }
 
   // Stash the active tab's row ids (in current sort order) so the
   // candidate profile's Prev/Next nav can walk them. Re-runs when the
@@ -129,6 +252,8 @@ export function ApplicantsView({
     }
   }
 
+  const colSpan = tab === "applied" ? 6 : 5;
+
   return (
     <div className="space-y-4">
       <TabStrip<Tab>
@@ -141,11 +266,52 @@ export function ApplicantsView({
         ]}
       />
 
+      {selectedKeys.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-court-accent/40 bg-court-accent-tint px-4 py-2 text-sm shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-court-fg">
+              {selectedKeys.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedKeys(new Set())}
+              className="inline-flex items-center gap-1 text-xs text-court-fg-muted transition hover:text-court-fg"
+            >
+              <X className="h-3 w-3" /> Clear
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="reject"
+              size="sm"
+              onClick={() => setBulkRejectOpen(true)}
+              disabled={bulkBusy}
+              className="h-7 px-3 text-[11px]"
+            >
+              {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+              Reject {selectedKeys.size}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[900px] text-left text-sm">
             <DataTableHead>
               <tr>
+                <DataTableHeaderCell align="center">
+                  <input
+                    ref={headerCheckboxRef}
+                    type="checkbox"
+                    aria-label="Select all rows on this tab"
+                    checked={allSelected}
+                    disabled={visibleKeys.length === 0}
+                    onChange={toggleAll}
+                    className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                </DataTableHeaderCell>
                 <ColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
                 <ColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
                 <ColHeader
@@ -164,29 +330,56 @@ export function ApplicantsView({
             <tbody className="divide-y divide-court-border-soft">
               {tab === "applied" ? (
                 sortedApplied.length === 0 ? (
-                  <EmptyRow label="No applicants in this view." />
+                  <EmptyRow label="No applicants in this view." colSpan={colSpan} />
                 ) : (
-                  sortedApplied.map((r) => (
-                    <AppliedRowView key={`${r.candidateId}-${r.jobId}`} row={r} />
-                  ))
+                  sortedApplied.map((r) => {
+                    const key = rowKey(r);
+                    return (
+                      <AppliedRowView
+                        key={key}
+                        row={r}
+                        selected={selectedKeys.has(key)}
+                        onToggle={() => toggleRow(key)}
+                      />
+                    );
+                  })
                 )
               ) : sortedKept.length === 0 ? (
-                <EmptyRow label="No kept candidates yet." />
+                <EmptyRow label="No kept candidates yet." colSpan={colSpan} />
               ) : (
-                sortedKept.map((r) => <KeptRowView key={`${r.candidateId}-${r.jobId}`} row={r} />)
+                sortedKept.map((r) => {
+                  const key = rowKey(r);
+                  return (
+                    <KeptRowView
+                      key={key}
+                      row={r}
+                      selected={selectedKeys.has(key)}
+                      onToggle={() => toggleRow(key)}
+                    />
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+      {bulkRejectOpen && (
+        <RejectCandidateDialog
+          candidateName={`${selectedKeys.size} candidate${selectedKeys.size === 1 ? "" : "s"}`}
+          onClose={() => {
+            if (!bulkBusy) setBulkRejectOpen(false);
+          }}
+          onConfirm={onBulkRejectConfirm}
+        />
+      )}
     </div>
   );
 }
 
-function EmptyRow({ label }: { label: string }) {
+function EmptyRow({ label, colSpan }: { label: string; colSpan: number }) {
   return (
     <tr>
-      <td colSpan={5} className="px-5 py-12 text-center text-sm text-court-fg-muted">
+      <td colSpan={colSpan} className="px-5 py-12 text-center text-sm text-court-fg-muted">
         {label}
       </td>
     </tr>
@@ -223,7 +416,15 @@ function ColHeader({
   );
 }
 
-function AppliedRowView({ row }: { row: AppliedRow }) {
+function AppliedRowView({
+  row,
+  selected,
+  onToggle,
+}: {
+  row: AppliedRow;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const router = useRouter();
   const [isPending, startChange] = useTransition();
 
@@ -241,6 +442,15 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
 
   return (
     <tr className="transition hover:bg-court-accent-tint/40">
+      <td className="w-px px-3 py-3 align-top text-center">
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.candidateName}`}
+          checked={selected}
+          onChange={onToggle}
+          className="h-3.5 w-3.5 cursor-pointer accent-brand"
+        />
+      </td>
       <td className="px-5 py-3 align-top">
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}
@@ -312,33 +522,7 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
             label="Reject"
             icon={<UserX className="h-3 w-3" />}
             disabled={isPending}
-            onClick={() => {
-              const isAceJob = typeof row.jobId === "string";
-              const jobRfId = isAceJob ? null : (row.jobId as number);
-              const jobId = isAceJob ? (row.jobId as string) : null;
-              const clientRfId = row.clientRfId;
-              runAction(
-                () =>
-                  typeof row.candidateId === "string"
-                    ? rejectLocalCandidateJob({
-                        candidateId: row.candidateId,
-                        jobRfId,
-                        clientRfId,
-                        jobId,
-                        previousStage: "applied",
-                        reason: "",
-                      })
-                    : rejectCandidateJob({
-                        candidateRfId: row.candidateId,
-                        jobRfId: jobRfId ?? 0,
-                        clientRfId: clientRfId ?? 0,
-                        jobCuid: jobId,
-                        previousStage: "applied",
-                        reason: "",
-                      }),
-                "Rejected",
-              );
-            }}
+            onClick={() => runAction(() => rejectOneApplicant(row, "applied"), "Rejected")}
           />
         </div>
       </td>
@@ -346,7 +530,15 @@ function AppliedRowView({ row }: { row: AppliedRow }) {
   );
 }
 
-function KeptRowView({ row }: { row: KeptRow }) {
+function KeptRowView({
+  row,
+  selected,
+  onToggle,
+}: {
+  row: KeptRow;
+  selected: boolean;
+  onToggle: () => void;
+}) {
   const router = useRouter();
   const [isPending, startChange] = useTransition();
 
@@ -364,6 +556,15 @@ function KeptRowView({ row }: { row: KeptRow }) {
 
   return (
     <tr className="transition hover:bg-court-accent-tint/40">
+      <td className="w-px px-3 py-3 align-top text-center">
+        <input
+          type="checkbox"
+          aria-label={`Select ${row.candidateName}`}
+          checked={selected}
+          onChange={onToggle}
+          className="h-3.5 w-3.5 cursor-pointer accent-brand"
+        />
+      </td>
       <td className="px-5 py-3 align-top">
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}

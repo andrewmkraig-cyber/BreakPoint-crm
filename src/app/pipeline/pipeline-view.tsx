@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, DollarSign, Loader2, Search, UserX } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
+import { Bookmark, CalendarClock, DollarSign, Loader2, Search, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -78,6 +78,15 @@ type PipelineViewProps = {
 
 const STAGE_ORDER: Stage[] = ["submitted", "interviewing", "offer", "pending_start", "hired"];
 
+// Stages where per-row Reject (and therefore bulk Reject) is offered.
+// Pending Start + Hired have their own custom action cells and aren't
+// in the rejection flow — those are "deal in flight / closed" states.
+const REJECTABLE_STAGES: Stage[] = ["submitted", "interviewing", "offer"];
+
+function isRejectableStage(s: Stage): boolean {
+  return (REJECTABLE_STAGES as readonly Stage[]).includes(s);
+}
+
 export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q, counts, error }: PipelineViewProps) {
   const router = useRouter();
   const params = useSearchParams();
@@ -87,6 +96,89 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
   useEffect(() => {
     setQuery(q);
   }, [q]);
+
+  // Bulk selection — rejectable rows only. Stores Placement.id so the
+  // bulk handler can call rejectLocalPlacement directly without
+  // re-deriving the id from row keys. Cleared when the stage/search/
+  // page slice changes so a stale selection can't bulk-reject the
+  // wrong rows after navigation.
+  const [selectedPlacementIds, setSelectedPlacementIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  useEffect(() => {
+    setSelectedPlacementIds(new Set());
+  }, [stage, q, page]);
+
+  const showCheckboxCol = isRejectableStage(stage);
+  const selectableRows = useMemo(
+    () => rows.filter((r) => r.placementId !== null && isRejectableStage(r.bucket)),
+    [rows],
+  );
+  const allSelected =
+    selectableRows.length > 0 &&
+    selectableRows.every((r) => selectedPlacementIds.has(r.placementId as string));
+  const someSelected =
+    selectedPlacementIds.size > 0 && !allSelected;
+  const headerCheckboxRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    if (headerCheckboxRef.current) {
+      headerCheckboxRef.current.indeterminate = someSelected;
+    }
+  }, [someSelected]);
+
+  function toggleRow(placementId: string) {
+    setSelectedPlacementIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(placementId)) next.delete(placementId);
+      else next.add(placementId);
+      return next;
+    });
+  }
+  function toggleAll() {
+    setSelectedPlacementIds((prev) => {
+      if (prev.size === selectableRows.length && selectableRows.length > 0) {
+        return new Set();
+      }
+      return new Set(selectableRows.map((r) => r.placementId as string));
+    });
+  }
+
+  async function onBulkRejectConfirm({ sendRejectionEmail }: { sendRejectionEmail: boolean }) {
+    const ids = Array.from(selectedPlacementIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    let ok = 0;
+    let fail = 0;
+    // Sequential with a small gap — Gmail rate-limits when the
+    // rejection-email checkbox fires for every row, and Neon's pool
+    // is friendlier under serial writes than a thundering herd.
+    for (const id of ids) {
+      try {
+        const res = await rejectLocalPlacement({ placementId: id, sendRejectionEmail });
+        if (res.ok) ok += 1;
+        else fail += 1;
+      } catch {
+        fail += 1;
+      }
+    }
+    setBulkBusy(false);
+    setBulkRejectOpen(false);
+    setSelectedPlacementIds(new Set());
+    if (fail === 0) {
+      toast.success(
+        sendRejectionEmail
+          ? `Rejected ${ok} — emails sent`
+          : `Rejected ${ok}`,
+      );
+    } else if (ok === 0) {
+      toast.error(`Couldn't reject (${fail} failed)`);
+    } else {
+      toast.warning(`Rejected ${ok}, ${fail} failed`);
+    }
+    router.refresh();
+  }
 
   // Stash the visible row ids so the candidate profile's Prev/Next
   // nav can walk through this exact stage's slice in the user's
@@ -155,11 +247,54 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
         </div>
       )}
 
+      {showCheckboxCol && selectedPlacementIds.size > 0 && (
+        <div className="flex items-center justify-between rounded-xl border border-court-accent/40 bg-court-accent-tint px-4 py-2 text-sm shadow-sm">
+          <div className="flex items-center gap-3">
+            <span className="font-semibold text-court-fg">
+              {selectedPlacementIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => setSelectedPlacementIds(new Set())}
+              className="inline-flex items-center gap-1 text-xs text-court-fg-muted transition hover:text-court-fg"
+            >
+              <X className="h-3 w-3" /> Clear
+            </button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="reject"
+              size="sm"
+              onClick={() => setBulkRejectOpen(true)}
+              disabled={bulkBusy}
+              className="h-7 px-3 text-[11px]"
+            >
+              {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
+              Reject {selectedPlacementIds.size}
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
             <DataTableHead>
               <tr>
+                {showCheckboxCol && (
+                  <DataTableHeaderCell align="center">
+                    <input
+                      ref={headerCheckboxRef}
+                      type="checkbox"
+                      aria-label="Select all rejectable rows on this page"
+                      checked={allSelected}
+                      disabled={selectableRows.length === 0}
+                      onChange={toggleAll}
+                      className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
+                    />
+                  </DataTableHeaderCell>
+                )}
                 <DataTableHeaderCell>Candidate</DataTableHeaderCell>
                 <DataTableHeaderCell>Job</DataTableHeaderCell>
                 <DataTableHeaderCell>Client</DataTableHeaderCell>
@@ -191,7 +326,10 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
               {rows.length === 0 && !error && (
                 <tr>
                   <td
-                    colSpan={stage === "hired" ? 8 : stage === "pending_start" ? 6 : 7}
+                    colSpan={
+                      (stage === "hired" ? 8 : stage === "pending_start" ? 6 : 7) +
+                      (showCheckboxCol ? 1 : 0)
+                    }
                     className="px-5 py-12 text-center text-sm text-court-fg-muted"
                   >
                     No candidates in {PIPELINE_LABELS[stage]}
@@ -205,6 +343,22 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                   className="cursor-pointer transition hover:bg-court-accent-tint/40"
                   onClick={() => router.push(`/candidates/${r.candidateId}`)}
                 >
+                  {showCheckboxCol && (
+                    <td
+                      className="w-px px-3 py-3 align-top text-center"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {r.placementId && isRejectableStage(r.bucket) ? (
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${r.candidateName}`}
+                          checked={selectedPlacementIds.has(r.placementId)}
+                          onChange={() => toggleRow(r.placementId as string)}
+                          className="h-3.5 w-3.5 cursor-pointer accent-brand"
+                        />
+                      ) : null}
+                    </td>
+                  )}
                   <td className="px-5 py-3 align-top">
                     <div className="flex items-start gap-2">
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[11px] font-semibold text-court-fg-muted">
@@ -325,9 +479,12 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                               <span className="hidden md:inline">Offer</span>
                             </Link>
                           )}
-                          {(r.bucket === "submitted" || r.bucket === "interviewing") && r.placementId && (
-                            <RejectButton placementId={r.placementId} candidateName={r.candidateName} />
-                          )}
+                          {(r.bucket === "submitted" ||
+                            r.bucket === "interviewing" ||
+                            r.bucket === "offer") &&
+                            r.placementId && (
+                              <RejectButton placementId={r.placementId} candidateName={r.candidateName} />
+                            )}
                         </div>
                       </td>
                     </>
@@ -346,6 +503,15 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
           label="submittals"
         />
       </div>
+      {bulkRejectOpen && (
+        <RejectCandidateDialog
+          candidateName={`${selectedPlacementIds.size} candidate${selectedPlacementIds.size === 1 ? "" : "s"}`}
+          onClose={() => {
+            if (!bulkBusy) setBulkRejectOpen(false);
+          }}
+          onConfirm={onBulkRejectConfirm}
+        />
+      )}
     </div>
   );
 }
