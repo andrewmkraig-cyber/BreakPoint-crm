@@ -688,11 +688,13 @@ export type ExtractedJdFields = {
   location?: string;
   salaryLow?: number;
   salaryHigh?: number;
+  salaryType?: "SALARY" | "HOURLY";
 };
 
 // Lightweight follow-up extractor that runs after generateJobDescription
 // produces the markdown JD. The /jobs/new form auto-fills empty Job Title /
-// Location / Salary Low / Salary High inputs from whatever Claude can find
+// Location / Salary Low / Salary High inputs (and flips the Salary Type
+// dropdown when an hourly rate is detected) from whatever Claude can find
 // in the generated text. Best-effort — callers ignore failures silently.
 export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise<ExtractedJdFields> {
   const text = (markdown ?? "").trim();
@@ -709,9 +711,13 @@ export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise
       {
         role: "user",
         content:
-          "Extract the following fields from this job description if present. " +
-          "Return JSON only with these keys: title, location, salaryLow (number), salaryHigh (number). " +
-          "If a field is not found, omit it.\n\n" +
+          "Extract the following fields from this job description. Return strict JSON only, no markdown, no explanation. Omit any field you are not confident about.\n\n" +
+          "Fields:\n" +
+          "- title: string — the job title\n" +
+          "- location: string — the single most specific location mentioned. Prefer a format like 'Florence, KY' or 'Florence, KY 41042' over region descriptions like 'Cincinnati/Northern Kentucky'. If a commute requirement lists a specific city/zip, use that.\n" +
+          "- salaryLow: number — the lower bound of compensation, in dollars. If hourly, convert to the hourly rate as a number (e.g. 20 for $20/hr).\n" +
+          "- salaryHigh: number — the upper bound of compensation, in dollars. If hourly, use the hourly rate.\n" +
+          "- salaryType: string — either 'SALARY' or 'HOURLY'. Use 'HOURLY' if the compensation is described as per hour, /hr, hourly, or an hourly rate. Use 'SALARY' if annual or salaried.\n\n" +
           "=== Job Description ===\n" +
           text.slice(0, 50_000),
       },
@@ -735,6 +741,10 @@ export async function extractJobFieldsFromGeneratedJd(markdown: string): Promise
   }
   if (typeof parsed.salaryHigh === "number" && Number.isFinite(parsed.salaryHigh) && parsed.salaryHigh >= 0) {
     fields.salaryHigh = parsed.salaryHigh;
+  }
+  if (typeof parsed.salaryType === "string") {
+    const st = parsed.salaryType.trim().toUpperCase();
+    if (st === "HOURLY" || st === "SALARY") fields.salaryType = st;
   }
   return fields;
 }

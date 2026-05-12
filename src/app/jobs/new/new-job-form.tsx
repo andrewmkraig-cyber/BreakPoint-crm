@@ -161,6 +161,13 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
         if (f.location && !location.trim()) setLocation(f.location);
         if (typeof f.salaryLow === "number" && salaryLow === "") setSalaryLow(String(f.salaryLow));
         if (typeof f.salaryHigh === "number" && salaryHigh === "") setSalaryHigh(String(f.salaryHigh));
+        // Salary Type dropdown — flip whenever Claude tells us the comp is
+        // hourly vs salaried so the labels on the comp inputs match (Hourly
+        // low/high vs Salary low/high). Mapping: HOURLY → "hourly",
+        // SALARY → "yearly" (the form's internal SalaryFrequency value).
+        // Absent → leave the dropdown untouched.
+        if (f.salaryType === "HOURLY") setSalaryFrequency("hourly");
+        else if (f.salaryType === "SALARY") setSalaryFrequency("yearly");
       })
       .catch(() => {
         // silent — field auto-fill is best-effort
