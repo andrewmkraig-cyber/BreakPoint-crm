@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-12 · Ace 39.4
+Last updated: 2026-05-12 · Ace 40.0
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
@@ -77,6 +77,17 @@ All time estimates calibrated against actual build pace: Game Plan Context Depth
 11. Git author email: andrew@breakpointtalent.com OR andrewmkraig@gmail.com.
 12. Court Mode theme tokens. No hardcoded colors.
 13. Pipeline stage source of truth: Neon only.
+
+## BD Engine Rules (added 2026-05-12 · Ace 40.0)
+- **Data provider stack**: TheirStack is the Phase 4 job-discovery provider. The architecture is the `JobDiscoveryProvider` abstraction — every discovery feed (TheirStack now, possibly more later) implements the same interface so swaps don't ripple through caller code. Adzuna is a possible later addition as a coverage benchmark. JSearch is fallback only. Indeed Publisher API is gated and likely rejected — do not block the BD roadmap on it. ZipRecruiter Partner application was sent in parallel; if it's approved, it slots in as a secondary provider behind the same abstraction.
+- **Vercel cron uses UTC, not ET**. 6 AM ET = 10:00 UTC currently, 11:00 UTC after DST. Vercel does not retry failed crons — Ace owns retries via the BDRun state machine (status fields and explicit re-queue actions).
+- **BD approval queue**: discovery runs surface companies, the BDRun stops at status `AWAITING_APPROVAL`, Andrew reviews on Today's Launch, Approve & Enroll fires Apollo. No silent auto-enroll.
+- **Shared warmed domain pool**: bulk email to candidates and BD outbound share the same 5 warmed domains. Combined daily volume must stay under per-domain warm capacity (~30-50/day per domain). The send scheduler accounts for both queues — they do not have independent budgets.
+- **Apollo API key**: stored in Vercel as `APOLLO_API_KEY`. Apollo Professional plan does not allow scoped keys, so the master key is the only option — name it "Ace BD Engine" so revocation has a clean audit trail.
+
+## Job + JD Rules (added 2026-05-12 · Ace 40.0)
+- **Job slug is the cuid**. `createJob` returns `slug: job.id` (the cuid). `/jobs` row navigation routes via the cuid carried on `_aceJobId` (the RFJobWithAce shim's carry-along), never `legacyRfId` and never the synthetic negative djb2 hash of the cuid. The djb2 hash exists only as a numeric stand-in inside the `RFJob.id` field for shim compatibility — it must never appear in a URL.
+- **JD generators both emit markdown**. Path A (`src/app/api/jobs/generate-jd/route.ts`) and Path B (`src/lib/claude.ts` `generateJobDescription`) both produce GitHub-flavored markdown with `##` / `###` headings and `-` bullets. Single renderer: `react-markdown` everywhere `Job.description` is displayed. The `PlainProse` renderer for `Job.description` is **deprecated** — do not introduce new callsites.
 
 ## Design Rules
 - Green #5A9642 only for: primary buttons, active nav, active tabs/pipeline stages, positive status chips.

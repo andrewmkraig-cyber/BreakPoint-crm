@@ -258,3 +258,34 @@ Storage: localStorage keys ace-court-surface and ace-court-theme
 Selector UI: sun/moon toggle + 3 surface buttons in Settings
 Wimbledon (grass light): sidebar bg-[#1F3A1F] deep forest green
 Grass purple badge: bg-grass-purple (#6B3FA0) on unread counts in grass mode
+
+## Night Court Themes (added Ace 40.0)
+4th and 5th Court Mode options alongside Hard / Clay / Grass:
+- **Night Court Light** — warm cream surface (`#FAF8F5`) as the page background, forest-green sidebar, brand-green accents. Reads as a premium daytime palette without the green-tinting trap from earlier Wimbledon iterations.
+- **Night Court Dark** — same forest-green sidebar paired with a neutral-dark surface (no green tinting on the canvas), brand-green accents.
+
+Full token coverage on every page — no holdouts. Token names follow the same `court-*` family already used by Hard / Clay / Grass; surface selection flips via `data-surface="night-court"` + the existing `data-theme="light" | "dark"` toggle.
+
+## Unified TabStrip Component (added Ace 40.0)
+- **Source of truth**: `src/components/ui/tab-strip.tsx`. Every tab strip in the app routes through this component — Dashboard tabs, BD tabs, candidate profile tabs, /jobs tabs, client tabs, settings tabs.
+- **Visual style** (matches the Today's Briefing pattern): `rounded-md` tabs, thin brand-green border + bold brand-green text on the active pill, neutral inactive, count chips themed to state (positive / negative / neutral).
+- One-off tab strips are not allowed. Any new tab strip uses TabStrip or extends TabStrip — never a hand-rolled flex row of buttons.
+
+## Page Header Sizing (added Ace 40.0)
+- Page titles: 30px. Stops the previous slow drift where every page had its own title size.
+- New-item buttons (New Candidate / New Job / New Client) shrunk to a smaller height so they don't visually compete with the page title.
+
+## Color Discipline (added Ace 40.0)
+- **Amber `#F59E0B`** is reserved exclusively for the **Launch BD Run** CTA on `/bd/launch`. No other surface may use this exact amber. (Tailwind `amber-50/100/700` ramps remain in use as button-variant accents per the existing Stage Badge / Button System rules — that's the Apply / Schedule family, separate from the BD CTA.)
+- **Button color sweep** (formalizes the Ace 39.0 sweep): amber = Apply to Job, light blue = Keep, red = Reject, green = Submit, soft violet = Reapply. Every surface that surfaces these actions uses these colors and only these.
+
+## BD Engine Surface Direction (added Ace 40.0)
+- **Hero card on `/bd/launch`** — the Launch BD Run CTA is the focal element of the page; everything else is supporting context.
+- **5-domain health pills** — domain status renders as a row of 5 colored dots (one per warmed domain in the rotation pool), each tinted by current SendingDomain.status (HEALTHY / WARMING / COOLED).
+- **Day X of 7 progress copy** — campaign rows show "Day X of 7" in the eyebrow, saturating at 7. The exact phrasing is part of the visual language, not a per-page free-form.
+- **Colored event glyphs** on `/bd/activity`: sends = brand green, replies = blue, bounces = red, domain events = neutral.
+
+## Candidate Profile Unified Layout (added Ace 40.0)
+- **Resume always on the left**. The PDF anchor is fixed-position; pipeline tabs / overview / activity feed scroll independently on the right.
+- **Action row above the resume on the left**. Submit / Apply / Keep / Reject / Reapply sit above the resume, not above the tabs.
+- **Contextual content on the right**. Overview, applied jobs, activity, notes — everything that's not the resume or the action row.
