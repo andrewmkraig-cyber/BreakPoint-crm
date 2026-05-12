@@ -299,6 +299,18 @@ export function MailComposer({
   const [openTemplateMenu, setOpenTemplateMenu] = useState(false);
   const [openFieldMenu, setOpenFieldMenu] = useState(false);
   const [openAiPanel, setOpenAiPanel] = useState(false);
+
+  // Candidate Recruit pre-flight: when the user picks the Candidate
+  // Recruit template, the Use Template dropdown swaps to a "pick a job
+  // to merge into this outreach" picker. recruitMode flips on the
+  // moment the user clicks Candidate Recruit; recruitJobs is populated
+  // from /api/mail/job-picker on entry to that mode. The
+  // RecruitJobOption shape is declared at module scope below so the
+  // toolbar's prop signature can reference it too.
+  const [recruitMode, setRecruitMode] = useState(false);
+  const [recruitJobs, setRecruitJobs] = useState<RecruitJobOption[]>([]);
+  const [recruitLoading, setRecruitLoading] = useState(false);
+  const [recruitApplying, setRecruitApplying] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   // When true, the next Generate call also asks Claude for a subject
   // line and pipes it back into the Subject input. Off by default —
@@ -736,11 +748,42 @@ export function MailComposer({
   // Apply a template: replace subject + body with the template's
   // content. Asks for confirmation if the body is already non-empty
   // to avoid trashing a draft.
+  //
+  // Candidate Recruit is special-cased — it needs a job picker first
+  // so the merge fields (job title, city, company blurb, JD sections)
+  // have something to resolve against. The Use Template dropdown is
+  // re-used: recruitMode swaps its content from "list of templates"
+  // to "list of open jobs", and onPickRecruitJob fetches the rendered
+  // HTML from the server.
   function pickTemplate(template: ActiveTemplateSummary) {
     const currentBody = editor?.getHTML() ?? "";
     const bodyHasContent = stripHtml(currentBody).trim().length > 0;
     if (bodyHasContent && !confirm("Replace the current draft with this template?")) {
       setOpenTemplateMenu(false);
+      return;
+    }
+    if (template.name === "Candidate Recruit") {
+      // Swap the Use Template dropdown over to the job picker. We
+      // keep the dropdown open so the user can pick a job without an
+      // extra click. Fetch happens in an effect tied to recruitMode.
+      setRecruitMode(true);
+      setRecruitLoading(true);
+      setRecruitJobs([]);
+      void fetch(`/api/mail/job-picker`, { cache: "no-store" })
+        .then(async (res) => {
+          if (!res.ok) {
+            setRecruitJobs([]);
+            return;
+          }
+          const body = (await res.json()) as { jobs: RecruitJobOption[] };
+          setRecruitJobs(body.jobs ?? []);
+        })
+        .catch(() => {
+          setRecruitJobs([]);
+        })
+        .finally(() => {
+          setRecruitLoading(false);
+        });
       return;
     }
     setSubject(template.subject);
@@ -758,6 +801,65 @@ export function MailComposer({
     isProgrammaticEdit.current = true;
     editor?.commands.setContent(output, false);
     setOpenTemplateMenu(false);
+  }
+
+  // Candidate Recruit step 2 — the recruiter clicked a job in the
+  // swapped Use Template dropdown. Hit the server renderer for the
+  // fully-resolved HTML body (with bullet lists, company blurb, etc.
+  // and the 1900-char limit applied), then push it into the editor
+  // via the same `setContent` path used by the regular template flow
+  // so candidate fields ({{candidate.first_name}}) get filled by the
+  // existing client-side resolver against effectiveContext.
+  async function onPickRecruitJob(jobId: string) {
+    if (!editor) return;
+    setRecruitApplying(true);
+    try {
+      const res = await fetch(`/api/mail/candidate-recruit-template`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId }),
+      });
+      const json = (await res.json().catch(() => null)) as
+        | { ok: true; subject: string; bodyHtml: string; textLength: number; truncated: boolean }
+        | { ok: false; error: string }
+        | null;
+      if (!json || json.ok !== true) {
+        const msg = json && json.ok === false ? json.error : "Couldn't load the template.";
+        toast.error("Candidate Recruit", { description: msg });
+        return;
+      }
+      // Resolve candidate fields client-side against effectiveContext.
+      const subjectOut = applyMailMergeFields(json.subject, effectiveContext).output;
+      // Stash the un-substituted body so the existing job-context
+      // re-substitution effect keeps working if the recruiter later
+      // picks a different active job from the smart-context dropdown.
+      templateSource.current = json.bodyHtml;
+      const { output } = applyMailMergeFields(json.bodyHtml, effectiveContext);
+      setSubject(subjectOut);
+      isProgrammaticEdit.current = true;
+      editor.commands.setContent(output, false);
+      setRecruitMode(false);
+      setOpenTemplateMenu(false);
+      if (json.truncated) {
+        toast.success("Template applied", {
+          description: `Trimmed to ~${json.textLength} chars to fit the 1900 limit.`,
+        });
+      } else {
+        toast.success("Template applied");
+      }
+    } catch (e) {
+      toast.error("Candidate Recruit", {
+        description: e instanceof Error ? e.message : "Couldn't load the template.",
+      });
+    } finally {
+      setRecruitApplying(false);
+    }
+  }
+
+  function onCancelRecruit() {
+    setRecruitMode(false);
+    setRecruitJobs([]);
+    setRecruitLoading(false);
   }
 
   // Insert Field: splice the tag at the last-focused position.
@@ -1395,6 +1497,12 @@ export function MailComposer({
           openTemplate={openTemplateMenu}
           setOpenTemplate={setOpenTemplateMenu}
           onPickTemplate={pickTemplate}
+          recruitMode={recruitMode}
+          recruitJobs={recruitJobs}
+          recruitLoading={recruitLoading}
+          recruitApplying={recruitApplying}
+          onPickRecruitJob={onPickRecruitJob}
+          onCancelRecruit={onCancelRecruit}
           openField={openFieldMenu}
           setOpenField={setOpenFieldMenu}
           onInsertField={insertMergeTag}
@@ -1921,11 +2029,25 @@ function escapeHtml(s: string): string {
     .replace(/>/g, "&gt;");
 }
 
+type RecruitJobOption = {
+  jobId: string;
+  jobTitle: string;
+  clientName: string;
+  city: string;
+  state: string;
+};
+
 function ComposerAddonToolbar({
   templates,
   openTemplate,
   setOpenTemplate,
   onPickTemplate,
+  recruitMode,
+  recruitJobs,
+  recruitLoading,
+  recruitApplying,
+  onPickRecruitJob,
+  onCancelRecruit,
   openField,
   setOpenField,
   onInsertField,
@@ -1939,6 +2061,12 @@ function ComposerAddonToolbar({
   openTemplate: boolean;
   setOpenTemplate: (v: boolean) => void;
   onPickTemplate: (t: ActiveTemplateSummary) => void;
+  recruitMode: boolean;
+  recruitJobs: RecruitJobOption[];
+  recruitLoading: boolean;
+  recruitApplying: boolean;
+  onPickRecruitJob: (jobId: string) => void;
+  onCancelRecruit: () => void;
   openField: boolean;
   setOpenField: (v: boolean) => void;
   onInsertField: (tag: string) => void;
@@ -1950,13 +2078,20 @@ function ComposerAddonToolbar({
 }) {
   return (
     <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-court-border px-5 py-1">
-      {/* Use Template */}
+      {/* Use Template — when recruitMode is active (Candidate Recruit
+          was just picked), the dropdown swaps to a job picker so the
+          merge fields have something to resolve against. The recruiter
+          can step back to the template list at any time. */}
       <div className="relative">
         <button
           type="button"
           onClick={() => {
-            setOpenTemplate(!openTemplate);
+            const next = !openTemplate;
+            setOpenTemplate(next);
             setOpenField(false);
+            // Closing the dropdown also cancels recruit mode so the
+            // next time the user re-opens it they see templates again.
+            if (!next && recruitMode) onCancelRecruit();
           }}
           className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium text-court-fg-muted shadow-sm transition hover:text-court-fg"
         >
@@ -1965,9 +2100,55 @@ function ComposerAddonToolbar({
         {openTemplate && (
           <div
             role="menu"
-            className="absolute left-0 bottom-full z-20 mb-1 max-h-72 w-64 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+            className="absolute left-0 bottom-full z-20 mb-1 max-h-72 w-72 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
           >
-            {templates.length === 0 ? (
+            {recruitMode ? (
+              <div>
+                <div className="flex items-center justify-between border-b border-court-border px-3 py-1.5">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                    Candidate Recruit · pick a job
+                  </span>
+                  <button
+                    type="button"
+                    onClick={onCancelRecruit}
+                    className="text-[10px] font-medium text-court-fg-muted hover:text-court-fg"
+                  >
+                    Back
+                  </button>
+                </div>
+                {recruitLoading ? (
+                  <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading jobs…
+                  </div>
+                ) : recruitJobs.length === 0 ? (
+                  <div className="px-3 py-2 text-xs text-court-fg-muted">
+                    No open jobs found.
+                  </div>
+                ) : (
+                  recruitJobs.map((j) => (
+                    <button
+                      key={j.jobId}
+                      type="button"
+                      disabled={recruitApplying}
+                      onClick={() => onPickRecruitJob(j.jobId)}
+                      className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-accent-tint/40 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <div className="truncate font-medium">{j.jobTitle || "Untitled job"}</div>
+                      <div className="truncate text-[10px] text-court-fg-muted">
+                        {[j.clientName, [j.city, j.state].filter(Boolean).join(", ")]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </div>
+                    </button>
+                  ))
+                )}
+                {recruitApplying && (
+                  <div className="flex items-center gap-2 border-t border-court-border px-3 py-1.5 text-[10px] text-court-fg-muted">
+                    <Loader2 className="h-3 w-3 animate-spin" /> Loading template…
+                  </div>
+                )}
+              </div>
+            ) : templates.length === 0 ? (
               <div className="px-3 py-2 text-xs text-court-fg-muted">
                 No templates yet. Create one in Settings &gt; Templates.
               </div>
