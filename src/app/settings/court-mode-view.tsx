@@ -6,17 +6,17 @@ import { cn } from "@/lib/utils";
 
 // Two-axis Court Mode picker:
 //   Top row  — Light / Dark theme (sun + moon).
-//   Surface grid — Hard / Clay / Grass / Night, each rendered as a
-//   bordered card with a two-tone vertical swatch on the left and
-//   the surface name on the right. Active state lights the card
-//   green (border + tint + brighter foreground). Night Court adds
-//   a small green dot in the corner of its swatch — visual cue
-//   that brand green appears only as accent in that surface.
+//   Surface grid — Hard / Clay / Grass / Night-Light / Night-Dark,
+//   each rendered as a bordered card with a mini app-shell mock on
+//   the left and the variant name on the right. Active state lights
+//   the card green (border + tint + brighter foreground). Night
+//   variants carry a small green dot in the corner of the swatch —
+//   visual cue that brand green appears only as accent there.
 //
-// Picking a surface flips the data-attribute on <html> instantly
-// (writes localStorage too); the theme toggle is disabled while
-// Night is selected because Night is inherently dark — flipping
-// the theme attr is a no-op there and would mislead the recruiter.
+// Picking a surface (or Night variant) flips the data-attribute on
+// <html> instantly and writes localStorage. Night Light and Night
+// Dark share the `night` surface but pin theme to light / dark
+// respectively, so clicking them sets both axes in one go.
 
 // Palette mirrors the real --court-* tokens for that (surface, theme)
 // pair, pulled directly from globals.css so each preview thumbnail
@@ -92,7 +92,18 @@ const GRASS_DARK: Palette = {
   accent: "#7BB85B",
   border: "#1A3A28",
 };
-const NIGHT: Palette = {
+const NIGHT_LIGHT: Palette = {
+  bg: "#F6FAF4",
+  sidebar: "#0F1A0F",
+  sidebarFg: "#FFFFFF",
+  // Sidebar slab is near-black, so the brand dot stays vivid green.
+  sidebarMark: "#5A9642",
+  fg: "#111111",
+  fgMuted: "#6B7280",
+  accent: "#5A9642",
+  border: "#E5E8ED",
+};
+const NIGHT_DARK: Palette = {
   bg: "#0F1012",
   sidebar: "#18191C",
   sidebarFg: "#F4F5F7",
@@ -102,22 +113,44 @@ const NIGHT: Palette = {
   border: "#23252A",
 };
 
-const SURFACES: Array<{
-  id: CourtSurface;
+// Each tile is a (surface, [optional pinned theme]) variant. Hard /
+// Clay / Grass float on the user's current theme — switching the
+// Light/Dark toggle at top swaps their preview. The two Night
+// variants pin their theme so the user can pick "Night Light" or
+// "Night Dark" directly, without first juggling the theme toggle.
+type SurfaceVariant = {
+  id: string;
+  surface: CourtSurface;
+  pinnedTheme?: CourtTheme;
   label: string;
   palettes: { light: Palette; dark: Palette };
   accentDot?: string;
-}> = [
-  { id: "hard",  label: "Hard Court",  palettes: { light: HARD_LIGHT,  dark: HARD_DARK  } },
-  { id: "clay",  label: "Clay Court",  palettes: { light: CLAY_LIGHT,  dark: CLAY_DARK  } },
-  { id: "grass", label: "Grass Court", palettes: { light: GRASS_LIGHT, dark: GRASS_DARK } },
-  // Night is inherently dark — same palette regardless of theme.
-  { id: "night", label: "Night Court", palettes: { light: NIGHT,       dark: NIGHT      }, accentDot: "#7BB85B" },
+};
+
+const SURFACES: ReadonlyArray<SurfaceVariant> = [
+  { id: "hard",  surface: "hard",  label: "Hard Court",  palettes: { light: HARD_LIGHT,  dark: HARD_DARK  } },
+  { id: "clay",  surface: "clay",  label: "Clay Court",  palettes: { light: CLAY_LIGHT,  dark: CLAY_DARK  } },
+  { id: "grass", surface: "grass", label: "Grass Court", palettes: { light: GRASS_LIGHT, dark: GRASS_DARK } },
+  {
+    id: "night-light",
+    surface: "night",
+    pinnedTheme: "light",
+    label: "Night Court · Light",
+    palettes: { light: NIGHT_LIGHT, dark: NIGHT_LIGHT },
+    accentDot: "#5A9642",
+  },
+  {
+    id: "night-dark",
+    surface: "night",
+    pinnedTheme: "dark",
+    label: "Night Court · Dark",
+    palettes: { light: NIGHT_DARK, dark: NIGHT_DARK },
+    accentDot: "#7BB85B",
+  },
 ];
 
 export function CourtModeView() {
   const { surface, theme, setSurface, setTheme, toggleTheme } = useCourtMode();
-  const themeLocked = surface === "night";
 
   return (
     <div className="space-y-3">
@@ -125,39 +158,34 @@ export function CourtModeView() {
         Court Mode
       </div>
 
-      {/* Light / Dark toggle — disabled in Night since Night is
-          inherently dark. */}
+      {/* Light / Dark toggle. Always interactive — Night Court now
+          honors theme too (Night Light + Night Dark are distinct
+          tiles below). */}
       <div className="flex flex-wrap items-center gap-2">
         <ThemeButton
-          active={!themeLocked && theme === "light"}
-          disabled={themeLocked}
-          onClick={() => !themeLocked && setTheme("light")}
+          active={theme === "light"}
+          onClick={() => setTheme("light")}
           ariaLabel="Light theme"
-          title={themeLocked ? "Night Court is dark only" : "Light theme"}
+          title="Light theme"
         >
           <Sun className="h-4 w-4" />
           Light
         </ThemeButton>
         <ThemeButton
-          active={!themeLocked && theme === "dark"}
-          disabled={themeLocked}
-          onClick={() => !themeLocked && setTheme("dark")}
+          active={theme === "dark"}
+          onClick={() => setTheme("dark")}
           ariaLabel="Dark theme"
-          title={themeLocked ? "Night Court is dark only" : "Dark theme"}
+          title="Dark theme"
         >
           <Moon className="h-4 w-4" />
           Dark
         </ThemeButton>
         <button
           type="button"
-          onClick={() => !themeLocked && toggleTheme()}
-          disabled={themeLocked}
+          onClick={() => toggleTheme()}
           aria-label="Toggle light/dark"
-          title={themeLocked ? "Night Court is dark only" : "Toggle light/dark"}
-          className={cn(
-            "ml-1 rounded-full border border-court-border bg-court-surface-subtle px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg",
-            themeLocked && "cursor-not-allowed opacity-40 hover:text-court-fg-muted",
-          )}
+          title="Toggle light/dark"
+          className="ml-1 rounded-full border border-court-border bg-court-surface-subtle px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:text-court-fg"
         >
           ↔
         </button>
@@ -165,24 +193,29 @@ export function CourtModeView() {
 
       {/* Surface grid — mini-app preview tiles. Each tile renders a
           tiny mock of Ace's chrome (sidebar + page area + accent FAB)
-          painted in that surface's palette so the recruiter can see
+          painted in that variant's palette so the recruiter can see
           what they're picking. Active tile lights with court-accent
           border + ring + bottom-bar tint. */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {SURFACES.map((s) => {
-          const active = surface === s.id;
-          // Night ignores the theme attr (always dark); other surfaces
-          // pick their palette by the toggled theme so the swatch
-          // reflects what the recruiter would actually see.
-          const previewTheme: CourtTheme =
-            s.id === "night" ? "dark" : theme;
+          // For Night variants the theme is pinned to the tile; for
+          // every other surface the preview floats on the current
+          // theme toggle so the swatch reflects what the recruiter
+          // would actually see.
+          const previewTheme: CourtTheme = s.pinnedTheme ?? theme;
+          const active =
+            surface === s.surface && (s.pinnedTheme ? theme === s.pinnedTheme : true);
           const p = s.palettes[previewTheme];
           const sidebarMark = p.sidebarMark ?? p.accent;
+          const handleClick = () => {
+            setSurface(s.surface);
+            if (s.pinnedTheme) setTheme(s.pinnedTheme);
+          };
           return (
             <button
               key={s.id}
               type="button"
-              onClick={() => setSurface(s.id)}
+              onClick={handleClick}
               aria-pressed={active}
               className={cn(
                 "group flex flex-col overflow-hidden rounded-xl border-2 text-left transition",

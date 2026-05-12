@@ -18,7 +18,7 @@
 }
 
 /*
-  Court Mode tokens — 3 surfaces x 2 themes + Night = 7 palettes.
+  Court Mode tokens — 4 surfaces x 2 themes = 8 palettes.
   Selectors target <html data-surface="..." data-theme="...">.
   Tailwind bg-court-* utilities pull from these CSS variables.
   Values stored as R G B so Tailwind alpha-value placeholder resolves.
@@ -263,12 +263,58 @@ html[data-surface='grass'][data-theme='dark'] {
 }
 
 /* ============================================================
-   NIGHT COURT — true dark, charcoal & graphite — palette v5
-   Neutral surfaces. Brand green is the accent (CTAs, active nav,
-   focus, success). Activated via <html data-surface='night'>;
-   theme attr ignored because Night is inherently dark.
+   NIGHT COURT · LIGHT — near-black sidebar slab, white cards on
+   a warm-green-tinted page. Brand green is the accent. Pairs
+   with <html data-surface='night' data-theme='light'>.
    ============================================================ */
-html[data-surface='night'] {
+html[data-surface='night'][data-theme='light'] {
+  --court-bg:                       246 250 244; /* #F6FAF4 — white w/ green tint */
+  --court-surface:                  255 255 255; /* #FFFFFF */
+  --court-surface-subtle:           243 248 239; /* #F3F8EF */
+  --court-border:                   229 232 237; /* #E5E8ED */
+  --court-border-soft:              238 241 245; /* #EEF1F5 */
+  --court-fg:                        17  17  17; /* #111111 */
+  --court-fg-muted:                 107 114 128; /* #6B7280 */
+  --court-fg-dim:                   156 163 175; /* #9CA3AF — derived */
+  --court-accent:                    90 150  66; /* #5A9642 — brand green */
+  --court-accent-dark:               63 112  48; /* #3F7030 */
+  --court-accent-tint:              234 244 228; /* #EAF4E4 */
+  --court-accent-border:            168 201 154; /* #A8C99A — derived */
+
+  /* Chrome slab — dark green-black, white text. Translucent-style
+     values from the spec resolved to opaque RGB equivalents over
+     the chrome bg so they slot into the existing sidebar token
+     family (which expects R G B for alpha-value support). */
+  --court-sidebar-bg:                15  26  15; /* #0F1A0F — chrome slab */
+  --court-sidebar-border:            34  44  34; /* rgba(255,255,255,.08) over chrome */
+  --court-sidebar-fg:               255 255 255; /* #FFFFFF */
+  --court-sidebar-fg-muted:         164 168 164; /* rgba(255,255,255,.62) over chrome */
+  --court-sidebar-fg-dim:           116 122 116; /* rgba(255,255,255,.42) over chrome — eyebrow */
+  --court-sidebar-icon:             164 168 164; /* matches fg-muted */
+  --court-sidebar-active-bg:        rgba(90, 150, 66, 0.18); /* brand-green wash */
+  --court-sidebar-active-fg:        255 255 255; /* #FFFFFF */
+  --court-sidebar-rail:              90 150  66; /* #5A9642 — brand-green accent bar */
+
+  --court-brand:                     90 150  66; /* #5A9642 */
+  --court-brand-dark:                63 112  48; /* #3F7030 */
+  --court-brand-tint:               234 244 228; /* #EAF4E4 */
+
+  --court-badge:                    rgb(234 244 228); /* #EAF4E4 — soft brand-green wash */
+  --court-badge-fg:                  63 112  48; /* #3F7030 */
+  --court-badge-bg:                 234 244 228; /* matches badge */
+
+  --brand:                           90 150  66; /* legacy alias */
+}
+
+/* ============================================================
+   NIGHT COURT · DARK — true dark, charcoal & graphite —
+   palette v5. Neutral surfaces. Brand green is the accent
+   (CTAs, active nav, focus, success). Pairs with
+   <html data-surface='night' data-theme='dark'>. The selector
+   was loosened to match any theme prior to Ace 39+, when Night
+   Court was split into Light/Dark variants.
+   ============================================================ */
+html[data-surface='night'][data-theme='dark'] {
   --court-bg:                        15  16  18; /* #0F1012 */
   --court-surface:                   24  25  28; /* #18191C */
   --court-surface-subtle:            20  21  24; /* #141518 */

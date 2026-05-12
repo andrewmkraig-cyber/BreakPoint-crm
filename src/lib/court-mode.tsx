@@ -24,10 +24,11 @@ import {
 // meant dark-green. We migrate that one-shot on load to the two-key
 // scheme then drop the legacy key.
 
-// "night" is inherently dark — we ignore the data-theme attr in
-// globals.css for that surface so toggling theme is a no-op while
-// Night is selected. The CourtSurface union still carries it through
-// every storage / validation / picker boundary.
+// Night Court honors data-theme like every other surface as of
+// Ace 39+: light = near-black sidebar slab with white-w/-green-tint
+// cards (Night Light), dark = the original charcoal-and-graphite
+// palette (Night Dark). globals.css carries separate token blocks
+// for each pair.
 export type CourtSurface = "hard" | "clay" | "grass" | "night";
 export type CourtTheme = "light" | "dark";
 
