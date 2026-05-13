@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
+import { getInvoiceSummary } from "@/lib/invoices";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 
 // Stages observed on Placement.stage today: offer | pending_start | hired.
@@ -36,10 +37,21 @@ export type ScoreboardData = {
     interview: number;
     offer: number;
     placed: number;
+    // Unique-candidate counts powering the Interview Coverage stat: how
+    // many distinct candidates were submitted in the window, and of those
+    // how many had at least one Interview row. The "submitted" / "interview"
+    // fields above keep counting raw events (multiple interviews per
+    // candidate inflate the interview count), so a separate coverage
+    // metric is the only honest way to read the funnel.
+    submittedUniqueCandidates: number;
+    interviewedUniqueCandidates: number;
+    interviewCoveragePct: number | null;
   };
   cashForecast: {
     pendingStartUsd: number;
     pendingStartCount: number;
+    billedUsd: number;
+    collectedUsd: number;
   };
   topClients: Array<{
     id: string;
@@ -75,11 +87,13 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
     pipelinePlacementsRaw,
     placedLast90,
     placementsQtdCount,
-    submitsLast90,
-    interviewsLast90,
+    submitsLast90Rows,
+    interviewsLast90Rows,
     offersLast90,
     placedAggLast90,
     pendingStartAgg,
+    q2BilledAgg,
+    invoiceSummary,
     rfClients,
     rfJobs,
     aceCandidates,
@@ -117,19 +131,22 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
       },
     }),
     // Funnel left edge: submit actions in last 90d. Each row is a single
-    // candidate-to-job submittal.
-    prisma.actionLog.count({
+    // candidate-to-job submittal. We pull subjectId (= candidate cuid or
+    // String(rfId)) so we can also derive distinct-candidate count.
+    prisma.actionLog.findMany({
       where: {
         organizationId: org.id,
         actionType: "submit",
         createdAt: { gte: ninetyDaysAgo, lte: now },
       },
+      select: { subjectId: true },
     }),
-    prisma.interview.count({
+    prisma.interview.findMany({
       where: {
         organizationId: org.id,
         createdAt: { gte: ninetyDaysAgo, lte: now },
       },
+      select: { candidateId: true, candidateRfId: true },
     }),
     prisma.placement.count({
       where: {
@@ -155,6 +172,17 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
         stage: "pending_start",
       },
     }),
+    // Mirror the Clubhouse Billing Tower so Scoreboard Billed/Collected
+    // read the same numbers (see src/app/dashboard/my-dashboard.tsx).
+    prisma.placement.aggregate({
+      _sum: { feeTotal: true },
+      where: {
+        organizationId: org.id,
+        stage: { in: ["pending_start", "hired"] },
+        expectedStartDate: { gte: Q2_START, lt: Q2_END_EXCLUSIVE },
+      },
+    }),
+    getInvoiceSummary(org.id),
     // Pull RF client + job context so we can name Top Clients/Roles even
     // for RF-rooted placements. The MyDashboard tab already pays for the
     // same fetches; future opportunity is to share via a request cache.
@@ -216,7 +244,30 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
     ? Math.round(placedFees.reduce((a, b) => a + b, 0) / placedFees.length)
     : null;
 
-  const winRateDenominator = submitsLast90;
+  // Funnel: raw event counts for the bar chart, plus unique-candidate
+  // aggregates for the Interview Coverage tile. Submit subjectId and
+  // Interview candidate identifiers are both already in the same form
+  // (cuid for Ace-native rows, stringified rfId for RF-rooted rows),
+  // so a flat Set comparison is sufficient.
+  const submittedCount = submitsLast90Rows.length;
+  const interviewCount = interviewsLast90Rows.length;
+  const submittedCandidateIds = new Set(
+    submitsLast90Rows.map((r) => r.subjectId).filter((s): s is string => !!s),
+  );
+  const interviewedCandidateIds = new Set<string>();
+  for (const iv of interviewsLast90Rows) {
+    if (iv.candidateId) interviewedCandidateIds.add(iv.candidateId);
+    else if (iv.candidateRfId != null) interviewedCandidateIds.add(String(iv.candidateRfId));
+  }
+  let interviewedAmongSubmitted = 0;
+  submittedCandidateIds.forEach((id) => {
+    if (interviewedCandidateIds.has(id)) interviewedAmongSubmitted += 1;
+  });
+  const interviewCoveragePct = submittedCandidateIds.size > 0
+    ? Math.round((interviewedAmongSubmitted / submittedCandidateIds.size) * 100)
+    : null;
+
+  const winRateDenominator = submittedCount;
   const winRateNumerator = placedAggLast90._count._all;
   const winRatePct = winRateDenominator > 0
     ? Math.round((winRateNumerator / winRateDenominator) * 100)
@@ -363,14 +414,19 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
       avgDaysToFill,
     },
     funnel: {
-      submitted: submitsLast90,
-      interview: interviewsLast90,
+      submitted: submittedCount,
+      interview: interviewCount,
       offer: offersLast90,
       placed: placedAggLast90._count._all,
+      submittedUniqueCandidates: submittedCandidateIds.size,
+      interviewedUniqueCandidates: interviewedAmongSubmitted,
+      interviewCoveragePct,
     },
     cashForecast: {
       pendingStartUsd: pendingStartAgg._sum.feeTotal ?? 0,
       pendingStartCount: pendingStartAgg._count._all,
+      billedUsd: q2BilledAgg._sum.feeTotal ?? 0,
+      collectedUsd: invoiceSummary.collectedThisQuarterCents / 100,
     },
     topClients,
     topRoles,

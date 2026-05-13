@@ -141,17 +141,22 @@ type Funnel = Awaited<ReturnType<typeof getScoreboardData>>["funnel"];
 
 function FunnelCard({ funnel }: { funnel: Funnel }) {
   const stages = [
-    { name: "Submitted", n: funnel.submitted, accent: "bg-court-brand/85" },
-    { name: "Interview", n: funnel.interview, accent: "bg-court-brand/70" },
-    { name: "Offer", n: funnel.offer, accent: "bg-court-brand-dark/85" },
-    { name: "Placed", n: funnel.placed, accent: "bg-court-brand-dark" },
+    { name: "Submitted", n: funnel.submitted },
+    { name: "Interview", n: funnel.interview },
+    { name: "Offer", n: funnel.offer },
+    { name: "Placed", n: funnel.placed },
   ];
   const top = stages[0].n;
+  // Submitted → Interview reads as `submitted / interview` so the funnel
+  // top line matches the bar order; with multiple interviews per
+  // candidate the raw interview count can exceed submits, so the literal
+  // pair is the only honest reading. Interview Coverage below caps each
+  // candidate at 1 to surface the conversion rate cleanly.
   const ratios = [
     {
       label: "Submitted → Interview",
-      num: funnel.interview,
-      den: funnel.submitted,
+      num: funnel.submitted,
+      den: funnel.interview,
     },
     {
       label: "Interview → Offer",
@@ -184,7 +189,7 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
                 <div key={s.name} className="flex items-center gap-3">
                   <div className="w-28 shrink-0 text-[12px] font-medium text-court-fg">{s.name}</div>
                   <div
-                    className={`flex h-14 items-center rounded-lg px-4 text-white ${s.accent}`}
+                    className="flex h-14 items-center rounded-lg border-2 border-court-brand bg-court-brand-tint px-4 text-court-brand-dark"
                     style={{ width: `${widthPct}%`, minWidth: "120px" }}
                   >
                     <span className="text-[22px] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
@@ -195,10 +200,16 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
               );
             })}
           </div>
-          <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+          <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
             {ratios.map((r) => (
               <RatioTile key={r.label} label={r.label} num={r.num} den={r.den} />
             ))}
+            <CoverageTile
+              label="Interview Coverage"
+              pct={funnel.interviewCoveragePct}
+              num={funnel.interviewedUniqueCandidates}
+              den={funnel.submittedUniqueCandidates}
+            />
           </div>
         </>
       )}
@@ -229,9 +240,55 @@ function RatioTile({ label, num, den }: { label: string; num: number; den: numbe
   );
 }
 
+// Distinct-candidate variant. Each candidate counts at most once toward
+// the numerator regardless of how many interviews they had, so the %
+// reads as "share of submitted candidates that reached an interview"
+// instead of an event-over-event rate.
+function CoverageTile({
+  label,
+  pct,
+  num,
+  den,
+}: {
+  label: string;
+  pct: number | null;
+  num: number;
+  den: number;
+}) {
+  const isEmpty = pct == null;
+  return (
+    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+        {label}
+      </p>
+      <p
+        className={
+          "mt-1 font-serif text-[22px] font-semibold leading-none tracking-[-0.03em] tabular-nums " +
+          (isEmpty ? "text-court-fg-dim" : "text-court-fg")
+        }
+      >
+        {isEmpty ? "—" : `${pct}%`}
+      </p>
+      <p className="mt-1 text-[11px] tabular-nums text-court-fg-muted">
+        {num} of {den} candidates
+      </p>
+    </div>
+  );
+}
+
 type Cash = Awaited<ReturnType<typeof getScoreboardData>>["cashForecast"];
 
 function CashForecastCard({ cash }: { cash: Cash }) {
+  // Bar widths show each row's share of the largest cash bucket so the
+  // four lines compare visually instead of all reading full-width.
+  const maxAmount = Math.max(
+    cash.pendingStartUsd,
+    cash.billedUsd,
+    cash.collectedUsd,
+    0,
+  );
+  const widthPct = (amount: number) =>
+    maxAmount > 0 ? Math.max(8, Math.round((amount / maxAmount) * 100)) : 0;
   return (
     <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Cash Forecast</p>
@@ -242,11 +299,23 @@ function CashForecastCard({ cash }: { cash: Cash }) {
           label="Pending Start"
           amount={cash.pendingStartCount > 0 ? formatMoneyShort(cash.pendingStartUsd) : "—"}
           hint={cash.pendingStartCount > 0 ? `${cash.pendingStartCount} placement${cash.pendingStartCount === 1 ? "" : "s"}` : "No pending starts"}
-          pct={cash.pendingStartCount > 0 ? 100 : 0}
+          pct={cash.pendingStartCount > 0 ? widthPct(cash.pendingStartUsd) : 0}
           accent="bg-court-brand"
         />
-        <ForecastRow label="Billed" amount="—" hint="See Invoicing tab for live totals" pct={0} accent="bg-court-brand/40" />
-        <ForecastRow label="Collected" amount="—" hint="Marked paid in current quarter" pct={0} accent="bg-court-brand-dark/60" />
+        <ForecastRow
+          label="Billed"
+          amount={cash.billedUsd > 0 ? formatMoneyShort(cash.billedUsd) : "—"}
+          hint="Fees on Q2 placements (Pending Start + Hired)"
+          pct={widthPct(cash.billedUsd)}
+          accent="bg-court-brand/40"
+        />
+        <ForecastRow
+          label="Collected"
+          amount={cash.collectedUsd > 0 ? formatMoneyShort(cash.collectedUsd) : "—"}
+          hint="Invoices marked paid this quarter"
+          pct={widthPct(cash.collectedUsd)}
+          accent="bg-court-brand-dark/60"
+        />
         <ForecastRow label="Overdue" amount="—" hint="—" pct={0} accent="bg-red-500" />
       </div>
     </div>
