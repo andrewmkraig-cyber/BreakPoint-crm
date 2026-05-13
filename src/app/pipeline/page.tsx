@@ -351,6 +351,7 @@ function toPlacementDetails(
     expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
     startConfirmedAt: p.startConfirmedAt?.toISOString() ?? null,
     invoiceStatus,
+    placementNotes: p.placementNotes ?? null,
   };
 }
 

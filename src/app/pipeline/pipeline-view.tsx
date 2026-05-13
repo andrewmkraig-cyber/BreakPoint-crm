@@ -16,6 +16,10 @@ import { TabStrip } from "@/components/ui/tab-strip";
 import { rejectLocalPlacement } from "@/app/candidates/[id]/local-placement-actions";
 import { setCandidateNavList } from "@/lib/candidate-nav";
 import { RejectCandidateDialog } from "@/components/reject-candidate-dialog";
+import {
+  PlacementEditDrawer,
+  type PlacementDrawerContext,
+} from "@/app/pipeline/placement-edit-drawer";
 
 type Stage = keyof typeof PIPELINE_LABELS;
 
@@ -32,6 +36,7 @@ export type PlacementDetails = {
   expectedStartDate: string | null;
   startConfirmedAt: string | null;
   invoiceStatus: "DRAFT" | "SENT" | "PAID" | null;
+  placementNotes: string | null;
 };
 
 export type NextInterview = {
@@ -108,6 +113,29 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
   );
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
+
+  // Hired-stage rows open an inline edit drawer instead of routing to
+  // the candidate profile — the drawer mutates the placement directly
+  // (start date, salary, fees, notes) without leaving the pipeline.
+  const [drawerCtx, setDrawerCtx] = useState<PlacementDrawerContext | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  function openPlacementDrawer(row: PipelineRow) {
+    if (!row.placement || !row.placementId) return;
+    setDrawerCtx({
+      placementId: row.placementId,
+      candidateName: row.candidateName,
+      clientName: row.clientName,
+      jobTitle: row.jobTitle,
+      stage: row.placement.stage,
+      stageLabel: row.stageName,
+      expectedStartDate: row.placement.expectedStartDate,
+      acceptedSalary: row.placement.acceptedSalary,
+      feeTotal: row.placement.feeTotal,
+      feePercentage: row.placement.feePercentage,
+      placementNotes: row.placement.placementNotes,
+    });
+    setDrawerOpen(true);
+  }
   useEffect(() => {
     setSelectedPlacementIds(new Set());
   }, [stage, q, page]);
@@ -342,7 +370,17 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                 <tr
                   key={`${r.candidateId}-${r.jobId}`}
                   className="cursor-pointer transition hover:bg-court-accent-tint/40"
-                  onClick={() => router.push(`/candidates/${r.candidateId}`)}
+                  onClick={() => {
+                    // Hired-stage rows open the inline edit drawer; every
+                    // other stage keeps the existing candidate-profile
+                    // jump (action buttons / links inside the row already
+                    // stopPropagation, so their behaviour is unchanged).
+                    if (r.bucket === "hired" && r.placement && r.placementId) {
+                      openPlacementDrawer(r);
+                      return;
+                    }
+                    router.push(`/candidates/${r.candidateId}`);
+                  }}
                 >
                   {showCheckboxCol && (
                     <td
@@ -519,6 +557,11 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
           onConfirm={onBulkRejectConfirm}
         />
       )}
+      <PlacementEditDrawer
+        open={drawerOpen}
+        context={drawerCtx}
+        onClose={() => setDrawerOpen(false)}
+      />
     </div>
   );
 }
