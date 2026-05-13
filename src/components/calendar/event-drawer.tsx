@@ -160,7 +160,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
   // text to Google).
   const [notesPreviewMode, setNotesPreviewMode] = useState(false);
   const [newGuests, setNewGuests] = useState<GuestSuggestion[]>([]);
-  const [saving, setSaving] = useState<null | "all" | "new">(null);
+  const [saving, setSaving] = useState<null | "all" | "new" | "none">(null);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -224,9 +224,9 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
     startTime.length > 0 &&
     endTime.length > 0;
 
-  async function doSave(notifyAll: boolean) {
+  async function doSave(notifyMode: "all" | "new" | "none") {
     if (!event || !canSave) return;
-    setSaving(notifyAll ? "all" : "new");
+    setSaving(notifyMode);
     setError(null);
     try {
       const startDate = fromDateTimeInput(date, startTime);
@@ -245,7 +245,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
         location: location.trim() || null,
         notes: notes.trim() || null,
         newGuests,
-        notifyAll,
+        notifyMode,
         reminderEnabled: reminderOn,
       });
       router.refresh();
@@ -588,7 +588,19 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => doSave(false)}
+                  onClick={() => doSave("none")}
+                  disabled={!canSave || saving !== null || deleting}
+                  title="Patch Google silently — no emails go out, not even to new guests"
+                >
+                  {saving === "none" && (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  )}
+                  Save · just me
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => doSave("new")}
                   disabled={
                     !canSave ||
                     saving !== null ||
@@ -609,7 +621,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
                 <Button
                   variant="primary"
                   size="sm"
-                  onClick={() => doSave(true)}
+                  onClick={() => doSave("all")}
                   disabled={!canSave || saving !== null || deleting}
                 >
                   {saving === "all" ? (

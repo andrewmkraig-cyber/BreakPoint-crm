@@ -69,27 +69,10 @@ export default async function InvoicesPage({
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiCard
-          label="Outstanding"
-          value={formatUsd(summary.outstandingCents)}
-          hint={`${summary.outstandingCount} sent · awaiting payment`}
-        />
-        <KpiCard
-          label="Overdue"
-          value={formatUsd(summary.overdueCents)}
-          hint={`${summary.overdueCount} past due date`}
-          tone={summary.overdueCount > 0 ? "warn" : "default"}
-        />
-        <KpiCard
-          label="Billed this quarter"
-          value={formatUsd(summary.billedThisQuarterCents)}
-          hint="Sent + paid in current quarter"
-        />
-        <KpiCard
-          label="Collected this quarter"
-          value={formatUsd(summary.collectedThisQuarterCents)}
-          hint="Marked paid in current quarter"
-        />
+        <KpiCard label="Outstanding" value={formatUsd(summary.outstandingCents)} />
+        <KpiCard label="Overdue" value={formatUsd(summary.overdueCents)} />
+        <KpiCard label="Billed this quarter" value={formatUsd(summary.billedThisQuarterCents)} />
+        <KpiCard label="Collected this quarter" value={formatUsd(summary.collectedThisQuarterCents)} />
       </div>
 
       <div className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
@@ -199,41 +182,18 @@ export default async function InvoicesPage({
   );
 }
 
-function KpiCard({
-  label,
-  value,
-  hint,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  hint: string;
-  tone?: "default" | "warn";
-}) {
-  // Visual match to the Clubhouse KpiTile (src/app/dashboard/kpi-tile.tsx):
-  // borderless, soft long-shadow, px-3 py-2.5, 10px extrabold label,
-  // 26px serif value. The "warn" tone tints the background red but
-  // keeps the same chrome so the row stays one height.
-  const surface =
-    tone === "warn"
-      ? "bg-red-50 dark:bg-red-950/30"
-      : "bg-court-surface";
+function KpiCard({ label, value }: { label: string; value: string }) {
+  // Exact chrome match to the Clubhouse KpiTile
+  // (src/app/dashboard/kpi-tile.tsx): borderless, soft long-shadow,
+  // px-3 py-2.5, 10px extrabold label, 26px serif value.
   return (
-    <div
-      className={
-        "flex h-full flex-col rounded-2xl px-3 py-2.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)] " +
-        surface
-      }
-    >
+    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
       <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
         {label}
       </p>
       <div className="mt-2 text-center font-serif text-[26px] font-semibold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
         {value}
       </div>
-      <p className="mt-1.5 truncate text-center text-[10px] text-court-fg-muted">
-        {hint}
-      </p>
     </div>
   );
 }

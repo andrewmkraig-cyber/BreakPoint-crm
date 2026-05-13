@@ -46,10 +46,13 @@ export type UpdateCalendarEventInput = {
   // never removed from this path — explicit guest removal is its own
   // future affordance.
   newGuests: NewGuest[];
-  // false = "notify new only" two-pass: silent field patch, then
-  // patch attendees with sendUpdates="all" so only the freshly added
-  // emails get an invite. true = single patch with sendUpdates="all".
-  notifyAll: boolean;
+  // "all" = single patch with sendUpdates="all" — everyone gets an
+  // email. "new" = two-pass: silent field patch, then a second
+  // attendee-only patch with sendUpdates="all" so only freshly added
+  // emails get an invite. "none" = single silent patch (sendUpdates
+  // "none") with attendees merged in — useful for tweaking your own
+  // event without spamming anyone.
+  notifyMode: "all" | "new" | "none";
   // Ace-native reminder toggle from the drawer. When true, we upsert
   // an AceReminder at startTime - 15 min linked to this CalendarEvent
   // so the global toast provider fires when it slips past now. When
@@ -112,7 +115,7 @@ export async function updateCalendarEventAction(
     .filter((a): a is AttendeeJson & { email: string } => Boolean(a.email))
     .map((a) => ({ email: a.email, displayName: a.displayName }));
 
-  if (input.notifyAll) {
+  if (input.notifyMode === "all") {
     await patchCalendarEventDetails({
       userId,
       eventId: row.googleEventId,
@@ -125,7 +128,7 @@ export async function updateCalendarEventAction(
       location: input.location,
       attendees: apiAttendees,
     });
-  } else {
+  } else if (input.notifyMode === "new") {
     // Pass 1: silent field patch — existing guests see the event
     // update but don't get an email.
     await patchCalendarEventDetails({
@@ -151,6 +154,22 @@ export async function updateCalendarEventAction(
         attendees: apiAttendees,
       });
     }
+  } else {
+    // "none": one silent patch with everything (fields + merged
+    // attendees). New guests get added to the Google event but no
+    // emails go out — Andrew can edit his own copy without spamming.
+    await patchCalendarEventDetails({
+      userId,
+      eventId: row.googleEventId,
+      calendarId: row.calendarId,
+      sendUpdates: "none",
+      startISO: input.startISO,
+      durationMin,
+      summary: input.title,
+      description: input.notes ?? "",
+      location: input.location,
+      attendees: apiAttendees,
+    });
   }
 
   // Mirror to Neon. Every CalendarEvent row that shares this
