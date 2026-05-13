@@ -9,6 +9,10 @@ import {
   formatPeriodRange,
   getScoreboardData,
 } from "@/app/dashboard/scoreboard-data";
+import {
+  ClientDrilldownTrigger,
+  RoleDrilldownTrigger,
+} from "@/app/dashboard/scoreboard-drilldowns";
 
 // Top-level Scoreboard server component. Real Neon data only; sections
 // that need data we don't yet track (sparklines, win-rate trend,
@@ -293,26 +297,30 @@ function TopClientsCard({ rows }: { rows: TopClient[] }) {
       {rows.length === 0 ? (
         <EmptyBlock>No placements with logged fees yet.</EmptyBlock>
       ) : (
-        <ul className="mt-5 space-y-4">
+        <ul className="mt-5 space-y-3">
           {rows.map((r) => (
             <li key={r.id}>
-              <div className="flex items-baseline justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-court-fg">{r.name}</div>
-                  <div className="truncate text-[11px] text-court-fg-muted">
-                    {r.placements} placement{r.placements === 1 ? "" : "s"}
+              <ClientDrilldownTrigger clientId={r.clientId} clientName={r.name}>
+                <div className="px-1 py-1">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-court-fg">{r.name}</div>
+                      <div className="truncate text-[11px] text-court-fg-muted">
+                        {r.placements} placement{r.placements === 1 ? "" : "s"}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-[17px] font-bold tabular-nums tracking-tight text-court-fg">
+                      {formatMoneyShort(r.feeUsd)}
+                    </div>
+                  </div>
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
+                    <div
+                      className="h-full rounded-full bg-court-brand"
+                      style={{ width: `${maxFee > 0 ? Math.round((r.feeUsd / maxFee) * 100) : 0}%` }}
+                    />
                   </div>
                 </div>
-                <div className="shrink-0 text-[17px] font-bold tabular-nums tracking-tight text-court-fg">
-                  {formatMoneyShort(r.feeUsd)}
-                </div>
-              </div>
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
-                <div
-                  className="h-full rounded-full bg-court-brand"
-                  style={{ width: `${maxFee > 0 ? Math.round((r.feeUsd / maxFee) * 100) : 0}%` }}
-                />
-              </div>
+              </ClientDrilldownTrigger>
             </li>
           ))}
         </ul>
@@ -330,24 +338,28 @@ function TopRolesCard({ rows }: { rows: TopRole[] }) {
       {rows.length === 0 ? (
         <EmptyBlock>No closed roles yet.</EmptyBlock>
       ) : (
-        <ul className="mt-5 space-y-4">
+        <ul className="mt-5 space-y-3">
           {rows.map((r) => (
             <li key={r.title}>
-              <div className="flex items-baseline justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-medium text-court-fg">{r.title}</div>
-                  <div className="truncate text-[11px] text-court-fg-muted">
-                    {r.avgFeeUsd != null ? `Avg fee ${formatMoneyShort(r.avgFeeUsd)}` : "Fee not logged"}
+              <RoleDrilldownTrigger roleTitle={r.title}>
+                <div className="px-1 py-1">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-court-fg">{r.title}</div>
+                      <div className="truncate text-[11px] text-court-fg-muted">
+                        {r.avgFeeUsd != null ? `Avg fee ${formatMoneyShort(r.avgFeeUsd)}` : "Fee not logged"}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-[17px] font-bold tabular-nums text-court-fg">{r.placements}</div>
+                  </div>
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
+                    <div
+                      className="h-full rounded-full bg-court-brand"
+                      style={{ width: `${maxCount > 0 ? Math.round((r.placements / maxCount) * 100) : 0}%` }}
+                    />
                   </div>
                 </div>
-                <div className="shrink-0 text-[17px] font-bold tabular-nums text-court-fg">{r.placements}</div>
-              </div>
-              <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
-                <div
-                  className="h-full rounded-full bg-court-brand"
-                  style={{ width: `${maxCount > 0 ? Math.round((r.placements / maxCount) * 100) : 0}%` }}
-                />
-              </div>
+              </RoleDrilldownTrigger>
             </li>
           ))}
         </ul>

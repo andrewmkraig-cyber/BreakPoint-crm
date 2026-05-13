@@ -41,8 +41,21 @@ export type ScoreboardData = {
     pendingStartUsd: number;
     pendingStartCount: number;
   };
-  topClients: Array<{ id: string; name: string; placements: number; feeUsd: number }>;
-  topRoles: Array<{ title: string; placements: number; avgFeeUsd: number | null }>;
+  topClients: Array<{
+    id: string;
+    // Ace cuid the drill-down popup keys on. Empty string for legacy
+    // RF-only aggregates (no Ace client row yet) — the popup hides the
+    // click affordance in that case.
+    clientId: string;
+    name: string;
+    placements: number;
+    feeUsd: number;
+  }>;
+  topRoles: Array<{
+    title: string;
+    placements: number;
+    avgFeeUsd: number | null;
+  }>;
   momentum: Array<{
     id: string;
     candidateName: string;
@@ -230,7 +243,10 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
     rfJobTitle.set(j.id, normalizeJob(j).title);
   }
 
-  const clientAgg = new Map<string, { name: string; placements: number; feeUsd: number }>();
+  const clientAgg = new Map<
+    string,
+    { clientId: string; name: string; placements: number; feeUsd: number }
+  >();
   const roleAgg = new Map<string, { title: string; placements: number; feeSum: number; feeCount: number }>();
 
   for (const p of aceCandidates) {
@@ -246,7 +262,14 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
       ?? (p.clientRfId != null ? rfClientName.get(p.clientRfId) : null);
 
     if (clientKey && clientName) {
-      const prev = clientAgg.get(clientKey) ?? { name: clientName, placements: 0, feeUsd: 0 };
+      const prev =
+        clientAgg.get(clientKey) ??
+        {
+          clientId: p.client?.id ?? "",
+          name: clientName,
+          placements: 0,
+          feeUsd: 0,
+        };
       prev.placements += 1;
       prev.feeUsd += p.feeTotal ?? 0;
       clientAgg.set(clientKey, prev);
@@ -268,7 +291,13 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
   const topClients = Array.from(clientAgg.values())
     .sort((a, b) => b.feeUsd - a.feeUsd || b.placements - a.placements)
     .slice(0, 5)
-    .map((c, i) => ({ id: `c${i}`, name: c.name, placements: c.placements, feeUsd: c.feeUsd }));
+    .map((c, i) => ({
+      id: `c${i}`,
+      clientId: c.clientId,
+      name: c.name,
+      placements: c.placements,
+      feeUsd: c.feeUsd,
+    }));
 
   const topRoles = Array.from(roleAgg.values())
     .sort((a, b) => b.placements - a.placements || b.feeSum - a.feeSum)

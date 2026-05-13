@@ -3,6 +3,11 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
+import {
+  PlacementDrilldownDialog,
+  type DrilldownQuery,
+} from "@/components/dashboard/placement-drilldown-dialog";
+
 // localStorage key for the collapse-state toggle. Per-card key matches
 // the news-feed convention so each dashboard block remembers its own
 // minimized/expanded state across reloads.
@@ -31,6 +36,10 @@ export function BillingTower({
 }) {
   const [period, setPeriod] = useState<(typeof PERIODS)[number]["value"]>("quarter-current");
   const [collapsed, setCollapsed] = useState(false);
+  const [drilldown, setDrilldown] = useState<{
+    query: DrilldownQuery;
+    title: string;
+  } | null>(null);
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (window.localStorage.getItem(COLLAPSE_KEY) === "1") setCollapsed(true);
@@ -105,14 +114,29 @@ export function BillingTower({
 
       {!collapsed && (
         <div id="billing-tower-body" className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
+          <Metric
+            label={billedLabel}
+            value={billedValue}
+            hint={billedHint}
+            tone="accent"
+            onClick={() => setDrilldown({ query: { kind: "billed_revenue" }, title: billedLabel })}
+          />
           <Metric
             label="Cash Collected"
             value={collectedValue}
             hint={collectedHint}
             tone="neutral"
+            onClick={() => setDrilldown({ query: { kind: "cash_collected" }, title: "Cash Collected" })}
           />
         </div>
+      )}
+      {drilldown && (
+        <PlacementDrilldownDialog
+          eyebrow="Billing Tower"
+          title={drilldown.title}
+          query={drilldown.query}
+          onClose={() => setDrilldown(null)}
+        />
       )}
     </section>
   );
@@ -138,11 +162,13 @@ function Metric({
   value,
   hint,
   tone,
+  onClick,
 }: {
   label: string;
   value: string;
   hint: string;
   tone: "accent" | "neutral";
+  onClick?: () => void;
 }) {
   // Headline metric (Q2 Billed Revenue) sits on a soft sage tint;
   // Cash Collected stays on white with a subtle inset border so the
@@ -151,18 +177,29 @@ function Metric({
   const wrapper = accent
     ? "rounded-2xl bg-court-accent-tint p-4"
     : "rounded-2xl bg-court-surface p-4 ring-1 ring-inset ring-court-border-soft";
+  const interactiveCls = onClick
+    ? " w-full text-left cursor-pointer transition hover:brightness-[0.98] focus:outline-none focus:ring-2 focus:ring-court-brand/40"
+    : "";
   const labelCls =
     "text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted";
   const valueCls = accent
     ? "mt-2 font-serif font-extrabold leading-none tracking-[-0.05em] tabular-nums text-court-fg dark:text-court-accent-dark"
     : "mt-2 font-serif font-extrabold leading-none tracking-[-0.05em] tabular-nums text-court-fg";
-  return (
-    <div className={wrapper}>
+  const body = (
+    <>
       <div className={labelCls}>{label}</div>
       <div className={valueCls} style={{ fontSize: "32px" }}>
         {value}
       </div>
       <p className="mt-2 text-xs text-court-fg-muted">{hint}</p>
-    </div>
+    </>
   );
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={wrapper + interactiveCls}>
+        {body}
+      </button>
+    );
+  }
+  return <div className={wrapper}>{body}</div>;
 }
