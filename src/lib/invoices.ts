@@ -203,10 +203,13 @@ export async function markInvoiceSent(
   });
 }
 
+export type InvoicePaymentMethod = "CHECK" | "ACH" | "CREDIT";
+
 export async function markInvoicePaid(
   id: string,
   organizationId: string,
   userId: string,
+  paymentMethod: InvoicePaymentMethod,
 ): Promise<void> {
   const invoice = await prisma.invoice.findFirst({
     where: { id, organizationId },
@@ -216,7 +219,7 @@ export async function markInvoicePaid(
   if (invoice.status === "PAID") return;
   await prisma.invoice.update({
     where: { id: invoice.id },
-    data: { status: "PAID", paidAt: new Date() },
+    data: { status: "PAID", paidAt: new Date(), paymentMethod },
   });
   if (invoice.placementId) {
     await prisma.placement.update({
@@ -230,7 +233,7 @@ export async function markInvoicePaid(
     actionType: "invoice_paid",
     targetType: "invoice",
     targetId: invoice.id,
-    metadata: { placementId: invoice.placementId },
+    metadata: { placementId: invoice.placementId, paymentMethod },
   });
 }
 

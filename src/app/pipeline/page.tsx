@@ -147,16 +147,23 @@ export default async function PipelinePage({
             placementId: { in: hiredPlacementIds },
             status: { not: "VOID" },
           },
-          select: { placementId: true, status: true },
+          select: { placementId: true, status: true, paymentMethod: true },
         })
       : [];
     const invoiceStatusByPlacementId = new Map<string, "DRAFT" | "SENT" | "PAID">();
+    const invoicePaymentMethodByPlacementId = new Map<string, "CHECK" | "ACH" | "CREDIT">();
     for (const inv of hiredInvoices) {
       if (inv.placementId) {
         invoiceStatusByPlacementId.set(
           inv.placementId,
           inv.status as "DRAFT" | "SENT" | "PAID",
         );
+        if (inv.paymentMethod) {
+          invoicePaymentMethodByPlacementId.set(
+            inv.placementId,
+            inv.paymentMethod as "CHECK" | "ACH" | "CREDIT",
+          );
+        }
       }
     }
 
@@ -215,7 +222,11 @@ export default async function PipelinePage({
         daysInStage: daysBetween(p.updatedAt.toISOString()),
         isKept: rfEntry?.isKept ?? false,
         placementId: p.id,
-        placement: toPlacementDetails(p, invoiceStatusByPlacementId.get(p.id) ?? null),
+        placement: toPlacementDetails(
+          p,
+          invoiceStatusByPlacementId.get(p.id) ?? null,
+          invoicePaymentMethodByPlacementId.get(p.id) ?? null,
+        ),
         nextInterview: isRfCandidate && isRfJob
           ? nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null
           : null,
@@ -337,6 +348,7 @@ type PlacementRow = Awaited<ReturnType<typeof prisma.placement.findMany>>[number
 function toPlacementDetails(
   p: PlacementRow,
   invoiceStatus: "DRAFT" | "SENT" | "PAID" | null,
+  invoicePaymentMethod: "CHECK" | "ACH" | "CREDIT" | null,
 ): PlacementDetails {
   return {
     id: p.id,
@@ -351,6 +363,7 @@ function toPlacementDetails(
     expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
     startConfirmedAt: p.startConfirmedAt?.toISOString() ?? null,
     invoiceStatus,
+    invoicePaymentMethod,
     placementNotes: p.placementNotes ?? null,
   };
 }

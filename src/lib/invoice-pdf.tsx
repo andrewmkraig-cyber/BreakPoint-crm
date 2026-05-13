@@ -5,15 +5,15 @@
 // of the way down the page.
 //
 // Visual order top → bottom:
-//   Header band         · company wordmark + address stack ⟂ big "Invoice" + INV-NNNN
+//   Header band         · company wordmark + address stack ⟂ brand mark + big "Invoice" + INV-NNNN
 //   Meta strip          · Issue Date / Due Date / Terms / Amount Due
 //   Bill To · Hiring    · billing contact + address ⟂ hiring contact
 //   Placement Summary   · candidate / role / start / fee details
 //   Services table      · single line item with rate × qty = amount
 //   Totals              · right-aligned subtotal + amount due
-//   Payment Instructions· three columns: ACH/Wire · Check · Questions (9pt)
+//   Payment Instructions· four columns: ACH/Wire · Check · EIN · Questions (9pt)
 //   Note (optional)     · small muted "Note: …" line if invoice.notes set
-//   Footer              · one muted line: "EIN <ein> · Thank you for your business."
+//   Footer              · bottom-left grey "Kraig Talent LLC dba BreakPoint Talent"
 //
 // Spacing was tightened in Ace 42 so the entire document fits on a single
 // US Letter page - section margins were reduced ~30% across the board and
@@ -27,15 +27,32 @@
 import {
   Document,
   Page,
+  Image,
   Text,
   View,
   StyleSheet,
   renderToBuffer,
 } from "@react-pdf/renderer";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { createElement } from "react";
 
 import type { BillingSettings } from "@/lib/billing-settings";
 import type { InvoiceContact } from "@/lib/invoices";
+
+// Read the brand mark once at module load. @react-pdf accepts a base64
+// data URI as Image.src, which sidesteps the need to resolve a file path
+// at render time on Vercel (where the working dir differs from local).
+const BRAND_LOGO_DATA_URI = (() => {
+  try {
+    const buf = readFileSync(
+      join(process.cwd(), "public/brand/breakpoint_logo_transparent.png"),
+    );
+    return `data:image/png;base64,${buf.toString("base64")}`;
+  } catch {
+    return "";
+  }
+})();
 
 const BRAND_GREEN = "#5A9642";
 const BRAND_GREEN_DARK = "#3F7030";
@@ -79,6 +96,19 @@ const styles = StyleSheet.create({
   },
   brandLine: { fontSize: 9, color: MUTED, marginTop: 1 },
   headerRight: { alignItems: "flex-end" },
+  // The "Invoice" wordmark + brand mark sit on a single row, brand
+  // mark on the LEFT of "Invoice". Height of the logo matches the
+  // wordmark's font size so the two read as one unit.
+  invoiceTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  brandMark: {
+    width: 32,
+    height: 28,
+    objectFit: "contain",
+  },
   invoiceWord: {
     fontSize: 28,
     fontFamily: "Helvetica-Bold",
@@ -236,6 +266,21 @@ const styles = StyleSheet.create({
     fontFamily: "Helvetica-Bold",
     marginBottom: 4,
   },
+  // EIN column sits between CHECK and BILLING QUESTIONS in the cream
+  // panel. Label tracks the other section headers but uses BRAND_GREEN
+  // (slightly lighter than BRAND_GREEN_DARK) per the "EIN in green" ask.
+  einHeader: {
+    fontSize: 7.5,
+    color: BRAND_GREEN,
+    letterSpacing: 1.3,
+    fontFamily: "Helvetica-Bold",
+    marginBottom: 4,
+  },
+  einValue: {
+    fontSize: 10,
+    color: INK,
+    fontFamily: "Helvetica-Bold",
+  },
   paymentLine: { fontSize: 9, color: INK_700, marginBottom: 1 },
   paymentLineBold: {
     fontSize: 9,
@@ -260,16 +305,16 @@ const styles = StyleSheet.create({
   },
   noteBody: { fontSize: 8, color: MUTED, lineHeight: 1.4, flex: 1 },
   // --- Footer ---
-  // Single muted line: "EIN <ein> · Thank you for your business."
-  // Collapsed from the prior two-row footer block in Ace 42 so the
-  // document fits cleanly on one page.
+  // Single muted line: "Kraig Talent LLC dba BreakPoint Talent" in the
+  // bottom-left. EIN moved into the cream panel above; the prior "Thank
+  // you for your business" line was removed per the Ace 43 spec.
   footer: {
     marginTop: 10,
     paddingTop: 7,
     borderTopWidth: 1,
     borderTopColor: LINE,
     flexDirection: "row",
-    justifyContent: "flex-end",
+    justifyContent: "flex-start",
   },
   footerLine: { fontSize: 8, color: MUTED },
 });
@@ -389,7 +434,17 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
         createElement(
           View,
           { style: styles.headerRight },
-          createElement(Text, { style: styles.invoiceWord }, "Invoice"),
+          createElement(
+            View,
+            { style: styles.invoiceTitleRow },
+            BRAND_LOGO_DATA_URI
+              ? createElement(Image, {
+                  src: BRAND_LOGO_DATA_URI,
+                  style: styles.brandMark,
+                })
+              : null,
+            createElement(Text, { style: styles.invoiceWord }, "Invoice"),
+          ),
           createElement(Text, { style: styles.invoiceNum }, invoiceNumber),
         ),
       ),
@@ -590,6 +645,12 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
           createElement(
             View,
             { style: styles.paymentCol },
+            createElement(Text, { style: styles.einHeader }, "EIN"),
+            createElement(Text, { style: styles.einValue }, billing.ein || "41-4887871"),
+          ),
+          createElement(
+            View,
+            { style: styles.paymentCol },
             createElement(Text, { style: styles.paymentHeader }, "BILLING QUESTIONS"),
             createElement(Text, { style: styles.paymentLineBold }, "Accounts Receivable"),
             createElement(Text, { style: styles.paymentLine }, billing.arEmail),
@@ -606,17 +667,16 @@ export function InvoicePdfDocument(props: InvoicePdfInput) {
             createElement(Text, { style: styles.noteBody }, trimmedNotes),
           )
         : null,
-      // Footer - single muted line: "EIN <ein> · Thank you for your business."
-      // Falls back to the BreakPoint EIN if the workspace hasn't saved
-      // one yet so the footer always renders complete on the test invoice
-      // and on legacy invoices created before the EIN default landed.
+      // Footer - bottom-left grey legal name. EIN moved into the cream
+      // panel; the prior "Thank you for your business" line was removed
+      // per the Ace 43 invoice spec.
       createElement(
         View,
         { style: styles.footer },
         createElement(
           Text,
           { style: styles.footerLine },
-          `EIN ${billing.ein || "41-4887871"} · Thank you for your business.`,
+          "Kraig Talent LLC dba BreakPoint Talent",
         ),
       ),
     ),

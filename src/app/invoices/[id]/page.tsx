@@ -51,6 +51,7 @@ export default async function InvoiceDetailPage({
         notes={invoice.notes ?? ""}
         sentAt={invoice.sentAt ? invoice.sentAt.toISOString() : null}
         paidAt={invoice.paidAt ? invoice.paidAt.toISOString() : null}
+        paymentMethod={invoice.paymentMethod ?? null}
         candidateName={candidateName}
         candidateId={invoice.candidate?.id ?? null}
         candidateEmail={invoice.candidate?.email ?? null}

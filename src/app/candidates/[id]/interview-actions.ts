@@ -618,46 +618,11 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
     return { ok: false, error: "Can't edit a cancelled interview." };
   }
 
-  // Build the calendar event summary + description from the new payload
-  // so recruiters editing the title/client/role downstream of a job
-  // rename see the update reflected in the event. Falls back to the
-  // existing event values when the caller didn't pass context.
-  const calendarPayload: {
-    summary?: string;
-    description?: string;
-  } = {};
-  if (input.candidateName || input.jobTitle || input.clientName) {
-    calendarPayload.summary = calendarSummary({
-      candidateRfId: existing.candidateRfId,
-      candidateId: existing.candidateId,
-      jobRfId: 0,
-      clientRfId: 0,
-      scheduledAt: input.scheduledAt,
-      durationMin: input.durationMin,
-      type: input.type,
-      source: "ace_scheduled",
-      candidateName: input.candidateName,
-      jobTitle: input.jobTitle,
-      clientName: input.clientName,
-    });
-    calendarPayload.description = calendarDescription({
-      candidateRfId: existing.candidateRfId,
-      candidateId: existing.candidateId,
-      jobRfId: 0,
-      clientRfId: 0,
-      scheduledAt: input.scheduledAt,
-      durationMin: input.durationMin,
-      type: input.type,
-      source: "ace_scheduled",
-      candidateName: input.candidateName,
-      jobTitle: input.jobTitle,
-      clientName: input.clientName,
-      candidatePhone: input.candidatePhone,
-      location: input.location,
-      attendees: input.attendees,
-      notes: input.notes,
-    });
-  }
+  // Per Ace 43: edits leave the Google event's body (description) and
+  // title (summary) untouched. Only date/time/duration/location flow to
+  // the calendar so the invite the recruiter wrote at send-time stays
+  // canonical. Description tweaks happen via the dashboard's edit-and-
+  // resend popup, which already round-trips through the live event.
 
   // De-dupe the per-party event-id columns: ace_scheduled interviews
   // share one event across all three columns after invite delivery, so
@@ -685,8 +650,6 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
           durationMin: input.durationMin,
           timeZone: input.timeZone,
           location: input.location ?? "",
-          summary: calendarPayload.summary,
-          description: calendarPayload.description,
         });
       } else {
         // Silent field patch first, then opt-in invitations for new
@@ -700,8 +663,6 @@ export async function updateInterview(input: UpdateInterviewInput): Promise<Resu
           durationMin: input.durationMin,
           timeZone: input.timeZone,
           location: input.location ?? "",
-          summary: calendarPayload.summary,
-          description: calendarPayload.description,
         });
       }
 

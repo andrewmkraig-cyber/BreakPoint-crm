@@ -36,6 +36,14 @@ function formatUsd(amount: string): string {
   });
 }
 
+export type InvoicePaymentMethod = "CHECK" | "ACH" | "CREDIT";
+
+const PAYMENT_METHOD_LABEL: Record<InvoicePaymentMethod, string> = {
+  CHECK: "Check",
+  ACH: "ACH",
+  CREDIT: "Credit",
+};
+
 export type InvoiceDetailProps = {
   id: string;
   invoiceNumber: string;
@@ -48,6 +56,7 @@ export type InvoiceDetailProps = {
   notes: string;
   sentAt: string | null;
   paidAt: string | null;
+  paymentMethod: InvoicePaymentMethod | null;
   candidateName: string;
   candidateId: string | null;
   candidateEmail: string | null;
@@ -78,6 +87,12 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   const [notes, setNotes] = useState(props.notes);
   const [billingContacts, setBillingContacts] = useState<Contact[]>(props.billingContacts);
   const [hiringContacts, setHiringContacts] = useState<Contact[]>(props.hiringContacts);
+  // Recruiter selects how the client paid before flipping the invoice
+  // to PAID. Null until picked; the Mark-as-paid button stays disabled
+  // until it's set so we never write a PAID row without an attribution.
+  const [paymentMethod, setPaymentMethod] = useState<InvoicePaymentMethod | "">(
+    props.paymentMethod ?? "",
+  );
 
   const isDraft = props.status === "DRAFT";
   const statusPill = STATUS_PILL[props.status] ?? { label: props.status, tone: "" };
@@ -383,16 +398,42 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
             </button>
           </div>
         ) : (
-          <div className="mt-6 flex flex-wrap gap-2 border-t border-court-border pt-5">
+          <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-court-border pt-5">
             {props.status === "SENT" ? (
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={() => runAction(() => markInvoicePaidAction(props.id))}
-                className="rounded-full bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
-              >
-                Mark as paid
-              </button>
+              <>
+                <label className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                  Payment method
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) =>
+                      setPaymentMethod(e.target.value as InvoicePaymentMethod | "")
+                    }
+                    disabled={isPending}
+                    className="rounded-lg border border-court-border bg-court-surface px-2 py-1 text-[11px] font-medium normal-case tracking-normal text-court-fg shadow-sm focus:border-court-accent focus:outline-none"
+                  >
+                    <option value="">Select…</option>
+                    <option value="CHECK">Check</option>
+                    <option value="ACH">ACH</option>
+                    <option value="CREDIT">Credit</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  disabled={isPending || !paymentMethod}
+                  onClick={() => {
+                    if (!paymentMethod) {
+                      setError("Pick a payment method before marking paid.");
+                      return;
+                    }
+                    runAction(() =>
+                      markInvoicePaidAction(props.id, paymentMethod as InvoicePaymentMethod),
+                    );
+                  }}
+                  className="rounded-full bg-court-fg px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-court-surface shadow-sm hover:bg-court-brand-dark disabled:opacity-60"
+                >
+                  Mark as paid
+                </button>
+              </>
             ) : null}
             {props.status !== "VOID" ? (
               <button
@@ -449,6 +490,14 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
               <dt className="font-semibold uppercase tracking-wider text-court-fg-muted">Paid</dt>
               <dd className="mt-1 text-court-fg">
                 {props.paidAt ? new Date(props.paidAt).toLocaleDateString() : "—"}
+              </dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="font-semibold uppercase tracking-wider text-court-fg-muted">
+                Payment method
+              </dt>
+              <dd className="mt-1 text-court-fg">
+                {props.paymentMethod ? PAYMENT_METHOD_LABEL[props.paymentMethod] : "—"}
               </dd>
             </div>
           </dl>

@@ -749,6 +749,7 @@ function RescheduleDialog({ interview, onClose }: { interview: LocalInterview; o
             value={scheduledAt}
             onChange={setScheduledAt}
             className="mt-1"
+            blockPast
           />
         </label>
         <DurationSelect value={durationMin} onChange={setDurationMin} />

@@ -995,6 +995,10 @@ model Invoice {
   pdfPath         String?
   sentAt          DateTime?
   paidAt          DateTime?
+  // Selected before the recruiter flips an invoice to PAID. Surfaces on
+  // both the invoice detail view and the linked Placement so the desk
+  // can scan how clients are actually paying without opening each PDF.
+  paymentMethod   InvoicePaymentMethod?
   notes           String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -1009,6 +1013,12 @@ enum InvoiceStatus {
   SENT
   PAID
   VOID
+}
+
+enum InvoicePaymentMethod {
+  CHECK
+  ACH
+  CREDIT
 }
 
 model ClaudePanelMessage {

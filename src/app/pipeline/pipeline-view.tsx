@@ -36,6 +36,10 @@ export type PlacementDetails = {
   expectedStartDate: string | null;
   startConfirmedAt: string | null;
   invoiceStatus: "DRAFT" | "SENT" | "PAID" | null;
+  // How the client paid this invoice. Set when the recruiter flips
+  // the invoice to PAID; null on any pre-paid status. Surfaced as a
+  // sub-label on the Invoicing pill so the desk can scan payment mix.
+  invoicePaymentMethod: "CHECK" | "ACH" | "CREDIT" | null;
   placementNotes: string | null;
 };
 
@@ -670,10 +674,23 @@ function HiredCells({ row }: { row: PipelineRow }) {
         )}
       </td>
       <td className="px-5 py-3 align-top text-center">
-        <InvoiceStatusPill status={p?.invoiceStatus ?? null} />
+        <div className="flex flex-col items-center gap-0.5">
+          <InvoiceStatusPill status={p?.invoiceStatus ?? null} />
+          {p?.invoicePaymentMethod ? (
+            <span className="text-[10px] font-medium uppercase tracking-wider text-court-fg-muted">
+              {paymentMethodLabel(p.invoicePaymentMethod)}
+            </span>
+          ) : null}
+        </div>
       </td>
     </>
   );
+}
+
+function paymentMethodLabel(method: "CHECK" | "ACH" | "CREDIT"): string {
+  if (method === "CHECK") return "Check";
+  if (method === "ACH") return "ACH";
+  return "Credit";
 }
 
 function InvoiceStatusPill({ status }: { status: "DRAFT" | "SENT" | "PAID" | null }) {

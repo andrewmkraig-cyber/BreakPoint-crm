@@ -351,6 +351,7 @@ function ScheduleEditor({
               setTime(t ?? "");
             }}
             disabled={busy}
+            blockPast
           />
         </label>
         <label className="block">

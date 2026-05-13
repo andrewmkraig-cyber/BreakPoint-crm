@@ -17,6 +17,7 @@ import {
   restoreInvoiceToDraft,
   nextInvoiceNumber,
   type InvoiceContact,
+  type InvoicePaymentMethod,
 } from "@/lib/invoices";
 
 async function requireUserId(): Promise<string | null> {
@@ -188,12 +189,18 @@ export async function markInvoiceSentAction(id: string): Promise<Result> {
   }
 }
 
-export async function markInvoicePaidAction(id: string): Promise<Result> {
+export async function markInvoicePaidAction(
+  id: string,
+  paymentMethod: InvoicePaymentMethod,
+): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return fail("Not signed in");
+  if (paymentMethod !== "CHECK" && paymentMethod !== "ACH" && paymentMethod !== "CREDIT") {
+    return fail("Pick a payment method");
+  }
   const org = await getCurrentOrg();
   try {
-    await markInvoicePaid(id, org.id, userId);
+    await markInvoicePaid(id, org.id, userId, paymentMethod);
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${id}`);
     revalidatePath("/dashboard");

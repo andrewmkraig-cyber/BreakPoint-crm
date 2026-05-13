@@ -2043,7 +2043,7 @@ function ClientInviteDialog({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="block text-sm sm:col-span-2">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Date &amp; time</span>
-            <DateTime15Picker value={scheduledAt} onChange={setScheduledAt} className="mt-1" />
+            <DateTime15Picker value={scheduledAt} onChange={setScheduledAt} className="mt-1" blockPast />
           </label>
           <DurationSelect value={durationMin} onChange={setDurationMin} />
         </div>
@@ -2193,6 +2193,7 @@ function EditInterviewDialog({
               onChange={setScheduledAt}
               className="mt-1"
               disabled={saving}
+              blockPast
             />
           </label>
           <DurationSelect value={durationMin} onChange={setDurationMin} />
