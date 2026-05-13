@@ -2,6 +2,7 @@ import { ArrowUpRight, CalendarClock } from "lucide-react";
 import Link from "next/link";
 
 import { ownerKeyForCalendar } from "@/lib/calendar/owner-key";
+import { eventTypeMeta } from "@/lib/calendar/utils";
 import { prisma } from "@/lib/prisma";
 import { getEasternWeekBounds } from "@/lib/week";
 import { cn } from "@/lib/utils";
@@ -36,17 +37,6 @@ function deriveType(title: string, calendarName: string): EventType {
   if (c.includes("reminder") || t.includes("reminder")) return "reminder";
   return "other";
 }
-
-// Tailwind tokens for the stacked day-cell bars. Brand-green for
-// interviews, blue for client calls, amber for reminders, neutral for
-// anything else — all backed by Court Mode tokens or the same Tailwind
-// palettes the calendar's eventTypeMeta uses.
-const BAR_CLASS: Record<EventType, string> = {
-  interview: "bg-court-brand",
-  client: "bg-blue-400 dark:bg-blue-500",
-  reminder: "bg-amber-400 dark:bg-amber-500",
-  other: "bg-court-fg-muted/40",
-};
 
 const PILL_CLASS: Record<EventType, string> = {
   interview:
@@ -125,12 +115,19 @@ function formatNextIn(now: Date, then: Date): string | null {
   return `${diffDays} day${diffDays === 1 ? "" : "s"}`;
 }
 
+type DayCellEvent = {
+  id: string;
+  type: EventType;
+  title: string;
+  timeLabel: string;
+};
+
 type DayCell = {
   key: string;
   abbr: string;
   dayNum: string;
   isToday: boolean;
-  events: Array<{ id: string; type: EventType }>;
+  events: DayCellEvent[];
 };
 
 type UpNextRow = {
@@ -225,13 +222,20 @@ export async function ThisWeekWidget({
     dayKey: formatYMD(r.startTime),
   }));
 
-  // Distribute event bars into their day cells. The query is already
-  // sorted by startTime ascending so the bars stack chronologically.
+  // Distribute event chips into their day columns. The query is
+  // already sorted by startTime ascending so chips stack chronologically.
   const byKey = new Map<string, DayCell>();
   for (const d of days) byKey.set(d.key, d);
   for (const ev of events) {
     const cell = byKey.get(ev.dayKey);
-    if (cell) cell.events.push({ id: ev.id, type: ev.type });
+    if (cell) {
+      cell.events.push({
+        id: ev.id,
+        type: ev.type,
+        title: ev.title,
+        timeLabel: ev.timeLabel,
+      });
+    }
   }
 
   const todayEvents = events.filter((e) => e.dayKey === todayKey);
@@ -310,42 +314,81 @@ export async function ThisWeekWidget({
         </Link>
       </div>
 
-      {/* 5-day strip */}
-      <div className="mt-4 grid grid-cols-5 gap-2.5">
-        {days.map((day) => (
-          <div
-            key={day.key}
-            className={cn(
-              "rounded-2xl px-3 py-2.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]",
-              day.isToday
-                ? "bg-court-brand-tint ring-1 ring-inset ring-court-brand/30"
-                : "bg-court-surface",
-            )}
-          >
-            <div className="flex items-baseline justify-between">
-              <div className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
-                {day.abbr}
-              </div>
-              <div className="font-serif text-base font-bold tabular-nums text-court-fg">
-                {day.dayNum}
-              </div>
-            </div>
-            <div className="mt-2 flex flex-col gap-[3px]">
-              {day.events.map((e) => (
+      {/* 5-day strip — condensed weekly grid with chip-style events.
+          Mirrors the calendar week view's pill palette so the dashboard
+          and the full calendar read as one product. */}
+      <div className="mt-4 grid grid-cols-5">
+        {days.map((day, i) => {
+          const visible = day.events.slice(0, day.events.length > 3 ? 2 : 3);
+          const overflow = day.events.length - visible.length;
+          return (
+            <div
+              key={day.key}
+              className={cn(
+                "min-w-0 px-1.5 py-1.5",
+                i > 0 && "border-l border-court-border-soft",
+                day.isToday && "bg-court-brand-tint/40",
+              )}
+            >
+              <div
+                className={cn(
+                  "flex items-baseline justify-between px-1",
+                  day.isToday && "text-court-brand-dark",
+                )}
+              >
                 <span
-                  key={e.id}
-                  aria-hidden="true"
-                  className={cn("h-1 w-full rounded-full", BAR_CLASS[e.type])}
-                />
-              ))}
+                  className={cn(
+                    "text-[10px] font-extrabold uppercase tracking-[0.12em]",
+                    day.isToday ? "text-court-brand-dark" : "text-court-fg-muted",
+                  )}
+                >
+                  {day.abbr}
+                </span>
+                <span
+                  className={cn(
+                    "font-serif text-sm font-bold tabular-nums",
+                    day.isToday ? "text-court-brand-dark" : "text-court-fg",
+                  )}
+                >
+                  {day.dayNum}
+                </span>
+              </div>
+              <div className="mt-1.5 flex flex-col gap-1">
+                {visible.length === 0 ? (
+                  <span className="px-1 text-[10px] font-medium text-court-fg-dim">
+                    —
+                  </span>
+                ) : (
+                  visible.map((e) => {
+                    const meta = eventTypeMeta(e.type);
+                    return (
+                      <div
+                        key={e.id}
+                        className={cn(
+                          "min-w-0 truncate rounded-md border px-1.5 py-0.5 leading-tight",
+                          meta.pillClass,
+                        )}
+                        title={`${e.timeLabel} · ${e.title}`}
+                      >
+                        <div className="truncate text-[10.5px] font-semibold">
+                          {e.title}
+                        </div>
+                        <div className="truncate text-[9.5px] opacity-80">
+                          {e.timeLabel}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {overflow > 0 && (
+                  <div className="truncate rounded-md bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold text-court-fg-muted">
+                    +{overflow} more
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="mt-2 text-[10px] font-semibold tabular-nums text-court-fg-muted">
-              {day.events.length === 0
-                ? "—"
-                : `${day.events.length} ${day.events.length === 1 ? "event" : "events"}`}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Up next today */}

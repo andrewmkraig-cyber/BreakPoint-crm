@@ -143,7 +143,10 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
   const router = useRouter();
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
-  const [reminderOn, setReminderOn] = useState(event?.reminderEnabled ?? false);
+  // Default to ON in create mode — recruiters want a toast 15 min
+  // before every new event unless they explicitly opt out. Edit mode
+  // mirrors whatever the linked AceReminder row already has.
+  const [reminderOn, setReminderOn] = useState(event?.reminderEnabled ?? true);
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -205,7 +208,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
       setLocation("");
       setNotes("");
       setNotesPreviewMode(false);
-      setReminderOn(false);
+      setReminderOn(true);
     }
     setNewGuests([]);
     setError(null);

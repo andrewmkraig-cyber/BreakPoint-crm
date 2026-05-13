@@ -29,6 +29,32 @@ import {
 
 import { createReminder, dismissReminder as dismissReminderAction } from "./reminder-actions";
 
+// Persist the recruiter's "show / hide" choices for each teammate
+// across navigation. Without this, hiddenMembers reset to its
+// default ("My Calendar") every time the user left and came back to
+// /calendar, since the component remounts on each navigation.
+const HIDDEN_MEMBERS_KEY = "ace.calendar.hiddenMembers";
+
+function readHiddenMembersFromStorage(
+  teamMembers: CalendarTeamMember[],
+): Set<string> {
+  const defaultHidden = new Set(
+    teamMembers.filter((m) => !m.self).map((m) => m.id),
+  );
+  if (typeof window === "undefined") return defaultHidden;
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_MEMBERS_KEY);
+    if (!raw) return defaultHidden;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((s) => typeof s === "string")) {
+      return new Set(parsed);
+    }
+  } catch {
+    // Malformed JSON — fall through to the default.
+  }
+  return defaultHidden;
+}
+
 // Calendar surface owner. Holds view / scope / drawer / toast state and
 // passes the right slices to each child. `initialDate` comes from the
 // page server component so SSR and CSR agree on "today" — without that
@@ -55,12 +81,22 @@ export function CalendarView({
   // hiddenMembers is the single source of truth for which member's
   // events are showing. The top "My Calendar / Team" tabs and the
   // left-rail checkboxes both mutate this same Set — clicking either
-  // surface has a visible effect every time. Default: hide everyone
-  // who isn't self, which makes the initial page load read as "My
-  // Calendar" without needing a separate scope state.
+  // surface has a visible effect every time. Default (no stored
+  // preference yet): hide everyone who isn't self, which makes the
+  // initial page load read as "My Calendar" without needing a
+  // separate scope state. Choices persist to localStorage so the rail
+  // configuration survives navigation away from /calendar.
   const [hiddenMembers, setHiddenMembers] = useState<Set<string>>(
-    () => new Set(teamMembers.filter((m) => !m.self).map((m) => m.id)),
+    () => readHiddenMembersFromStorage(teamMembers),
   );
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      HIDDEN_MEMBERS_KEY,
+      JSON.stringify(Array.from(hiddenMembers)),
+    );
+  }, [hiddenMembers]);
 
   // Master-tab state is derived, not stored. "me" only when every
   // non-self member is hidden AND self is visible; "team" only when
@@ -277,7 +313,9 @@ export function CalendarView({
               today={today}
               now={today}
               onEventClick={openEdit}
-              onSlotClick={openCreate}
+              onSlotClick={(dayIdx, hour) =>
+                openCreateAt(addDays(currentWeekStart, dayIdx), hour, 0)
+              }
             />
           )}
           {view === "day" && (
