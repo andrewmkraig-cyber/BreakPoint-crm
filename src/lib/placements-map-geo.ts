@@ -88,6 +88,15 @@ function normalizeKey(city: string): string {
   return city.trim().toLowerCase();
 }
 
+// Strip the ", ST" suffix so a placement row stored as just "Pittsburgh"
+// can still match the CITY_COORDS entry keyed "Pittsburgh, PA" (and the
+// other way around). Client.location.city ships without the state in
+// most rows, so we look up under both shapes.
+function cityOnly(normalized: string): string {
+  const idx = normalized.indexOf(",");
+  return idx >= 0 ? normalized.slice(0, idx).trim() : normalized;
+}
+
 export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[] {
   const buckets = new Map<
     string,
@@ -131,14 +140,22 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
 
   // Match city strings against the static lookup case-insensitively so
   // "atlanta, ga" / "Atlanta, GA" / "ATLANTA, GA" all hit the same dot.
+  // Also register a city-only alias ("pittsburgh") for every "City, ST"
+  // entry so placements stored without a state still resolve.
   const coordIndex = new Map<string, CityCoord>();
   CITY_COORDS.forEach((coord, name) => {
-    coordIndex.set(normalizeKey(name), coord);
+    const full = normalizeKey(name);
+    coordIndex.set(full, coord);
+    const cityKey = cityOnly(full);
+    if (cityKey !== full && !coordIndex.has(cityKey)) {
+      coordIndex.set(cityKey, coord);
+    }
   });
 
   const aggregates: CityAggregate[] = [];
   buckets.forEach((bucket) => {
-    const coord = coordIndex.get(bucket.key);
+    const coord =
+      coordIndex.get(bucket.key) ?? coordIndex.get(cityOnly(bucket.key));
     // Unknown cities are dropped from the map rather than plotted at
     // a centroid — a misplaced pin reads as real data.
     if (!coord) return;
