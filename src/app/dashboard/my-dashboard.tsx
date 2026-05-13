@@ -3,14 +3,9 @@ import { authOptions } from "@/lib/auth";
 import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
-import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
 import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
-import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
-import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
-import { getInterviewsForOrg } from "@/lib/interviews";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
-import { formatUpcomingInterviewWhen } from "@/lib/interview-format";
 import { getInvoiceSummary } from "@/lib/invoices";
 import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
 import {
@@ -27,12 +22,9 @@ import {
 // current state of the placement. A candidate submitted Monday who
 // got rejected Wednesday still counts as 1 in "Candidates submitted"
 // for that week — the rejection doesn't remove them from the count.
-// Exception: "Upcoming interviews" (below the strip) is state-based
-// and shows only non-cancelled interviews in the next 7 days.
 export async function MyDashboard() {
   const now = new Date();
   const { start: weekStart, end: weekEnd } = getEasternWeekBounds(now);
-  const upcomingWindowEnd = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
   // Q2 2026 billed revenue: sum of feeTotal across placements whose expected
   // start date lands in the quarter. Only non-cancelled / non-rejected rows
@@ -45,12 +37,12 @@ export async function MyDashboard() {
     getServerSession(authOptions),
   ]);
   const firstName = session?.user?.name?.split(" ")[0]?.trim() ?? null;
+  const selfPerson = {
+    name: session?.user?.name ?? null,
+    email: session?.user?.email ?? null,
+  };
 
   const [
-    upcomingInterviews,
-    rfCandidates,
-    rfJobs,
-    rfClients,
     newClientsCount,
     submitLogCount,
     interviewsScheduledCount,
@@ -60,14 +52,6 @@ export async function MyDashboard() {
     q2BilledRevenueAgg,
     invoiceSummary,
   ] = await Promise.all([
-    getInterviewsForOrg({
-      statuses: ["scheduled"],
-      scheduledAfter: now,
-      scheduledBefore: upcomingWindowEnd,
-    }),
-    getRfCandidatesForOrg().catch(() => []),
-    getRfJobsForOrg().catch(() => []),
-    getRfClientsForOrg().catch(() => []),
     prisma.client.count({
       where: { organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
     }),
@@ -97,59 +81,6 @@ export async function MyDashboard() {
     getInvoiceSummary(org.id),
   ]);
 
-  const aceCandidateIds = Array.from(
-    new Set(
-      upcomingInterviews
-        .filter((iv) => iv.candidateRfId == null && iv.candidateId)
-        .map((iv) => iv.candidateId as string),
-    ),
-  );
-  const aceCandidates = aceCandidateIds.length > 0
-    ? await prisma.candidate.findMany({
-        where: { id: { in: aceCandidateIds }, organizationId: org.id },
-        select: { id: true, firstName: true, lastName: true },
-      })
-    : [];
-  const aceCandidateById = new Map(aceCandidates.map((c) => [c.id, c]));
-  const interviews = upcomingInterviews;
-
-  const rfCandidateName = new Map<number, string>();
-  for (const c of rfCandidates) {
-    const name = c.name ?? [c.first_name, c.last_name].filter(Boolean).join(" ") ?? "(unnamed)";
-    rfCandidateName.set(c.id, name);
-  }
-  const rfJobTitle = new Map<number, string>();
-  for (const j of rfJobs) rfJobTitle.set(j.id, normalizeJob(j).title);
-  const rfClientName = new Map<number, string>();
-  for (const cl of rfClients) rfClientName.set(cl.id, normalizeClient(cl).name);
-
-  const upcoming: UpcomingInterviewRow[] = interviews.map((iv) => {
-    const aceCandidate = iv.candidateId ? aceCandidateById.get(iv.candidateId) : undefined;
-    const candidateName = iv.candidateRfId != null
-      ? rfCandidateName.get(iv.candidateRfId) ?? "(unknown)"
-      : aceCandidate
-        ? [aceCandidate.firstName, aceCandidate.lastName].filter(Boolean).join(" ") || "(unnamed)"
-        : "(unknown)";
-    const candidateHref = iv.candidateRfId != null
-      ? `/candidates/${iv.candidateRfId}`
-      : iv.candidateId
-        ? `/candidates/${iv.candidateId}`
-        : "/candidates";
-    return {
-      id: iv.id,
-      candidateName,
-      candidateHref,
-      jobTitle: iv.jobRfId != null ? rfJobTitle.get(iv.jobRfId) ?? "(job)" : "(job)",
-      clientName: iv.clientRfId != null ? rfClientName.get(iv.clientRfId) ?? "" : "",
-      scheduledAt: iv.scheduledAt.toISOString(),
-      whenLabel: formatUpcomingInterviewWhen(iv.scheduledAt),
-      durationMin: iv.durationMin,
-      type: iv.type as UpcomingInterviewRow["type"],
-      source: iv.source as UpcomingInterviewRow["source"],
-      meetLink: iv.meetLink,
-    };
-  });
-
   const greeting = firstName ? `Welcome back, ${firstName}.` : "Welcome back.";
   const weekRange = formatEasternWeekRange(weekStart, weekEnd);
 
@@ -178,8 +109,6 @@ export async function MyDashboard() {
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
 
-      <ThisWeekWidget orgId={org.id} />
-
       <BillingTower
         q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0}
         cashCollectedQtdUsd={invoiceSummary.collectedThisQuarterCents / 100}
@@ -187,7 +116,7 @@ export async function MyDashboard() {
 
       <NewsFeed />
 
-      <UpcomingInterviews rows={upcoming} />
+      <ThisWeekWidget orgId={org.id} selfPerson={selfPerson} />
     </div>
   );
 }

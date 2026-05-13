@@ -96,20 +96,43 @@ export function CalendarMonthView({
 
   // Single open popover at a time, keyed by the cell's date. Click on
   // a different "+N more" pill moves the popover; click anywhere else
-  // dismisses via the document-level mousedown listener.
-  const [popoverDay, setPopoverDay] = useState<string | null>(null);
+  // dismisses via the document-level mousedown listener. `placement`
+  // is computed from the pill's viewport position when opened so the
+  // popover never renders below the fold — bottom-row cells flip it
+  // above the pill instead of below.
+  const [popover, setPopover] = useState<{
+    dayKey: string;
+    placement: "above" | "below";
+    maxHeight: number;
+  } | null>(null);
   const popoverRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!popoverDay) return;
+    if (!popover) return;
     const onDown = (e: MouseEvent) => {
       const target = e.target as Node | null;
       if (popoverRef.current && target && !popoverRef.current.contains(target)) {
-        setPopoverDay(null);
+        setPopover(null);
       }
     };
     window.addEventListener("mousedown", onDown);
     return () => window.removeEventListener("mousedown", onDown);
-  }, [popoverDay]);
+  }, [popover]);
+
+  const togglePopover = (dayKey: string, anchor: HTMLElement) => {
+    setPopover((prev) => {
+      if (prev?.dayKey === dayKey) return null;
+      const rect = anchor.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom - 12;
+      const spaceAbove = rect.top - 12;
+      const preferAbove = spaceBelow < 240 && spaceAbove > spaceBelow;
+      const available = preferAbove ? spaceAbove : spaceBelow;
+      return {
+        dayKey,
+        placement: preferAbove ? "above" : "below",
+        maxHeight: Math.max(160, Math.min(320, available)),
+      };
+    });
+  };
 
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
@@ -133,12 +156,13 @@ export function CalendarMonthView({
             const dayEvents = eventsByDateKey.get(cellKey) ?? [];
             const visible = dayEvents.slice(0, MAX_VISIBLE_EVENTS);
             const overflow = dayEvents.length - visible.length;
+            const popoverOpen = popover?.dayKey === cellKey;
             return (
               <div
                 key={`${wi}-${di}`}
                 onClick={() => onDayClick(cell.date)}
                 className={cn(
-                  "relative min-w-0 cursor-pointer border-court-border-soft p-2 text-left transition",
+                  "relative flex min-w-0 cursor-pointer flex-col border-court-border-soft p-2 text-left transition",
                   di < 6 && "border-r",
                   wi < 5 && "border-b",
                   // Current-week row gets a subtle full-row tint —
@@ -161,20 +185,10 @@ export function CalendarMonthView({
                   >
                     {cell.date.getDate()}
                   </span>
-                  {overflow > 0 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPopoverDay((d) => (d === cellKey ? null : cellKey));
-                      }}
-                      className="rounded px-1 text-[10px] font-semibold text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-                    >
-                      +{overflow} more
-                    </button>
-                  )}
                 </div>
-                <div className="mt-1.5 space-y-1">
+                {/* Events area: overflow-hidden so chips never bleed
+                    past the +N more pill at the bottom of the cell. */}
+                <div className="mt-1.5 flex min-h-0 flex-1 flex-col gap-1 overflow-hidden">
                   {visible.map((ev) => (
                     <EventChip
                       key={ev.id}
@@ -184,11 +198,29 @@ export function CalendarMonthView({
                     />
                   ))}
                 </div>
-                {popoverDay === cellKey && (
+                {overflow > 0 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      togglePopover(cellKey, e.currentTarget);
+                    }}
+                    className="mt-1 w-full truncate rounded-md bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold text-court-fg-muted transition hover:bg-court-border-soft hover:text-court-fg"
+                  >
+                    +{overflow} more
+                  </button>
+                )}
+                {popoverOpen && popover && (
                   <div
                     ref={popoverRef}
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute left-2 top-9 z-20 max-h-[280px] w-[220px] overflow-auto rounded-xl border border-court-border bg-court-surface p-2 shadow-lg"
+                    style={{ maxHeight: popover.maxHeight }}
+                    className={cn(
+                      "absolute left-1 right-1 z-20 overflow-auto rounded-xl border border-court-border bg-court-surface p-2 shadow-lg",
+                      popover.placement === "above"
+                        ? "bottom-8"
+                        : "top-9",
+                    )}
                   >
                     <div className="px-1 pb-1.5 text-[10px] font-bold uppercase tracking-[0.14em] text-court-fg-muted">
                       {cell.date.toLocaleDateString(undefined, {
@@ -204,7 +236,7 @@ export function CalendarMonthView({
                           ev={ev}
                           selfKey={selfKey}
                           onClick={(e) => {
-                            setPopoverDay(null);
+                            setPopover(null);
                             onEventClick(e);
                           }}
                         />

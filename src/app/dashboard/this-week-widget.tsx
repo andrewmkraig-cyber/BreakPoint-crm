@@ -1,6 +1,7 @@
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, CalendarClock } from "lucide-react";
 import Link from "next/link";
 
+import { ownerKeyForCalendar } from "@/lib/calendar/owner-key";
 import { prisma } from "@/lib/prisma";
 import { getEasternWeekBounds } from "@/lib/week";
 import { cn } from "@/lib/utils";
@@ -110,6 +111,20 @@ function formatDayNum(d: Date): string {
   }).format(d);
 }
 
+// "Next in" copy with three buckets so a multi-day-out next event
+// never renders as "Next in 2742 min". Under an hour stays in
+// minutes; under a day rounds to hours; otherwise rounds to days.
+function formatNextIn(now: Date, then: Date): string | null {
+  const diffMs = then.getTime() - now.getTime();
+  if (diffMs <= 0) return null;
+  const diffMin = Math.round(diffMs / 60_000);
+  if (diffMin < 60) return `${diffMin} min`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffMin < 24 * 60) return `${diffHr} hr`;
+  const diffDays = Math.round(diffMin / (24 * 60));
+  return `${diffDays} day${diffDays === 1 ? "" : "s"}`;
+}
+
 type DayCell = {
   key: string;
   abbr: string;
@@ -133,13 +148,26 @@ type LaterRow = {
   title: string;
 };
 
-export async function ThisWeekWidget({ orgId }: { orgId: string }) {
+type UpcomingInterviewWidgetRow = {
+  id: string;
+  dayAbbr: string;
+  timeLabel: string;
+  title: string;
+};
+
+export async function ThisWeekWidget({
+  orgId,
+  selfPerson,
+}: {
+  orgId: string;
+  selfPerson: { name: string | null; email: string | null };
+}) {
   const now = new Date();
   const { start: weekStart } = getEasternWeekBounds(now);
   // Saturday 00:00 ET — exclusive end of the Mon-Fri window.
   const weekEnd = new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000);
 
-  const rows = await prisma.calendarEvent.findMany({
+  const rowsAll = await prisma.calendarEvent.findMany({
     where: {
       organizationId: orgId,
       status: { not: "CANCELLED" },
@@ -147,6 +175,17 @@ export async function ThisWeekWidget({ orgId }: { orgId: string }) {
     },
     orderBy: { startTime: "asc" },
   });
+
+  // Clubhouse widget is Andrew's view — strip any row whose owner key
+  // resolves to anything other than "ak". Austin's events stay on the
+  // /calendar page (team view) but never appear on this dashboard tile.
+  const rows = rowsAll.filter(
+    (r) =>
+      ownerKeyForCalendar(
+        { calendarId: r.calendarId, calendarName: r.calendarName },
+        selfPerson,
+      ) === "ak",
+  );
 
   const todayKey = formatYMD(now);
 
@@ -224,18 +263,23 @@ export async function ThisWeekWidget({ orgId }: { orgId: string }) {
   const laterRows = laterRowsAll.slice(0, 4);
   const laterOverflow = Math.max(0, laterRowsAll.length - laterRows.length);
 
+  // Upcoming Interviews subsection: next 3 calendar events whose
+  // derived type is "interview" and whose start is in the future.
+  const upcomingInterviews: UpcomingInterviewWidgetRow[] = events
+    .filter((e) => e.type === "interview" && e.startTime.getTime() > now.getTime())
+    .slice(0, 3)
+    .map((e) => ({
+      id: e.id,
+      dayAbbr: formatWeekdayShort(e.startTime),
+      timeLabel: e.timeLabel,
+      title: e.title,
+    }));
+
   // Header counters
   const countWeek = events.length;
   const countToday = todayEvents.length;
   const nextEvent = events.find((e) => e.startTime.getTime() > now.getTime());
-  const nextInMin = nextEvent
-    ? Math.max(
-        0,
-        Math.round(
-          (nextEvent.startTime.getTime() - now.getTime()) / 60_000,
-        ),
-      )
-    : null;
+  const nextInLabel = nextEvent ? formatNextIn(now, nextEvent.startTime) : null;
 
   const todayHeading = formatLongDay(now);
 
@@ -254,7 +298,7 @@ export async function ThisWeekWidget({ orgId }: { orgId: string }) {
           </h2>
           <p className="mt-1 text-[12px] text-court-fg-muted">
             {countToday} today · {countWeek} this week
-            {nextInMin != null && <> · Next in {nextInMin} min</>}
+            {nextInLabel != null && <> · Next in {nextInLabel}</>}
           </p>
         </div>
         <Link
@@ -376,6 +420,42 @@ export async function ThisWeekWidget({ orgId }: { orgId: string }) {
           <div className="mt-2 text-[11px] font-semibold text-court-fg-muted">
             + {laterOverflow} more this week
           </div>
+        )}
+      </div>
+
+      {/* Upcoming interviews — merged in from the former standalone
+          UpcomingInterviews card. Sourced from the same week query
+          above, filtered to derived type "interview" and future. */}
+      <div className="mt-4">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="h-3 w-3 text-court-fg-muted" />
+          <div className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+            Upcoming interviews
+          </div>
+        </div>
+        {upcomingInterviews.length === 0 ? (
+          <div className="mt-2 text-[13px] text-court-fg-dim">
+            No interviews this week
+          </div>
+        ) : (
+          <ul className="mt-2 divide-y divide-court-border-soft">
+            {upcomingInterviews.map((r) => (
+              <li
+                key={r.id}
+                className="flex items-center gap-3 py-2 first:pt-1 last:pb-1"
+              >
+                <span className="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-court-fg-muted">
+                  {r.dayAbbr}
+                </span>
+                <span className="w-[72px] shrink-0 text-[13px] font-semibold tabular-nums text-court-fg">
+                  {r.timeLabel}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-[13px] text-court-fg">
+                  {r.title}
+                </span>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
     </section>
