@@ -47,7 +47,7 @@ export function CalendarWeekView({
       {/* Day headers */}
       <div
         className="grid border-b border-court-border"
-        style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}
+        style={{ gridTemplateColumns: "56px repeat(5, minmax(0, 1fr))" }}
       >
         <div />
         {WEEK_DAYS.map((d, i) => {
@@ -87,7 +87,7 @@ export function CalendarWeekView({
       <div className="relative">
         <div
           className="grid"
-          style={{ gridTemplateColumns: "56px repeat(7, minmax(0, 1fr))" }}
+          style={{ gridTemplateColumns: "56px repeat(5, minmax(0, 1fr))" }}
         >
           {/* Time column */}
           <div>

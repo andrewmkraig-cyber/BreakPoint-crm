@@ -271,14 +271,16 @@ export const SAMPLE_REMINDERS: CalendarReminder[] = [
   },
 ];
 
+// Work-week view: Mon–Fri only. The week navigation buttons still
+// advance by 7 calendar days, but Saturday and Sunday are not shown
+// as columns. Events with day index 5 or 6 (legacy weekend rows) will
+// be filtered out of the week + month grids — none currently exist.
 export const WEEK_DAYS = [
   { key: "mon", label: "Mon", date: 11 },
   { key: "tue", label: "Tue", date: 12 },
   { key: "wed", label: "Wed", date: 13 },
   { key: "thu", label: "Thu", date: 14 },
   { key: "fri", label: "Fri", date: 15 },
-  { key: "sat", label: "Sat", date: 16 },
-  { key: "sun", label: "Sun", date: 17 },
 ] as const;
 
 export const MONTH_NAME = "May";
