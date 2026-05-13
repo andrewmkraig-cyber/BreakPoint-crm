@@ -38,6 +38,18 @@ const STATUS_ORDER: PlacementsDashboardBillingStatus[] = [
   "OVERDUE",
 ];
 
+// Softer in-card bar fills that match the Court Mode tokens the Scoreboard
+// uses on its Cash Forecast and TopClients bars. The map bubbles + legend
+// dots intentionally keep the vivid STATUS_COLORS hex so they remain
+// legible against the OSM tile background; this map is for the per-city
+// stacked bar inside the BY CITY card only.
+const STATUS_BAR_CLASSES: Record<PlacementsDashboardBillingStatus, string> = {
+  COLLECTED: "bg-court-brand",
+  BILLED: "bg-court-brand/50",
+  PENDING_START: "bg-amber-300",
+  OVERDUE: "bg-red-300",
+};
+
 type Props = {
   cities: CityAggregate[];
   totalFee: number;
@@ -145,7 +157,8 @@ function StatusBar({
         return (
           <div
             key={status}
-            style={{ width: `${pct}%`, backgroundColor: STATUS_COLORS[status] }}
+            className={STATUS_BAR_CLASSES[status]}
+            style={{ width: `${pct}%` }}
             title={`${STATUS_LABELS[status]}: ${v}`}
           />
         );

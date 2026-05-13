@@ -30,11 +30,16 @@ const SOURCE_ORDER: PlacementsDashboardSourceChannel[] = [
   "OTHER",
 ];
 
+// Bucket fills use the same Court Mode tokens the Scoreboard uses for its
+// Cash Forecast bars: brand green for "on track", softened green for the
+// slightly-slower bucket, then amber/red tints for the bad buckets. No
+// hardcoded hex — keeps theme switching consistent with the rest of the
+// dashboard.
 const OFFER_TO_START_BUCKETS = [
-  { id: "le14", label: "≤ 14d", color: "#5A9642", min: 0, max: 14 },
-  { id: "15to21", label: "15-21d", color: "#3F7030", min: 15, max: 21 },
-  { id: "22to30", label: "22-30d", color: "#92400E", min: 22, max: 30 },
-  { id: "gt30", label: "30+d", color: "#B91C1C", min: 31, max: Infinity },
+  { id: "le14", label: "≤ 14d", fillClass: "bg-court-brand", min: 0, max: 14 },
+  { id: "15to21", label: "15-21d", fillClass: "bg-court-brand/60", min: 15, max: 21 },
+  { id: "22to30", label: "22-30d", fillClass: "bg-amber-300", min: 22, max: 30 },
+  { id: "gt30", label: "30+d", fillClass: "bg-red-300", min: 31, max: Infinity },
 ] as const;
 
 function safeFee(n: number | null): number {
@@ -216,16 +221,19 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
 
       <div className="mt-2.5 flex items-end gap-2">
         {bins.map((b) => {
-          const h = binMax > 0 ? Math.round((b.count / binMax) * 44) + 6 : 6;
+          const pct = binMax > 0 ? Math.round((b.count / binMax) * 100) : 0;
+          const fillHeight = b.count > 0 ? `${Math.max(10, pct)}%` : "0";
           return (
             <div key={b.id} className="flex flex-1 flex-col items-center gap-1">
               <span className="text-[11px] font-semibold tabular-nums text-court-fg">
                 {b.count}
               </span>
-              <div
-                className="w-full rounded-md"
-                style={{ height: `${h}px`, backgroundColor: b.color }}
-              />
+              <div className="relative h-12 w-full overflow-hidden rounded-md bg-court-surface-subtle">
+                <div
+                  className={`absolute inset-x-0 bottom-0 rounded-md ${b.fillClass}`}
+                  style={{ height: fillHeight }}
+                />
+              </div>
               <span className="text-[10px] uppercase tracking-wide text-court-fg-muted">
                 {b.label}
               </span>
