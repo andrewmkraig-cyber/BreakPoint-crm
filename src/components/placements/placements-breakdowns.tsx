@@ -2,11 +2,11 @@ import type {
   PlacementsDashboardRow,
   PlacementsDashboardSourceChannel,
 } from "@/lib/placements-dashboard";
-import { formatMoneyShort, type CityAggregate } from "@/lib/placements-map-geo";
+import { formatMoneyShort } from "@/lib/placements-map-geo";
 
-// Placements analytics layout. Two stacked blocks beneath the ledger:
-//   1. Three equal cards on one row: "By Industry", "By Source", "Offer to Start".
-//   2. A compact "Revenue by City" card listing each city with a proportional bar.
+// Placements analytics row beneath the ledger: three equal cards —
+// "By Industry", "By Source", "Offer to Start". The Revenue by City
+// list lives inside the Placement Map card (placements-map-card.tsx).
 // The card chrome (rounded-3xl bg-court-surface p-5 shadow) matches the
 // rest of the Clubhouse / Placements surfaces. Pure functional view —
 // no client state, no network.
@@ -53,21 +53,14 @@ function daysBetween(a: Date, b: Date): number {
 
 export function PlacementsBreakdowns({
   rows,
-  cities,
-  totalFee,
 }: {
   rows: PlacementsDashboardRow[];
-  cities: CityAggregate[];
-  totalFee: number;
 }) {
   return (
-    <div className="flex flex-col gap-3">
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <ByIndustryCard rows={rows} />
-        <BySourceCard rows={rows} />
-        <OfferToStartCard rows={rows} />
-      </div>
-      <RevenueByCityCard cities={cities} totalFee={totalFee} />
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      <ByIndustryCard rows={rows} />
+      <BySourceCard rows={rows} />
+      <OfferToStartCard rows={rows} />
     </div>
   );
 }
@@ -299,58 +292,3 @@ function MiniCard({
   );
 }
 
-function RevenueByCityCard({
-  cities,
-  totalFee,
-}: {
-  cities: CityAggregate[];
-  totalFee: number;
-}) {
-  if (cities.length === 0) {
-    return (
-      <div className={PANEL_CLASS}>
-        <p className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
-          Revenue by City
-        </p>
-        <p className="mt-2.5 text-sm text-court-fg-muted">
-          No placements with a city captured in this window.
-        </p>
-      </div>
-    );
-  }
-  const maxFee = cities.reduce((m, c) => Math.max(m, c.totalFee), 0);
-  return (
-    <div className={PANEL_CLASS}>
-      <p className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
-        Revenue by City
-      </p>
-      <ul className="mt-2.5 flex flex-col gap-2">
-        {cities.map((city) => {
-          const pct = totalFee > 0 ? Math.round((city.totalFee / totalFee) * 100) : 0;
-          const barWidth = maxFee > 0 ? Math.round((city.totalFee / maxFee) * 100) : 0;
-          return (
-            <li key={city.key} className="flex flex-col gap-0.5">
-              <div className="flex items-baseline gap-2 text-[13px]">
-                <span className="flex-1 truncate font-medium text-court-fg">
-                  {city.city}
-                </span>
-                <span className="shrink-0 tabular-nums font-semibold text-court-fg">
-                  {city.totalFee > 0 ? formatMoneyShort(city.totalFee) : "—"}
-                </span>
-                <span className="shrink-0 tabular-nums text-court-fg-muted">
-                  {pct}%
-                </span>
-              </div>
-              <div className="h-1 w-full overflow-hidden rounded-full bg-court-surface-subtle">
-                <div
-                  className="h-full rounded-full bg-court-brand"
-                  style={{ width: `${barWidth}%` }}
-                />
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-}

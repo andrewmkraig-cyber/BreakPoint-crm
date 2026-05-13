@@ -43,8 +43,8 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
     <div className="flex flex-col gap-7">
       <PlacementsHeader period={period} />
       <PlacementsLedger rows={ledgerRows} title={ledgerTitle} />
-      <PlacementsBreakdowns rows={rows} cities={cities} totalFee={totalFee} />
-      <PlacementsMapCard cities={cities} />
+      <PlacementsBreakdowns rows={rows} />
+      <PlacementsMapCard cities={cities} totalFee={totalFee} />
     </div>
   );
 }
