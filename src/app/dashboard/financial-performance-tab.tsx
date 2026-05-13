@@ -244,6 +244,29 @@ export async function FinancialPerformanceTab() {
     !mercuryResult.ok && mercuryResult.reason === "not_connected"
   );
   const mercuryTxns = mercuryResult.ok ? mercuryResult.transactions : [];
+
+  // Diagnostic: surface the first 5 raw Mercury transaction descriptions
+  // to Vercel logs so we can tune mercury-matcher keywords against the
+  // actual upstream strings (bankDescription vs counterpartyName, casing,
+  // suffixes like "Inc", etc.).
+  if (mercuryResult.ok) {
+    const sample = mercuryTxns.slice(0, 5).map((t) => ({
+      bankDescription: t.bankDescription ?? null,
+      counterpartyName: t.counterpartyName ?? null,
+      resolved: mercuryTransactionDescription(t),
+      matched: matchTransaction(mercuryTransactionDescription(t)),
+    }));
+    console.log(
+      `[financial-performance] Mercury sample (${mercuryTxns.length} YTD txns):`,
+      JSON.stringify(sample, null, 2),
+    );
+  } else {
+    console.log(
+      `[financial-performance] Mercury fetch not ok:`,
+      mercuryResult.reason,
+    );
+  }
+
   const mercuryByTool = new Map<string, { count: number; totalUsd: number }>();
   for (const t of mercuryTxns) {
     const description = mercuryTransactionDescription(t);
