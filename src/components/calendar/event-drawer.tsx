@@ -18,7 +18,7 @@ import { useEffect, useState } from "react";
 
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
-import { eventTypeMeta } from "@/lib/calendar/utils";
+import { eventTypeMeta, fmtTime } from "@/lib/calendar/utils";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -155,7 +155,16 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
               <FieldLabel>Date</FieldLabel>
               <InputRow>
                 <Calendar className="h-3.5 w-3.5 text-court-fg-muted" />
-                <span>Tue, May 12 2026</span>
+                <span>
+                  {event?.startTime
+                    ? event.startTime.toLocaleDateString(undefined, {
+                        weekday: "short",
+                        month: "short",
+                        day: "numeric",
+                        year: "numeric",
+                      })
+                    : "—"}
+                </span>
               </InputRow>
             </div>
             <div>
@@ -170,14 +179,14 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
               <FieldLabel>Starts</FieldLabel>
               <InputRow>
                 <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                <span>10:00 AM</span>
+                <span>{event?.startTime ? fmtTime(event.startTime) : "—"}</span>
               </InputRow>
             </div>
             <div>
               <FieldLabel>Ends</FieldLabel>
               <InputRow>
                 <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                <span>11:00 AM</span>
+                <span>{event?.endTime ? fmtTime(event.endTime) : "—"}</span>
               </InputRow>
             </div>
           </div>

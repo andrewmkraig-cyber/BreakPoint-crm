@@ -1,121 +1,86 @@
 "use client";
 
-import { WEEK_DAYS } from "@/lib/calendar/sample-data";
-import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
-import { eventTypeMeta, fmtHour } from "@/lib/calendar/utils";
+import { useMemo } from "react";
+
+import type { CalendarEvent } from "@/lib/calendar/types";
+import { eventTypeMeta, fmtTime } from "@/lib/calendar/utils";
+import {
+  addDays,
+  getMondayOfWeek,
+  isSameDay,
+} from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
 type Props = {
   events: CalendarEvent[];
   teamMode: boolean;
   visibleMembers: string[];
+  monthStart: Date;
+  currentWeekStart: Date;
+  today: Date;
   onEventClick: (event: CalendarEvent) => void;
-  onWeekClick: () => void;
+  onWeekClick: (weekStart: Date) => void;
 };
 
 type MonthCell = {
-  d: number;
-  // outsideMonth, today, currentWeek hint flags. nextMonth covers cells
-  // at the bottom that belong to June.
-  outsideMonth?: boolean;
-  today?: boolean;
-  inCurrentWeek?: boolean;
-  nextMonth?: boolean;
+  date: Date;
+  outsideMonth: boolean;
+  isToday: boolean;
+  inCurrentWeek: boolean;
 };
 
-// May 2026 fixture: the 1st is Friday, current week is May 11 to 17,
-// today is May 12. Mon-first 6-row grid.
-const WEEKS: MonthCell[][] = [
-  [
-    { d: 27, outsideMonth: true },
-    { d: 28, outsideMonth: true },
-    { d: 29, outsideMonth: true },
-    { d: 30, outsideMonth: true },
-    { d: 1 },
-    { d: 2 },
-    { d: 3 },
-  ],
-  [{ d: 4 }, { d: 5 }, { d: 6 }, { d: 7 }, { d: 8 }, { d: 9 }, { d: 10 }],
-  [
-    { d: 11, inCurrentWeek: true },
-    { d: 12, today: true, inCurrentWeek: true },
-    { d: 13, inCurrentWeek: true },
-    { d: 14, inCurrentWeek: true },
-    { d: 15, inCurrentWeek: true },
-    { d: 16, inCurrentWeek: true },
-    { d: 17, inCurrentWeek: true },
-  ],
-  [{ d: 18 }, { d: 19 }, { d: 20 }, { d: 21 }, { d: 22 }, { d: 23 }, { d: 24 }],
-  [{ d: 25 }, { d: 26 }, { d: 27 }, { d: 28 }, { d: 29 }, { d: 30 }, { d: 31 }],
-  [
-    { d: 1, nextMonth: true, outsideMonth: true },
-    { d: 2, nextMonth: true, outsideMonth: true },
-    { d: 3, nextMonth: true, outsideMonth: true },
-    { d: 4, nextMonth: true, outsideMonth: true },
-    { d: 5, nextMonth: true, outsideMonth: true },
-    { d: 6, nextMonth: true, outsideMonth: true },
-    { d: 7, nextMonth: true, outsideMonth: true },
-  ],
-];
-
-// Sprinkled placeholder events for cells outside the current week so
-// the month grid has texture. These render as type-colored pills with
-// no click target since they have no real id.
-const SPRINKLE: Record<number, Array<{ type: CalendarEventType; title: string }>> = {
-  4: [{ type: "client", title: "Capstone weekly" }],
-  5: [
-    { type: "interview", title: "Phone screen – Ben Liu" },
-    { type: "other", title: "Pipeline review" },
-  ],
-  6: [{ type: "interview", title: "Phone screen – Maya R." }],
-  7: [
-    { type: "client", title: "Heat & Control sync" },
-    { type: "interview", title: "R3 – Tom Ng" },
-  ],
-  8: [{ type: "personal", title: "PTO afternoon" }],
-  18: [{ type: "interview", title: "Final – Lucas M." }],
-  19: [
-    { type: "client", title: "Lakefront sync" },
-    { type: "interview", title: "Screen – Avery J." },
-  ],
-  20: [{ type: "interview", title: "R2 – Jordan O." }],
-  21: [
-    { type: "other", title: "Team offsite" },
-    { type: "other", title: "All-hands" },
-  ],
-  22: [{ type: "interview", title: "Final – Becca H." }],
-  26: [{ type: "interview", title: "Screen – Nina P." }],
-  27: [
-    { type: "client", title: "Rust Belt sync" },
-    { type: "interview", title: "R2 – Aiden S." },
-  ],
-  28: [
-    { type: "personal", title: "Doctor" },
-    { type: "interview", title: "R2 – Will B." },
-  ],
-  29: [{ type: "other", title: "Quarter wrap" }],
-};
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 export function CalendarMonthView({
   events,
   teamMode,
   visibleMembers,
+  monthStart,
+  currentWeekStart,
+  today,
   onEventClick,
   onWeekClick,
 }: Props) {
-  const eventsByDate: Record<number, CalendarEvent[]> = {};
-  for (const e of events) {
-    if (teamMode && !visibleMembers.includes(e.ownerId)) continue;
-    const date = WEEK_DAYS[e.day]?.date;
-    if (date == null) continue;
-    eventsByDate[date] ??= [];
-    eventsByDate[date].push(e);
-  }
+  // Mon-first 6×7 grid that always starts at the Monday on or before
+  // the 1st of the displayed month, so the visible month sits inside.
+  const weeks: MonthCell[][] = useMemo(() => {
+    const gridStart = getMondayOfWeek(monthStart);
+    const rows: MonthCell[][] = [];
+    for (let w = 0; w < 6; w += 1) {
+      const row: MonthCell[] = [];
+      for (let d = 0; d < 7; d += 1) {
+        const cellDate = addDays(gridStart, w * 7 + d);
+        row.push({
+          date: cellDate,
+          outsideMonth: cellDate.getMonth() !== monthStart.getMonth(),
+          isToday: isSameDay(cellDate, today),
+          inCurrentWeek: isSameDay(
+            getMondayOfWeek(cellDate),
+            currentWeekStart,
+          ),
+        });
+      }
+      rows.push(row);
+    }
+    return rows;
+  }, [monthStart, currentWeekStart, today]);
+
+  const eventsByDateKey = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const e of events) {
+      if (teamMode && e.ownerId && !visibleMembers.includes(e.ownerId)) continue;
+      const key = dateKey(e.startTime);
+      const bucket = map.get(key);
+      if (bucket) bucket.push(e);
+      else map.set(key, [e]);
+    }
+    return map;
+  }, [events, teamMode, visibleMembers]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="grid grid-cols-7 border-b border-court-border">
-        {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+        {DAY_LABELS.map((d) => (
           <div
             key={d}
             className="py-3 text-center text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted"
@@ -124,18 +89,18 @@ export function CalendarMonthView({
           </div>
         ))}
       </div>
-      <div className="grid grid-cols-7" style={{ gridTemplateRows: "repeat(6, minmax(116px, 1fr))" }}>
-        {WEEKS.flatMap((week, wi) =>
+      <div
+        className="grid grid-cols-7"
+        style={{ gridTemplateRows: "repeat(6, minmax(116px, 1fr))" }}
+      >
+        {weeks.flatMap((week, wi) =>
           week.map((cell, di) => {
-            const real = cell.outsideMonth ? undefined : eventsByDate[cell.d];
-            const sprinkled = cell.outsideMonth ? undefined : SPRINKLE[cell.d];
-            const dayEvents: Array<CalendarEvent | { type: CalendarEventType; title: string }> =
-              real ?? sprinkled ?? [];
+            const dayEvents = eventsByDateKey.get(dateKey(cell.date)) ?? [];
             return (
               <button
                 key={`${wi}-${di}`}
                 type="button"
-                onClick={() => cell.inCurrentWeek && onWeekClick()}
+                onClick={() => onWeekClick(getMondayOfWeek(cell.date))}
                 className={cn(
                   "border-court-border-soft p-2 text-left transition",
                   di < 6 && "border-r",
@@ -150,10 +115,10 @@ export function CalendarMonthView({
                   <span
                     className={cn(
                       "inline-flex h-6 min-w-6 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums",
-                      cell.today ? "bg-court-brand text-white" : "text-court-fg",
+                      cell.isToday ? "bg-court-brand text-white" : "text-court-fg",
                     )}
                   >
-                    {cell.d}
+                    {cell.date.getDate()}
                   </span>
                   {dayEvents.length > 3 && (
                     <span className="text-[10px] font-semibold text-court-fg-muted">
@@ -162,29 +127,24 @@ export function CalendarMonthView({
                   )}
                 </div>
                 <div className="mt-1.5 space-y-1">
-                  {dayEvents.slice(0, 3).map((ev, ei) => {
+                  {dayEvents.slice(0, 3).map((ev) => {
                     const meta = eventTypeMeta(ev.type);
-                    const isReal = "id" in ev;
                     return (
                       <div
-                        key={ei}
+                        key={ev.id}
                         onClick={(e) => {
-                          if (!isReal) return;
                           e.stopPropagation();
-                          onEventClick(ev as CalendarEvent);
+                          onEventClick(ev);
                         }}
                         className={cn(
-                          "rounded border px-1.5 py-0.5 text-[11px] leading-tight",
+                          "cursor-pointer rounded border px-1.5 py-0.5 text-[11px] leading-tight",
                           meta.pillClass,
-                          isReal && "cursor-pointer",
                         )}
                       >
                         <div className="truncate font-semibold">
-                          {isReal && "start" in ev && (
-                            <span className="font-medium opacity-70">
-                              {fmtHour((ev as CalendarEvent).start)} ·{" "}
-                            </span>
-                          )}
+                          <span className="font-medium opacity-70">
+                            {fmtTime(ev.startTime)} ·{" "}
+                          </span>
                           {ev.title}
                         </div>
                       </div>
@@ -198,4 +158,8 @@ export function CalendarMonthView({
       </div>
     </div>
   );
+}
+
+function dateKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }

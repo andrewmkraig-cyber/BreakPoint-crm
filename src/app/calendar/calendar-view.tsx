@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { CalendarDayView } from "@/components/calendar/day-view";
 import { CalendarEventDrawer } from "@/components/calendar/event-drawer";
@@ -13,34 +13,63 @@ import { CalendarToastStack } from "@/components/calendar/toast-stack";
 import { CalendarWeekView } from "@/components/calendar/week-view";
 import { TabStrip } from "@/components/ui/tab-strip";
 import {
-  MONTH_NAME,
-  SAMPLE_EVENTS,
   SAMPLE_REMINDERS,
   SAMPLE_TEAM,
-  WEEK_DAYS,
-  YEAR,
+  getSampleEvents,
 } from "@/lib/calendar/sample-data";
 import type {
   CalendarEvent,
   CalendarScope,
   CalendarView,
 } from "@/lib/calendar/types";
+import {
+  addDays,
+  addMonths,
+  formatWeekRange,
+  getMondayOfWeek,
+  getStartOfMonth,
+} from "@/lib/calendar/week";
 
 // Calendar surface owner. Holds view / scope / drawer / toast state and
-// passes the right slices to each child. The page is a server component;
-// everything interactive lives here.
+// passes the right slices to each child. `initialDate` comes from the
+// page server component so SSR and CSR agree on "today" — without that
+// hand-off, useState(() => new Date()) would resolve at different
+// instants on the two sides and risk hydration mismatches.
 
-export function CalendarView() {
+type Props = {
+  initialDate: Date;
+};
+
+export function CalendarView({ initialDate }: Props) {
   const [view, setView] = useState<CalendarView>("week");
   const [scope, setScope] = useState<CalendarScope>("me");
   const [visibleMembers, setVisibleMembers] = useState<string[]>(
     SAMPLE_TEAM.map((m) => m.id),
   );
 
+  // currentDate is the navigation anchor. Week view shows the week
+  // containing it; day view shows it; month view shows its month.
+  const [currentDate, setCurrentDate] = useState<Date>(initialDate);
+  const today = initialDate;
+
+  // Seed events stay pinned to the week of `today`. That way navigating
+  // off the current week reveals an empty grid — the testable proof
+  // that prev/next actually move the calendar.
+  const events = useMemo(() => getSampleEvents(today), [today]);
+
+  const currentWeekStart = useMemo(
+    () => getMondayOfWeek(currentDate),
+    [currentDate],
+  );
+  const currentMonthStart = useMemo(
+    () => getStartOfMonth(currentDate),
+    [currentDate],
+  );
+
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"create" | "edit">("edit");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
-    SAMPLE_EVENTS.find((e) => e.id === "e5") ?? null,
+    () => events.find((e) => e.id === "e5") ?? null,
   );
 
   const [toasts, setToasts] = useState(SAMPLE_REMINDERS.filter((r) => r.urgent));
@@ -48,8 +77,6 @@ export function CalendarView() {
   const [reminders, setReminders] = useState(SAMPLE_REMINDERS);
 
   const teamMode = scope === "team";
-  const weekStart = WEEK_DAYS[0].date;
-  const weekEnd = WEEK_DAYS[WEEK_DAYS.length - 1].date;
 
   const openCreate = () => {
     setSelectedEvent(null);
@@ -77,9 +104,22 @@ export function CalendarView() {
   const snoozeReminder = (id: string) =>
     setReminders((prev) => prev.filter((r) => r.id !== id));
 
-  const myEvents = scope === "me"
-    ? SAMPLE_EVENTS.filter((e) => e.ownerId === "ak")
-    : SAMPLE_EVENTS;
+  const filteredEvents =
+    scope === "me"
+      ? events.filter((e) => e.ownerId === "ak" || !e.ownerId)
+      : events;
+
+  const goPrev = () => {
+    if (view === "day") setCurrentDate((d) => addDays(d, -1));
+    else if (view === "month") setCurrentDate((d) => addMonths(d, -1));
+    else setCurrentDate((d) => addDays(d, -7));
+  };
+  const goNext = () => {
+    if (view === "day") setCurrentDate((d) => addDays(d, 1));
+    else if (view === "month") setCurrentDate((d) => addMonths(d, 1));
+    else setCurrentDate((d) => addDays(d, 7));
+  };
+  const goToday = () => setCurrentDate(today);
 
   return (
     <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-5">
@@ -87,12 +127,15 @@ export function CalendarView() {
       <CalSubheader
         view={view}
         scope={scope}
-        teamModeCount={SAMPLE_EVENTS.length}
-        myCount={SAMPLE_EVENTS.filter((e) => e.ownerId === "ak").length}
-        weekRange={`${MONTH_NAME} ${weekStart} – ${weekEnd}`}
-        year={YEAR}
+        teamModeCount={events.length}
+        myCount={events.filter((e) => e.ownerId === "ak" || !e.ownerId).length}
+        currentDate={currentDate}
+        currentWeekStart={currentWeekStart}
         onView={setView}
         onScope={setScope}
+        onPrev={goPrev}
+        onNext={goNext}
+        onToday={goToday}
       />
 
       <div className="flex min-w-0 gap-5">
@@ -100,36 +143,51 @@ export function CalendarView() {
           teamMode={teamMode}
           visibleMembers={visibleMembers}
           onToggleMember={toggleMember}
+          monthStart={currentMonthStart}
+          currentWeekStart={currentWeekStart}
+          today={today}
         />
 
         <div className="min-w-0 flex-1">
           {view === "week" && (
             <CalendarWeekView
-              events={myEvents}
+              events={filteredEvents}
               selectedId={selectedEvent?.id ?? null}
               teamMode={teamMode}
               visibleMembers={visibleMembers}
+              weekStart={currentWeekStart}
+              today={today}
+              now={today}
               onEventClick={openEdit}
               onSlotClick={openCreate}
             />
           )}
           {view === "day" && (
             <CalendarDayView
-              events={myEvents}
+              events={filteredEvents}
               selectedId={selectedEvent?.id ?? null}
               teamMode={teamMode}
               visibleMembers={visibleMembers}
+              displayDate={currentDate}
+              today={today}
+              now={today}
               onEventClick={openEdit}
               onSlotClick={openCreate}
             />
           )}
           {view === "month" && (
             <CalendarMonthView
-              events={myEvents}
+              events={filteredEvents}
               teamMode={teamMode}
               visibleMembers={visibleMembers}
+              monthStart={currentMonthStart}
+              currentWeekStart={currentWeekStart}
+              today={today}
               onEventClick={openEdit}
-              onWeekClick={() => setView("week")}
+              onWeekClick={(weekStart: Date) => {
+                setCurrentDate(weekStart);
+                setView("week");
+              }}
             />
           )}
         </div>
@@ -185,25 +243,47 @@ function CalSubheader({
   scope,
   teamModeCount,
   myCount,
-  weekRange,
-  year,
+  currentDate,
+  currentWeekStart,
   onView,
   onScope,
+  onPrev,
+  onNext,
+  onToday,
 }: {
   view: CalendarView;
   scope: CalendarScope;
   teamModeCount: number;
   myCount: number;
-  weekRange: string;
-  year: number;
+  currentDate: Date;
+  currentWeekStart: Date;
   onView: (v: CalendarView) => void;
   onScope: (s: CalendarScope) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onToday: () => void;
 }) {
+  const headerText =
+    view === "day"
+      ? currentDate.toLocaleDateString(undefined, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+        })
+      : view === "month"
+        ? currentDate.toLocaleDateString(undefined, {
+            month: "long",
+          })
+        : formatWeekRange(currentWeekStart);
+  const yearLabel = (view === "month" ? currentDate : currentWeekStart)
+    .getFullYear()
+    .toString();
   return (
     <div className="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-2xl border border-court-border bg-court-surface px-4 py-3 shadow-sm">
       <div className="flex items-center gap-2">
         <button
           type="button"
+          onClick={onPrev}
           aria-label="Previous"
           className="grid h-9 w-9 place-items-center rounded-full border border-court-border bg-court-surface text-court-fg-muted transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
         >
@@ -211,6 +291,7 @@ function CalSubheader({
         </button>
         <button
           type="button"
+          onClick={onNext}
           aria-label="Next"
           className="grid h-9 w-9 place-items-center rounded-full border border-court-border bg-court-surface text-court-fg-muted transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
         >
@@ -218,6 +299,7 @@ function CalSubheader({
         </button>
         <button
           type="button"
+          onClick={onToday}
           className="ml-1 h-9 rounded-full border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
         >
           Today
@@ -225,8 +307,8 @@ function CalSubheader({
       </div>
       <div className="min-w-0">
         <div className="font-serif text-xl font-bold tracking-tight tabular-nums text-court-fg sm:text-[22px]">
-          {weekRange}{" "}
-          <span className="font-medium text-court-fg-muted">{year}</span>
+          {headerText}{" "}
+          <span className="font-medium text-court-fg-muted">{yearLabel}</span>
         </div>
         <div className="mt-0.5 hidden items-center gap-1.5 text-[11px] text-court-fg-muted lg:flex">
           <GoogleGlyph className="h-3 w-3" /> Synced 2 min ago · America/New_York

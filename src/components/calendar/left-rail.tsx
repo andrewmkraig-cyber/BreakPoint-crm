@@ -1,30 +1,46 @@
 "use client";
 
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
+import { useMemo } from "react";
 
+import { SAMPLE_TEAM } from "@/lib/calendar/sample-data";
 import {
-  MONTH_NAME,
-  SAMPLE_TEAM,
-  TODAY_INDEX,
-  WEEK_DAYS,
-  YEAR,
-} from "@/lib/calendar/sample-data";
+  addDays,
+  getDaysInMonth,
+  getMondayOfWeek,
+  getMonthName,
+  isSameDay,
+} from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
 type Props = {
   teamMode: boolean;
   visibleMembers: string[];
   onToggleMember: (id: string) => void;
+  monthStart: Date;
+  currentWeekStart: Date;
+  today: Date;
 };
 
 // Slim left rail. Three stacked cards (mini-cal, event-types legend,
 // team checkboxes) plus a small Google sync footer. Width is fixed at
 // 200px so the main grid keeps its breathing room.
 
-export function CalendarLeftRail({ teamMode, visibleMembers, onToggleMember }: Props) {
+export function CalendarLeftRail({
+  teamMode,
+  visibleMembers,
+  onToggleMember,
+  monthStart,
+  currentWeekStart,
+  today,
+}: Props) {
   return (
     <aside className="hidden w-[200px] shrink-0 flex-col gap-4 xl:flex">
-      <MiniMonth />
+      <MiniMonth
+        monthStart={monthStart}
+        currentWeekStart={currentWeekStart}
+        today={today}
+      />
       <EventTypeLegend />
       <TeamList
         teamMode={teamMode}
@@ -36,15 +52,42 @@ export function CalendarLeftRail({ teamMode, visibleMembers, onToggleMember }: P
   );
 }
 
-function MiniMonth() {
-  const todayDate = WEEK_DAYS[TODAY_INDEX].date;
-  const weekStart = WEEK_DAYS[0].date;
-  const weekEnd = WEEK_DAYS[WEEK_DAYS.length - 1].date;
+function MiniMonth({
+  monthStart,
+  currentWeekStart,
+  today,
+}: {
+  monthStart: Date;
+  currentWeekStart: Date;
+  today: Date;
+}) {
+  // Mon-first 6×7 grid for the displayed month. Cells outside the
+  // month fade to ~60% opacity; the current week is tinted; today
+  // gets the brand pill.
+  const cells = useMemo(() => {
+    const gridStart = getMondayOfWeek(monthStart);
+    const days: Array<{ date: Date; outsideMonth: boolean }> = [];
+    const daysInMonth = getDaysInMonth(monthStart);
+    // 6 weeks × 7 days covers any month layout. Trim trailing all-out
+    // rows to keep the mini-cal compact.
+    for (let i = 0; i < 42; i += 1) {
+      const d = addDays(gridStart, i);
+      days.push({ date: d, outsideMonth: d.getMonth() !== monthStart.getMonth() });
+    }
+    // Trim trailing rows that are entirely outside the month.
+    while (days.length > 28 && days.slice(-7).every((c) => c.outsideMonth)) {
+      days.splice(-7, 7);
+    }
+    return { days, daysInMonth };
+  }, [monthStart]);
+
+  const weekEnd = addDays(currentWeekStart, 4);
+
   return (
     <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <div className="font-serif text-sm font-semibold text-court-fg">
-          {MONTH_NAME} {YEAR}
+          {getMonthName(monthStart)} {monthStart.getFullYear()}
         </div>
         <div className="flex items-center gap-0.5">
           <button
@@ -69,19 +112,15 @@ function MiniMonth() {
             {d}
           </div>
         ))}
-        {[27, 28, 29, 30].map((d) => (
-          <div
-            key={`prev-${d}`}
-            className="py-0.5 text-[10.5px] text-court-fg-dim opacity-60"
-          >
-            {d}
-          </div>
-        ))}
-        {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => {
-          const isToday = d === todayDate;
-          const inWeek = d >= weekStart && d <= weekEnd;
+        {cells.days.map(({ date, outsideMonth }) => {
+          const isToday = isSameDay(date, today);
+          const inWeek =
+            date >= currentWeekStart && date <= weekEnd && date.getDay() !== 0 && date.getDay() !== 6;
           return (
-            <div key={d} className="flex items-center justify-center py-0.5 text-[10.5px]">
+            <div
+              key={date.toISOString()}
+              className="flex items-center justify-center py-0.5 text-[10.5px]"
+            >
               <span
                 className={cn(
                   "inline-flex h-[19px] w-[19px] items-center justify-center rounded-full tabular-nums",
@@ -89,22 +128,16 @@ function MiniMonth() {
                     ? "bg-court-brand font-bold text-white"
                     : inWeek
                       ? "bg-court-brand-tint font-semibold text-court-fg"
-                      : "font-medium text-court-fg",
+                      : outsideMonth
+                        ? "font-medium text-court-fg-dim opacity-60"
+                        : "font-medium text-court-fg",
                 )}
               >
-                {d}
+                {date.getDate()}
               </span>
             </div>
           );
         })}
-        {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-          <div
-            key={`next-${d}`}
-            className="py-0.5 text-[10.5px] text-court-fg-dim opacity-60"
-          >
-            {d}
-          </div>
-        ))}
       </div>
     </div>
   );
@@ -150,7 +183,15 @@ function EventTypeLegend() {
   );
 }
 
-function TeamList({ teamMode, visibleMembers, onToggleMember }: Props) {
+function TeamList({
+  teamMode,
+  visibleMembers,
+  onToggleMember,
+}: {
+  teamMode: boolean;
+  visibleMembers: string[];
+  onToggleMember: (id: string) => void;
+}) {
   return (
     <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
       <div className="mb-2.5 flex items-center justify-between">

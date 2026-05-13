@@ -7,5 +7,9 @@ export const metadata = {
 };
 
 export default function CalendarPage() {
-  return <CalendarView />;
+  // Resolve "now" on the server and hand it to the client component so
+  // SSR and CSR agree on today's date. Without this anchor, the client
+  // would compute a fresh Date during hydration and risk mismatching
+  // the markup the server emitted.
+  return <CalendarView initialDate={new Date()} />;
 }

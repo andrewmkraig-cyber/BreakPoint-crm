@@ -3,15 +3,14 @@
 import { Plus } from "lucide-react";
 import { useMemo } from "react";
 
-import {
-  NOW_HOUR,
-  NOW_MIN,
-  SAMPLE_TEAM,
-  TODAY_INDEX,
-  WEEK_DAYS,
-} from "@/lib/calendar/sample-data";
+import { SAMPLE_TEAM } from "@/lib/calendar/sample-data";
 import type { CalendarEvent } from "@/lib/calendar/types";
 import { eventTypeMeta, fmtHour, hourToY, SLOT_HEIGHT } from "@/lib/calendar/utils";
+import {
+  decimalHour,
+  getWorkWeekDays,
+  isSameDay,
+} from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
 const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
@@ -21,6 +20,9 @@ type Props = {
   selectedId: string | null;
   teamMode: boolean;
   visibleMembers: string[];
+  weekStart: Date;
+  today: Date;
+  now: Date;
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (day: number, hour: number) => void;
 };
@@ -30,17 +32,24 @@ export function CalendarWeekView({
   selectedId,
   teamMode,
   visibleMembers,
+  weekStart,
+  today,
+  now,
   onEventClick,
   onSlotClick,
 }: Props) {
+  const weekDays = useMemo(() => getWorkWeekDays(weekStart), [weekStart]);
+
   const eventsByDay = useMemo(() => {
-    const out: CalendarEvent[][] = WEEK_DAYS.map(() => []);
+    const out: CalendarEvent[][] = weekDays.map(() => []);
     for (const e of events) {
-      if (teamMode && !visibleMembers.includes(e.ownerId)) continue;
-      out[e.day]?.push(e);
+      if (teamMode && e.ownerId && !visibleMembers.includes(e.ownerId)) continue;
+      const idx = weekDays.findIndex((d) => isSameDay(d.fullDate, e.startTime));
+      if (idx < 0) continue;
+      out[idx]?.push(e);
     }
     return out;
-  }, [events, teamMode, visibleMembers]);
+  }, [events, teamMode, visibleMembers, weekDays]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
@@ -50,8 +59,8 @@ export function CalendarWeekView({
         style={{ gridTemplateColumns: "56px repeat(5, minmax(0, 1fr))" }}
       >
         <div />
-        {WEEK_DAYS.map((d, i) => {
-          const isToday = i === TODAY_INDEX;
+        {weekDays.map((d) => {
+          const isToday = isSameDay(d.fullDate, today);
           return (
             <div
               key={d.key}
@@ -102,8 +111,8 @@ export function CalendarWeekView({
             ))}
           </div>
           {/* Day columns */}
-          {WEEK_DAYS.map((d, i) => {
-            const isToday = i === TODAY_INDEX;
+          {weekDays.map((d, i) => {
+            const isToday = isSameDay(d.fullDate, today);
             const dayEvents = eventsByDay[i];
             return (
               <div
@@ -129,11 +138,14 @@ export function CalendarWeekView({
                 {/* Events */}
                 {dayEvents.map((ev) => {
                   const meta = eventTypeMeta(ev.type);
-                  const top = hourToY(ev.start);
-                  const height = hourToY(ev.end) - hourToY(ev.start) - 2;
-                  const member = teamMode
-                    ? SAMPLE_TEAM.find((m) => m.id === ev.ownerId)
-                    : null;
+                  const start = decimalHour(ev.startTime);
+                  const end = decimalHour(ev.endTime);
+                  const top = hourToY(start);
+                  const height = hourToY(end) - hourToY(start) - 2;
+                  const member =
+                    teamMode && ev.ownerId
+                      ? SAMPLE_TEAM.find((m) => m.id === ev.ownerId)
+                      : null;
                   const isSelected = selectedId === ev.id;
                   return (
                     <button
@@ -153,7 +165,7 @@ export function CalendarWeekView({
                     >
                       <div className="flex items-start gap-1.5">
                         <div className="flex-1 text-[10.5px] font-semibold opacity-90">
-                          {fmtHour(ev.start)}
+                          {fmtHour(start)}
                         </div>
                         {member && (
                           <span
@@ -167,7 +179,7 @@ export function CalendarWeekView({
                       <div className="truncate text-xs font-semibold">
                         {ev.title}
                       </div>
-                      {height > 56 && (
+                      {height > 56 && ev.meta && (
                         <div className="truncate text-[11px] opacity-80">
                           {ev.meta}
                         </div>
@@ -176,7 +188,7 @@ export function CalendarWeekView({
                   );
                 })}
                 {/* Now line on today */}
-                {isToday && <NowLine />}
+                {isToday && <NowLine now={now} />}
               </div>
             );
           })}
@@ -186,8 +198,8 @@ export function CalendarWeekView({
   );
 }
 
-function NowLine() {
-  const y = hourToY(NOW_HOUR + NOW_MIN / 60);
+function NowLine({ now }: { now: Date }) {
+  const y = hourToY(decimalHour(now));
   return (
     <div
       className="pointer-events-none absolute -left-1.5 right-0 z-[4] h-0.5"

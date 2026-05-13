@@ -1,25 +1,34 @@
 "use client";
 
-import { Briefcase, MapPin, Plus, Users } from "lucide-react";
+import { MapPin, Plus, Users } from "lucide-react";
 
-import {
-  NOW_HOUR,
-  NOW_MIN,
-  SAMPLE_TEAM,
-  TODAY_INDEX,
-} from "@/lib/calendar/sample-data";
+import { SAMPLE_TEAM } from "@/lib/calendar/sample-data";
 import type { CalendarEvent } from "@/lib/calendar/types";
-import { eventTypeMeta, fmtHour, fmtRange } from "@/lib/calendar/utils";
+import {
+  eventTypeMeta,
+  fmtDateRange,
+  fmtHour,
+  fmtTime,
+} from "@/lib/calendar/utils";
+import {
+  decimalHour,
+  getWeekdayLong,
+  isSameDay,
+} from "@/lib/calendar/week";
 import { cn } from "@/lib/utils";
 
 const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 const SLOT = 88;
+const START_HOUR = 7;
 
 type Props = {
   events: CalendarEvent[];
   selectedId: string | null;
   teamMode: boolean;
   visibleMembers: string[];
+  displayDate: Date;
+  today: Date;
+  now: Date;
   onEventClick: (event: CalendarEvent) => void;
   onSlotClick: (hour: number) => void;
 };
@@ -29,26 +38,36 @@ export function CalendarDayView({
   selectedId,
   teamMode,
   visibleMembers,
+  displayDate,
+  today,
+  now,
   onEventClick,
   onSlotClick,
 }: Props) {
   const dayEvents = events.filter(
-    (e) => e.day === TODAY_INDEX && (!teamMode || visibleMembers.includes(e.ownerId)),
+    (e) =>
+      isSameDay(e.startTime, displayDate) &&
+      (!teamMode || !e.ownerId || visibleMembers.includes(e.ownerId)),
   );
+  const isToday = isSameDay(displayDate, today);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="border-b border-court-border px-7 py-5">
         <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-brand-dark">
-          Tuesday
+          {getWeekdayLong(displayDate)}
         </div>
         <div className="mt-0.5 font-serif text-[26px] font-semibold text-court-fg">
-          May 12, 2026
+          {displayDate.toLocaleDateString(undefined, {
+            month: "long",
+            day: "numeric",
+            year: "numeric",
+          })}
         </div>
         <div className="text-xs text-court-fg-muted">
           {dayEvents.length} events ·{" "}
-          {dayEvents.filter((e) => e.type === "interview").length} interviews · It is{" "}
-          {fmtHour(NOW_HOUR + NOW_MIN / 60)}
+          {dayEvents.filter((e) => e.type === "interview").length} interviews
+          {isToday && <> · It is {fmtTime(now)}</>}
         </div>
       </div>
 
@@ -80,11 +99,15 @@ export function CalendarDayView({
           ))}
           {dayEvents.map((ev) => {
             const meta = eventTypeMeta(ev.type);
-            const top = (ev.start - 7) * SLOT;
-            const height = (ev.end - ev.start) * SLOT - 4;
-            const member = teamMode
-              ? SAMPLE_TEAM.find((m) => m.id === ev.ownerId)
-              : null;
+            const start = decimalHour(ev.startTime);
+            const end = decimalHour(ev.endTime);
+            const top = (start - START_HOUR) * SLOT;
+            const height = (end - start) * SLOT - 4;
+            const member =
+              teamMode && ev.ownerId
+                ? SAMPLE_TEAM.find((m) => m.id === ev.ownerId)
+                : null;
+            const guestCount = ev.guests?.length ?? 0;
             const isSelected = selectedId === ev.id;
             return (
               <button
@@ -110,27 +133,24 @@ export function CalendarDayView({
                       </span>
                       <span className="opacity-50">·</span>
                       <span className="font-semibold">
-                        {fmtRange(ev.start, ev.end)}
+                        {fmtDateRange(ev.startTime, ev.endTime)}
                       </span>
                     </div>
                     <div className="mt-1 font-serif text-base font-semibold text-court-fg">
                       {ev.title}
                     </div>
-                    <div className="text-[12.5px] text-court-fg">{ev.meta}</div>
+                    {ev.meta && (
+                      <div className="text-[12.5px] text-court-fg">{ev.meta}</div>
+                    )}
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-[11.5px]">
-                      {ev.where && (
+                      {ev.location && (
                         <span className="inline-flex items-center gap-1">
-                          <MapPin className="h-3 w-3" /> {ev.where}
+                          <MapPin className="h-3 w-3" /> {ev.location}
                         </span>
                       )}
-                      {ev.guests.length > 0 && (
+                      {guestCount > 0 && (
                         <span className="inline-flex items-center gap-1">
-                          <Users className="h-3 w-3" /> {ev.guests.length} guests
-                        </span>
-                      )}
-                      {ev.type === "interview" && ev.job && (
-                        <span className="inline-flex items-center gap-1">
-                          <Briefcase className="h-3 w-3" /> {ev.job}
+                          <Users className="h-3 w-3" /> {guestCount} guests
                         </span>
                       )}
                     </div>
@@ -147,19 +167,23 @@ export function CalendarDayView({
               </button>
             );
           })}
-          {/* now line */}
-          <div
-            className="pointer-events-none absolute left-0 right-0 z-[4] h-0.5"
-            style={{ top: (NOW_HOUR + NOW_MIN / 60 - 7) * SLOT, background: "#E11D48" }}
-          >
-            <span
-              className="absolute -left-1.5 -top-1 inline-block h-2.5 w-2.5 rounded-full"
+          {isToday && (
+            <div
+              className="pointer-events-none absolute left-0 right-0 z-[4] h-0.5"
               style={{
+                top: (decimalHour(now) - START_HOUR) * SLOT,
                 background: "#E11D48",
-                boxShadow: "0 0 0 3px rgba(225,29,72,.18)",
               }}
-            />
-          </div>
+            >
+              <span
+                className="absolute -left-1.5 -top-1 inline-block h-2.5 w-2.5 rounded-full"
+                style={{
+                  background: "#E11D48",
+                  boxShadow: "0 0 0 3px rgba(225,29,72,.18)",
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

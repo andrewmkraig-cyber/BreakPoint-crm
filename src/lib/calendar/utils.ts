@@ -1,4 +1,5 @@
 import type { CalendarEventType } from "@/lib/calendar/types";
+import { decimalHour } from "@/lib/calendar/week";
 
 // Each slot is 56px tall and the grid starts at 7 AM. Same constant
 // the week / day views all reference, so the now-line and event
@@ -22,6 +23,17 @@ export function fmtHour(h: number): string {
 
 export function fmtRange(start: number, end: number): string {
   return `${fmtHour(start)} – ${fmtHour(end)}`;
+}
+
+// Date-shaped variants. The grid math still flows through decimal
+// hours, but consumers can format a Date directly without converting
+// at every call site.
+export function fmtTime(d: Date): string {
+  return fmtHour(decimalHour(d));
+}
+
+export function fmtDateRange(start: Date, end: Date): string {
+  return `${fmtTime(start)} – ${fmtTime(end)}`;
 }
 
 // Event-type display tokens. Brand green is allowed per the project

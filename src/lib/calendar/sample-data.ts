@@ -3,13 +3,17 @@ import type {
   CalendarReminder,
   CalendarTeamMember,
 } from "@/lib/calendar/types";
+import { addDays, getMondayOfWeek } from "@/lib/calendar/week";
 
 // Stub events / reminders for the calendar UI. Database persistence
-// lands in a follow-up. Until then the page renders against this
-// fixture so the screens are real and verifiable in a browser.
+// lands in a follow-up; until then the page renders against these
+// generators so the screens are real and verifiable in a browser.
 //
-// Anchored to the week of Mon May 11 to Sun May 17 2026 (Andrew's
-// current dev date). "Today" is Tue May 12, 10:42 AM.
+// getSampleEvents() anchors against the caller-supplied "today" Date
+// (passed in from the page server component to keep SSR and CSR
+// deterministic) and spreads events across Mon–Fri of that week.
+// Navigating to a different week therefore shows an empty grid, which
+// is the intended way to verify prev/next works.
 
 export const SAMPLE_TEAM: CalendarTeamMember[] = [
   { id: "ak", name: "Andrew Kraig", initials: "AK", color: "#5A9642", self: true },
@@ -19,215 +23,272 @@ export const SAMPLE_TEAM: CalendarTeamMember[] = [
   { id: "jt", name: "Jordan Tate", initials: "JT", color: "#DB2777" },
 ];
 
-// Em dashes from the design have been swapped for en dashes per the
-// no-em-dash project rule.
-export const SAMPLE_EVENTS: CalendarEvent[] = [
-  // Mon May 11
+type SeedEntry = {
+  id: string;
+  dayOffset: number; // 0 = Mon, 4 = Fri
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  type: CalendarEvent["type"];
+  title: string;
+  meta?: string;
+  ownerId?: string;
+  guests?: string[];
+  location?: string;
+};
+
+const SEED: SeedEntry[] = [
+  // Mon
   {
     id: "e1",
-    day: 0,
-    start: 9.0,
-    end: 10.0,
+    dayOffset: 0,
+    startHour: 9,
+    startMinute: 0,
+    endHour: 10,
+    endMinute: 0,
     type: "interview",
     title: "Sarah Chen – Senior Tax Manager",
     meta: "Round 2 · Heat and Control",
     ownerId: "ak",
     guests: ["Sarah Chen", "Leslie Park"],
-    where: "Google Meet",
-    job: "Senior Tax Manager",
-    candidate: "Sarah Chen",
+    location: "Google Meet",
   },
   {
     id: "e2",
-    day: 0,
-    start: 11.5,
-    end: 12.5,
+    dayOffset: 0,
+    startHour: 11,
+    startMinute: 30,
+    endHour: 12,
+    endMinute: 30,
     type: "client",
     title: "Heat and Control intake",
     meta: "Leslie Park",
     ownerId: "ak",
     guests: ["Leslie Park"],
-    where: "Zoom",
+    location: "Zoom",
   },
   {
     id: "e3",
-    day: 0,
-    start: 15.0,
-    end: 16.0,
+    dayOffset: 0,
+    startHour: 15,
+    startMinute: 0,
+    endHour: 16,
+    endMinute: 0,
     type: "other",
     title: "Weekly desk sync",
     meta: "Internal",
     ownerId: "ak",
     guests: ["AK", "RC", "MW"],
-    where: "Office",
+    location: "Office",
   },
-
-  // Tue May 12 (today)
+  // Tue
   {
     id: "e4",
-    day: 1,
-    start: 8.0,
-    end: 9.0,
+    dayOffset: 1,
+    startHour: 8,
+    startMinute: 0,
+    endHour: 9,
+    endMinute: 0,
     type: "personal",
     title: "Gym",
     meta: "Reminder",
     ownerId: "ak",
-    guests: [],
-    where: "",
   },
   {
     id: "e5",
-    day: 1,
-    start: 10.0,
-    end: 11.0,
+    dayOffset: 1,
+    startHour: 10,
+    startMinute: 0,
+    endHour: 11,
+    endMinute: 0,
     type: "interview",
     title: "Marcus Reed – Controller",
     meta: "Final · Capstone Accounting",
     ownerId: "ak",
     guests: ["Marcus Reed", "Diana Wu"],
-    where: "Google Meet",
-    job: "Controller",
-    candidate: "Marcus Reed",
+    location: "Google Meet",
   },
   {
     id: "e6",
-    day: 1,
-    start: 13.0,
-    end: 14.0,
+    dayOffset: 1,
+    startHour: 13,
+    startMinute: 0,
+    endHour: 14,
+    endMinute: 0,
     type: "client",
     title: "Capstone Accounting catch-up",
     meta: "Diana Wu",
     ownerId: "ak",
     guests: ["Diana Wu"],
-    where: "Phone",
+    location: "Phone",
   },
   {
     id: "e7",
-    day: 1,
-    start: 16.5,
-    end: 17.5,
+    dayOffset: 1,
+    startHour: 16,
+    startMinute: 30,
+    endHour: 17,
+    endMinute: 30,
     type: "interview",
     title: "Priya Singh – Senior Tax Manager",
     meta: "Screen · Heat and Control",
     ownerId: "ak",
     guests: ["Priya Singh"],
-    where: "Google Meet",
+    location: "Google Meet",
   },
-
-  // Wed May 13
+  // Wed
   {
     id: "e8",
-    day: 2,
-    start: 9.5,
-    end: 10.5,
+    dayOffset: 2,
+    startHour: 9,
+    startMinute: 30,
+    endHour: 10,
+    endMinute: 30,
     type: "client",
     title: "Lakefront Partners weekly",
     meta: "Greg Halverson",
     ownerId: "rc",
     guests: ["Greg Halverson"],
-    where: "Zoom",
+    location: "Zoom",
   },
   {
     id: "e9",
-    day: 2,
-    start: 11.0,
-    end: 12.0,
+    dayOffset: 2,
+    startHour: 11,
+    startMinute: 0,
+    endHour: 12,
+    endMinute: 0,
     type: "interview",
     title: "Daniel Cho – FP&A Manager",
     meta: "Round 1 · Lakefront",
     ownerId: "ak",
     guests: ["Daniel Cho", "Greg Halverson"],
-    where: "Google Meet",
+    location: "Google Meet",
   },
   {
     id: "e10",
-    day: 2,
-    start: 14.0,
-    end: 15.0,
+    dayOffset: 2,
+    startHour: 14,
+    startMinute: 0,
+    endHour: 15,
+    endMinute: 0,
     type: "other",
     title: "Pipeline review",
     meta: "Internal",
     ownerId: "ak",
     guests: ["AK", "RC"],
-    where: "Office",
+    location: "Office",
   },
   {
     id: "e11",
-    day: 2,
-    start: 17.0,
-    end: 18.0,
+    dayOffset: 2,
+    startHour: 17,
+    startMinute: 0,
+    endHour: 18,
+    endMinute: 0,
     type: "personal",
     title: "Pick up dry cleaning",
     meta: "Reminder",
     ownerId: "ak",
-    guests: [],
-    where: "",
   },
-
-  // Thu May 14
+  // Thu
   {
     id: "e12",
-    day: 3,
-    start: 10.0,
-    end: 11.0,
+    dayOffset: 3,
+    startHour: 10,
+    startMinute: 0,
+    endHour: 11,
+    endMinute: 0,
     type: "interview",
     title: "Anna Volkov – Staff Accountant",
     meta: "Screen · Rust Belt Logistics",
     ownerId: "mw",
     guests: ["Anna Volkov", "Pete Doyle"],
-    where: "Google Meet",
+    location: "Google Meet",
   },
   {
     id: "e13",
-    day: 3,
-    start: 12.0,
-    end: 13.0,
+    dayOffset: 3,
+    startHour: 12,
+    startMinute: 0,
+    endHour: 13,
+    endMinute: 0,
     type: "personal",
     title: "Lunch w/ Kevin",
     meta: "Reminder",
     ownerId: "ak",
     guests: ["Kevin"],
-    where: "Soho House",
+    location: "Soho House",
   },
   {
     id: "e14",
-    day: 3,
-    start: 15.5,
-    end: 16.5,
+    dayOffset: 3,
+    startHour: 15,
+    startMinute: 30,
+    endHour: 16,
+    endMinute: 30,
     type: "client",
     title: "Rust Belt Logistics weekly",
     meta: "Pete Doyle",
     ownerId: "ak",
     guests: ["Pete Doyle"],
-    where: "Zoom",
+    location: "Zoom",
   },
-
-  // Fri May 15
+  // Fri
   {
     id: "e15",
-    day: 4,
-    start: 9.0,
-    end: 10.0,
+    dayOffset: 4,
+    startHour: 9,
+    startMinute: 0,
+    endHour: 10,
+    endMinute: 0,
     type: "interview",
     title: "Jamal Wright – Senior Auditor",
     meta: "Final · Avon Lake Capital",
     ownerId: "ak",
     guests: ["Jamal Wright", "Reed Marin"],
-    where: "Google Meet",
+    location: "Google Meet",
   },
   {
     id: "e16",
-    day: 4,
-    start: 13.0,
-    end: 14.0,
+    dayOffset: 4,
+    startHour: 13,
+    startMinute: 0,
+    endHour: 14,
+    endMinute: 0,
     type: "other",
     title: "End of week wrap",
     meta: "Internal",
     ownerId: "ak",
     guests: ["AK", "RC", "MW", "ES"],
-    where: "Office",
+    location: "Office",
   },
 ];
+
+// Builds the seed events anchored to the work week containing `anchor`.
+// Times are interpreted in local time of the caller.
+export function getSampleEvents(anchor: Date): CalendarEvent[] {
+  const monday = getMondayOfWeek(anchor);
+  return SEED.map((s) => {
+    const day = addDays(monday, s.dayOffset);
+    const startTime = new Date(day);
+    startTime.setHours(s.startHour, s.startMinute, 0, 0);
+    const endTime = new Date(day);
+    endTime.setHours(s.endHour, s.endMinute, 0, 0);
+    return {
+      id: s.id,
+      title: s.title,
+      startTime,
+      endTime,
+      type: s.type,
+      meta: s.meta,
+      ownerId: s.ownerId,
+      guests: s.guests,
+      location: s.location,
+    };
+  });
+}
 
 // Reminders are Ace-native only: they fire as toasts inside Ace and
 // never push to Google Calendar. Mirroring the rule from the design's
@@ -270,22 +331,3 @@ export const SAMPLE_REMINDERS: CalendarReminder[] = [
     source: "Manual",
   },
 ];
-
-// Work-week view: Mon–Fri only. The week navigation buttons still
-// advance by 7 calendar days, but Saturday and Sunday are not shown
-// as columns. Events with day index 5 or 6 (legacy weekend rows) will
-// be filtered out of the week + month grids — none currently exist.
-export const WEEK_DAYS = [
-  { key: "mon", label: "Mon", date: 11 },
-  { key: "tue", label: "Tue", date: 12 },
-  { key: "wed", label: "Wed", date: 13 },
-  { key: "thu", label: "Thu", date: 14 },
-  { key: "fri", label: "Fri", date: 15 },
-] as const;
-
-export const MONTH_NAME = "May";
-export const YEAR = 2026;
-// Tue May 12, 2026, 10:42 AM. Drives the now-line + greeting.
-export const TODAY_INDEX = 1;
-export const NOW_HOUR = 10;
-export const NOW_MIN = 42;
