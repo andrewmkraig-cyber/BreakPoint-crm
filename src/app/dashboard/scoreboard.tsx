@@ -116,23 +116,22 @@ function KpiRow({ kpis }: { kpis: Kpis }) {
 }
 
 function KpiTile({ label, value, sub }: { label: string; value: string; sub: string }) {
-  // Visual match to the Clubhouse KpiTile (src/app/dashboard/kpi-tile.tsx):
-  // borderless, soft long-shadow, px-3 py-2.5, 10px extrabold label,
-  // 26px serif value. The Scoreboard variant adds a tight sub line where
-  // Clubhouse uses an icon — keeps the overall density consistent.
+  // Compact slim-bar variant of the Clubhouse KpiTile chrome —
+  // borderless, soft long-shadow, 9px extrabold label, 20px serif value
+  // so the five tiles read as a single dense top strip on the Scoreboard.
   const isEmpty = value === "—";
   return (
-    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
-      <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">{label}</p>
+    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
+      <p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">{label}</p>
       <div
         className={
-          "mt-2 text-center font-serif text-[26px] font-semibold leading-none tracking-[-0.04em] tabular-nums " +
+          "mt-1.5 text-center font-serif text-[20px] font-semibold leading-none tracking-[-0.04em] tabular-nums " +
           (isEmpty ? "text-court-fg-dim" : "text-court-fg")
         }
       >
         {value}
       </div>
-      <p className="mt-1.5 truncate text-center text-[10px] text-court-fg-muted">{sub}</p>
+      <p className="mt-1 truncate text-center text-[9px] text-court-fg-muted">{sub}</p>
     </div>
   );
 }
@@ -174,11 +173,11 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
     },
   ];
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] lg:col-span-2">
+    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] lg:col-span-2">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Deal Funnel</p>
-          <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">Submitted → Placed</h3>
+          <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">Submitted → Placed</h3>
           <p className="text-xs text-court-fg-muted">Activity through each gate, last 90 days.</p>
         </div>
       </div>
@@ -186,23 +185,21 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
         <EmptyBlock>No submit activity logged in the last 90 days yet.</EmptyBlock>
       ) : (
         <>
-          <div className="mt-6 space-y-3">
+          <div className="mt-4 space-y-2">
             {stages.map((s) => {
               const widthPct = maxStage > 0 ? (s.n / maxStage) * 100 : 0;
               return (
                 <div
                   key={s.name}
-                  className="relative h-14 overflow-hidden rounded-lg bg-court-surface-subtle"
+                  className="relative overflow-hidden rounded-lg bg-court-surface-subtle"
                 >
                   <div
                     className="absolute inset-y-0 left-0 bg-court-brand-tint"
                     style={{ width: `${widthPct}%` }}
                   />
-                  <div className="relative flex h-full items-center justify-between px-4">
-                    <span className="text-[13px] font-semibold text-court-fg">
-                      {s.name}
-                    </span>
-                    <span className="text-[22px] font-extrabold leading-none tabular-nums tracking-[-0.03em] text-court-fg">
+                  <div className="relative flex items-center justify-between px-3 py-2">
+                    <span className="text-sm text-court-fg">{s.name}</span>
+                    <span className="text-sm font-semibold tabular-nums text-court-fg">
                       {s.n}
                     </span>
                   </div>
@@ -210,7 +207,7 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
               );
             })}
           </div>
-          <div className="mt-5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {ratios.map((r) => (
               <RatioTile key={r.label} label={r.label} num={r.num} den={r.den} />
             ))}
@@ -231,19 +228,19 @@ function RatioTile({ label, num, den }: { label: string; num: number; den: numbe
   const pct = den > 0 ? Math.round((num / den) * 100) : null;
   const isEmpty = pct == null;
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 px-3 py-2.5">
+    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 px-2 py-1">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
         {label}
       </p>
       <p
         className={
-          "mt-1 font-serif text-[22px] font-semibold leading-none tracking-[-0.03em] tabular-nums " +
+          "mt-0.5 text-sm font-semibold leading-tight tabular-nums " +
           (isEmpty ? "text-court-fg-dim" : "text-court-fg")
         }
       >
         {isEmpty ? "—" : `${pct}%`}
       </p>
-      <p className="mt-1 text-[11px] tabular-nums text-court-fg-muted">
+      <p className="text-xs tabular-nums text-court-fg-muted">
         {num} / {den}
       </p>
     </div>
@@ -267,19 +264,19 @@ function CoverageTile({
 }) {
   const isEmpty = pct == null;
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 px-3 py-2.5">
+    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 px-2 py-1">
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
         {label}
       </p>
       <p
         className={
-          "mt-1 font-serif text-[22px] font-semibold leading-none tracking-[-0.03em] tabular-nums " +
+          "mt-0.5 text-sm font-semibold leading-tight tabular-nums " +
           (isEmpty ? "text-court-fg-dim" : "text-court-fg")
         }
       >
         {isEmpty ? "—" : `${pct}%`}
       </p>
-      <p className="mt-1 text-[11px] tabular-nums text-court-fg-muted">
+      <p className="text-xs tabular-nums text-court-fg-muted">
         {num} of {den} candidates
       </p>
     </div>
@@ -300,11 +297,11 @@ function CashForecastCard({ cash }: { cash: Cash }) {
   const widthPct = (amount: number) =>
     maxAmount > 0 ? Math.max(8, Math.round((amount / maxAmount) * 100)) : 0;
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Cash Forecast</p>
-      <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">Pipeline → Bank</h3>
+      <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">Pipeline → Bank</h3>
       <p className="text-xs text-court-fg-muted">What&apos;s expected to land where.</p>
-      <div className="mt-5 space-y-4">
+      <div className="mt-3 space-y-2">
         <ForecastRow
           label="Pending Start"
           amount={cash.pendingStartCount > 0 ? formatMoneyShort(cash.pendingStartUsd) : "—"}
@@ -347,22 +344,22 @@ function ForecastRow({
 }) {
   const isEmpty = amount === "—";
   return (
-    <div>
+    <div className="py-2">
       <div className="flex items-baseline justify-between">
         <span className="text-[12px] font-medium text-court-fg">{label}</span>
         <span
           className={
-            "text-base font-bold tabular-nums tracking-tight sm:text-lg " +
+            "text-[18px] font-bold leading-none tabular-nums tracking-tight " +
             (isEmpty ? "text-court-fg-dim" : "text-court-fg")
           }
         >
           {amount}
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-court-surface-subtle">
+      <div className="mt-1 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
         <div className={`h-full rounded-full ${accent}`} style={{ width: `${pct}%` }} />
       </div>
-      <p className="mt-1 text-[11px] text-court-fg-muted">{hint}</p>
+      <p className="mt-1 text-xs text-court-fg-muted">{hint}</p>
     </div>
   );
 }
@@ -376,23 +373,23 @@ function TopClientsCard({ rows }: { rows: TopClient[] }) {
       {rows.length === 0 ? (
         <EmptyBlock>No placements with logged fees yet.</EmptyBlock>
       ) : (
-        <ul className="mt-5 space-y-3">
+        <ul className="mt-3 space-y-1">
           {rows.map((r) => (
             <li key={r.id}>
               <ClientDrilldownTrigger clientId={r.clientId} clientName={r.name}>
-                <div className="px-1 py-1">
+                <div className="px-1 py-1.5">
                   <div className="flex items-baseline justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-court-fg">{r.name}</div>
-                      <div className="truncate text-[11px] text-court-fg-muted">
+                      <div className="truncate text-xs text-court-fg-muted">
                         {r.placements} placement{r.placements === 1 ? "" : "s"}
                       </div>
                     </div>
-                    <div className="shrink-0 text-[17px] font-bold tabular-nums tracking-tight text-court-fg">
+                    <div className="shrink-0 text-sm font-semibold tabular-nums tracking-tight text-court-fg">
                       {formatMoneyShort(r.feeUsd)}
                     </div>
                   </div>
-                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
+                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-court-surface-subtle">
                     <div
                       className="h-full rounded-full bg-court-brand"
                       style={{ width: `${maxFee > 0 ? Math.round((r.feeUsd / maxFee) * 100) : 0}%` }}
@@ -417,21 +414,21 @@ function TopRolesCard({ rows }: { rows: TopRole[] }) {
       {rows.length === 0 ? (
         <EmptyBlock>No closed roles yet.</EmptyBlock>
       ) : (
-        <ul className="mt-5 space-y-3">
+        <ul className="mt-3 space-y-1">
           {rows.map((r) => (
             <li key={r.title}>
               <RoleDrilldownTrigger roleTitle={r.title}>
-                <div className="px-1 py-1">
+                <div className="px-1 py-1.5">
                   <div className="flex items-baseline justify-between gap-3">
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium text-court-fg">{r.title}</div>
-                      <div className="truncate text-[11px] text-court-fg-muted">
+                      <div className="truncate text-xs text-court-fg-muted">
                         {r.avgFeeUsd != null ? `Avg fee ${formatMoneyShort(r.avgFeeUsd)}` : "Fee not logged"}
                       </div>
                     </div>
-                    <div className="shrink-0 text-[17px] font-bold tabular-nums text-court-fg">{r.placements}</div>
+                    <div className="shrink-0 text-sm font-semibold tabular-nums text-court-fg">{r.placements}</div>
                   </div>
-                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
+                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-court-surface-subtle">
                     <div
                       className="h-full rounded-full bg-court-brand"
                       style={{ width: `${maxCount > 0 ? Math.round((r.placements / maxCount) * 100) : 0}%` }}
@@ -455,25 +452,25 @@ function MomentumCard({ events }: { events: MomentumEvent[] }) {
       {events.length === 0 ? (
         <EmptyBlock>Nothing has moved in the last 30 days.</EmptyBlock>
       ) : (
-        <ul className="mt-5 space-y-3.5">
+        <ul className="mt-3 space-y-1">
           {events.map((e) => (
-            <li key={e.id} className="flex items-start gap-3">
+            <li key={e.id} className="flex items-start gap-2.5 py-1.5">
               <span
                 className={
-                  "mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full " +
+                  "grid h-6 w-6 shrink-0 place-items-center rounded-full " +
                   (e.kind === "win"
                     ? "bg-court-brand-tint text-court-brand-dark"
                     : "bg-blue-50 text-blue-700")
                 }
               >
-                {e.kind === "win" ? <Trophy className="h-3.5 w-3.5" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
+                {e.kind === "win" ? <Trophy className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-sm">
                   <span className="font-semibold text-court-fg">{e.candidateName}</span>{" "}
                   <span className="text-court-fg">{e.eventLabel}</span>
                 </div>
-                <div className="text-[11px] text-court-fg-muted">
+                <div className="text-xs text-court-fg-muted">
                   {e.clientName}
                   {e.clientName ? <span className="mx-1.5 text-court-fg-dim">·</span> : null}
                   {formatRelative(e.eventAt)}
@@ -493,14 +490,14 @@ function StalledDealsCard() {
   // stage" is unknowable. Render the section title and an honest empty
   // state until that telemetry lands.
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <div className="flex items-end justify-between gap-3">
+    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      <div className="flex items-end justify-between gap-3 py-2">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Stalled Deals</p>
-          <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">Where the desk is stuck</h3>
+          <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">Where the desk is stuck</h3>
           <p className="text-xs text-court-fg-muted">Per-stage idle thresholds: Submitted 5d · Interview 10d · Offer 7d.</p>
         </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-amber-800">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800">
           <Clock className="h-3 w-3" /> Coming soon
         </span>
       </div>
@@ -521,9 +518,9 @@ function ListCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">{eyebrow}</p>
-      <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">{title}</h3>
+      <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">{title}</h3>
       {children}
     </div>
   );
@@ -531,7 +528,7 @@ function ListCard({
 
 function EmptyBlock({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mt-5 rounded-xl border border-dashed border-court-border bg-court-surface-subtle px-4 py-6 text-center text-[13px] text-court-fg-muted">
+    <div className="mt-3 rounded-xl border border-dashed border-court-border bg-court-surface-subtle px-3 py-4 text-center text-xs text-court-fg-muted">
       {children}
     </div>
   );
