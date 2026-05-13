@@ -927,13 +927,14 @@ model Contact {
 // to NOT NULL and wire getCurrentOrg() into every server action.
 
 model Organization {
-  id        String   @id @default(cuid())
-  name      String
-  slug      String   @unique
-  plan      String   @default("personal")
-  ownerId   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  name          String
+  slug          String   @unique
+  plan          String   @default("personal")
+  ownerId       String
+  mercuryApiKey String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   owner       User                     @relation("OrganizationOwner", fields: [ownerId], references: [id])
   memberships OrganizationMembership[]
