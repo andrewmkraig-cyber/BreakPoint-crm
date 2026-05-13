@@ -906,6 +906,15 @@ export function MailComposer({
           prompt,
           threadId,
           includeSubject: aiIncludeSubject,
+          // Hand Claude the same Ace records the composer is operating
+          // on so it can ground qualifying questions, tone, and merges
+          // in the candidate / job / client profiles instead of saying
+          // "I don't have the candidate's profile in front of me."
+          context: {
+            candidateRef,
+            jobId: selectedJob?.jobId,
+            clientId: selectedJob?.clientId,
+          },
         }),
       });
       const body = await res.json().catch(() => null);

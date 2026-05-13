@@ -142,10 +142,16 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
       const dueLabel = dueDate ? new Date(dueDate).toLocaleDateString() : "TBD";
       const signer = props.accountExecName || "Andrew";
       const subject = `Invoice from ${props.billingCompanyName} - ${lastName} placement (${props.invoiceNumber})`;
+      // Suppress the "of $X" clause when the fee isn't captured so we
+      // don't ship a "for the placement fee of —" sentence. formatUsd
+      // returns an em dash for missing/zero amounts; the clause comes
+      // out entirely in that case.
+      const feeLabel = formatUsd(feeAmount);
+      const feeOfClause = feeLabel === "—" ? "" : ` of ${feeLabel}`;
       const paragraphs = [
         `Hi ${firstName},`,
         `Congratulations again on bringing ${props.candidateName || "your new hire"} onto the team${props.roleTitle ? ` as ${props.roleTitle}` : ""}.`,
-        `Attached is invoice ${props.invoiceNumber} for the placement fee of ${formatUsd(feeAmount)}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
+        `Attached is invoice ${props.invoiceNumber} for the placement fee${feeOfClause}, with a start date of ${startLabel}. Payment is due ${dueLabel}.`,
         `ACH, wire, and check details are inside the PDF. Please reference ${props.invoiceNumber} on payment. If anything looks off or you need a different billing contact on file, just reply here and we'll sort it out.`,
         `We appreciate you trusting ${props.billingCompanyName} with this search, and we hope to continue to support your hiring needs in the future.`,
         `Best,<br />${signer}`,

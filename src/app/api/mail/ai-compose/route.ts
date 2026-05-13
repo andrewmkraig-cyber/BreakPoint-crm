@@ -33,6 +33,16 @@ type AiComposeRequest = {
   // checkbox under the Generate button; off by default since most
   // generations are replies where the existing subject is correct.
   includeSubject?: boolean;
+  // Ace-side context the composer hands over so Claude can ground
+  // generations in the actual candidate / job / client records the
+  // recruiter is looking at. All fields optional — the route falls
+  // back to context-free generation when nothing's supplied.
+  context?: {
+    // Candidate cuid (Ace-native) or numeric legacy rfId, stringified.
+    candidateRef?: string;
+    jobId?: string;
+    clientId?: string;
+  };
 };
 
 type AiComposeResponse =
@@ -90,6 +100,12 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
   const org = await getCurrentOrg();
   const trainerBlock = await buildPersonalTrainerBlock(org.id);
 
+  // Ace context block: candidate / job / client profiles the composer
+  // is currently tied to. Pulled here so Claude can ground qualifying
+  // questions, tone, and merge logic in real records instead of
+  // hedging ("I don't have the candidate's profile in front of me").
+  const aceContextBlock = await buildAceContextBlock(org.id, payload.context);
+
   // Two prompt variants:
   //  - body-only (default): same instructions as before; return raw
   //    HTML the composer drops into the editor.
@@ -123,6 +139,8 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
   const system = baseSystem + trainerBlock;
 
   const userMessage = [
+    aceContextBlock,
+    aceContextBlock ? "\n---\n" : "",
     threadSummary,
     threadSummary ? "\n---\n" : "",
     `Instruction: ${promptText}`,
@@ -222,4 +240,191 @@ function stripHtmlTags(html: string): string {
     .replace(/&gt;/g, ">")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+// Resolve Ace records keyed off the composer's current context and
+// stringify them into a plain-text block Claude can read. Every read
+// is org-scoped; missing IDs short-circuit to an empty block rather
+// than risking a cross-tenant leak.
+async function buildAceContextBlock(
+  organizationId: string,
+  ctx?: AiComposeRequest["context"],
+): Promise<string> {
+  if (!ctx) return "";
+  const sections: string[] = [];
+
+  // Candidate — handle both Ace cuid and legacy numeric rfId, matching
+  // the resolution pattern in /api/mail/candidate-context.
+  if (ctx.candidateRef) {
+    const ref = ctx.candidateRef.trim();
+    const isNumeric = /^\d+$/.test(ref);
+    const candidate = await prisma.candidate.findFirst({
+      where: isNumeric
+        ? { rfId: Number(ref), organizationId }
+        : { id: ref, organizationId },
+      select: {
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        currentDesignation: true,
+        currentOrganization: true,
+        location: true,
+        skills: true,
+        tags: true,
+        notes: true,
+        expectedSalary: true,
+        experience: true,
+        linkedinProfile: true,
+      },
+    });
+    if (candidate) {
+      const lines: string[] = ["Candidate profile:"];
+      const fullName = [candidate.firstName, candidate.lastName].filter(Boolean).join(" ").trim();
+      if (fullName) lines.push(`- Name: ${fullName}`);
+      if (candidate.currentDesignation) lines.push(`- Current title: ${candidate.currentDesignation}`);
+      if (candidate.currentOrganization) lines.push(`- Current employer: ${candidate.currentOrganization}`);
+      if (candidate.location) lines.push(`- Location: ${candidate.location}`);
+      if (candidate.email) lines.push(`- Email: ${candidate.email}`);
+      if (candidate.phone) lines.push(`- Phone: ${candidate.phone}`);
+      if (candidate.linkedinProfile) lines.push(`- LinkedIn: ${candidate.linkedinProfile}`);
+      const expectedComp = formatExpectedSalary(candidate.expectedSalary);
+      if (expectedComp) lines.push(`- Expected compensation: ${expectedComp}`);
+      if (candidate.skills.length > 0) {
+        lines.push(`- Skills: ${candidate.skills.slice(0, 20).join(", ")}`);
+      }
+      if (candidate.tags.length > 0) {
+        lines.push(`- Tags: ${candidate.tags.slice(0, 10).join(", ")}`);
+      }
+      const experienceSummary = formatExperience(candidate.experience);
+      if (experienceSummary) lines.push(`- Experience: ${experienceSummary}`);
+      const notes = (candidate.notes ?? "").trim();
+      if (notes) lines.push(`- Recruiter notes: ${truncate(notes, 1500)}`);
+      sections.push(lines.join("\n"));
+    }
+  }
+
+  // Job — title, location, description, salary band, employment type.
+  if (ctx.jobId) {
+    const job = await prisma.job.findFirst({
+      where: { id: ctx.jobId, organizationId },
+      select: {
+        title: true,
+        locationCity: true,
+        locationState: true,
+        locations: true,
+        employmentType: true,
+        salaryRangeStart: true,
+        salaryRangeEnd: true,
+        salaryCurrency: true,
+        description: true,
+        rawJobDescription: true,
+        internalRecruiterNotes: true,
+        client: { select: { name: true, industry: true } },
+      },
+    });
+    if (job) {
+      const lines: string[] = ["Job profile:"];
+      if (job.title) lines.push(`- Title: ${job.title}`);
+      if (job.client?.name) lines.push(`- Client: ${job.client.name}`);
+      const loc = [job.locationCity, job.locationState].filter(Boolean).join(", ");
+      const fallbackLoc = loc || job.locations.find((l) => l && l.trim().length > 0) || "";
+      if (fallbackLoc) lines.push(`- Location: ${fallbackLoc}`);
+      if (job.employmentType) lines.push(`- Employment type: ${job.employmentType}`);
+      const salaryBand = formatSalaryBand(
+        job.salaryRangeStart,
+        job.salaryRangeEnd,
+        job.salaryCurrency,
+      );
+      if (salaryBand) lines.push(`- Salary band: ${salaryBand}`);
+      const jobDescription = (job.description || job.rawJobDescription || "").trim();
+      if (jobDescription) lines.push(`- Description: ${truncate(jobDescription, 2500)}`);
+      const internalNotes = (job.internalRecruiterNotes ?? "").trim();
+      if (internalNotes) lines.push(`- Internal recruiter notes: ${truncate(internalNotes, 1000)}`);
+      sections.push(lines.join("\n"));
+    }
+  }
+
+  // Client — only fetch separately when no jobId narrowed it for us;
+  // the job join above already surfaces client name + industry.
+  if (ctx.clientId && !ctx.jobId) {
+    const client = await prisma.client.findFirst({
+      where: { id: ctx.clientId, organizationId },
+      select: { name: true, industry: true, domain: true, location: true },
+    });
+    if (client) {
+      const lines: string[] = ["Client profile:"];
+      if (client.name) lines.push(`- Name: ${client.name}`);
+      if (client.industry) lines.push(`- Industry: ${client.industry}`);
+      if (client.domain) lines.push(`- Website: ${client.domain}`);
+      const clientLocation = formatClientLocation(client.location);
+      if (clientLocation) lines.push(`- Location: ${clientLocation}`);
+      sections.push(lines.join("\n"));
+    }
+  }
+
+  if (sections.length === 0) return "";
+  return `Ace context for this email (use to ground tone, qualifying questions, and merge logic):\n\n${sections.join("\n\n")}`;
+}
+
+function truncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  return `${s.slice(0, max).trimEnd()}…`;
+}
+
+function formatExpectedSalary(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const v = value as { number?: unknown; currency?: unknown };
+  const n = typeof v.number === "number" ? v.number : null;
+  const currency = typeof v.currency === "string" && v.currency.trim() ? v.currency.trim() : "USD";
+  if (n == null || !Number.isFinite(n) || n <= 0) return "";
+  return `${currency} ${n.toLocaleString("en-US")}`;
+}
+
+function formatSalaryBand(
+  start: number | null,
+  end: number | null,
+  currency: string | null,
+): string {
+  const cur = currency && currency.trim() ? currency.trim() : "USD";
+  if (start != null && end != null) {
+    return `${cur} ${start.toLocaleString("en-US")} – ${end.toLocaleString("en-US")}`;
+  }
+  if (start != null) return `${cur} ${start.toLocaleString("en-US")}+`;
+  if (end != null) return `Up to ${cur} ${end.toLocaleString("en-US")}`;
+  return "";
+}
+
+function formatExperience(value: unknown): string {
+  if (!value) return "";
+  if (Array.isArray(value)) {
+    const entries = value
+      .slice(0, 4)
+      .map((row) => {
+        if (!row || typeof row !== "object") return "";
+        const r = row as { title?: unknown; company?: unknown; organization?: unknown; startYear?: unknown; endYear?: unknown };
+        const title = typeof r.title === "string" ? r.title.trim() : "";
+        const employer =
+          (typeof r.company === "string" && r.company.trim()) ||
+          (typeof r.organization === "string" && r.organization.trim()) ||
+          "";
+        const years = [r.startYear, r.endYear]
+          .map((y) => (typeof y === "number" || typeof y === "string" ? String(y) : ""))
+          .filter(Boolean);
+        const range = years.length > 0 ? ` (${years.join(" – ")})` : "";
+        const left = [title, employer].filter(Boolean).join(" at ");
+        return left ? `${left}${range}` : "";
+      })
+      .filter(Boolean);
+    return entries.join("; ");
+  }
+  return "";
+}
+
+function formatClientLocation(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const v = value as { city?: unknown; state?: unknown };
+  const city = typeof v.city === "string" ? v.city.trim() : "";
+  const state = typeof v.state === "string" ? v.state.trim() : "";
+  return [city, state].filter(Boolean).join(", ");
 }
