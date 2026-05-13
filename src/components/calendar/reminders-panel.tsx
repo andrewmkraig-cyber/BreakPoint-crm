@@ -41,9 +41,6 @@ export function CalendarRemindersPanel({
           {formOpen ? "Cancel" : "New"}
         </button>
       </div>
-      <div className="flex items-center gap-1.5 border-b border-court-border-soft bg-court-brand-tint/40 px-5 py-2.5 text-[11.5px] text-court-brand-dark">
-        <Bell className="h-3 w-3" /> Ace-native · these never push to Google
-      </div>
       {formOpen && (
         <NewReminderForm
           onCancel={() => setFormOpen(false)}
