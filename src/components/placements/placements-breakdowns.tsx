@@ -1,18 +1,20 @@
+import { PlacementsByCityList } from "@/components/placements/placements-by-city-list";
 import type {
   PlacementsDashboardRow,
   PlacementsDashboardSourceChannel,
 } from "@/lib/placements-dashboard";
-import { formatMoneyShort } from "@/lib/placements-map-geo";
+import { formatMoneyShort, type CityAggregate } from "@/lib/placements-map-geo";
 
-// Three breakdown cards rendered as a row under the placement map:
-//   1. By Industry — bar list of client industries
-//   2. By Sourcing — bar list of candidate source channels
-//   3. Offer to Start — offer-to-start histogram + fastest-fill mini
+// Two-row breakdown layout under the placement ledger:
+//   Row 1 — one wide card split in half by a vertical divider:
+//           "Placements by City" (left) + "Placements by Industry" (right).
+//   Row 2 — two equal cards: "Placement Sources" + "Offer to Start".
 //
-// Pure functional view over the same PlacementsDashboardRow[] the rest
-// of the tab consumes — no client state, no network. Bucket maths sit
-// in this file rather than in the data layer because they're all
-// dashboard-shape concerns the data layer shouldn't own.
+// The card chrome (rounded-3xl bg-court-surface p-5 shadow) matches
+// the rest of the Clubhouse / Placements surfaces so every panel on
+// the tab reads as one product. Pure functional view over the same
+// PlacementsDashboardRow[] plus the city aggregate the map uses —
+// no client state, no network.
 
 const SOURCE_LABEL: Record<PlacementsDashboardSourceChannel, string> = {
   NETWORK: "Network",
@@ -32,9 +34,7 @@ const SOURCE_ORDER: PlacementsDashboardSourceChannel[] = [
 
 // Bucket fills use the same Court Mode tokens the Scoreboard uses for its
 // Cash Forecast bars: brand green for "on track", softened green for the
-// slightly-slower bucket, then amber/red tints for the bad buckets. No
-// hardcoded hex — keeps theme switching consistent with the rest of the
-// dashboard.
+// slightly-slower bucket, then amber/red tints for the bad buckets.
 const OFFER_TO_START_BUCKETS = [
   { id: "le14", label: "≤ 14d", fillClass: "bg-court-brand", min: 0, max: 14 },
   { id: "15to21", label: "15-21d", fillClass: "bg-court-brand/60", min: 15, max: 21 },
@@ -50,12 +50,22 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-export function PlacementsBreakdowns({ rows }: { rows: PlacementsDashboardRow[] }) {
+export function PlacementsBreakdowns({
+  rows,
+  cities,
+  totalFee,
+}: {
+  rows: PlacementsDashboardRow[];
+  cities: CityAggregate[];
+  totalFee: number;
+}) {
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-      <ByIndustryCard rows={rows} />
-      <BySourcingCard rows={rows} />
-      <OfferToStartCard rows={rows} />
+    <div className="flex flex-col gap-3">
+      <CityIndustryCombinedCard rows={rows} cities={cities} totalFee={totalFee} />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        <PlacementSourcesCard rows={rows} />
+        <OfferToStartCard rows={rows} />
+      </div>
     </div>
   );
 }
@@ -83,21 +93,59 @@ function aggregateBy(
   return out;
 }
 
-function ByIndustryCard({ rows }: { rows: PlacementsDashboardRow[] }) {
-  const bars = aggregateBy(rows, (r) => {
+function CityIndustryCombinedCard({
+  rows,
+  cities,
+  totalFee,
+}: {
+  rows: PlacementsDashboardRow[];
+  cities: CityAggregate[];
+  totalFee: number;
+}) {
+  const industryBars = aggregateBy(rows, (r) => {
     const label = r.clientIndustry?.trim() || "Unspecified";
     return { key: label.toLowerCase(), label };
   });
-  const grandTotalFee = bars.reduce((s, b) => s + b.total, 0);
-  const grandTotalCount = bars.reduce((s, b) => s + b.count, 0);
+  const industryGrandTotalFee = industryBars.reduce((s, b) => s + b.total, 0);
+  const industryGrandTotalCount = industryBars.reduce((s, b) => s + b.count, 0);
   return (
-    <BreakdownCard title="By Industry" empty={bars.length === 0}>
-      <BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />
-    </BreakdownCard>
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      {/* Vertical divider lives on the left half (border-r) so it only
+          shows once the two columns sit side by side. Below lg the
+          halves stack and no divider is rendered. */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-0">
+        <div className="lg:border-r lg:border-court-border-soft lg:pr-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
+            Placements by City
+          </p>
+          <div className="mt-2.5">
+            <PlacementsByCityList cities={cities} totalFee={totalFee} />
+          </div>
+        </div>
+        <div className="lg:pl-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
+            Placements by Industry
+          </p>
+          <div className="mt-2.5">
+            {industryBars.length === 0 ? (
+              <p className="text-sm text-court-fg-muted">
+                No placements in this window.
+              </p>
+            ) : (
+              <BarList
+                bars={industryBars}
+                grandTotalFee={industryGrandTotalFee}
+                grandTotalCount={industryGrandTotalCount}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function BySourcingCard({ rows }: { rows: PlacementsDashboardRow[] }) {
+function PlacementSourcesCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   // Force every known channel to render even when empty so the user
   // sees the full set of sourcing buckets at a glance — a missing
   // channel reads as "no placements from there yet," which is signal.
@@ -115,7 +163,7 @@ function BySourcingCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const grandTotalFee = bars.reduce((s, b) => s + b.total, 0);
   const grandTotalCount = bars.reduce((s, b) => s + b.count, 0);
   return (
-    <BreakdownCard title="By Sourcing" empty={grandTotalCount === 0}>
+    <BreakdownCard title="Placement Sources" empty={grandTotalCount === 0}>
       <BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />
     </BreakdownCard>
   );
