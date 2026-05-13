@@ -8,17 +8,17 @@ import { ChessPuzzle } from "@/components/chess-puzzle";
 import { FunFact } from "@/components/fun-fact";
 import { Horoscope } from "@/components/horoscope";
 
-// Editorial briefing layout: header, four tabs, one lead story, three
-// list rows. Per-tab fetch wiring is unchanged — /api/news-feed?tab=...
-// backs all four tabs. Collapse persists in localStorage so the
-// recruiter's choice survives reload.
+// Editorial briefing layout: header, four tabs, lead story + list,
+// then a quiet 2x2 mini-grid of the daily companion items (Chess,
+// Word, Fun Fact, Horoscope) at the bottom of the same card. Per-tab
+// fetch wiring is unchanged — /api/news-feed?tab=... backs all four
+// tabs. Collapse persists in localStorage so the recruiter's choice
+// survives reload.
 //
-// The header also hosts the daily-companion chips (Chess, Word, Fun
-// Fact, Horoscope) at the top-right of the bubble — chess leads
-// because it's the one Andrew interacts with most. Quote of the Day
-// was dropped from this row to keep four chips fitting cleanly. Their
-// popovers anchor `bottom-full` so they open up into the dashboard
-// space above the briefing.
+// The card uses flex-col h-full so the dashboard grid row that pairs
+// it with ThisWeekWidget renders both with aligned bottom edges; the
+// article list is the only flex-1 region, so a long briefing scrolls
+// inside the card rather than pushing the card taller than its sibling.
 
 const COLLAPSE_KEY = "ace.dashboard.news-feed.collapsed";
 
@@ -205,7 +205,7 @@ export function NewsFeed() {
   return (
     <section
       id="todays-briefing"
-      className="scroll-mt-24 rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]"
+      className="flex h-full scroll-mt-24 flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]"
     >
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -223,30 +223,24 @@ export function NewsFeed() {
             {todayLabel}
           </p>
         </div>
-        <div className="flex flex-nowrap items-center justify-end gap-1.5">
-          <ChessPuzzle />
-          <WordOfDayCard />
-          <FunFact />
-          <Horoscope />
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
-            aria-expanded={!collapsed}
-            aria-controls="today-briefing-body"
-            aria-label={collapsed ? "Expand briefing" : "Minimize briefing"}
-            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
-          >
-            {collapsed ? (
-              <ChevronDown className="h-4 w-4" />
-            ) : (
-              <ChevronUp className="h-4 w-4" />
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => setCollapsed((c) => !c)}
+          aria-expanded={!collapsed}
+          aria-controls="today-briefing-body"
+          aria-label={collapsed ? "Expand briefing" : "Minimize briefing"}
+          className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+        >
+          {collapsed ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronUp className="h-4 w-4" />
+          )}
+        </button>
       </div>
 
       {collapsed ? null : (
-        <div id="today-briefing-body">
+        <div id="today-briefing-body" className="flex min-h-0 flex-1 flex-col">
           {/* Segmented tab box, mirrors the Active/Inactive control on
               /jobs and the Applied/Kept control on /applicants so every
               tab strip in the app reads as one control language. The
@@ -301,7 +295,11 @@ export function NewsFeed() {
             </button>
           </div>
 
-          <div role="tabpanel">
+          {/* Article list owns the only flex-1 region in the card, so
+              when the dashboard's items-stretch row pins the briefing
+              to its taller sibling, the overflow lands here and the
+              list scrolls inside rather than pushing the card taller. */}
+          <div role="tabpanel" className="min-h-0 flex-1 overflow-y-auto pr-1">
             {current.status === "loading" || current.status === "idle" ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-court-fg-muted" />
@@ -390,6 +388,18 @@ export function NewsFeed() {
                 ) : null}
               </>
             )}
+          </div>
+
+          {/* Daily companions live at the bottom of the briefing card as
+              a quiet 2x2 grid of tiles. Each component owns its own
+              popover; they were previously rendered as pills in the
+              header but now read as secondary add-ons rather than
+              competing with the briefing itself. */}
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <ChessPuzzle />
+            <WordOfDayCard />
+            <FunFact />
+            <Horoscope />
           </div>
         </div>
       )}

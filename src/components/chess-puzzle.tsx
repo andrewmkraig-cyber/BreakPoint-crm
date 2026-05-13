@@ -269,7 +269,7 @@ export function ChessPuzzle() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="inline-flex items-center gap-1 rounded-full border border-court-border bg-court-surface px-2 py-0.5 text-xs font-medium text-court-fg-muted transition hover:border-court-accent/40 hover:text-court-fg"
+        className="flex w-full items-center gap-2 rounded-xl bg-court-surface-subtle px-3 py-2 text-xs font-medium text-court-fg-muted transition hover:text-court-fg"
       >
         {/* Inline chess-king silhouette — the previous unicode pawn
             glyph (♟) wasn't rendering as a chess piece on Andrew's
@@ -279,12 +279,12 @@ export function ChessPuzzle() {
         <svg
           viewBox="0 0 24 24"
           aria-hidden="true"
-          className="h-3 w-3"
+          className="h-3.5 w-3.5 shrink-0"
           fill="currentColor"
         >
           <path d="M11 2v2H9v2h2v2H8.5A2.5 2.5 0 0 0 6 10.5v.4c0 1.4.6 2.7 1.7 3.6l1.3 1.1V18H7v3h10v-3h-2v-2.4l1.3-1.1A4.6 4.6 0 0 0 18 10.9v-.4A2.5 2.5 0 0 0 15.5 8H13V6h2V4h-2V2h-2zM9 19h6v1H9v-1z" />
         </svg>
-        <span>Daily Chess Puzzle</span>
+        <span className="truncate">Daily Chess Puzzle</span>
       </button>
 
       {open && (

@@ -72,6 +72,7 @@ export async function MyDashboard() {
 
   const Q2_GOAL_USD = 125_000;
   const q2RevenuePct = Q2_GOAL_USD > 0 ? (billedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
+  const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
 
   const greeting = firstName ? `Welcome back, ${firstName}.` : "Welcome back.";
   const weekRange = formatEasternWeekRange(weekStart, weekEnd);
@@ -107,13 +108,14 @@ export async function MyDashboard() {
         outstandingUsd={outstandingUsd}
         goalUsd={Q2_GOAL_USD}
         goalPct={q2RevenuePct}
+        currentQuarterLabel={currentQuarterLabel}
       />
 
       <div className="grid grid-cols-5 items-stretch gap-5">
-        <div className="col-span-3">
+        <div className="col-span-3 h-full">
           <ThisWeekWidget orgId={org.id} selfPerson={selfPerson} />
         </div>
-        <div className="col-span-2">
+        <div className="col-span-2 h-full">
           <NewsFeed />
         </div>
       </div>

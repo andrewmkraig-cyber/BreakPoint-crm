@@ -7,27 +7,34 @@ import {
   type DrilldownQuery,
 } from "@/components/dashboard/placement-drilldown-dialog";
 
-// Compact 4-column financial summary that replaces the old Billing
-// Tower + Q2/Annual revenue tiles. Same big-panel chrome as the rest
-// of the dashboard (rounded-3xl, soft shadow). Billed and Cash Collected
-// preserve the click-to-drilldown behavior the Billing Tower had.
+// Billing Tower summary strip. One big-panel card with a header row
+// ("Billing Tower" eyebrow + period selector) and a 4-column metrics
+// row underneath. Billed and Collected preserve the click-to-drilldown
+// behavior the previous Billing Tower had. The period selector is UI
+// only for now — the metrics always show the current quarter; selecting
+// a different option keeps the dropdown state but does not refetch.
+type PeriodKey = "current" | "previous" | "ytd";
+
 export function FinancialStrip({
   billedThisQuarterUsd,
   cashCollectedUsd,
   outstandingUsd,
   goalUsd,
   goalPct,
+  currentQuarterLabel,
 }: {
   billedThisQuarterUsd: number;
   cashCollectedUsd: number;
   outstandingUsd: number;
   goalUsd: number;
   goalPct: number;
+  currentQuarterLabel: string;
 }) {
   const [drilldown, setDrilldown] = useState<{
     query: DrilldownQuery;
     title: string;
   } | null>(null);
+  const [period, setPeriod] = useState<PeriodKey>("current");
   const clampedPct = Math.max(0, Math.min(100, goalPct));
 
   const labelCls =
@@ -39,7 +46,22 @@ export function FinancialStrip({
 
   return (
     <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <div className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+          Billing Tower
+        </div>
+        <select
+          aria-label="Billing Tower period"
+          value={period}
+          onChange={(e) => setPeriod(e.target.value as PeriodKey)}
+          className="rounded-lg border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40"
+        >
+          <option value="current">{`Current Quarter (${currentQuarterLabel})`}</option>
+          <option value="previous">Previous Quarter</option>
+          <option value="ytd">Annual / YTD</option>
+        </select>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-4">
         <button
           type="button"
           onClick={() =>
@@ -50,7 +72,7 @@ export function FinancialStrip({
           }
           className={interactiveCls}
         >
-          <div className={labelCls}>Billed This Quarter</div>
+          <div className={labelCls}>Billed</div>
           <div className={valueCls} style={{ fontSize: "22px" }}>
             {formatCompactUsd(billedThisQuarterUsd)}
           </div>
@@ -65,7 +87,7 @@ export function FinancialStrip({
           }
           className={interactiveCls}
         >
-          <div className={labelCls}>Cash Collected</div>
+          <div className={labelCls}>Collected</div>
           <div className={valueCls} style={{ fontSize: "22px" }}>
             {formatCompactUsd(cashCollectedUsd)}
           </div>
@@ -77,9 +99,9 @@ export function FinancialStrip({
           </div>
         </div>
         <div className="min-w-0">
-          <div className={labelCls}>{`Progress to ${formatGoalUsd(goalUsd)} Goal`}</div>
+          <div className={labelCls}>Goal Progress</div>
           <div className={valueCls} style={{ fontSize: "22px" }}>
-            {`${Math.round(clampedPct)}%`}
+            {`${Math.round(clampedPct)}% to ${formatGoalUsd(goalUsd)}`}
           </div>
           <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
             <div
@@ -114,5 +136,9 @@ function formatCompactUsd(amount: number): string {
 }
 
 function formatGoalUsd(amount: number): string {
+  if (amount >= 1_000) {
+    const k = amount / 1_000;
+    return `$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
+  }
   return `$${amount.toLocaleString("en-US")}`;
 }
