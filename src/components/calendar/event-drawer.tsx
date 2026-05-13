@@ -64,6 +64,57 @@ function isUrlLike(s: string): boolean {
   return /^https?:\/\/\S+$/i.test(v);
 }
 
+// Google Calendar stores some event descriptions as HTML (the Zoom +
+// Teams meeting templates do this) and others as plain text. The
+// drawer's Notes field uses these helpers to render HTML as a
+// formatted preview and to downgrade to plain text when the
+// recruiter clicks "Plain text" to edit.
+function isHtmlDescription(s: string): boolean {
+  return /<\/?(p|br|a|div|span|strong|em|b|i|u|ul|ol|li|h[1-6]|blockquote)\b/i.test(s);
+}
+
+// Allowlist sanitizer for description HTML. Strips script/style/
+// iframe/object/embed wholesale (open + closed), every on* event
+// handler attribute, and javascript:/data:/vbscript: hrefs. Adds
+// target=_blank + rel=noreferrer to <a> tags so clicking an inline
+// link doesn't replace the drawer with the meeting URL.
+function sanitizeDescriptionHtml(s: string): string {
+  let out = s;
+  out = out.replace(
+    /<(script|style|iframe|object|embed)\b[\s\S]*?<\/\1>/gi,
+    "",
+  );
+  out = out.replace(/<(script|style|iframe|object|embed)\b[^>]*>/gi, "");
+  out = out.replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  out = out.replace(
+    /(href|src)\s*=\s*(["'])\s*(javascript|data|vbscript):[^"']*\2/gi,
+    '$1=$2#$2',
+  );
+  out = out.replace(/<a\b([^>]*?)>/gi, (_m, attrs) => {
+    let a: string = attrs;
+    if (!/target=/i.test(a)) a += ' target="_blank"';
+    if (!/rel=/i.test(a)) a += ' rel="noreferrer"';
+    return `<a${a}>`;
+  });
+  return out;
+}
+
+function htmlDescriptionToPlain(s: string): string {
+  let out = s;
+  out = out.replace(/<br\s*\/?>/gi, "\n");
+  out = out.replace(/<\/p>/gi, "\n\n");
+  out = out.replace(/<\/(div|h[1-6]|li|blockquote)>/gi, "\n");
+  out = out.replace(/<[^>]+>/g, "");
+  out = out
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  return out.replace(/\n{3,}/g, "\n\n").trim();
+}
+
 const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = [
   {
     id: "interview",
@@ -93,6 +144,13 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
   const [endTime, setEndTime] = useState("");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
+  // Default to read-only HTML preview when the synced description is
+  // HTML; otherwise jump straight into a plain-text textarea since
+  // there's nothing to render. Clicking the Plain text toggle in HTML
+  // mode downgrades `notes` to plain text and flips this true — once
+  // a recruiter edits, formatting goes (and a save persists the plain
+  // text to Google).
+  const [notesPreviewMode, setNotesPreviewMode] = useState(false);
   const [newGuests, setNewGuests] = useState<GuestSuggestion[]>([]);
   const [saving, setSaving] = useState<null | "all" | "new">(null);
   const [deleting, setDeleting] = useState(false);
@@ -109,7 +167,9 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
       // when editing the user types a free-form location (room,
       // address, or a different Zoom URL) into the underlying field.
       setLocation(event.location ?? "");
-      setNotes(event.meta ?? "");
+      const incoming = event.meta ?? "";
+      setNotes(incoming);
+      setNotesPreviewMode(isHtmlDescription(incoming));
     } else {
       setType("interview");
       setTitle("");
@@ -118,6 +178,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
       setEndTime("");
       setLocation("");
       setNotes("");
+      setNotesPreviewMode(false);
     }
     setNewGuests([]);
     setError(null);
@@ -392,14 +453,37 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
 
           {/* Notes — Google Calendar event description */}
           <div>
-            <FieldLabel>Notes</FieldLabel>
-            <textarea
-              rows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes for this event"
-              className="w-full resize-none rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
-            />
+            <div className="flex items-baseline justify-between">
+              <FieldLabel>Notes</FieldLabel>
+              {notesPreviewMode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotes(htmlDescriptionToPlain(notes));
+                    setNotesPreviewMode(false);
+                  }}
+                  className="text-[11px] font-semibold text-court-brand-dark hover:text-court-brand"
+                >
+                  Plain text
+                </button>
+              )}
+            </div>
+            {notesPreviewMode ? (
+              <div
+                className="max-h-[260px] overflow-auto rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg [&_a]:break-words [&_a]:text-court-brand-dark [&_a]:underline [&_h1]:my-2 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:my-2 [&_h2]:text-[14.5px] [&_h2]:font-semibold [&_h3]:my-2 [&_h3]:text-[13.5px] [&_h3]:font-semibold [&_li]:my-0.5 [&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0 [&_p]:my-2 [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeDescriptionHtml(notes),
+                }}
+              />
+            ) : (
+              <textarea
+                rows={3}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add notes for this event"
+                className="w-full resize-none rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+              />
+            )}
           </div>
 
           {/* Ace reminder toggle */}
