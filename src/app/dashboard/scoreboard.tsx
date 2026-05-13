@@ -147,6 +147,10 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
     { name: "Placed", n: funnel.placed },
   ];
   const top = stages[0].n;
+  // Scale every bar against the largest stage value so the widest stage
+  // always reads as 100%. Interview can exceed Submitted (multi-interview
+  // candidates), so anchoring to Submitted alone overflowed the row.
+  const maxStage = stages.reduce((m, s) => Math.max(m, s.n), 0);
   // Submitted → Interview reads as `submitted / interview` so the funnel
   // top line matches the bar order; with multiple interviews per
   // candidate the raw interview count can exceed submits, so the literal
@@ -184,15 +188,21 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
         <>
           <div className="mt-6 space-y-3">
             {stages.map((s) => {
-              const widthPct = top > 0 ? Math.max(8, Math.round((s.n / top) * 100)) : 8;
+              const widthPct = maxStage > 0 ? (s.n / maxStage) * 100 : 0;
               return (
-                <div key={s.name} className="flex items-center gap-3">
-                  <div className="w-28 shrink-0 text-[12px] font-medium text-court-fg">{s.name}</div>
+                <div
+                  key={s.name}
+                  className="relative h-14 overflow-hidden rounded-lg bg-court-surface-subtle"
+                >
                   <div
-                    className="flex h-14 items-center rounded-lg border-2 border-court-brand bg-court-brand-tint px-4 text-court-brand-dark"
-                    style={{ width: `${widthPct}%`, minWidth: "120px" }}
-                  >
-                    <span className="text-[22px] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
+                    className="absolute inset-y-0 left-0 bg-court-brand-tint"
+                    style={{ width: `${widthPct}%` }}
+                  />
+                  <div className="relative flex h-full items-center justify-between px-4">
+                    <span className="text-[13px] font-semibold text-court-fg">
+                      {s.name}
+                    </span>
+                    <span className="text-[22px] font-extrabold leading-none tabular-nums tracking-[-0.03em] text-court-fg">
                       {s.n}
                     </span>
                   </div>

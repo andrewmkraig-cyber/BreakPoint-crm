@@ -221,8 +221,10 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
 
       <div className="mt-2.5 flex items-end gap-2">
         {bins.map((b) => {
-          const pct = binMax > 0 ? Math.round((b.count / binMax) * 100) : 0;
-          const fillHeight = b.count > 0 ? `${Math.max(10, pct)}%` : "0";
+          // Scale each bin proportionally against the tallest bin. A zero
+          // bin renders an empty track only — no floor — so a single
+          // outlier doesn't make small bins look bigger than they are.
+          const fillHeight = binMax > 0 ? `${(b.count / binMax) * 100}%` : "0%";
           return (
             <div key={b.id} className="flex flex-1 flex-col items-center gap-1">
               <span className="text-[11px] font-semibold tabular-nums text-court-fg">
