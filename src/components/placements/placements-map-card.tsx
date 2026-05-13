@@ -58,7 +58,11 @@ export function PlacementsMapCard({ cities, totalFee }: Props) {
           </p>
         </div>
 
-        <div className="mt-2.5">
+        {/* placements-map-tiles scopes a brightness/contrast filter to
+            the OSM tile pane in Court Mode dark themes — keeps the
+            bright white tiles from blowing out the dark surface while
+            leaving the colored bubbles alone (see globals.css). */}
+        <div className="placements-map-tiles mt-2.5">
           <PlacementsLeafletMap cities={cities} />
         </div>
 

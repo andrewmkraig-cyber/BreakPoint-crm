@@ -1,19 +1,16 @@
 "use client";
 
-import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { useMemo } from "react";
 import {
   CircleMarker,
   MapContainer,
-  Marker,
   Popup,
   TileLayer,
   Tooltip,
 } from "react-leaflet";
 
 import {
-  BREAKPOINT_HQ,
   STATUS_COLORS,
   bubbleRadius,
   dominantStatus,
@@ -21,37 +18,7 @@ import {
   type CityAggregate,
 } from "@/lib/placements-map-geo";
 
-// Leaflet ships its default marker icons as relative paths it resolves
-// at runtime. webpack/Next.js rewrite asset URLs, so the bundled icons
-// can't find their PNGs — point Leaflet at the CDN copies instead.
-// Doing this at module-import time means every Marker rendered on this
-// page picks up the corrected URLs without per-instance configuration.
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
-  ._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl:
-    "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-});
-
 const BRAND_GREEN = "#5A9642";
-
-// Small muted dot used as the HQ marker. Sized as a subtle anchor
-// point so it doesn't compete visually with the placement bubbles.
-const HQ_ICON = L.divIcon({
-  className: "",
-  iconSize: [6, 6],
-  iconAnchor: [3, 3],
-  html: `<div style="
-    width: 6px;
-    height: 6px;
-    background: #9CA3AF;
-    border: 0.5px solid rgba(255,255,255,0.9);
-    border-radius: 50%;
-    opacity: 0.85;
-  "></div>`,
-});
 
 type Props = {
   cities: CityAggregate[];
@@ -76,23 +43,6 @@ export function PlacementsLeafletMap({ cities }: Props) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-
-      <Marker
-        position={[BREAKPOINT_HQ.lat, BREAKPOINT_HQ.lng]}
-        icon={HQ_ICON}
-        interactive={false}
-        keyboard={false}
-      >
-        <Tooltip
-          permanent
-          direction="right"
-          offset={[8, 0]}
-          opacity={0.9}
-          className="bp-hq-tooltip"
-        >
-          BreakPoint HQ · Solon, OH
-        </Tooltip>
-      </Marker>
 
       {cities.map((city) => {
         const radius = bubbleRadius(city.totalFee, maxFee);

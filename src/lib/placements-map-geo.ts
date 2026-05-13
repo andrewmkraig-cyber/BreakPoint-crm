@@ -5,24 +5,25 @@ import type {
 
 // Static city coordinate lookup. Equirectangular lng/lat. Kept local —
 // the placement map renders entirely from this table; we never call a
-// geocoder at render time. When a recruiter logs a placement in a city
-// not in this list, the bubble falls through to a "plus pin" at the
-// US centroid (see UNKNOWN_CITY_FALLBACK) with the typed city label.
+// geocoder at render time. Cities not in this list are dropped from
+// the map (see aggregateByCity) rather than pinned to a fallback —
+// a wrong-place pin reads as a real datapoint and would mislead.
 export type CityCoord = { lng: number; lat: number };
 
 export const CITY_COORDS: ReadonlyMap<string, CityCoord> = new Map([
   ["Atlanta, GA", { lng: -84.39, lat: 33.75 }],
   ["Austin, TX", { lng: -97.74, lat: 30.27 }],
   ["Baltimore, MD", { lng: -76.61, lat: 39.29 }],
+  ["Beachwood, OH", { lng: -81.5085, lat: 41.4645 }],
   ["Birmingham, AL", { lng: -86.81, lat: 33.52 }],
   ["Boston, MA", { lng: -71.06, lat: 42.36 }],
   ["Buffalo, NY", { lng: -78.88, lat: 42.89 }],
   ["Charleston, SC", { lng: -79.93, lat: 32.78 }],
   ["Charlotte, NC", { lng: -80.84, lat: 35.23 }],
   ["Chicago, IL", { lng: -87.63, lat: 41.88 }],
-  ["Cincinnati, OH", { lng: -84.51, lat: 39.1 }],
-  ["Cleveland, OH", { lng: -81.69, lat: 41.5 }],
-  ["Columbus, OH", { lng: -82.98, lat: 39.96 }],
+  ["Cincinnati, OH", { lng: -84.512, lat: 39.1031 }],
+  ["Cleveland, OH", { lng: -81.6944, lat: 41.4993 }],
+  ["Columbus, OH", { lng: -82.9988, lat: 39.9612 }],
   ["Dallas, TX", { lng: -96.8, lat: 32.78 }],
   ["Denver, CO", { lng: -104.99, lat: 39.74 }],
   ["Des Moines, IA", { lng: -93.62, lat: 41.59 }],
@@ -30,6 +31,7 @@ export const CITY_COORDS: ReadonlyMap<string, CityCoord> = new Map([
   ["Fort Worth, TX", { lng: -97.33, lat: 32.76 }],
   ["Hartford, CT", { lng: -72.69, lat: 41.76 }],
   ["Houston, TX", { lng: -95.37, lat: 29.76 }],
+  ["Independence, OH", { lng: -81.639, lat: 41.3978 }],
   ["Indianapolis, IN", { lng: -86.16, lat: 39.77 }],
   ["Jacksonville, FL", { lng: -81.66, lat: 30.33 }],
   ["Kansas City, MO", { lng: -94.58, lat: 39.1 }],
@@ -61,23 +63,12 @@ export const CITY_COORDS: ReadonlyMap<string, CityCoord> = new Map([
   ["San Francisco, CA", { lng: -122.42, lat: 37.77 }],
   ["San Jose, CA", { lng: -121.89, lat: 37.34 }],
   ["Seattle, WA", { lng: -122.33, lat: 47.61 }],
-  ["Solon, OH", { lng: -81.44, lat: 41.39 }],
+  ["Solon, OH", { lng: -81.4412, lat: 41.3897 }],
   ["St. Louis, MO", { lng: -90.2, lat: 38.63 }],
   ["Tampa, FL", { lng: -82.46, lat: 27.95 }],
   ["Tucson, AZ", { lng: -110.93, lat: 32.22 }],
   ["Washington, DC", { lng: -77.04, lat: 38.91 }],
 ]);
-
-export const BREAKPOINT_HQ = {
-  label: "Solon, OH",
-  lng: -81.44,
-  lat: 41.39,
-} as const;
-
-// US centroid (roughly Lebanon, KS). Used as the fallback lat/lng for
-// placements whose city is missing from CITY_COORDS — keeps the row
-// visible on the map with a generic marker rather than dropping it.
-const US_CENTROID: CityCoord = { lng: -98.58, lat: 39.83 };
 
 export type CityAggregate = {
   city: string;
@@ -91,7 +82,6 @@ export type CityAggregate = {
   statusMix: Record<PlacementsDashboardBillingStatus, number>;
   lat: number;
   lng: number;
-  isKnownCity: boolean;
 };
 
 function normalizeKey(city: string): string {
@@ -149,7 +139,9 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
   const aggregates: CityAggregate[] = [];
   buckets.forEach((bucket) => {
     const coord = coordIndex.get(bucket.key);
-    const isKnownCity = Boolean(coord);
+    // Unknown cities are dropped from the map rather than plotted at
+    // a centroid — a misplaced pin reads as real data.
+    if (!coord) return;
     let leadClient: string | null = null;
     let leadFee = -1;
     bucket.clientFees.forEach((fee, name) => {
@@ -165,9 +157,8 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
       totalFee: bucket.totalFee,
       leadClient,
       statusMix: bucket.statusMix,
-      lat: coord?.lat ?? US_CENTROID.lat,
-      lng: coord?.lng ?? US_CENTROID.lng,
-      isKnownCity,
+      lat: coord.lat,
+      lng: coord.lng,
     });
   });
 
@@ -206,13 +197,13 @@ export const STATUS_LABELS: Record<PlacementsDashboardBillingStatus, string> = {
   OVERDUE: "Overdue",
 };
 
-// Bubble sizing: clamp radius between 14 and 32 px. Scale linearly off
+// Bubble sizing: clamp radius between 8 and 20 px. Scale linearly off
 // total fees so the visual weight tracks dollar value, not just count.
 // Empty/zero-fee buckets still get the floor radius so a placement
 // without a fee captured still surfaces visibly.
 export function bubbleRadius(totalFee: number, maxFee: number): number {
-  const MIN = 14;
-  const MAX = 32;
+  const MIN = 8;
+  const MAX = 20;
   if (maxFee <= 0) return MIN;
   const ratio = Math.min(1, Math.max(0, totalFee / maxFee));
   return MIN + ratio * (MAX - MIN);

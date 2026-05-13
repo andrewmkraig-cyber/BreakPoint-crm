@@ -385,18 +385,10 @@ html[data-surface='night'][data-theme='dark'] {
   }
 }
 
-/* Placements map: subtle HQ tooltip — small font, light weight,
-   transparent chrome so the label reads as a quiet annotation
-   next to the muted HQ dot rather than a callout. */
-.bp-hq-tooltip.leaflet-tooltip {
-  font-size: 9pt;
-  font-weight: 500;
-  color: rgba(75, 85, 99, 0.85);
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0 2px;
-}
-.bp-hq-tooltip.leaflet-tooltip::before {
-  display: none;
+/* Placements map: dim the OSM tile pane in dark Court Mode themes so
+   the bright white tiles don't blow out the surface. Filter is scoped
+   to the tile pane (not the whole map) so colored bubbles + tooltips
+   stay vibrant. */
+html[data-theme='dark'] .placements-map-tiles .leaflet-tile-pane {
+  filter: brightness(0.85) contrast(1.1);
 }
