@@ -54,6 +54,16 @@ function fromDateTimeInput(date: string, time: string): Date {
   return new Date(`${date}T${time}`);
 }
 
+// Used by the Location row to show an "open in new tab" affordance
+// whenever the recruiter pastes a video link (Zoom, Teams, Webex,
+// arbitrary) into the field. Tight check — the input still accepts
+// addresses and room names; the link button just stays hidden when
+// the value isn't a URL.
+function isUrlLike(s: string): boolean {
+  const v = s.trim();
+  return /^https?:\/\/\S+$/i.test(v);
+}
+
 const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = [
   {
     id: "interview",
@@ -365,6 +375,18 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
                 placeholder="Paste a Zoom link, address, or room"
                 className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none placeholder:text-court-fg-dim"
               />
+              {isUrlLike(location) && (
+                <a
+                  href={location.trim()}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="Open link in new tab"
+                  title="Open link in new tab"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-court-brand-dark transition hover:bg-court-brand-tint/60"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
             </div>
           </div>
 
