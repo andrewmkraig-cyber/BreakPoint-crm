@@ -14,6 +14,7 @@ import {
   Mail,
   Phone,
   Receipt,
+  Calendar,
   Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ import { usePhoneContext } from "@/lib/phone-context";
 //   ATS — Pipeline → Applicants → Candidates (active recruiting work)
 //   CRM — Clients → Jobs → BD (reference surfaces)
 //   Inbox — Mail → Phone (inbox check)
-//   Ops — Invoices (back-office surfaces; Calendar lands here next session)
+//   Ops · Invoices, Calendar (back-office surfaces)
 // The inbox + ops blocks live toward the bottom because the recruiter
 // spends most of the day in ATS/CRM and only dips into them when an
 // alert (or a billing task) pulls them there.
@@ -63,12 +64,12 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
       { href: "/phone", label: "Phone", icon: Phone },
     ],
   },
-  // OPS — back-office surfaces. Invoices today; Calendar lands here
-  // next session.
+  // OPS · back-office surfaces. Invoices first, Calendar below it.
   {
     title: "Ops",
     items: [
       { href: "/invoices", label: "Invoices", icon: Receipt },
+      { href: "/calendar", label: "Calendar", icon: Calendar },
     ],
   },
 ];
