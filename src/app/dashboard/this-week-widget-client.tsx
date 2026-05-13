@@ -132,7 +132,7 @@ export function ThisWeekWidgetClient({
           calendar drawer in edit mode without a navigation. */}
       <div className="mt-4 grid grid-cols-5">
         {days.map((day, i) => {
-          const visible = day.events.slice(0, day.events.length > 3 ? 2 : 3);
+          const visible = day.events.slice(0, 2);
           const overflow = day.events.length - visible.length;
           return (
             <div
