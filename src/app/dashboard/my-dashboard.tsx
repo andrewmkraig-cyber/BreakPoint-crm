@@ -4,7 +4,6 @@ import { FinancialStrip } from "@/app/dashboard/financial-strip";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
 import { NewsFeed } from "@/components/news-feed";
-import { ownerKeyForCalendar } from "@/lib/calendar/owner-key";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getInvoiceSummary } from "@/lib/invoices";
@@ -17,20 +16,6 @@ import {
   Handshake,
   Send,
 } from "lucide-react";
-
-// "Next in" copy bucketed so a multi-day-out event renders as "2 days"
-// rather than "2742 min". Mirrors the helper in this-week-widget.tsx
-// so the welcome-row meta stays in sync with the widget below.
-function formatNextIn(now: Date, then: Date): string | null {
-  const diffMs = then.getTime() - now.getTime();
-  if (diffMs <= 0) return null;
-  const diffMin = Math.round(diffMs / 60_000);
-  if (diffMin < 60) return `${diffMin} min`;
-  const diffHr = Math.round(diffMin / 60);
-  if (diffMin < 24 * 60) return `${diffHr} hr`;
-  const diffDays = Math.round(diffMin / (24 * 60));
-  return `${diffDays} day${diffDays === 1 ? "" : "s"}`;
-}
 
 function formatShortDate(d: Date): string {
   return new Intl.DateTimeFormat("en-US", {
@@ -49,9 +34,6 @@ function formatShortDate(d: Date): string {
 export async function MyDashboard() {
   const now = new Date();
   const { start: weekStart, end: weekEnd } = getEasternWeekBounds(now);
-  // Calendar strip only renders Mon–Fri; mirror that window so the
-  // welcome meta count matches what the 5-day tile row displays.
-  const calWeekEnd = new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000);
 
   const [org, session] = await Promise.all([
     getCurrentOrg(),
@@ -71,7 +53,6 @@ export async function MyDashboard() {
     placementsMadeCount,
     agreementsSignedCount,
     invoiceSummary,
-    calendarRows,
   ] = await Promise.all([
     prisma.client.count({
       where: { organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
@@ -92,20 +73,6 @@ export async function MyDashboard() {
       where: { organizationId: org.id, uploadedAt: { gte: weekStart, lt: weekEnd } },
     }),
     getInvoiceSummary(org.id),
-    prisma.calendarEvent.findMany({
-      where: {
-        organizationId: org.id,
-        status: { not: "CANCELLED" },
-        startTime: { gte: weekStart, lt: calWeekEnd },
-      },
-      orderBy: { startTime: "asc" },
-      select: {
-        id: true,
-        startTime: true,
-        calendarId: true,
-        calendarName: true,
-      },
-    }),
   ]);
 
   const billedThisQuarterUsd = invoiceSummary.billedThisQuarterCents / 100;
@@ -117,19 +84,6 @@ export async function MyDashboard() {
   const Q2_GOAL_USD = 125_000;
   const q2RevenuePct = Q2_GOAL_USD > 0 ? (billedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
-
-  // Andrew-only filter matches the widget below so the welcome-row
-  // count and "next in" marker stay coherent with the 5-day strip.
-  const akEvents = calendarRows.filter(
-    (r) =>
-      ownerKeyForCalendar(
-        { calendarId: r.calendarId, calendarName: r.calendarName },
-        selfPerson,
-      ) === "ak",
-  );
-  const weekEventCount = akEvents.length;
-  const nextEvent = akEvents.find((e) => e.startTime.getTime() > now.getTime());
-  const nextInLabel = nextEvent ? formatNextIn(now, nextEvent.startTime) : null;
 
   const greeting = firstName ? `Welcome back, ${firstName}.` : "Welcome back.";
   const weekRange = formatEasternWeekRange(weekStart, weekEnd);
@@ -149,20 +103,9 @@ export async function MyDashboard() {
             Activity for {weekRange}. Everything here is live: no targets, just actuals.
           </p>
         </div>
-        <div className="hidden shrink-0 text-right text-[12.5px] text-court-fg-muted sm:block">
+        <div className="hidden shrink-0 text-right sm:block">
           <div className="text-[24px] font-bold tracking-[-0.01em] text-court-fg">
             {todayShort}
-          </div>
-          <div className="mt-0.5">
-            {weekEventCount} event{weekEventCount === 1 ? "" : "s"} this week
-            {nextInLabel != null && (
-              <>
-                {" · "}
-                <span className="font-semibold text-court-brand-dark">
-                  Next in {nextInLabel}
-                </span>
-              </>
-            )}
           </div>
         </div>
       </div>
