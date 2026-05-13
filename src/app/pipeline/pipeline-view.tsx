@@ -31,7 +31,7 @@ export type PlacementDetails = {
   billingContactEmail: string | null;
   expectedStartDate: string | null;
   startConfirmedAt: string | null;
-  invoicingFlagged: boolean;
+  invoiceStatus: "DRAFT" | "SENT" | "PAID" | null;
 };
 
 export type NextInterview = {
@@ -627,17 +627,40 @@ function HiredCells({ row }: { row: PipelineRow }) {
         )}
       </td>
       <td className="px-5 py-3 align-top text-center">
-        {/* Invoicing-flagged stays amber — status cue that should mean the
-            same thing regardless of mode. */}
-        {p?.invoicingFlagged ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-            Flagged
-          </span>
-        ) : (
-          <span className="text-court-fg-muted text-xs">—</span>
-        )}
+        <InvoiceStatusPill status={p?.invoiceStatus ?? null} />
       </td>
     </>
+  );
+}
+
+function InvoiceStatusPill({ status }: { status: "DRAFT" | "SENT" | "PAID" | null }) {
+  // Invoice lifecycle pill — colors track the status meaning across all
+  // three Court modes (paid=green, sent=blue, draft=amber, missing=muted).
+  if (status === "PAID") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-200">
+        Paid
+      </span>
+    );
+  }
+  if (status === "SENT") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-semibold text-blue-700 dark:bg-blue-950/40 dark:text-blue-200">
+        Sent
+      </span>
+    );
+  }
+  if (status === "DRAFT") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+        Draft
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-semibold text-court-fg-muted">
+      No invoice
+    </span>
   );
 }
 

@@ -135,6 +135,31 @@ export default async function PipelinePage({
     const aceCandidateById = new Map(aceCandidates.map((c) => [c.id, c]));
     const aceJobById = new Map(aceJobs.map((j) => [j.id, j]));
 
+    // Hired-stage invoice lookup: pull the single non-VOID invoice per
+    // placement so the Invoicing column can render its lifecycle status
+    // instead of the (stale) invoicingFlagged hint.
+    const hiredPlacementIds = placements
+      .filter((p) => p.stage === "hired")
+      .map((p) => p.id);
+    const hiredInvoices = hiredPlacementIds.length > 0
+      ? await prisma.invoice.findMany({
+          where: {
+            placementId: { in: hiredPlacementIds },
+            status: { not: "VOID" },
+          },
+          select: { placementId: true, status: true },
+        })
+      : [];
+    const invoiceStatusByPlacementId = new Map<string, "DRAFT" | "SENT" | "PAID">();
+    for (const inv of hiredInvoices) {
+      if (inv.placementId) {
+        invoiceStatusByPlacementId.set(
+          inv.placementId,
+          inv.status as "DRAFT" | "SENT" | "PAID",
+        );
+      }
+    }
+
     // Local placements win over RF's stage_name because Ace drove the move.
     const seen = new Set<string>();
     const allRows: PipelineRow[] = [];
@@ -190,7 +215,7 @@ export default async function PipelinePage({
         daysInStage: daysBetween(p.updatedAt.toISOString()),
         isKept: rfEntry?.isKept ?? false,
         placementId: p.id,
-        placement: toPlacementDetails(p),
+        placement: toPlacementDetails(p, invoiceStatusByPlacementId.get(p.id) ?? null),
         nextInterview: isRfCandidate && isRfJob
           ? nextByKey.get(`${p.candidateRfId}:${p.jobRfId}`) ?? null
           : null,
@@ -309,7 +334,10 @@ export default async function PipelinePage({
 
 type PlacementRow = Awaited<ReturnType<typeof prisma.placement.findMany>>[number];
 
-function toPlacementDetails(p: PlacementRow): PlacementDetails {
+function toPlacementDetails(
+  p: PlacementRow,
+  invoiceStatus: "DRAFT" | "SENT" | "PAID" | null,
+): PlacementDetails {
   return {
     id: p.id,
     stage: p.stage as "offer" | "pending_start" | "hired",
@@ -322,7 +350,7 @@ function toPlacementDetails(p: PlacementRow): PlacementDetails {
     billingContactEmail: p.billingContactEmail,
     expectedStartDate: p.expectedStartDate?.toISOString() ?? null,
     startConfirmedAt: p.startConfirmedAt?.toISOString() ?? null,
-    invoicingFlagged: p.invoicingFlagged,
+    invoiceStatus,
   };
 }
 
