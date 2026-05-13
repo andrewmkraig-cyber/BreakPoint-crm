@@ -307,6 +307,12 @@ model Placement {
   invoicingFlagged      Boolean   @default(false)
   invoicedAt            DateTime?
 
+  // Manual city override for the placements dashboard. Lets Andrew fix
+  // rows where Client.location.city is missing or wrong without editing
+  // the client record itself. Reads fall back to Client.location.city
+  // when null.
+  cityOverride          String?
+
   // True if the last stage change was successfully pushed to RF. Currently
   // always false because RF /external has no stage-change endpoint; the UI
   // shows an "(Ace only)" badge when this is false.
