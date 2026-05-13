@@ -393,7 +393,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                   <td className="px-5 py-3 align-top">
                     <Link
                       href={`/jobs/${r.jobId}`}
-                      className="font-medium text-court-fg hover:text-court-accent-dark"
+                      className="text-[13px] font-normal text-court-fg hover:text-court-accent-dark"
                       onClick={(e) => e.stopPropagation()}
                     >
                       {r.jobTitle || "—"}
