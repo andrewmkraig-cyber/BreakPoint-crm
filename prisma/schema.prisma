@@ -327,6 +327,11 @@ model Placement {
   // null means the source wasn't recorded (older rows).
   source String?
 
+  // Sourcing channel the candidate originally came from for this placement.
+  // One of: "LinkedIn" | "Pin" | "Indeed" | "Network" | "Referral" |
+  // "Apollo BD" | "Other". Powers the Financial Performance source mix.
+  candidateSource String?
+
   createdById    String
   organizationId String
   createdAt      DateTime     @default(now())
@@ -693,6 +698,10 @@ model Client {
   lastContact    DateTime?
   lastEngagement DateTime?
   raw            Json?
+  // How this client first entered the desk. One of: "Apollo BD" |
+  // "LinkedIn BD" | "Network" | "Referral" | "Existing client" |
+  // "Website" | "Other". Powers the Financial Performance lead-source mix.
+  leadSource     String?
   organizationId String
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
@@ -969,6 +978,27 @@ model Organization {
   bdOrgConfig          BdOrgConfig?
   calendarEvents       CalendarEvent[]
   aceReminders         AceReminder[]
+  toolExpenses         ToolExpense[]
+}
+
+// Tracks the recurring + one-time tool/software costs the desk pays.
+// Powers the Total Expenses YTD + Gross Margin tiles on the Financial
+// Performance dashboard tab. `cost * paidCount` is the running total
+// paid to date for the line item.
+model ToolExpense {
+  id             String       @id @default(cuid())
+  organizationId String
+  name           String
+  cost           Float
+  frequency      String
+  paidCount      Int          @default(1)
+  startDate      DateTime?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
 }
 
 model Invoice {
