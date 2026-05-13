@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { TabStrip } from "@/components/ui/tab-strip";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   getInvoiceSummary,
@@ -103,23 +102,15 @@ export default async function InvoicesPage({
               {FILTERS.find((f) => f.value === filter)?.label ?? "All"} invoices
             </h2>
           </div>
-          <div className="inline-flex rounded-full border border-court-border bg-court-surface p-0.5 text-sm">
-            {FILTERS.map((f) => (
-              <Link
-                key={f.value}
-                href={f.value === "all" ? "/invoices" : `/invoices?filter=${f.value}`}
-                aria-current={filter === f.value ? "page" : undefined}
-                className={
-                  "rounded-full px-3 py-1 text-[12px] transition " +
-                  (filter === f.value
-                    ? "bg-court-fg text-court-surface font-semibold"
-                    : "text-court-fg-muted hover:text-court-fg")
-                }
-              >
-                {f.label}
-              </Link>
-            ))}
-          </div>
+          <TabStrip<InvoiceListFilter>
+            ariaLabel="Invoice filter"
+            activeId={filter}
+            items={FILTERS.map((f) => ({
+              id: f.value,
+              label: f.label,
+              href: f.value === "all" ? "/invoices" : `/invoices?filter=${f.value}`,
+            }))}
+          />
         </div>
 
         <div className="overflow-x-auto">
