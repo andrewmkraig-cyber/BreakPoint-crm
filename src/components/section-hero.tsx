@@ -1,15 +1,15 @@
 import type { ReactNode } from "react";
 
-// Unified hero header for the four Clubhouse dashboard tabs
+// Compact page-header for the four Clubhouse dashboard tabs
 // (This Week, Scoreboard, Placements, Financial Performance).
-// The hero title is intentionally lighter and tighter than the
-// top-bar app H1 so it visually sits BELOW that heading in the
-// hierarchy — i.e. tabs read as section openers, not page titles.
+// Sized to read as an executive-SaaS section opener — NOT a
+// marketing landing hero — so the actual KPI cards sit close
+// underneath. The top-bar app H1 ("Clubhouse") remains the
+// dominant heading on the page.
 //
-// Court Mode tokens only; no hardcoded colors. The `trailing` slot
-// hosts each tab's right-side affordance (date widget, period
-// pill, period TabStrip) without baking those concerns into this
-// component.
+// Court Mode tokens only; no hardcoded colors. The `trailing`
+// slot hosts each tab's right-side affordance (date widget,
+// period pill, period TabStrip).
 export function SectionHero({
   eyebrow,
   title,
@@ -24,29 +24,16 @@ export function SectionHero({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-4 pb-2 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
+    <div className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
       <div className="min-w-0">
-        <p
-          className="text-[11px] font-semibold uppercase text-court-brand"
-          style={{ letterSpacing: "0.22em" }}
-        >
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           {eyebrow}
         </p>
-        <h2
-          className="mt-3 font-serif font-bold text-court-fg"
-          style={{
-            fontSize: "clamp(44px, 4vw, 60px)",
-            letterSpacing: "-0.035em",
-            lineHeight: 1.04,
-          }}
-        >
+        <h2 className="mt-2 font-serif text-3xl font-semibold leading-tight text-court-fg sm:text-4xl">
           {title}
         </h2>
         {description ? (
-          <p
-            className="mt-3 max-w-[900px] text-base text-court-fg-muted"
-            style={{ lineHeight: 1.45 }}
-          >
+          <p className="mt-2 max-w-[820px] text-base leading-[1.45] text-court-fg-muted">
             {description}
           </p>
         ) : null}

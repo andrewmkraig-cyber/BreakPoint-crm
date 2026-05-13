@@ -100,11 +100,11 @@ export async function MyDashboard() {
   const dateParts = getCalendarDateParts(now);
 
   return (
-    <div className="flex w-full flex-col gap-8">
+    <div className="flex w-full flex-col gap-6">
       <SectionHero
         eyebrow="THIS WEEK"
         title={greeting}
-        description={`Activity for ${weekRange}. Everything here is live — no targets, just actuals.`}
+        description={`Activity for ${weekRange}. Everything here is live - no targets, just actuals.`}
         trailing={
           <div className="hidden sm:block">
             <div className="inline-flex flex-col overflow-hidden rounded-2xl shadow-sm">

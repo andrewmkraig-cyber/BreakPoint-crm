@@ -23,7 +23,7 @@ export async function Scoreboard() {
   const data = await getScoreboardData();
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <ScoreboardHeader periodLabel={data.period.label} periodRange={formatPeriodRange(data.period.start, data.period.endExclusive)} />
       <KpiRow kpis={data.kpis} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -45,7 +45,7 @@ function ScoreboardHeader({ periodLabel, periodRange }: { periodLabel: string; p
     <SectionHero
       eyebrow="SCOREBOARD"
       title="The numbers that matter."
-      description="Deal flow, forecast, and where the desk is winning. Everything here is live activity — no targets, just actuals."
+      description="Deal flow, forecast, and where the desk is winning. Everything here is live - no targets, just actuals."
       trailing={
         <div className="inline-flex items-center gap-2 rounded-full border border-court-border bg-court-surface px-3.5 py-1.5 text-sm font-medium text-court-fg">
           <CalendarRange className="h-4 w-4 text-court-fg-muted" />

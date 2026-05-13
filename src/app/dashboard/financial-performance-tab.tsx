@@ -220,7 +220,7 @@ export async function FinancialPerformanceTab() {
   const quarterLabel = `Q${currentQuarterIndex + 1} ${year}`;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <SectionHero
         eyebrow="FINANCIAL PERFORMANCE"
         title="Revenue, margins, and ROI."
