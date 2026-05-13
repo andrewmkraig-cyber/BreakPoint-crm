@@ -4,7 +4,7 @@ import type React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutGrid,
+  Home,
   User,
   Users,
   GitBranch,
@@ -22,7 +22,7 @@ import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
 // Main nav grouped into recruiter workflow sections:
-//   Dashboard (ungrouped overview at top)
+//   Clubhouse (ungrouped overview at top — home/dashboard surface)
 //   ATS — Pipeline → Applicants → Candidates (active recruiting work)
 //   CRM — Clients → Jobs → BD (reference surfaces)
 //   Inbox — Mail → Phone (inbox check)
@@ -38,7 +38,7 @@ type NavGroup = {
 const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: null,
-    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutGrid }],
+    items: [{ href: "/dashboard", label: "Clubhouse", icon: Home }],
   },
   {
     title: "ATS",

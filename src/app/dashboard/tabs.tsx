@@ -3,7 +3,7 @@ import { TabStrip } from "@/components/ui/tab-strip";
 export type DashboardTab = "dashboard" | "scoreboard";
 
 export const DASHBOARD_TAB_LABELS: Record<DashboardTab, string> = {
-  dashboard: "Dashboard",
+  dashboard: "Clubhouse",
   scoreboard: "Scoreboard",
 };
 

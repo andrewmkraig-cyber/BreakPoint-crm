@@ -7,7 +7,7 @@ import {
   Building2,
   Briefcase,
   GitBranch,
-  LayoutGrid,
+  Home,
   Mail,
   Menu,
   Phone,
@@ -41,7 +41,7 @@ type NavGroup = {
 const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: null,
-    items: [{ href: "/dashboard", label: "Dashboard", icon: LayoutGrid }],
+    items: [{ href: "/dashboard", label: "Clubhouse", icon: Home }],
   },
   {
     title: "ATS",
