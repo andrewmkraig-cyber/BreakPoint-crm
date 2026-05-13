@@ -22,9 +22,12 @@ export type PlacementsDashboardBillingStatus =
   | "COLLECTED"
   | "OVERDUE";
 
+export type PlacementsDashboardPlacementType = "SALARY" | "CONTRACT";
+
 export type PlacementsDashboardRow = {
   id: string;
   candidateFullName: string;
+  clientId: string | null;
   clientName: string;
   clientIndustry: string | null;
   roleTitle: string | null;
@@ -32,6 +35,21 @@ export type PlacementsDashboardRow = {
   city: string | null;
   feeAmount: number | null;
   billingStatus: PlacementsDashboardBillingStatus;
+  // Snapshot of Placement.acceptedSalary (annual base) for direct-hire
+  // placements. null when not captured (typical for contract roles).
+  baseSalary: number | null;
+  // Placement.placedAt — the moment the offer was accepted and the fee
+  // locked. Drives the Offer→Start lead-time KPI alongside startDate.
+  offerAcceptedAt: Date | null;
+  // SALARY for direct-hire / permanent placements, CONTRACT for
+  // staffing / hourly. Derived from Job.employmentType when set; falls
+  // back to "did the recruiter capture an annual salary?".
+  placementType: PlacementsDashboardPlacementType;
+  // True when this row's client has at least one placement landing in
+  // the previous calendar year (relative to now). Powers the repeat-
+  // client KPI without forcing every consumer to run the same lookback
+  // query independently.
+  clientHadPriorYearPlacement: boolean;
 };
 
 type ClientLocationJson = {
@@ -66,6 +84,16 @@ function cityFromClientLocation(location: Prisma.JsonValue | null | undefined): 
   return city ? city : null;
 }
 
+function derivePlacementType(args: {
+  employmentType: string | null;
+  acceptedSalary: number | null;
+}): PlacementsDashboardPlacementType {
+  const et = args.employmentType?.toLowerCase().trim() ?? "";
+  if (et.includes("contract")) return "CONTRACT";
+  if (et) return "SALARY";
+  return args.acceptedSalary != null ? "SALARY" : "CONTRACT";
+}
+
 function deriveBillingStatus(args: {
   startDate: Date | null;
   invoiceStatus: "DRAFT" | "SENT" | "PAID" | "VOID" | null;
@@ -91,38 +119,75 @@ export async function getPlacementsDashboardData(
   const now = new Date();
   const { start, end } = periodRange(period, now);
 
+  // Prior-year window for the repeat-client KPI. Calendar-year-based
+  // ("did this client place with us in 2025?") regardless of the
+  // current period — the recruiter-facing meaning is "this is a
+  // returning client," not "this client placed within the last N
+  // months from the period start."
+  const priorYearStart = new Date(now.getFullYear() - 1, 0, 1);
+  const priorYearEnd = new Date(now.getFullYear(), 0, 1);
+
   // Period window pivots on expectedStartDate — the placement's promised
   // start is the recruiter-facing date on the dashboard. Rows without an
   // expectedStartDate fall through to placedAt so a freshly-locked
   // placement awaiting its start date still surfaces inside the period.
-  const placements = await prisma.placement.findMany({
-    where: {
-      organizationId: orgId,
-      stage: { in: ["hired", "pending_start"] },
-      OR: [
-        { expectedStartDate: { gte: start, lt: end } },
-        { AND: [{ expectedStartDate: null }, { placedAt: { gte: start, lt: end } }] },
-      ],
-    },
-    select: {
-      id: true,
-      stage: true,
-      expectedStartDate: true,
-      offerTitle: true,
-      feeTotal: true,
-      cityOverride: true,
-      candidate: { select: { firstName: true, lastName: true } },
-      client: { select: { name: true, industry: true, location: true } },
-      job: { select: { title: true } },
-      invoices: {
-        where: { status: { not: "VOID" } },
-        orderBy: { createdAt: "desc" },
-        take: 1,
-        select: { status: true, feeAmount: true, dueDate: true },
+  const [placements, priorYearGroups] = await Promise.all([
+    prisma.placement.findMany({
+      where: {
+        organizationId: orgId,
+        stage: { in: ["hired", "pending_start"] },
+        OR: [
+          { expectedStartDate: { gte: start, lt: end } },
+          { AND: [{ expectedStartDate: null }, { placedAt: { gte: start, lt: end } }] },
+        ],
       },
-    },
-    orderBy: [{ expectedStartDate: "asc" }],
-  });
+      select: {
+        id: true,
+        stage: true,
+        clientId: true,
+        placedAt: true,
+        expectedStartDate: true,
+        offerTitle: true,
+        feeTotal: true,
+        acceptedSalary: true,
+        cityOverride: true,
+        candidate: { select: { firstName: true, lastName: true } },
+        client: { select: { name: true, industry: true, location: true } },
+        job: { select: { title: true, employmentType: true } },
+        invoices: {
+          where: { status: { not: "VOID" } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { status: true, feeAmount: true, dueDate: true },
+        },
+      },
+      orderBy: [{ expectedStartDate: "asc" }],
+    }),
+    prisma.placement.findMany({
+      where: {
+        organizationId: orgId,
+        stage: { in: ["hired", "pending_start"] },
+        clientId: { not: null },
+        OR: [
+          { expectedStartDate: { gte: priorYearStart, lt: priorYearEnd } },
+          {
+            AND: [
+              { expectedStartDate: null },
+              { placedAt: { gte: priorYearStart, lt: priorYearEnd } },
+            ],
+          },
+        ],
+      },
+      select: { clientId: true },
+      distinct: ["clientId"],
+    }),
+  ]);
+
+  const priorYearClientIds = new Set(
+    priorYearGroups
+      .map((row) => row.clientId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  );
 
   return placements.map<PlacementsDashboardRow>((p) => {
     const candidateFullName = [p.candidate?.firstName, p.candidate?.lastName]
@@ -132,9 +197,14 @@ export async function getPlacementsDashboardData(
     const invoice = p.invoices[0] ?? null;
     const fallbackCity = cityFromClientLocation(p.client?.location ?? null);
     const cityOverride = p.cityOverride?.trim();
+    const placementType = derivePlacementType({
+      employmentType: p.job?.employmentType ?? null,
+      acceptedSalary: p.acceptedSalary,
+    });
     return {
       id: p.id,
       candidateFullName,
+      clientId: p.clientId ?? null,
       clientName: p.client?.name ?? "",
       clientIndustry: p.client?.industry ?? null,
       roleTitle: p.offerTitle ?? p.job?.title ?? null,
@@ -147,6 +217,12 @@ export async function getPlacementsDashboardData(
         invoiceDueDate: invoice?.dueDate ?? null,
         now,
       }),
+      baseSalary: p.acceptedSalary ?? null,
+      offerAcceptedAt: p.placedAt,
+      placementType,
+      clientHadPriorYearPlacement: p.clientId
+        ? priorYearClientIds.has(p.clientId)
+        : false,
     };
   });
 }

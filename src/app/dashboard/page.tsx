@@ -3,10 +3,16 @@ import { authOptions } from "@/lib/auth";
 import { DashboardTabs, resolveDashboardTab } from "@/app/dashboard/tabs";
 import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
+import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ tab?: string | string[] }> | { tab?: string | string[] };
+type RawParams = { tab?: string | string[]; period?: string | string[] };
+type SearchParams = Promise<RawParams> | RawParams;
+
+function firstParam(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -16,15 +22,16 @@ export default async function DashboardPage({
   // Session resolved here for auth-gating elsewhere.
   await getServerSession(authOptions);
 
-  const resolved = (await Promise.resolve(searchParams ?? {})) as { tab?: string | string[] };
-  const rawTab = Array.isArray(resolved.tab) ? resolved.tab[0] : resolved.tab;
-  const active = resolveDashboardTab(rawTab);
+  const resolved = (await Promise.resolve(searchParams ?? {})) as RawParams;
+  const active = resolveDashboardTab(firstParam(resolved.tab));
+  const period = resolvePlacementsPeriod(firstParam(resolved.period));
 
   return (
     <div className="flex w-full flex-col gap-6">
       <DashboardTabs active={active} />
       {active === "dashboard" && <MyDashboard />}
       {active === "scoreboard" && <Scoreboard />}
+      {active === "placements" && <PlacementsTab period={period} />}
     </div>
   );
 }
