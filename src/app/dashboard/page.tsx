@@ -29,10 +29,12 @@ export default async function DashboardPage({
   const period = resolvePlacementsPeriod(firstParam(resolved.period));
 
   return (
-    <div className="flex w-full flex-col gap-2">
-      <div className="flex items-start justify-between gap-4">
-        <DashboardTabs active={active} />
-        <CalendarWidget />
+    <div className="relative flex w-full flex-col gap-2">
+      <DashboardTabs active={active} />
+      <div className="pointer-events-none absolute right-0 top-0">
+        <div className="pointer-events-auto">
+          <CalendarWidget />
+        </div>
       </div>
       {active === "dashboard" && <MyDashboard />}
       {active === "scoreboard" && <Scoreboard />}
