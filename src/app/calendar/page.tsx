@@ -172,6 +172,8 @@ export default async function CalendarPage() {
       clientId: row.clientId ?? undefined,
       calendarName: row.calendarName,
       calendarColor: row.calendarColor ?? undefined,
+      meetLink: row.meetLink ?? undefined,
+      htmlLink: row.htmlLink ?? undefined,
     };
   });
 

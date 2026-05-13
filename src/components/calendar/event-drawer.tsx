@@ -6,10 +6,12 @@ import {
   Check,
   ChevronDown,
   Clock,
+  ExternalLink,
   Globe,
   MapPin,
   Plus,
   Trash2,
+  Video,
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -49,7 +51,6 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
   const [reminderOn, setReminderOn] = useState(true);
-  const [newGuestAdded, setNewGuestAdded] = useState(false);
 
   useEffect(() => {
     if (event) {
@@ -59,7 +60,6 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
       setType("interview");
       setTitle("");
     }
-    setNewGuestAdded(false);
   }, [event?.id, open]);
 
   const meta = eventTypeMeta(type);
@@ -100,6 +100,17 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
               className="mt-1 w-full bg-transparent font-serif text-[22px] font-bold tracking-tight text-court-fg outline-none placeholder:text-court-fg-dim focus:outline-none"
             />
           </div>
+          {mode === "edit" && event?.htmlLink && (
+            <a
+              href={event.htmlLink}
+              target="_blank"
+              rel="noreferrer"
+              title="Open in Google Calendar to edit or reschedule"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3 text-[11.5px] font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
+            >
+              Open in Google <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
           <button
             type="button"
             onClick={onClose}
@@ -191,16 +202,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
 
           {/* Guests */}
           <div>
-            <div className="flex items-baseline justify-between">
-              <FieldLabel>Guests</FieldLabel>
-              <button
-                type="button"
-                onClick={() => setNewGuestAdded(true)}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-court-brand-dark hover:text-court-brand"
-              >
-                <Plus className="h-3 w-3" /> Add from Ace
-              </button>
-            </div>
+            <FieldLabel>Guests</FieldLabel>
             <div className="space-y-1.5">
               {(event?.guests ?? []).length === 0 && (
                 <div className="text-[11.5px] text-court-fg-muted">No guests.</div>
@@ -214,39 +216,9 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
                     {g.split(" ").map((p) => p[0]).join("").slice(0, 2)}
                   </span>
                   <span className="flex-1 truncate text-[13px] text-court-fg">{g}</span>
-                  <button
-                    type="button"
-                    aria-label="Remove guest"
-                    className="text-court-fg-muted hover:text-court-fg"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
                 </div>
               ))}
-              {newGuestAdded && (
-                <div className="flex items-center gap-2.5 rounded-[10px] border border-court-brand/40 bg-court-brand-tint/40 px-3 py-2">
-                  <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-court-brand text-[10px] font-bold text-white">
-                    JT
-                  </span>
-                  <span className="flex-1 truncate text-[13px] text-court-fg">
-                    Jordan Tate
-                  </span>
-                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-court-brand-dark">
-                    New · Team
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Remove guest"
-                    className="text-court-fg-muted hover:text-court-fg"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              )}
-              <input
-                placeholder="Type a name from Ace candidates, contacts, or team"
-                className="mt-1 h-[38px] w-full rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
-              />
+              <GuestTypeahead />
             </div>
           </div>
 
@@ -254,15 +226,32 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
           <div>
             <FieldLabel>Location or link</FieldLabel>
             <InputRow>
-              <MapPin className="h-3 w-3 text-court-fg-muted" />
-              {event?.location ? (
-                <span className="flex-1 truncate text-court-fg">
-                  {event.location}
-                </span>
+              {event?.meetLink ? (
+                <>
+                  <Video className="h-3 w-3 text-court-brand-dark" />
+                  <a
+                    href={event.meetLink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 truncate font-medium text-court-brand-dark hover:underline"
+                  >
+                    {event.meetLink.replace(/^https?:\/\//, "")}
+                  </a>
+                </>
+              ) : event?.location ? (
+                <>
+                  <MapPin className="h-3 w-3 text-court-fg-muted" />
+                  <span className="flex-1 truncate text-court-fg">
+                    {event.location}
+                  </span>
+                </>
               ) : (
-                <span className="text-court-fg-muted">
-                  Paste a Zoom link, address, or room
-                </span>
+                <>
+                  <MapPin className="h-3 w-3 text-court-fg-muted" />
+                  <span className="text-court-fg-muted">
+                    Paste a Zoom link, address, or room
+                  </span>
+                </>
               )}
             </InputRow>
           </div>
@@ -336,23 +325,17 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
               <div className="flex-1" />
               <button
                 type="button"
-                disabled={!newGuestAdded}
-                title={
-                  newGuestAdded
-                    ? "Notify only the newly-added guests"
-                    : "Add a guest to enable"
-                }
-                className={cn(
-                  "h-9 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg",
-                  !newGuestAdded && "cursor-not-allowed opacity-50",
-                  newGuestAdded && "hover:border-court-brand/40 hover:bg-court-brand-tint",
-                )}
+                disabled
+                title="Native edit-in-Ace is coming next — use Open in Google for now."
+                className="h-9 cursor-not-allowed rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg opacity-50"
               >
                 Save · notify new only
               </button>
               <button
                 type="button"
-                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white hover:bg-court-brand-dark"
+                disabled
+                title="Native edit-in-Ace is coming next — use Open in Google for now."
+                className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white opacity-60"
               >
                 <Check className="h-3 w-3" /> Save · notify all
               </button>
@@ -377,6 +360,161 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
           )}
         </div>
       </aside>
+    </>
+  );
+}
+
+type GuestSuggestion = { name: string; email: string };
+
+// Typeahead for the drawer's guest field. Debounced query against
+// /api/calendar/people-search; arrow-key navigation; Enter/click
+// commits a pick. The selected guest is held in local state — actual
+// persistence to Google + Neon will land alongside the Save wiring
+// in the next prompt slice.
+function GuestTypeahead() {
+  const [query, setQuery] = useState("");
+  const [picked, setPicked] = useState<GuestSuggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<GuestSuggestion[]>([]);
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 1) {
+      setSuggestions([]);
+      setOpen(false);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await fetch(
+          `/api/calendar/people-search?q=${encodeURIComponent(q)}`,
+          { cache: "no-store" },
+        );
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { people?: GuestSuggestion[] };
+        if (cancelled) return;
+        const list = (body.people ?? []).filter(
+          (p) => !picked.some((g) => g.email.toLowerCase() === p.email.toLowerCase()),
+        );
+        setSuggestions(list);
+        setActiveIdx(0);
+        setOpen(list.length > 0);
+      } catch {
+        // Silent — typeahead just stays closed.
+      }
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [query, picked]);
+
+  function commit(p: GuestSuggestion) {
+    setPicked((prev) => [...prev, p]);
+    setQuery("");
+    setSuggestions([]);
+    setOpen(false);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (!open || suggestions.length === 0) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveIdx((i) => (i + 1) % suggestions.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveIdx((i) => (i - 1 + suggestions.length) % suggestions.length);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const p = suggestions[activeIdx];
+      if (p) commit(p);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+    }
+  }
+
+  function initials(name: string, email: string) {
+    const source = name.trim() || email.split("@")[0] || "?";
+    const parts = source.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return source.slice(0, 2).toUpperCase();
+  }
+
+  return (
+    <>
+      {picked.map((p) => (
+        <div
+          key={p.email}
+          className="flex items-center gap-2.5 rounded-[10px] border border-court-brand/40 bg-court-brand-tint/40 px-3 py-2"
+        >
+          <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-court-brand text-[10px] font-bold text-white">
+            {initials(p.name, p.email)}
+          </span>
+          <span className="flex-1 truncate text-[13px] text-court-fg">
+            {p.name || p.email}
+          </span>
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-court-brand-dark">
+            New
+          </span>
+          <button
+            type="button"
+            aria-label="Remove guest"
+            onClick={() =>
+              setPicked((prev) => prev.filter((g) => g.email !== p.email))
+            }
+            className="text-court-fg-muted hover:text-court-fg"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
+      ))}
+      <div className="relative">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={onKeyDown}
+          onFocus={() => suggestions.length > 0 && setOpen(true)}
+          onBlur={() => window.setTimeout(() => setOpen(false), 100)}
+          placeholder="Type a name from Ace candidates, contacts, or team"
+          className="mt-1 h-[38px] w-full rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
+        />
+        {open && suggestions.length > 0 && (
+          <ul className="absolute left-0 right-0 top-[44px] z-20 max-h-[260px] overflow-auto rounded-md border border-court-border bg-court-surface py-1 shadow-lg">
+            {suggestions.map((p, i) => (
+              <li
+                key={p.email}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  commit(p);
+                }}
+                onMouseEnter={() => setActiveIdx(i)}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2.5 px-3 py-1.5",
+                  i === activeIdx
+                    ? "bg-court-brand-tint/60"
+                    : "hover:bg-court-surface-subtle",
+                )}
+              >
+                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full bg-court-surface-subtle text-[10px] font-bold text-court-fg">
+                  {initials(p.name, p.email)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-medium text-court-fg">
+                    {p.name || p.email}
+                  </div>
+                  {p.name && (
+                    <div className="truncate text-[11.5px] text-court-fg-muted">
+                      {p.email}
+                    </div>
+                  )}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </>
   );
 }

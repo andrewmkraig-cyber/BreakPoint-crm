@@ -53,7 +53,20 @@ type GoogleEvent = {
   end?: GoogleEventTime;
   location?: string;
   attendees?: GoogleEventAttendee[];
+  hangoutLink?: string;
+  htmlLink?: string;
+  conferenceData?: {
+    entryPoints?: { entryPointType?: string; uri?: string }[];
+  };
 };
+
+function pickMeetLink(ev: GoogleEvent): string | null {
+  if (ev.hangoutLink) return ev.hangoutLink;
+  const video = ev.conferenceData?.entryPoints?.find(
+    (e) => e.entryPointType === "video" && typeof e.uri === "string",
+  );
+  return video?.uri ?? null;
+}
 
 type GoogleEventsResponse = {
   items?: GoogleEvent[];
@@ -147,6 +160,9 @@ export async function syncGoogleCalendars(
       const status: "CONFIRMED" | "TENTATIVE" =
         ev.status === "tentative" ? "TENTATIVE" : "CONFIRMED";
 
+      const meetLink = pickMeetLink(ev);
+      const htmlLink = ev.htmlLink ?? null;
+
       await prisma.calendarEvent.upsert({
         where: {
           organizationId_googleEventId_calendarId: {
@@ -167,6 +183,8 @@ export async function syncGoogleCalendars(
           endTime,
           allDay,
           location: ev.location ?? null,
+          meetLink,
+          htmlLink,
           attendees: ev.attendees
             ? (ev.attendees as unknown as Prisma.InputJsonValue)
             : Prisma.JsonNull,
@@ -182,6 +200,8 @@ export async function syncGoogleCalendars(
           endTime,
           allDay,
           location: ev.location ?? null,
+          meetLink,
+          htmlLink,
           attendees: ev.attendees
             ? (ev.attendees as unknown as Prisma.InputJsonValue)
             : Prisma.JsonNull,

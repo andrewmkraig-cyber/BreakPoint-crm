@@ -1049,6 +1049,16 @@ model CalendarEvent {
   location       String?
   attendees      Json?
   status         CalendarEventStatus @default(CONFIRMED)
+  // Conference link surfaced from Google: hangoutLink first, then the
+  // first video entryPoint in conferenceData. Stored separately from
+  // location so a Zoom URL in the location field never overwrites it
+  // and vice versa. Null when the Google event has no video link.
+  meetLink       String?
+  // Google's own canonical URL for the event (htmlLink). Used by the
+  // drawer's "Open in Google Calendar" bridge so the recruiter can
+  // reschedule/edit in Google while Ace-native editing is still being
+  // wired up.
+  htmlLink       String?
   candidateId    String?
   jobId          String?
   clientId       String?

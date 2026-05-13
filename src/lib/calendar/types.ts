@@ -21,6 +21,13 @@ export type CalendarEvent = {
   clientId?: string;
   calendarName?: string;
   calendarColor?: string;
+  // Video-conference URL surfaced from Google (hangoutLink or
+  // conferenceData.entryPoints). Rendered as a clickable link in the
+  // drawer's Location field when present.
+  meetLink?: string;
+  // Google's own canonical URL for the event. Used as the
+  // "Open in Google Calendar" bridge in the drawer header.
+  htmlLink?: string;
 };
 
 export type CalendarReminder = {
