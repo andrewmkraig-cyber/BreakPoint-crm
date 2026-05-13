@@ -129,14 +129,32 @@ export async function ThisWeekWidget({
   // Saturday 00:00 ET — exclusive end of the Mon-Fri window.
   const weekEnd = new Date(weekStart.getTime() + 5 * 24 * 60 * 60 * 1000);
 
-  const rowsAll = await prisma.calendarEvent.findMany({
-    where: {
-      organizationId: orgId,
-      status: { not: "CANCELLED" },
-      startTime: { gte: weekStart, lt: weekEnd },
-    },
-    orderBy: { startTime: "asc" },
-  });
+  const [rowsAll, eventLinkedReminders] = await Promise.all([
+    prisma.calendarEvent.findMany({
+      where: {
+        organizationId: orgId,
+        status: { not: "CANCELLED" },
+        startTime: { gte: weekStart, lt: weekEnd },
+      },
+      orderBy: { startTime: "asc" },
+    }),
+    // Drives the drawer's "Ace reminder" toggle when the user opens an
+    // event from the dashboard tile. Without this, the toggle initializes
+    // to the default (off) regardless of what's actually persisted.
+    prisma.aceReminder.findMany({
+      where: {
+        organizationId: orgId,
+        dismissed: false,
+        calendarEventId: { not: null },
+      },
+      select: { calendarEventId: true },
+    }),
+  ]);
+  const eventsWithReminders = new Set(
+    eventLinkedReminders
+      .map((r) => r.calendarEventId)
+      .filter((id): id is string => id != null),
+  );
 
   // Clubhouse widget is Andrew's view — strip any row whose owner key
   // resolves to anything other than "ak". Austin's events stay on
@@ -160,13 +178,14 @@ export async function ThisWeekWidget({
           .map((a) => (a.displayName ?? a.email ?? "").trim())
           .filter((s) => s.length > 0)
       : undefined;
+    const overrideType = row.typeOverride as CalendarEventType | null;
     return {
       id: row.id,
       title: row.title,
       startTime: row.startTime,
       endTime: row.endTime,
       allDay: row.allDay,
-      type: deriveType(row.title, row.calendarName),
+      type: overrideType ?? deriveType(row.title, row.calendarName),
       meta: row.description ?? undefined,
       guests,
       location: row.location ?? undefined,
@@ -178,6 +197,7 @@ export async function ThisWeekWidget({
       calendarColor: row.calendarColor ?? undefined,
       meetLink: row.meetLink ?? undefined,
       htmlLink: row.htmlLink ?? undefined,
+      reminderEnabled: eventsWithReminders.has(row.id),
     };
   });
 

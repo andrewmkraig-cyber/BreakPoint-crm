@@ -20,7 +20,7 @@ export function KpiTile({
   return (
     <div
       className={cn(
-        "flex h-full flex-col rounded-2xl border bg-court-surface px-3 py-3 transition-shadow",
+        "flex h-full flex-col rounded-2xl border bg-court-surface px-3 py-2 transition-shadow",
         live
           ? "border-court-brand/35"
           : "border-court-border shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]",
@@ -36,18 +36,18 @@ export function KpiTile({
     >
       <div className="flex items-center gap-2">
         <div
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
           aria-hidden
         >
           <Icon className="h-3 w-3" />
         </div>
-        <div className="min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
+        <div className="min-w-0 flex-1 text-[9px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
           {label}
         </div>
       </div>
       <div
         className={cn(
-          "mt-2 text-center font-serif text-[34px] font-extrabold leading-none tracking-[-0.04em] tabular-nums",
+          "mt-1.5 text-center font-serif text-[20px] font-semibold leading-none tracking-[-0.04em] tabular-nums",
           isZero ? "text-court-fg-dim" : "text-court-fg",
         )}
       >

@@ -10,6 +10,7 @@ import {
   patchCalendarEventDetails,
 } from "@/lib/google-calendar";
 import { prisma } from "@/lib/prisma";
+import type { CalendarEventType } from "@/lib/calendar/types";
 
 // Server actions backing the calendar event drawer's Save / Delete.
 // All actions push to Google first, then mirror the change into Neon
@@ -59,6 +60,10 @@ export type UpdateCalendarEventInput = {
   // false, we dismiss any matching reminders so the toggle going off
   // takes effect immediately.
   reminderEnabled: boolean;
+  // Recruiter-chosen event type from the drawer pill picker. Persisted
+  // verbatim to CalendarEvent.typeOverride; readers prefer this over
+  // the title-based deriveType heuristic when set.
+  type: CalendarEventType;
 };
 
 const REMINDER_LEAD_MS = 15 * 60 * 1000;
@@ -188,6 +193,7 @@ export async function updateCalendarEventAction(
       startTime: start,
       endTime: end,
       attendees: mergedAttendees as unknown as object,
+      typeOverride: input.type,
       syncedAt: new Date(),
     },
   });
@@ -248,6 +254,11 @@ export async function updateCalendarEventAction(
   }
 
   revalidatePath("/calendar");
+  // Dashboard's "This Week" widget renders the same events and reads
+  // reminder linkage server-side, so it needs invalidation too — otherwise
+  // a save from the dashboard tile lands in Neon but the reopened drawer
+  // keeps showing the pre-save type / reminder state.
+  revalidatePath("/dashboard");
 }
 
 export async function deleteCalendarEventAction(input: {
@@ -287,4 +298,5 @@ export async function deleteCalendarEventAction(input: {
     },
   });
   revalidatePath("/calendar");
+  revalidatePath("/dashboard");
 }

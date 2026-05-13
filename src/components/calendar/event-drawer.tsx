@@ -247,6 +247,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
         newGuests,
         notifyMode,
         reminderEnabled: reminderOn,
+        type,
       });
       router.refresh();
       onClose();

@@ -1092,6 +1092,11 @@ model CalendarEvent {
   candidateId    String?
   jobId          String?
   clientId       String?
+  // Recruiter-chosen event type override from the drawer pill picker.
+  // Null means "let the page derive a type heuristically from title +
+  // calendar name"; a non-null value overrides the heuristic and is
+  // canonical. One of: "interview" | "client" | "reminder" | "other".
+  typeOverride   String?
   syncedAt       DateTime            @default(now())
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt

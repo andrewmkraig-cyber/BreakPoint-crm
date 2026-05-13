@@ -218,13 +218,19 @@ export default async function CalendarPage() {
     // Check every row in the dedup group — a reminder might be linked
     // to either Andrew's copy or Austin's copy of the same event.
     const reminderEnabled = groupRows.some((r) => eventsWithReminders.has(r.id));
+    // Recruiter-chosen type wins over the title-based heuristic. The
+    // override is mirrored to every row in the group on save, so any
+    // dedup copy is a valid source.
+    const overrideType = groupRows
+      .map((r) => r.typeOverride as CalendarEventType | null)
+      .find((t): t is CalendarEventType => t != null);
     return {
       id: row.id,
       title: row.title,
       startTime: row.startTime,
       endTime: row.endTime,
       allDay: row.allDay,
-      type: deriveType(row.title, row.calendarName),
+      type: overrideType ?? deriveType(row.title, row.calendarName),
       meta: row.description ?? undefined,
       guests,
       location: row.location ?? undefined,
