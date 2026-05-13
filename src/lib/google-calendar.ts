@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 // sign-in (see src/lib/auth.ts). Users signed in before the scope was added
 // will need to sign out and back in for calendar calls to succeed.
 
-async function getFreshAccessToken(userId: string): Promise<string> {
+export async function getFreshAccessToken(userId: string): Promise<string> {
   const acct = await prisma.account.findFirst({
     where: { userId, provider: "google" },
     select: { access_token: true, refresh_token: true, expires_at: true },

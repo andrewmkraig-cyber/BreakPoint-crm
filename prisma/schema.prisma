@@ -414,6 +414,7 @@ model Candidate {
   listMemberships CandidateListMembership[]
   gmailTags       GmailThreadTag[]
   matches         CandidateMatch[]
+  calendarEvents  CalendarEvent[]
 
   @@index([email])
   @@index([firstName])
@@ -707,6 +708,7 @@ model Client {
   invoices      Invoice[]
   gmailTags     GmailThreadTag[]
   clientSignals ClientSignal[]
+  calendarEvents CalendarEvent[]
 
   @@index([name])
   @@index([organizationId])
@@ -799,6 +801,7 @@ model Job {
   interviews   Interview[]
   matches      CandidateMatch[]
   boardStatuses JobBoardStatus[]
+  calendarEvents CalendarEvent[]
 
   @@index([clientId])
   @@index([isOpen])
@@ -964,6 +967,7 @@ model Organization {
   bdActivities         BDActivity[]
   clientSignals        ClientSignal[]
   bdOrgConfig          BdOrgConfig?
+  calendarEvents       CalendarEvent[]
 }
 
 model Invoice {
@@ -1019,6 +1023,51 @@ enum InvoicePaymentMethod {
   CHECK
   ACH
   CREDIT
+}
+
+// Mirrors a Google Calendar event for read-only display inside Ace.
+// The sync job upserts these rows on demand keyed by
+// (organizationId, googleEventId, calendarId) — calendarId varies per
+// shared calendar (Andrew's primary + Austin's + any team calendars)
+// so the same Google eventId can appear once per calendar without
+// colliding. Status, attendees, and location are mirrored verbatim;
+// candidateId/jobId/clientId stay null until a future pass correlates
+// events to internal records.
+model CalendarEvent {
+  id             String              @id @default(cuid())
+  organizationId String
+  googleEventId  String
+  calendarId     String
+  calendarName   String              @default("primary")
+  calendarColor  String?
+  title          String
+  description    String?
+  startTime      DateTime
+  endTime        DateTime
+  allDay         Boolean             @default(false)
+  location       String?
+  attendees      Json?
+  status         CalendarEventStatus @default(CONFIRMED)
+  candidateId    String?
+  jobId          String?
+  clientId       String?
+  syncedAt       DateTime            @default(now())
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  candidate    Candidate?   @relation(fields: [candidateId], references: [id])
+  job          Job?         @relation(fields: [jobId], references: [id])
+  client       Client?      @relation(fields: [clientId], references: [id])
+
+  @@unique([organizationId, googleEventId, calendarId])
+  @@index([organizationId, startTime])
+}
+
+enum CalendarEventStatus {
+  CONFIRMED
+  TENTATIVE
+  CANCELLED
 }
 
 model ClaudePanelMessage {
