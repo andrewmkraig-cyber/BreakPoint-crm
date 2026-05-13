@@ -4,17 +4,16 @@ Last updated: 2026-05-13 · Ace 44.0
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full specs for the active Calendar work live in ACE_STATE.md Next Task.
 
-1. **Calendar write round-trip + dashboard widget** — Read sync from Neon, team-filter toggle in both scopes, and Ace-native reminders shipped in Ace 44. Remaining: Google Calendar write round-trip from the event drawer (create / edit / delete pushed back to Google), and the Clubhouse-tab calendar widget that surfaces today's events alongside the rest of the dashboard.
+1. **Calendar Prompts 5-6** — month/day view polish + My Calendar vs Team master toggle (Prompt 5), then the Clubhouse-tab calendar widget that surfaces today's events alongside the rest of the dashboard (Prompt 6). Full Prompt 5 spec in ACE_STATE.md Next Task.
 2. **BD Engine Phase 4** — ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts. Full rules in ACE_RULES.md and ACE_STATE.md.
 3. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.
-4. **JD/email markdown architecture** — [Job Description] merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
-5. **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
-6. **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
-7. **PWA conversion** — manifest, service worker, push notifications.
+4. **Public Jobs Board** — Ace is source of truth. Website reads sanitized public API only. Client names NEVER exposed. Poster always BreakPoint Talent. Public API at `ace.breakpointtalent.com/api/public/jobs`. Safe fields only: title, location, employment type, salary range, public description, posted date, apply URL. Never returns client name, logo, contacts, fees, internal notes, placement data. New Job fields: `publishedToWebsite`, `publishedAt`, `publicSlug`, `publicTitle`, `publicDescription`, `publicLocation`, `publicSalaryRange`, `publicEmploymentType`, `publicApplyUrl`. Phase 2 later: applications flow back into Ace, source tagged "BreakPoint Website".
+5. **JD/email markdown architecture** — [Job Description] merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
+6. **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
+7. **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
 8. **Quiet Clients tab** — clients past 21-day threshold, tiered 14-30/30-60/60+, optional Claude summary.
-9. **APRO / job order worksheet** — structured intake form.
-10. **Client preference learning system + Personal Trainer suggestions**.
-11. **Mercury + QuickBooks integration** — after manual invoicing is stable.
+9. **Client preference learning system + Personal Trainer suggestions**.
+10. **Mercury + QuickBooks integration** — after manual invoicing is stable.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
@@ -25,6 +24,8 @@ Items scoped during recent sessions. Each needs its own prompt before slotting i
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.
 
+- **PWA conversion** — manifest, service worker, push notifications.
+- **APRO / job order worksheet** — structured intake form.
 - **Invite flow in Settings** — reuses OrganizationMembership; invite + role chip + revoke.
 - **Quo setup wizard** — guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
 - **Slack sidebar panel**.
@@ -84,6 +85,17 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 44.0 Calendar Prompts 1-4 + Financials tab + Analytics bar fixes + polish (May 13, 2026)
+
+- **Calendar Prompts 1-4** — full Google Calendar sync (all calendars including shared, shared token-refresh helper), `CalendarEvent` + `AceReminder` Neon models, native event drawer (title / date / starts / ends / location / notes / guests all editable, save-to-Neon + Google PATCH via `updateCalendarEventAction`, two notify modes, delete via Google + cascade in Neon), Meet link surfacing (`hangoutLink` + `conferenceData.entryPoints` + `htmlLink` captured into new `meetLink` + `htmlLink` columns), "Open in Google Calendar" header bridge, guest typeahead from candidates + contacts + team users, dedupe of events that live on both Andrew's and Austin's calendars into one block with `ownerKeys: string[]`. Shared `ownerKeyForCalendar` / `ownerKeyForPerson` helper in `src/lib/calendar/owner-key.ts` is the single source of truth — both event ownerKeys and team-toggle ids run through it so "au" → Austin every time. Austin calendar toggle fixed (his shared `austin@orcacapital.io` calendar now produces `ownerKey: "austin"`; toggle hides his 188 events cleanly). Counts removed from the My Calendar / Team buttons.
+- **Site-wide reminder toast** — `ReminderToastProvider` mounted in the root layout polls `/api/reminders/due` every 60s and fires an amber-tinted toast (matching the mail/text toast chrome with Tailwind amber accents) on every page, not just `/calendar`.
+- **Analytics bar proportional scaling** — bar widths scale against the row max instead of pinning every bar to the max.
+- **Financials tab** — new `/dashboard?tab=financials` covering quarterly revenue / expenses / ROI with goal anchored at $125k. New `ToolExpense` model (recurring tool spend with category + interval). `Placement.candidateSource` and `Client.leadSource` track lead provenance for revenue attribution. Mercury card sits as a placeholder pending the real integration.
+- **Public Jobs Board spec** — captured in Active Build Sequence as item 4 with full safe-fields list and Phase 2 application-routing note.
+- **Ace Assistant file attachments** — composer accepts attached files; stranded-drag bug fixed.
+- **Placements graph Court Mode tokens** — hardcoded colors swept off the placements graph; every fill/stroke routes through `court-*` tokens.
+- **Invoicing copy** — Mercury sync copy replaced with manual payment tracking across the invoicing surface ("Mercury sync" → "Manual payment tracking", "One click, attaches PDF + pay-link" → "One click, attaches invoice PDF", "Mercury webhook · auto" → "Manual paid check").
 
 ## Completed - Ace 43.0 Placements tab + Calendar shell + Pipeline placement edit drawer + cross-tab card density (May 12, 2026)
 

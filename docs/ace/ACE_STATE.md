@@ -7,15 +7,38 @@ Last Shipped: 2026-05-13
 Live at: ace.breakpointtalent.com
 
 ## Known Issues Carrying Into Ace 45
-- **Calendar write round-trip + dashboard widget still ahead.** /calendar now reads live Neon events with a Sync button, the team toggle filters the grid in both scopes, and Ace-native reminders persist end-to-end. Remaining: Google Calendar write round-trip (create/edit from the drawer), and the Clubhouse-tab calendar widget. Tracked as Session 1 Next Task below.
-- **Test record cleanup pending.** The "Send Test Invoice to Austin" button has minted a synthetic Miles Atchison placement + invoice row in production. Needs a one-shot delete (or a `seed_record` flag + cleanup pass) before launch so the demo placement doesn't surface in real billing tallies.
+- **Calendar Prompts 5-6 still ahead.** Month and day view polish + the Clubhouse-tab calendar widget that surfaces today's events on the dashboard. Tracked under Next Task below.
 
 ## Summary — Ace 44.0
-Ace 44 closes out the /calendar read side and lands Ace-native reminders. Calendar now reads live `CalendarEvent` rows from Neon (sync button hits `/api/calendar/sync` which mirrors every readable Google Calendar — Andrew's primary + Austin's `austin@breakpointtalent.com` shared calendar come through automatically with no name/email filter), the team checkbox panel filters the week/day/month grids in both "My Calendar" and "Team" scope (clicks were dead in "My Calendar" before), and the reminders panel is wired end-to-end against a new `AceReminder` model.
+Ace 44 closes Calendar Prompts 1-4 end-to-end, ships the Financials dashboard tab, fixes the Analytics bar, lands a handful of Ace Assistant + Placements + Invoicing polish items, and captures the Public Jobs Board spec into the roadmap. /calendar now reads + writes against Google with full multi-calendar coverage, dedupes events that live on both Andrew's and Austin's calendars, surfaces Meet links inline, and runs an amber reminder toast site-wide. The new Financials tab gives Andrew the quarterly P&L view; the Analytics tab finally scales proportionally instead of pinning to the max bar.
 
-**Team toggle.** Switched from a `visibleMembers` allowlist to a `hiddenMembers: Set<string>` (initialized empty so everyone shows by default). Click toggles in either scope. Hidden rows dim to 50% opacity; checkbox empties. Week / day / month views all filter on `e.ownerId && hiddenMembers.has(e.ownerId)` before render.
+**Full Google Calendar sync.** `/api/calendar/sync` walks every readable Google Calendar for the signed-in recruiter — Andrew's primary plus every shared calendar (Austin's BreakPoint and Austin's Orca personal calendar both come through automatically with no name/email filter). Token refresh runs through the shared `getFreshAccessToken` helper so Calendar reuses the same Account row as Gmail. Sync now captures `hangoutLink` / `conferenceData.entryPoints` / `htmlLink` into new `meetLink` + `htmlLink` columns on `CalendarEvent` so the Meet URL no longer hides in the description.
 
-**Reminders end-to-end.** New `AceReminder` model (org-scoped, with `userId`, `title`, `reminderAt`, `dismissed`). `/calendar` queries the next 10 upcoming undismissed reminders for the active org. Server actions in `src/app/calendar/reminder-actions.ts` handle create + dismiss; both resolve `getCurrentOrg()` server-side so the org scope can't be spoofed across the action boundary. Panel "+ New" expands an inline form (title input, native date picker, 15-min increment time `<select>`). Each row's checkmark fires `dismissReminder`, optimistically removes from local state, then `router.refresh()`. A 60-second polling tick on the calendar view promotes any reminder whose `reminderAt` has slipped past `now` into the toast stack (tracked in a ref-Set so it can't re-fire on subsequent ticks); the toast Dismiss button persists the dismiss the same way as the panel.
+**Neon models.** New `CalendarEvent` model (org-scoped, `(organizationId, googleEventId, calendarId)` unique so a meeting on both Andrew's and Austin's calendars upserts cleanly into two rows) and `AceReminder` model (org-scoped, with `userId`, `title`, `reminderAt`, `dismissed`).
+
+**Team toggle + owner normalization.** New `src/lib/calendar/owner-key.ts` is the single source of truth mapping a calendar source OR a team member to a normalized owner key ("ak" for Andrew, "austin" for Austin). Both sides — `event.ownerKeys` and `teamMember.id` — run through the helper so the rail toggle and the event filter always agree. Top-level "My Calendar" / "Team" tabs and the left-rail checkboxes share one `hiddenMembers` state (the previous design had a scope filter that masked the left-rail clicks — "click Austin does nothing" was actually scope filtering Austin's events out before the rail filter saw them). Counts removed from the My Calendar / Team buttons.
+
+**Austin calendar toggle fixed.** The Austin shared calendar surfaces under his personal email (`austin@orcacapital.io`) and his BreakPoint email — both produce `ownerKey: "austin"` via the helper. The 188 austin events (vs 67 ak events on live data) now hide cleanly when the rail Austin checkbox is unchecked.
+
+**Event dedupe across calendars.** A meeting on both Andrew's and Austin's calendars (same `googleEventId`, different `calendarId` rows) collapses into one CalendarEvent with `ownerKeys: ["ak", "austin"]`. The canonical row is the copy on the signed-in user's own calendar so PATCH targets the calendar Andrew can write to. Week / day / month views hide an event only when *every* owner key is hidden, and team mode renders an overlapping avatar stack showing all owners.
+
+**Native event drawer.** Title / Date / Starts / Ends / Location / Notes / Guests are all real editable inputs now. New `updateCalendarEventAction` + `deleteCalendarEventAction` server actions push to Google then mirror to Neon (`updateMany`/`deleteMany` keyed on `googleEventId` so dedup mirrors stay consistent), then `revalidatePath("/calendar")`. "Save · notify all" PATCHes once with `sendUpdates=all`; "Save · notify new only" runs a silent field PATCH then an attendee-only PATCH with `sendUpdates=all` so only the newly added guests are emailed. `patchCalendarEventDetails` + `deleteCalendarEvent` accept `calendarId` so events on shared calendars target their actual calendar id instead of forcing `/calendars/primary/...`. Drawer header surfaces an "Open in Google Calendar" link via `htmlLink` as a bridge to Google's UI for anything the native flow doesn't cover yet.
+
+**Guest typeahead.** New `/api/calendar/people-search?q=` route (team users + candidates + contacts, scored exact-email > prefix > contains, team users ranked first). Drawer guest input is a real typeahead with arrow-key nav and removable pills. Typing "au" pops Austin instantly. Dead Jordan Tate placeholder removed.
+
+**Site-wide reminder toast.** New `ReminderToastProvider` mounted in the root layout. Polls `/api/reminders/due` every 60s; when a reminder's `reminderAt` slips past `now`, it fires an amber toast (matching the mail/text toast chrome — same border, shadow, `ActionChip`, theme tokens via `getStoredToastTheme()`, with Tailwind amber-500 / amber-50 / amber-700 accents). The toast fires regardless of which page the recruiter is on, not just `/calendar`. Title is the reminder text; description is "Reminder · h:mm AM/PM"; single Dismiss button persists the dismiss server-side and closes the toast.
+
+**Analytics bar proportional scaling.** Bar widths now scale against the row's max value rather than pinning every bar to the max — small numbers actually render small.
+
+**Financials tab.** New `/dashboard?tab=financials` covering revenue, expenses, and ROI for the current quarter. Quarterly goal anchored at $125k. New `ToolExpense` model captures recurring tool spend with category + interval; `Placement.candidateSource` and `Client.leadSource` track lead provenance so revenue can be attributed by source. Mercury integration is a placeholder card pending the real wiring later in the roadmap.
+
+**Public Jobs Board spec captured.** Full spec lives in ACE_ROADMAP.md under Active Build Sequence. Ace stays source of truth; the website reads a sanitized public API only; client names are never exposed; poster is always BreakPoint Talent.
+
+**Ace Assistant file attachments.** Composer accepts attached files; stranded-drag bug fixed.
+
+**Placements graph Court Mode tokens.** Hardcoded colors swept off the placements graph — every fill/stroke routes through `court-*` tokens.
+
+**Invoicing copy.** Mercury sync language replaced with manual payment tracking copy across the invoicing surface: "Mercury sync" → "Manual payment tracking", "One click, attaches PDF + pay-link" → "One click, attaches invoice PDF", "Mercury webhook · auto" → "Manual paid check".
 
 ## Summary — Ace 43.0
 Ace 43 lands the Placements dashboard tab, the Calendar shell, the Pipeline placement edit drawer, and a round of cross-tab visual unification. The Invoicing module that shipped in Ace 42 also gets its real downstream wiring this release.
@@ -376,28 +399,21 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 ## Next Task
 Next session opens a NEW CHAT. Priority order for upcoming sessions:
 
-- **SESSION 1 (next)**: Calendar Prompt 2 — Google Calendar sync + database persistence. Full spec below.
-- **SESSION 2**: Calendar Prompts 3-4 + dashboard calendar widget. Surfaces the synced Calendar inline on the Clubhouse tab.
+- **SESSION 1 (next)**: Calendar Prompt 5 — month/day view polish + My Calendar vs Team master toggle. Full spec below.
+- **SESSION 2**: Calendar Prompt 6 — Clubhouse-tab calendar widget surfacing today's events on the dashboard.
 - **SESSION 3**: BD Engine Phase 4 — ASK QUESTIONS FIRST. Full rules below.
 
-### Calendar Prompt 2 spec — Session 1
-The Calendar shell (week / day / month views, Mon-Fri week, event drawer, reminders panel, sidebar entry under OPS) shipped in Ace 43 and currently renders against static seed data. Session 1 wires it to real data:
+### Calendar Prompt 5 spec — Session 1
+The /calendar surface is fully wired for read + write through Ace 44 (full multi-calendar sync, native drawer save/delete, dedupe across calendars, Meet links, amber reminders site-wide, autocomplete guests). Session 1 polishes the views that didn't get the week-view treatment and tightens the My Calendar / Team master toggle.
 
-- **Google Calendar read sync.** Pull events for the signed-in recruiter into the Calendar grid via the existing Google OAuth scope. One-way for this prompt — Ace mirrors what Google says.
-- **Database persistence.** Each Calendar event mirrors into Neon (org-scoped, candidate/job/client foreign keys where applicable) so reminders, the dashboard widget, and activity logs all read from one place. Match the existing Interview model conventions (`organizationId` required, `cuid` PK, soft-link to RF numeric ids).
-- **Round-trip write.** Events the recruiter creates/edits/cancels in Ace push to Google Calendar so external invitees see the same source-of-truth. Reuses the per-party invite path already established by the Interview scheduler.
-- **No regressions.** The existing /calendar shell renders identically against the live data — no chrome changes in this prompt.
+- **Month view polish.** Density, event chip clamping, all-day banding, today + selected-week emphasis, hover affordances on day cells. Match the week view's visual rhythm so navigating views feels seamless.
+- **Day view polish.** Hour gutter spacing, multi-owner avatar stack, current-time line behavior, slot click affordances, drawer entry from any event tile.
+- **My Calendar vs Team master toggle.** The top tabs already share one `hiddenMembers` state with the rail (Ace 44). Refine the toggle UX: clicking "My Calendar" must read as a clean "show only me" action regardless of how the rail was last set, and clicking "Team" must restore everyone. Settle the interaction model for the case where the rail and the master toggle disagree.
 
 Browser verify before push:
-1. Sign in. /calendar shows the recruiter's real Google events on the week grid.
-2. Create a new event in the drawer → confirm it appears in Google Calendar within ~10s.
-3. Confirm Neon `Event` (or `CalendarEvent`) row exists with `organizationId` set.
-
-Ace invoicing dashboard copy changes:
-- Replace "Mercury sync" with "Manual payment tracking".
-- Replace "One click, attaches PDF + pay-link" with "One click, attaches invoice PDF".
-- Replace "Mercury webhook · auto" with "Manual paid check".
-- Keep flow: Confirm start date → Draft invoice email → Approve & send → Follow up if unpaid → Mark paid.
+1. Open /calendar in month view. Today is highlighted; the current week is tinted; events on the same day stack without bleeding into the next cell.
+2. Switch to day view. The hour rail aligns with the week view; the avatar stack on a multi-owner event reads at a glance.
+3. Toggle My Calendar / Team a few times and check the rail follows correctly.
 
 ### BD Phase 4 Rules — Session 3 (PERMANENT — see ACE_RULES.md)
 **CRITICAL**: Before writing a single BD Phase 4 prompt, Claude MUST stop and ask Andrew a full set of scoping questions. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Ask the questions first, always.
