@@ -46,7 +46,7 @@ export async function getMercuryTransactions(
       {
         method: "GET",
         headers: {
-          Authorization: `Api-Key ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           Accept: "application/json",
         },
         next: { revalidate: 300 },
@@ -79,7 +79,7 @@ export async function fetchMercuryYtdTransactions(
     res = await fetch("https://api.mercury.com/api/v1/transactions", {
       method: "GET",
       headers: {
-        Authorization: `Api-Key ${key}`,
+        Authorization: `Bearer ${key}`,
         Accept: "application/json",
       },
       cache: "no-store",
