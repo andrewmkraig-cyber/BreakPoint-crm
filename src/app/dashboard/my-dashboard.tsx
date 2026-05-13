@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { BillingTower } from "@/app/dashboard/billing-tower";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
+import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
 import { UpcomingInterviews, type UpcomingInterviewRow } from "@/app/dashboard/upcoming-interviews";
 import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
@@ -176,6 +177,8 @@ export async function MyDashboard() {
         <KpiTile label="Offers Extended" value={offersExtendedCount} icon={DollarSign} />
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
+
+      <ThisWeekWidget orgId={org.id} />
 
       <BillingTower
         q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0}
