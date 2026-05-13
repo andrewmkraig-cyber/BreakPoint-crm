@@ -127,7 +127,7 @@ function BreakdownCard({
   empty?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
+    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
         {title}
       </p>
@@ -235,7 +235,7 @@ function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const binMax = bins.reduce((m, b) => Math.max(m, b.count), 0);
 
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
+    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
         Placement Mix
       </p>

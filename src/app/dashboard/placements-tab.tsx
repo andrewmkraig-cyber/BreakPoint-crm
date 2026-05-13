@@ -40,7 +40,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
         : "All placements · last 90 days";
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-7">
       <PlacementsHeader period={period} />
       <PlacementsLedger rows={ledgerRows} title={ledgerTitle} />
       <PlacementsBreakdowns rows={rows} />

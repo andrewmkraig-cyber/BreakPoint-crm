@@ -88,7 +88,7 @@ export function PlacementsLedger({
   );
 
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
+    <div className="rounded-2xl bg-court-surface shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
       <div className="flex flex-col gap-2.5 px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
           {title}

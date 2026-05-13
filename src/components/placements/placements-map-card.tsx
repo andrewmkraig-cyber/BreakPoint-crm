@@ -46,7 +46,7 @@ type Props = {
 export function PlacementsMapCard({ cities, totalFee }: Props) {
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-      <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm lg:col-span-2">
+      <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)] lg:col-span-2">
         <div className="flex items-baseline justify-between">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
             Placement map
@@ -69,7 +69,7 @@ export function PlacementsMapCard({ cities, totalFee }: Props) {
         <Legend />
       </div>
 
-      <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
           By City
         </p>
