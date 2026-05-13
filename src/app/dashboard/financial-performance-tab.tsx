@@ -46,6 +46,13 @@ const MONTH_FULL = [
 // Until then we don't have the inputs to compute it honestly.
 const NET_MARGIN_PLACEHOLDER_PCT = 0;
 const QUARTERLY_REVENUE_GOAL_USD = 125_000;
+const ANNUAL_REVENUE_GOAL_USD = 300_000;
+
+// Placeholder offsets for contribution + net margin until Mercury
+// categorizes variable costs (per-placement spend) and ops (software,
+// payroll, owner draw) separately. Shown in the on-card footnote.
+const CONTRIBUTION_MARGIN_DRAG_PCT = 5;
+const NET_MARGIN_DRAG_PCT = 10;
 
 export async function FinancialPerformanceTab() {
   const org = await getCurrentOrg();
@@ -374,6 +381,141 @@ export async function FinancialPerformanceTab() {
       ? ((totalRoiRev - totalRoiSpend) / totalRoiSpend) * 100
       : null;
 
+  // ---- Profitability section data ----
+  // ET-explicit day-of-quarter / day-of-year counters. Vercel runs in
+  // UTC; without explicit ET parts the day counter would tick over at
+  // 8pm ET in the recruiter's view.
+  const ET_DAY_MS = 86_400_000;
+  const etParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "numeric",
+    day: "numeric",
+  }).formatToParts(now);
+  const etGet = (t: string) =>
+    Number(etParts.find((p) => p.type === t)?.value ?? 0);
+  const etYear = etGet("year");
+  const etMonth = etGet("month");
+  const etDay = etGet("day");
+  const etQStartMonth1 = Math.floor((etMonth - 1) / 3) * 3 + 1;
+  const etDayOfQuarter =
+    Math.floor(
+      (Date.UTC(etYear, etMonth - 1, etDay) -
+        Date.UTC(etYear, etQStartMonth1 - 1, 1)) /
+        ET_DAY_MS,
+    ) + 1;
+  const etDaysInQuarter = Math.round(
+    (Date.UTC(etYear, etQStartMonth1 + 2, 1) -
+      Date.UTC(etYear, etQStartMonth1 - 1, 1)) /
+      ET_DAY_MS,
+  );
+  const etDayOfYear =
+    Math.floor(
+      (Date.UTC(etYear, etMonth - 1, etDay) - Date.UTC(etYear, 0, 1)) /
+        ET_DAY_MS,
+    ) + 1;
+  const etDaysInYear = Math.round(
+    (Date.UTC(etYear + 1, 0, 1) - Date.UTC(etYear, 0, 1)) / ET_DAY_MS,
+  );
+  const etPctOfQuarter = (etDayOfQuarter / etDaysInQuarter) * 100;
+  const etPctOfYear = (etDayOfYear / etDaysInYear) * 100;
+
+  // Margins reuse the KPI strip totals. Contribution and net carry the
+  // placeholder drags until Mercury feeds variable + ops costs.
+  const grossMarginProfPct =
+    revenueUsd > 0 ? ((revenueUsd - expensesUsd) / revenueUsd) * 100 : null;
+  const contributionMarginProfPct =
+    grossMarginProfPct != null
+      ? grossMarginProfPct - CONTRIBUTION_MARGIN_DRAG_PCT
+      : null;
+  const netMarginProfPct =
+    grossMarginProfPct != null
+      ? grossMarginProfPct - NET_MARGIN_DRAG_PCT
+      : null;
+
+  const fmtPct1 = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
+  const fmtPctInt = (n: number) => `${Math.round(n)}%`;
+
+  // Pacing math — points = % to goal minus % of period elapsed.
+  // Positive means ahead of a flat-pace plan; negative means behind.
+  const qPctToGoal = (quarterRevenueUsd / QUARTERLY_REVENUE_GOAL_USD) * 100;
+  const qToGoUsd = Math.max(0, QUARTERLY_REVENUE_GOAL_USD - quarterRevenueUsd);
+  const qPacingPts = qPctToGoal - etPctOfQuarter;
+  const qPacingLabel = (() => {
+    const rounded = Math.round(Math.abs(qPacingPts));
+    if (rounded === 0) return "on pace";
+    return qPacingPts >= 0 ? `+${rounded} pts ahead` : `-${rounded} pts behind`;
+  })();
+
+  const annualPctToGoal = (revenueUsd / ANNUAL_REVENUE_GOAL_USD) * 100;
+  const annualToGoUsd = Math.max(0, ANNUAL_REVENUE_GOAL_USD - revenueUsd);
+  const annualForecastUsd =
+    etDayOfYear > 0 ? (revenueUsd / etDayOfYear) * etDaysInYear : 0;
+
+  const avgFeeUsd =
+    totalPlacementsYtd > 0 ? revenueUsd / totalPlacementsYtd : 0;
+
+  const periodLabelEt = `YTD · Jan 1 – ${MONTH_SHORT[etMonth - 1]} ${etDay}, ${etYear}`;
+
+  const marginsCardData: MarginsCardData = {
+    grossLabel: fmtPct1(grossMarginProfPct),
+    contributionLabel: fmtPct1(contributionMarginProfPct),
+    netLabel: fmtPct1(netMarginProfPct),
+    revenueFormatted: formatUsd(revenueUsd),
+    expensesFormatted: formatUsd(expensesUsd),
+  };
+
+  const goalPacingData: GoalPacingCardData = {
+    quarter: {
+      eyebrow: `${quarterLabel.toUpperCase()} · QUARTERLY GOAL`,
+      revenueFormatted: formatUsd(quarterRevenueUsd),
+      goalFormatted: formatUsd(QUARTERLY_REVENUE_GOAL_USD),
+      pctToGoal: qPctToGoal,
+      pctToGoalLabel: fmtPctInt(qPctToGoal),
+      dayOfQuarter: etDayOfQuarter,
+      daysInQuarter: etDaysInQuarter,
+      pctOfQuarterLabel: fmtPctInt(etPctOfQuarter),
+      toGoFormatted: formatUsd(qToGoUsd),
+      pacingLabel: qPacingLabel,
+    },
+    annual: {
+      eyebrow: `FY ${etYear} · ANNUAL GOAL`,
+      revenueFormatted: formatUsd(revenueUsd),
+      goalFormatted: formatUsd(ANNUAL_REVENUE_GOAL_USD),
+      pctToGoal: annualPctToGoal,
+      pctToGoalLabel: fmtPctInt(annualPctToGoal),
+      dayOfYear: etDayOfYear,
+      daysInYear: etDaysInYear,
+      pctOfYearLabel: fmtPctInt(etPctOfYear),
+      toGoFormatted: formatUsd(annualToGoUsd),
+      forecastFormatted: formatUsd(annualForecastUsd),
+    },
+    avgFeeFormatted: formatUsd(avgFeeUsd),
+    placementsYtd: totalPlacementsYtd,
+  };
+
+  // Budget-vs-actual: one row per ToolExpense. No budget field exists
+  // yet, so every row shows "No budget set" and the bar scales to the
+  // highest-spending category for relative comparison.
+  const budgetActuals = toolExpenses.map((te) => ({
+    id: te.id,
+    name: te.name,
+    actualUsd: te.cost * te.paidCount,
+  }));
+  const maxBudgetActualUsd = Math.max(
+    1,
+    ...budgetActuals.map((r) => r.actualUsd),
+  );
+  const budgetRows: BudgetRowData[] = budgetActuals
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      actualFormatted: formatUsd(r.actualUsd),
+      actualPctOfMax: (r.actualUsd / maxBudgetActualUsd) * 100,
+      actualUsd: r.actualUsd,
+    }))
+    .sort((a, b) => b.actualUsd - a.actualUsd);
+
   return (
     <div className="flex flex-col gap-6">
       <SectionHero
@@ -439,6 +581,13 @@ export async function FinancialPerformanceTab() {
         activeSubscriptionsCount={activeSubscriptionsCount}
         roiRows={roiRows}
         blendedExpensesRoiPct={blendedExpensesRoiPct}
+      />
+
+      <ProfitabilitySection
+        margins={marginsCardData}
+        goalPacing={goalPacingData}
+        budgetRows={budgetRows}
+        periodLabel={periodLabelEt}
       />
     </div>
   );
@@ -1079,6 +1228,312 @@ function RoiRowItem({ row }: { row: RoiRow }) {
       >
         {roiLabel}
       </span>
+    </li>
+  );
+}
+
+type MarginsCardData = {
+  grossLabel: string;
+  contributionLabel: string;
+  netLabel: string;
+  revenueFormatted: string;
+  expensesFormatted: string;
+};
+
+type QuarterPacingData = {
+  eyebrow: string;
+  revenueFormatted: string;
+  goalFormatted: string;
+  pctToGoal: number;
+  pctToGoalLabel: string;
+  dayOfQuarter: number;
+  daysInQuarter: number;
+  pctOfQuarterLabel: string;
+  toGoFormatted: string;
+  pacingLabel: string;
+};
+
+type AnnualPacingData = {
+  eyebrow: string;
+  revenueFormatted: string;
+  goalFormatted: string;
+  pctToGoal: number;
+  pctToGoalLabel: string;
+  dayOfYear: number;
+  daysInYear: number;
+  pctOfYearLabel: string;
+  toGoFormatted: string;
+  forecastFormatted: string;
+};
+
+type GoalPacingCardData = {
+  quarter: QuarterPacingData;
+  annual: AnnualPacingData;
+  avgFeeFormatted: string;
+  placementsYtd: number;
+};
+
+type BudgetRowData = {
+  id: string;
+  name: string;
+  actualFormatted: string;
+  actualPctOfMax: number;
+  actualUsd: number;
+};
+
+function ProfitabilitySection({
+  margins,
+  goalPacing,
+  budgetRows,
+  periodLabel,
+}: {
+  margins: MarginsCardData;
+  goalPacing: GoalPacingCardData;
+  budgetRows: BudgetRowData[];
+  periodLabel: string;
+}) {
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
+            Profitability
+          </p>
+          <h3 className="mt-1 font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
+            Margins, pacing, and discipline.
+          </h3>
+        </div>
+        <p className="text-xs text-court-fg-muted">
+          Margins · goal pacing · budget discipline
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <MarginsCard data={margins} />
+        <GoalPacingCard data={goalPacing} />
+        <BudgetVsActualCard rows={budgetRows} periodLabel={periodLabel} />
+      </div>
+    </section>
+  );
+}
+
+function MarginsCard({ data }: { data: MarginsCardData }) {
+  return (
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      <div>
+        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+          Margins
+        </p>
+        <p className="mt-0.5 text-xs text-court-fg-muted">
+          Three layers, same revenue base
+        </p>
+      </div>
+
+      <ul className="mt-4 flex flex-col divide-y divide-court-border-soft">
+        <MarginRow
+          label="Gross margin"
+          value={data.grossLabel}
+          subline={`Revenue ${data.revenueFormatted} − COGS (tools, job boards) ${data.expensesFormatted}`}
+        />
+        <MarginRow
+          label="Contribution margin"
+          value={data.contributionLabel}
+          subline="After variable costs per placement"
+        />
+        <MarginRow
+          label="Net margin"
+          value={data.netLabel}
+          subline="After ops, software, owner draw allocation"
+        />
+      </ul>
+
+      <p className="mt-3 text-xs text-court-fg-dim">
+        Variable and ops estimates are placeholders until Mercury provides full
+        transaction categorization
+      </p>
+    </div>
+  );
+}
+
+function MarginRow({
+  label,
+  value,
+  subline,
+}: {
+  label: string;
+  value: string;
+  subline: string;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+      <div className="min-w-0">
+        <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
+          {label}
+        </p>
+        <p className="mt-1 text-xs text-court-fg-muted">{subline}</p>
+      </div>
+      <p className="shrink-0 font-serif text-[28px] font-semibold leading-none tabular-nums text-court-fg">
+        {value}
+      </p>
+    </li>
+  );
+}
+
+function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
+  return (
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      <div>
+        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+          Goal pacing
+        </p>
+        <p className="mt-0.5 text-xs text-court-fg-muted">
+          Where the desk sits vs plan
+        </p>
+      </div>
+
+      <PacingBlock
+        eyebrow={data.quarter.eyebrow}
+        revenueFormatted={data.quarter.revenueFormatted}
+        goalFormatted={data.quarter.goalFormatted}
+        pctToGoal={data.quarter.pctToGoal}
+        pctToGoalLabel={data.quarter.pctToGoalLabel}
+        leftFooter={`Day ${data.quarter.dayOfQuarter} of ${data.quarter.daysInQuarter} (${data.quarter.pctOfQuarterLabel} of quarter)`}
+        rightFooter={`${data.quarter.toGoFormatted} to go · pacing ${data.quarter.pacingLabel}`}
+        className="mt-4"
+      />
+
+      <div className="my-4 h-px bg-court-border-soft" />
+
+      <PacingBlock
+        eyebrow={data.annual.eyebrow}
+        revenueFormatted={data.annual.revenueFormatted}
+        goalFormatted={data.annual.goalFormatted}
+        pctToGoal={data.annual.pctToGoal}
+        pctToGoalLabel={data.annual.pctToGoalLabel}
+        leftFooter={`Day ${data.annual.dayOfYear} of ${data.annual.daysInYear} (${data.annual.pctOfYearLabel} of year)`}
+        rightFooter={`${data.annual.toGoFormatted} to clear · forecast ${data.annual.forecastFormatted} EOY`}
+      />
+
+      <p className="mt-4 border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">
+        Avg fee {data.avgFeeFormatted} · {data.placementsYtd} placement
+        {data.placementsYtd === 1 ? "" : "s"} YTD
+      </p>
+    </div>
+  );
+}
+
+function PacingBlock({
+  eyebrow,
+  revenueFormatted,
+  goalFormatted,
+  pctToGoal,
+  pctToGoalLabel,
+  leftFooter,
+  rightFooter,
+  className,
+}: {
+  eyebrow: string;
+  revenueFormatted: string;
+  goalFormatted: string;
+  pctToGoal: number;
+  pctToGoalLabel: string;
+  leftFooter: string;
+  rightFooter: string;
+  className?: string;
+}) {
+  const barWidth = Math.max(0, Math.min(100, pctToGoal));
+  return (
+    <div className={className}>
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
+        {eyebrow}
+      </p>
+      <p className="mt-2 font-serif text-[26px] font-semibold leading-none tabular-nums text-court-fg">
+        {revenueFormatted}
+      </p>
+      <p className="mt-1 text-xs text-court-fg-muted">
+        of {goalFormatted} · {pctToGoalLabel} to goal
+      </p>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-court-surface-subtle">
+        <div
+          className="h-full rounded-full bg-court-brand"
+          style={{ width: `${barWidth}%` }}
+        />
+      </div>
+      <div className="mt-2 flex items-baseline justify-between gap-3 text-xs text-court-fg-muted">
+        <span>{leftFooter}</span>
+        <span className="text-right">{rightFooter}</span>
+      </div>
+    </div>
+  );
+}
+
+function BudgetVsActualCard({
+  rows,
+  periodLabel,
+}: {
+  rows: BudgetRowData[];
+  periodLabel: string;
+}) {
+  return (
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+            Budget vs. actual
+          </p>
+          <p className="mt-0.5 text-xs text-court-fg-muted">{periodLabel}</p>
+        </div>
+        <div className="shrink-0 text-xs text-court-fg-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-court-brand" />
+            Actual
+          </span>
+          <span className="ml-3 inline-flex items-center gap-1.5">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-court-fg-muted" />
+            Budget
+          </span>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyBlock>
+          No tool expenses logged yet — add one in the Subscriptions card.
+        </EmptyBlock>
+      ) : (
+        <ul className="mt-4 space-y-2.5">
+          {rows.map((r) => (
+            <BudgetRow key={r.id} row={r} />
+          ))}
+        </ul>
+      )}
+
+      <p className="mt-4 border-t border-court-border-soft pt-3 text-xs text-court-fg-dim">
+        Set budgets per category coming soon
+      </p>
+    </div>
+  );
+}
+
+function BudgetRow({ row }: { row: BudgetRowData }) {
+  return (
+    <li>
+      <div className="flex items-baseline gap-3 px-1">
+        <div className="min-w-0 flex-1 truncate text-sm font-medium text-court-fg">
+          {row.name}
+        </div>
+        <div className="shrink-0 text-sm font-semibold tabular-nums tracking-tight text-court-fg">
+          {row.actualFormatted}
+        </div>
+        <div className="shrink-0 text-right text-xs text-court-fg-dim">
+          No budget set
+        </div>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-court-surface-subtle">
+        <div
+          className="h-full rounded-full bg-court-brand"
+          style={{ width: `${Math.max(0, Math.min(100, row.actualPctOfMax))}%` }}
+        />
+      </div>
     </li>
   );
 }
