@@ -45,8 +45,33 @@ type Props = {
 
 export function PlacementsMapCard({ cities, totalFee }: Props) {
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-      <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] lg:col-span-2">
+    <div className="flex flex-col gap-3">
+      <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
+          By City
+        </p>
+        <h3 className="mt-0.5 font-serif text-base font-extrabold tracking-tight text-court-fg">
+          Where the billing comes from
+        </h3>
+
+        {cities.length === 0 ? (
+          <p className="mt-3 text-sm text-court-fg-muted">
+            No placements with a city captured in this window.
+          </p>
+        ) : (
+          <ul className="mt-2.5 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+            {cities.map((city) => (
+              <CityRow
+                key={city.key}
+                city={city}
+                totalFee={totalFee}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
         <div className="flex items-baseline justify-between">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
             Placement map
@@ -67,31 +92,6 @@ export function PlacementsMapCard({ cities, totalFee }: Props) {
         </div>
 
         <Legend />
-      </div>
-
-      <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-          By City
-        </p>
-        <h3 className="mt-0.5 font-serif text-base font-extrabold tracking-tight text-court-fg">
-          Where the billing comes from
-        </h3>
-
-        {cities.length === 0 ? (
-          <p className="mt-3 text-sm text-court-fg-muted">
-            No placements with a city captured in this window.
-          </p>
-        ) : (
-          <ul className="mt-2.5 flex flex-col divide-y divide-court-border-soft">
-            {cities.map((city) => (
-              <CityRow
-                key={city.key}
-                city={city}
-                totalFee={totalFee}
-              />
-            ))}
-          </ul>
-        )}
       </div>
     </div>
   );

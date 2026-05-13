@@ -214,13 +214,13 @@ export const STATUS_LABELS: Record<PlacementsDashboardBillingStatus, string> = {
   OVERDUE: "Overdue",
 };
 
-// Bubble sizing: clamp radius between 8 and 20 px. Scale linearly off
+// Bubble sizing: clamp radius between 4 and 10 px. Scale linearly off
 // total fees so the visual weight tracks dollar value, not just count.
 // Empty/zero-fee buckets still get the floor radius so a placement
 // without a fee captured still surfaces visibly.
 export function bubbleRadius(totalFee: number, maxFee: number): number {
-  const MIN = 8;
-  const MAX = 20;
+  const MIN = 4;
+  const MAX = 10;
   if (maxFee <= 0) return MIN;
   const ratio = Math.min(1, Math.max(0, totalFee / maxFee));
   return MIN + ratio * (MAX - MIN);

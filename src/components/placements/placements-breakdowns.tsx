@@ -7,8 +7,7 @@ import { formatMoneyShort } from "@/lib/placements-map-geo";
 // Three breakdown cards rendered as a row under the placement map:
 //   1. By Industry — bar list of client industries
 //   2. By Sourcing — bar list of candidate source channels
-//   3. Placement Mix — Direct vs Contract stacked bars + offer-to-start
-//      histogram + on-desk / fastest-fill mini cards
+//   3. Offer to Start — offer-to-start histogram + fastest-fill mini
 //
 // Pure functional view over the same PlacementsDashboardRow[] the rest
 // of the tab consumes — no client state, no network. Bucket maths sit
@@ -51,7 +50,7 @@ export function PlacementsBreakdowns({ rows }: { rows: PlacementsDashboardRow[] 
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
       <ByIndustryCard rows={rows} />
       <BySourcingCard rows={rows} />
-      <PlacementMixCard rows={rows} />
+      <OfferToStartCard rows={rows} />
     </div>
   );
 }
@@ -186,32 +185,7 @@ function BarList({
   );
 }
 
-function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
-  const total = rows.length;
-  const direct = rows.filter((r) => r.placementType === "SALARY");
-  const contract = rows.filter((r) => r.placementType === "CONTRACT");
-  const directFee = direct.reduce((s, r) => s + safeFee(r.feeAmount), 0);
-  const contractFee = contract.reduce((s, r) => s + safeFee(r.feeAmount), 0);
-  const maxRowFee = Math.max(directFee, contractFee, 1);
-
-  const now = new Date();
-  // "On desk" semantics: rows whose start date is still in the future
-  // are "starting" (work assigned, not yet at desk). Rows whose start
-  // date is today or in the past are "placed" (already on desk).
-  const placed = rows.filter(
-    (r) => r.startDate != null && r.startDate.getTime() <= now.getTime(),
-  );
-  const starting = rows.filter(
-    (r) => r.startDate != null && r.startDate.getTime() > now.getTime(),
-  );
-  // Longest tenure: among placed rows, the largest gap from start date
-  // until today. This is "longest sitting on our desk" — useful as a
-  // signal that an unbilled placement has been lingering.
-  const tenures = placed
-    .map((r) => (r.startDate ? daysBetween(r.startDate, now) : null))
-    .filter((n): n is number => typeof n === "number" && Number.isFinite(n) && n >= 0);
-  const longestTenure = tenures.length > 0 ? Math.max(...tenures) : null;
-
+function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   // Fastest fill: smallest offer-to-start gap across the period.
   let fastest: { name: string; days: number; role: string | null } | null = null;
   for (const r of rows) {
@@ -237,65 +211,30 @@ function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   return (
     <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-        Placement Mix
+        Offer to Start
       </p>
 
-      <div className="mt-2.5 flex flex-col gap-2">
-        <MixRow
-          label="Direct"
-          count={direct.length}
-          total={directFee}
-          maxFee={maxRowFee}
-          totalCount={total}
-          color="#5A9642"
-        />
-        <MixRow
-          label="Contract"
-          count={contract.length}
-          total={contractFee}
-          maxFee={maxRowFee}
-          totalCount={total}
-          color="#1E40AF"
-        />
+      <div className="mt-2.5 flex items-end gap-2">
+        {bins.map((b) => {
+          const h = binMax > 0 ? Math.round((b.count / binMax) * 44) + 6 : 6;
+          return (
+            <div key={b.id} className="flex flex-1 flex-col items-center gap-1">
+              <span className="text-[11px] font-semibold tabular-nums text-court-fg">
+                {b.count}
+              </span>
+              <div
+                className="w-full rounded-md"
+                style={{ height: `${h}px`, backgroundColor: b.color }}
+              />
+              <span className="text-[10px] uppercase tracking-wide text-court-fg-muted">
+                {b.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       <div className="mt-4">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-          Offer to Start
-        </p>
-        <div className="mt-1.5 flex items-end gap-2">
-          {bins.map((b) => {
-            const h = binMax > 0 ? Math.round((b.count / binMax) * 44) + 6 : 6;
-            return (
-              <div key={b.id} className="flex flex-1 flex-col items-center gap-1">
-                <span className="text-[11px] font-semibold tabular-nums text-court-fg">
-                  {b.count}
-                </span>
-                <div
-                  className="w-full rounded-md"
-                  style={{ height: `${h}px`, backgroundColor: b.color }}
-                />
-                <span className="text-[10px] uppercase tracking-wide text-court-fg-muted">
-                  {b.label}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-2.5">
-        <MiniCard
-          label="On desk now"
-          value={`${placed.length}`}
-          sub={
-            total === 0
-              ? "No active placements"
-              : `${placed.length} placed · ${starting.length} starting${
-                  longestTenure != null ? ` · longest ${longestTenure}d` : ""
-                }`
-          }
-        />
         <MiniCard
           label="Fastest fill"
           value={fastest ? `${fastest.days}d` : "—"}
@@ -304,45 +243,6 @@ function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
               ? `${fastest.name}${fastest.role ? ` · ${fastest.role}` : ""}`
               : "Offer + start dates not yet captured"
           }
-        />
-      </div>
-    </div>
-  );
-}
-
-function MixRow({
-  label,
-  count,
-  total,
-  maxFee,
-  totalCount,
-  color,
-}: {
-  label: string;
-  count: number;
-  total: number;
-  maxFee: number;
-  totalCount: number;
-  color: string;
-}) {
-  const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
-  const w = maxFee > 0 ? Math.max(2, Math.round((total / maxFee) * 100)) : 2;
-  return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex items-baseline justify-between gap-2 text-[13px]">
-        <span className="font-medium text-court-fg">{label}</span>
-        <span className="shrink-0 tabular-nums text-court-fg-muted">
-          {count} ·{" "}
-          <span className="text-court-fg">
-            {total > 0 ? formatMoneyShort(total) : "—"}
-          </span>{" "}
-          · {pct}%
-        </span>
-      </div>
-      <div className="h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
-        <div
-          className="h-full rounded-full"
-          style={{ width: `${w}%`, backgroundColor: color }}
         />
       </div>
     </div>

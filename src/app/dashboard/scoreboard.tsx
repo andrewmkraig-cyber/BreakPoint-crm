@@ -2,7 +2,6 @@ import {
   ArrowUpRight,
   CalendarRange,
   Clock,
-  Sparkles,
   Trophy,
 } from "lucide-react";
 import {
@@ -141,6 +140,23 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
     { name: "Placed", n: funnel.placed, accent: "bg-court-brand-dark" },
   ];
   const top = stages[0].n;
+  const ratios = [
+    {
+      label: "Submitted → Placed",
+      num: funnel.placed,
+      den: funnel.submitted,
+    },
+    {
+      label: "Interview → Offer",
+      num: funnel.offer,
+      den: funnel.interview,
+    },
+    {
+      label: "Offer → Placed",
+      num: funnel.placed,
+      den: funnel.offer,
+    },
+  ];
   return (
     <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] lg:col-span-2">
       <div className="flex items-start justify-between gap-3">
@@ -149,34 +165,59 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
           <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">Submitted → Placed</h3>
           <p className="text-xs text-court-fg-muted">Activity through each gate, last 90 days.</p>
         </div>
-        {top > 0 && (
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-court-brand/30 bg-court-brand-tint px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-court-brand-dark">
-            <Sparkles className="h-3 w-3" /> Live
-          </span>
-        )}
       </div>
       {top === 0 ? (
         <EmptyBlock>No submit activity logged in the last 90 days yet.</EmptyBlock>
       ) : (
-        <div className="mt-6 space-y-3">
-          {stages.map((s) => {
-            const widthPct = top > 0 ? Math.max(8, Math.round((s.n / top) * 100)) : 8;
-            return (
-              <div key={s.name} className="flex items-center gap-3">
-                <div className="w-28 shrink-0 text-[12px] font-medium text-court-fg">{s.name}</div>
-                <div
-                  className={`flex h-14 items-center rounded-lg px-4 text-white ${s.accent}`}
-                  style={{ width: `${widthPct}%`, minWidth: "120px" }}
-                >
-                  <span className="text-[22px] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
-                    {s.n}
-                  </span>
+        <>
+          <div className="mt-6 space-y-3">
+            {stages.map((s) => {
+              const widthPct = top > 0 ? Math.max(8, Math.round((s.n / top) * 100)) : 8;
+              return (
+                <div key={s.name} className="flex items-center gap-3">
+                  <div className="w-28 shrink-0 text-[12px] font-medium text-court-fg">{s.name}</div>
+                  <div
+                    className={`flex h-14 items-center rounded-lg px-4 text-white ${s.accent}`}
+                    style={{ width: `${widthPct}%`, minWidth: "120px" }}
+                  >
+                    <span className="text-[22px] font-extrabold leading-none tabular-nums tracking-[-0.03em]">
+                      {s.n}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+          <div className="mt-5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
+            {ratios.map((r) => (
+              <RatioTile key={r.label} label={r.label} num={r.num} den={r.den} />
+            ))}
+          </div>
+        </>
       )}
+    </div>
+  );
+}
+
+function RatioTile({ label, num, den }: { label: string; num: number; den: number }) {
+  const pct = den > 0 ? Math.round((num / den) * 100) : null;
+  const isEmpty = pct == null;
+  return (
+    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+        {label}
+      </p>
+      <p
+        className={
+          "mt-1 font-serif text-[22px] font-semibold leading-none tracking-[-0.03em] tabular-nums " +
+          (isEmpty ? "text-court-fg-dim" : "text-court-fg")
+        }
+      >
+        {isEmpty ? "—" : `${pct}%`}
+      </p>
+      <p className="mt-1 text-[11px] tabular-nums text-court-fg-muted">
+        {num} / {den}
+      </p>
     </div>
   );
 }
