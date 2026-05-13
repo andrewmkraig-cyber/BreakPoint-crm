@@ -32,6 +32,10 @@ type Props = {
   open: boolean;
   mode: "create" | "edit";
   event: CalendarEvent | null;
+  // Pre-fills the create form from a month-cell or day-slot click.
+  // `hour` is optional (month view passes date only); when present,
+  // the form defaults to a 1-hour block starting at that hour:minute.
+  prefill?: { date: Date; hour?: number; minute?: number } | null;
   onClose: () => void;
 };
 
@@ -135,7 +139,7 @@ const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = 
   { id: "other", label: "Other", sub: "Anything else" },
 ];
 
-export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
+export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Props) {
   const router = useRouter();
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
@@ -175,9 +179,29 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
     } else {
       setType("interview");
       setTitle("");
-      setDate("");
-      setStartTime("");
-      setEndTime("");
+      // Month-cell clicks pass a date; day-slot clicks pass date +
+      // hour + minute. Default end is one hour after start so the
+      // form has a valid range without the recruiter having to tab
+      // through both fields. When no prefill is supplied the form
+      // opens empty.
+      if (prefill) {
+        setDate(toDateInput(prefill.date));
+        if (prefill.hour != null) {
+          const h = prefill.hour;
+          const m = prefill.minute ?? 0;
+          const pad = (n: number) => String(n).padStart(2, "0");
+          setStartTime(`${pad(h)}:${pad(m)}`);
+          const endHour = Math.min(23, h + 1);
+          setEndTime(`${pad(endHour)}:${pad(m)}`);
+        } else {
+          setStartTime("");
+          setEndTime("");
+        }
+      } else {
+        setDate("");
+        setStartTime("");
+        setEndTime("");
+      }
       setLocation("");
       setNotes("");
       setNotesPreviewMode(false);
@@ -185,7 +209,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
     }
     setNewGuests([]);
     setError(null);
-  }, [event?.id, open]);
+  }, [event?.id, open, prefill]);
 
   const meta = eventTypeMeta(type);
   const headerLabel = mode === "edit" ? "Edit event" : "New event";

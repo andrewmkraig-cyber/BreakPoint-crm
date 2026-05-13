@@ -1,6 +1,7 @@
 "use client";
 
 import { MapPin, Plus, Users } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import {
@@ -19,6 +20,7 @@ import { cn } from "@/lib/utils";
 const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 const SLOT = 88;
 const START_HOUR = 7;
+const MAX_AVATARS = 2;
 
 type Props = {
   events: CalendarEvent[];
@@ -30,7 +32,7 @@ type Props = {
   today: Date;
   now: Date;
   onEventClick: (event: CalendarEvent) => void;
-  onSlotClick: (hour: number) => void;
+  onSlotClick: (hour: number, minute: number) => void;
 };
 
 export function CalendarDayView({
@@ -54,6 +56,18 @@ export function CalendarDayView({
   );
   const isToday = isSameDay(displayDate, today);
 
+  // Local "now" ticking once a minute so the brand-green current-time
+  // line drifts down the column while the page sits open. Initialized
+  // from the `now` prop so SSR and the first client render agree;
+  // after mount the local clock takes over.
+  const [liveNow, setLiveNow] = useState<Date>(now);
+  useEffect(() => {
+    if (!isToday) return;
+    setLiveNow(new Date());
+    const id = window.setInterval(() => setLiveNow(new Date()), 60_000);
+    return () => window.clearInterval(id);
+  }, [isToday, displayDate]);
+
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">
       <div className="border-b border-court-border px-7 py-5">
@@ -70,16 +84,16 @@ export function CalendarDayView({
         <div className="text-xs text-court-fg-muted">
           {dayEvents.length} events ·{" "}
           {dayEvents.filter((e) => e.type === "interview").length} interviews
-          {isToday && <> · It is {fmtTime(now)}</>}
+          {isToday && <> · It is {fmtTime(liveNow)}</>}
         </div>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: "84px 1fr" }}>
+      <div className="grid" style={{ gridTemplateColumns: "56px 1fr" }}>
         <div>
           {HOURS.map((h) => (
             <div
               key={h}
-              className="-translate-y-2 pr-3.5 text-right text-[10.5px] font-semibold text-court-fg-muted"
+              className="-translate-y-2 px-2 text-right text-[10.5px] font-semibold text-court-fg-muted"
               style={{ height: SLOT }}
             >
               {fmtHour(h)}
@@ -91,7 +105,17 @@ export function CalendarDayView({
             <button
               key={h}
               type="button"
-              onClick={() => onSlotClick(h)}
+              onClick={(e) => {
+                // Convert offsetY within the slot to a 15-minute snap
+                // so the drawer pre-fills the time the user *meant*
+                // (top of the slot → :00, middle → :30, etc.). Cap at
+                // :45 so we never roll the click into the next hour.
+                const rect = e.currentTarget.getBoundingClientRect();
+                const offsetY = e.clientY - rect.top;
+                const raw = Math.round((offsetY / SLOT) * 4) * 15;
+                const minute = Math.min(45, Math.max(0, raw));
+                onSlotClick(h, minute);
+              }}
               className="group relative block w-full cursor-pointer border-t border-court-border-soft text-left transition hover:bg-court-brand-tint/30"
               style={{ height: SLOT }}
             >
@@ -106,11 +130,14 @@ export function CalendarDayView({
             const end = decimalHour(ev.endTime);
             const top = (start - START_HOUR) * SLOT;
             const height = (end - start) * SLOT - 4;
-            const owners = teamMode
+            const allOwners = teamMode
               ? ev.ownerKeys
                   .map((k) => teamMembers.find((m) => m.id === k))
                   .filter((m): m is NonNullable<typeof m> => Boolean(m))
               : [];
+            // Cap the visible stack at 2; the rest become a "+N" pill.
+            const visibleOwners = allOwners.slice(0, MAX_AVATARS);
+            const extraOwners = allOwners.length - visibleOwners.length;
             const guestCount = ev.guests?.length ?? 0;
             const isSelected = selectedId === ev.id;
             return (
@@ -159,9 +186,9 @@ export function CalendarDayView({
                       )}
                     </div>
                   </div>
-                  {owners.length > 0 && (
+                  {allOwners.length > 0 && (
                     <span className="flex shrink-0 -space-x-1.5">
-                      {owners.map((m) => (
+                      {visibleOwners.map((m) => (
                         <span
                           key={m.id}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold text-white"
@@ -171,6 +198,14 @@ export function CalendarDayView({
                           {m.initials}
                         </span>
                       ))}
+                      {extraOwners > 0 && (
+                        <span
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white bg-court-surface-subtle text-[10px] font-bold text-court-fg"
+                          title={`${extraOwners} more`}
+                        >
+                          +{extraOwners}
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>
@@ -179,19 +214,10 @@ export function CalendarDayView({
           })}
           {isToday && (
             <div
-              className="pointer-events-none absolute left-0 right-0 z-[4] h-0.5"
-              style={{
-                top: (decimalHour(now) - START_HOUR) * SLOT,
-                background: "#E11D48",
-              }}
+              className="pointer-events-none absolute left-0 right-0 z-[4] h-0.5 bg-court-brand"
+              style={{ top: (decimalHour(liveNow) - START_HOUR) * SLOT }}
             >
-              <span
-                className="absolute -left-1.5 -top-1 inline-block h-2.5 w-2.5 rounded-full"
-                style={{
-                  background: "#E11D48",
-                  boxShadow: "0 0 0 3px rgba(225,29,72,.18)",
-                }}
-              />
+              <span className="absolute -left-1.5 -top-1 inline-block h-2.5 w-2.5 rounded-full bg-court-brand shadow-[0_0_0_3px_rgba(90,150,66,0.18)]" />
             </div>
           )}
         </div>

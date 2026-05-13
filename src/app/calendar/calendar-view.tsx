@@ -62,14 +62,20 @@ export function CalendarView({
     () => new Set(teamMembers.filter((m) => !m.self).map((m) => m.id)),
   );
 
-  // Scope label for the tab strip — derived from hiddenMembers so the
-  // active tab updates the moment a left-rail toggle changes which
-  // members are visible. "me" when every non-self member is hidden.
-  const scope: CalendarScope = teamMembers.every(
-    (m) => m.self || hiddenMembers.has(m.id),
-  )
-    ? "me"
-    : "team";
+  // Master-tab state is derived, not stored. "me" only when every
+  // non-self member is hidden AND self is visible; "team" only when
+  // no one is hidden. Any in-between rail configuration is a "mixed"
+  // state where neither master tab claims to be active — the strip
+  // renders both tabs as inactive so the UI never lies about which
+  // mode you're in.
+  const selfKey = teamMembers.find((m) => m.self)?.id ?? null;
+  const nonSelfKeys = teamMembers.filter((m) => !m.self).map((m) => m.id);
+  const isMine =
+    selfKey != null &&
+    !hiddenMembers.has(selfKey) &&
+    nonSelfKeys.every((k) => hiddenMembers.has(k));
+  const isTeam = hiddenMembers.size === 0;
+  const scope: CalendarScope | null = isMine ? "me" : isTeam ? "team" : null;
 
   const handleScope = (next: CalendarScope) => {
     if (next === "me") {
@@ -117,6 +123,13 @@ export function CalendarView({
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"create" | "edit">("edit");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
+  // Prefill carries the date/time from an empty-cell or empty-slot
+  // click into the drawer's create form. Cleared whenever an event is
+  // opened for edit or the "New event" button is used without a
+  // specific anchor.
+  const [createPrefill, setCreatePrefill] = useState<
+    { date: Date; hour?: number; minute?: number } | null
+  >(null);
 
   // Upcoming-reminders list shown in the right-rail panel. Past-due
   // toasts are owned by the global ReminderToastProvider mounted in the
@@ -131,15 +144,31 @@ export function CalendarView({
     setReminders(initialReminders);
   }, [initialReminders]);
 
-  const teamMode = scope === "team";
+  // teamMode drives owner-avatar visibility on event tiles. We show
+  // avatars whenever the rail isn't strictly in "Me" mode — so a
+  // mixed-state rail (Andrew + half the team) still surfaces who owns
+  // each event.
+  const teamMode = scope !== "me";
 
   const openCreate = () => {
     setSelectedEvent(null);
+    setCreatePrefill(null);
+    setDrawerMode("create");
+    setDrawerOpen(true);
+  };
+  const openCreateAt = (
+    date: Date,
+    hour?: number,
+    minute?: number,
+  ) => {
+    setSelectedEvent(null);
+    setCreatePrefill({ date, hour, minute });
     setDrawerMode("create");
     setDrawerOpen(true);
   };
   const openEdit = (ev: CalendarEvent) => {
     setSelectedEvent(ev);
+    setCreatePrefill(null);
     setDrawerMode("edit");
     setDrawerOpen(true);
   };
@@ -262,21 +291,21 @@ export function CalendarView({
               today={today}
               now={today}
               onEventClick={openEdit}
-              onSlotClick={openCreate}
+              onSlotClick={(hour, minute) =>
+                openCreateAt(currentDate, hour, minute)
+              }
             />
           )}
           {view === "month" && (
             <CalendarMonthView
               events={filteredEvents}
               hiddenMembers={hiddenMembers}
+              teamMembers={teamMembers}
               monthStart={currentMonthStart}
               currentWeekStart={currentWeekStart}
               today={today}
               onEventClick={openEdit}
-              onWeekClick={(weekStart: Date) => {
-                setCurrentDate(weekStart);
-                setView("week");
-              }}
+              onDayClick={(date: Date) => openCreateAt(date)}
             />
           )}
         </div>
@@ -295,6 +324,7 @@ export function CalendarView({
         open={drawerOpen}
         mode={drawerMode}
         event={drawerMode === "edit" ? selectedEvent : null}
+        prefill={drawerMode === "create" ? createPrefill : null}
         onClose={closeDrawer}
       />
     </div>
@@ -348,7 +378,9 @@ function CalSubheader({
   latestSyncedAt,
 }: {
   view: CalendarView;
-  scope: CalendarScope;
+  // Null when the rail is in a mixed state (some teammates hidden,
+  // some shown) — neither master tab should appear active in that case.
+  scope: CalendarScope | null;
   currentDate: Date;
   currentWeekStart: Date;
   onView: (v: CalendarView) => void;
@@ -423,9 +455,12 @@ function CalSubheader({
           />
           {isSyncing ? "Syncing..." : "Sync"}
         </button>
+        {/* Passing an empty string here when scope is null means
+            neither tab id matches, so both render in the inactive
+            style — exactly the "mixed rail" appearance we want. */}
         <TabStrip<CalendarScope>
           ariaLabel="Calendar scope"
-          activeId={scope}
+          activeId={(scope ?? "") as CalendarScope}
           onChange={onScope}
           items={[
             { id: "me", label: "My Calendar" },
