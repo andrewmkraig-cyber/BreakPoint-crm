@@ -142,7 +142,7 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
   ];
   const top = stages[0].n;
   return (
-    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)] lg:col-span-2">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] lg:col-span-2">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Deal Funnel</p>
@@ -185,7 +185,7 @@ type Cash = Awaited<ReturnType<typeof getScoreboardData>>["cashForecast"];
 
 function CashForecastCard({ cash }: { cash: Cash }) {
   return (
-    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Cash Forecast</p>
       <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">Pipeline → Bank</h3>
       <p className="text-xs text-court-fg-muted">What&apos;s expected to land where.</p>
@@ -358,7 +358,7 @@ function StalledDealsCard() {
   // stage" is unknowable. Render the section title and an honest empty
   // state until that telemetry lands.
   return (
-    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Stalled Deals</p>
@@ -386,7 +386,7 @@ function ListCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">{eyebrow}</p>
       <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">{title}</h3>
       {children}

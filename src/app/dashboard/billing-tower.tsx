@@ -45,13 +45,13 @@ export function BillingTower({
   const billedValue = period === "quarter-current" ? formatCompactUsd(q2BilledRevenueUsd) : "$0";
   const billedHint =
     period === "quarter-current"
-      ? "Sum of fees on placements with a start date in Apr 1 – Jun 30 2026 (Pending Start + Hired)."
+      ? "Sum of fees on placements with a start date in Apr 1 - Jun 30 2026 (Pending Start + Hired)."
       : "Fees earned on placements that hit start date.";
   const collectedValue =
     period === "quarter-current" ? formatCompactUsd(cashCollectedQtdUsd) : "$0";
   const collectedHint =
     period === "quarter-current"
-      ? "Sum of fees on invoices marked paid this quarter (Apr 1 – Jun 30 2026)."
+      ? "Sum of fees on invoices marked paid this quarter (Apr 1 - Jun 30 2026)."
       : "Client payments received in the selected window.";
 
   return (

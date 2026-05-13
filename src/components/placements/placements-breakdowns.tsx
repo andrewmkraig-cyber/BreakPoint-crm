@@ -33,8 +33,8 @@ const SOURCE_ORDER: PlacementsDashboardSourceChannel[] = [
 
 const OFFER_TO_START_BUCKETS = [
   { id: "le14", label: "≤ 14d", color: "#5A9642", min: 0, max: 14 },
-  { id: "15to21", label: "15–21d", color: "#3F7030", min: 15, max: 21 },
-  { id: "22to30", label: "22–30d", color: "#92400E", min: 22, max: 30 },
+  { id: "15to21", label: "15-21d", color: "#3F7030", min: 15, max: 21 },
+  { id: "22to30", label: "22-30d", color: "#92400E", min: 22, max: 30 },
   { id: "gt30", label: "30+d", color: "#B91C1C", min: 31, max: Infinity },
 ] as const;
 
@@ -127,7 +127,7 @@ function BreakdownCard({
   empty?: boolean;
 }) {
   return (
-    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
         {title}
       </p>
@@ -235,7 +235,7 @@ function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const binMax = bins.reduce((m, b) => Math.max(m, b.count), 0);
 
   return (
-    <div className="rounded-2xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
         Placement Mix
       </p>
