@@ -28,7 +28,7 @@ export default async function DashboardPage({
   const period = resolvePlacementsPeriod(firstParam(resolved.period));
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="flex w-full flex-col gap-3">
       <DashboardTabs active={active} />
       {active === "dashboard" && <MyDashboard />}
       {active === "scoreboard" && <Scoreboard />}
