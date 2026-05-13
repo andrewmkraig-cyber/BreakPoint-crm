@@ -195,10 +195,21 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
   return aggregates;
 }
 
+// One decimal place when not a round thousand/million; integer otherwise.
+// $7,500 → $7.5K, $12,500 → $12.5K, $150,000 → $150K, $1.2M → $1.2M.
 export function formatMoneyShort(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-  return `$${Math.round(n)}`;
+  if (!Number.isFinite(n)) return "—";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) {
+    const m = Math.round((abs / 1_000_000) * 10) / 10;
+    return `${sign}$${m % 1 === 0 ? m.toFixed(0) : m.toFixed(1)}M`;
+  }
+  if (abs >= 1_000) {
+    const k = Math.round((abs / 1_000) * 10) / 10;
+    return `${sign}$${k % 1 === 0 ? k.toFixed(0) : k.toFixed(1)}K`;
+  }
+  return `${sign}$${Math.round(abs)}`;
 }
 
 export const STATUS_COLORS: Record<PlacementsDashboardBillingStatus, string> = {

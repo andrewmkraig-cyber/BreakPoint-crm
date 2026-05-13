@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type { PlacementsDashboardBillingStatus } from "@/lib/placements-dashboard";
+import { formatMoneyShort } from "@/lib/placements-map-geo";
 
 // Ledger row data the table actually renders. Trimmed from the full
 // dashboard row + flattened to primitives so we don't ship Date objects
@@ -50,12 +51,6 @@ const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
     "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
 };
 
-function formatMoneyShort(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-  return `$${Math.round(n)}`;
-}
-
 // Click target priority: if a placement has a linked invoice, sending
 // the recruiter to the invoice is more useful (billing context). Else
 // fall back to the candidate detail page where the placement record
@@ -94,8 +89,8 @@ export function PlacementsLedger({
 
   return (
     <div className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
-      <div className="flex flex-col gap-3 px-5 pt-5 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+      <div className="flex flex-col gap-2.5 px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
           {title}
         </p>
         <div
@@ -136,17 +131,17 @@ export function PlacementsLedger({
         </div>
       </div>
 
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full border-collapse text-sm">
+      <div className="mt-2.5 overflow-x-auto">
+        <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr className="border-y border-court-border-soft text-left text-[11px] uppercase tracking-wide text-court-fg-muted">
-              <th className="px-5 py-2 font-semibold">Candidate</th>
-              <th className="px-3 py-2 font-semibold">Role</th>
-              <th className="px-3 py-2 font-semibold">Client</th>
-              <th className="px-3 py-2 font-semibold">City</th>
-              <th className="px-3 py-2 font-semibold">Start</th>
-              <th className="px-3 py-2 text-right font-semibold">Fee</th>
-              <th className="px-5 py-2 font-semibold">Billing</th>
+            <tr className="border-y border-court-border-soft text-left text-[10px] uppercase tracking-wide text-court-fg-muted">
+              <th className="px-4 py-1.5 font-semibold">Candidate</th>
+              <th className="px-3 py-1.5 font-semibold">Role</th>
+              <th className="px-3 py-1.5 font-semibold">Client</th>
+              <th className="px-3 py-1.5 font-semibold">City</th>
+              <th className="px-3 py-1.5 font-semibold">Start</th>
+              <th className="px-3 py-1.5 text-right font-semibold">Fee</th>
+              <th className="px-4 py-1.5 font-semibold">Billing</th>
             </tr>
           </thead>
           <tbody>
@@ -154,7 +149,7 @@ export function PlacementsLedger({
               <tr>
                 <td
                   colSpan={7}
-                  className="px-5 py-8 text-center text-sm text-court-fg-muted"
+                  className="px-4 py-6 text-center text-[13px] text-court-fg-muted"
                 >
                   {rows.length === 0
                     ? "No placements in this window."
@@ -179,7 +174,7 @@ function LedgerTableRow({ row }: { row: LedgerRow }) {
   const candidateLabel = row.candidateFullName || "—";
   return (
     <tr className={rowClass}>
-      <td className="px-5 py-2.5 align-top font-medium text-court-fg">
+      <td className="px-4 py-1.5 align-middle font-medium text-court-fg">
         {href ? (
           <Link
             href={href}
@@ -191,25 +186,25 @@ function LedgerTableRow({ row }: { row: LedgerRow }) {
           candidateLabel
         )}
       </td>
-      <td className="px-3 py-2.5 align-top text-court-fg">{row.roleTitle ?? "—"}</td>
-      <td className="px-3 py-2.5 align-top">
+      <td className="px-3 py-1.5 align-middle text-court-fg">{row.roleTitle ?? "—"}</td>
+      <td className="px-3 py-1.5 align-middle">
         <div className="font-medium text-court-fg">{row.clientName || "—"}</div>
         <div className="text-[11px] text-court-fg-muted">
           {row.clientIndustry ?? "—"}
         </div>
       </td>
-      <td className="px-3 py-2.5 align-top text-court-fg-muted">
+      <td className="px-3 py-1.5 align-middle text-court-fg-muted">
         {row.city ?? "—"}
       </td>
-      <td className="px-3 py-2.5 align-top tabular-nums text-court-fg-muted">
+      <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
         {row.startDateLabel ?? "—"}
       </td>
-      <td className="px-3 py-2.5 text-right align-top tabular-nums font-medium text-court-fg">
+      <td className="px-3 py-1.5 text-right align-middle tabular-nums font-medium text-court-fg">
         {row.feeAmount != null && row.feeAmount > 0
           ? formatMoneyShort(row.feeAmount)
           : "—"}
       </td>
-      <td className="px-5 py-2.5 align-top">
+      <td className="px-4 py-1.5 align-middle">
         <span
           className={
             "inline-flex items-center justify-center whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +

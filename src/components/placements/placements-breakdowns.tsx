@@ -2,6 +2,7 @@ import type {
   PlacementsDashboardRow,
   PlacementsDashboardSourceChannel,
 } from "@/lib/placements-dashboard";
+import { formatMoneyShort } from "@/lib/placements-map-geo";
 
 // Three breakdown cards rendered as a row under the placement map:
 //   1. By Industry — bar list of client industries
@@ -37,12 +38,6 @@ const OFFER_TO_START_BUCKETS = [
   { id: "gt30", label: "30+d", color: "#B91C1C", min: 31, max: Infinity },
 ] as const;
 
-function formatMoneyShort(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
-  if (n >= 1_000) return `$${Math.round(n / 1_000)}K`;
-  return `$${Math.round(n)}`;
-}
-
 function safeFee(n: number | null): number {
   return n != null && Number.isFinite(n) && n > 0 ? n : 0;
 }
@@ -53,7 +48,7 @@ function daysBetween(a: Date, b: Date): number {
 
 export function PlacementsBreakdowns({ rows }: { rows: PlacementsDashboardRow[] }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
       <ByIndustryCard rows={rows} />
       <BySourcingCard rows={rows} />
       <PlacementMixCard rows={rows} />
@@ -132,11 +127,11 @@ function BreakdownCard({
   empty?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
         {title}
       </p>
-      <div className="mt-3">
+      <div className="mt-2.5">
         {empty ? (
           <p className="text-sm text-court-fg-muted">
             No placements in this window.
@@ -160,7 +155,7 @@ function BarList({
 }) {
   const maxCount = bars.reduce((m, b) => Math.max(m, b.count), 0);
   return (
-    <ul className="flex flex-col gap-2.5">
+    <ul className="flex flex-col gap-2">
       {bars.map((b) => {
         const pct =
           grandTotalFee > 0
@@ -170,15 +165,15 @@ function BarList({
               : 0;
         const barWidth = maxCount > 0 ? Math.round((b.count / maxCount) * 100) : 0;
         return (
-          <li key={b.key} className="flex flex-col gap-1">
-            <div className="flex items-baseline justify-between gap-2 text-sm">
+          <li key={b.key} className="flex flex-col gap-0.5">
+            <div className="flex items-baseline justify-between gap-2 text-[13px]">
               <span className="truncate font-medium text-court-fg">{b.label}</span>
               <span className="shrink-0 tabular-nums text-court-fg-muted">
                 {b.count} · {b.total > 0 ? formatMoneyShort(b.total) : "—"} ·{" "}
                 <span className="font-semibold text-court-fg">{pct}%</span>
               </span>
             </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
+            <div className="h-1 w-full overflow-hidden rounded-full bg-court-surface-subtle">
               <div
                 className="h-full rounded-full bg-court-brand"
                 style={{ width: `${barWidth}%` }}
@@ -240,12 +235,12 @@ function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const binMax = bins.reduce((m, b) => Math.max(m, b.count), 0);
 
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
         Placement Mix
       </p>
 
-      <div className="mt-3 flex flex-col gap-3">
+      <div className="mt-2.5 flex flex-col gap-2">
         <MixRow
           label="Direct"
           count={direct.length}
@@ -264,13 +259,13 @@ function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
         />
       </div>
 
-      <div className="mt-5">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+      <div className="mt-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
           Offer to Start
         </p>
-        <div className="mt-2 flex items-end gap-2">
+        <div className="mt-1.5 flex items-end gap-2">
           {bins.map((b) => {
-            const h = binMax > 0 ? Math.round((b.count / binMax) * 56) + 6 : 6;
+            const h = binMax > 0 ? Math.round((b.count / binMax) * 44) + 6 : 6;
             return (
               <div key={b.id} className="flex flex-1 flex-col items-center gap-1">
                 <span className="text-[11px] font-semibold tabular-nums text-court-fg">
@@ -289,7 +284,7 @@ function PlacementMixCard({ rows }: { rows: PlacementsDashboardRow[] }) {
         </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
         <MiniCard
           label="On desk now"
           value={`${placed.length}`}
@@ -333,8 +328,8 @@ function MixRow({
   const pct = totalCount > 0 ? Math.round((count / totalCount) * 100) : 0;
   const w = maxFee > 0 ? Math.max(2, Math.round((total / maxFee) * 100)) : 2;
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex items-baseline justify-between gap-2 text-sm">
+    <div className="flex flex-col gap-0.5">
+      <div className="flex items-baseline justify-between gap-2 text-[13px]">
         <span className="font-medium text-court-fg">{label}</span>
         <span className="shrink-0 tabular-nums text-court-fg-muted">
           {count} ·{" "}
@@ -344,7 +339,7 @@ function MixRow({
           · {pct}%
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-court-surface-subtle">
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
         <div
           className="h-full rounded-full"
           style={{ width: `${w}%`, backgroundColor: color }}
@@ -365,19 +360,19 @@ function MiniCard({
 }) {
   const isEmpty = value === "—";
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 p-3">
+    <div className="rounded-xl border border-court-border bg-court-surface-subtle/60 px-2.5 py-2">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-court-fg-muted">
         {label}
       </p>
       <p
         className={
-          "mt-1 font-sans text-xl font-extrabold leading-none tracking-tight tabular-nums " +
+          "mt-1 font-sans text-lg font-extrabold leading-none tracking-tight tabular-nums " +
           (isEmpty ? "text-court-fg-dim" : "text-court-fg")
         }
       >
         {value}
       </p>
-      <p className="mt-1.5 truncate text-[11px] text-court-fg-muted">{sub}</p>
+      <p className="mt-1 truncate text-[11px] text-court-fg-muted">{sub}</p>
     </div>
   );
 }

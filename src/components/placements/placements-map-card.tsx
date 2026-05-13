@@ -38,10 +38,10 @@ export function PlacementsMapCard({ cities, totalFee }: Props) {
   );
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <div className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm lg:col-span-2">
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm lg:col-span-2">
         <div className="flex items-baseline justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
             Placement map
           </p>
           <p className="text-[11px] text-court-fg-muted">
@@ -51,7 +51,7 @@ export function PlacementsMapCard({ cities, totalFee }: Props) {
           </p>
         </div>
 
-        <div className="mt-3">
+        <div className="mt-2.5">
           <MapSvg
             cities={cities}
             maxFee={maxFee}
@@ -63,20 +63,20 @@ export function PlacementsMapCard({ cities, totalFee }: Props) {
         <Legend />
       </div>
 
-      <div className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+      <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
           By City
         </p>
-        <h3 className="mt-1 font-serif text-lg font-extrabold tracking-tight text-court-fg">
+        <h3 className="mt-0.5 font-serif text-base font-extrabold tracking-tight text-court-fg">
           Where the billing comes from
         </h3>
 
         {cities.length === 0 ? (
-          <p className="mt-4 text-sm text-court-fg-muted">
+          <p className="mt-3 text-sm text-court-fg-muted">
             No placements with a city captured in this window.
           </p>
         ) : (
-          <ul className="mt-4 flex flex-col divide-y divide-court-border-soft">
+          <ul className="mt-2.5 flex flex-col divide-y divide-court-border-soft">
             {cities.map((city) => (
               <CityRow
                 key={city.key}
@@ -115,31 +115,26 @@ function MapSvg({
     >
       <UsMapShape />
 
-      {/* HQ diamond pin */}
+      {/* HQ diamond pin — small + subtle, sits behind city bubbles */}
       <g
         transform={`translate(${hqProjected.x.toFixed(1)}, ${hqProjected.y.toFixed(1)})`}
         aria-hidden="true"
       >
         <rect
-          x={-5}
-          y={-5}
-          width={10}
-          height={10}
+          x={-4}
+          y={-4}
+          width={8}
+          height={8}
           transform="rotate(45)"
-          fill="rgb(var(--court-fg))"
+          fill="rgb(var(--court-fg-muted))"
           stroke="rgb(var(--court-surface))"
-          strokeWidth={1.5}
+          strokeWidth={1}
         />
         <text
-          x={9}
-          y={4}
+          x={7}
+          y={3}
           className="fill-court-fg-muted"
-          style={{
-            fontSize: 11,
-            fontWeight: 600,
-            letterSpacing: "0.05em",
-            textTransform: "uppercase",
-          }}
+          style={{ fontSize: 10, fontWeight: 500 }}
         >
           BreakPoint HQ · Solon, OH
         </text>
@@ -355,7 +350,7 @@ function CityRow({
       onMouseEnter={() => onHover(city.key)}
       onMouseLeave={() => onHover(null)}
       className={
-        "flex flex-col gap-1.5 py-2.5 transition " +
+        "flex flex-col gap-1 py-2 transition " +
         (isHovered ? "bg-court-brand-tint/40" : "")
       }
     >
@@ -408,7 +403,7 @@ function StatusBar({
 
 function Legend() {
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-court-fg-muted">
+    <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-court-fg-muted">
       {STATUS_ORDER.map((status) => (
         <span key={status} className="inline-flex items-center gap-1.5">
           <span
