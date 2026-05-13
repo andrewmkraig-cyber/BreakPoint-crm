@@ -2,6 +2,10 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import {
+  ownerKeyForCalendar,
+  ownerKeyForPerson,
+} from "@/lib/calendar/owner-key";
 import type {
   CalendarEvent,
   CalendarEventType,
@@ -85,39 +89,6 @@ function formatAbsolute(target: Date): string {
   });
 }
 
-// Resolve which team member "owns" a synced Google calendar by matching
-// the calendar's summary against the member's email, email local-part,
-// or any 3+ char token in their display name. The naive
-// `lc.includes(email)` check broke the team toggle for everyone except
-// the signed-in user: Google's `cal.summary` for a shared calendar is
-// usually "Austin Barnard", not "austin@breakpointtalent.com", so every
-// non-self event collapsed onto fallbackOwnerId (the self user). With
-// the wider match Austin's events land on his user.id, which is the
-// same id the left-rail toggle writes into hiddenMembers.
-function deriveOwnerId(
-  calendarName: string,
-  members: Array<{ id: string; email: string | null; name: string | null }>,
-  fallbackId: string,
-): string {
-  const lc = calendarName.toLowerCase();
-  for (const m of members) {
-    const tokens: string[] = [];
-    if (m.email) {
-      const email = m.email.toLowerCase();
-      tokens.push(email);
-      const local = email.split("@")[0];
-      if (local && local.length >= 3) tokens.push(local);
-    }
-    if (m.name) {
-      for (const part of m.name.toLowerCase().split(/\s+/)) {
-        if (part.length >= 3) tokens.push(part);
-      }
-    }
-    if (tokens.some((t) => lc.includes(t))) return m.id;
-  }
-  return fallbackId;
-}
-
 export default async function CalendarPage() {
   const org = await getCurrentOrg();
   const session = await getServerSession(authOptions);
@@ -154,25 +125,25 @@ export default async function CalendarPage() {
     }),
   ]);
 
+  // Team-member id is the normalized owner key ("ak", "austin",
+  // …) — NOT the user.id cuid. Both this list and event.ownerId run
+  // through the same helper so the left-rail toggle and the event
+  // filter agree on what "Austin" means.
   const teamMembers: CalendarTeamMember[] = memberships.map((m) => ({
-    id: m.user.id,
+    id: ownerKeyForPerson({ name: m.user.name, email: m.user.email }),
     name: m.user.name ?? m.user.email ?? "Member",
     initials: initialsFor(m.user.name, m.user.email),
     color: colorFor(m.user.id),
     self: selfEmail !== null && m.user.email?.toLowerCase() === selfEmail,
   }));
 
-  const memberEmailLookup = memberships.map((m) => ({
-    id: m.user.id,
-    email: m.user.email,
-    name: m.user.name,
-  }));
-
-  // The self user — or the first member if the request has no session
-  // (e.g. DEFAULT_ORG_ID fallback path). Used as the default ownerId
-  // for events whose calendarName doesn't match any member email.
-  const fallbackOwnerId =
-    teamMembers.find((m) => m.self)?.id ?? teamMembers[0]?.id ?? "";
+  // Self person hint for events whose calendar source carries no
+  // identifying tokens (the signed-in user's primary calendar shows up
+  // as `cal.id = "primary"` with their email-ish summary).
+  const selfPerson =
+    memberships.find(
+      (m) => selfEmail !== null && m.user.email?.toLowerCase() === selfEmail,
+    )?.user ?? null;
 
   const events: CalendarEvent[] = rows.map((row) => {
     const attendees = (row.attendees as AttendeeJson[] | null) ?? null;
@@ -192,7 +163,10 @@ export default async function CalendarPage() {
       meta: row.description ?? undefined,
       guests,
       location: row.location ?? undefined,
-      ownerId: deriveOwnerId(row.calendarName, memberEmailLookup, fallbackOwnerId),
+      ownerId: ownerKeyForCalendar(
+        { calendarId: row.calendarId, calendarName: row.calendarName },
+        selfPerson,
+      ),
       jobId: row.jobId ?? undefined,
       candidateId: row.candidateId ?? undefined,
       clientId: row.clientId ?? undefined,

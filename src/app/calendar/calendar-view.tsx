@@ -192,8 +192,6 @@ export function CalendarView({
       <CalSubheader
         view={view}
         scope={scope}
-        teamModeCount={events.length}
-        myCount={events.filter((e) => !e.ownerId || e.ownerId === selfMemberId).length}
         currentDate={currentDate}
         currentWeekStart={currentWeekStart}
         onView={setView}
@@ -316,8 +314,6 @@ function formatSyncedAgo(syncedAt: Date | null): string {
 function CalSubheader({
   view,
   scope,
-  teamModeCount,
-  myCount,
   currentDate,
   currentWeekStart,
   onView,
@@ -331,8 +327,6 @@ function CalSubheader({
 }: {
   view: CalendarView;
   scope: CalendarScope;
-  teamModeCount: number;
-  myCount: number;
   currentDate: Date;
   currentWeekStart: Date;
   onView: (v: CalendarView) => void;
@@ -412,8 +406,8 @@ function CalSubheader({
           activeId={scope}
           onChange={onScope}
           items={[
-            { id: "me", label: "My Calendar", count: myCount },
-            { id: "team", label: "Team", count: teamModeCount },
+            { id: "me", label: "My Calendar" },
+            { id: "team", label: "Team" },
           ]}
         />
         <span className="hidden h-[22px] w-px bg-court-border xl:inline-block" />

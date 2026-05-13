@@ -1,9 +1,12 @@
 "use client";
 
+import { Bell, Check } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 
 import { dismissReminder as dismissReminderAction } from "@/app/calendar/reminder-actions";
+import { ActionChip } from "@/components/_toast-chrome";
+import { getStoredToastTheme, toastBoxShadow } from "@/lib/toast-theme";
 
 type DueReminder = {
   id: string;
@@ -14,40 +17,29 @@ type DueReminder = {
 // Global reminder watcher. Mounted once in the root layout so the
 // 60-second tick keeps running as the user navigates between pages —
 // the previous design lived inside /calendar and went silent the
-// moment Andrew clicked away. Fires sonner toasts (the Toaster is
-// already mounted in <Providers>). Each id fires at most once per
-// page load (tracked in a ref Set); a successful dismiss removes the
-// id from the Set, while a failed dismiss leaves it in place so a
-// transient network blip doesn't spam re-fires on the next 60s tick.
+// moment Andrew clicked away. Renders the same toast chrome as the
+// mail/text notifications (border, shadow, ActionChip) so reminders
+// don't feel like a different surface; the only visual difference is
+// the amber tint on the left strip and icon container.
 export function ReminderToastProvider() {
   const firedIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
 
-    const formatTime = (iso: string): string =>
-      new Date(iso).toLocaleTimeString(undefined, {
-        hour: "numeric",
-        minute: "2-digit",
-      });
-
     const fire = (r: DueReminder) => {
-      toast(r.title, {
-        description: `Reminder · ${formatTime(r.reminderAt)}`,
-        duration: Infinity,
-        action: {
-          label: "Dismiss",
-          onClick: () => {
-            void dismissReminderAction(r.id)
-              .then(() => {
-                firedIds.current.delete(r.id);
-              })
-              .catch((err) => {
-                console.error("Reminder dismiss failed", err);
-              });
-          },
-        },
-      });
+      toast.custom(
+        (id) => (
+          <ReminderToast
+            reminder={r}
+            toastId={id}
+            onPersist={() => {
+              firedIds.current.delete(r.id);
+            }}
+          />
+        ),
+        { duration: Infinity },
+      );
     };
 
     const pull = async () => {
@@ -74,4 +66,122 @@ export function ReminderToastProvider() {
   }, []);
 
   return null;
+}
+
+function ReminderToast({
+  reminder,
+  toastId,
+  onPersist,
+}: {
+  reminder: DueReminder;
+  toastId: string | number;
+  onPersist: () => void;
+}) {
+  const theme = getStoredToastTheme();
+
+  function handleDismiss() {
+    void dismissReminderAction(reminder.id)
+      .then(() => {
+        onPersist();
+      })
+      .catch((err) => {
+        console.error("Reminder dismiss failed", err);
+      });
+    toast.dismiss(toastId);
+  }
+
+  const formattedTime = new Date(reminder.reminderAt).toLocaleTimeString(
+    undefined,
+    { hour: "numeric", minute: "2-digit" },
+  );
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        display: "flex",
+        alignItems: "center",
+        gap: "12px",
+        minWidth: "360px",
+        maxWidth: "420px",
+        padding: "12px 14px",
+        borderRadius: "14px",
+        border: `1px solid ${theme.border}`,
+        background: theme.bg,
+        color: theme.fg,
+        boxShadow: toastBoxShadow(),
+        overflow: "hidden",
+      }}
+    >
+      {theme.leftStrip && (
+        <span
+          aria-hidden="true"
+          className="bg-amber-500 dark:bg-amber-400"
+          style={{
+            position: "absolute",
+            inset: "0 auto 0 0",
+            width: "3px",
+          }}
+        />
+      )}
+      <div
+        className="bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200"
+        style={{
+          flexShrink: 0,
+          width: 36,
+          height: 36,
+          borderRadius: 10,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Bell size={17} />
+      </div>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+          <span
+            style={{
+              fontSize: 13.5,
+              fontWeight: 600,
+              color: theme.fg,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {reminder.title}
+          </span>
+        </div>
+        <div
+          style={{
+            fontSize: 12.5,
+            color: theme.fgMuted,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            marginTop: 2,
+          }}
+        >
+          Reminder · {formattedTime}
+        </div>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          flexShrink: 0,
+          marginLeft: 12,
+        }}
+      >
+        <ActionChip
+          theme={theme}
+          onClick={handleDismiss}
+          label="Dismiss"
+          icon={<Check size={12} />}
+        />
+      </div>
+    </div>
+  );
 }
