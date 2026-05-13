@@ -227,14 +227,14 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
           const fillHeight = binMax > 0 ? `${(b.count / binMax) * 100}%` : "0%";
           return (
             <div key={b.id} className="flex flex-1 flex-col items-center gap-1">
-              <span className="text-[11px] font-semibold tabular-nums text-court-fg">
-                {b.count}
-              </span>
-              <div className="relative h-12 w-full overflow-hidden rounded-md bg-court-surface-subtle">
+              <div className="relative flex h-12 w-full items-center justify-center overflow-hidden rounded-md bg-court-surface-subtle">
                 <div
-                  className={`absolute inset-x-0 bottom-0 rounded-md ${b.fillClass}`}
+                  className={`absolute inset-x-0 bottom-0 ${b.fillClass}`}
                   style={{ height: fillHeight }}
                 />
+                <span className="relative text-base font-bold tabular-nums text-court-fg">
+                  {b.count}
+                </span>
               </div>
               <span className="text-[10px] uppercase tracking-wide text-court-fg-muted">
                 {b.label}

@@ -109,12 +109,13 @@ export async function MyDashboard() {
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
 
-      <BillingTower
-        q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0}
-        cashCollectedQtdUsd={invoiceSummary.collectedThisQuarterCents / 100}
-      />
-
-      <NewsFeed />
+      <div className="grid grid-cols-2 items-stretch gap-5">
+        <BillingTower
+          q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0}
+          cashCollectedQtdUsd={invoiceSummary.collectedThisQuarterCents / 100}
+        />
+        <NewsFeed />
+      </div>
 
       <ThisWeekWidget orgId={org.id} selfPerson={selfPerson} />
     </div>

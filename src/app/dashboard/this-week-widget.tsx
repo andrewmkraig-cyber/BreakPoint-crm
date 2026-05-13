@@ -440,16 +440,16 @@ export async function ThisWeekWidget({
             Nothing else scheduled
           </div>
         ) : (
-          <ul className="mt-2 divide-y divide-court-border-soft">
+          <ul className="mt-2 divide-y divide-court-border-soft rounded-xl bg-court-surface-subtle px-4 py-3">
             {laterRows.map((r) => (
               <li
                 key={r.id}
-                className="flex items-center gap-3 py-2 first:pt-1 last:pb-1"
+                className="flex items-center gap-3 py-2 first:pt-0 last:pb-0"
               >
-                <span className="w-10 shrink-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-court-fg-muted">
+                <span className="w-8 shrink-0 text-xs text-court-fg-muted">
                   {r.dayAbbr}
                 </span>
-                <span className="w-[72px] shrink-0 text-[13px] font-semibold tabular-nums text-court-fg">
+                <span className="w-20 shrink-0 text-[13px] font-medium tabular-nums text-court-fg">
                   {r.timeLabel}
                 </span>
                 <span className="min-w-0 flex-1 truncate text-[13px] text-court-fg">
