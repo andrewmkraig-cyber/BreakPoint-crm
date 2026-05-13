@@ -14,7 +14,11 @@ import {
   getMercuryTransactions,
   mercuryTransactionDescription,
 } from "@/lib/mercury";
-import { matchTransaction } from "@/lib/mercury-matcher";
+import { matchTransaction, shouldIgnoreTransaction } from "@/lib/mercury-matcher";
+import {
+  SubscriptionsList,
+  type SubscriptionListRow,
+} from "@/app/dashboard/subscriptions-list";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -274,32 +278,9 @@ export async function FinancialPerformanceTab() {
     return new Date(stamp).getFullYear() === year;
   });
 
-  // Diagnostic: surface the first 5 raw Mercury transaction descriptions
-  // to Vercel logs so we can tune mercury-matcher keywords against the
-  // actual upstream strings (bankDescription vs counterpartyName, casing,
-  // suffixes like "Inc", etc.).
-  if (mercuryConnected) {
-    const sample = mercuryTxns.slice(0, 5).map((t) => ({
-      bankDescription: t.bankDescription ?? null,
-      counterpartyName: t.counterpartyName ?? null,
-      resolved: mercuryTransactionDescription(t),
-      matched: matchTransaction(mercuryTransactionDescription(t)),
-    }));
-    console.log(
-      `[financial-performance] Mercury sample (${mercuryTxns.length} YTD of ${mercuryTxnsAll.length} fetched):`,
-      JSON.stringify(sample, null, 2),
-    );
-    console.log("[financial-performance] All Mercury counterparties:",
-      Array.from(new Set(mercuryTxnsAll.map(t =>
-        `${t.bankDescription ?? "null"} | ${t.counterpartyName ?? "null"}`
-      ))).sort().join("\n")
-    );
-  } else {
-    console.log(`[financial-performance] Mercury not connected for org ${org.id}`);
-  }
-
   const mercuryByTool = new Map<string, { count: number; totalUsd: number }>();
   for (const t of mercuryTxns) {
+    if (shouldIgnoreTransaction(t)) continue;
     const description = mercuryTransactionDescription(t);
     if (!description) continue;
     const tool = matchTransaction(description);
@@ -313,26 +294,42 @@ export async function FinancialPerformanceTab() {
     mercuryByTool.set(tool, prev);
   }
 
-  const subscriptionRows: SubscriptionRow[] = [];
+  // A merchant that appears 2+ times in the YTD list is a recurring
+  // subscription; once-per-year hits land in the One-time section.
+  // Manual ToolExpense rows fall into whichever section their frequency
+  // implies — Annual / One-time go to the one-time bucket, everything
+  // else (Monthly, Quarterly, unset) is treated as recurring.
+  const isOneTimeManualFrequency = (f: string | null | undefined) => {
+    if (!f) return false;
+    const lower = f.toLowerCase();
+    return lower === "annual" || lower === "yearly" || lower === "one-time" || lower === "once";
+  };
+
+  const recurringRows: SubscriptionListRow[] = [];
+  const oneTimeRows: SubscriptionListRow[] = [];
   const consumedExpenseIds = new Set<string>();
+
   Array.from(mercuryByTool.entries()).forEach(([tool, agg]) => {
     const te = toolExpenses.find(
       (t) => t.name.toLowerCase() === tool.toLowerCase(),
     );
     if (te) consumedExpenseIds.add(te.id);
-    subscriptionRows.push({
+    const isRecurring = agg.count >= 2;
+    const row: SubscriptionListRow = {
       key: `merc-${tool}`,
       toolName: te?.name ?? tool,
       cost: te?.cost ?? null,
-      frequency: te?.frequency ?? null,
+      frequency: te?.frequency ?? (isRecurring ? "Monthly" : "Annual"),
       paidCount: te?.paidCount ?? agg.count,
       totalYtdUsd: agg.totalUsd,
       status: "Mercury matched",
-    });
+    };
+    (isRecurring ? recurringRows : oneTimeRows).push(row);
   });
+
   for (const te of toolExpenses) {
     if (consumedExpenseIds.has(te.id)) continue;
-    subscriptionRows.push({
+    const row: SubscriptionListRow = {
       key: `te-${te.id}`,
       toolName: te.name,
       cost: te.cost,
@@ -340,9 +337,17 @@ export async function FinancialPerformanceTab() {
       paidCount: te.paidCount,
       totalYtdUsd: te.cost * te.paidCount,
       status: "Manual",
-    });
+    };
+    (isOneTimeManualFrequency(te.frequency) ? oneTimeRows : recurringRows).push(row);
   }
-  subscriptionRows.sort((a, b) => b.totalYtdUsd - a.totalYtdUsd);
+
+  recurringRows.sort((a, b) => b.totalYtdUsd - a.totalYtdUsd);
+  oneTimeRows.sort((a, b) => b.totalYtdUsd - a.totalYtdUsd);
+
+  const subscriptionRows: SubscriptionListRow[] = [
+    ...recurringRows,
+    ...oneTimeRows,
+  ];
 
   const subscriptionsYtdUsd = subscriptionRows.reduce(
     (sum, r) => sum + r.totalYtdUsd,
@@ -581,7 +586,8 @@ export async function FinancialPerformanceTab() {
 
       <ExpensesSection
         mercuryConnected={mercuryConnected}
-        subscriptionRows={subscriptionRows}
+        recurringRows={recurringRows}
+        oneTimeRows={oneTimeRows}
         subscriptionsYtdUsd={subscriptionsYtdUsd}
         activeSubscriptionsCount={activeSubscriptionsCount}
         roiRows={roiRows}
@@ -597,16 +603,6 @@ export async function FinancialPerformanceTab() {
     </div>
   );
 }
-
-type SubscriptionRow = {
-  key: string;
-  toolName: string;
-  cost: number | null;
-  frequency: string | null;
-  paidCount: number;
-  totalYtdUsd: number;
-  status: "Mercury matched" | "Manual";
-};
 
 type RoiRow = {
   key: string;
@@ -981,14 +977,16 @@ function avatarFor(name: string): string {
 
 function ExpensesSection({
   mercuryConnected,
-  subscriptionRows,
+  recurringRows,
+  oneTimeRows,
   subscriptionsYtdUsd,
   activeSubscriptionsCount,
   roiRows,
   blendedExpensesRoiPct,
 }: {
   mercuryConnected: boolean;
-  subscriptionRows: SubscriptionRow[];
+  recurringRows: SubscriptionListRow[];
+  oneTimeRows: SubscriptionListRow[];
   subscriptionsYtdUsd: number;
   activeSubscriptionsCount: number;
   roiRows: RoiRow[];
@@ -1022,7 +1020,8 @@ function ExpensesSection({
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <SubscriptionsCard
-          rows={subscriptionRows}
+          recurringRows={recurringRows}
+          oneTimeRows={oneTimeRows}
           subscriptionsYtdUsd={subscriptionsYtdUsd}
           activeSubscriptionsCount={activeSubscriptionsCount}
         />
@@ -1036,14 +1035,17 @@ function ExpensesSection({
 }
 
 function SubscriptionsCard({
-  rows,
+  recurringRows,
+  oneTimeRows,
   subscriptionsYtdUsd,
   activeSubscriptionsCount,
 }: {
-  rows: SubscriptionRow[];
+  recurringRows: SubscriptionListRow[];
+  oneTimeRows: SubscriptionListRow[];
   subscriptionsYtdUsd: number;
   activeSubscriptionsCount: number;
 }) {
+  const isEmpty = recurringRows.length === 0 && oneTimeRows.length === 0;
   return (
     <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div>
@@ -1055,27 +1057,16 @@ function SubscriptionsCard({
         </p>
       </div>
 
-      {rows.length === 0 ? (
+      {isEmpty ? (
         <EmptyBlock>
           No subscription spend logged yet. Add one below or connect Mercury to
           auto-match transactions.
         </EmptyBlock>
       ) : (
-        <div className="mt-4">
-          <div className="grid grid-cols-[1.6fr_0.7fr_0.9fr_0.5fr_0.9fr_1.1fr] gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
-            <span>Tool</span>
-            <span className="text-right">Cost</span>
-            <span>Frequency</span>
-            <span className="text-right">Paid</span>
-            <span className="text-right">Total YTD</span>
-            <span className="text-right">Status</span>
-          </div>
-          <ul className="divide-y divide-court-border-soft">
-            {rows.map((r) => (
-              <SubscriptionRowItem key={r.key} row={r} />
-            ))}
-          </ul>
-        </div>
+        <SubscriptionsList
+          recurring={recurringRows}
+          oneTime={oneTimeRows}
+        />
       )}
 
       <div className="mt-4 flex items-center justify-between border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">
@@ -1092,62 +1083,6 @@ function SubscriptionsCard({
         <ExpenseAddForm />
       </div>
     </div>
-  );
-}
-
-function SubscriptionRowItem({ row }: { row: SubscriptionRow }) {
-  const initials = avatarFor(row.toolName);
-  return (
-    <li className="grid grid-cols-[1.6fr_0.7fr_0.9fr_0.5fr_0.9fr_1.1fr] items-center gap-2 px-1 py-2 text-sm">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
-          {initials}
-        </span>
-        <span className="truncate font-medium text-court-fg">
-          {row.toolName}
-        </span>
-      </div>
-      <span className="text-right tabular-nums text-court-fg">
-        {row.cost != null ? formatUsd(row.cost) : "—"}
-      </span>
-      <span>
-        {row.frequency ? (
-          <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
-            {row.frequency}
-          </span>
-        ) : (
-          <span className="text-xs text-court-fg-dim">—</span>
-        )}
-      </span>
-      <span className="text-right tabular-nums text-court-fg">
-        {row.paidCount}
-      </span>
-      <span className="text-right font-semibold tabular-nums text-court-fg">
-        {formatUsd(row.totalYtdUsd)}
-      </span>
-      <span className="flex justify-end">
-        <StatusChip status={row.status} />
-      </span>
-    </li>
-  );
-}
-
-function StatusChip({
-  status,
-}: {
-  status: "Mercury matched" | "Manual";
-}) {
-  if (status === "Mercury matched") {
-    return (
-      <span className="inline-flex items-center rounded-full bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-brand-dark">
-        Mercury matched
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
-      Manual
-    </span>
   );
 }
 
