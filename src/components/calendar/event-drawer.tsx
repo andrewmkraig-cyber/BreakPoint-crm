@@ -23,6 +23,7 @@ import {
   updateCalendarEventAction,
 } from "@/app/calendar/event-actions";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
+import { Button } from "@/components/ui/button";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
 import { eventTypeMeta } from "@/lib/calendar/utils";
 import { cn } from "@/lib/utils";
@@ -138,7 +139,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
   const router = useRouter();
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
-  const [reminderOn, setReminderOn] = useState(true);
+  const [reminderOn, setReminderOn] = useState(event?.reminderEnabled ?? false);
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -170,6 +171,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
       const incoming = event.meta ?? "";
       setNotes(incoming);
       setNotesPreviewMode(isHtmlDescription(incoming));
+      setReminderOn(event.reminderEnabled ?? false);
     } else {
       setType("interview");
       setTitle("");
@@ -179,6 +181,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
       setLocation("");
       setNotes("");
       setNotesPreviewMode(false);
+      setReminderOn(false);
     }
     setNewGuests([]);
     setError(null);
@@ -216,6 +219,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
         notes: notes.trim() || null,
         newGuests,
         notifyAll,
+        reminderEnabled: reminderOn,
       });
       router.refresh();
       onClose();
@@ -502,14 +506,14 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
                   aria-checked={reminderOn}
                   onClick={() => setReminderOn((v) => !v)}
                   className={cn(
-                    "relative h-[18px] w-8 shrink-0 rounded-full transition",
-                    reminderOn ? "bg-court-brand" : "bg-court-border",
+                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
+                    reminderOn ? "bg-brand" : "bg-court-fg-muted/40",
                   )}
                 >
                   <span
                     className={cn(
-                      "absolute top-0.5 inline-block h-3.5 w-3.5 rounded-full bg-court-surface shadow transition-transform",
-                      reminderOn ? "translate-x-4" : "translate-x-0.5",
+                      "inline-block h-5 w-5 transform rounded-full bg-white shadow transition",
+                      reminderOn ? "translate-x-5" : "translate-x-0.5",
                     )}
                   />
                 </button>
@@ -538,54 +542,48 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
           <div className="flex items-center gap-2.5">
             {mode === "edit" ? (
               <>
-                <button
-                  type="button"
+                <Button
+                  variant="reject"
+                  size="sm"
                   onClick={doDelete}
                   disabled={deleting || saving !== null}
                   aria-label="Delete event"
                   title="Delete"
-                  className="grid h-9 w-9 place-items-center rounded-full border border-court-border text-court-fg-muted transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                  className="!px-2"
                 >
                   {deleting ? (
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   ) : (
                     <Trash2 className="h-3.5 w-3.5" />
                   )}
-                </button>
+                </Button>
                 <div className="flex-1" />
-                <button
-                  type="button"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => doSave(false)}
-                  disabled={!canSave || saving !== null || deleting || newGuests.length === 0}
+                  disabled={
+                    !canSave ||
+                    saving !== null ||
+                    deleting ||
+                    newGuests.length === 0
+                  }
                   title={
                     newGuests.length === 0
                       ? "Add a guest to enable — sends an invite to new guests only"
                       : "Patch silently for existing guests, email only the new ones"
                   }
-                  className={cn(
-                    "inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg transition",
-                    (!canSave || newGuests.length === 0 || saving !== null) &&
-                      "cursor-not-allowed opacity-50",
-                    canSave &&
-                      newGuests.length > 0 &&
-                      saving === null &&
-                      "hover:border-court-brand/40 hover:bg-court-brand-tint",
-                  )}
                 >
                   {saving === "new" && (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   )}
                   Save · notify new only
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => doSave(true)}
                   disabled={!canSave || saving !== null || deleting}
-                  className={cn(
-                    "inline-flex h-9 items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white transition hover:bg-court-brand-dark",
-                    (!canSave || saving !== null) &&
-                      "cursor-not-allowed opacity-60 hover:bg-court-brand",
-                  )}
                 >
                   {saving === "all" ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -593,26 +591,22 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
                     <Check className="h-3 w-3" />
                   )}
                   Save · notify all
-                </button>
+                </Button>
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="h-9 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg hover:border-court-brand/40 hover:bg-court-brand-tint"
-                >
+                <Button variant="secondary" size="sm" onClick={onClose}>
                   Cancel
-                </button>
+                </Button>
                 <div className="flex-1" />
-                <button
-                  type="button"
+                <Button
+                  variant="primary"
+                  size="sm"
                   disabled
                   title="Creating new events is coming next — for now use Google Calendar."
-                  className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white opacity-60"
                 >
                   <Plus className="h-3 w-3" /> Create event
-                </button>
+                </Button>
               </>
             )}
           </div>

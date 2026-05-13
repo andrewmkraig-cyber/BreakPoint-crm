@@ -33,6 +33,9 @@ export type CalendarEvent = {
   // Google's own canonical URL for the event. Used as the
   // "Open in Google Calendar" bridge in the drawer header.
   htmlLink?: string;
+  // True when an undismissed AceReminder is linked to this event.
+  // Drives the "Ace reminder" toggle in the drawer.
+  reminderEnabled?: boolean;
 };
 
 export type CalendarReminder = {

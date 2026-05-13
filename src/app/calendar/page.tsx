@@ -97,7 +97,7 @@ export default async function CalendarPage() {
   const now = new Date();
   const windowMs = 90 * 24 * 60 * 60 * 1000;
 
-  const [rows, memberships, reminderRows] = await Promise.all([
+  const [rows, memberships, reminderRows, eventLinkedReminders] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
         organizationId: org.id,
@@ -123,7 +123,25 @@ export default async function CalendarPage() {
       orderBy: { reminderAt: "asc" },
       take: 10,
     }),
+    // Event-linked reminders — used to set the drawer's "Ace
+    // reminder" toggle to its current state when the user reopens
+    // the event. Only undismissed rows count (a dismissed reminder
+    // means the toggle is effectively off again).
+    prisma.aceReminder.findMany({
+      where: {
+        organizationId: org.id,
+        dismissed: false,
+        calendarEventId: { not: null },
+      },
+      select: { calendarEventId: true },
+    }),
   ]);
+
+  const eventsWithReminders = new Set(
+    eventLinkedReminders
+      .map((r) => r.calendarEventId)
+      .filter((id): id is string => id != null),
+  );
 
   // Team-member id is the normalized owner key ("ak", "austin",
   // …) — NOT the user.id cuid. Both this list and event.ownerId run
@@ -197,6 +215,9 @@ export default async function CalendarPage() {
       }
       return a.localeCompare(b);
     });
+    // Check every row in the dedup group — a reminder might be linked
+    // to either Andrew's copy or Austin's copy of the same event.
+    const reminderEnabled = groupRows.some((r) => eventsWithReminders.has(r.id));
     return {
       id: row.id,
       title: row.title,
@@ -215,6 +236,7 @@ export default async function CalendarPage() {
       calendarColor: row.calendarColor ?? undefined,
       meetLink: row.meetLink ?? undefined,
       htmlLink: row.htmlLink ?? undefined,
+      reminderEnabled,
     };
   });
 

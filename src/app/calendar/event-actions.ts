@@ -50,7 +50,15 @@ export type UpdateCalendarEventInput = {
   // patch attendees with sendUpdates="all" so only the freshly added
   // emails get an invite. true = single patch with sendUpdates="all".
   notifyAll: boolean;
+  // Ace-native reminder toggle from the drawer. When true, we upsert
+  // an AceReminder at startTime - 15 min linked to this CalendarEvent
+  // so the global toast provider fires when it slips past now. When
+  // false, we dismiss any matching reminders so the toggle going off
+  // takes effect immediately.
+  reminderEnabled: boolean;
 };
+
+const REMINDER_LEAD_MS = 15 * 60 * 1000;
 
 async function loadSelfAndRow(eventId: string) {
   const session = await getServerSession(authOptions);
@@ -165,6 +173,61 @@ export async function updateCalendarEventAction(
     },
   });
 
+  // Reminder side-effect. Linked to every dedup mirror row so the
+  // toggle reads correctly whichever copy the recruiter opens. We
+  // dismiss instead of deleting so the toast provider can't re-fire
+  // a stale reminder; a fresh create is a new row.
+  const mirrorIds = (
+    await prisma.calendarEvent.findMany({
+      where: {
+        organizationId: row.organizationId,
+        googleEventId: row.googleEventId,
+      },
+      select: { id: true },
+    })
+  ).map((r) => r.id);
+
+  if (input.reminderEnabled) {
+    const reminderAt = new Date(start.getTime() - REMINDER_LEAD_MS);
+    const existing = await prisma.aceReminder.findFirst({
+      where: {
+        organizationId: row.organizationId,
+        calendarEventId: { in: mirrorIds },
+        dismissed: false,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      await prisma.aceReminder.update({
+        where: { id: existing.id },
+        data: {
+          title: input.title,
+          reminderAt,
+          calendarEventId: row.id,
+        },
+      });
+    } else {
+      await prisma.aceReminder.create({
+        data: {
+          organizationId: row.organizationId,
+          userId,
+          title: input.title,
+          reminderAt,
+          calendarEventId: row.id,
+        },
+      });
+    }
+  } else {
+    await prisma.aceReminder.updateMany({
+      where: {
+        organizationId: row.organizationId,
+        calendarEventId: { in: mirrorIds },
+        dismissed: false,
+      },
+      data: { dismissed: true },
+    });
+  }
+
   revalidatePath("/calendar");
 }
 
@@ -178,6 +241,24 @@ export async function deleteCalendarEventAction(input: {
     eventId: row.googleEventId,
     calendarId: row.calendarId,
     sendUpdates: input.notifyAll,
+  });
+  // Dismiss any AceReminder rows tied to this event so a deleted
+  // meeting can't still pop a toast 15 min before its old start.
+  const mirrorIds = (
+    await prisma.calendarEvent.findMany({
+      where: {
+        organizationId: row.organizationId,
+        googleEventId: row.googleEventId,
+      },
+      select: { id: true },
+    })
+  ).map((r) => r.id);
+  await prisma.aceReminder.updateMany({
+    where: {
+      organizationId: row.organizationId,
+      calendarEventId: { in: mirrorIds },
+    },
+    data: { dismissed: true },
   });
   // Drop every mirror of this event across calendars.
   await prisma.calendarEvent.deleteMany({

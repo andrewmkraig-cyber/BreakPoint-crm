@@ -1693,6 +1693,12 @@ model AceReminder {
   title          String
   reminderAt     DateTime
   dismissed      Boolean      @default(false)
+  // Optional link to the CalendarEvent that minted this reminder via
+  // the drawer's "Ace reminder" toggle. Lets us upsert / delete the
+  // reminder when the event is re-saved, and lets page.tsx show the
+  // toggle in the right state when the drawer reopens. Standalone
+  // panel-created reminders leave this null.
+  calendarEventId String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
@@ -1700,4 +1706,5 @@ model AceReminder {
 
   @@index([organizationId])
   @@index([userId])
+  @@index([calendarEventId])
 }
