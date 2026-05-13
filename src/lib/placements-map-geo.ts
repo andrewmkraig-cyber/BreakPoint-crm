@@ -49,7 +49,7 @@ export const CITY_COORDS: ReadonlyMap<string, CityCoord> = new Map([
   ["Orlando, FL", { lng: -81.38, lat: 28.54 }],
   ["Philadelphia, PA", { lng: -75.16, lat: 39.95 }],
   ["Phoenix, AZ", { lng: -112.07, lat: 33.45 }],
-  ["Pittsburgh, PA", { lng: -79.99, lat: 40.44 }],
+  ["Pittsburgh, PA", { lng: -79.9959, lat: 40.4406 }],
   ["Portland, OR", { lng: -122.68, lat: 45.52 }],
   ["Providence, RI", { lng: -71.41, lat: 41.82 }],
   ["Raleigh, NC", { lng: -78.64, lat: 35.78 }],
@@ -74,28 +74,10 @@ export const BREAKPOINT_HQ = {
   lat: 41.39,
 } as const;
 
-// US centroid (roughly Lebanon, KS). Used as the fallback dot position
-// when a placement's city is missing from CITY_COORDS — recruiter still
-// sees a marker labeled with whatever city string was entered.
+// US centroid (roughly Lebanon, KS). Used as the fallback lat/lng for
+// placements whose city is missing from CITY_COORDS — keeps the row
+// visible on the map with a generic marker rather than dropping it.
 const US_CENTROID: CityCoord = { lng: -98.58, lat: 39.83 };
-
-// Map viewBox: 1000×500. Continental US fits cleanly into this aspect
-// (~2.3:1) using a plain equirectangular projection (no Albers
-// correction). For a stylized internal-tool map this is good enough —
-// the map is a backdrop for placement bubbles, not cartography.
-export const MAP_VIEW_BOX = { w: 1000, h: 500 } as const;
-const PROJ = {
-  lngMin: -125,
-  lngMax: -66,
-  latMin: 24,
-  latMax: 50,
-} as const;
-
-export function projectLngLat(lng: number, lat: number): { x: number; y: number } {
-  const x = ((lng - PROJ.lngMin) / (PROJ.lngMax - PROJ.lngMin)) * MAP_VIEW_BOX.w;
-  const y = ((PROJ.latMax - lat) / (PROJ.latMax - PROJ.latMin)) * MAP_VIEW_BOX.h;
-  return { x, y };
-}
 
 export type CityAggregate = {
   city: string;
@@ -107,7 +89,8 @@ export type CityAggregate = {
   totalFee: number;
   leadClient: string | null;
   statusMix: Record<PlacementsDashboardBillingStatus, number>;
-  coords: { x: number; y: number };
+  lat: number;
+  lng: number;
   isKnownCity: boolean;
 };
 
@@ -167,10 +150,6 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
   buckets.forEach((bucket) => {
     const coord = coordIndex.get(bucket.key);
     const isKnownCity = Boolean(coord);
-    const projected = projectLngLat(
-      coord?.lng ?? US_CENTROID.lng,
-      coord?.lat ?? US_CENTROID.lat,
-    );
     let leadClient: string | null = null;
     let leadFee = -1;
     bucket.clientFees.forEach((fee, name) => {
@@ -186,7 +165,8 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
       totalFee: bucket.totalFee,
       leadClient,
       statusMix: bucket.statusMix,
-      coords: projected,
+      lat: coord?.lat ?? US_CENTROID.lat,
+      lng: coord?.lng ?? US_CENTROID.lng,
       isKnownCity,
     });
   });
@@ -226,14 +206,36 @@ export const STATUS_LABELS: Record<PlacementsDashboardBillingStatus, string> = {
   OVERDUE: "Overdue",
 };
 
-// Bubble sizing: clamp radius between 22 and 46 px. Scale linearly off
+// Bubble sizing: clamp radius between 14 and 32 px. Scale linearly off
 // total fees so the visual weight tracks dollar value, not just count.
 // Empty/zero-fee buckets still get the floor radius so a placement
 // without a fee captured still surfaces visibly.
 export function bubbleRadius(totalFee: number, maxFee: number): number {
-  const MIN = 22;
-  const MAX = 46;
+  const MIN = 14;
+  const MAX = 32;
   if (maxFee <= 0) return MIN;
   const ratio = Math.min(1, Math.max(0, totalFee / maxFee));
   return MIN + ratio * (MAX - MIN);
+}
+
+export function dominantStatus(
+  statusMix: Record<PlacementsDashboardBillingStatus, number>,
+): PlacementsDashboardBillingStatus {
+  // Tiebreak with a stable priority order so the border color is
+  // deterministic when counts tie (Overdue > Billed > Pending > Collected).
+  const order: PlacementsDashboardBillingStatus[] = [
+    "OVERDUE",
+    "BILLED",
+    "PENDING_START",
+    "COLLECTED",
+  ];
+  let bestStatus: PlacementsDashboardBillingStatus = "COLLECTED";
+  let bestCount = -1;
+  for (const s of order) {
+    if (statusMix[s] > bestCount) {
+      bestCount = statusMix[s];
+      bestStatus = s;
+    }
+  }
+  return bestStatus;
 }
