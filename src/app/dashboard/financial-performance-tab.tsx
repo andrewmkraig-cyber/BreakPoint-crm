@@ -289,6 +289,11 @@ export async function FinancialPerformanceTab() {
       `[financial-performance] Mercury sample (${mercuryTxns.length} YTD of ${mercuryTxnsAll.length} fetched):`,
       JSON.stringify(sample, null, 2),
     );
+    console.log("[financial-performance] All Mercury counterparties:",
+      Array.from(new Set(mercuryTxnsAll.map(t =>
+        `${t.bankDescription ?? "null"} | ${t.counterpartyName ?? "null"}`
+      ))).sort().join("\n")
+    );
   } else {
     console.log(`[financial-performance] Mercury not connected for org ${org.id}`);
   }
