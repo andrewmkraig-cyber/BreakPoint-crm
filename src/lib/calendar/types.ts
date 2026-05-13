@@ -19,6 +19,8 @@ export type CalendarEvent = {
   jobId?: string;
   candidateId?: string;
   clientId?: string;
+  calendarName?: string;
+  calendarColor?: string;
 };
 
 export type CalendarReminder = {

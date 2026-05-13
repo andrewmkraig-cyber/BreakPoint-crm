@@ -1,6 +1,7 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { CalendarDayView } from "@/components/calendar/day-view";
@@ -15,7 +16,6 @@ import { TabStrip } from "@/components/ui/tab-strip";
 import {
   SAMPLE_REMINDERS,
   SAMPLE_TEAM,
-  getSampleEvents,
 } from "@/lib/calendar/sample-data";
 import type {
   CalendarEvent,
@@ -38,9 +38,12 @@ import {
 
 type Props = {
   initialDate: Date;
+  events: CalendarEvent[];
+  latestSyncedAt: Date | null;
 };
 
-export function CalendarView({ initialDate }: Props) {
+export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
+  const router = useRouter();
   const [view, setView] = useState<CalendarView>("week");
   const [scope, setScope] = useState<CalendarScope>("me");
   const [visibleMembers, setVisibleMembers] = useState<string[]>(
@@ -52,10 +55,24 @@ export function CalendarView({ initialDate }: Props) {
   const [currentDate, setCurrentDate] = useState<Date>(initialDate);
   const today = initialDate;
 
-  // Seed events stay pinned to the week of `today`. That way navigating
-  // off the current week reveals an empty grid — the testable proof
-  // that prev/next actually move the calendar.
-  const events = useMemo(() => getSampleEvents(today), [today]);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const res = await fetch("/api/calendar/sync", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        console.error("Calendar sync failed", body);
+      }
+      router.refresh();
+    } catch (err) {
+      console.error("Calendar sync error", err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const currentWeekStart = useMemo(
     () => getMondayOfWeek(currentDate),
@@ -136,6 +153,9 @@ export function CalendarView({ initialDate }: Props) {
         onPrev={goPrev}
         onNext={goNext}
         onToday={goToday}
+        onSync={handleSync}
+        isSyncing={isSyncing}
+        latestSyncedAt={latestSyncedAt}
       />
 
       <div className="flex min-w-0 gap-5">
@@ -237,6 +257,19 @@ function CalHeader({ onNew }: { onNew: () => void }) {
   );
 }
 
+function formatSyncedAgo(syncedAt: Date | null): string {
+  if (!syncedAt) return "Not synced yet";
+  const diffMs = Date.now() - syncedAt.getTime();
+  if (diffMs < 0) return "Synced just now";
+  const minutes = Math.floor(diffMs / 60000);
+  if (minutes < 1) return "Synced just now";
+  if (minutes < 60) return `Synced ${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `Synced ${hours} hr ago`;
+  const days = Math.floor(hours / 24);
+  return `Synced ${days} d ago`;
+}
+
 // ---- Subheader: date nav + scope + view tabs ----
 function CalSubheader({
   view,
@@ -250,6 +283,9 @@ function CalSubheader({
   onPrev,
   onNext,
   onToday,
+  onSync,
+  isSyncing,
+  latestSyncedAt,
 }: {
   view: CalendarView;
   scope: CalendarScope;
@@ -262,6 +298,9 @@ function CalSubheader({
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  onSync: () => void;
+  isSyncing: boolean;
+  latestSyncedAt: Date | null;
 }) {
   const headerText =
     view === "day"
@@ -311,10 +350,21 @@ function CalSubheader({
           <span className="font-medium text-court-fg-muted">{yearLabel}</span>
         </div>
         <div className="mt-0.5 hidden items-center gap-1.5 text-[11px] text-court-fg-muted lg:flex">
-          <GoogleGlyph className="h-3 w-3" /> Synced 2 min ago · America/New_York
+          <GoogleGlyph className="h-3 w-3" /> {formatSyncedAgo(latestSyncedAt)} · America/New_York
         </div>
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onSync}
+          disabled={isSyncing}
+          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <RefreshCw
+            className={`h-3.5 w-3.5 ${isSyncing ? "animate-spin" : ""}`}
+          />
+          {isSyncing ? "Syncing..." : "Sync"}
+        </button>
         <TabStrip<CalendarScope>
           ariaLabel="Calendar scope"
           activeId={scope}
