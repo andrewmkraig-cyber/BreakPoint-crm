@@ -39,6 +39,10 @@ type Spec = { group?: string; title: TitleSpec; action?: ActionSpec };
 // src/components/sidebar.tsx — duplicated here so this module stays a
 // pure consumer of the pathname without importing the sidebar tree.
 function resolveGroup(pathname: string): string | undefined {
+  // Dashboard is the only top-level surface without a sidebar group, so
+  // we synthesize "Home" for it (covers the Scoreboard sub-tab under
+  // /dashboard?tab=scoreboard too — both render under the same path).
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard?")) return "Home";
   if (
     pathname.startsWith("/pipeline")
     || pathname.startsWith("/applicants")

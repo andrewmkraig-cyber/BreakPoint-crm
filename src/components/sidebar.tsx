@@ -107,16 +107,29 @@ export function Sidebar({ width }: { width?: number } = {}) {
       >
         <BrandMark withTag />
       </Link>
-      <nav className="flex-1 overflow-y-auto p-3">
+      {/* Density steps down as the viewport gets shorter so every nav
+          group fits on a laptop display without scrolling. The
+          [@media(max-height:...)] arbitrary variants tighten group gaps,
+          item heights, and label sizes in three stages — at ~820px,
+          ~720px, and ~640px viewport heights — before any item gets
+          clipped or pushed below the fold. */}
+      <nav className="flex-1 overflow-y-auto p-3 [@media(max-height:820px)]:p-2">
         {NAV_GROUPS.map((group, idx) => (
-          <div key={group.title ?? `group-${idx}`} className={idx === 0 ? "" : "mt-5"}>
+          <div
+            key={group.title ?? `group-${idx}`}
+            className={
+              idx === 0
+                ? ""
+                : "mt-5 [@media(max-height:820px)]:mt-4 [@media(max-height:720px)]:mt-3 [@media(max-height:640px)]:mt-2"
+            }
+          >
             {group.title && (
               // Clean section eyebrow — no rail dot, no trailing rule.
               // Matches the design mock: Inter, tiny, uppercase, wide
               // tracking. Display face (font-serif / Bricolage) reads
               // chunky at 10–11px; Inter holds its shape at this scale
               // and feels crisper.
-              <div className="mb-1.5 px-3 pt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-court-sidebar-fg-dim">
+              <div className="mb-1.5 px-3 pt-2 text-[11px] font-bold uppercase tracking-[0.18em] text-court-sidebar-fg-dim [@media(max-height:720px)]:mb-1 [@media(max-height:720px)]:pt-1">
                 {group.title}
               </div>
             )}
@@ -139,7 +152,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
           </div>
         ))}
       </nav>
-      <nav className="shrink-0 space-y-0.5 border-t border-court-sidebar-border p-2">
+      <nav className="shrink-0 space-y-0.5 border-t border-court-sidebar-border p-2 [@media(max-height:720px)]:p-1.5">
         {FOOTER_NAV.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
@@ -170,7 +183,10 @@ function NavLink({
     <Link
       href={item.href}
       className={cn(
-        "relative flex h-11 items-center gap-3 rounded-lg pl-4 pr-3 text-[15px] font-medium transition-colors",
+        // Heights and font scale down on shorter viewports so every nav
+        // group fits a laptop screen without scroll. Stops at h-8 so the
+        // tap target stays comfortable even on the shortest displays.
+        "relative flex h-11 items-center gap-3 rounded-lg pl-4 pr-3 text-[15px] font-medium transition-colors [@media(max-height:820px)]:h-10 [@media(max-height:720px)]:h-9 [@media(max-height:720px)]:text-[14px] [@media(max-height:640px)]:h-8 [@media(max-height:640px)]:text-[13px]",
         active
           ? "bg-[var(--court-sidebar-active-bg)] text-court-sidebar-active-fg"
           : "text-court-sidebar-fg-muted hover:bg-[var(--court-sidebar-active-bg)] hover:text-court-sidebar-fg",
@@ -182,7 +198,7 @@ function NavLink({
           className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-court-sidebar-rail/80"
         />
       )}
-      <Icon className={cn("h-[18px] w-[18px]", active ? "text-court-sidebar-active-fg" : "text-court-sidebar-icon")} />
+      <Icon className={cn("h-[18px] w-[18px] [@media(max-height:640px)]:h-4 [@media(max-height:640px)]:w-4", active ? "text-court-sidebar-active-fg" : "text-court-sidebar-icon")} />
       <span className="flex-1">{item.label}</span>
       {showBadge && (
         <span
