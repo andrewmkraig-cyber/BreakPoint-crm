@@ -10,6 +10,7 @@ import { getRfCandidatesForOrg, getRfClientsForOrg, getRfJobsForOrg } from "@/li
 import { getInterviewsForOrg } from "@/lib/interviews";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { formatUpcomingInterviewWhen } from "@/lib/interview-format";
+import { getInvoiceSummary } from "@/lib/invoices";
 import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
 import {
   Building2,
@@ -56,6 +57,7 @@ export async function MyDashboard() {
     placementsMadeCount,
     agreementsSignedCount,
     q2BilledRevenueAgg,
+    invoiceSummary,
   ] = await Promise.all([
     getInterviewsForOrg({
       statuses: ["scheduled"],
@@ -91,6 +93,7 @@ export async function MyDashboard() {
         expectedStartDate: { gte: q2Start, lt: q2EndExclusive },
       },
     }),
+    getInvoiceSummary(org.id),
   ]);
 
   const aceCandidateIds = Array.from(
@@ -174,7 +177,10 @@ export async function MyDashboard() {
         <KpiTile label="Placements Made" value={placementsMadeCount} icon={Handshake} />
       </div>
 
-      <BillingTower q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0} />
+      <BillingTower
+        q2BilledRevenueUsd={q2BilledRevenueAgg._sum.feeTotal ?? 0}
+        cashCollectedQtdUsd={invoiceSummary.collectedThisQuarterCents / 100}
+      />
 
       <NewsFeed />
 

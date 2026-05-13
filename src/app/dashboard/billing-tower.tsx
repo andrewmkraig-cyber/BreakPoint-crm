@@ -18,11 +18,17 @@ const PERIODS = [
 
 // `q2BilledRevenueUsd` is the sum of Placement.feeTotal across rows whose
 // expectedStartDate lands in Apr 1 – Jul 1 2026 (pending_start + hired only),
-// computed server-side. We wire it only for the default "Current Quarter"
-// option today; the other period choices will need their own server-side
-// aggregates when those views are real. Cash Collected stays at $0 until we
-// have an invoice-paid signal.
-export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: number }) {
+// computed server-side. `cashCollectedQtdUsd` is the sum of Invoice.feeAmount
+// where status=PAID and paidAt falls in the current quarter. Both are wired
+// only for the default "Current Quarter" option today; the other period
+// choices will need their own server-side aggregates when those views are real.
+export function BillingTower({
+  q2BilledRevenueUsd,
+  cashCollectedQtdUsd,
+}: {
+  q2BilledRevenueUsd: number;
+  cashCollectedQtdUsd: number;
+}) {
   const [period, setPeriod] = useState<(typeof PERIODS)[number]["value"]>("quarter-current");
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => {
@@ -41,6 +47,12 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
     period === "quarter-current"
       ? "Sum of fees on placements with a start date in Apr 1 – Jun 30 2026 (Pending Start + Hired)."
       : "Fees earned on placements that hit start date.";
+  const collectedValue =
+    period === "quarter-current" ? formatCompactUsd(cashCollectedQtdUsd) : "$0";
+  const collectedHint =
+    period === "quarter-current"
+      ? "Sum of fees on invoices marked paid this quarter (Apr 1 – Jun 30 2026)."
+      : "Client payments received in the selected window.";
 
   return (
     <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
@@ -96,8 +108,8 @@ export function BillingTower({ q2BilledRevenueUsd }: { q2BilledRevenueUsd: numbe
           <Metric label={billedLabel} value={billedValue} hint={billedHint} tone="accent" />
           <Metric
             label="Cash Collected"
-            value="$0"
-            hint="Client payments received, regardless of placement date. Stays at $0 until invoices are paid."
+            value={collectedValue}
+            hint={collectedHint}
             tone="neutral"
           />
         </div>
