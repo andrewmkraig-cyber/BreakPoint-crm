@@ -1,13 +1,33 @@
 # ACE_STATE.md
-Last updated: 2026-05-12 · Ace 42.0
+Last updated: 2026-05-12 · Ace 43.0
 
 ## Current Status
-Current Version: Ace 42.0
+Current Version: Ace 43.0
 Last Shipped: 2026-05-12
 Live at: ace.breakpointtalent.com
 
-## Known Issues Carrying Into Ace 43
-- None open.
+## Known Issues Carrying Into Ace 44
+- **Calendar Prompts 2-4 + dashboard calendar widget deferred.** The /calendar shell (week/day/month, Mon-Fri week view, event drawer, reminders panel, sidebar entry) renders against static seed only. Google Calendar read + write sync and Neon-side event persistence are still ahead. Tracked as Session 1 Next Task below.
+- **Test record cleanup pending.** The "Send Test Invoice to Austin" button has minted a synthetic Miles Atchison placement + invoice row in production. Needs a one-shot delete (or a `seed_record` flag + cleanup pass) before launch so the demo placement doesn't surface in real billing tallies.
+
+## Summary — Ace 43.0
+Ace 43 lands the Placements dashboard tab, the Calendar shell, the Pipeline placement edit drawer, and a round of cross-tab visual unification. The Invoicing module that shipped in Ace 42 also gets its real downstream wiring this release.
+
+**Invoicing follow-through.** The Placement → Invoice schema link is now actually used: Invoice rows carry `placementId`, the pipeline + placements dashboards both read invoice status off the join (PAID/SENT/DRAFT/no-invoice), and the dashboard "Cash Collected" metric is wired to the paid-invoice signal instead of static seed. Invoice detail view ships the PDF action, the mail composer pre-fill, and the OPS sidebar entry. Miles Atchison's placement is the live reference row — Network + Collected + base salary $62,400 — and resolves through the Pittsburgh, PA dot on the map.
+
+**Placements dashboard tab.** `/dashboard?tab=placements` renders YTD/This-Quarter/Last-90-days ledger + breakdowns + map. Map switched from the SVG silhouette to a real Leaflet layer with OpenStreetMap tiles; CITY_COORDS gained Pittsburgh + 4-decimal precision on the Ohio cluster (Cleveland, Columbus, Cincinnati, Solon, Beachwood, Independence). Unknown cities skip rather than fall back to the US centroid so a misplaced pin can't read as real data. The lookup also aliases each "City, ST" entry under its city-only form so a placement stored as "Pittsburgh" (no state) still resolves. Bubble radius clamped 8-20 px. HQ pin / label / centroid-fallback removed. OSM tiles dim via `brightness(0.85) contrast(1.1)` in dark Court Modes, scoped to the tile pane only so bubbles stay vibrant. Ledger leads the tab, breakdowns sit below, map drops to the bottom.
+
+**Interview edit.** Edit modal lands with two notify modes (notify everyone vs notify newly-added guests only), 15-min increment time picker, hydration fix for the time-string render (pre-formatted ET strings server-side so SSR matches hydration byte-for-byte).
+
+**Calendar shell.** New `/calendar` route with week / day / month views, Mon-Fri only on the week view (weekends collapsed for desk use), event drawer that opens on click of any cell or event, dedicated reminders panel, sidebar entry under OPS. Currently renders against static seed — Google Calendar sync + Neon persistence ship in Session 1 next.
+
+**Pipeline polish.** Job column quieted (job title smaller, 13px / `font-normal`). Hired-stage rows render an invoice status pill (Paid green / Sent blue / Draft amber / No invoice muted). Click on any hired row opens a new placement edit drawer (slide-in right, same chrome as the calendar event drawer) with candidate / client / job / stage read-only and start date, base salary, fee amount, fee percentage, notes editable. Save calls an org-scoped `updatePlacement` server action that revalidates `/pipeline` + the candidate page.
+
+**Cross-tab visual unification.** Scoreboard + Placements + Invoices KPI tile chrome aligned to the Clubhouse `KpiTile` pattern (borderless, `rounded-2xl bg-court-surface px-3 py-2.5` soft long-shadow, 10px extrabold label, 26px serif value). The 5 Scoreboard tiles match the height of the 6 Clubhouse tiles. Scoreboard + Placements outer cards (Funnel, CashForecast, ListCard, StalledDeals, BreakdownCard, PlacementMixCard, MapCard, Ledger) upgraded to the big-panel Clubhouse chrome (`rounded-3xl p-5 0_12px_32px` shadow). Em-dashes dropped from subtitle copy (histogram labels, Billing Tower date hints). Placements outer column gap raised to `gap-7` to match Clubhouse.
+
+**Sidebar compact.** Density tightened across all sections so OPS + CRM + INBOX rows sit closer together.
+
+**Invoices filter tabs.** The `/invoices` All/Drafts/Sent/Overdue/Paid/Void filter row replaced with the shared `TabStrip` component — every filter pill row in the app now routes through one source.
 
 ## Summary — Ace 42.0
 Ace 42 ships the full Invoicing module end-to-end: branded one-page PDF generator, real `/invoices` workspace (list + detail + status transitions + bank-detail-only payment instructions inside the PDF), auto-draft on Confirm Start, dashboard Invoicing tab wired to live data, and `/settings/billing` for company identity + ACH/wire/check details. The Mercury / pay-link language is gone from every surface (dashboard, scoreboard forecast, Confirm Start toast). Schema gained the `Invoice` model + `InvoiceStatus` enum (DRAFT / SENT / PAID / VOID) with relations on Organization / Candidate / Client / Placement; invoice numbers monotonic per workspace starting at INV-1051. Sent from "Accounts Receivable" — the AE signs the body, the PDF carries the ACH/Wire/Check blocks, no payment URLs anywhere. The detail page exposes a "Draft email in Gmail" action that opens a pre-filled mailto with the merged template body + PDF URL, and the sidebar gains an Invoices entry under CRM.
@@ -349,75 +369,28 @@ Floating YouTube + Spotify panels, daily-companion dashboard pills (Word, Quote,
 ## Next Task
 Next session opens a NEW CHAT. Priority order for upcoming sessions:
 
-- **SESSION 1 (next)**: Invoicing — full spec below.
-- **SESSION 2**: Interview scheduler enhancements + Calendar tab — full spec below.
-- **SESSION 3 (tomorrow)**: BD Engine Phase 4 — ASK QUESTIONS FIRST. Full rules below.
+- **SESSION 1 (next)**: Calendar Prompt 2 — Google Calendar sync + database persistence. Full spec below.
+- **SESSION 2**: Calendar Prompts 3-4 + dashboard calendar widget. Surfaces the synced Calendar inline on the Clubhouse tab.
+- **SESSION 3**: BD Engine Phase 4 — ASK QUESTIONS FIRST. Full rules below.
 
-### Invoicing spec — Session 1
-Invoicing replaces the Mercury payment link flow entirely for launch. No Mercury links anywhere.
+### Calendar Prompt 2 spec — Session 1
+The Calendar shell (week / day / month views, Mon-Fri week, event drawer, reminders panel, sidebar entry under OPS) shipped in Ace 43 and currently renders against static seed data. Session 1 wires it to real data:
 
-Flow:
-1. Confirm Start page collects: billing contact(s), hiring contact(s), candidate, client, role/title, start date, fee amount, due date/payment terms.
-2. Ace creates: invoice draft, invoice email draft, branded invoice PDF attachment, activity log on client + placement.
-3. Andrew reviews and approves before anything sends.
-4. Email sends: To = billing contact(s), CC = hiring contact(s), From = Accounts Receivable / BreakPoint Talent, attachment = branded invoice PDF. No Mercury link anywhere.
-5. Paid status marked manually for launch. No payment automation.
+- **Google Calendar read sync.** Pull events for the signed-in recruiter into the Calendar grid via the existing Google OAuth scope. One-way for this prompt — Ace mirrors what Google says.
+- **Database persistence.** Each Calendar event mirrors into Neon (org-scoped, candidate/job/client foreign keys where applicable) so reminders, the dashboard widget, and activity logs all read from one place. Match the existing Interview model conventions (`organizationId` required, `cuid` PK, soft-link to RF numeric ids).
+- **Round-trip write.** Events the recruiter creates/edits/cancels in Ace push to Google Calendar so external invitees see the same source-of-truth. Reuses the per-party invite path already established by the Interview scheduler.
+- **No regressions.** The existing /calendar shell renders identically against the live data — no chrome changes in this prompt.
 
-Test invoice button: add a "Send Test Invoice to Austin" button on the invoicing page that fires a test invoice email with a fake placement to austin@breakpointtalent.com (Austin Barnard, Slack ID U0AJB4AM631).
-
-Invoice email template (exact):
-
-```
-Subject: Invoice from BreakPoint Talent - {{candidate.full_name}} Placement
-
-Body:
-Hi {{billing_contact.first_name}},
-
-Congratulations again on {{candidate.full_name}}'s start with {{client.name}}. We're excited to have helped with this search.
-
-Attached is invoice {{invoice.number}} for the placement fee related to {{candidate.full_name}}'s start date of {{placement.start_date}}.
-
-Payment instructions are included on the invoice. Please let us know if your team needs anything else for processing.
-
-Thanks again for trusting BreakPoint Talent with this search.
-
-Best,
-Accounts Receivable
-BreakPoint Talent
-ar@breakpointtalent.com
-```
-
-Invoice PDF design:
-- BreakPoint branded, clean, premium, one page.
-- Logo top left, large INVOICE top right.
-- Amount due prominent.
-- Sections: Invoice Details / Bill To / Placement Details / Services / Payment Instructions.
-- Charcoal headers, white/soft gray rows, restrained BreakPoint green accents only.
-- ACH/wire payment instructions inside the PDF (not in the email body).
-- No Mercury wording anywhere, no "Pay invoice online here".
-- ACH details: Bank: Column National Association (via Mercury), ABA: 121145433, Account: 404438299016503, Beneficiary: Kraig Talent LLC.
-- Check payment instructions also included.
+Browser verify before push:
+1. Sign in. /calendar shows the recruiter's real Google events on the week grid.
+2. Create a new event in the drawer → confirm it appears in Google Calendar within ~10s.
+3. Confirm Neon `Event` (or `CalendarEvent`) row exists with `organizationId` set.
 
 Ace invoicing dashboard copy changes:
 - Replace "Mercury sync" with "Manual payment tracking".
 - Replace "One click, attaches PDF + pay-link" with "One click, attaches invoice PDF".
 - Replace "Mercury webhook · auto" with "Manual paid check".
 - Keep flow: Confirm start date → Draft invoice email → Approve & send → Follow up if unpaid → Mark paid.
-
-### Interview scheduler + Calendar spec — Session 2
-Bundle interview scheduler enhancements and Calendar tab together in one session.
-
-Interview scheduler needs:
-- Edit / cancel / reschedule from within Ace (not just create).
-- Click any interview anywhere in Ace to open and edit it.
-
-Calendar tab:
-- Full calendar view that feels like Google Calendar living inside Ace.
-- Month / week / day views.
-- Google Calendar read/write sync.
-- Click any interview on the calendar to open and edit it inline.
-- Create meeting modal from the calendar.
-- Replaces jumping to Google Calendar externally.
 
 ### BD Phase 4 Rules — Session 3 (PERMANENT — see ACE_RULES.md)
 **CRITICAL**: Before writing a single BD Phase 4 prompt, Claude MUST stop and ask Andrew a full set of scoping questions. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Ask the questions first, always.

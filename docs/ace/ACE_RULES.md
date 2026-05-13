@@ -1,5 +1,5 @@
 # ACE_RULES.md
-Last updated: 2026-05-12 · Ace 42.0
+Last updated: 2026-05-12 · Ace 43.0
 
 ## How to Start Every Session
 Every Ace session opens with this exact sequence:
@@ -98,6 +98,11 @@ Claude must ask Andrew a full set of scoping questions before writing any BD Pha
 - Reduce borders by ~40%, use spacing instead.
 - Dark themes (Clay + Grass): charcoal/graphite base, NOT green. Green as accent only.
 - No hardcoded colors anywhere.
+
+## UI Consistency Rules (added 2026-05-12 · Ace 43.0)
+- **TabStrip is the single source of truth.** All tab strips and filter pill groups across the app route through `src/components/ui/tab-strip.tsx`. No one-off pill groups anywhere — if a new surface needs filter pills or a tabbed selector, use TabStrip (link mode for navigation, controlled mode for in-page state).
+- **Clubhouse is the card-sizing reference.** Every dashboard / list-page card matches the Clubhouse tab's two-tier pattern: small KpiTile chrome (`rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px..0_8px_20px..]`, 10px extrabold label, 26px serif value) for inline KPI rows; big-panel chrome (`rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px..0_12px_32px..]`) for everything else. No bordered `shadow-sm` panels on dashboard / placements / invoices surfaces.
+- **No em dashes (—) in user-facing copy.** Hyphens (-) only. The em-dash placeholder for null values inside table cells stays (it's a typographic empty-state cue, not copy). This rule extends the Communication Rules ban into all rendered product copy — headers, subtitles, hints, tooltips, toasts, empty-state strings.
 
 ## Decisions Delegated to Claude
 - Andrew delegates now/later build decisions to Claude.

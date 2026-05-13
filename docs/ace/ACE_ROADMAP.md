@@ -1,21 +1,20 @@
 # Ace Roadmap
-Last updated: 2026-05-12 · Ace 42.0
+Last updated: 2026-05-12 · Ace 43.0
 
 ## Active Build Sequence
-In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full specs for items 1-3 live in ACE_STATE.md Next Task.
+In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full specs for the active Calendar work live in ACE_STATE.md Next Task.
 
-1. **Invoicing** — Shipped Ace 42. Branded one-page PDF, `/invoices` workspace, auto-draft on Confirm Start, Settings → Billing for bank details, mailto-based Gmail compose. Open follow-up: real Gmail-API send + S3-backed PDF storage if/when ar@breakpointtalent.com mailbox is wired up; QuickBooks export later.
-2. **Interview scheduler enhancements + Calendar tab** — bundled. Edit/cancel/reschedule, full calendar view, click-to-edit interviews, Google Calendar read/write sync, month/week/day views. Full spec in ACE_STATE.md.
-3. **BD Engine Phase 4** — ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts. Full rules in ACE_RULES.md and ACE_STATE.md.
-4. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.
-5. **JD/email markdown architecture** — [Job Description] merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
-6. **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
-7. **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
-8. **PWA conversion** — manifest, service worker, push notifications.
-9. **Quiet Clients tab** — clients past 21-day threshold, tiered 14-30/30-60/60+, optional Claude summary.
-10. **APRO / job order worksheet** — structured intake form.
-11. **Client preference learning system + Personal Trainer suggestions**.
-12. **Mercury + QuickBooks integration** — after manual invoicing is stable.
+1. **Calendar Prompts 2-4 + dashboard widget** — Calendar shell (week / day / month, Mon-Fri week view, event drawer, reminders panel, sidebar entry) shipped in Ace 43 against static seed. Remaining work: Google Calendar read sync, write round-trip, Neon-side event persistence (org-scoped), Clubhouse-tab calendar widget. Full Prompt 2 spec in ACE_STATE.md.
+2. **BD Engine Phase 4** — ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts. Full rules in ACE_RULES.md and ACE_STATE.md.
+3. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.
+4. **JD/email markdown architecture** — [Job Description] merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
+5. **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
+6. **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
+7. **PWA conversion** — manifest, service worker, push notifications.
+8. **Quiet Clients tab** — clients past 21-day threshold, tiered 14-30/30-60/60+, optional Claude summary.
+9. **APRO / job order worksheet** — structured intake form.
+10. **Client preference learning system + Personal Trainer suggestions**.
+11. **Mercury + QuickBooks integration** — after manual invoicing is stable.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
@@ -85,6 +84,22 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 43.0 Placements tab + Calendar shell + Pipeline placement edit drawer + cross-tab card density (May 12, 2026)
+
+- **Invoicing follow-through** — Placement→Invoice FK actually used: pipeline + placements dashboards read invoice status off the join (PAID/SENT/DRAFT/no-invoice), Clubhouse "Cash Collected" tile wired to the paid-invoice signal (not seed). Invoice detail surface picked up PDF action + mail composer pre-fill + OPS sidebar entry. Miles Atchison placement linked end-to-end: Network + Collected + base salary $62,400 + Pittsburgh, PA on the map.
+- **Placements dashboard tab** (`/dashboard?tab=placements`) — YTD / This-Quarter / Last-90-days ledger + breakdowns + map. Map upgraded from SVG silhouette to a real Leaflet layer with OpenStreetMap tiles. CITY_COORDS added Pittsburgh + 4-decimal precision on the Ohio cluster (Cleveland, Columbus, Cincinnati, Solon, Beachwood, Independence). Unknown cities skip instead of falling back to the US centroid. Lookup also aliases each "City, ST" under its city-only form so "Pittsburgh" (no state) resolves. Bubble radius clamped 8-20 px. HQ pin / label / centroid-fallback removed. OSM tiles dim `brightness(0.85) contrast(1.1)` in dark Court Modes, scoped to the tile pane only. Ledger leads, breakdowns mid, map at bottom.
+- **Interview edit modal** — edit / cancel / reschedule modal with two notify modes (everyone vs newly-added guests only), 15-min increment time picker, hydration fix on the time-string render.
+- **Calendar shell** (`/calendar`) — week / day / month views, Mon-Fri only on week, event drawer that opens on click, reminders panel, OPS sidebar entry. Renders against static seed; Google Calendar sync + Neon persistence ship next session.
+- **Pipeline placement edit drawer** — clicking a hired-stage row opens a right-side slide-in drawer (same chrome as the calendar event drawer) with candidate / client / job / stage read-only and start date / base salary / fee amount / fee percentage / notes editable. Save calls org-scoped `updatePlacement` server action, revalidates `/pipeline` + candidate page.
+- **Pipeline polish** — Hired-stage rows render an invoice status pill (Paid green / Sent blue / Draft amber / No invoice muted). Job column quieted (13px / `font-normal`).
+- **Invoices filter tabs** — All/Drafts/Sent/Overdue/Paid/Void filter row replaced with the shared `TabStrip` component so the page reads like the rest of Ace.
+- **Cross-tab card density unification** — Scoreboard + Placements + Invoices KPI tiles aligned to the Clubhouse `KpiTile` chrome (borderless, `rounded-2xl px-3 py-2.5`, soft long-shadow, 10px extrabold label, 26px serif value). Scoreboard + Placements outer panels upgraded to the big-panel Clubhouse chrome (`rounded-3xl p-5 0_12px_32px` shadow). Em-dashes dropped from subtitle copy (histogram labels, Billing Tower date hints). Placements outer column gap `gap-7` to match Clubhouse.
+- **Sidebar compact** — density tightened across OPS + CRM + INBOX sections so rows sit closer together.
+
+## Completed - Ace 42.0 Invoicing module end-to-end (May 12, 2026)
+
+Branded one-page Invoice PDF, `/invoices` workspace with list + detail + status transitions (DRAFT → SENT → PAID, VOID escape hatch), auto-draft on Confirm Start, `Invoice` model + `InvoiceStatus` enum, workspace-monotonic INV-#### numbering starting at 1051, `/settings/billing` for company identity + ACH/wire/check details. "Sent from Accounts Receivable", AE signs the body, PDF carries the ACH/Wire/Check blocks, no Mercury / pay-link language anywhere. Detail page exposes a "Draft email in Gmail" action that opens a pre-filled mailto with the merged template + PDF URL. Sidebar gains an Invoices entry under CRM. Dashboard "Invoicing" tab wired to live data.
 
 ## Completed - Ace 41.0 JD markdown unification + mail composer fixes + new job form redesign + Candidate Recruit template wiring (May 12, 2026)
 
