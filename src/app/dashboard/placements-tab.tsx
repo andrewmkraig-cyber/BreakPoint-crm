@@ -1,5 +1,4 @@
-import Link from "next/link";
-
+import { TabStrip } from "@/components/ui/tab-strip";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   getPlacementsDashboardData,
@@ -35,54 +34,22 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
 
 function PlacementsHeader({ period }: { period: PlacementsDashboardPeriod }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-          Placements
-        </p>
-        <h2 className="mt-1 font-serif text-2xl font-extrabold tracking-tight text-court-fg sm:text-3xl">
-          Every deal on the books
-        </h2>
-        <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-          Hires and pending starts inside the selected window, with the headline
-          KPIs every recruiter check-in opens with.
-        </p>
-      </div>
-      <PeriodSelector active={period} />
-    </div>
-  );
-}
-
-function PeriodSelector({ active }: { active: PlacementsDashboardPeriod }) {
-  return (
-    <div
-      role="tablist"
-      aria-label="Placements period"
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-court-border bg-court-surface p-1 text-sm font-medium text-court-fg"
-    >
-      {PERIODS.map((p) => {
-        const isActive = p.id === active;
-        const href =
-          p.id === "YTD"
-            ? "/dashboard?tab=placements"
-            : `/dashboard?tab=placements&period=${p.id}`;
-        return (
-          <Link
-            key={p.id}
-            href={href}
-            role="tab"
-            aria-selected={isActive}
-            className={
-              "rounded-full px-3 py-1 transition " +
-              (isActive
-                ? "bg-court-brand text-white shadow-sm"
-                : "text-court-fg-muted hover:bg-court-brand-tint hover:text-court-brand-dark")
-            }
-          >
-            {p.label}
-          </Link>
-        );
-      })}
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+        Placements
+      </p>
+      <TabStrip<PlacementsDashboardPeriod>
+        ariaLabel="Placements period"
+        activeId={period}
+        items={PERIODS.map((p) => ({
+          id: p.id,
+          label: p.label,
+          href:
+            p.id === "YTD"
+              ? "/dashboard?tab=placements"
+              : `/dashboard?tab=placements&period=${p.id}`,
+        }))}
+      />
     </div>
   );
 }
