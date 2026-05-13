@@ -24,7 +24,7 @@ export function SectionHero({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
+    <div className="flex flex-col gap-3 pt-6 sm:flex-row sm:items-end sm:justify-between sm:gap-6">
       <div className="min-w-0">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           {eyebrow}
