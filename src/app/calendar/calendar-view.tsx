@@ -52,14 +52,34 @@ export function CalendarView({
 }: Props) {
   const router = useRouter();
   const [view, setView] = useState<CalendarView>("week");
-  const [scope, setScope] = useState<CalendarScope>("me");
-  // hiddenMembers is the set of member ids whose events should NOT be
-  // rendered. Default empty (everyone visible). Clicking a row in the
-  // left rail toggles membership. We intentionally store this as a
-  // Set on each toggle (new instance) so consumer memos invalidate.
-  const [hiddenMembers, setHiddenMembers] = useState<Set<string>>(() => new Set());
+  // hiddenMembers is the single source of truth for which member's
+  // events are showing. The top "My Calendar / Team" tabs and the
+  // left-rail checkboxes both mutate this same Set — clicking either
+  // surface has a visible effect every time. Default: hide everyone
+  // who isn't self, which makes the initial page load read as "My
+  // Calendar" without needing a separate scope state.
+  const [hiddenMembers, setHiddenMembers] = useState<Set<string>>(
+    () => new Set(teamMembers.filter((m) => !m.self).map((m) => m.id)),
+  );
 
-  const selfMemberId = teamMembers.find((m) => m.self)?.id ?? teamMembers[0]?.id ?? null;
+  // Scope label for the tab strip — derived from hiddenMembers so the
+  // active tab updates the moment a left-rail toggle changes which
+  // members are visible. "me" when every non-self member is hidden.
+  const scope: CalendarScope = teamMembers.every(
+    (m) => m.self || hiddenMembers.has(m.id),
+  )
+    ? "me"
+    : "team";
+
+  const handleScope = (next: CalendarScope) => {
+    if (next === "me") {
+      setHiddenMembers(
+        new Set(teamMembers.filter((m) => !m.self).map((m) => m.id)),
+      );
+    } else {
+      setHiddenMembers(new Set());
+    }
+  };
 
   // currentDate is the navigation anchor. Week view shows the week
   // containing it; day view shows it; month view shows its month.
@@ -169,10 +189,12 @@ export function CalendarView({
     [router],
   );
 
-  const filteredEvents =
-    scope === "me"
-      ? events.filter((e) => !e.ownerId || e.ownerId === selfMemberId)
-      : events;
+  // Events flow straight to the grid views — they all filter on
+  // hiddenMembers themselves, so no parent-level scope filter is
+  // needed. Without this consolidation the previous Me scope filter
+  // masked left-rail toggles ("click Austin does nothing because his
+  // events were already filtered out").
+  const filteredEvents = events;
 
   const goPrev = () => {
     if (view === "day") setCurrentDate((d) => addDays(d, -1));
@@ -195,7 +217,7 @@ export function CalendarView({
         currentDate={currentDate}
         currentWeekStart={currentWeekStart}
         onView={setView}
-        onScope={setScope}
+        onScope={handleScope}
         onPrev={goPrev}
         onNext={goNext}
         onToday={goToday}
