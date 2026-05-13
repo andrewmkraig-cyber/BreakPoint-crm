@@ -8,22 +8,22 @@ import { cn } from "@/lib/utils";
 // nav (client component) share the same source of truth.
 //
 // Order: setup-y items first, then the catch-all live-health
-// Connectors panel, then Personal Info at the very bottom (it's a
-// once-set housekeeping form, not an everyday tab). Email Preferences
-// was removed — phone + signature are owned by Branding now, and the
-// auto-send trigger moved into Templates/Triggers.
+// Connectors panel, then housekeeping panels at the bottom —
+// Branding, Personal Info, Claude History (rarely visited). Email
+// Preferences was removed; phone + signature are owned by Branding
+// now, and the auto-send trigger moved into Templates/Triggers.
 export const SETTINGS_CATEGORIES = [
   { slug: "appearance",        label: "Appearance" },
   { slug: "notifications",     label: "Notifications" },
   { slug: "personal-trainer",  label: "Personal Trainer" },
-  { slug: "history",           label: "Claude History" },
-  { slug: "branding",          label: "Branding" },
   { slug: "templates",         label: "Templates" },
   { slug: "triggers",          label: "Triggers" },
   { slug: "billing",           label: "Billing" },
   { slug: "bd",                label: "BD Engine" },
   { slug: "connectors",        label: "Connectors" },
+  { slug: "branding",          label: "Branding" },
   { slug: "personal-info",     label: "Personal Info" },
+  { slug: "history",           label: "Claude History" },
 ] as const;
 
 export function SettingsNav() {
