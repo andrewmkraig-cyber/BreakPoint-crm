@@ -18,12 +18,26 @@ import {
 } from "lucide-react";
 
 function formatShortDate(d: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
-    weekday: "short",
-    month: "short",
+    weekday: "long",
+    month: "long",
     day: "numeric",
-  }).format(d);
+  }).formatToParts(d);
+  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
+  const month = parts.find((p) => p.type === "month")?.value ?? "";
+  const day = Number(parts.find((p) => p.type === "day")?.value ?? "0");
+  const suffix =
+    day % 100 >= 11 && day % 100 <= 13
+      ? "th"
+      : day % 10 === 1
+        ? "st"
+        : day % 10 === 2
+          ? "nd"
+          : day % 10 === 3
+            ? "rd"
+            : "th";
+  return `${weekday} ${month} ${day}${suffix}`;
 }
 
 // Every count in the "This week" strip is ACTIVITY-based: it counts
