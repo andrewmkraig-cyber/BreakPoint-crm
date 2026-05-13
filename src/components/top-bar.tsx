@@ -42,7 +42,7 @@ export function TopBar() {
         <TopBarPageTitle />
       </div>
 
-      <div className="min-w-0 flex-1 md:flex-none md:w-56 lg:w-64 xl:w-80 2xl:w-96">
+      <div className="min-w-0 flex-1 md:flex-none md:w-56 lg:ml-8 lg:w-64 xl:ml-12 xl:w-80 2xl:w-96">
         <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
           <TopBarSearch />
         </div>

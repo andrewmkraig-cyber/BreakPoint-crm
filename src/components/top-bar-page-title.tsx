@@ -197,27 +197,25 @@ function TopBarPageTitleInner() {
 
   if (!spec.title.label) return null;
 
-  // Every page title runs on the Bricolage display face (font-serif
-  // → --font-display) so the topbar reads in the same family as the
-  // Ace wordmark. The group breadcrumb prefix uses the same family but
-  // muted + regular weight so the current page reads as the dominant
-  // term.
+  // Editorial eyebrow + headline: the group breadcrumb reads as a small
+  // uppercase label and the page title as the dominant serif headline.
+  // Sizing pulled down vs. the prior 30/26px so the breadcrumb row
+  // doesn't dominate the topbar.
   const titleStyle = {
-    fontSize: "26px",
+    fontSize: "22px",
     letterSpacing: "-0.035em",
     lineHeight: 1.15,
   };
-  const groupClass = "font-serif font-medium text-court-fg-muted";
   const titleClass = "font-serif font-extrabold text-court-fg";
+  const groupClass =
+    "text-[11px] font-bold uppercase tracking-[0.18em] text-court-fg-muted";
 
   return (
     <div className="flex min-w-0 items-center gap-2">
       {spec.group && (
         <>
-          <span className={groupClass} style={titleStyle}>
-            {spec.group}
-          </span>
-          <ChevronRight className="h-4 w-4 shrink-0 text-court-fg-muted" />
+          <span className={groupClass}>{spec.group}</span>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
         </>
       )}
       {spec.title.href ? (
