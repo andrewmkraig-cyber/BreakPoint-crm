@@ -17,27 +17,22 @@ import {
   Send,
 } from "lucide-react";
 
-function formatShortDate(d: Date): string {
+function getCalendarDateParts(d: Date): {
+  weekday: string;
+  month: string;
+  day: number;
+} {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "long",
     month: "long",
     day: "numeric",
   }).formatToParts(d);
-  const weekday = parts.find((p) => p.type === "weekday")?.value ?? "";
-  const month = parts.find((p) => p.type === "month")?.value ?? "";
-  const day = Number(parts.find((p) => p.type === "day")?.value ?? "0");
-  const suffix =
-    day % 100 >= 11 && day % 100 <= 13
-      ? "th"
-      : day % 10 === 1
-        ? "st"
-        : day % 10 === 2
-          ? "nd"
-          : day % 10 === 3
-            ? "rd"
-            : "th";
-  return `${weekday} ${month} ${day}${suffix}`;
+  return {
+    weekday: parts.find((p) => p.type === "weekday")?.value ?? "",
+    month: parts.find((p) => p.type === "month")?.value ?? "",
+    day: Number(parts.find((p) => p.type === "day")?.value ?? "0"),
+  };
 }
 
 // Every count in the "This week" strip is ACTIVITY-based: it counts
@@ -101,7 +96,7 @@ export async function MyDashboard() {
 
   const greeting = firstName ? `Welcome back, ${firstName}.` : "Welcome back.";
   const weekRange = formatEasternWeekRange(weekStart, weekEnd);
-  const todayShort = formatShortDate(now);
+  const dateParts = getCalendarDateParts(now);
 
   return (
     <div className="flex w-full flex-col gap-7">
@@ -117,9 +112,19 @@ export async function MyDashboard() {
             Activity for {weekRange}. Everything here is live: no targets, just actuals.
           </p>
         </div>
-        <div className="hidden shrink-0 text-right sm:block">
-          <div className="text-[24px] font-bold tracking-[-0.01em] text-court-fg">
-            {todayShort}
+        <div className="hidden shrink-0 sm:block">
+          <div className="inline-flex flex-col overflow-hidden rounded-2xl shadow-sm">
+            <div className="bg-court-brand-tint px-3 py-1 text-center text-xs font-extrabold uppercase tracking-wide text-court-brand">
+              {dateParts.weekday}
+            </div>
+            <div className="bg-court-surface px-4 py-2 text-center">
+              <div className="text-xs font-medium uppercase tracking-wide text-court-fg-muted">
+                {dateParts.month}
+              </div>
+              <div className="text-4xl font-black leading-none text-court-fg">
+                {dateParts.day}
+              </div>
+            </div>
           </div>
         </div>
       </div>
