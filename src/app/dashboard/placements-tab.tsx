@@ -1,3 +1,4 @@
+import { PlacementsMapCard } from "@/components/placements/placements-map-card";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -5,6 +6,7 @@ import {
   type PlacementsDashboardPeriod,
   type PlacementsDashboardRow,
 } from "@/lib/placements-dashboard";
+import { aggregateByCity } from "@/lib/placements-map-geo";
 
 const PERIODS: ReadonlyArray<{ id: PlacementsDashboardPeriod; label: string }> = [
   { id: "YTD", label: `YTD ${new Date().getFullYear()}` },
@@ -23,11 +25,14 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
   const org = await getCurrentOrg();
   const rows = await getPlacementsDashboardData(org.id, period);
   const kpis = computeKpis(rows);
+  const cities = aggregateByCity(rows);
+  const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
 
   return (
     <div className="flex flex-col gap-7">
       <PlacementsHeader period={period} />
       <KpiStrip kpis={kpis} />
+      <PlacementsMapCard cities={cities} totalFee={totalFee} />
     </div>
   );
 }
