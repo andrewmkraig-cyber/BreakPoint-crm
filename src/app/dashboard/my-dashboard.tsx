@@ -18,24 +18,6 @@ import {
   Send,
 } from "lucide-react";
 
-function getCalendarDateParts(d: Date): {
-  weekday: string;
-  month: string;
-  day: number;
-} {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  }).formatToParts(d);
-  return {
-    weekday: parts.find((p) => p.type === "weekday")?.value ?? "",
-    month: parts.find((p) => p.type === "month")?.value ?? "",
-    day: Number(parts.find((p) => p.type === "day")?.value ?? "0"),
-  };
-}
-
 // Every count in the "This week" strip is ACTIVITY-based: it counts
 // the stage transition that happened in the last 7 days, NOT the
 // current state of the placement. A candidate submitted Monday who
@@ -97,7 +79,6 @@ export async function MyDashboard() {
 
   const greeting = firstName ? `Welcome back, ${firstName}.` : "Welcome back.";
   const weekRange = formatEasternWeekRange(weekStart, weekEnd);
-  const dateParts = getCalendarDateParts(now);
 
   return (
     <div className="flex w-full flex-col gap-6">
@@ -105,23 +86,6 @@ export async function MyDashboard() {
         eyebrow="THIS WEEK"
         title={greeting}
         description={`Activity for ${weekRange}. Everything here is live - no targets, just actuals.`}
-        trailing={
-          <div className="hidden sm:block">
-            <div className="inline-flex flex-col overflow-hidden rounded-2xl shadow-sm">
-              <div className="bg-court-brand-tint px-3 py-1 text-center text-xs font-extrabold uppercase tracking-wide text-court-brand">
-                {dateParts.weekday}
-              </div>
-              <div className="bg-court-surface px-4 py-2 text-center">
-                <div className="text-xs font-medium uppercase tracking-wide text-court-fg-muted">
-                  {dateParts.month}
-                </div>
-                <div className="text-4xl font-black leading-none text-court-fg">
-                  {dateParts.day}
-                </div>
-              </div>
-            </div>
-          </div>
-        }
       />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">

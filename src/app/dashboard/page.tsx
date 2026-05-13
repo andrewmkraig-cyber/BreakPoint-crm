@@ -5,6 +5,7 @@ import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
 import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
+import { CalendarWidget } from "@/components/dashboard/calendar-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,10 @@ export default async function DashboardPage({
 
   return (
     <div className="flex w-full flex-col gap-2">
-      <DashboardTabs active={active} />
+      <div className="flex items-start justify-between gap-4">
+        <DashboardTabs active={active} />
+        <CalendarWidget />
+      </div>
       {active === "dashboard" && <MyDashboard />}
       {active === "scoreboard" && <Scoreboard />}
       {active === "placements" && <PlacementsTab period={period} />}
