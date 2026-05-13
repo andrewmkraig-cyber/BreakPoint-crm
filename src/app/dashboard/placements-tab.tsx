@@ -80,7 +80,7 @@ function PlacementsHeader({ period }: { period: PlacementsDashboardPeriod }) {
           Placements on the books.
         </h2>
         <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-          Every hire and pending start in the selected window — the map, the full
+          Every hire and pending start in the selected window: the map, the full
           ledger, and the breakdowns below.
         </p>
       </div>

@@ -37,19 +37,19 @@ L.Icon.Default.mergeOptions({
 
 const BRAND_GREEN = "#5A9642";
 
-// Inline SVG diamond used as the HQ marker. Kept small + muted so it
-// reads as "home base" without competing with the placement bubbles.
+// Small muted dot used as the HQ marker. Sized as a subtle anchor
+// point so it doesn't compete visually with the placement bubbles.
 const HQ_ICON = L.divIcon({
   className: "",
-  iconSize: [10, 10],
-  iconAnchor: [5, 5],
+  iconSize: [6, 6],
+  iconAnchor: [3, 3],
   html: `<div style="
-    width: 10px;
-    height: 10px;
-    background: #6B7280;
-    border: 1px solid white;
-    transform: rotate(45deg);
-    box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+    width: 6px;
+    height: 6px;
+    background: #9CA3AF;
+    border: 0.5px solid rgba(255,255,255,0.9);
+    border-radius: 50%;
+    opacity: 0.85;
   "></div>`,
 });
 

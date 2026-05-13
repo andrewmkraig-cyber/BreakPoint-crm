@@ -160,7 +160,7 @@ export async function MyDashboard() {
             {greeting}
           </h2>
           <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-            Activity for {weekRange}. Everything here is live — no targets, just actuals.
+            Activity for {weekRange}. Everything here is live: no targets, just actuals.
           </p>
         </div>
       </div>

@@ -47,7 +47,7 @@ function ScoreboardHeader({ periodLabel, periodRange }: { periodLabel: string; p
           The numbers that matter
         </h2>
         <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-          Deal flow, forecast, and where the desk is winning. Everything here is live activity — no targets, just actuals.
+          Deal flow, forecast, and where the desk is winning. Everything here is live activity: no targets, just actuals.
         </p>
       </div>
       <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-court-border bg-court-surface px-3.5 py-1.5 text-sm font-medium text-court-fg">
@@ -138,7 +138,7 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
   ];
   const top = stages[0].n;
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-7 shadow-sm lg:col-span-2">
+    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm lg:col-span-2">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Deal Funnel</p>
@@ -181,7 +181,7 @@ type Cash = Awaited<ReturnType<typeof getScoreboardData>>["cashForecast"];
 
 function CashForecastCard({ cash }: { cash: Cash }) {
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-7 shadow-sm">
+    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Cash Forecast</p>
       <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">Pipeline → Bank</h3>
       <p className="text-xs text-court-fg-muted">What&apos;s expected to land where.</p>
@@ -354,7 +354,7 @@ function StalledDealsCard() {
   // stage" is unknowable. Render the section title and an honest empty
   // state until that telemetry lands.
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-7 shadow-sm">
+    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Stalled Deals</p>
@@ -382,7 +382,7 @@ function ListCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-court-border bg-court-surface p-7 shadow-sm">
+    <div className="rounded-2xl border border-court-border bg-court-surface p-4 shadow-sm">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">{eyebrow}</p>
       <h3 className="mt-1 font-serif text-lg font-bold tracking-tight text-court-fg sm:text-xl">{title}</h3>
       {children}
