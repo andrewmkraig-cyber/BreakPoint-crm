@@ -49,21 +49,25 @@ export type LaterRow = {
   meta: string;
 };
 
-// Vertical strip down the left edge of each schedule row. Sage for
-// interviews (the recruiter's flagship event type), Tailwind blue for
-// client calls, amber for reminders, neutral fg-dim for anything else.
+// Vertical strip down the left edge of each schedule row. Blue for
+// interviews, sage for client calls (Andrew's flagship outbound),
+// yellow for candidate calls, amber for reminders, neutral fg-dim
+// for anything else.
 const STRIP_BG: Record<CalendarEventType, string> = {
-  interview: "bg-court-brand",
-  client: "bg-blue-700",
+  interview: "bg-blue-700",
+  client: "bg-court-brand",
+  candidate: "bg-yellow-600",
   reminder: "bg-amber-600",
   other: "bg-court-fg-dim",
 };
 
 const PILL_CLASS: Record<CalendarEventType, string> = {
   interview:
-    "bg-court-brand-tint text-court-brand-dark border-court-brand/35",
-  client:
     "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+  client:
+    "bg-court-brand-tint text-court-brand-dark border-court-brand/35",
+  candidate:
+    "bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-900",
   reminder:
     "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
   other: "bg-court-surface-subtle text-court-fg-muted border-court-border",
@@ -72,6 +76,7 @@ const PILL_CLASS: Record<CalendarEventType, string> = {
 const PILL_LABEL: Record<CalendarEventType, string> = {
   interview: "Interview",
   client: "Client",
+  candidate: "Candidate",
   reminder: "Reminder",
   other: "Event",
 };

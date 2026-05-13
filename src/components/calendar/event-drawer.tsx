@@ -132,6 +132,11 @@ const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = 
     sub: "External · syncs to Google Calendar",
   },
   {
+    id: "candidate",
+    label: "Candidate Call",
+    sub: "Outbound to a candidate · syncs to Google Calendar",
+  },
+  {
     id: "reminder",
     label: "Reminder",
     sub: "Personal · Ace-native toast notification",
@@ -340,7 +345,7 @@ export function CalendarEventDrawer({ open, mode, event, prefill, onClose }: Pro
           {/* Type selector */}
           <div>
             <FieldLabel>Event type</FieldLabel>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {TYPE_OPTS.map((t) => {
                 const tm = eventTypeMeta(t.id);
                 const active = type === t.id;

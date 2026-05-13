@@ -36,10 +36,11 @@ export function fmtDateRange(start: Date, end: Date): string {
   return `${fmtTime(start)} – ${fmtTime(end)}`;
 }
 
-// Event-type display tokens. Brand green is allowed per the project
-// rule; the other three palettes are semantic (blue=client, amber=
-// reminder, slate=other) and use Tailwind palette tokens through the
-// returned class strings so we don't bake hex values into components.
+// Event-type display tokens. Brand green now belongs to Client Call
+// (Andrew's bread-and-butter outbound). Interviews moved to blue,
+// Candidate Calls land in yellow, Reminders stay amber, Other stays
+// slate. Tailwind palette tokens are used through the returned class
+// strings so we don't bake hex values into components.
 export type EventTypeMeta = {
   label: string;
   dot: string;
@@ -56,20 +57,29 @@ export function eventTypeMeta(t: CalendarEventType): EventTypeMeta {
     case "interview":
       return {
         label: "Interview",
+        dot: "#1E40AF",
+        pillClass:
+          "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+        chipClass:
+          "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+      };
+    case "client":
+      return {
+        label: "Client Call",
         dot: "#5A9642",
         pillClass:
           "bg-court-brand-tint text-court-brand-dark border-court-brand/40 dark:bg-court-brand-tint dark:text-court-brand-dark",
         chipClass:
           "bg-court-brand-tint text-court-brand-dark border border-court-brand/30",
       };
-    case "client":
+    case "candidate":
       return {
-        label: "Client Call",
-        dot: "#1E40AF",
+        label: "Candidate Call",
+        dot: "#CA8A04",
         pillClass:
-          "bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+          "bg-yellow-50 text-yellow-800 border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-900",
         chipClass:
-          "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+          "bg-yellow-50 text-yellow-800 border border-yellow-200 dark:bg-yellow-950/40 dark:text-yellow-200 dark:border-yellow-900",
       };
     case "reminder":
       return {
