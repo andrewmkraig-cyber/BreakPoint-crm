@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Loader2, Send, X } from "lucide-react";
+import { FileText, Image as ImageIcon, Loader2, Paperclip, Send, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   CLAUDE_PANEL_MIN_H,
@@ -173,6 +173,150 @@ type RenderItem = ChatMessage | ActionCard;
 // Replaced with the persisted cuid once the final POST resolves.
 const STREAMING_ID = "__streaming__";
 
+// Composer attachment. Lives in component state until the user hits
+// Send, at which point it's forwarded to /api/claude-panel/chat as a
+// multi-block message and dropped. We never persist the binary payload
+// — only a "[Attached: name]" marker is appended to the stored user
+// content so the History tab still shows what was attached.
+type Attachment = {
+  id: string;
+  kind: "image" | "pdf" | "text";
+  name: string;
+  size: number;
+  // For image/pdf: base64-encoded payload (no data URL prefix).
+  // For text: the file contents.
+  data: string;
+  // image/png, image/jpeg, application/pdf, etc.
+  mediaType: string;
+};
+
+// Caps tuned to Anthropic's per-image guidance (~5MB) with headroom
+// for inflation through base64. Total prevents wedging the request
+// body past the Next.js / Vercel edge limit.
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10MB per file
+const ATTACHMENT_TOTAL_MAX_BYTES = 25 * 1024 * 1024; // 25MB combined
+// Anthropic accepts these image media types natively; anything else
+// has to fall through the text branch.
+const ANTHROPIC_IMAGE_MIME = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+// File extensions we'll happily slurp as plain text even when the MIME
+// type is empty (drag-and-drop from some apps doesn't set one).
+const TEXT_EXTENSIONS = new Set([
+  ".txt", ".md", ".markdown", ".csv", ".tsv", ".json", ".jsonl",
+  ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+  ".py", ".rb", ".go", ".rs", ".java", ".c", ".cpp", ".h", ".hpp",
+  ".html", ".htm", ".css", ".scss", ".sass", ".less",
+  ".xml", ".yaml", ".yml", ".toml", ".ini", ".env",
+  ".log", ".sql", ".sh", ".bash", ".zsh", ".fish",
+  ".vue", ".svelte", ".astro",
+]);
+
+function attachmentId(): string {
+  if (typeof globalThis !== "undefined" && globalThis.crypto?.randomUUID) {
+    return globalThis.crypto.randomUUID();
+  }
+  return `att-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function fileExtension(name: string): string {
+  const ix = name.lastIndexOf(".");
+  return ix >= 0 ? name.slice(ix).toLowerCase() : "";
+}
+
+function isTextLikeFile(file: File): boolean {
+  if (file.type.startsWith("text/")) return true;
+  if (file.type === "application/json") return true;
+  if (file.type === "application/xml") return true;
+  if (file.type === "application/x-yaml") return true;
+  return TEXT_EXTENSIONS.has(fileExtension(file.name));
+}
+
+async function fileToBase64(file: File | Blob): Promise<string> {
+  // FileReader.readAsDataURL gives us "data:<mime>;base64,<payload>".
+  // The Anthropic image block wants only the <payload>, so we slice
+  // past the comma.
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const out = typeof reader.result === "string" ? reader.result : "";
+      const comma = out.indexOf(",");
+      resolve(comma >= 0 ? out.slice(comma + 1) : out);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function fileToText(file: File | Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsText(file);
+  });
+}
+
+async function readAttachment(file: File): Promise<Attachment | null> {
+  if (file.size > ATTACHMENT_MAX_BYTES) {
+    toast.error(`${file.name} is too large`, {
+      description: `Files must be under ${Math.round(ATTACHMENT_MAX_BYTES / 1024 / 1024)}MB`,
+    });
+    return null;
+  }
+  const mime = file.type || "";
+  // Images that Claude can read natively → base64 image block.
+  if (mime.startsWith("image/")) {
+    if (!ANTHROPIC_IMAGE_MIME.has(mime)) {
+      toast.error(`${file.name}: unsupported image type`, {
+        description: "PNG, JPEG, GIF, or WebP only",
+      });
+      return null;
+    }
+    const data = await fileToBase64(file);
+    return {
+      id: attachmentId(),
+      kind: "image",
+      name: file.name || "screenshot.png",
+      size: file.size,
+      data,
+      mediaType: mime,
+    };
+  }
+  // PDFs → base64 document block (Claude reads native PDFs).
+  if (mime === "application/pdf" || fileExtension(file.name) === ".pdf") {
+    const data = await fileToBase64(file);
+    return {
+      id: attachmentId(),
+      kind: "pdf",
+      name: file.name || "document.pdf",
+      size: file.size,
+      data,
+      mediaType: "application/pdf",
+    };
+  }
+  // Everything text-shaped → text block. We don't try to handle Word
+  // docs, .pages, etc. — those need conversion the model can't do.
+  if (isTextLikeFile(file)) {
+    const text = await fileToText(file);
+    return {
+      id: attachmentId(),
+      kind: "text",
+      name: file.name || "file.txt",
+      size: file.size,
+      data: text,
+      mediaType: mime || "text/plain",
+    };
+  }
+  toast.error(`${file.name}: can't read this file`, {
+    description: "Try an image, PDF, or text file",
+  });
+  return null;
+}
+
 // Fresh conversationId generator. crypto.randomUUID is available in
 // every browser the panel runs in (Next.js targets ES2020+); the
 // time-prefix fallback is only there to satisfy TS narrowing in
@@ -212,10 +356,47 @@ export function ClaudePanel() {
   // null on first mount before hydration; Clear Chat rotates it to a
   // fresh uuid so subsequent posts tag the new conversation.
   const [conversationId, setConversationId] = useState<string | null>(null);
+  // Composer attachments. Cleared after each successful send. Never
+  // persisted — see the Attachment type comment above.
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  // Dashed-border drop overlay visibility. Tracked separately from a
+  // simple boolean because nested elements fire dragenter/dragleave
+  // pairs as the cursor moves over them; a counter keeps the overlay
+  // open until every nested enter has been matched by a leave.
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const dragDepthRef = useRef(0);
 
   const panelRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const addFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const currentTotal = attachments.reduce((s, a) => s + a.size, 0);
+    let runningTotal = currentTotal;
+    const next: Attachment[] = [];
+    for (const f of files) {
+      if (runningTotal + f.size > ATTACHMENT_TOTAL_MAX_BYTES) {
+        toast.error("Attachments too large", {
+          description: `Total over ${Math.round(ATTACHMENT_TOTAL_MAX_BYTES / 1024 / 1024)}MB`,
+        });
+        break;
+      }
+      const att = await readAttachment(f);
+      if (att) {
+        next.push(att);
+        runningTotal += f.size;
+      }
+    }
+    if (next.length > 0) {
+      setAttachments((prev) => [...prev, ...next]);
+    }
+  }, [attachments]);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -333,6 +514,22 @@ export function ClaudePanel() {
       if ((e.target as HTMLElement).closest("button")) return;
       const node = panelRef.current;
       if (!node || !position) return;
+      // setPointerCapture routes all subsequent pointer events back to
+      // the captured element until release — even if the cursor leaves
+      // the browser window, drags across an iframe, or the user lifts
+      // the mouse over a different app. The previous window-level
+      // listener pattern stranded the drag in those cases (Mac users
+      // releasing onto the desktop kept the panel "stuck" to the
+      // cursor with no pointerup firing). We also handle pointercancel
+      // and lostpointercapture as terminal events for the same reason.
+      const target = e.currentTarget;
+      try {
+        target.setPointerCapture(e.pointerId);
+      } catch {
+        // Some browsers throw when the pointer is already captured
+        // elsewhere; the rest of the drag still works without it.
+      }
+      e.preventDefault();
       const startPx = e.clientX;
       const startPy = e.clientY;
       const startX = position.x;
@@ -346,13 +543,21 @@ export function ClaudePanel() {
         node.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
       };
       const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== e.pointerId) return;
         dx = ev.clientX - startPx;
         dy = ev.clientY - startPy;
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
-      const onUp = () => {
-        window.removeEventListener("pointermove", onMove);
-        window.removeEventListener("pointerup", onUp);
+      const finish = () => {
+        target.removeEventListener("pointermove", onMove);
+        target.removeEventListener("pointerup", finish);
+        target.removeEventListener("pointercancel", finish);
+        target.removeEventListener("lostpointercapture", finish);
+        try {
+          target.releasePointerCapture(e.pointerId);
+        } catch {
+          // ignore — capture may already be released by the browser
+        }
         if (rafId !== 0) cancelAnimationFrame(rafId);
         node.style.transform = "";
         node.style.willChange = "";
@@ -364,8 +569,10 @@ export function ClaudePanel() {
           y: Math.max(0, Math.min(maxY, startY + dy)),
         });
       };
-      window.addEventListener("pointermove", onMove);
-      window.addEventListener("pointerup", onUp);
+      target.addEventListener("pointermove", onMove);
+      target.addEventListener("pointerup", finish);
+      target.addEventListener("pointercancel", finish);
+      target.addEventListener("lostpointercapture", finish);
     },
     [position, size, setPosition],
   );
@@ -384,6 +591,15 @@ export function ClaudePanel() {
         e.stopPropagation();
         const node = panelRef.current;
         if (!node || !position) return;
+        // Same setPointerCapture pattern as the header drag — see that
+        // handler for why window listeners get stranded.
+        const target = e.currentTarget;
+        try {
+          target.setPointerCapture(e.pointerId);
+        } catch {
+          // capture may be unavailable; rest of the resize still works
+        }
+        e.preventDefault();
         const startPx = e.clientX;
         const startPy = e.clientY;
         const startW = size.w;
@@ -404,6 +620,7 @@ export function ClaudePanel() {
           node.style.top = `${nextY}px`;
         };
         const onMove = (ev: PointerEvent) => {
+          if (ev.pointerId !== e.pointerId) return;
           const dx = ev.clientX - startPx;
           const dy = ev.clientY - startPy;
           if (corner === "br") {
@@ -424,16 +641,25 @@ export function ClaudePanel() {
           }
           if (rafId === 0) rafId = requestAnimationFrame(flush);
         };
-        const onUp = () => {
-          window.removeEventListener("pointermove", onMove);
-          window.removeEventListener("pointerup", onUp);
+        const finish = () => {
+          target.removeEventListener("pointermove", onMove);
+          target.removeEventListener("pointerup", finish);
+          target.removeEventListener("pointercancel", finish);
+          target.removeEventListener("lostpointercapture", finish);
+          try {
+            target.releasePointerCapture(e.pointerId);
+          } catch {
+            // ignore
+          }
           if (rafId !== 0) cancelAnimationFrame(rafId);
           node.style.willChange = "";
           setSize({ w: nextW, h: nextH });
           setPosition({ x: nextX, y: nextY });
         };
-        window.addEventListener("pointermove", onMove);
-        window.addEventListener("pointerup", onUp);
+        target.addEventListener("pointermove", onMove);
+        target.addEventListener("pointerup", finish);
+        target.addEventListener("pointercancel", finish);
+        target.addEventListener("lostpointercapture", finish);
       },
     [position, size, setPosition, setSize],
   );
@@ -469,9 +695,24 @@ export function ClaudePanel() {
 
   async function send() {
     const text = draft.trim();
-    if (!text || sending) return;
+    // Send is allowed when there's text OR at least one attachment.
+    // "Look at this screenshot" with no caption is a legitimate prompt.
+    if ((!text && attachments.length === 0) || sending) return;
     setSending(true);
     setDraft("");
+    // Snapshot attachments now and clear the composer chips; the in-flight
+    // request still references the snapshot via `turnAttachments`.
+    const turnAttachments = attachments;
+    setAttachments([]);
+    // Build the persisted user content: the user's text plus a short
+    // marker per attachment so the History tab still shows what came
+    // along. The binary payload itself never hits Postgres.
+    const attachmentMarker = turnAttachments
+      .map((a) => `[Attached: ${a.name}]`)
+      .join("\n");
+    const persistedUserText = [text, attachmentMarker]
+      .filter((s) => s.length > 0)
+      .join("\n\n");
     // Optimistic user bubble — replaced with the server-assigned cuid
     // once the /messages POST resolves.
     const tempUserId = `tmp-${Date.now()}`;
@@ -479,7 +720,7 @@ export function ClaudePanel() {
       kind: "message",
       id: tempUserId,
       role: "user",
-      content: text,
+      content: persistedUserText,
       createdAt: new Date().toISOString(),
     };
     // Snapshot the prior chat history BEFORE adding the optimistic user
@@ -494,7 +735,7 @@ export function ClaudePanel() {
 
     let userRow: ChatMessage;
     try {
-      userRow = await persist("user", text);
+      userRow = await persist("user", persistedUserText);
       setItems((prev) =>
         prev.map((it) =>
           it.kind === "message" && it.id === tempUserId ? userRow : it,
@@ -503,6 +744,7 @@ export function ClaudePanel() {
     } catch {
       // /messages POST failed — roll back the optimistic bubble and
       // restore the draft so the user can retry without losing input.
+      // Attachments don't come back (one-shot), same as ChatGPT.
       setItems((prev) =>
         prev.filter((it) => !(it.kind === "message" && it.id === tempUserId)),
       );
@@ -534,7 +776,25 @@ export function ClaudePanel() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: [...priorHistory, { role: "user", content: text }],
+          // History stays as strings (text-only) so prior turns don't
+          // re-upload images. The current turn carries `attachments`
+          // separately so the server can convert just the last user
+          // message into a multi-block content array.
+          messages: [
+            ...priorHistory,
+            // Fallback to a one-character placeholder when the user
+            // sent only attachments — Anthropic's API rejects an
+            // empty trailing user text block, and the server's
+            // existing trim/skip drops empty content. The attachments
+            // themselves still carry the meaning.
+            { role: "user", content: text || "(see attached)" },
+          ],
+          attachments: turnAttachments.map((a) => ({
+            kind: a.kind,
+            name: a.name,
+            mediaType: a.mediaType,
+            data: a.data,
+          })),
           entityType,
           entityId,
         }),
@@ -840,6 +1100,33 @@ export function ClaudePanel() {
       role="dialog"
       aria-label="Ace Assistant"
       onPointerDownCapture={bringToFront}
+      // Native file drag/drop. dataTransfer.types includes "Files" only
+      // when the drag originates from the OS file picker / Finder, not
+      // for in-page text/element drags — that gate keeps the overlay
+      // from flashing when the recruiter is just dragging selected
+      // text around inside the panel.
+      onDragEnter={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+        e.preventDefault();
+        dragDepthRef.current += 1;
+        if (dragDepthRef.current === 1) setIsDraggingFile(true);
+      }}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer.types).includes("Files")) e.preventDefault();
+      }}
+      onDragLeave={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) setIsDraggingFile(false);
+      }}
+      onDrop={(e) => {
+        if (!Array.from(e.dataTransfer.types).includes("Files")) return;
+        e.preventDefault();
+        dragDepthRef.current = 0;
+        setIsDraggingFile(false);
+        const dropped = Array.from(e.dataTransfer.files);
+        if (dropped.length > 0) void addFiles(dropped);
+      }}
       className="pointer-events-auto fixed flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       style={{
         left: `${position.x}px`,
@@ -965,12 +1252,71 @@ export function ClaudePanel() {
       </div>
 
       <div className="shrink-0 border-t border-court-border bg-court-surface px-3 py-2">
+        {attachments.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {attachments.map((a) => (
+              <AttachmentChip
+                key={a.id}
+                attachment={a}
+                onRemove={() => removeAttachment(a.id)}
+              />
+            ))}
+          </div>
+        )}
         <div className="flex items-end gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            // Images, PDFs, common text formats. Browsers honor this
+            // loosely so readAttachment still gates everything by MIME +
+            // extension server-side of the picker.
+            accept="image/png,image/jpeg,image/gif,image/webp,application/pdf,text/*,.md,.csv,.json,.ts,.tsx,.js,.jsx,.py,.go,.rs,.java,.html,.css,.yaml,.yml,.toml,.ini,.log,.sql,.sh,.xml"
+            onChange={(e) => {
+              const list = e.target.files;
+              if (!list) return;
+              void addFiles(Array.from(list));
+              // Reset so picking the same file twice still fires onChange.
+              e.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+            aria-label="Attach files"
+            title="Attach image, PDF, or text file"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-court-border bg-court-surface-subtle text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg disabled:opacity-50"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
           <textarea
             ref={textareaRef}
             rows={2}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            onPaste={(e) => {
+              // Pull image blobs out of the clipboard so Cmd+V on a
+              // screenshot drops it into the composer. Non-file paste
+              // (plain text) falls through to the textarea's default
+              // handler — we only preventDefault when we actually
+              // claim a file.
+              const items = e.clipboardData?.items;
+              if (!items) return;
+              const files: File[] = [];
+              for (let i = 0; i < items.length; i++) {
+                const it = items[i];
+                if (it.kind === "file") {
+                  const f = it.getAsFile();
+                  if (f) files.push(f);
+                }
+              }
+              if (files.length > 0) {
+                e.preventDefault();
+                void addFiles(files);
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
@@ -985,7 +1331,7 @@ export function ClaudePanel() {
             variant="primary"
             size="sm"
             onClick={() => void send()}
-            disabled={sending || !draft.trim()}
+            disabled={sending || (!draft.trim() && attachments.length === 0)}
             aria-label="Send message"
           >
             {sending ? (
@@ -1029,8 +1375,49 @@ export function ClaudePanel() {
             "linear-gradient(135deg, transparent 50%, rgba(0,0,0,0.18) 50%)",
         }}
       />
+
+      {/* File drop overlay. pointer-events-none so the underlying
+          dragleave/drop still fire on the real panel root; the visual
+          is purely advisory. */}
+      {isDraggingFile && (
+        <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl border-2 border-dashed border-court-brand bg-court-brand-tint/80">
+          <div className="flex flex-col items-center gap-1 text-court-brand-dark">
+            <Paperclip className="h-6 w-6" />
+            <span className="font-serif text-sm font-semibold">Drop to attach</span>
+            <span className="text-[11px] text-court-fg-muted">
+              Images, PDFs, or text files
+            </span>
+          </div>
+        </div>
+      )}
     </div>,
     document.body,
+  );
+}
+
+function AttachmentChip({
+  attachment,
+  onRemove,
+}: {
+  attachment: Attachment;
+  onRemove: () => void;
+}) {
+  const Icon = attachment.kind === "image" ? ImageIcon : FileText;
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle py-1 pl-2 pr-1 text-[11px] text-court-fg">
+      <Icon className="h-3.5 w-3.5 shrink-0 text-court-fg-muted" />
+      <span className="max-w-[140px] truncate" title={attachment.name}>
+        {attachment.name}
+      </span>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="rounded-full p-0.5 text-court-fg-muted transition hover:bg-court-surface hover:text-court-fg"
+        aria-label={`Remove ${attachment.name}`}
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
   );
 }
 

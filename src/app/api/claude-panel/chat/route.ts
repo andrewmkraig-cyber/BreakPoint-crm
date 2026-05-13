@@ -1935,6 +1935,7 @@ export async function POST(req: NextRequest) {
     messages?: unknown;
     entityType?: unknown;
     entityId?: unknown;
+    attachments?: unknown;
   };
   try {
     body = await req.json();
@@ -1991,6 +1992,66 @@ export async function POST(req: NextRequest) {
       { ok: false, error: "history must end with a user message" },
       { status: 400 },
     );
+  }
+
+  // Composer attachments — only ever applied to the last user message.
+  // Prior turns stay as plain strings (history doesn't re-upload images
+  // on every turn; matches Claude.ai / ChatGPT behavior). Anthropic
+  // expects images BEFORE text in a multi-block content array, so we
+  // splice image/document blocks first and let the user's typed text
+  // come last.
+  const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+  if (rawAttachments.length > 0) {
+    const last = cleaned[cleaned.length - 1];
+    const userText = typeof last.content === "string" ? last.content : "";
+    const blocks: Anthropic.ContentBlockParam[] = [];
+    for (const raw of rawAttachments) {
+      if (!raw || typeof raw !== "object") continue;
+      const a = raw as {
+        kind?: unknown;
+        name?: unknown;
+        mediaType?: unknown;
+        data?: unknown;
+      };
+      const kind = a.kind;
+      const name = typeof a.name === "string" ? a.name : "attachment";
+      const mediaType = typeof a.mediaType === "string" ? a.mediaType : "";
+      const data = typeof a.data === "string" ? a.data : "";
+      if (!data) continue;
+      if (
+        kind === "image" &&
+        (mediaType === "image/png" ||
+          mediaType === "image/jpeg" ||
+          mediaType === "image/gif" ||
+          mediaType === "image/webp")
+      ) {
+        blocks.push({
+          type: "image",
+          source: { type: "base64", media_type: mediaType, data },
+        });
+      } else if (kind === "pdf") {
+        blocks.push({
+          type: "document",
+          source: { type: "base64", media_type: "application/pdf", data },
+          // Filename gives the model a stable label to cite. Without
+          // it the model often refers to attachments as "the document"
+          // which reads worse when the user attached several.
+          title: name,
+        });
+      } else if (kind === "text") {
+        // Wrap text-file contents with explicit fences so the model
+        // doesn't blur file content into the user's prompt — same
+        // pattern as Claude.ai for txt/md drops.
+        blocks.push({
+          type: "text",
+          text: `<file name="${name}">\n${data}\n</file>`,
+        });
+      }
+    }
+    if (blocks.length > 0) {
+      blocks.push({ type: "text", text: userText });
+      last.content = blocks;
+    }
   }
 
   // Resolve org so we can append the org-scoped Personal Trainer
