@@ -24,9 +24,20 @@ export type PlacementsDashboardBillingStatus =
 
 export type PlacementsDashboardPlacementType = "SALARY" | "CONTRACT";
 
+export type PlacementsDashboardSourceChannel =
+  | "NETWORK"
+  | "REFERRAL"
+  | "LINKEDIN"
+  | "INBOUND"
+  | "OTHER";
+
 export type PlacementsDashboardRow = {
   id: string;
+  candidateId: string | null;
   candidateFullName: string;
+  // The most recent linked invoice, if any. Drives the ledger row's
+  // click target (invoice detail) and the deeper drilldowns to come.
+  invoiceId: string | null;
   clientId: string | null;
   clientName: string;
   clientIndustry: string | null;
@@ -35,6 +46,9 @@ export type PlacementsDashboardRow = {
   city: string | null;
   feeAmount: number | null;
   billingStatus: PlacementsDashboardBillingStatus;
+  // High-level bucket the placement maps to for the By-Sourcing card.
+  // Derived from Placement.source — see deriveSourceChannel().
+  sourceChannel: PlacementsDashboardSourceChannel;
   // Snapshot of Placement.acceptedSalary (annual base) for direct-hire
   // placements. null when not captured (typical for contract roles).
   baseSalary: number | null;
@@ -82,6 +96,27 @@ function cityFromClientLocation(location: Prisma.JsonValue | null | undefined): 
   const loc = location as ClientLocationJson;
   const city = loc?.city?.trim();
   return city ? city : null;
+}
+
+function deriveSourceChannel(
+  source: string | null | undefined,
+): PlacementsDashboardSourceChannel {
+  // Placement.source is the recorded "how the candidate landed on this
+  // job" tag (see schema comment). Values currently in the wild are
+  // free-form strings — we bucket conservatively. Anything we can't
+  // confidently slot lands in OTHER; the user can refine later by
+  // adding new recorded source values.
+  const raw = (source ?? "").toLowerCase().trim();
+  if (!raw) return "OTHER";
+  if (raw.includes("referral")) return "REFERRAL";
+  if (raw.includes("linkedin")) return "LINKEDIN";
+  if (raw.includes("job_board") || raw.includes("careers_form") || raw.includes("inbound")) {
+    return "INBOUND";
+  }
+  if (raw.includes("recruiter_applied") || raw.includes("network") || raw.includes("sourced")) {
+    return "NETWORK";
+  }
+  return "OTHER";
 }
 
 function derivePlacementType(args: {
@@ -144,6 +179,7 @@ export async function getPlacementsDashboardData(
       select: {
         id: true,
         stage: true,
+        candidateId: true,
         clientId: true,
         placedAt: true,
         expectedStartDate: true,
@@ -151,6 +187,7 @@ export async function getPlacementsDashboardData(
         feeTotal: true,
         acceptedSalary: true,
         cityOverride: true,
+        source: true,
         candidate: { select: { firstName: true, lastName: true } },
         client: { select: { name: true, industry: true, location: true } },
         job: { select: { title: true, employmentType: true } },
@@ -158,7 +195,7 @@ export async function getPlacementsDashboardData(
           where: { status: { not: "VOID" } },
           orderBy: { createdAt: "desc" },
           take: 1,
-          select: { status: true, feeAmount: true, dueDate: true },
+          select: { id: true, status: true, feeAmount: true, dueDate: true },
         },
       },
       orderBy: [{ expectedStartDate: "asc" }],
@@ -203,7 +240,9 @@ export async function getPlacementsDashboardData(
     });
     return {
       id: p.id,
+      candidateId: p.candidateId ?? null,
       candidateFullName,
+      invoiceId: invoice?.id ?? null,
       clientId: p.clientId ?? null,
       clientName: p.client?.name ?? "",
       clientIndustry: p.client?.industry ?? null,
@@ -217,6 +256,7 @@ export async function getPlacementsDashboardData(
         invoiceDueDate: invoice?.dueDate ?? null,
         now,
       }),
+      sourceChannel: deriveSourceChannel(p.source),
       baseSalary: p.acceptedSalary ?? null,
       offerAcceptedAt: p.placedAt,
       placementType,
