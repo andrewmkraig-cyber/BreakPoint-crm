@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { AppShell } from "@/components/app-shell";
+import { ReminderToastProvider } from "@/components/reminder-toast-provider";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUnreadMailCount } from "@/lib/gmail";
@@ -80,6 +81,7 @@ export default async function RootLayout({
         <Providers>
           <CourtModeProvider>
             <AppShell unreadMailCount={unreadMailCount}>{children}</AppShell>
+            <ReminderToastProvider />
           </CourtModeProvider>
         </Providers>
       </body>

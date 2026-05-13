@@ -133,11 +133,11 @@ function ReminderRow({
   );
 }
 
-// Inline create form. Date is a native picker; time is a select on
-// 15-minute increments so the recruiter can't pick "9:13" by mistake.
-// The save button is enabled only when there's a title + a future
-// reminderAt — we don't surface server-side errors here yet because
-// the action throws on invalid input and the caller logs to console.
+// Inline create form. Date + time are both native pickers — time is a
+// free-text input so the recruiter can land on any minute (e.g. 9:13)
+// instead of being clamped to 15-minute slots. The save button is
+// enabled only when there's a title — invalid date/time strings are
+// rejected by the parse below and the action throws on bad input.
 function NewReminderForm({
   onCancel,
   onCreate,
@@ -153,8 +153,6 @@ function NewReminderForm({
   const [date, setDate] = useState(defaultDate);
   const [time, setTime] = useState(defaultTime);
   const [submitting, setSubmitting] = useState(false);
-
-  const timeOptions = useMemo(() => buildQuarterHours(), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,17 +189,12 @@ function NewReminderForm({
           onChange={(e) => setDate(e.target.value)}
           className="flex-1 rounded-lg border border-court-border bg-court-surface px-2 py-1.5 text-[12px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"
         />
-        <select
+        <input
+          type="time"
           value={time}
           onChange={(e) => setTime(e.target.value)}
           className="flex-1 rounded-lg border border-court-border bg-court-surface px-2 py-1.5 text-[12px] text-court-fg outline-none focus:border-court-brand/60 focus:ring-2 focus:ring-court-brand/20"
-        >
-          {timeOptions.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
+        />
       </div>
       <div className="flex items-center justify-end gap-2 pt-1">
         <button
@@ -244,15 +237,3 @@ function nextQuarterHour(from: Date): string {
   return `${pad(hour)}:${pad(mins)}`;
 }
 
-function buildQuarterHours(): Array<{ value: string; label: string }> {
-  const out: Array<{ value: string; label: string }> = [];
-  for (let h = 0; h < 24; h += 1) {
-    for (const m of [0, 15, 30, 45]) {
-      const value = `${pad(h)}:${pad(m)}`;
-      const hour12 = ((h + 11) % 12) + 1;
-      const suffix = h < 12 ? "AM" : "PM";
-      out.push({ value, label: `${hour12}:${pad(m)} ${suffix}` });
-    }
-  }
-  return out;
-}

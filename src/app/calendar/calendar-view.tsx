@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { CalendarDayView } from "@/components/calendar/day-view";
 import { CalendarEventDrawer } from "@/components/calendar/event-drawer";
@@ -10,7 +10,6 @@ import { GoogleGlyph } from "@/components/calendar/left-rail";
 import { CalendarLeftRail } from "@/components/calendar/left-rail";
 import { CalendarMonthView } from "@/components/calendar/month-view";
 import { CalendarRemindersPanel } from "@/components/calendar/reminders-panel";
-import { CalendarToastStack } from "@/components/calendar/toast-stack";
 import { CalendarWeekView } from "@/components/calendar/week-view";
 import { TabStrip } from "@/components/ui/tab-strip";
 import type {
@@ -99,17 +98,11 @@ export function CalendarView({
   const [drawerMode, setDrawerMode] = useState<"create" | "edit">("edit");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
-  // toasts = reminders that have come due during this session and need
-  // the recruiter to acknowledge them. We seed empty because the page
-  // query filters to reminderAt >= now — anything past-due either gets
-  // dismissed elsewhere or shows up on the next 60s tick after its
-  // reminderAt slips past.
-  const [toasts, setToasts] = useState<CalendarReminder[]>([]);
-  const [toastsCollapsed, setToastsCollapsed] = useState(false);
+  // Upcoming-reminders list shown in the right-rail panel. Past-due
+  // toasts are owned by the global ReminderToastProvider mounted in the
+  // root layout — keeping them there means a reminder fires even when
+  // the recruiter has navigated away from /calendar.
   const [reminders, setReminders] = useState(initialReminders);
-  // Track which reminder ids have already been promoted to a toast so
-  // the 60s polling tick doesn't re-fire the same toast each minute.
-  const toastedIds = useRef<Set<string>>(new Set());
 
   // initialReminders comes back as a fresh prop on every router.refresh,
   // so reset local state when the server payload changes (e.g. after
@@ -140,9 +133,9 @@ export function CalendarView({
       return next;
     });
 
-  // Both surfaces (panel + toast) need to optimistically remove the
-  // row, persist the dismiss server-side, then refresh server data so
-  // any other surface reading AceReminder picks up the change.
+  // Panel dismiss optimistically drops the row, persists the dismiss
+  // server-side, then refreshes so any other surface reading AceReminder
+  // (including the global toast provider's next poll) sees the change.
   const persistDismiss = useCallback(
     async (id: string) => {
       try {
@@ -156,15 +149,8 @@ export function CalendarView({
     [router],
   );
 
-  const dismissToast = (id: string) => {
-    setToasts((prev) => prev.filter((r) => r.id !== id));
-    void persistDismiss(id);
-  };
-  const snoozeToast = (id: string) =>
-    setToasts((prev) => prev.filter((r) => r.id !== id));
   const dismissReminder = (id: string) => {
     setReminders((prev) => prev.filter((r) => r.id !== id));
-    setToasts((prev) => prev.filter((r) => r.id !== id));
     void persistDismiss(id);
   };
   const snoozeReminder = (id: string) =>
@@ -182,31 +168,6 @@ export function CalendarView({
     },
     [router],
   );
-
-  // Promote past-due reminders to the toast stack. Runs on mount and
-  // every 60s. Each reminder is promoted at most once per page load
-  // (tracked in toastedIds) so a stuck/uncommitted dismiss doesn't
-  // re-pop the toast every tick.
-  useEffect(() => {
-    const promote = () => {
-      const now = Date.now();
-      setToasts((prev) => {
-        const additions: CalendarReminder[] = [];
-        for (const r of reminders) {
-          if (toastedIds.current.has(r.id)) continue;
-          if (prev.some((t) => t.id === r.id)) continue;
-          if (r.reminderAt.getTime() <= now) {
-            toastedIds.current.add(r.id);
-            additions.push({ ...r, urgent: true });
-          }
-        }
-        return additions.length === 0 ? prev : [...prev, ...additions];
-      });
-    };
-    promote();
-    const id = window.setInterval(promote, 60_000);
-    return () => window.clearInterval(id);
-  }, [reminders]);
 
   const filteredEvents =
     scope === "me"
@@ -315,14 +276,6 @@ export function CalendarView({
         mode={drawerMode}
         event={drawerMode === "edit" ? selectedEvent : null}
         onClose={closeDrawer}
-      />
-
-      <CalendarToastStack
-        reminders={toasts}
-        collapsed={toastsCollapsed}
-        onCollapse={setToastsCollapsed}
-        onDismiss={dismissToast}
-        onSnooze={snoozeToast}
       />
     </div>
   );

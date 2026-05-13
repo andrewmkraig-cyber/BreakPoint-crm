@@ -85,14 +85,35 @@ function formatAbsolute(target: Date): string {
   });
 }
 
+// Resolve which team member "owns" a synced Google calendar by matching
+// the calendar's summary against the member's email, email local-part,
+// or any 3+ char token in their display name. The naive
+// `lc.includes(email)` check broke the team toggle for everyone except
+// the signed-in user: Google's `cal.summary` for a shared calendar is
+// usually "Austin Barnard", not "austin@breakpointtalent.com", so every
+// non-self event collapsed onto fallbackOwnerId (the self user). With
+// the wider match Austin's events land on his user.id, which is the
+// same id the left-rail toggle writes into hiddenMembers.
 function deriveOwnerId(
   calendarName: string,
-  members: Array<{ id: string; email: string | null }>,
+  members: Array<{ id: string; email: string | null; name: string | null }>,
   fallbackId: string,
 ): string {
   const lc = calendarName.toLowerCase();
   for (const m of members) {
-    if (m.email && lc.includes(m.email.toLowerCase())) return m.id;
+    const tokens: string[] = [];
+    if (m.email) {
+      const email = m.email.toLowerCase();
+      tokens.push(email);
+      const local = email.split("@")[0];
+      if (local && local.length >= 3) tokens.push(local);
+    }
+    if (m.name) {
+      for (const part of m.name.toLowerCase().split(/\s+/)) {
+        if (part.length >= 3) tokens.push(part);
+      }
+    }
+    if (tokens.some((t) => lc.includes(t))) return m.id;
   }
   return fallbackId;
 }
@@ -144,6 +165,7 @@ export default async function CalendarPage() {
   const memberEmailLookup = memberships.map((m) => ({
     id: m.user.id,
     email: m.user.email,
+    name: m.user.name,
   }));
 
   // The self user — or the first member if the request has no session
