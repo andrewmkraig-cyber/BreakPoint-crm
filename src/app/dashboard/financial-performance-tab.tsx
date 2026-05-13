@@ -6,9 +6,15 @@ import {
   Wallet,
 } from "lucide-react";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
+import { ExpenseAddForm } from "@/app/dashboard/expense-add-form";
 import { SectionHero } from "@/components/section-hero";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import {
+  fetchMercuryYtdTransactions,
+  mercuryTransactionDescription,
+} from "@/lib/mercury";
+import { matchTransaction } from "@/lib/mercury-matcher";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -56,37 +62,46 @@ export async function FinancialPerformanceTab() {
   const qStart = new Date(year, qStartMonth, 1);
   const qEnd = new Date(year, qStartMonth + 3, 1);
 
-  const [revenueInvoices, toolExpenses, placementsYtd] = await Promise.all([
-    prisma.invoice.findMany({
-      where: {
-        organizationId: org.id,
-        status: { in: ["SENT", "PAID"] },
-        OR: [
-          { sentAt: { gte: yearStart, lt: yearEnd } },
-          { paidAt: { gte: yearStart, lt: yearEnd } },
-        ],
-      },
-      select: {
-        feeAmount: true,
-        sentAt: true,
-        paidAt: true,
-        clientId: true,
-        client: { select: { name: true } },
-        placement: { select: { candidateSource: true } },
-      },
-    }),
-    prisma.toolExpense.findMany({
-      where: { organizationId: org.id },
-      select: { cost: true, paidCount: true },
-    }),
-    prisma.placement.findMany({
-      where: {
-        organizationId: org.id,
-        placedAt: { gte: yearStart, lt: yearEnd },
-      },
-      select: { clientId: true, candidateSource: true },
-    }),
-  ]);
+  const [revenueInvoices, toolExpenses, placementsYtd, mercuryResult] =
+    await Promise.all([
+      prisma.invoice.findMany({
+        where: {
+          organizationId: org.id,
+          status: { in: ["SENT", "PAID"] },
+          OR: [
+            { sentAt: { gte: yearStart, lt: yearEnd } },
+            { paidAt: { gte: yearStart, lt: yearEnd } },
+          ],
+        },
+        select: {
+          feeAmount: true,
+          sentAt: true,
+          paidAt: true,
+          clientId: true,
+          client: { select: { name: true } },
+          placement: { select: { candidateSource: true } },
+        },
+      }),
+      prisma.toolExpense.findMany({
+        where: { organizationId: org.id },
+        select: {
+          id: true,
+          name: true,
+          cost: true,
+          frequency: true,
+          paidCount: true,
+        },
+        orderBy: { name: "asc" },
+      }),
+      prisma.placement.findMany({
+        where: {
+          organizationId: org.id,
+          placedAt: { gte: yearStart, lt: yearEnd },
+        },
+        select: { clientId: true, candidateSource: true },
+      }),
+      fetchMercuryYtdTransactions(org.id),
+    ]);
 
   // KPI strip math (unchanged).
   const revenueUsd = revenueInvoices.reduce(
@@ -219,6 +234,104 @@ export async function FinancialPerformanceTab() {
 
   const quarterLabel = `Q${currentQuarterIndex + 1} ${year}`;
 
+  // ---- Expenses section data ----
+  // Mercury debits arrive as negative numbers; negating turns them into
+  // positive spend. Credits (refunds) shrink the figure honestly. We
+  // bucket by `matchTransaction()` — anything it can't classify is
+  // ignored here and remains visible to the recruiter in the connector
+  // panel rather than guessed into a tool.
+  const mercuryConnected = !(
+    !mercuryResult.ok && mercuryResult.reason === "not_connected"
+  );
+  const mercuryTxns = mercuryResult.ok ? mercuryResult.transactions : [];
+  const mercuryByTool = new Map<string, { count: number; totalUsd: number }>();
+  for (const t of mercuryTxns) {
+    const description = mercuryTransactionDescription(t);
+    if (!description) continue;
+    const tool = matchTransaction(description);
+    if (!tool) continue;
+    const raw = Number(t.amount ?? 0);
+    if (!Number.isFinite(raw)) continue;
+    const signedSpend = -raw;
+    const prev = mercuryByTool.get(tool) ?? { count: 0, totalUsd: 0 };
+    prev.count += 1;
+    prev.totalUsd += signedSpend;
+    mercuryByTool.set(tool, prev);
+  }
+
+  const subscriptionRows: SubscriptionRow[] = [];
+  const consumedExpenseIds = new Set<string>();
+  Array.from(mercuryByTool.entries()).forEach(([tool, agg]) => {
+    const te = toolExpenses.find(
+      (t) => t.name.toLowerCase() === tool.toLowerCase(),
+    );
+    if (te) consumedExpenseIds.add(te.id);
+    subscriptionRows.push({
+      key: `merc-${tool}`,
+      toolName: te?.name ?? tool,
+      cost: te?.cost ?? null,
+      frequency: te?.frequency ?? null,
+      paidCount: te?.paidCount ?? agg.count,
+      totalYtdUsd: agg.totalUsd,
+      status: "Mercury matched",
+    });
+  });
+  for (const te of toolExpenses) {
+    if (consumedExpenseIds.has(te.id)) continue;
+    subscriptionRows.push({
+      key: `te-${te.id}`,
+      toolName: te.name,
+      cost: te.cost,
+      frequency: te.frequency,
+      paidCount: te.paidCount,
+      totalYtdUsd: te.cost * te.paidCount,
+      status: "Manual",
+    });
+  }
+  subscriptionRows.sort((a, b) => b.totalYtdUsd - a.totalYtdUsd);
+
+  const subscriptionsYtdUsd = subscriptionRows.reduce(
+    (sum, r) => sum + r.totalYtdUsd,
+    0,
+  );
+  const activeSubscriptionsCount = subscriptionRows.length;
+
+  // Revenue attribution by source name (case-insensitive). Each
+  // invoice carries the placement.candidateSource that the recruiter
+  // tagged at the sourcing step — the first-touch attribution model.
+  const revByLowerSource = new Map<string, number>();
+  for (const inv of revenueInvoices) {
+    const src = inv.placement?.candidateSource?.trim();
+    if (!src) continue;
+    const key = src.toLowerCase();
+    revByLowerSource.set(
+      key,
+      (revByLowerSource.get(key) ?? 0) + decimalToNumber(inv.feeAmount),
+    );
+  }
+
+  const roiRows: RoiRow[] = subscriptionRows.map((r) => {
+    const rev = revByLowerSource.get(r.toolName.toLowerCase()) ?? 0;
+    const roiPct =
+      r.totalYtdUsd > 0 && rev > 0
+        ? ((rev - r.totalYtdUsd) / r.totalYtdUsd) * 100
+        : null;
+    return {
+      key: r.key,
+      toolName: r.toolName,
+      spendUsd: r.totalYtdUsd,
+      revUsd: rev,
+      roiPct,
+    };
+  });
+
+  const totalRoiSpend = roiRows.reduce((s, r) => s + r.spendUsd, 0);
+  const totalRoiRev = roiRows.reduce((s, r) => s + r.revUsd, 0);
+  const blendedExpensesRoiPct =
+    totalRoiSpend > 0
+      ? ((totalRoiRev - totalRoiSpend) / totalRoiSpend) * 100
+      : null;
+
   return (
     <div className="flex flex-col gap-6">
       <SectionHero
@@ -276,9 +389,36 @@ export async function FinancialPerformanceTab() {
         quarterRevenueUsd={quarterRevenueUsd}
         forecastQuarterUsd={forecastQuarterUsd}
       />
+
+      <ExpensesSection
+        mercuryConnected={mercuryConnected}
+        subscriptionRows={subscriptionRows}
+        subscriptionsYtdUsd={subscriptionsYtdUsd}
+        activeSubscriptionsCount={activeSubscriptionsCount}
+        roiRows={roiRows}
+        blendedExpensesRoiPct={blendedExpensesRoiPct}
+      />
     </div>
   );
 }
+
+type SubscriptionRow = {
+  key: string;
+  toolName: string;
+  cost: number | null;
+  frequency: string | null;
+  paidCount: number;
+  totalYtdUsd: number;
+  status: "Mercury matched" | "Manual";
+};
+
+type RoiRow = {
+  key: string;
+  toolName: string;
+  spendUsd: number;
+  revUsd: number;
+  roiPct: number | null;
+};
 
 type ClientRow = {
   id: string;
@@ -631,5 +771,272 @@ function EmptyBlock({ children }: { children: React.ReactNode }) {
     <div className="mt-3 rounded-xl border border-dashed border-court-border bg-court-surface-subtle px-3 py-4 text-center text-xs text-court-fg-muted">
       {children}
     </div>
+  );
+}
+
+const ROI_INT_FMT = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 0,
+});
+
+function avatarFor(name: string): string {
+  const cleaned = name.replace(/[^a-zA-Z0-9]/g, "");
+  return (cleaned.slice(0, 2) || "??").toUpperCase();
+}
+
+function ExpensesSection({
+  mercuryConnected,
+  subscriptionRows,
+  subscriptionsYtdUsd,
+  activeSubscriptionsCount,
+  roiRows,
+  blendedExpensesRoiPct,
+}: {
+  mercuryConnected: boolean;
+  subscriptionRows: SubscriptionRow[];
+  subscriptionsYtdUsd: number;
+  activeSubscriptionsCount: number;
+  roiRows: RoiRow[];
+  blendedExpensesRoiPct: number | null;
+}) {
+  const statusLine = mercuryConnected
+    ? "Auto-matched from Mercury · last sync just now"
+    : "Mercury not connected";
+  return (
+    <section className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
+            Expenses
+          </p>
+          <h3 className="mt-1 font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
+            Tools, fees, and where it goes.
+          </h3>
+        </div>
+        <p
+          className={
+            "text-xs " +
+            (mercuryConnected
+              ? "text-court-fg-muted"
+              : "text-court-fg-dim")
+          }
+        >
+          {statusLine}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <SubscriptionsCard
+          rows={subscriptionRows}
+          subscriptionsYtdUsd={subscriptionsYtdUsd}
+          activeSubscriptionsCount={activeSubscriptionsCount}
+        />
+        <RoiCard
+          rows={roiRows}
+          blendedRoiPct={blendedExpensesRoiPct}
+        />
+      </div>
+    </section>
+  );
+}
+
+function SubscriptionsCard({
+  rows,
+  subscriptionsYtdUsd,
+  activeSubscriptionsCount,
+}: {
+  rows: SubscriptionRow[];
+  subscriptionsYtdUsd: number;
+  activeSubscriptionsCount: number;
+}) {
+  return (
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      <div>
+        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+          Subscriptions &amp; tools
+        </p>
+        <p className="mt-0.5 text-xs text-court-fg-muted">
+          Recurring spend pulled from Mercury transactions
+        </p>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyBlock>
+          No subscription spend logged yet. Add one below or connect Mercury to
+          auto-match transactions.
+        </EmptyBlock>
+      ) : (
+        <div className="mt-4">
+          <div className="grid grid-cols-[1.6fr_0.7fr_0.9fr_0.5fr_0.9fr_1.1fr] gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
+            <span>Tool</span>
+            <span className="text-right">Cost</span>
+            <span>Frequency</span>
+            <span className="text-right">Paid</span>
+            <span className="text-right">Total YTD</span>
+            <span className="text-right">Status</span>
+          </div>
+          <ul className="divide-y divide-court-border-soft">
+            {rows.map((r) => (
+              <SubscriptionRowItem key={r.key} row={r} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-between border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">
+        <span>
+          {activeSubscriptionsCount} active subscription
+          {activeSubscriptionsCount === 1 ? "" : "s"}
+        </span>
+        <span className="text-sm font-semibold tabular-nums text-court-fg">
+          YTD subtotal {formatUsd(subscriptionsYtdUsd)}
+        </span>
+      </div>
+
+      <div className="mt-3">
+        <ExpenseAddForm />
+      </div>
+    </div>
+  );
+}
+
+function SubscriptionRowItem({ row }: { row: SubscriptionRow }) {
+  const initials = avatarFor(row.toolName);
+  return (
+    <li className="grid grid-cols-[1.6fr_0.7fr_0.9fr_0.5fr_0.9fr_1.1fr] items-center gap-2 px-1 py-2 text-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
+          {initials}
+        </span>
+        <span className="truncate font-medium text-court-fg">
+          {row.toolName}
+        </span>
+      </div>
+      <span className="text-right tabular-nums text-court-fg">
+        {row.cost != null ? formatUsd(row.cost) : "—"}
+      </span>
+      <span>
+        {row.frequency ? (
+          <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
+            {row.frequency}
+          </span>
+        ) : (
+          <span className="text-xs text-court-fg-dim">—</span>
+        )}
+      </span>
+      <span className="text-right tabular-nums text-court-fg">
+        {row.paidCount}
+      </span>
+      <span className="text-right font-semibold tabular-nums text-court-fg">
+        {formatUsd(row.totalYtdUsd)}
+      </span>
+      <span className="flex justify-end">
+        <StatusChip status={row.status} />
+      </span>
+    </li>
+  );
+}
+
+function StatusChip({
+  status,
+}: {
+  status: "Mercury matched" | "Manual";
+}) {
+  if (status === "Mercury matched") {
+    return (
+      <span className="inline-flex items-center rounded-full bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-brand-dark">
+        Mercury matched
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
+      Manual
+    </span>
+  );
+}
+
+function RoiCard({
+  rows,
+  blendedRoiPct,
+}: {
+  rows: RoiRow[];
+  blendedRoiPct: number | null;
+}) {
+  return (
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      <div>
+        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+          ROI per tool
+        </p>
+        <p className="mt-0.5 text-xs text-court-fg-muted">
+          Spend vs revenue attributed to deals sourced through it
+        </p>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyBlock>
+          ROI lands once a subscription is logged or Mercury matches a tool.
+        </EmptyBlock>
+      ) : (
+        <div className="mt-4">
+          <div className="grid grid-cols-[1.6fr_1fr_1.2fr_0.9fr] gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
+            <span>Tool</span>
+            <span className="text-right">Spend</span>
+            <span className="text-right">Rev. Attr.</span>
+            <span className="text-right">ROI</span>
+          </div>
+          <ul className="divide-y divide-court-border-soft">
+            {rows.map((r) => (
+              <RoiRowItem key={r.key} row={r} />
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center justify-between border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">
+        <span>Attribution: first-touch from sourcing record</span>
+        <span className="text-sm font-semibold tabular-nums text-court-fg">
+          Blended {blendedRoiPct != null ? `${ROI_INT_FMT.format(Math.round(blendedRoiPct))}%` : "—"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function RoiRowItem({ row }: { row: RoiRow }) {
+  const roiLabel =
+    row.roiPct != null
+      ? `${ROI_INT_FMT.format(Math.round(row.roiPct))}%`
+      : "—";
+  const initials = avatarFor(row.toolName);
+  return (
+    <li className="grid grid-cols-[1.6fr_1fr_1.2fr_0.9fr] items-center gap-2 px-1 py-2 text-sm">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
+          {initials}
+        </span>
+        <span className="truncate font-medium text-court-fg">
+          {row.toolName}
+        </span>
+      </div>
+      <span className="text-right tabular-nums text-court-fg">
+        {formatUsd(row.spendUsd)}
+      </span>
+      <span className="text-right tabular-nums text-court-fg">
+        {row.revUsd > 0 ? formatUsd(row.revUsd) : "—"}
+      </span>
+      <span
+        className={
+          "text-right font-semibold tabular-nums " +
+          (row.roiPct == null
+            ? "text-court-fg-dim"
+            : row.roiPct >= 0
+              ? "text-court-fg"
+              : "text-red-600")
+        }
+      >
+        {roiLabel}
+      </span>
+    </li>
   );
 }
