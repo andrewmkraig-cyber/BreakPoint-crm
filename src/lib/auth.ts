@@ -25,6 +25,7 @@ export const GOOGLE_SCOPES: readonly string[] = [
   // Requires a re-auth the first time, same as the readonly scope.
   "https://www.googleapis.com/auth/gmail.modify",
   "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.readonly",
   "https://www.googleapis.com/auth/meetings.space.settings",
 ];
 
