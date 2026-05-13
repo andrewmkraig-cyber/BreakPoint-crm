@@ -29,7 +29,7 @@ export type ScoreboardData = {
     winRatePct: number | null;
     winRateNumerator: number;
     winRateDenominator: number;
-    medianDaysToFill: number | null;
+    avgDaysToFill: number | null;
   };
   funnel: {
     submitted: number;
@@ -83,12 +83,18 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
       select: { id: true, feeTotal: true, stage: true },
     }),
     // Placed in the last 90 days — for Avg Fee Size and Days to Fill.
+    // job.createdAtRf is the original RF posting date for backfilled rows;
+    // job.createdAt falls back to when the Job row was created in Ace.
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
         placedAt: { gte: ninetyDaysAgo, lte: now },
       },
-      select: { feeTotal: true, createdAt: true, placedAt: true },
+      select: {
+        feeTotal: true,
+        placedAt: true,
+        job: { select: { createdAt: true, createdAtRf: true } },
+      },
     }),
     // Quarter-to-date placement count (placedAt landing in Q2 2026).
     prisma.placement.count({
@@ -204,15 +210,14 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
     : null;
 
   const daysToFill = placedLast90
-    .map((p) =>
-      p.placedAt && p.createdAt
-        ? Math.round((p.placedAt.getTime() - p.createdAt.getTime()) / DAYS)
-        : null,
-    )
-    .filter((v): v is number => typeof v === "number" && v >= 0)
-    .sort((a, b) => a - b);
-  const medianDaysToFill = daysToFill.length > 0
-    ? daysToFill[Math.floor(daysToFill.length / 2)]
+    .map((p) => {
+      const jobPostedAt = p.job?.createdAtRf ?? p.job?.createdAt ?? null;
+      if (!p.placedAt || !jobPostedAt) return null;
+      return Math.round((p.placedAt.getTime() - jobPostedAt.getTime()) / DAYS);
+    })
+    .filter((v): v is number => typeof v === "number" && v >= 0);
+  const avgDaysToFill = daysToFill.length > 0
+    ? Math.round(daysToFill.reduce((a, b) => a + b, 0) / daysToFill.length)
     : null;
 
   // --- Top clients / roles ---
@@ -326,7 +331,7 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
       winRatePct,
       winRateNumerator,
       winRateDenominator,
-      medianDaysToFill,
+      avgDaysToFill,
     },
     funnel: {
       submitted: submitsLast90,

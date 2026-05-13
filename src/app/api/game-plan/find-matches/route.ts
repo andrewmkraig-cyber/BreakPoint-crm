@@ -50,6 +50,7 @@ type CandidateRow = {
   rfId: number | null;
   firstName: string;
   lastName: string | null;
+  email: string | null;
   currentDesignation: string | null;
   currentOrganization: string | null;
   location: string | null;
@@ -193,6 +194,7 @@ export async function POST(req: NextRequest) {
       rfId: true,
       firstName: true,
       lastName: true,
+      email: true,
       currentDesignation: true,
       currentOrganization: true,
       location: true,
@@ -330,6 +332,9 @@ export async function POST(req: NextRequest) {
               candidateId: c.id,
               candidateRfId: c.rfId,
               name,
+              firstName: c.firstName,
+              lastName: c.lastName ?? "",
+              email: c.email ?? "",
               title: c.currentDesignation ?? "",
               currentEmployer: c.currentOrganization ?? "",
               location: c.location ?? "",

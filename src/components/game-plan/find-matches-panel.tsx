@@ -8,12 +8,17 @@ import {
   ExternalLink,
   GripVertical,
   Loader2,
+  Mail,
   Minus,
   Send,
   Target,
   UserX,
   X,
 } from "lucide-react";
+import { toast } from "sonner";
+import { sendEmailAction } from "@/app/email/actions";
+import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import { applyMergeFields } from "@/lib/merge-fields";
 import {
   FIND_MATCHES_MIN_H,
   FIND_MATCHES_MIN_W,
@@ -724,6 +729,22 @@ function ActionRow({
   const { notifyMatchesSaved } = useFindMatches();
   const [applying, setApplying] = useState(false);
   const [rejecting, setRejecting] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+
+  const recipient = match.email.trim();
+  const hasEmail = recipient.length > 0;
+  const pickedJobTitle =
+    target.kind === "job" ? target.label : pickedJob?.title ?? "";
+  const mergeValues = {
+    candidateFirstName: match.firstName,
+    candidateLastName: match.lastName,
+    candidateFullName: match.name,
+    candidateEmail: recipient,
+    candidateCurrentTitle: match.title,
+    candidateCurrentEmployer: match.currentEmployer,
+    candidateLocation: match.location,
+    jobTitle: pickedJobTitle,
+  };
 
   // Resolve the jobId/jobRfId we should target for this card. JOB
   // context: the page's job. CLIENT context: the picked job (Item 1
@@ -844,6 +865,21 @@ function ActionRow({
       <Button
         type="button"
         size="sm"
+        onClick={() => {
+          if (!hasEmail) {
+            toast.error("No email on file for this candidate.");
+            return;
+          }
+          setEmailOpen(true);
+        }}
+        disabled={applying || rejecting}
+        title={hasEmail ? `Email ${recipient}` : "No email on file"}
+      >
+        <Mail className="h-3 w-3" /> Email
+      </Button>
+      <Button
+        type="button"
+        size="sm"
         variant="apply"
         onClick={onApply}
         disabled={applying || rejecting}
@@ -873,6 +909,41 @@ function ActionRow({
         {rejecting ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
         Reject
       </Button>
+      {emailOpen && (
+        <EmailComposer
+          title="New email"
+          subtitle={recipient}
+          initial={{
+            to: [recipient],
+            cc: [],
+            bcc: [],
+            subject: "",
+            body: "",
+          }}
+          showTemplatePicker
+          resolveTemplate={async (t) => ({
+            subject: applyMergeFields(t.subject, mergeValues),
+            body: applyMergeFields(t.body, mergeValues),
+          })}
+          onClose={() => setEmailOpen(false)}
+          onSend={async (draft: EmailDraft) => {
+            const result = await sendEmailAction({
+              to: draft.to,
+              cc: draft.cc,
+              bcc: draft.bcc,
+              subject: draft.subject,
+              bodyText: draft.body,
+            });
+            if (!result.ok) {
+              throw new Error(result.error);
+            }
+            toast.success("Email sent", {
+              description: `Sent to ${draft.to.join(", ")}.`,
+            });
+            setEmailOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

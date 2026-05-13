@@ -94,9 +94,12 @@ function KpiRow({ kpis }: { kpis: Kpis }) {
           : "No submits logged in last 90 days",
     },
     {
-      label: "Time to Fill",
-      value: kpis.medianDaysToFill != null ? `${kpis.medianDaysToFill}d` : "—",
-      sub: kpis.medianDaysToFill != null ? "Median, created → placed (90d)" : "No placements in last 90 days",
+      label: "Avg Days to Fill",
+      value: kpis.avgDaysToFill != null ? `${kpis.avgDaysToFill}d` : "—",
+      sub:
+        kpis.avgDaysToFill != null
+          ? "Avg, job posted → placed (90d)"
+          : "No placements in last 90 days",
     },
   ];
   return (

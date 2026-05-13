@@ -55,6 +55,11 @@ export type Match = {
   candidateId: string;
   candidateRfId: number | null;
   name: string;
+  // Split-name + email pulled through so the panel's Email action can
+  // open the composer pre-addressed without a second round trip.
+  firstName: string;
+  lastName: string;
+  email: string;
   title: string;
   currentEmployer: string;
   location: string;
