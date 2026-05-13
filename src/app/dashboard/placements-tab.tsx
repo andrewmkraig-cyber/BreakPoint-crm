@@ -4,6 +4,7 @@ import {
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
+import { SectionHero } from "@/components/section-hero";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -40,7 +41,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
         : "All placements · last 90 days";
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-8">
       <PlacementsHeader period={period} />
       <PlacementsLedger rows={ledgerRows} title={ledgerTitle} />
       <PlacementsBreakdowns rows={rows} />
@@ -71,31 +72,24 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
 
 function PlacementsHeader({ period }: { period: PlacementsDashboardPeriod }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-          Placements
-        </p>
-        <h2 className="mt-1 font-serif text-2xl font-extrabold tracking-tight text-court-fg sm:text-3xl">
-          Placements on the books.
-        </h2>
-        <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-          Every hire and pending start in the selected window: the map, the full
-          ledger, and the breakdowns below.
-        </p>
-      </div>
-      <TabStrip<PlacementsDashboardPeriod>
-        ariaLabel="Placements period"
-        activeId={period}
-        items={PERIODS.map((p) => ({
-          id: p.id,
-          label: p.label,
-          href:
-            p.id === "YTD"
-              ? "/dashboard?tab=placements"
-              : `/dashboard?tab=placements&period=${p.id}`,
-        }))}
-      />
-    </div>
+    <SectionHero
+      eyebrow="PLACEMENTS"
+      title="Placements on the books."
+      description="Every hire and pending start in the selected window, with the map, ledger, and breakdowns below."
+      trailing={
+        <TabStrip<PlacementsDashboardPeriod>
+          ariaLabel="Placements period"
+          activeId={period}
+          items={PERIODS.map((p) => ({
+            id: p.id,
+            label: p.label,
+            href:
+              p.id === "YTD"
+                ? "/dashboard?tab=placements"
+                : `/dashboard?tab=placements&period=${p.id}`,
+          }))}
+        />
+      }
+    />
   );
 }

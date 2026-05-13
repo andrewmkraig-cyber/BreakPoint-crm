@@ -6,6 +6,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
+import { SectionHero } from "@/components/section-hero";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 
@@ -219,19 +220,12 @@ export async function FinancialPerformanceTab() {
   const quarterLabel = `Q${currentQuarterIndex + 1} ${year}`;
 
   return (
-    <div className="flex flex-col gap-7">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-          Financial Performance
-        </p>
-        <h2 className="mt-1 font-serif text-2xl font-extrabold tracking-tight text-court-fg sm:text-3xl">
-          Revenue, margins, and ROI
-        </h2>
-        <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-          Year-to-date revenue from sent + paid invoices, against tool
-          expenses on the desk. Net margin lands when Mercury wires in.
-        </p>
-      </div>
+    <div className="flex flex-col gap-8">
+      <SectionHero
+        eyebrow="FINANCIAL PERFORMANCE"
+        title="Revenue, margins, and ROI."
+        description="Year-to-date revenue from sent and paid invoices, measured against desk expenses and performance."
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         <KpiTile

@@ -4,6 +4,7 @@ import { FinancialStrip } from "@/app/dashboard/financial-strip";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
 import { NewsFeed } from "@/components/news-feed";
+import { SectionHero } from "@/components/section-hero";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getInvoiceSummary } from "@/lib/invoices";
@@ -99,35 +100,29 @@ export async function MyDashboard() {
   const dateParts = getCalendarDateParts(now);
 
   return (
-    <div className="flex w-full flex-col gap-7">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
-        <div className="min-w-0">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-            This Week
-          </p>
-          <h2 className="mt-1 font-serif text-2xl font-extrabold tracking-tight text-court-fg sm:text-3xl">
-            {greeting}
-          </h2>
-          <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-            Activity for {weekRange}. Everything here is live: no targets, just actuals.
-          </p>
-        </div>
-        <div className="hidden shrink-0 sm:block">
-          <div className="inline-flex flex-col overflow-hidden rounded-2xl shadow-sm">
-            <div className="bg-court-brand-tint px-3 py-1 text-center text-xs font-extrabold uppercase tracking-wide text-court-brand">
-              {dateParts.weekday}
-            </div>
-            <div className="bg-court-surface px-4 py-2 text-center">
-              <div className="text-xs font-medium uppercase tracking-wide text-court-fg-muted">
-                {dateParts.month}
+    <div className="flex w-full flex-col gap-8">
+      <SectionHero
+        eyebrow="THIS WEEK"
+        title={greeting}
+        description={`Activity for ${weekRange}. Everything here is live — no targets, just actuals.`}
+        trailing={
+          <div className="hidden sm:block">
+            <div className="inline-flex flex-col overflow-hidden rounded-2xl shadow-sm">
+              <div className="bg-court-brand-tint px-3 py-1 text-center text-xs font-extrabold uppercase tracking-wide text-court-brand">
+                {dateParts.weekday}
               </div>
-              <div className="text-4xl font-black leading-none text-court-fg">
-                {dateParts.day}
+              <div className="bg-court-surface px-4 py-2 text-center">
+                <div className="text-xs font-medium uppercase tracking-wide text-court-fg-muted">
+                  {dateParts.month}
+                </div>
+                <div className="text-4xl font-black leading-none text-court-fg">
+                  {dateParts.day}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Clients" value={newClientsCount} icon={Building2} live={newClientsCount > 0} />

@@ -13,6 +13,7 @@ import {
   ClientDrilldownTrigger,
   RoleDrilldownTrigger,
 } from "@/app/dashboard/scoreboard-drilldowns";
+import { SectionHero } from "@/components/section-hero";
 
 // Top-level Scoreboard server component. Real Neon data only; sections
 // that need data we don't yet track (sparklines, win-rate trend,
@@ -22,7 +23,7 @@ export async function Scoreboard() {
   const data = await getScoreboardData();
 
   return (
-    <div className="flex flex-col gap-7">
+    <div className="flex flex-col gap-8">
       <ScoreboardHeader periodLabel={data.period.label} periodRange={formatPeriodRange(data.period.start, data.period.endExclusive)} />
       <KpiRow kpis={data.kpis} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
@@ -41,24 +42,18 @@ export async function Scoreboard() {
 
 function ScoreboardHeader({ periodLabel, periodRange }: { periodLabel: string; periodRange: string }) {
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
-          Scoreboard
-        </p>
-        <h2 className="mt-1 font-serif text-2xl font-extrabold tracking-tight text-court-fg sm:text-3xl">
-          The numbers that matter
-        </h2>
-        <p className="mt-1 max-w-xl text-sm text-court-fg-muted">
-          Deal flow, forecast, and where the desk is winning. Everything here is live activity: no targets, just actuals.
-        </p>
-      </div>
-      <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-court-border bg-court-surface px-3.5 py-1.5 text-sm font-medium text-court-fg">
-        <CalendarRange className="h-4 w-4 text-court-fg-muted" />
-        {periodLabel}
-        <span className="text-[11px] text-court-fg-muted">· {periodRange}</span>
-      </div>
-    </div>
+    <SectionHero
+      eyebrow="SCOREBOARD"
+      title="The numbers that matter."
+      description="Deal flow, forecast, and where the desk is winning. Everything here is live activity — no targets, just actuals."
+      trailing={
+        <div className="inline-flex items-center gap-2 rounded-full border border-court-border bg-court-surface px-3.5 py-1.5 text-sm font-medium text-court-fg">
+          <CalendarRange className="h-4 w-4 text-court-fg-muted" />
+          {periodLabel}
+          <span className="text-[11px] text-court-fg-muted">· {periodRange}</span>
+        </div>
+      }
+    />
   );
 }
 
