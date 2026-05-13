@@ -28,6 +28,42 @@ export type MercuryFetchResult =
       status?: number;
     };
 
+// Direct, thin Mercury call. Takes the apiKey, returns the transactions
+// array (or [] on any failure). Use this from server components that
+// already have the key in hand — no DB lookup, no structured errors,
+// no year filtering. Year filtering is the consumer's job because the
+// "what counts as YTD" question is product-shaped, not API-shaped.
+//
+// limit=500 covers a year of normal subscription spend with headroom.
+// revalidate=300 caches the response for 5 min so a dashboard reload
+// doesn't hammer Mercury.
+export async function getMercuryTransactions(
+  apiKey: string,
+): Promise<MercuryTransaction[]> {
+  try {
+    const res = await fetch(
+      "https://api.mercury.com/api/v1/transactions?limit=500",
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Api-Key ${apiKey}`,
+          Accept: "application/json",
+        },
+        next: { revalidate: 300 },
+      },
+    );
+    if (!res.ok) return [];
+    const data = (await res.json()) as MercuryListResponse;
+    return data.transactions ?? [];
+  } catch {
+    return [];
+  }
+}
+
+// Structured variant for the /api/mercury/transactions route, which
+// needs to surface specific failure modes (not_connected vs invalid_key
+// vs upstream) back to the connector UI. Kept here so the route and
+// thin helper share types and the upstream URL.
 export async function fetchMercuryYtdTransactions(
   orgId: string,
 ): Promise<MercuryFetchResult> {

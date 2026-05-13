@@ -11,7 +11,7 @@ import { SectionHero } from "@/components/section-hero";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
-  fetchMercuryYtdTransactions,
+  getMercuryTransactions,
   mercuryTransactionDescription,
 } from "@/lib/mercury";
 import { matchTransaction } from "@/lib/mercury-matcher";
@@ -62,46 +62,66 @@ export async function FinancialPerformanceTab() {
   const qStart = new Date(year, qStartMonth, 1);
   const qEnd = new Date(year, qStartMonth + 3, 1);
 
-  const [revenueInvoices, toolExpenses, placementsYtd, mercuryResult] =
-    await Promise.all([
-      prisma.invoice.findMany({
-        where: {
-          organizationId: org.id,
-          status: { in: ["SENT", "PAID"] },
-          OR: [
-            { sentAt: { gte: yearStart, lt: yearEnd } },
-            { paidAt: { gte: yearStart, lt: yearEnd } },
-          ],
-        },
-        select: {
-          feeAmount: true,
-          sentAt: true,
-          paidAt: true,
-          clientId: true,
-          client: { select: { name: true } },
-          placement: { select: { candidateSource: true } },
-        },
-      }),
-      prisma.toolExpense.findMany({
-        where: { organizationId: org.id },
-        select: {
-          id: true,
-          name: true,
-          cost: true,
-          frequency: true,
-          paidCount: true,
-        },
-        orderBy: { name: "asc" },
-      }),
-      prisma.placement.findMany({
-        where: {
-          organizationId: org.id,
-          placedAt: { gte: yearStart, lt: yearEnd },
-        },
-        select: { clientId: true, candidateSource: true },
-      }),
-      fetchMercuryYtdTransactions(org.id),
-    ]);
+  // Mercury fetch needs the org's API key, which lives on the
+  // Organization row. We chain the key lookup into the upstream call so
+  // the network request fires as soon as the key resolves, in parallel
+  // with the unrelated prisma queries below.
+  const mercuryKeyPromise = prisma.organization
+    .findUnique({
+      where: { id: org.id },
+      select: { mercuryApiKey: true },
+    })
+    .then((o) => o?.mercuryApiKey ?? null);
+  const mercuryTxnsPromise = mercuryKeyPromise.then((key) =>
+    key ? getMercuryTransactions(key) : [],
+  );
+
+  const [
+    revenueInvoices,
+    toolExpenses,
+    placementsYtd,
+    mercuryApiKey,
+    mercuryTxnsAll,
+  ] = await Promise.all([
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: { in: ["SENT", "PAID"] },
+        OR: [
+          { sentAt: { gte: yearStart, lt: yearEnd } },
+          { paidAt: { gte: yearStart, lt: yearEnd } },
+        ],
+      },
+      select: {
+        feeAmount: true,
+        sentAt: true,
+        paidAt: true,
+        clientId: true,
+        client: { select: { name: true } },
+        placement: { select: { candidateSource: true } },
+      },
+    }),
+    prisma.toolExpense.findMany({
+      where: { organizationId: org.id },
+      select: {
+        id: true,
+        name: true,
+        cost: true,
+        frequency: true,
+        paidCount: true,
+      },
+      orderBy: { name: "asc" },
+    }),
+    prisma.placement.findMany({
+      where: {
+        organizationId: org.id,
+        placedAt: { gte: yearStart, lt: yearEnd },
+      },
+      select: { clientId: true, candidateSource: true },
+    }),
+    mercuryKeyPromise,
+    mercuryTxnsPromise,
+  ]);
 
   // KPI strip math (unchanged).
   const revenueUsd = revenueInvoices.reduce(
@@ -240,16 +260,18 @@ export async function FinancialPerformanceTab() {
   // bucket by `matchTransaction()` — anything it can't classify is
   // ignored here and remains visible to the recruiter in the connector
   // panel rather than guessed into a tool.
-  const mercuryConnected = !(
-    !mercuryResult.ok && mercuryResult.reason === "not_connected"
-  );
-  const mercuryTxns = mercuryResult.ok ? mercuryResult.transactions : [];
+  const mercuryConnected = mercuryApiKey != null;
+  const mercuryTxns = mercuryTxnsAll.filter((t) => {
+    const stamp = t.postedAt ?? t.createdAt;
+    if (!stamp) return false;
+    return new Date(stamp).getFullYear() === year;
+  });
 
   // Diagnostic: surface the first 5 raw Mercury transaction descriptions
   // to Vercel logs so we can tune mercury-matcher keywords against the
   // actual upstream strings (bankDescription vs counterpartyName, casing,
   // suffixes like "Inc", etc.).
-  if (mercuryResult.ok) {
+  if (mercuryConnected) {
     const sample = mercuryTxns.slice(0, 5).map((t) => ({
       bankDescription: t.bankDescription ?? null,
       counterpartyName: t.counterpartyName ?? null,
@@ -257,14 +279,11 @@ export async function FinancialPerformanceTab() {
       matched: matchTransaction(mercuryTransactionDescription(t)),
     }));
     console.log(
-      `[financial-performance] Mercury sample (${mercuryTxns.length} YTD txns):`,
+      `[financial-performance] Mercury sample (${mercuryTxns.length} YTD of ${mercuryTxnsAll.length} fetched):`,
       JSON.stringify(sample, null, 2),
     );
   } else {
-    console.log(
-      `[financial-performance] Mercury fetch not ok:`,
-      mercuryResult.reason,
-    );
+    console.log(`[financial-performance] Mercury not connected for org ${org.id}`);
   }
 
   const mercuryByTool = new Map<string, { count: number; totalUsd: number }>();
