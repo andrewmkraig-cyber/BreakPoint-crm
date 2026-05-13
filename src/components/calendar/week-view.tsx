@@ -3,8 +3,7 @@
 import { Plus } from "lucide-react";
 import { useMemo } from "react";
 
-import { SAMPLE_TEAM } from "@/lib/calendar/sample-data";
-import type { CalendarEvent } from "@/lib/calendar/types";
+import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import { eventTypeMeta, fmtHour, hourToY, SLOT_HEIGHT } from "@/lib/calendar/utils";
 import {
   decimalHour,
@@ -19,6 +18,7 @@ type Props = {
   events: CalendarEvent[];
   selectedId: string | null;
   teamMode: boolean;
+  teamMembers: CalendarTeamMember[];
   visibleMembers: string[];
   weekStart: Date;
   today: Date;
@@ -31,6 +31,7 @@ export function CalendarWeekView({
   events,
   selectedId,
   teamMode,
+  teamMembers,
   visibleMembers,
   weekStart,
   today,
@@ -144,7 +145,7 @@ export function CalendarWeekView({
                   const height = hourToY(end) - hourToY(start) - 2;
                   const member =
                     teamMode && ev.ownerId
-                      ? SAMPLE_TEAM.find((m) => m.id === ev.ownerId)
+                      ? teamMembers.find((m) => m.id === ev.ownerId)
                       : null;
                   const isSelected = selectedId === ev.id;
                   return (

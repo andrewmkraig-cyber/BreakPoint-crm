@@ -2,8 +2,7 @@
 
 import { MapPin, Plus, Users } from "lucide-react";
 
-import { SAMPLE_TEAM } from "@/lib/calendar/sample-data";
-import type { CalendarEvent } from "@/lib/calendar/types";
+import type { CalendarEvent, CalendarTeamMember } from "@/lib/calendar/types";
 import {
   eventTypeMeta,
   fmtDateRange,
@@ -25,6 +24,7 @@ type Props = {
   events: CalendarEvent[];
   selectedId: string | null;
   teamMode: boolean;
+  teamMembers: CalendarTeamMember[];
   visibleMembers: string[];
   displayDate: Date;
   today: Date;
@@ -37,6 +37,7 @@ export function CalendarDayView({
   events,
   selectedId,
   teamMode,
+  teamMembers,
   visibleMembers,
   displayDate,
   today,
@@ -105,7 +106,7 @@ export function CalendarDayView({
             const height = (end - start) * SLOT - 4;
             const member =
               teamMode && ev.ownerId
-                ? SAMPLE_TEAM.find((m) => m.id === ev.ownerId)
+                ? teamMembers.find((m) => m.id === ev.ownerId)
                 : null;
             const guestCount = ev.guests?.length ?? 0;
             const isSelected = selectedId === ev.id;

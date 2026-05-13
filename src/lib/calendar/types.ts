@@ -3,7 +3,7 @@
 // real Date objects so the grid math, navigation, and the upcoming
 // Google Calendar sync all share one canonical time representation.
 
-export type CalendarEventType = "interview" | "client" | "personal" | "other";
+export type CalendarEventType = "interview" | "client" | "reminder" | "other";
 
 export type CalendarEvent = {
   id: string;

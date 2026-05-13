@@ -36,7 +36,7 @@ export function CalendarRemindersPanel({ reminders, onDismiss, onSnooze }: Props
       <ul>
         {reminders.length === 0 ? (
           <li className="px-5 py-8 text-center text-sm text-court-fg-muted">
-            No reminders set.
+            No upcoming reminders.
           </li>
         ) : (
           reminders.map((r) => (

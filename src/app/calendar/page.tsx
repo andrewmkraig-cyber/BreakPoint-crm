@@ -1,7 +1,12 @@
+import { getServerSession } from "next-auth";
+
+import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import type {
   CalendarEvent,
   CalendarEventType,
+  CalendarReminder,
+  CalendarTeamMember,
 } from "@/lib/calendar/types";
 import { prisma } from "@/lib/prisma";
 
@@ -15,40 +20,109 @@ export const metadata = {
 
 type AttendeeJson = { displayName?: string; email?: string };
 
-function deriveType(title: string, calendarName: string): CalendarEventType {
-  const lcCal = calendarName.toLowerCase();
-  if (lcCal.includes("andrew@breakpointtalent") || lcCal.includes("andrew")) {
-    return "personal";
+// Court-mode safe palette for team member dots/avatars. Picked by a
+// stable hash of the user id so a given user keeps the same color
+// across refreshes without us storing the choice on User.
+const TEAM_COLORS = [
+  "#5A9642", // brand green
+  "#1E40AF", // blue
+  "#92400E", // amber
+  "#7C3AED", // violet
+  "#DB2777", // pink
+  "#0F766E", // teal
+];
+
+function colorFor(id: string): string {
+  let h = 0;
+  for (let i = 0; i < id.length; i += 1) {
+    h = (h * 31 + id.charCodeAt(i)) >>> 0;
   }
+  return TEAM_COLORS[h % TEAM_COLORS.length];
+}
+
+function initialsFor(name: string | null, email: string | null): string {
+  const source = (name && name.trim()) || (email && email.split("@")[0]) || "?";
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return source.slice(0, 2).toUpperCase();
+}
+
+function deriveType(title: string, calendarName: string): CalendarEventType {
   const lcTitle = title.toLowerCase();
+  const lcCal = calendarName.toLowerCase();
   if (lcTitle.includes("interview")) return "interview";
-  if (lcTitle.includes("call") || lcTitle.includes("meeting")) return "client";
+  if (
+    lcTitle.includes("call") ||
+    lcTitle.includes("meeting") ||
+    lcTitle.includes("sync") ||
+    lcTitle.includes("connect") ||
+    lcTitle.includes("chat")
+  ) {
+    return "client";
+  }
+  if (lcCal.includes("reminder") || lcTitle.includes("reminder")) {
+    return "reminder";
+  }
   return "other";
 }
 
-function deriveOwner(calendarName: string): string {
+function deriveOwnerId(
+  calendarName: string,
+  members: Array<{ id: string; email: string | null }>,
+  fallbackId: string,
+): string {
   const lc = calendarName.toLowerCase();
-  if (lc.includes("austin@")) return "austin";
-  return "ak";
+  for (const m of members) {
+    if (m.email && lc.includes(m.email.toLowerCase())) return m.id;
+  }
+  return fallbackId;
 }
 
 export default async function CalendarPage() {
   const org = await getCurrentOrg();
+  const session = await getServerSession(authOptions);
+  const selfEmail = session?.user?.email?.toLowerCase() ?? null;
 
   const now = new Date();
   const windowMs = 90 * 24 * 60 * 60 * 1000;
 
-  const rows = await prisma.calendarEvent.findMany({
-    where: {
-      organizationId: org.id,
-      status: { not: "CANCELLED" },
-      startTime: {
-        gte: new Date(now.getTime() - windowMs),
-        lte: new Date(now.getTime() + windowMs),
+  const [rows, memberships] = await Promise.all([
+    prisma.calendarEvent.findMany({
+      where: {
+        organizationId: org.id,
+        status: { not: "CANCELLED" },
+        startTime: {
+          gte: new Date(now.getTime() - windowMs),
+          lte: new Date(now.getTime() + windowMs),
+        },
       },
-    },
-    orderBy: { startTime: "asc" },
-  });
+      orderBy: { startTime: "asc" },
+    }),
+    prisma.organizationMembership.findMany({
+      where: { organizationId: org.id },
+      include: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { joinedAt: "asc" },
+    }),
+  ]);
+
+  const teamMembers: CalendarTeamMember[] = memberships.map((m) => ({
+    id: m.user.id,
+    name: m.user.name ?? m.user.email ?? "Member",
+    initials: initialsFor(m.user.name, m.user.email),
+    color: colorFor(m.user.id),
+    self: selfEmail !== null && m.user.email?.toLowerCase() === selfEmail,
+  }));
+
+  const memberEmailLookup = memberships.map((m) => ({
+    id: m.user.id,
+    email: m.user.email,
+  }));
+
+  // The self user — or the first member if the request has no session
+  // (e.g. DEFAULT_ORG_ID fallback path). Used as the default ownerId
+  // for events whose calendarName doesn't match any member email.
+  const fallbackOwnerId =
+    teamMembers.find((m) => m.self)?.id ?? teamMembers[0]?.id ?? "";
 
   const events: CalendarEvent[] = rows.map((row) => {
     const attendees = (row.attendees as AttendeeJson[] | null) ?? null;
@@ -68,7 +142,7 @@ export default async function CalendarPage() {
       meta: row.description ?? undefined,
       guests,
       location: row.location ?? undefined,
-      ownerId: deriveOwner(row.calendarName),
+      ownerId: deriveOwnerId(row.calendarName, memberEmailLookup, fallbackOwnerId),
       jobId: row.jobId ?? undefined,
       candidateId: row.candidateId ?? undefined,
       clientId: row.clientId ?? undefined,
@@ -82,11 +156,18 @@ export default async function CalendarPage() {
     return acc;
   }, null);
 
+  // Reminders are Ace-native (toast-only, never pushed to Google).
+  // No AceReminder Prisma model exists yet, so the panel renders its
+  // empty state until that model + a /api/reminders surface ship.
+  const reminders: CalendarReminder[] = [];
+
   return (
     <CalendarView
       initialDate={now}
       events={events}
       latestSyncedAt={latestSyncedAt}
+      teamMembers={teamMembers}
+      reminders={reminders}
     />
   );
 }

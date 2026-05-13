@@ -71,7 +71,7 @@ export function eventTypeMeta(t: CalendarEventType): EventTypeMeta {
         chipClass:
           "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
       };
-    case "personal":
+    case "reminder":
       return {
         label: "Reminder",
         dot: "#D97706",

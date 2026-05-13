@@ -13,13 +13,11 @@ import { CalendarRemindersPanel } from "@/components/calendar/reminders-panel";
 import { CalendarToastStack } from "@/components/calendar/toast-stack";
 import { CalendarWeekView } from "@/components/calendar/week-view";
 import { TabStrip } from "@/components/ui/tab-strip";
-import {
-  SAMPLE_REMINDERS,
-  SAMPLE_TEAM,
-} from "@/lib/calendar/sample-data";
 import type {
   CalendarEvent,
+  CalendarReminder,
   CalendarScope,
+  CalendarTeamMember,
   CalendarView,
 } from "@/lib/calendar/types";
 import {
@@ -40,15 +38,25 @@ type Props = {
   initialDate: Date;
   events: CalendarEvent[];
   latestSyncedAt: Date | null;
+  teamMembers: CalendarTeamMember[];
+  reminders: CalendarReminder[];
 };
 
-export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
+export function CalendarView({
+  initialDate,
+  events,
+  latestSyncedAt,
+  teamMembers,
+  reminders: initialReminders,
+}: Props) {
   const router = useRouter();
   const [view, setView] = useState<CalendarView>("week");
   const [scope, setScope] = useState<CalendarScope>("me");
   const [visibleMembers, setVisibleMembers] = useState<string[]>(
-    SAMPLE_TEAM.map((m) => m.id),
+    teamMembers.map((m) => m.id),
   );
+
+  const selfMemberId = teamMembers.find((m) => m.self)?.id ?? teamMembers[0]?.id ?? null;
 
   // currentDate is the navigation anchor. Week view shows the week
   // containing it; day view shows it; month view shows its month.
@@ -85,13 +93,11 @@ export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState<"create" | "edit">("edit");
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(
-    () => events.find((e) => e.id === "e5") ?? null,
-  );
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
-  const [toasts, setToasts] = useState(SAMPLE_REMINDERS.filter((r) => r.urgent));
+  const [toasts, setToasts] = useState(initialReminders.filter((r) => r.urgent));
   const [toastsCollapsed, setToastsCollapsed] = useState(false);
-  const [reminders, setReminders] = useState(SAMPLE_REMINDERS);
+  const [reminders, setReminders] = useState(initialReminders);
 
   const teamMode = scope === "team";
 
@@ -123,7 +129,7 @@ export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
 
   const filteredEvents =
     scope === "me"
-      ? events.filter((e) => e.ownerId === "ak" || !e.ownerId)
+      ? events.filter((e) => !e.ownerId || e.ownerId === selfMemberId)
       : events;
 
   const goPrev = () => {
@@ -145,7 +151,7 @@ export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
         view={view}
         scope={scope}
         teamModeCount={events.length}
-        myCount={events.filter((e) => e.ownerId === "ak" || !e.ownerId).length}
+        myCount={events.filter((e) => !e.ownerId || e.ownerId === selfMemberId).length}
         currentDate={currentDate}
         currentWeekStart={currentWeekStart}
         onView={setView}
@@ -161,6 +167,7 @@ export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
       <div className="flex min-w-0 gap-5">
         <CalendarLeftRail
           teamMode={teamMode}
+          teamMembers={teamMembers}
           visibleMembers={visibleMembers}
           onToggleMember={toggleMember}
           monthStart={currentMonthStart}
@@ -174,6 +181,7 @@ export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
               events={filteredEvents}
               selectedId={selectedEvent?.id ?? null}
               teamMode={teamMode}
+              teamMembers={teamMembers}
               visibleMembers={visibleMembers}
               weekStart={currentWeekStart}
               today={today}
@@ -187,6 +195,7 @@ export function CalendarView({ initialDate, events, latestSyncedAt }: Props) {
               events={filteredEvents}
               selectedId={selectedEvent?.id ?? null}
               teamMode={teamMode}
+              teamMembers={teamMembers}
               visibleMembers={visibleMembers}
               displayDate={currentDate}
               today={today}

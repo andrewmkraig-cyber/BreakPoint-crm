@@ -3,7 +3,7 @@
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo } from "react";
 
-import { SAMPLE_TEAM } from "@/lib/calendar/sample-data";
+import type { CalendarTeamMember } from "@/lib/calendar/types";
 import {
   addDays,
   getDaysInMonth,
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   teamMode: boolean;
+  teamMembers: CalendarTeamMember[];
   visibleMembers: string[];
   onToggleMember: (id: string) => void;
   monthStart: Date;
@@ -28,6 +29,7 @@ type Props = {
 
 export function CalendarLeftRail({
   teamMode,
+  teamMembers,
   visibleMembers,
   onToggleMember,
   monthStart,
@@ -44,6 +46,7 @@ export function CalendarLeftRail({
       <EventTypeLegend />
       <TeamList
         teamMode={teamMode}
+        teamMembers={teamMembers}
         visibleMembers={visibleMembers}
         onToggleMember={onToggleMember}
       />
@@ -185,10 +188,12 @@ function EventTypeLegend() {
 
 function TeamList({
   teamMode,
+  teamMembers,
   visibleMembers,
   onToggleMember,
 }: {
   teamMode: boolean;
+  teamMembers: CalendarTeamMember[];
   visibleMembers: string[];
   onToggleMember: (id: string) => void;
 }) {
@@ -204,8 +209,11 @@ function TeamList({
           </span>
         )}
       </div>
+      {teamMembers.length === 0 ? (
+        <div className="text-[11.5px] text-court-fg-muted">No team members.</div>
+      ) : null}
       <ul className="space-y-1">
-        {SAMPLE_TEAM.map((m) => {
+        {teamMembers.map((m) => {
           const on = visibleMembers.includes(m.id);
           const interactive = teamMode;
           return (

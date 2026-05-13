@@ -2,7 +2,6 @@
 
 import {
   Bell,
-  Briefcase,
   Calendar,
   Check,
   ChevronDown,
@@ -10,7 +9,6 @@ import {
   Globe,
   MapPin,
   Plus,
-  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -40,7 +38,7 @@ const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = 
     sub: "External · syncs to Google Calendar",
   },
   {
-    id: "personal",
+    id: "reminder",
     label: "Reminder",
     sub: "Personal · Ace-native toast notification",
   },
@@ -191,44 +189,6 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
             </div>
           </div>
 
-          {/* Interview-specific block */}
-          {type === "interview" && (
-            <div className="rounded-xl border border-dashed border-court-brand/40 bg-court-brand-tint/40 p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <Sparkles className="h-3.5 w-3.5 text-court-brand-dark" />
-                <span className="text-[10.5px] font-bold uppercase tracking-[0.16em] text-court-brand-dark">
-                  Interview details
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <FieldLabel>Job</FieldLabel>
-                  <InputRow>
-                    <Briefcase className="h-3 w-3 text-court-brand-dark" />
-                    <span className="flex-1 truncate">Controller</span>
-                    <ChevronDown className="h-3 w-3 text-court-fg-muted" />
-                  </InputRow>
-                  <div className="mt-1 text-[10.5px] text-court-fg-muted">
-                    Capstone Accounting &amp; Tax
-                  </div>
-                </div>
-                <div>
-                  <FieldLabel>Candidate</FieldLabel>
-                  <InputRow>
-                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-court-fg text-[9px] font-bold text-court-surface">
-                      MR
-                    </span>
-                    <span className="flex-1 truncate">Marcus Reed</span>
-                    <ChevronDown className="h-3 w-3 text-court-fg-muted" />
-                  </InputRow>
-                  <div className="mt-1 text-[10.5px] text-court-fg-muted">
-                    Auto-filled from Job
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* Guests */}
           <div>
             <div className="flex items-baseline justify-between">
@@ -242,7 +202,10 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
               </button>
             </div>
             <div className="space-y-1.5">
-              {(event?.guests ?? ["Marcus Reed", "Diana Wu"]).map((g, i) => (
+              {(event?.guests ?? []).length === 0 && (
+                <div className="text-[11.5px] text-court-fg-muted">No guests.</div>
+              )}
+              {(event?.guests ?? []).map((g, i) => (
                 <div
                   key={`${g}-${i}`}
                   className="flex items-center gap-2.5 rounded-[10px] border border-court-border px-3 py-2"
@@ -251,9 +214,6 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
                     {g.split(" ").map((p) => p[0]).join("").slice(0, 2)}
                   </span>
                   <span className="flex-1 truncate text-[13px] text-court-fg">{g}</span>
-                  <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-court-fg-muted">
-                    {i === 0 ? "Candidate" : "Client"}
-                  </span>
                   <button
                     type="button"
                     aria-label="Remove guest"
@@ -290,47 +250,31 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
             </div>
           </div>
 
-          {/* Meet / location */}
+          {/* Location / link */}
           <div>
-            <FieldLabel>
-              {type === "interview" ? "Meeting link" : "Location or link"}
-            </FieldLabel>
-            {type === "interview" ? (
-              <div className="flex items-center gap-3 rounded-[10px] border border-court-brand/40 bg-court-brand-tint/40 p-3">
-                <div className="grid h-8 w-8 place-items-center rounded-md border border-court-border bg-court-surface">
-                  <GoogleGlyph className="h-4 w-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-semibold text-court-fg">
-                    meet.google.com/abc-defg-hij
-                  </div>
-                  <div className="text-[10.5px] text-court-fg-muted">
-                    Auto-generated for Interview events
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  className="text-[11px] font-semibold text-court-brand-dark hover:text-court-brand"
-                >
-                  Copy
-                </button>
-              </div>
-            ) : (
-              <InputRow>
-                <MapPin className="h-3 w-3 text-court-fg-muted" />
+            <FieldLabel>Location or link</FieldLabel>
+            <InputRow>
+              <MapPin className="h-3 w-3 text-court-fg-muted" />
+              {event?.location ? (
+                <span className="flex-1 truncate text-court-fg">
+                  {event.location}
+                </span>
+              ) : (
                 <span className="text-court-fg-muted">
                   Paste a Zoom link, address, or room
                 </span>
-              </InputRow>
-            )}
+              )}
+            </InputRow>
           </div>
 
-          {/* Notes */}
+          {/* Notes — Google Calendar event description */}
           <div>
             <FieldLabel>Notes</FieldLabel>
             <textarea
+              key={event?.id ?? "new"}
               rows={3}
-              defaultValue="Final round. Diana wants to dig into the SOX exposure and how Marcus would lead month-end close. Send the brief 30 min before."
+              defaultValue={event?.meta ?? ""}
+              placeholder="Add notes for this event"
               className="w-full resize-none rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
             />
           </div>
@@ -364,7 +308,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
                 </button>
               </div>
               <div className="mt-0.5 text-[11.5px] text-court-fg-muted">
-                Fires as a toast inside Ace · Tue May 12, 9:45 AM (15m before).{" "}
+                Fires as a toast inside Ace, 15 min before the event start.{" "}
                 <span className="font-semibold text-court-brand-dark">Not synced</span>{" "}
                 to Google.
               </div>
@@ -373,8 +317,7 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
 
           {/* Google footer */}
           <div className="flex items-center gap-2 text-[11px] text-court-fg-muted">
-            <GoogleGlyph className="h-3.5 w-3.5" /> Synced to Andrew&apos;s Google
-            Calendar · last updated 2 min ago
+            <GoogleGlyph className="h-3.5 w-3.5" /> Synced from Google Calendar
           </div>
         </div>
 
