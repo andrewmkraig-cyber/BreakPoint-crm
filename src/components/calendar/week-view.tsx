@@ -153,6 +153,12 @@ export function CalendarWeekView({
                         .filter((m): m is NonNullable<typeof m> => Boolean(m))
                     : [];
                   const isSelected = selectedId === ev.id;
+                  // Google-Calendar-style pill: title leads, time
+                  // shows as a secondary line only when there's
+                  // vertical room. Owner avatars overlap on the
+                  // top-right so they don't steal the title row in
+                  // 30-minute events.
+                  const showTime = height >= 32;
                   return (
                     <button
                       key={ev.id}
@@ -162,38 +168,40 @@ export function CalendarWeekView({
                         onEventClick(ev);
                       }}
                       className={cn(
-                        "absolute left-1 right-1 cursor-pointer overflow-hidden rounded-lg border px-2.5 py-1.5 text-left transition hover:-translate-y-px hover:shadow-md",
+                        "absolute left-1 right-1 cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left leading-tight transition hover:-translate-y-px hover:shadow-md",
                         meta.pillClass,
                         isSelected &&
                           "outline-2 outline-offset-2 outline outline-court-brand",
                       )}
                       style={{ top, height }}
                     >
-                      <div className="flex items-start gap-1.5">
-                        <div className="flex-1 text-[10.5px] font-semibold opacity-90">
-                          {fmtHour(start)}
-                        </div>
-                        {owners.length > 0 && (
-                          <span className="flex -space-x-1 shrink-0">
-                            {owners.map((m) => (
-                              <span
-                                key={m.id}
-                                className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white text-[9px] font-bold text-white"
-                                style={{ background: m.color }}
-                                title={m.name}
-                              >
-                                {m.initials}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </div>
-                      <div className="truncate text-xs font-semibold">
+                      {owners.length > 0 && (
+                        <span className="absolute right-1 top-1 flex -space-x-1">
+                          {owners.map((m) => (
+                            <span
+                              key={m.id}
+                              className="inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white text-[8px] font-bold text-white"
+                              style={{ background: m.color }}
+                              title={m.name}
+                            >
+                              {m.initials}
+                            </span>
+                          ))}
+                        </span>
+                      )}
+                      <div
+                        className="truncate text-[12px] font-semibold"
+                        style={
+                          owners.length > 0
+                            ? { paddingRight: owners.length * 12 + 4 }
+                            : undefined
+                        }
+                      >
                         {ev.title}
                       </div>
-                      {height > 56 && ev.meta && (
-                        <div className="truncate text-[11px] opacity-80">
-                          {ev.meta}
+                      {showTime && (
+                        <div className="truncate text-[10.5px] opacity-80">
+                          {fmtHour(start)}
                         </div>
                       )}
                     </button>
