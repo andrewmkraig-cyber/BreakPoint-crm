@@ -12,8 +12,8 @@ import type { PlacementsDashboardBillingStatus } from "@/lib/placements-dashboar
 // Leaflet touches `window` during module evaluation, so the map needs
 // to load client-side only. Dynamic-import with ssr:false keeps the
 // rest of the dashboard server-rendered. The per-city bar list that
-// used to live in this file moved into the new top-row combined card
-// (see placements-by-city-list.tsx); this component is now map-only.
+// used to live in this file is now the "Revenue by City" compact card
+// in placements-breakdowns.tsx; this component is map-only.
 const PlacementsLeafletMap = dynamic(
   () =>
     import("@/components/placements/placements-leaflet-map").then(
@@ -23,7 +23,7 @@ const PlacementsLeafletMap = dynamic(
     ssr: false,
     loading: () => (
       <div
-        className="flex h-[440px] w-full items-center justify-center rounded-xl bg-court-surface-subtle text-[12px] text-court-fg-muted"
+        className="flex h-[380px] w-full items-center justify-center rounded-xl bg-court-surface-subtle text-[12px] text-court-fg-muted"
         aria-label="Loading placement map"
       >
         Loading map…
@@ -46,11 +46,16 @@ type Props = {
 export function PlacementsMapCard({ cities }: Props) {
   return (
     <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <div className="flex items-baseline justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-          Placement map
-        </p>
-        <p className="text-[11px] text-court-fg-muted">
+      <div className="flex items-baseline justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
+            Placement Map
+          </p>
+          <p className="mt-0.5 text-xs text-court-fg-muted">
+            Collected, billed, pending start, and overdue placements by location
+          </p>
+        </div>
+        <p className="shrink-0 text-[11px] text-court-fg-muted">
           {cities.length === 0
             ? "No placement cities yet"
             : `${cities.length} ${cities.length === 1 ? "city" : "cities"}`}
@@ -72,7 +77,7 @@ export function PlacementsMapCard({ cities }: Props) {
 
 function Legend() {
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-x-3.5 gap-y-1 text-[11px] text-court-fg-muted">
+    <div className="mt-2 flex items-center gap-3 text-xs text-court-fg-muted">
       {STATUS_ORDER.map((status) => (
         <span key={status} className="inline-flex items-center gap-1.5">
           <span

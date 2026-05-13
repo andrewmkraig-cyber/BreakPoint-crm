@@ -1,20 +1,21 @@
-import { PlacementsByCityList } from "@/components/placements/placements-by-city-list";
 import type {
   PlacementsDashboardRow,
   PlacementsDashboardSourceChannel,
 } from "@/lib/placements-dashboard";
 import { formatMoneyShort, type CityAggregate } from "@/lib/placements-map-geo";
 
-// Two-row breakdown layout under the placement ledger:
-//   Row 1 — one wide card split in half by a vertical divider:
-//           "Placements by City" (left) + "Placements by Industry" (right).
-//   Row 2 — two equal cards: "Placement Sources" + "Offer to Start".
-//
-// The card chrome (rounded-3xl bg-court-surface p-5 shadow) matches
-// the rest of the Clubhouse / Placements surfaces so every panel on
-// the tab reads as one product. Pure functional view over the same
-// PlacementsDashboardRow[] plus the city aggregate the map uses —
+// Placements analytics layout. Two stacked blocks beneath the ledger:
+//   1. Three equal cards on one row: "By Industry", "By Source", "Offer to Start".
+//   2. A compact "Revenue by City" card listing each city with a proportional bar.
+// The card chrome (rounded-3xl bg-court-surface p-5 shadow) matches the
+// rest of the Clubhouse / Placements surfaces. Pure functional view —
 // no client state, no network.
+
+const PANEL_CLASS =
+  "rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]";
+
+const EYEBROW_CLASS =
+  "text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted";
 
 const SOURCE_LABEL: Record<PlacementsDashboardSourceChannel, string> = {
   NETWORK: "Network",
@@ -61,11 +62,12 @@ export function PlacementsBreakdowns({
 }) {
   return (
     <div className="flex flex-col gap-3">
-      <CityIndustryCombinedCard rows={rows} cities={cities} totalFee={totalFee} />
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-        <PlacementSourcesCard rows={rows} />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <ByIndustryCard rows={rows} />
+        <BySourceCard rows={rows} />
         <OfferToStartCard rows={rows} />
       </div>
+      <RevenueByCityCard cities={cities} totalFee={totalFee} />
     </div>
   );
 }
@@ -93,59 +95,21 @@ function aggregateBy(
   return out;
 }
 
-function CityIndustryCombinedCard({
-  rows,
-  cities,
-  totalFee,
-}: {
-  rows: PlacementsDashboardRow[];
-  cities: CityAggregate[];
-  totalFee: number;
-}) {
-  const industryBars = aggregateBy(rows, (r) => {
+function ByIndustryCard({ rows }: { rows: PlacementsDashboardRow[] }) {
+  const bars = aggregateBy(rows, (r) => {
     const label = r.clientIndustry?.trim() || "Unspecified";
     return { key: label.toLowerCase(), label };
   });
-  const industryGrandTotalFee = industryBars.reduce((s, b) => s + b.total, 0);
-  const industryGrandTotalCount = industryBars.reduce((s, b) => s + b.count, 0);
+  const grandTotalFee = bars.reduce((s, b) => s + b.total, 0);
+  const grandTotalCount = bars.reduce((s, b) => s + b.count, 0);
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      {/* Vertical divider lives on the left half (border-r) so it only
-          shows once the two columns sit side by side. Below lg the
-          halves stack and no divider is rendered. */}
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-0">
-        <div className="lg:border-r lg:border-court-border-soft lg:pr-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-            Placements by City
-          </p>
-          <div className="mt-2.5">
-            <PlacementsByCityList cities={cities} totalFee={totalFee} />
-          </div>
-        </div>
-        <div className="lg:pl-5">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-            Placements by Industry
-          </p>
-          <div className="mt-2.5">
-            {industryBars.length === 0 ? (
-              <p className="text-sm text-court-fg-muted">
-                No placements in this window.
-              </p>
-            ) : (
-              <BarList
-                bars={industryBars}
-                grandTotalFee={industryGrandTotalFee}
-                grandTotalCount={industryGrandTotalCount}
-              />
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
+    <BreakdownCard title="By Industry" empty={bars.length === 0}>
+      <BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />
+    </BreakdownCard>
   );
 }
 
-function PlacementSourcesCard({ rows }: { rows: PlacementsDashboardRow[] }) {
+function BySourceCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   // Force every known channel to render even when empty so the user
   // sees the full set of sourcing buckets at a glance — a missing
   // channel reads as "no placements from there yet," which is signal.
@@ -163,7 +127,7 @@ function PlacementSourcesCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const grandTotalFee = bars.reduce((s, b) => s + b.total, 0);
   const grandTotalCount = bars.reduce((s, b) => s + b.count, 0);
   return (
-    <BreakdownCard title="Placement Sources" empty={grandTotalCount === 0}>
+    <BreakdownCard title="By Source" empty={grandTotalCount === 0}>
       <BarList bars={bars} grandTotalFee={grandTotalFee} grandTotalCount={grandTotalCount} />
     </BreakdownCard>
   );
@@ -179,10 +143,8 @@ function BreakdownCard({
   empty?: boolean;
 }) {
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-        {title}
-      </p>
+    <div className={PANEL_CLASS}>
+      <p className={EYEBROW_CLASS}>{title}</p>
       <div className="mt-2.5">
         {empty ? (
           <p className="text-sm text-court-fg-muted">
@@ -262,10 +224,8 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
   const binMax = bins.reduce((m, b) => Math.max(m, b.count), 0);
 
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
-        Offer to Start
-      </p>
+    <div className={PANEL_CLASS}>
+      <p className={EYEBROW_CLASS}>Offer to Start</p>
 
       <div className="mt-2.5 flex items-end gap-2">
         {bins.map((b) => {
@@ -273,8 +233,12 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
           // bin renders an empty track only — no floor — so a single
           // outlier doesn't make small bins look bigger than they are.
           const fillHeight = binMax > 0 ? `${(b.count / binMax) * 100}%` : "0%";
+          // Dim empty bins so the active bin reads as the story.
+          const columnClass =
+            "flex flex-1 flex-col items-center gap-1" +
+            (b.count === 0 ? " opacity-40" : "");
           return (
-            <div key={b.id} className="flex flex-1 flex-col items-center gap-1">
+            <div key={b.id} className={columnClass}>
               <div className="relative flex h-12 w-full items-center justify-center overflow-hidden rounded-md bg-court-surface-subtle">
                 <div
                   className={`absolute inset-x-0 bottom-0 ${b.fillClass}`}
@@ -331,6 +295,62 @@ function MiniCard({
         {value}
       </p>
       <p className="mt-1 truncate text-[11px] text-court-fg-muted">{sub}</p>
+    </div>
+  );
+}
+
+function RevenueByCityCard({
+  cities,
+  totalFee,
+}: {
+  cities: CityAggregate[];
+  totalFee: number;
+}) {
+  if (cities.length === 0) {
+    return (
+      <div className={PANEL_CLASS}>
+        <p className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+          Revenue by City
+        </p>
+        <p className="mt-2.5 text-sm text-court-fg-muted">
+          No placements with a city captured in this window.
+        </p>
+      </div>
+    );
+  }
+  const maxFee = cities.reduce((m, c) => Math.max(m, c.totalFee), 0);
+  return (
+    <div className={PANEL_CLASS}>
+      <p className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+        Revenue by City
+      </p>
+      <ul className="mt-2.5 flex flex-col gap-2">
+        {cities.map((city) => {
+          const pct = totalFee > 0 ? Math.round((city.totalFee / totalFee) * 100) : 0;
+          const barWidth = maxFee > 0 ? Math.round((city.totalFee / maxFee) * 100) : 0;
+          return (
+            <li key={city.key} className="flex flex-col gap-0.5">
+              <div className="flex items-baseline gap-2 text-[13px]">
+                <span className="flex-1 truncate font-medium text-court-fg">
+                  {city.city}
+                </span>
+                <span className="shrink-0 tabular-nums font-semibold text-court-fg">
+                  {city.totalFee > 0 ? formatMoneyShort(city.totalFee) : "—"}
+                </span>
+                <span className="shrink-0 tabular-nums text-court-fg-muted">
+                  {pct}%
+                </span>
+              </div>
+              <div className="h-1 w-full overflow-hidden rounded-full bg-court-surface-subtle">
+                <div
+                  className="h-full rounded-full bg-court-brand"
+                  style={{ width: `${barWidth}%` }}
+                />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   TileLayer,
   Tooltip,
 } from "react-leaflet";
+import type { LatLngBoundsExpression } from "leaflet";
 
 import {
   STATUS_COLORS,
@@ -20,6 +21,12 @@ import {
 
 const BRAND_GREEN = "#5A9642";
 
+// When every placement coordinate falls within this much lat/lng span,
+// we zoom to fit the cluster instead of showing the full US. Two degrees
+// is roughly metro-area scale (Pittsburgh ⇄ Cleveland is ~1.1° apart),
+// which is exactly the case we want to auto-zoom into.
+const CLUSTER_SPAN_DEGREES = 2;
+
 type Props = {
   cities: CityAggregate[];
 };
@@ -30,14 +37,44 @@ export function PlacementsLeafletMap({ cities }: Props) {
     [cities],
   );
 
+  const clusterBounds = useMemo<LatLngBoundsExpression | null>(() => {
+    if (cities.length === 0) return null;
+    let minLat = Infinity;
+    let maxLat = -Infinity;
+    let minLng = Infinity;
+    let maxLng = -Infinity;
+    for (const c of cities) {
+      if (c.lat < minLat) minLat = c.lat;
+      if (c.lat > maxLat) maxLat = c.lat;
+      if (c.lng < minLng) minLng = c.lng;
+      if (c.lng > maxLng) maxLng = c.lng;
+    }
+    if (
+      maxLat - minLat > CLUSTER_SPAN_DEGREES ||
+      maxLng - minLng > CLUSTER_SPAN_DEGREES
+    ) {
+      return null;
+    }
+    return [
+      [minLat, minLng],
+      [maxLat, maxLng],
+    ];
+  }, [cities]);
+
+  const mapProps = clusterBounds
+    ? ({
+        bounds: clusterBounds,
+        boundsOptions: { padding: [80, 80] as [number, number] },
+      } as const)
+    : ({ center: [39.5, -98.35] as [number, number], zoom: 4 } as const);
+
   return (
     <MapContainer
-      center={[39.5, -98.35]}
-      zoom={4}
+      {...mapProps}
       minZoom={3}
       maxZoom={12}
       scrollWheelZoom
-      style={{ height: "440px", width: "100%", borderRadius: "0.75rem" }}
+      style={{ height: "380px", width: "100%", borderRadius: "0.75rem" }}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
