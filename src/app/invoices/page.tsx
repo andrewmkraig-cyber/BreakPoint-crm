@@ -68,7 +68,7 @@ export default async function InvoicesPage({
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiCard
           label="Outstanding"
           value={formatUsd(summary.outstandingCents)}
@@ -210,19 +210,30 @@ function KpiCard({
   hint: string;
   tone?: "default" | "warn";
 }) {
-  const wrapper =
+  // Visual match to the Clubhouse KpiTile (src/app/dashboard/kpi-tile.tsx):
+  // borderless, soft long-shadow, px-3 py-2.5, 10px extrabold label,
+  // 26px serif value. The "warn" tone tints the background red but
+  // keeps the same chrome so the row stays one height.
+  const surface =
     tone === "warn"
-      ? "rounded-2xl border border-red-200 bg-red-50 p-5 shadow-sm"
-      : "rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm";
+      ? "bg-red-50 dark:bg-red-950/30"
+      : "bg-court-surface";
   return (
-    <div className={wrapper}>
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+    <div
+      className={
+        "flex h-full flex-col rounded-2xl px-3 py-2.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)] " +
+        surface
+      }
+    >
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
         {label}
       </p>
-      <div className="mt-2 font-serif text-3xl font-extrabold leading-none tracking-[-0.035em] tabular-nums text-court-fg">
+      <div className="mt-2 text-center font-serif text-[26px] font-semibold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
         {value}
       </div>
-      <p className="mt-3 text-[11px] text-court-fg-muted">{hint}</p>
+      <p className="mt-1.5 truncate text-center text-[10px] text-court-fg-muted">
+        {hint}
+      </p>
     </div>
   );
 }
