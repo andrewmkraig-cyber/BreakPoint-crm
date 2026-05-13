@@ -25,7 +25,7 @@ type Props = {
   selectedId: string | null;
   teamMode: boolean;
   teamMembers: CalendarTeamMember[];
-  visibleMembers: string[];
+  hiddenMembers: Set<string>;
   displayDate: Date;
   today: Date;
   now: Date;
@@ -38,7 +38,7 @@ export function CalendarDayView({
   selectedId,
   teamMode,
   teamMembers,
-  visibleMembers,
+  hiddenMembers,
   displayDate,
   today,
   now,
@@ -48,7 +48,7 @@ export function CalendarDayView({
   const dayEvents = events.filter(
     (e) =>
       isSameDay(e.startTime, displayDate) &&
-      (!teamMode || !e.ownerId || visibleMembers.includes(e.ownerId)),
+      !(e.ownerId && hiddenMembers.has(e.ownerId)),
   );
   const isToday = isSameDay(displayDate, today);
 

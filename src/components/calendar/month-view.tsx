@@ -13,8 +13,7 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   events: CalendarEvent[];
-  teamMode: boolean;
-  visibleMembers: string[];
+  hiddenMembers: Set<string>;
   monthStart: Date;
   currentWeekStart: Date;
   today: Date;
@@ -33,8 +32,7 @@ const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
 export function CalendarMonthView({
   events,
-  teamMode,
-  visibleMembers,
+  hiddenMembers,
   monthStart,
   currentWeekStart,
   today,
@@ -68,14 +66,14 @@ export function CalendarMonthView({
   const eventsByDateKey = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const e of events) {
-      if (teamMode && e.ownerId && !visibleMembers.includes(e.ownerId)) continue;
+      if (e.ownerId && hiddenMembers.has(e.ownerId)) continue;
       const key = dateKey(e.startTime);
       const bucket = map.get(key);
       if (bucket) bucket.push(e);
       else map.set(key, [e]);
     }
     return map;
-  }, [events, teamMode, visibleMembers]);
+  }, [events, hiddenMembers]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">

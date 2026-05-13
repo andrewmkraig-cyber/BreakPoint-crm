@@ -66,6 +66,25 @@ function deriveType(title: string, calendarName: string): CalendarEventType {
   return "other";
 }
 
+function formatRelative(target: Date, base: Date): string {
+  const diffMs = target.getTime() - base.getTime();
+  const absMin = Math.round(Math.abs(diffMs) / 60000);
+  if (absMin < 1) return diffMs >= 0 ? "now" : "just now";
+  if (absMin < 60) return diffMs >= 0 ? `in ${absMin}m` : `${absMin}m ago`;
+  const hours = Math.round(absMin / 60);
+  if (hours < 24) return diffMs >= 0 ? `in ${hours}h` : `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  return diffMs >= 0 ? `in ${days}d` : `${days}d ago`;
+}
+
+function formatAbsolute(target: Date): string {
+  return target.toLocaleString(undefined, {
+    weekday: "short",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
 function deriveOwnerId(
   calendarName: string,
   members: Array<{ id: string; email: string | null }>,
@@ -86,7 +105,7 @@ export default async function CalendarPage() {
   const now = new Date();
   const windowMs = 90 * 24 * 60 * 60 * 1000;
 
-  const [rows, memberships] = await Promise.all([
+  const [rows, memberships, reminderRows] = await Promise.all([
     prisma.calendarEvent.findMany({
       where: {
         organizationId: org.id,
@@ -102,6 +121,15 @@ export default async function CalendarPage() {
       where: { organizationId: org.id },
       include: { user: { select: { id: true, name: true, email: true } } },
       orderBy: { joinedAt: "asc" },
+    }),
+    prisma.aceReminder.findMany({
+      where: {
+        organizationId: org.id,
+        dismissed: false,
+        reminderAt: { gte: now },
+      },
+      orderBy: { reminderAt: "asc" },
+      take: 10,
     }),
   ]);
 
@@ -157,9 +185,19 @@ export default async function CalendarPage() {
   }, null);
 
   // Reminders are Ace-native (toast-only, never pushed to Google).
-  // No AceReminder Prisma model exists yet, so the panel renders its
-  // empty state until that model + a /api/reminders surface ship.
-  const reminders: CalendarReminder[] = [];
+  // `when` is the relative-time label the panel/toast display; the
+  // client re-derives it on its own polling tick if needed. `urgent`
+  // is true for anything due within the next 30 minutes so the panel
+  // can tint it amber.
+  const reminders: CalendarReminder[] = reminderRows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    reminderAt: r.reminderAt,
+    when: formatRelative(r.reminderAt, now),
+    abs: formatAbsolute(r.reminderAt),
+    source: "Ace",
+    urgent: r.reminderAt.getTime() - now.getTime() <= 30 * 60 * 1000,
+  }));
 
   return (
     <CalendarView

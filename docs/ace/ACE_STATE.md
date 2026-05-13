@@ -1,14 +1,21 @@
 # ACE_STATE.md
-Last updated: 2026-05-12 · Ace 43.0
+Last updated: 2026-05-13 · Ace 44.0
 
 ## Current Status
-Current Version: Ace 43.0
-Last Shipped: 2026-05-12
+Current Version: Ace 44.0
+Last Shipped: 2026-05-13
 Live at: ace.breakpointtalent.com
 
-## Known Issues Carrying Into Ace 44
-- **Calendar Prompts 2-4 + dashboard calendar widget deferred.** The /calendar shell (week/day/month, Mon-Fri week view, event drawer, reminders panel, sidebar entry) renders against static seed only. Google Calendar read + write sync and Neon-side event persistence are still ahead. Tracked as Session 1 Next Task below.
+## Known Issues Carrying Into Ace 45
+- **Calendar write round-trip + dashboard widget still ahead.** /calendar now reads live Neon events with a Sync button, the team toggle filters the grid in both scopes, and Ace-native reminders persist end-to-end. Remaining: Google Calendar write round-trip (create/edit from the drawer), and the Clubhouse-tab calendar widget. Tracked as Session 1 Next Task below.
 - **Test record cleanup pending.** The "Send Test Invoice to Austin" button has minted a synthetic Miles Atchison placement + invoice row in production. Needs a one-shot delete (or a `seed_record` flag + cleanup pass) before launch so the demo placement doesn't surface in real billing tallies.
+
+## Summary — Ace 44.0
+Ace 44 closes out the /calendar read side and lands Ace-native reminders. Calendar now reads live `CalendarEvent` rows from Neon (sync button hits `/api/calendar/sync` which mirrors every readable Google Calendar — Andrew's primary + Austin's `austin@breakpointtalent.com` shared calendar come through automatically with no name/email filter), the team checkbox panel filters the week/day/month grids in both "My Calendar" and "Team" scope (clicks were dead in "My Calendar" before), and the reminders panel is wired end-to-end against a new `AceReminder` model.
+
+**Team toggle.** Switched from a `visibleMembers` allowlist to a `hiddenMembers: Set<string>` (initialized empty so everyone shows by default). Click toggles in either scope. Hidden rows dim to 50% opacity; checkbox empties. Week / day / month views all filter on `e.ownerId && hiddenMembers.has(e.ownerId)` before render.
+
+**Reminders end-to-end.** New `AceReminder` model (org-scoped, with `userId`, `title`, `reminderAt`, `dismissed`). `/calendar` queries the next 10 upcoming undismissed reminders for the active org. Server actions in `src/app/calendar/reminder-actions.ts` handle create + dismiss; both resolve `getCurrentOrg()` server-side so the org scope can't be spoofed across the action boundary. Panel "+ New" expands an inline form (title input, native date picker, 15-min increment time `<select>`). Each row's checkmark fires `dismissReminder`, optimistically removes from local state, then `router.refresh()`. A 60-second polling tick on the calendar view promotes any reminder whose `reminderAt` has slipped past `now` into the toast stack (tracked in a ref-Set so it can't re-fire on subsequent ticks); the toast Dismiss button persists the dismiss the same way as the panel.
 
 ## Summary — Ace 43.0
 Ace 43 lands the Placements dashboard tab, the Calendar shell, the Pipeline placement edit drawer, and a round of cross-tab visual unification. The Invoicing module that shipped in Ace 42 also gets its real downstream wiring this release.

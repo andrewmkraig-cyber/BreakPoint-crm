@@ -14,9 +14,12 @@ import {
 import { cn } from "@/lib/utils";
 
 type Props = {
-  teamMode: boolean;
   teamMembers: CalendarTeamMember[];
-  visibleMembers: string[];
+  // Set of member ids whose events should be hidden from the grid.
+  // Click toggles in either scope ("me" / "team") — the checkboxes
+  // are not gated on scope anymore because that just turned clicks
+  // into a no-op for the common single-recruiter case.
+  hiddenMembers: Set<string>;
   onToggleMember: (id: string) => void;
   monthStart: Date;
   currentWeekStart: Date;
@@ -28,9 +31,8 @@ type Props = {
 // 200px so the main grid keeps its breathing room.
 
 export function CalendarLeftRail({
-  teamMode,
   teamMembers,
-  visibleMembers,
+  hiddenMembers,
   onToggleMember,
   monthStart,
   currentWeekStart,
@@ -45,9 +47,8 @@ export function CalendarLeftRail({
       />
       <EventTypeLegend />
       <TeamList
-        teamMode={teamMode}
         teamMembers={teamMembers}
-        visibleMembers={visibleMembers}
+        hiddenMembers={hiddenMembers}
         onToggleMember={onToggleMember}
       />
       <GoogleSyncFooter />
@@ -187,14 +188,12 @@ function EventTypeLegend() {
 }
 
 function TeamList({
-  teamMode,
   teamMembers,
-  visibleMembers,
+  hiddenMembers,
   onToggleMember,
 }: {
-  teamMode: boolean;
   teamMembers: CalendarTeamMember[];
-  visibleMembers: string[];
+  hiddenMembers: Set<string>;
   onToggleMember: (id: string) => void;
 }) {
   return (
@@ -203,26 +202,20 @@ function TeamList({
         <div className="text-[10px] font-bold uppercase tracking-[0.16em] text-court-fg-muted">
           Team
         </div>
-        {!teamMode && (
-          <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-court-fg-dim">
-            Off
-          </span>
-        )}
       </div>
       {teamMembers.length === 0 ? (
         <div className="text-[11.5px] text-court-fg-muted">No team members.</div>
       ) : null}
       <ul className="space-y-1">
         {teamMembers.map((m) => {
-          const on = visibleMembers.includes(m.id);
-          const interactive = teamMode;
+          const on = !hiddenMembers.has(m.id);
           return (
             <li
               key={m.id}
-              onClick={() => interactive && onToggleMember(m.id)}
+              onClick={() => onToggleMember(m.id)}
               className={cn(
-                "-mx-1.5 flex items-center gap-2 rounded-md px-1.5 py-1 transition",
-                interactive ? "cursor-pointer hover:bg-court-brand-tint/40" : "opacity-60",
+                "-mx-1.5 flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 transition hover:bg-court-brand-tint/40",
+                !on && "opacity-50",
               )}
             >
               <span

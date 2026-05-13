@@ -19,7 +19,7 @@ type Props = {
   selectedId: string | null;
   teamMode: boolean;
   teamMembers: CalendarTeamMember[];
-  visibleMembers: string[];
+  hiddenMembers: Set<string>;
   weekStart: Date;
   today: Date;
   now: Date;
@@ -32,7 +32,7 @@ export function CalendarWeekView({
   selectedId,
   teamMode,
   teamMembers,
-  visibleMembers,
+  hiddenMembers,
   weekStart,
   today,
   now,
@@ -44,13 +44,13 @@ export function CalendarWeekView({
   const eventsByDay = useMemo(() => {
     const out: CalendarEvent[][] = weekDays.map(() => []);
     for (const e of events) {
-      if (teamMode && e.ownerId && !visibleMembers.includes(e.ownerId)) continue;
+      if (e.ownerId && hiddenMembers.has(e.ownerId)) continue;
       const idx = weekDays.findIndex((d) => isSameDay(d.fullDate, e.startTime));
       if (idx < 0) continue;
       out[idx]?.push(e);
     }
     return out;
-  }, [events, teamMode, visibleMembers, weekDays]);
+  }, [events, hiddenMembers, weekDays]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface shadow-sm">

@@ -2,7 +2,7 @@
 
 import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CalendarDayView } from "@/components/calendar/day-view";
 import { CalendarEventDrawer } from "@/components/calendar/event-drawer";
@@ -28,6 +28,8 @@ import {
   getStartOfMonth,
 } from "@/lib/calendar/week";
 
+import { createReminder, dismissReminder as dismissReminderAction } from "./reminder-actions";
+
 // Calendar surface owner. Holds view / scope / drawer / toast state and
 // passes the right slices to each child. `initialDate` comes from the
 // page server component so SSR and CSR agree on "today" — without that
@@ -52,9 +54,11 @@ export function CalendarView({
   const router = useRouter();
   const [view, setView] = useState<CalendarView>("week");
   const [scope, setScope] = useState<CalendarScope>("me");
-  const [visibleMembers, setVisibleMembers] = useState<string[]>(
-    teamMembers.map((m) => m.id),
-  );
+  // hiddenMembers is the set of member ids whose events should NOT be
+  // rendered. Default empty (everyone visible). Clicking a row in the
+  // left rail toggles membership. We intentionally store this as a
+  // Set on each toggle (new instance) so consumer memos invalidate.
+  const [hiddenMembers, setHiddenMembers] = useState<Set<string>>(() => new Set());
 
   const selfMemberId = teamMembers.find((m) => m.self)?.id ?? teamMembers[0]?.id ?? null;
 
@@ -95,9 +99,24 @@ export function CalendarView({
   const [drawerMode, setDrawerMode] = useState<"create" | "edit">("edit");
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
-  const [toasts, setToasts] = useState(initialReminders.filter((r) => r.urgent));
+  // toasts = reminders that have come due during this session and need
+  // the recruiter to acknowledge them. We seed empty because the page
+  // query filters to reminderAt >= now — anything past-due either gets
+  // dismissed elsewhere or shows up on the next 60s tick after its
+  // reminderAt slips past.
+  const [toasts, setToasts] = useState<CalendarReminder[]>([]);
   const [toastsCollapsed, setToastsCollapsed] = useState(false);
   const [reminders, setReminders] = useState(initialReminders);
+  // Track which reminder ids have already been promoted to a toast so
+  // the 60s polling tick doesn't re-fire the same toast each minute.
+  const toastedIds = useRef<Set<string>>(new Set());
+
+  // initialReminders comes back as a fresh prop on every router.refresh,
+  // so reset local state when the server payload changes (e.g. after
+  // create/dismiss).
+  useEffect(() => {
+    setReminders(initialReminders);
+  }, [initialReminders]);
 
   const teamMode = scope === "team";
 
@@ -114,18 +133,80 @@ export function CalendarView({
   const closeDrawer = () => setDrawerOpen(false);
 
   const toggleMember = (id: string) =>
-    setVisibleMembers((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
+    setHiddenMembers((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
-  const dismissToast = (id: string) =>
+  // Both surfaces (panel + toast) need to optimistically remove the
+  // row, persist the dismiss server-side, then refresh server data so
+  // any other surface reading AceReminder picks up the change.
+  const persistDismiss = useCallback(
+    async (id: string) => {
+      try {
+        await dismissReminderAction(id);
+      } catch (err) {
+        console.error("dismissReminder failed", err);
+      } finally {
+        router.refresh();
+      }
+    },
+    [router],
+  );
+
+  const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((r) => r.id !== id));
+    void persistDismiss(id);
+  };
   const snoozeToast = (id: string) =>
     setToasts((prev) => prev.filter((r) => r.id !== id));
-  const dismissReminder = (id: string) =>
+  const dismissReminder = (id: string) => {
     setReminders((prev) => prev.filter((r) => r.id !== id));
+    setToasts((prev) => prev.filter((r) => r.id !== id));
+    void persistDismiss(id);
+  };
   const snoozeReminder = (id: string) =>
     setReminders((prev) => prev.filter((r) => r.id !== id));
+
+  const handleCreateReminder = useCallback(
+    async (title: string, reminderAt: Date) => {
+      try {
+        await createReminder(title, reminderAt.toISOString());
+        router.refresh();
+      } catch (err) {
+        console.error("createReminder failed", err);
+        throw err;
+      }
+    },
+    [router],
+  );
+
+  // Promote past-due reminders to the toast stack. Runs on mount and
+  // every 60s. Each reminder is promoted at most once per page load
+  // (tracked in toastedIds) so a stuck/uncommitted dismiss doesn't
+  // re-pop the toast every tick.
+  useEffect(() => {
+    const promote = () => {
+      const now = Date.now();
+      setToasts((prev) => {
+        const additions: CalendarReminder[] = [];
+        for (const r of reminders) {
+          if (toastedIds.current.has(r.id)) continue;
+          if (prev.some((t) => t.id === r.id)) continue;
+          if (r.reminderAt.getTime() <= now) {
+            toastedIds.current.add(r.id);
+            additions.push({ ...r, urgent: true });
+          }
+        }
+        return additions.length === 0 ? prev : [...prev, ...additions];
+      });
+    };
+    promote();
+    const id = window.setInterval(promote, 60_000);
+    return () => window.clearInterval(id);
+  }, [reminders]);
 
   const filteredEvents =
     scope === "me"
@@ -166,9 +247,8 @@ export function CalendarView({
 
       <div className="flex min-w-0 gap-5">
         <CalendarLeftRail
-          teamMode={teamMode}
           teamMembers={teamMembers}
-          visibleMembers={visibleMembers}
+          hiddenMembers={hiddenMembers}
           onToggleMember={toggleMember}
           monthStart={currentMonthStart}
           currentWeekStart={currentWeekStart}
@@ -182,7 +262,7 @@ export function CalendarView({
               selectedId={selectedEvent?.id ?? null}
               teamMode={teamMode}
               teamMembers={teamMembers}
-              visibleMembers={visibleMembers}
+              hiddenMembers={hiddenMembers}
               weekStart={currentWeekStart}
               today={today}
               now={today}
@@ -196,7 +276,7 @@ export function CalendarView({
               selectedId={selectedEvent?.id ?? null}
               teamMode={teamMode}
               teamMembers={teamMembers}
-              visibleMembers={visibleMembers}
+              hiddenMembers={hiddenMembers}
               displayDate={currentDate}
               today={today}
               now={today}
@@ -207,8 +287,7 @@ export function CalendarView({
           {view === "month" && (
             <CalendarMonthView
               events={filteredEvents}
-              teamMode={teamMode}
-              visibleMembers={visibleMembers}
+              hiddenMembers={hiddenMembers}
               monthStart={currentMonthStart}
               currentWeekStart={currentWeekStart}
               today={today}
@@ -226,6 +305,7 @@ export function CalendarView({
             reminders={reminders}
             onDismiss={dismissReminder}
             onSnooze={snoozeReminder}
+            onCreate={handleCreateReminder}
           />
         </aside>
       </div>

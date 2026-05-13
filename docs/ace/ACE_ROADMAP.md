@@ -1,10 +1,10 @@
 # Ace Roadmap
-Last updated: 2026-05-12 · Ace 43.0
+Last updated: 2026-05-13 · Ace 44.0
 
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full specs for the active Calendar work live in ACE_STATE.md Next Task.
 
-1. **Calendar Prompts 2-4 + dashboard widget** — Calendar shell (week / day / month, Mon-Fri week view, event drawer, reminders panel, sidebar entry) shipped in Ace 43 against static seed. Remaining work: Google Calendar read sync, write round-trip, Neon-side event persistence (org-scoped), Clubhouse-tab calendar widget. Full Prompt 2 spec in ACE_STATE.md.
+1. **Calendar write round-trip + dashboard widget** — Read sync from Neon, team-filter toggle in both scopes, and Ace-native reminders shipped in Ace 44. Remaining: Google Calendar write round-trip from the event drawer (create / edit / delete pushed back to Google), and the Clubhouse-tab calendar widget that surfaces today's events alongside the rest of the dashboard.
 2. **BD Engine Phase 4** — ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts. Full rules in ACE_RULES.md and ACE_STATE.md.
 3. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.
 4. **JD/email markdown architecture** — [Job Description] merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).

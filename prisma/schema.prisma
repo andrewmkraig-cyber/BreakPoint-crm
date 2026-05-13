@@ -968,6 +968,7 @@ model Organization {
   clientSignals        ClientSignal[]
   bdOrgConfig          BdOrgConfig?
   calendarEvents       CalendarEvent[]
+  aceReminders         AceReminder[]
 }
 
 model Invoice {
@@ -1668,4 +1669,25 @@ model ClientSignal {
   @@unique([organizationId, externalUrl])
   @@index([organizationId, status])
   @@index([clientId])
+}
+
+// Ace-native reminders. Toast/panel only — never pushed to Google
+// Calendar. Created from the /calendar reminders panel; dismissed
+// once the recruiter acknowledges. No User FK because Ace is a tiny
+// fixed team and we want to avoid cascade-delete games; userId is
+// stored as a free string for attribution only.
+model AceReminder {
+  id             String       @id @default(cuid())
+  organizationId String
+  userId         String
+  title          String
+  reminderAt     DateTime
+  dismissed      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
 }

@@ -25,9 +25,13 @@ export type CalendarEvent = {
 
 export type CalendarReminder = {
   id: string;
+  title: string;
+  // Authoritative time the reminder is due. The Date itself is the
+  // source of truth for "has it passed?" — `when`/`abs` are rendered
+  // labels that fall behind real time but never drive logic.
+  reminderAt: Date;
   when: string;
   abs: string;
-  title: string;
   source: string;
   urgent?: boolean;
 };
