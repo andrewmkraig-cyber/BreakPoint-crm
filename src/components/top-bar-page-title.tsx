@@ -125,7 +125,7 @@ function resolveBaseSpec(
   if (pathname === "/mail") {
     return {
       title: { label: "Mail" },
-      action: { kind: "compose-mail", label: "Compose" },
+      action: { kind: "compose-mail", label: "New Email" },
     };
   }
 
@@ -148,6 +148,7 @@ function resolveBaseSpec(
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
   if (pathname === "/applicants") return { title: { label: "Applicants" } };
+  if (pathname.startsWith("/bd")) return { title: { label: "BD" } };
   if (pathname === "/dashboard") {
     const tab = resolveDashboardTab(searchParams?.get("tab"));
     return { title: { label: DASHBOARD_TAB_LABELS[tab] } };
