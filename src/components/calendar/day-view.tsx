@@ -48,7 +48,9 @@ export function CalendarDayView({
   const dayEvents = events.filter(
     (e) =>
       isSameDay(e.startTime, displayDate) &&
-      !(e.ownerId && hiddenMembers.has(e.ownerId)),
+      !(
+        e.ownerKeys.length > 0 && e.ownerKeys.every((k) => hiddenMembers.has(k))
+      ),
   );
   const isToday = isSameDay(displayDate, today);
 
@@ -104,10 +106,11 @@ export function CalendarDayView({
             const end = decimalHour(ev.endTime);
             const top = (start - START_HOUR) * SLOT;
             const height = (end - start) * SLOT - 4;
-            const member =
-              teamMode && ev.ownerId
-                ? teamMembers.find((m) => m.id === ev.ownerId)
-                : null;
+            const owners = teamMode
+              ? ev.ownerKeys
+                  .map((k) => teamMembers.find((m) => m.id === k))
+                  .filter((m): m is NonNullable<typeof m> => Boolean(m))
+              : [];
             const guestCount = ev.guests?.length ?? 0;
             const isSelected = selectedId === ev.id;
             return (
@@ -156,12 +159,18 @@ export function CalendarDayView({
                       )}
                     </div>
                   </div>
-                  {member && (
-                    <span
-                      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-white"
-                      style={{ background: member.color }}
-                    >
-                      {member.initials}
+                  {owners.length > 0 && (
+                    <span className="flex shrink-0 -space-x-1.5">
+                      {owners.map((m) => (
+                        <span
+                          key={m.id}
+                          className="inline-flex h-7 w-7 items-center justify-center rounded-full border-2 border-white text-[11px] font-bold text-white"
+                          style={{ background: m.color }}
+                          title={m.name}
+                        >
+                          {m.initials}
+                        </span>
+                      ))}
                     </span>
                   )}
                 </div>

@@ -8,17 +8,23 @@ import {
   Clock,
   ExternalLink,
   Globe,
+  Loader2,
   MapPin,
   Plus,
   Trash2,
   Video,
   X,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import {
+  deleteCalendarEventAction,
+  updateCalendarEventAction,
+} from "@/app/calendar/event-actions";
 import { GoogleGlyph } from "@/components/calendar/left-rail";
 import type { CalendarEvent, CalendarEventType } from "@/lib/calendar/types";
-import { eventTypeMeta, fmtTime } from "@/lib/calendar/utils";
+import { eventTypeMeta } from "@/lib/calendar/utils";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -27,6 +33,26 @@ type Props = {
   event: CalendarEvent | null;
   onClose: () => void;
 };
+
+// Convert a Date to the local "YYYY-MM-DD" and "HH:mm" strings the
+// native date/time inputs expect. We treat all events as
+// America/New_York since the rest of the calendar surface assumes
+// ET; honoring the browser's tz would have us off by hours for
+// recruiters who travel.
+function toDateInput(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+function toTimeInput(d: Date): string {
+  const h = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${h}:${mm}`;
+}
+function fromDateTimeInput(date: string, time: string): Date {
+  return new Date(`${date}T${time}`);
+}
 
 const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = [
   {
@@ -48,22 +74,107 @@ const TYPE_OPTS: Array<{ id: CalendarEventType; label: string; sub: string }> = 
 ];
 
 export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
+  const router = useRouter();
   const [type, setType] = useState<CalendarEventType>(event?.type ?? "interview");
   const [title, setTitle] = useState(event?.title ?? "");
   const [reminderOn, setReminderOn] = useState(true);
+  const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+  const [location, setLocation] = useState("");
+  const [notes, setNotes] = useState("");
+  const [newGuests, setNewGuests] = useState<GuestSuggestion[]>([]);
+  const [saving, setSaving] = useState<null | "all" | "new">(null);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (event) {
       setType(event.type);
       setTitle(event.title);
+      setDate(toDateInput(event.startTime));
+      setStartTime(toTimeInput(event.startTime));
+      setEndTime(toTimeInput(event.endTime));
+      // The drawer's Location row prefers meetLink for display, but
+      // when editing the user types a free-form location (room,
+      // address, or a different Zoom URL) into the underlying field.
+      setLocation(event.location ?? "");
+      setNotes(event.meta ?? "");
     } else {
       setType("interview");
       setTitle("");
+      setDate("");
+      setStartTime("");
+      setEndTime("");
+      setLocation("");
+      setNotes("");
     }
+    setNewGuests([]);
+    setError(null);
   }, [event?.id, open]);
 
   const meta = eventTypeMeta(type);
   const headerLabel = mode === "edit" ? "Edit event" : "New event";
+  const canSave =
+    mode === "edit" &&
+    event != null &&
+    title.trim().length > 0 &&
+    date.length > 0 &&
+    startTime.length > 0 &&
+    endTime.length > 0;
+
+  async function doSave(notifyAll: boolean) {
+    if (!event || !canSave) return;
+    setSaving(notifyAll ? "all" : "new");
+    setError(null);
+    try {
+      const startDate = fromDateTimeInput(date, startTime);
+      const endDate = fromDateTimeInput(date, endTime);
+      if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+        throw new Error("Invalid date or time.");
+      }
+      if (endDate.getTime() <= startDate.getTime()) {
+        throw new Error("End time must be after start time.");
+      }
+      await updateCalendarEventAction({
+        id: event.id,
+        title: title.trim(),
+        startISO: startDate.toISOString(),
+        endISO: endDate.toISOString(),
+        location: location.trim() || null,
+        notes: notes.trim() || null,
+        newGuests,
+        notifyAll,
+      });
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  async function doDelete() {
+    if (!event) return;
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Delete this event? Attendees will be notified.")
+    ) {
+      return;
+    }
+    setDeleting(true);
+    setError(null);
+    try {
+      await deleteCalendarEventAction({ id: event.id, notifyAll: true });
+      router.refresh();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <>
@@ -162,19 +273,15 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <FieldLabel>Date</FieldLabel>
-              <InputRow>
+              <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
                 <Calendar className="h-3.5 w-3.5 text-court-fg-muted" />
-                <span>
-                  {event?.startTime
-                    ? event.startTime.toLocaleDateString(undefined, {
-                        weekday: "short",
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      })
-                    : "—"}
-                </span>
-              </InputRow>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                />
+              </div>
             </div>
             <div>
               <FieldLabel>Timezone</FieldLabel>
@@ -186,17 +293,27 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
             </div>
             <div>
               <FieldLabel>Starts</FieldLabel>
-              <InputRow>
+              <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
                 <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                <span>{event?.startTime ? fmtTime(event.startTime) : "—"}</span>
-              </InputRow>
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                />
+              </div>
             </div>
             <div>
               <FieldLabel>Ends</FieldLabel>
-              <InputRow>
+              <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
                 <Clock className="h-3.5 w-3.5 text-court-fg-muted" />
-                <span>{event?.endTime ? fmtTime(event.endTime) : "—"}</span>
-              </InputRow>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none"
+                />
+              </div>
             </div>
           </div>
 
@@ -218,51 +335,46 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
                   <span className="flex-1 truncate text-[13px] text-court-fg">{g}</span>
                 </div>
               ))}
-              <GuestTypeahead />
+              <GuestTypeahead
+                picked={newGuests}
+                onChange={setNewGuests}
+              />
             </div>
           </div>
 
           {/* Location / link */}
           <div>
             <FieldLabel>Location or link</FieldLabel>
-            <InputRow>
-              {event?.meetLink ? (
-                <>
-                  <Video className="h-3 w-3 text-court-brand-dark" />
-                  <a
-                    href={event.meetLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex-1 truncate font-medium text-court-brand-dark hover:underline"
-                  >
-                    {event.meetLink.replace(/^https?:\/\//, "")}
-                  </a>
-                </>
-              ) : event?.location ? (
-                <>
-                  <MapPin className="h-3 w-3 text-court-fg-muted" />
-                  <span className="flex-1 truncate text-court-fg">
-                    {event.location}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <MapPin className="h-3 w-3 text-court-fg-muted" />
-                  <span className="text-court-fg-muted">
-                    Paste a Zoom link, address, or room
-                  </span>
-                </>
-              )}
-            </InputRow>
+            {event?.meetLink && (
+              <a
+                href={event.meetLink}
+                target="_blank"
+                rel="noreferrer"
+                className="mb-1.5 inline-flex items-center gap-1.5 text-[12px] font-medium text-court-brand-dark hover:underline"
+              >
+                <Video className="h-3 w-3" />
+                {event.meetLink.replace(/^https?:\/\//, "")}
+              </a>
+            )}
+            <div className="flex h-[38px] w-full items-center gap-2 rounded-md border border-court-border bg-court-surface px-3 text-[13.5px] text-court-fg focus-within:border-court-brand focus-within:ring-2 focus-within:ring-court-brand/20">
+              <MapPin className="h-3 w-3 text-court-fg-muted" />
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Paste a Zoom link, address, or room"
+                className="flex-1 bg-transparent text-[13.5px] text-court-fg outline-none placeholder:text-court-fg-dim"
+              />
+            </div>
           </div>
 
           {/* Notes — Google Calendar event description */}
           <div>
             <FieldLabel>Notes</FieldLabel>
             <textarea
-              key={event?.id ?? "new"}
               rows={3}
-              defaultValue={event?.meta ?? ""}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
               placeholder="Add notes for this event"
               className="w-full resize-none rounded-[10px] border border-court-border bg-court-surface px-3 py-2.5 text-[13.5px] leading-relaxed text-court-fg outline-none placeholder:text-court-fg-dim focus:border-court-brand focus:ring-2 focus:ring-court-brand/20"
             />
@@ -311,53 +423,93 @@ export function CalendarEventDrawer({ open, mode, event, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center gap-2.5 border-t border-court-border bg-court-surface-subtle px-6 py-4">
-          {mode === "edit" ? (
-            <>
-              <button
-                type="button"
-                aria-label="Delete event"
-                title="Delete"
-                className="grid h-9 w-9 place-items-center rounded-full border border-court-border text-court-fg-muted hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-              <div className="flex-1" />
-              <button
-                type="button"
-                disabled
-                title="Native edit-in-Ace is coming next — use Open in Google for now."
-                className="h-9 cursor-not-allowed rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg opacity-50"
-              >
-                Save · notify new only
-              </button>
-              <button
-                type="button"
-                disabled
-                title="Native edit-in-Ace is coming next — use Open in Google for now."
-                className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white opacity-60"
-              >
-                <Check className="h-3 w-3" /> Save · notify all
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                onClick={onClose}
-                className="h-9 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg hover:border-court-brand/40 hover:bg-court-brand-tint"
-              >
-                Cancel
-              </button>
-              <div className="flex-1" />
-              <button
-                type="button"
-                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white hover:bg-court-brand-dark"
-              >
-                <Plus className="h-3 w-3" /> Create event
-              </button>
-            </>
+        <div className="flex flex-col gap-2 border-t border-court-border bg-court-surface-subtle px-6 py-4">
+          {error && (
+            <div className="text-[12px] font-medium text-red-600 dark:text-red-300">
+              {error}
+            </div>
           )}
+          <div className="flex items-center gap-2.5">
+            {mode === "edit" ? (
+              <>
+                <button
+                  type="button"
+                  onClick={doDelete}
+                  disabled={deleting || saving !== null}
+                  aria-label="Delete event"
+                  title="Delete"
+                  className="grid h-9 w-9 place-items-center rounded-full border border-court-border text-court-fg-muted transition hover:border-red-300 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-950/40 dark:hover:text-red-300"
+                >
+                  {deleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                </button>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  onClick={() => doSave(false)}
+                  disabled={!canSave || saving !== null || deleting || newGuests.length === 0}
+                  title={
+                    newGuests.length === 0
+                      ? "Add a guest to enable — sends an invite to new guests only"
+                      : "Patch silently for existing guests, email only the new ones"
+                  }
+                  className={cn(
+                    "inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg transition",
+                    (!canSave || newGuests.length === 0 || saving !== null) &&
+                      "cursor-not-allowed opacity-50",
+                    canSave &&
+                      newGuests.length > 0 &&
+                      saving === null &&
+                      "hover:border-court-brand/40 hover:bg-court-brand-tint",
+                  )}
+                >
+                  {saving === "new" && (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  )}
+                  Save · notify new only
+                </button>
+                <button
+                  type="button"
+                  onClick={() => doSave(true)}
+                  disabled={!canSave || saving !== null || deleting}
+                  className={cn(
+                    "inline-flex h-9 items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white transition hover:bg-court-brand-dark",
+                    (!canSave || saving !== null) &&
+                      "cursor-not-allowed opacity-60 hover:bg-court-brand",
+                  )}
+                >
+                  {saving === "all" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Check className="h-3 w-3" />
+                  )}
+                  Save · notify all
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="h-9 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg hover:border-court-brand/40 hover:bg-court-brand-tint"
+                >
+                  Cancel
+                </button>
+                <div className="flex-1" />
+                <button
+                  type="button"
+                  disabled
+                  title="Creating new events is coming next — for now use Google Calendar."
+                  className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-full bg-court-brand px-4 text-[12.5px] font-semibold text-white opacity-60"
+                >
+                  <Plus className="h-3 w-3" /> Create event
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </aside>
     </>
@@ -368,16 +520,21 @@ type GuestSuggestion = { name: string; email: string };
 
 // Typeahead for the drawer's guest field. Debounced query against
 // /api/calendar/people-search; arrow-key navigation; Enter/click
-// commits a pick. The selected guest is held in local state — actual
-// persistence to Google + Neon will land alongside the Save wiring
-// in the next prompt slice.
-function GuestTypeahead() {
+// commits a pick. Picked state lives in the parent so Save can send
+// the merged list to Google.
+function GuestTypeahead({
+  picked,
+  onChange,
+}: {
+  picked: GuestSuggestion[];
+  onChange: (next: GuestSuggestion[]) => void;
+}) {
   const [query, setQuery] = useState("");
-  const [picked, setPicked] = useState<GuestSuggestion[]>([]);
   const [suggestions, setSuggestions] = useState<GuestSuggestion[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const [open, setOpen] = useState(false);
 
+  const pickedEmails = picked.map((p) => p.email.toLowerCase()).join(",");
   useEffect(() => {
     const q = query.trim();
     if (q.length < 1) {
@@ -395,8 +552,9 @@ function GuestTypeahead() {
         if (!res.ok || cancelled) return;
         const body = (await res.json()) as { people?: GuestSuggestion[] };
         if (cancelled) return;
+        const pickedSet = new Set(pickedEmails.split(",").filter(Boolean));
         const list = (body.people ?? []).filter(
-          (p) => !picked.some((g) => g.email.toLowerCase() === p.email.toLowerCase()),
+          (p) => !pickedSet.has(p.email.toLowerCase()),
         );
         setSuggestions(list);
         setActiveIdx(0);
@@ -409,10 +567,10 @@ function GuestTypeahead() {
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [query, picked]);
+  }, [query, pickedEmails]);
 
   function commit(p: GuestSuggestion) {
-    setPicked((prev) => [...prev, p]);
+    onChange([...picked, p]);
     setQuery("");
     setSuggestions([]);
     setOpen(false);
@@ -462,7 +620,7 @@ function GuestTypeahead() {
             type="button"
             aria-label="Remove guest"
             onClick={() =>
-              setPicked((prev) => prev.filter((g) => g.email !== p.email))
+              onChange(picked.filter((g) => g.email !== p.email))
             }
             className="text-court-fg-muted hover:text-court-fg"
           >

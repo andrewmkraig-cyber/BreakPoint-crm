@@ -66,7 +66,11 @@ export function CalendarMonthView({
   const eventsByDateKey = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>();
     for (const e of events) {
-      if (e.ownerId && hiddenMembers.has(e.ownerId)) continue;
+      if (
+        e.ownerKeys.length > 0 &&
+        e.ownerKeys.every((k) => hiddenMembers.has(k))
+      )
+        continue;
       const key = dateKey(e.startTime);
       const bucket = map.get(key);
       if (bucket) bucket.push(e);

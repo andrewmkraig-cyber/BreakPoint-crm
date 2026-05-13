@@ -237,6 +237,13 @@ export async function getEventConferenceData(params: {
 export type PatchCalendarEventDetailsInput = {
   userId: string;
   eventId: string;
+  // The calendar the event lives on. Defaults to "primary" for the
+  // signed-in user's own events. Shared calendars (e.g. Austin's
+  // shared with Andrew) must pass the source calendar id explicitly,
+  // since /calendars/primary/events/... only resolves the auth'd
+  // user's primary calendar — patching an event on a different
+  // calendar through "primary" 404s.
+  calendarId?: string;
   sendUpdates: "all" | "none" | "externalOnly";
   startISO?: string;
   durationMin?: number;
@@ -251,8 +258,9 @@ export async function patchCalendarEventDetails(
   input: PatchCalendarEventDetailsInput,
 ): Promise<void> {
   const accessToken = await getFreshAccessToken(input.userId);
+  const cal = input.calendarId ?? "primary";
   const url = new URL(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(input.eventId)}`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal)}/events/${encodeURIComponent(input.eventId)}`,
   );
   url.searchParams.set("sendUpdates", input.sendUpdates);
   const body: Record<string, unknown> = {};
@@ -460,12 +468,14 @@ export async function addAttendeeToEvent(input: AddAttendeeInput): Promise<void>
 export async function deleteCalendarEvent(params: {
   userId: string;
   eventId: string;
+  calendarId?: string;
   sendUpdates?: boolean;
 }): Promise<void> {
   const accessToken = await getFreshAccessToken(params.userId);
   const sendUpdates = params.sendUpdates ? "all" : "none";
+  const cal = params.calendarId ?? "primary";
   const url = new URL(
-    `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(params.eventId)}`,
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal)}/events/${encodeURIComponent(params.eventId)}`,
   );
   url.searchParams.set("sendUpdates", sendUpdates);
   const res = await fetch(url.toString(), {

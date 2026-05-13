@@ -145,14 +145,58 @@ export default async function CalendarPage() {
       (m) => selfEmail !== null && m.user.email?.toLowerCase() === selfEmail,
     )?.user ?? null;
 
-  const events: CalendarEvent[] = rows.map((row) => {
+  // Merge rows that share googleEventId across calendars (e.g. a
+  // meeting that lives on both Andrew's and Austin's calendars).
+  // Keep the row whose ownerKey is self if present — that's the copy
+  // Andrew can actually patch in Google. Other rows in the group
+  // just contribute their ownerKey so the avatar stack + both
+  // team-toggles know to claim the merged event.
+  type Group = { rows: typeof rows; keys: Set<string> };
+  const groups = new Map<string, Group>();
+  for (const row of rows) {
+    const key = row.googleEventId;
+    const ownerKey = ownerKeyForCalendar(
+      { calendarId: row.calendarId, calendarName: row.calendarName },
+      selfPerson,
+    );
+    let g = groups.get(key);
+    if (!g) {
+      g = { rows: [], keys: new Set() };
+      groups.set(key, g);
+    }
+    g.rows.push(row);
+    g.keys.add(ownerKey);
+  }
+
+  const selfKey =
+    selfPerson != null ? ownerKeyForPerson(selfPerson) : null;
+
+  const events: CalendarEvent[] = Array.from(groups.values()).map(({ rows: groupRows, keys }) => {
+    // Canonical row = the one Andrew can actually edit (his own
+    // calendar). Falls back to the first row when self has no copy.
+    const ownRow =
+      selfPerson?.email != null
+        ? groupRows.find(
+            (r) => r.calendarId.toLowerCase() === selfPerson.email!.toLowerCase(),
+          )
+        : null;
+    const row = ownRow ?? groupRows[0];
     const attendees = (row.attendees as AttendeeJson[] | null) ?? null;
     const guests = attendees
       ? attendees
           .map((a) => (a.displayName ?? a.email ?? "").trim())
           .filter((s) => s.length > 0)
       : undefined;
-
+    // Sort keys deterministically so the avatar stack is stable
+    // across renders. Self first, then alpha — matches how the rail
+    // lists members.
+    const ownerKeys = Array.from(keys).sort((a, b) => {
+      if (selfKey) {
+        if (a === selfKey) return -1;
+        if (b === selfKey) return 1;
+      }
+      return a.localeCompare(b);
+    });
     return {
       id: row.id,
       title: row.title,
@@ -163,10 +207,7 @@ export default async function CalendarPage() {
       meta: row.description ?? undefined,
       guests,
       location: row.location ?? undefined,
-      ownerId: ownerKeyForCalendar(
-        { calendarId: row.calendarId, calendarName: row.calendarName },
-        selfPerson,
-      ),
+      ownerKeys,
       jobId: row.jobId ?? undefined,
       candidateId: row.candidateId ?? undefined,
       clientId: row.clientId ?? undefined,

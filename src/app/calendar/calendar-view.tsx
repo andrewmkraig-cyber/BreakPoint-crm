@@ -191,9 +191,9 @@ export function CalendarView({
 
   // Events flow straight to the grid views — they all filter on
   // hiddenMembers themselves, so no parent-level scope filter is
-  // needed. Without this consolidation the previous Me scope filter
-  // masked left-rail toggles ("click Austin does nothing because his
-  // events were already filtered out").
+  // needed. The grids hide an event only when EVERY owner key is
+  // hidden, so an event Andrew + Austin both own stays visible until
+  // both checkboxes are off.
   const filteredEvents = events;
 
   const goPrev = () => {

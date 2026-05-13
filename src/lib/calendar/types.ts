@@ -15,7 +15,12 @@ export type CalendarEvent = {
   meta?: string;
   guests?: string[];
   location?: string;
-  ownerId?: string;
+  // Normalized owner keys for this event. An event that lives on both
+  // Andrew's and Austin's calendars (same googleEventId, different
+  // calendarId rows) gets merged into one CalendarEvent with both
+  // keys in this array — so a single block appears on the grid and
+  // both team-toggle checkboxes can hide it.
+  ownerKeys: string[];
   jobId?: string;
   candidateId?: string;
   clientId?: string;

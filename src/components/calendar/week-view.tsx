@@ -44,7 +44,11 @@ export function CalendarWeekView({
   const eventsByDay = useMemo(() => {
     const out: CalendarEvent[][] = weekDays.map(() => []);
     for (const e of events) {
-      if (e.ownerId && hiddenMembers.has(e.ownerId)) continue;
+      if (
+        e.ownerKeys.length > 0 &&
+        e.ownerKeys.every((k) => hiddenMembers.has(k))
+      )
+        continue;
       const idx = weekDays.findIndex((d) => isSameDay(d.fullDate, e.startTime));
       if (idx < 0) continue;
       out[idx]?.push(e);
@@ -143,10 +147,11 @@ export function CalendarWeekView({
                   const end = decimalHour(ev.endTime);
                   const top = hourToY(start);
                   const height = hourToY(end) - hourToY(start) - 2;
-                  const member =
-                    teamMode && ev.ownerId
-                      ? teamMembers.find((m) => m.id === ev.ownerId)
-                      : null;
+                  const owners = teamMode
+                    ? ev.ownerKeys
+                        .map((k) => teamMembers.find((m) => m.id === k))
+                        .filter((m): m is NonNullable<typeof m> => Boolean(m))
+                    : [];
                   const isSelected = selectedId === ev.id;
                   return (
                     <button
@@ -168,12 +173,18 @@ export function CalendarWeekView({
                         <div className="flex-1 text-[10.5px] font-semibold opacity-90">
                           {fmtHour(start)}
                         </div>
-                        {member && (
-                          <span
-                            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold text-white"
-                            style={{ background: member.color }}
-                          >
-                            {member.initials}
+                        {owners.length > 0 && (
+                          <span className="flex -space-x-1 shrink-0">
+                            {owners.map((m) => (
+                              <span
+                                key={m.id}
+                                className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white text-[9px] font-bold text-white"
+                                style={{ background: m.color }}
+                                title={m.name}
+                              >
+                                {m.initials}
+                              </span>
+                            ))}
                           </span>
                         )}
                       </div>
