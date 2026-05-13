@@ -33,14 +33,12 @@ const SOURCE_ORDER: PlacementsDashboardSourceChannel[] = [
   "OTHER",
 ];
 
-// Bucket fills use the same Court Mode tokens the Scoreboard uses for its
-// Cash Forecast bars: brand green for "on track", softened green for the
-// slightly-slower bucket, then amber/red tints for the bad buckets.
+// Table rows: always use Deal Funnel row style as the standard pattern
 const OFFER_TO_START_BUCKETS = [
-  { id: "le14", label: "≤ 14d", fillClass: "bg-court-brand", min: 0, max: 14 },
-  { id: "15to21", label: "15-21d", fillClass: "bg-court-brand/60", min: 15, max: 21 },
-  { id: "22to30", label: "22-30d", fillClass: "bg-amber-300", min: 22, max: 30 },
-  { id: "gt30", label: "30+d", fillClass: "bg-red-300", min: 31, max: Infinity },
+  { id: "le14", label: "≤ 14d", min: 0, max: 14 },
+  { id: "15to21", label: "15-21d", min: 15, max: 21 },
+  { id: "22to30", label: "22-30d", min: 22, max: 30 },
+  { id: "gt30", label: "30+d", min: 31, max: Infinity },
 ] as const;
 
 function safeFee(n: number | null): number {
@@ -220,30 +218,24 @@ function OfferToStartCard({ rows }: { rows: PlacementsDashboardRow[] }) {
     <div className={PANEL_CLASS}>
       <p className={EYEBROW_CLASS}>Offer to Start</p>
 
-      <div className="mt-2.5 flex items-end gap-2">
+      <div className="mt-2.5 space-y-2">
         {bins.map((b) => {
-          // Scale each bin proportionally against the tallest bin. A zero
-          // bin renders an empty track only — no floor — so a single
-          // outlier doesn't make small bins look bigger than they are.
-          const fillHeight = binMax > 0 ? `${(b.count / binMax) * 100}%` : "0%";
-          // Dim empty bins so the active bin reads as the story.
-          const columnClass =
-            "flex flex-1 flex-col items-center gap-1" +
+          const widthPct = binMax > 0 ? (b.count / binMax) * 100 : 0;
+          const rowClass =
+            "relative overflow-hidden rounded-lg bg-court-surface-subtle" +
             (b.count === 0 ? " opacity-40" : "");
           return (
-            <div key={b.id} className={columnClass}>
-              <div className="relative flex h-12 w-full items-center justify-center overflow-hidden rounded-md bg-court-surface-subtle">
-                <div
-                  className={`absolute inset-x-0 bottom-0 ${b.fillClass}`}
-                  style={{ height: fillHeight }}
-                />
-                <span className="relative text-base font-bold tabular-nums text-court-fg">
+            <div key={b.id} className={rowClass}>
+              <div
+                className="absolute inset-y-0 left-0 bg-court-brand-tint"
+                style={{ width: `${widthPct}%` }}
+              />
+              <div className="relative flex items-center justify-between px-4 py-2">
+                <span className="text-sm text-court-fg">{b.label}</span>
+                <span className="text-sm font-semibold tabular-nums text-court-fg">
                   {b.count}
                 </span>
               </div>
-              <span className="text-[10px] uppercase tracking-wide text-court-fg-muted">
-                {b.label}
-              </span>
             </div>
           );
         })}
