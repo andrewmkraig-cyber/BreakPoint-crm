@@ -6,19 +6,24 @@ import {
   PlacementDrilldownDialog,
   type DrilldownQuery,
 } from "@/components/dashboard/placement-drilldown-dialog";
+import { cn } from "@/lib/utils";
 
 // Billing Tower summary strip. One big-panel card with a header row
-// ("Billing Tower" eyebrow + period selector) and a 4-column metrics
-// row underneath. Billed and Collected preserve the click-to-drilldown
-// behavior the previous Billing Tower had. The period selector is UI
-// only for now — the metrics always show the current quarter; selecting
-// a different option keeps the dropdown state but does not refetch.
+// ("Billing Tower" eyebrow + period selector) and a 3-column metrics
+// row underneath: Revenue / Outstanding / Goal Progress. Billed and
+// Collected used to be separate columns but always read identically in
+// practice (one placement → one invoice → one PAID), so we fold them
+// into a single Revenue column whose meta line carries "X placement ·
+// Y% collected" so no information is lost. The Revenue column keeps
+// the click-to-drilldown behavior the previous Billing Tower had.
 type PeriodKey = "current" | "previous" | "ytd";
 
 export function FinancialStrip({
   billedThisQuarterUsd,
   cashCollectedUsd,
   outstandingUsd,
+  outstandingCount,
+  billedCount,
   goalUsd,
   goalPct,
   currentQuarterLabel,
@@ -26,6 +31,8 @@ export function FinancialStrip({
   billedThisQuarterUsd: number;
   cashCollectedUsd: number;
   outstandingUsd: number;
+  outstandingCount: number;
+  billedCount: number;
   goalUsd: number;
   goalPct: number;
   currentQuarterLabel: string;
@@ -37,12 +44,19 @@ export function FinancialStrip({
   const [period, setPeriod] = useState<PeriodKey>("current");
   const clampedPct = Math.max(0, Math.min(100, goalPct));
 
-  const labelCls =
-    "text-[10px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted";
-  const valueCls =
-    "mt-1 font-serif font-extrabold leading-none tracking-[-0.04em] tabular-nums text-court-fg";
-  const interactiveCls =
-    "rounded-lg text-left transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-court-brand/40";
+  const collectedPct =
+    billedThisQuarterUsd > 0
+      ? Math.round((cashCollectedUsd / billedThisQuarterUsd) * 100)
+      : 0;
+  const revenueMeta =
+    billedCount > 0
+      ? `${billedCount} placement${billedCount === 1 ? "" : "s"} · ${collectedPct}% collected`
+      : "No placements yet";
+  const outstandingMeta =
+    outstandingCount > 0
+      ? `${outstandingCount} open invoice${outstandingCount === 1 ? "" : "s"}`
+      : "No open invoices";
+  const remainingUsd = Math.max(0, goalUsd - billedThisQuarterUsd);
 
   return (
     <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
@@ -61,55 +75,30 @@ export function FinancialStrip({
           <option value="ytd">Annual / YTD</option>
         </select>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-5 sm:grid-cols-4">
-        <button
-          type="button"
+      <div className="mt-4 grid grid-cols-1 items-center gap-6 sm:grid-cols-[1fr_1fr_1.6fr] sm:gap-8">
+        <Stat
+          label="Revenue"
+          value={formatCompactUsd(billedThisQuarterUsd)}
+          meta={revenueMeta}
           onClick={() =>
             setDrilldown({
               query: { kind: "billed_revenue" },
               title: "Billed This Quarter",
             })
           }
-          className={interactiveCls}
-        >
-          <div className={labelCls}>Billed</div>
-          <div className={valueCls} style={{ fontSize: "22px" }}>
-            {formatCompactUsd(billedThisQuarterUsd)}
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            setDrilldown({
-              query: { kind: "cash_collected" },
-              title: "Cash Collected",
-            })
-          }
-          className={interactiveCls}
-        >
-          <div className={labelCls}>Collected</div>
-          <div className={valueCls} style={{ fontSize: "22px" }}>
-            {formatCompactUsd(cashCollectedUsd)}
-          </div>
-        </button>
-        <div className="min-w-0">
-          <div className={labelCls}>Outstanding</div>
-          <div className={valueCls} style={{ fontSize: "22px" }}>
-            {formatCompactUsd(outstandingUsd)}
-          </div>
-        </div>
-        <div className="min-w-0">
-          <div className={labelCls}>Goal Progress</div>
-          <div className={valueCls} style={{ fontSize: "22px" }}>
-            {`${Math.round(clampedPct)}% to ${formatGoalUsd(goalUsd)}`}
-          </div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
-            <div
-              className="h-full rounded-full bg-court-brand transition-[width]"
-              style={{ width: `${clampedPct}%` }}
-            />
-          </div>
-        </div>
+        />
+        <Stat
+          label="Outstanding"
+          value={formatCompactUsd(outstandingUsd)}
+          meta={outstandingMeta}
+          dim={outstandingUsd === 0}
+          divider
+        />
+        <GoalStat
+          goalUsd={goalUsd}
+          pct={clampedPct}
+          remainingUsd={remainingUsd}
+        />
       </div>
       {drilldown && (
         <PlacementDrilldownDialog
@@ -120,6 +109,93 @@ export function FinancialStrip({
         />
       )}
     </section>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  meta,
+  dim,
+  divider,
+  onClick,
+}: {
+  label: string;
+  value: string;
+  meta: string;
+  dim?: boolean;
+  divider?: boolean;
+  onClick?: () => void;
+}) {
+  const inner = (
+    <>
+      <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 font-serif text-[32px] font-extrabold leading-none tracking-[-0.02em] tabular-nums",
+          dim ? "text-court-fg-dim" : "text-court-fg",
+        )}
+      >
+        {value}
+      </div>
+      <div className="mt-1.5 text-[11.5px] text-court-fg-dim">{meta}</div>
+    </>
+  );
+  const wrapCls = cn(
+    "flex min-w-0 flex-col",
+    divider && "sm:border-l-2 sm:border-court-border-soft sm:pl-5",
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          wrapCls,
+          "rounded-lg text-left transition hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-court-brand/40",
+        )}
+      >
+        {inner}
+      </button>
+    );
+  }
+  return <div className={wrapCls}>{inner}</div>;
+}
+
+function GoalStat({
+  goalUsd,
+  pct,
+  remainingUsd,
+}: {
+  goalUsd: number;
+  pct: number;
+  remainingUsd: number;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col sm:border-l-2 sm:border-court-border-soft sm:pl-6">
+      <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-brand-dark">
+        Goal Progress · {formatGoalUsd(goalUsd)} Quarter
+      </div>
+      <div className="mt-1 flex items-baseline gap-2.5 font-serif text-[32px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
+        {pct}%
+        <span className="text-[12.5px] font-semibold tracking-normal text-court-fg-muted">
+          · {formatGoalUsd(remainingUsd)} to go
+        </span>
+      </div>
+      <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-court-surface-subtle">
+        <div
+          className="h-full rounded-full transition-[width]"
+          style={{
+            width: `${pct}%`,
+            background:
+              "linear-gradient(90deg, rgb(var(--court-brand) / 0.85), rgb(var(--court-brand)))",
+            boxShadow: "0 0 8px rgb(var(--court-brand) / 0.4)",
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

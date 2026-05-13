@@ -353,6 +353,7 @@ export type InvoiceSummary = {
   overdueCents: number;
   overdueCount: number;
   billedThisQuarterCents: number;
+  billedThisQuarterCount: number;
   collectedThisQuarterCents: number;
   draftCount: number;
 };
@@ -410,6 +411,7 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
     overdueCents: overdue.reduce((s, r) => s + toCents(r.feeAmount), 0),
     overdueCount: overdue.length,
     billedThisQuarterCents: billedQ.reduce((s, r) => s + toCents(r.feeAmount), 0),
+    billedThisQuarterCount: billedQ.length,
     collectedThisQuarterCents: collectedQ.reduce((s, r) => s + toCents(r.feeAmount), 0),
     draftCount,
   };

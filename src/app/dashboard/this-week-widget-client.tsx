@@ -34,30 +34,44 @@ export type DayCell = {
 export type UpNextRow = {
   id: string;
   timeLabel: string;
-  durationMin: number;
+  durationLabel: string;
   type: CalendarEventType;
   title: string;
+  meta: string;
 };
 
 export type LaterRow = {
   id: string;
   dayAbbr: string;
   timeLabel: string;
+  type: CalendarEventType;
   title: string;
+  meta: string;
+};
+
+// Vertical strip down the left edge of each schedule row. Sage for
+// interviews (the recruiter's flagship event type), Tailwind blue for
+// client calls, amber for reminders, neutral fg-dim for anything else.
+const STRIP_BG: Record<CalendarEventType, string> = {
+  interview: "bg-court-brand",
+  client: "bg-blue-700",
+  reminder: "bg-amber-600",
+  other: "bg-court-fg-dim",
 };
 
 const PILL_CLASS: Record<CalendarEventType, string> = {
   interview:
-    "bg-court-brand-tint text-court-brand-dark dark:bg-court-brand-tint dark:text-court-brand-dark",
-  client: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200",
+    "bg-court-brand-tint text-court-brand-dark border-court-brand/35",
+  client:
+    "bg-blue-50 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
   reminder:
-    "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200",
-  other: "bg-court-surface-subtle text-court-fg-muted",
+    "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
+  other: "bg-court-surface-subtle text-court-fg-muted border-court-border",
 };
 
 const PILL_LABEL: Record<CalendarEventType, string> = {
   interview: "Interview",
-  client: "Client Call",
+  client: "Client",
   reminder: "Reminder",
   other: "Event",
 };
@@ -128,48 +142,48 @@ export function ThisWeekWidgetClient({
         </Link>
       </div>
 
-      {/* 5-day strip — chips dispatch openEvent so a click lands in the
-          calendar drawer in edit mode without a navigation. */}
-      <div className="mt-4 grid grid-cols-5">
-        {days.map((day, i) => {
+      {/* 5-day strip — each day is its own bordered tile, events stack
+          INSIDE the tile so nothing clips at the Friday edge or smushes
+          against the Thursday divider. Today gets a sage-tinted tile
+          plus a brand-colored day number so the eye lands on it first. */}
+      <div className="mt-4 grid grid-cols-5 gap-1.5">
+        {days.map((day) => {
           const visible = day.events.slice(0, 2);
           const overflow = day.events.length - visible.length;
           return (
             <div
               key={day.key}
               className={cn(
-                "min-w-0 px-1.5 py-1.5",
-                i > 0 && "border-l border-court-border-soft",
-                day.isToday && "bg-court-brand-tint/40",
+                "flex min-h-[128px] min-w-0 flex-col rounded-xl border px-2 py-2",
+                day.isToday
+                  ? "border-court-brand/45 bg-court-brand-tint/40"
+                  : "border-court-border bg-court-surface-subtle",
               )}
             >
-              <div
-                className={cn(
-                  "flex items-baseline justify-between px-1",
-                  day.isToday && "text-court-brand-dark",
-                )}
-              >
+              <div className="flex items-baseline justify-between gap-1">
                 <span
                   className={cn(
                     "text-[10px] font-extrabold uppercase tracking-[0.12em]",
-                    day.isToday ? "text-court-brand-dark" : "text-court-fg-muted",
+                    day.isToday
+                      ? "text-court-brand-dark"
+                      : "text-court-fg-muted",
                   )}
                 >
                   {day.abbr}
                 </span>
                 <span
                   className={cn(
-                    "font-serif text-sm font-bold tabular-nums",
+                    "font-serif text-base font-bold tabular-nums",
                     day.isToday ? "text-court-brand-dark" : "text-court-fg",
                   )}
                 >
                   {day.dayNum}
                 </span>
               </div>
-              <div className="mt-1.5 flex flex-col gap-1">
+              <div className="mt-1.5 flex min-w-0 flex-1 flex-col gap-[3px]">
                 {visible.length === 0 ? (
-                  <span className="px-1 text-[10px] font-medium text-court-fg-dim">
-                    —
+                  <span className="px-0.5 py-1 text-[10.5px] italic text-court-fg-dim">
+                    No events
                   </span>
                 ) : (
                   visible.map((e) => {
@@ -185,99 +199,94 @@ export function ThisWeekWidgetClient({
                           meta.pillClass,
                         )}
                       >
-                        <div className="truncate text-[10.5px] font-semibold">
-                          {e.title}
-                        </div>
-                        <div className="truncate text-[9.5px] opacity-80">
+                        <div className="truncate text-[9.5px] font-semibold opacity-80">
                           {e.timeLabel}
+                        </div>
+                        <div className="truncate text-[10.5px] font-bold">
+                          {e.title}
                         </div>
                       </button>
                     );
                   })
                 )}
-                {overflow > 0 && (
-                  <div className="truncate rounded-md bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-semibold text-court-fg-muted">
-                    +{overflow} more
-                  </div>
-                )}
               </div>
+              {overflow > 0 && (
+                <div className="mt-auto pt-1 text-[10px] font-semibold text-court-fg-muted">
+                  +{overflow} more
+                </div>
+              )}
+              {day.isToday && overflow <= 0 && (
+                <div className="mt-auto pt-1 text-[10px] font-semibold text-court-brand-dark">
+                  Today
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
-      {/* Up next today */}
+      {/* Up next today — rich row: time + duration block, color strip,
+          name + meta, type chip. Same layout pattern as Later this week
+          so the two sections read as one continuous schedule. */}
       <div className="mt-5">
-        <div className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+        <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
           Up next today
         </div>
         {upNextToday.length === 0 ? (
-          <div className="mt-2 text-[13px] text-court-fg-dim">
-            Nothing else today
+          <div className="mt-2 py-3 text-[13px] text-court-fg-muted">
+            Nothing else today.
           </div>
         ) : (
-          <ul className="mt-2 divide-y divide-court-border-soft">
-            {upNextToday.map((r) => (
-              <li key={r.id}>
-                <button
-                  type="button"
+          <ul className="mt-2 flex flex-col">
+            {upNextToday.map((r, i) => (
+              <li
+                key={r.id}
+                className={cn(
+                  i < upNextToday.length - 1 && "border-b border-court-border-soft",
+                )}
+              >
+                <ScheduleRow
+                  topLabel={r.timeLabel}
+                  subLabel={r.durationLabel}
+                  name={r.title}
+                  meta={r.meta}
+                  type={r.type}
                   onClick={() => openEvent(r.id)}
-                  className="flex w-full items-center gap-3 py-2 text-left transition hover:bg-court-surface-subtle/60 focus:outline-none focus:ring-1 focus:ring-court-brand/40"
-                >
-                  <span className="w-[72px] shrink-0 text-[13px] font-semibold tabular-nums text-court-fg">
-                    {r.timeLabel}
-                  </span>
-                  <span className="w-10 shrink-0 text-[11px] font-medium text-court-fg-muted">
-                    {r.durationMin}m
-                  </span>
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]",
-                      PILL_CLASS[r.type],
-                    )}
-                  >
-                    {PILL_LABEL[r.type]}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-court-fg">
-                    {r.title}
-                  </span>
-                </button>
+                />
               </li>
             ))}
           </ul>
         )}
       </div>
 
-      {/* Later this week — plain rows (no decorative tint or border).
-          Matches the Up Next Today section so the two read as one
-          continuous list. */}
+      {/* Later this week — same rich-row component, time block reads
+          dayAbbr (top) + clock label (bottom) so the eye can scan by
+          weekday in this section. */}
       <div className="mt-4">
-        <div className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+        <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
           Later this week
         </div>
         {laterRows.length === 0 ? (
-          <div className="mt-2 text-[13px] text-court-fg-dim">
-            Nothing else scheduled
+          <div className="mt-2 py-3 text-[13px] text-court-fg-muted">
+            Nothing else scheduled.
           </div>
         ) : (
-          <ul className="mt-2 divide-y divide-court-border-soft">
-            {laterRows.map((r) => (
-              <li key={r.id}>
-                <button
-                  type="button"
+          <ul className="mt-2 flex flex-col">
+            {laterRows.map((r, i) => (
+              <li
+                key={r.id}
+                className={cn(
+                  i < laterRows.length - 1 && "border-b border-court-border-soft",
+                )}
+              >
+                <ScheduleRow
+                  topLabel={r.dayAbbr}
+                  subLabel={r.timeLabel}
+                  name={r.title}
+                  meta={r.meta}
+                  type={r.type}
                   onClick={() => openEvent(r.id)}
-                  className="flex w-full items-center gap-3 py-2 text-left transition hover:bg-court-surface-subtle/60 focus:outline-none focus:ring-1 focus:ring-court-brand/40"
-                >
-                  <span className="w-8 shrink-0 text-xs text-court-fg-muted">
-                    {r.dayAbbr}
-                  </span>
-                  <span className="w-20 shrink-0 text-[13px] font-medium tabular-nums text-court-fg">
-                    {r.timeLabel}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[13px] text-court-fg">
-                    {r.title}
-                  </span>
-                </button>
+                />
               </li>
             ))}
           </ul>
@@ -297,5 +306,64 @@ export function ThisWeekWidgetClient({
         onClose={() => setDrawerOpen(false)}
       />
     </section>
+  );
+}
+
+function ScheduleRow({
+  topLabel,
+  subLabel,
+  name,
+  meta,
+  type,
+  onClick,
+}: {
+  topLabel: string;
+  subLabel: string;
+  name: string;
+  meta: string;
+  type: CalendarEventType;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 py-2.5 text-left transition hover:bg-court-surface-subtle/60 focus:outline-none focus:ring-1 focus:ring-court-brand/40"
+    >
+      <div className="w-[72px] shrink-0">
+        <div className="text-[13px] font-bold tabular-nums text-court-fg">
+          {topLabel}
+        </div>
+        {subLabel ? (
+          <div className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.1em] text-court-fg-muted">
+            {subLabel}
+          </div>
+        ) : null}
+      </div>
+      <span
+        className={cn(
+          "my-1 w-[3px] self-stretch shrink-0 rounded-[2px]",
+          STRIP_BG[type],
+        )}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13.5px] font-semibold text-court-fg">
+          {name}
+        </div>
+        {meta ? (
+          <div className="mt-0.5 truncate text-[11.5px] text-court-fg-muted">
+            {meta}
+          </div>
+        ) : null}
+      </div>
+      <span
+        className={cn(
+          "shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-[0.1em]",
+          PILL_CLASS[type],
+        )}
+      >
+        {PILL_LABEL[type]}
+      </span>
+    </button>
   );
 }

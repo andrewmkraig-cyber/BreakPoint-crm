@@ -97,6 +97,26 @@ function formatNextIn(now: Date, then: Date): string | null {
   return `${diffDays} day${diffDays === 1 ? "" : "s"}`;
 }
 
+function formatDurationLabel(min: number): string {
+  if (min <= 0) return "";
+  if (min < 60) return `${min} MIN`;
+  const hr = Math.floor(min / 60);
+  const m = min % 60;
+  if (m === 0) return `${hr} HR`;
+  return `${hr}H ${m}M`;
+}
+
+// Secondary line under the event title in the Up Next / Later rows.
+// Prefer location (most concrete), then guest list (truncated to two),
+// then the calendar name as a last-resort label.
+function deriveRowMeta(ev: CalendarEvent): string {
+  if (ev.location && ev.location.trim().length > 0) return ev.location.trim();
+  if (ev.guests && ev.guests.length > 0) {
+    return ev.guests.slice(0, 2).join(" · ");
+  }
+  return ev.calendarName ?? "";
+}
+
 export async function ThisWeekWidget({
   orgId,
   selfPerson,
@@ -197,16 +217,20 @@ export async function ThisWeekWidget({
   const upNextToday: UpNextRow[] = todayEvents
     .filter((e) => e.startTime.getTime() > now.getTime())
     .slice(0, 2)
-    .map((e) => ({
-      id: e.id,
-      timeLabel: formatTimeLabel(e.startTime),
-      durationMin: Math.max(
+    .map((e) => {
+      const min = Math.max(
         0,
         Math.round((e.endTime.getTime() - e.startTime.getTime()) / 60_000),
-      ),
-      type: e.type,
-      title: e.title,
-    }));
+      );
+      return {
+        id: e.id,
+        timeLabel: formatTimeLabel(e.startTime),
+        durationLabel: formatDurationLabel(min),
+        type: e.type,
+        title: e.title,
+        meta: deriveRowMeta(e),
+      };
+    });
 
   const todayIdx = days.findIndex((d) => d.isToday);
   const laterEvents = events.filter((e) => {
@@ -217,7 +241,9 @@ export async function ThisWeekWidget({
     id: e.id,
     dayAbbr: formatWeekdayShort(e.startTime),
     timeLabel: formatTimeLabel(e.startTime),
+    type: e.type,
     title: e.title,
+    meta: deriveRowMeta(e),
   }));
   const laterRows = laterRowsAll.slice(0, 4);
   const laterOverflow = Math.max(0, laterRowsAll.length - laterRows.length);
