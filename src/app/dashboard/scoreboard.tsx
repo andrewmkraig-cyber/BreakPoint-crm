@@ -145,8 +145,8 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
   const top = stages[0].n;
   const ratios = [
     {
-      label: "Submitted → Placed",
-      num: funnel.placed,
+      label: "Submitted → Interview",
+      num: funnel.interview,
       den: funnel.submitted,
     },
     {
