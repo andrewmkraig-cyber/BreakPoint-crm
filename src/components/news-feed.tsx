@@ -223,7 +223,7 @@ export function NewsFeed() {
             {todayLabel}
           </p>
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-1.5">
+        <div className="flex flex-nowrap items-center justify-end gap-1.5">
           <ChessPuzzle />
           <WordOfDayCard />
           <FunFact />
