@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-14 · Ace 46.0
+Last updated: 2026-05-14 · Ace 46.1
 
 ## Current Status
-Current Version: Ace 46.0
+Current Version: Ace 46.1
 Last Shipped: 2026-05-14
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 46.1 (2026-05-14)
+- `src/lib/bd/apollo-enroll.ts` — `enrollCompaniesInApollo(runId, orgId)`. Reads `BDRun.discoveredPayload`, sums today's `enrolledCount` across all org BDRuns since ET midnight, caps at 75 contacts/day. Stub only — logs `[Apollo stub] Would enroll <company> into sequence ${APOLLO_SEQUENCE_ID}` (with title + URL) per company. Updates BDRun status to `COMPLETE` with `enrolledCount`, writes one `BDActivity { kind: ENROLL }` row. Returns `{ enrolled, capped }`.
+- `approveBDRun` in `src/app/bd/launch/bd-run-actions.ts` now sets `APPROVED`, then calls `enrollCompaniesInApollo`. Result includes `enrolled`/`capped`.
+- `src/app/api/webhooks/apollo/route.ts` — POST handler, no signature auth. Maps `email_opened/email_replied/email_bounced/unsubscribed` to BDActivityKind `OPEN/REPLY/BOUNCE/UNSUB`, writes one BDActivity row per event with `email`/`sequenceId`/`eventType` in metadata. Always returns 200, never throws.
+- vercel.json crons untouched (`news-feed @ 11:00 UTC`, `bd-discovery @ 10:00 UTC`).
 
 ## Known Issues Carrying Into Ace 47
 None carried forward.

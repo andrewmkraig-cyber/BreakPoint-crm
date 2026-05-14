@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { enrollCompaniesInApollo } from "@/lib/bd/apollo-enroll";
 
 export type PendingBDRun = {
   id: string;
@@ -42,7 +43,7 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
 }
 
 type ApproveResult =
-  | { success: true; runId: string }
+  | { success: true; runId: string; enrolled: number; capped: boolean }
   | { success: false; error: string };
 
 export async function approveBDRun(runId: string): Promise<ApproveResult> {
@@ -61,8 +62,9 @@ export async function approveBDRun(runId: string): Promise<ApproveResult> {
     where: { id: runId },
     data: { status: "APPROVED", approvedAt: new Date() },
   });
+  const result = await enrollCompaniesInApollo(runId, org.id);
   revalidatePath("/bd/launch");
-  return { success: true, runId };
+  return { success: true, runId, enrolled: result.enrolled, capped: result.capped };
 }
 
 type DismissResult =
