@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { CollapsibleSection } from "@/components/settings/collapsible-section";
 import { BdInPageNav } from "./in-page-nav";
+import { BdEngineSection } from "./bd-engine-section";
 import { VerticalsSection, type SavedSearchRow, type VerticalRow } from "./verticals-section";
 import { ApolloSection, type SequencePreview } from "./apollo-section";
 import { DomainsSection, type DomainRow } from "./domains-section";
@@ -132,6 +133,13 @@ export default async function BdSettingsPage() {
   return (
     <div className="flex flex-col gap-5">
       <BdInPageNav />
+
+      <BdEngineSection
+        config={{
+          engineActive: config?.engineActive ?? false,
+          globalDailyCap: config?.globalDailyCap ?? 80,
+        }}
+      />
 
       <CollapsibleSection
         id="verticals"

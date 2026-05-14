@@ -8,6 +8,7 @@ import { SettingsTocLink } from "@/components/settings/toc-link";
 // here as a horizontal pill row. SettingsTocLink takes care of both
 // scrolling to the section and auto-expanding it if collapsed.
 const TOC = [
+  { id: "bd-engine", label: "BD Engine" },
   { id: "verticals", label: "Verticals & Searches" },
   { id: "apollo", label: "Apollo" },
   { id: "sending-domains", label: "Sending Domains" },

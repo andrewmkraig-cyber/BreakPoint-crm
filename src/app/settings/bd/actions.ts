@@ -248,3 +248,29 @@ export async function updateBdOrgConfig(patch: BdOrgConfigPatch): Promise<void> 
   });
   revalidateAll();
 }
+
+// Master BD-engine controls surfaced at the top of /settings/bd. The
+// cron route + TheirStack webhook both gate on engineActive, so this
+// is the single switch that takes the engine offline. globalDailyCap
+// shares the same column the Daily Limits section edits — both
+// editors are intentionally live so the recruiter can adjust from
+// either spot.
+export async function updateBDSettings(patch: {
+  engineActive?: boolean;
+  globalDailyCap?: number;
+}): Promise<void> {
+  const org = await getCurrentOrg();
+  const data: { engineActive?: boolean; globalDailyCap?: number } = {};
+  if (patch.engineActive !== undefined) data.engineActive = patch.engineActive;
+  if (patch.globalDailyCap !== undefined) {
+    const n = Math.floor(patch.globalDailyCap);
+    if (Number.isNaN(n)) throw new Error("Daily cap must be a number");
+    data.globalDailyCap = Math.min(200, Math.max(1, n));
+  }
+  await prisma.bdOrgConfig.upsert({
+    where: { organizationId: org.id },
+    create: { organizationId: org.id, ...data },
+    update: data,
+  });
+  revalidateAll();
+}

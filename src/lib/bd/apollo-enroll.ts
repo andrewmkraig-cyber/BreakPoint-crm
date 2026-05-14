@@ -5,7 +5,25 @@ import { prisma } from "@/lib/prisma";
 // runs in UTC, so a fixed offset would silently misalign during DST —
 // we look up the live offset on each call.
 const ZONE = "America/New_York";
-const DAILY_ENROLL_CAP = 75;
+
+// Decision-makers we want Apollo to surface at each target company.
+// Order matters loosely (HR-side first because that's who fields BD
+// pitches in the verticals we work), but Apollo returns up to per_page
+// across all of them without rank-weighting, so this is essentially
+// the union we accept.
+const TARGET_TITLES = [
+  "Head of People",
+  "CHRO",
+  "VP HR",
+  "Head of Talent Acquisition",
+  "TA Director",
+  "CEO",
+  "Founder",
+  "Managing Partner",
+  "Owner",
+];
+
+const APOLLO_BASE = "https://api.apollo.io";
 
 function easternMidnightUtc(now: Date = new Date()): Date {
   const ymd = new Intl.DateTimeFormat("en-CA", {
@@ -60,6 +78,91 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
   return out;
 }
 
+type ApolloPerson = {
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+  email?: string;
+  title?: string;
+  organization_name?: string;
+};
+
+async function apolloSearchPeople(
+  apiKey: string,
+  companyName: string,
+): Promise<ApolloPerson[]> {
+  try {
+    const res = await fetch(`${APOLLO_BASE}/api/v1/mixed_people/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        q_organization_name: companyName,
+        person_titles: TARGET_TITLES,
+        per_page: 4,
+      }),
+    });
+    if (!res.ok) {
+      console.warn(
+        `[Apollo] people search failed for "${companyName}": ${res.status} ${res.statusText}`,
+      );
+      return [];
+    }
+    const data = (await res.json()) as { people?: ApolloPerson[]; contacts?: ApolloPerson[] };
+    const people = data.people ?? data.contacts ?? [];
+    return Array.isArray(people) ? people : [];
+  } catch (err) {
+    console.warn(
+      `[Apollo] people search threw for "${companyName}":`,
+      err instanceof Error ? err.message : err,
+    );
+    return [];
+  }
+}
+
+type EnrollPayload = {
+  first_name?: string;
+  last_name?: string;
+  email?: string;
+  title?: string;
+  organization_name: string;
+  job_title: string;
+  job_posting_url?: string;
+  candidate_summary?: string;
+};
+
+async function apolloEnrollContact(
+  apiKey: string,
+  sequenceId: string,
+  payload: EnrollPayload,
+): Promise<boolean> {
+  try {
+    const res = await fetch(`${APOLLO_BASE}/api/v1/contacts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        sequence_id: sequenceId,
+        ...payload,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      console.warn(
+        `[Apollo] enroll contact failed (${payload.organization_name}/${payload.first_name ?? "—"} ${payload.last_name ?? ""}): ${res.status} ${res.statusText} ${text.slice(0, 200)}`,
+      );
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn(
+      `[Apollo] enroll contact threw:`,
+      err instanceof Error ? err.message : err,
+    );
+    return false;
+  }
+}
+
 export type EnrollResult = { enrolled: number; capped: boolean };
 
 export async function enrollCompaniesInApollo(
@@ -76,6 +179,12 @@ export async function enrollCompaniesInApollo(
 
   const companies = extractDiscovered(run.discoveredPayload);
 
+  const orgConfig = await prisma.bdOrgConfig.findUnique({
+    where: { organizationId: orgId },
+    select: { globalDailyCap: true },
+  });
+  const dailyCap = orgConfig?.globalDailyCap ?? 80;
+
   const dayStart = easternMidnightUtc();
   const todaysRuns = await prisma.bDRun.findMany({
     where: {
@@ -85,7 +194,7 @@ export async function enrollCompaniesInApollo(
     select: { enrolledCount: true },
   });
   const enrolledToday = todaysRuns.reduce((sum, r) => sum + (r.enrolledCount ?? 0), 0);
-  const remaining = DAILY_ENROLL_CAP - enrolledToday;
+  let remaining = dailyCap - enrolledToday;
 
   if (remaining <= 0) {
     await prisma.bDRun.update({
@@ -93,46 +202,100 @@ export async function enrollCompaniesInApollo(
       data: { status: "COMPLETE", completedAt: new Date() },
     });
     console.log(
-      `[Apollo stub] runId=${run.id} skipped — daily cap (${DAILY_ENROLL_CAP}) already reached (${enrolledToday} enrolled today)`,
+      `[Apollo] runId=${run.id} skipped — daily cap (${dailyCap}) already reached (${enrolledToday} enrolled today)`,
     );
     return { enrolled: 0, capped: true };
   }
 
-  const sequenceId = process.env.APOLLO_SEQUENCE_ID ?? "(APOLLO_SEQUENCE_ID unset)";
-  const toEnroll = companies.slice(0, remaining);
-
-  for (const c of toEnroll) {
-    console.log(
-      `[Apollo stub] Would enroll ${c.companyName} into sequence ${sequenceId} — title="${c.jobTitle}" url="${c.jobUrl ?? "(none)"}"`,
+  const apiKey = process.env.APOLLO_API_KEY;
+  const sequenceId = process.env.APOLLO_SEQUENCE_ID;
+  if (!apiKey || !sequenceId) {
+    console.warn(
+      `[Apollo] runId=${run.id} cannot enroll — APOLLO_API_KEY or APOLLO_SEQUENCE_ID unset`,
     );
+    await prisma.bDRun.update({
+      where: { id: run.id },
+      data: { status: "COMPLETE", completedAt: new Date() },
+    });
+    return { enrolled: 0, capped: false };
   }
-  console.log(
-    `[Apollo stub] runId=${run.id} would enroll ${toEnroll.length} companies into sequence ${sequenceId} (remaining capacity ${remaining}, ${enrolledToday} already enrolled today)`,
-  );
+
+  let enrolledThisRun = 0;
+
+  for (const c of companies) {
+    if (remaining <= 0) break;
+
+    const people = await apolloSearchPeople(apiKey, c.companyName);
+    const candidates = people.slice(0, Math.min(4, remaining));
+
+    if (candidates.length > 0) {
+      for (const p of candidates) {
+        if (remaining <= 0) break;
+        const ok = await apolloEnrollContact(apiKey, sequenceId, {
+          first_name: p.first_name ?? undefined,
+          last_name: p.last_name ?? undefined,
+          email: p.email ?? undefined,
+          title: p.title ?? undefined,
+          organization_name: p.organization_name ?? c.companyName,
+          job_title: c.jobTitle,
+          job_posting_url: c.jobUrl,
+          candidate_summary: "",
+        });
+        if (ok) {
+          enrolledThisRun += 1;
+          remaining -= 1;
+          const displayName =
+            [p.first_name, p.last_name].filter(Boolean).join(" ") ||
+            p.name ||
+            "(unnamed)";
+          console.log(
+            `[Apollo] enrolled ${displayName} — title="${p.title ?? "(none)"}" company="${c.companyName}"`,
+          );
+        }
+      }
+    } else {
+      // Apollo found no decision-makers — enroll a company-level
+      // placeholder so the run still records the BD touch. Apollo's
+      // sequence will treat the org_name + title as the address.
+      const ok = await apolloEnrollContact(apiKey, sequenceId, {
+        organization_name: c.companyName,
+        job_title: c.jobTitle,
+        job_posting_url: c.jobUrl,
+        candidate_summary: "",
+      });
+      if (ok) {
+        enrolledThisRun += 1;
+        remaining -= 1;
+        console.log(
+          `[Apollo] enrolled company-only placeholder — company="${c.companyName}" job="${c.jobTitle}"`,
+        );
+      }
+    }
+  }
 
   await prisma.bDRun.update({
     where: { id: run.id },
     data: {
       status: "COMPLETE",
-      enrolledCount: toEnroll.length,
+      enrolledCount: enrolledThisRun,
       completedAt: new Date(),
     },
   });
 
-  if (toEnroll.length > 0) {
+  if (enrolledThisRun > 0) {
     await prisma.bDActivity.create({
       data: {
         organizationId: orgId,
         bdRunId: run.id,
         kind: "ENROLL",
         metadata: {
-          contacts: toEnroll.length,
+          contacts: enrolledThisRun,
           sequenceId,
-          stub: true,
         },
       },
     });
   }
 
-  return { enrolled: toEnroll.length, capped: false };
+  const capped = remaining <= 0 && enrolledThisRun + enrolledToday >= dailyCap;
+  return { enrolled: enrolledThisRun, capped };
 }
