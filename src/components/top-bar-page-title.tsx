@@ -31,6 +31,7 @@ type ActionSpec =
   | { kind: "compose-mail"; label: string }
   | { kind: "phone-dial"; label: string }
   | { kind: "new-invoice"; label: string }
+  | { kind: "new-expense"; label: string }
   | { kind: "calendar-new-event"; label: string };
 
 type Spec = { group?: string; title: TitleSpec; action?: ActionSpec };
@@ -154,7 +155,9 @@ function resolveBaseSpec(
       action:
         tab === "invoices"
           ? { kind: "new-invoice", label: "New Invoice" }
-          : undefined,
+          : tab === "expenses"
+            ? { kind: "new-expense", label: "New expense" }
+            : undefined,
     };
   }
   if (/^\/invoices\/[^/]+/.test(pathname)) {
@@ -284,10 +287,32 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "new-invoice") {
     return <NewInvoiceTopBarButton label={action.label} />;
   }
+  if (action.kind === "new-expense") {
+    return <NewExpenseTopBarButton label={action.label} />;
+  }
   if (action.kind === "calendar-new-event") {
     return <CalendarNewEventButton label={action.label} />;
   }
   return null;
+}
+
+// The expense form lives inside the Expenses tab (ExpensesSection) and
+// listens for this event to expand itself. Same window-event bridge
+// pattern as CalendarNewEventButton — the TopBar can't import page-
+// level state, so we cross the boundary with a custom event.
+function NewExpenseTopBarButton({ label }: { label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        window.dispatchEvent(new CustomEvent("ace:expense:new"))
+      }
+      className={ACTION_BUTTON_CLASS}
+    >
+      <Plus className="h-3 w-3" />
+      {label}
+    </button>
+  );
 }
 
 // Calendar page owns its own create-drawer state. The TopBar lives in

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { Plus, X } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { X } from "lucide-react";
 
 import { createToolExpense } from "@/app/dashboard/expense-actions";
 
@@ -20,6 +20,14 @@ export function ExpenseAddForm() {
   const [paidCount, setPaidCount] = useState("1");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  // TopBar action "+ New expense" dispatches this event. The form mounts
+  // once on the Expenses tab and opens itself when the topbar fires.
+  useEffect(() => {
+    const handler = () => setOpen(true);
+    window.addEventListener("ace:expense:new", handler);
+    return () => window.removeEventListener("ace:expense:new", handler);
+  }, []);
 
   function reset() {
     setName("");
@@ -58,18 +66,7 @@ export function ExpenseAddForm() {
     });
   }
 
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3 py-1 text-xs font-semibold text-court-fg-muted transition-colors hover:bg-court-surface-subtle hover:text-court-fg"
-      >
-        <Plus className="h-3 w-3" />
-        Add expense
-      </button>
-    );
-  }
+  if (!open) return null;
 
   return (
     <form

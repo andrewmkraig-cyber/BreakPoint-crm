@@ -89,11 +89,12 @@ const SECTION_PREVIEW = 10;
 // viewports instead of overflowing into the next column.
 const RECURRING_GRID =
   "grid grid-cols-[minmax(0,2fr)_minmax(70px,0.9fr)_minmax(80px,1fr)_minmax(80px,0.7fr)_56px]";
-// Date drops out below lg (1024px) so Tool + Amount + Notes still
-// breathe on laptop-tier card widths. Header + each row mirror the
-// hide-and-restore pattern via hidden lg:block on the Date cell.
+// Tool gets the bulk of the width and absorbs notes as a subline so
+// the description is never truncated to a single letter. Amount /
+// Date / Status pack to the right. Date drops out below lg (1024px)
+// so the laptop-tier card width still breathes.
 const ONE_TIME_GRID =
-  "grid grid-cols-[minmax(0,2.2fr)_minmax(80px,0.8fr)_minmax(0,1.3fr)_56px] lg:grid-cols-[minmax(0,2.2fr)_minmax(80px,0.8fr)_minmax(90px,0.9fr)_minmax(0,1.3fr)_56px]";
+  "grid grid-cols-[minmax(0,3fr)_minmax(80px,0.8fr)_minmax(80px,0.7fr)_56px] lg:grid-cols-[minmax(0,3fr)_minmax(80px,0.8fr)_minmax(90px,0.8fr)_minmax(80px,0.7fr)_56px]";
 const MONEY_IN_GRID = "grid grid-cols-[minmax(0,1.6fr)_1fr_1fr]";
 
 function MatchedPill() {
@@ -362,12 +363,12 @@ function OneTimeSection({
       ) : (
         <>
           <div
-            className={`mt-2 ${ONE_TIME_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
+            className={`mt-2 ${ONE_TIME_GRID} gap-x-4 gap-y-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
           >
             <span>Tool</span>
             <span className="text-right">Amount</span>
             <span className="hidden text-right lg:block">Date</span>
-            <span>Notes</span>
+            <span className="text-right">Status</span>
             <span />
           </div>
           <ul className="divide-y divide-court-border-soft">
@@ -418,19 +419,26 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
   }
 
   return (
-    <li className={`${ONE_TIME_GRID} items-center gap-2 px-1 py-2 text-sm`}>
+    <li className={`${ONE_TIME_GRID} items-center gap-x-4 gap-y-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span
-            className="min-w-0 truncate font-medium text-court-fg"
+        <div className="min-w-0 flex-1">
+          <div
+            className="truncate font-medium text-court-fg"
             title={row.toolName}
           >
             {row.toolName}
-          </span>
-          {row.matched ? <MatchedPill /> : null}
+          </div>
+          {row.notes ? (
+            <div
+              className="truncate text-[11px] text-court-fg-muted"
+              title={row.notes}
+            >
+              {row.notes}
+            </div>
+          ) : null}
         </div>
       </div>
       <span className="text-right font-semibold tabular-nums text-court-fg">
@@ -439,11 +447,8 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
       <span className="hidden text-right tabular-nums text-court-fg-muted lg:block">
         {formatDate(row.date)}
       </span>
-      <span
-        className="truncate text-xs text-court-fg-muted"
-        title={row.notes ?? ""}
-      >
-        {row.notes ?? ""}
+      <span className="flex items-center justify-end">
+        {row.matched ? <MatchedPill /> : null}
       </span>
       <span className="flex items-center justify-end">
         {row.toolExpenseId && !row.matched ? (

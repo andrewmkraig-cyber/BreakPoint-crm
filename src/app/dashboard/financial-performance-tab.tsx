@@ -1354,6 +1354,7 @@ function ExpensesSection({
 }) {
   return (
     <section className="flex flex-col gap-5">
+      <ExpenseAddForm />
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <SubscriptionsCard
           recurringMonthly={recurringMonthly}
@@ -1455,9 +1456,6 @@ function SubscriptionsCard({
         </span>
       </div>
 
-      <div className="mt-3">
-        <ExpenseAddForm />
-      </div>
     </div>
   );
 }
