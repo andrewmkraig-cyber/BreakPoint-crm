@@ -12,6 +12,7 @@ import { useClaudePanel } from "@/lib/claude-panel-context";
 import { useYouTubePanel } from "@/components/youtube-panel/YouTubePanelProvider";
 import { useSpotifyPanel } from "@/components/spotify-panel/SpotifyPanelProvider";
 import { WeatherWidget } from "@/components/weather-widget";
+import { CalendarPopoverButton } from "@/components/calendar-popover-button";
 
 export function TopBar() {
   const { data: session } = useSession();
@@ -127,6 +128,7 @@ export function TopBar() {
           <Music className="h-4 w-4" />
         </button>
         <WeatherWidget />
+        <CalendarPopoverButton />
         <TopBarProfileCard name={user?.name ?? null} imageUrl={user?.image ?? null} />
       </div>
     </header>

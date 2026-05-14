@@ -101,7 +101,7 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
 function ScoreboardKpiTile({ label, value, sub }: { label: string; value: string; sub: string }) {
   const isEmpty = value === "—";
   return (
-    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]">
+    <div className="flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]">
       <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">{label}</p>
       <div
         className={
