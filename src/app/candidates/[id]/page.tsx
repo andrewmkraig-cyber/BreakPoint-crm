@@ -41,13 +41,13 @@ import type {
 } from "@/app/candidates/[id]/placement-flows";
 import { PlacementActionsIsland } from "@/app/candidates/[id]/placement-actions-island";
 import { CandidateProfileBoundary } from "@/app/candidates/[id]/candidate-profile-boundary";
+import { TabStrip } from "@/components/ui/tab-strip";
 import { DeleteCandidateButton } from "@/app/candidates/[id]/delete-candidate-button";
 import { listAceTeam } from "@/lib/ace-team";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getAppPreferences } from "@/lib/preferences";
 import AiWorkspace from "@/components/AiWorkspace";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -769,33 +769,16 @@ const ADD_NOTE_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface";
 
 function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: number }) {
-  // Segmented-control pill row. Active tab is a lifted white pill inside
-  // a muted track so it stands out next to the small "PIPELINE · 0" label
-  // that previously dominated the row visually. Inactive tabs are muted
-  // text only — hover lightens to fg.
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      <UnderlineTabLink label="Profile" href={`/candidates/${candidateId}`} active={tab === "profile"} />
-      <UnderlineTabLink label="Game Plan" href={`/candidates/${candidateId}?tab=game-plan`} active={tab === "game-plan"} />
-      <UnderlineTabLink label="Notes" href={`/candidates/${candidateId}?tab=notes`} active={tab === "notes"} />
-    </div>
-  );
-}
-
-function UnderlineTabLink({ label, href, active }: { label: string; href: string; active: boolean }) {
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "rounded-md px-3.5 py-1.5 text-sm font-semibold transition-colors",
-        active
-          ? "bg-court-accent-tint text-court-accent-dark ring-1 ring-court-accent/40"
-          : "text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
-      )}
-    >
-      {label}
-    </Link>
+    <TabStrip<CandidateTab>
+      activeId={tab}
+      ariaLabel="Candidate profile sections"
+      items={[
+        { id: "profile", label: "Profile", href: `/candidates/${candidateId}` },
+        { id: "game-plan", label: "Game Plan", href: `/candidates/${candidateId}?tab=game-plan` },
+        { id: "notes", label: "Notes", href: `/candidates/${candidateId}?tab=notes` },
+      ]}
+    />
   );
 }
 

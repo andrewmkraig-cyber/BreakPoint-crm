@@ -27,6 +27,8 @@ import {
   dashboardPeriodRange,
   type DashboardPeriod,
 } from "@/app/dashboard/period-tabs-shared";
+import { getPnlData, PnlCard, type PnlData } from "@/app/dashboard/pnl-card";
+import { QUARTERLY_REVENUE_GOAL_USD } from "@/app/dashboard/goal-pacing";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -53,8 +55,6 @@ const MONTH_FULL = [
 // expenses beyond software tools — payroll, contractor pay, overhead.
 // Until then we don't have the inputs to compute it honestly.
 const NET_MARGIN_PLACEHOLDER_PCT = 0;
-const QUARTERLY_REVENUE_GOAL_USD = 125_000;
-const ANNUAL_REVENUE_GOAL_USD = 300_000;
 
 // Placeholder offsets for contribution + net margin until Mercury
 // categorizes variable costs (per-placement spend) and ops (software,
@@ -131,6 +131,7 @@ export async function FinancialPerformanceTab({
     mercuryApiKey,
     mercuryTxnsAll,
     manualExpenses,
+    pnlData,
   ] = await Promise.all([
     prisma.invoice.findMany({
       where: {
@@ -183,6 +184,7 @@ export async function FinancialPerformanceTab({
       where: { organizationId: org.id },
       orderBy: { createdAt: "desc" },
     }),
+    getPnlData(org.id, now),
   ]);
 
   const revenueUsd = revenueInvoices.reduce(
@@ -775,44 +777,6 @@ export async function FinancialPerformanceTab({
       : null;
 
   // ---- Profitability section data ----
-  // ET-explicit day-of-quarter / day-of-year counters. Vercel runs in
-  // UTC; without explicit ET parts the day counter would tick over at
-  // 8pm ET in the recruiter's view.
-  const ET_DAY_MS = 86_400_000;
-  const etParts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    year: "numeric",
-    month: "numeric",
-    day: "numeric",
-  }).formatToParts(now);
-  const etGet = (t: string) =>
-    Number(etParts.find((p) => p.type === t)?.value ?? 0);
-  const etYear = etGet("year");
-  const etMonth = etGet("month");
-  const etDay = etGet("day");
-  const etQStartMonth1 = Math.floor((etMonth - 1) / 3) * 3 + 1;
-  const etDayOfQuarter =
-    Math.floor(
-      (Date.UTC(etYear, etMonth - 1, etDay) -
-        Date.UTC(etYear, etQStartMonth1 - 1, 1)) /
-        ET_DAY_MS,
-    ) + 1;
-  const etDaysInQuarter = Math.round(
-    (Date.UTC(etYear, etQStartMonth1 + 2, 1) -
-      Date.UTC(etYear, etQStartMonth1 - 1, 1)) /
-      ET_DAY_MS,
-  );
-  const etDayOfYear =
-    Math.floor(
-      (Date.UTC(etYear, etMonth - 1, etDay) - Date.UTC(etYear, 0, 1)) /
-        ET_DAY_MS,
-    ) + 1;
-  const etDaysInYear = Math.round(
-    (Date.UTC(etYear + 1, 0, 1) - Date.UTC(etYear, 0, 1)) / ET_DAY_MS,
-  );
-  const etPctOfQuarter = (etDayOfQuarter / etDaysInQuarter) * 100;
-  const etPctOfYear = (etDayOfYear / etDaysInYear) * 100;
-
   // Margins reuse the KPI strip totals. Contribution and net carry the
   // placeholder drags until Mercury feeds variable + ops costs.
   const grossMarginProfPct =
@@ -827,26 +791,6 @@ export async function FinancialPerformanceTab({
       : null;
 
   const fmtPct1 = (n: number | null) => (n == null ? "—" : `${n.toFixed(1)}%`);
-  const fmtPctInt = (n: number) => `${Math.round(n)}%`;
-
-  // Pacing math — points = % to goal minus % of period elapsed.
-  // Positive means ahead of a flat-pace plan; negative means behind.
-  const qPctToGoal = (quarterRevenueUsd / QUARTERLY_REVENUE_GOAL_USD) * 100;
-  const qToGoUsd = Math.max(0, QUARTERLY_REVENUE_GOAL_USD - quarterRevenueUsd);
-  const qPacingPts = qPctToGoal - etPctOfQuarter;
-  const qPacingLabel = (() => {
-    const rounded = Math.round(Math.abs(qPacingPts));
-    if (rounded === 0) return "on pace";
-    return qPacingPts >= 0 ? `+${rounded} pts ahead` : `-${rounded} pts behind`;
-  })();
-
-  const annualPctToGoal = (revenueUsd / ANNUAL_REVENUE_GOAL_USD) * 100;
-  const annualToGoUsd = Math.max(0, ANNUAL_REVENUE_GOAL_USD - revenueUsd);
-  const annualForecastUsd =
-    etDayOfYear > 0 ? (revenueUsd / etDayOfYear) * etDaysInYear : 0;
-
-  const avgFeeUsd =
-    totalPlacementsYtd > 0 ? revenueUsd / totalPlacementsYtd : 0;
 
   const marginsCardData: MarginsCardData = {
     grossLabel: fmtPct1(grossMarginProfPct),
@@ -854,35 +798,6 @@ export async function FinancialPerformanceTab({
     netLabel: fmtPct1(netMarginProfPct),
     revenueFormatted: formatUsd(revenueUsd),
     expensesFormatted: formatUsd(expensesUsd),
-  };
-
-  const goalPacingData: GoalPacingCardData = {
-    quarter: {
-      eyebrow: `${quarterLabel.toUpperCase()} · QUARTERLY GOAL`,
-      revenueFormatted: formatUsd(quarterRevenueUsd),
-      goalFormatted: formatUsd(QUARTERLY_REVENUE_GOAL_USD),
-      pctToGoal: qPctToGoal,
-      pctToGoalLabel: fmtPctInt(qPctToGoal),
-      dayOfQuarter: etDayOfQuarter,
-      daysInQuarter: etDaysInQuarter,
-      pctOfQuarterLabel: fmtPctInt(etPctOfQuarter),
-      toGoFormatted: formatUsd(qToGoUsd),
-      pacingLabel: qPacingLabel,
-    },
-    annual: {
-      eyebrow: `FY ${etYear} · ANNUAL GOAL`,
-      revenueFormatted: formatUsd(revenueUsd),
-      goalFormatted: formatUsd(ANNUAL_REVENUE_GOAL_USD),
-      pctToGoal: annualPctToGoal,
-      pctToGoalLabel: fmtPctInt(annualPctToGoal),
-      dayOfYear: etDayOfYear,
-      daysInYear: etDaysInYear,
-      pctOfYearLabel: fmtPctInt(etPctOfYear),
-      toGoFormatted: formatUsd(annualToGoUsd),
-      forecastFormatted: formatUsd(annualForecastUsd),
-    },
-    avgFeeFormatted: formatUsd(avgFeeUsd),
-    placementsYtd: totalPlacementsYtd,
   };
 
   const showRevenueProfitability =
@@ -962,10 +877,7 @@ export async function FinancialPerformanceTab({
       )}
 
       {showRevenueProfitability && (
-        <ProfitabilitySection
-          margins={marginsCardData}
-          goalPacing={goalPacingData}
-        />
+        <ProfitabilitySection margins={marginsCardData} pnl={pnlData} />
       )}
     </div>
   );
@@ -1548,45 +1460,12 @@ type MarginsCardData = {
   expensesFormatted: string;
 };
 
-type QuarterPacingData = {
-  eyebrow: string;
-  revenueFormatted: string;
-  goalFormatted: string;
-  pctToGoal: number;
-  pctToGoalLabel: string;
-  dayOfQuarter: number;
-  daysInQuarter: number;
-  pctOfQuarterLabel: string;
-  toGoFormatted: string;
-  pacingLabel: string;
-};
-
-type AnnualPacingData = {
-  eyebrow: string;
-  revenueFormatted: string;
-  goalFormatted: string;
-  pctToGoal: number;
-  pctToGoalLabel: string;
-  dayOfYear: number;
-  daysInYear: number;
-  pctOfYearLabel: string;
-  toGoFormatted: string;
-  forecastFormatted: string;
-};
-
-type GoalPacingCardData = {
-  quarter: QuarterPacingData;
-  annual: AnnualPacingData;
-  avgFeeFormatted: string;
-  placementsYtd: number;
-};
-
 function ProfitabilitySection({
   margins,
-  goalPacing,
+  pnl,
 }: {
   margins: MarginsCardData;
-  goalPacing: GoalPacingCardData;
+  pnl: PnlData;
 }) {
   return (
     <section className="flex flex-col gap-4">
@@ -1598,7 +1477,7 @@ function ProfitabilitySection({
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <MarginsCard data={margins} />
-        <GoalPacingCard data={goalPacing} />
+        <PnlCard data={pnl} />
       </div>
     </section>
   );
@@ -1663,94 +1542,6 @@ function MarginRow({
         {value}
       </p>
     </li>
-  );
-}
-
-function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
-  return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
-          Goal pacing
-        </p>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
-          Where the desk sits vs plan
-        </p>
-      </div>
-
-      <PacingBlock
-        eyebrow={data.quarter.eyebrow}
-        revenueFormatted={data.quarter.revenueFormatted}
-        goalFormatted={data.quarter.goalFormatted}
-        pctToGoal={data.quarter.pctToGoal}
-        pctToGoalLabel={data.quarter.pctToGoalLabel}
-        leftFooter={`Day ${data.quarter.dayOfQuarter} of ${data.quarter.daysInQuarter} (${data.quarter.pctOfQuarterLabel} of quarter)`}
-        rightFooter={`${data.quarter.toGoFormatted} to go · pacing ${data.quarter.pacingLabel}`}
-        className="mt-4"
-      />
-
-      <div className="my-4 h-px bg-court-border-soft" />
-
-      <PacingBlock
-        eyebrow={data.annual.eyebrow}
-        revenueFormatted={data.annual.revenueFormatted}
-        goalFormatted={data.annual.goalFormatted}
-        pctToGoal={data.annual.pctToGoal}
-        pctToGoalLabel={data.annual.pctToGoalLabel}
-        leftFooter={`Day ${data.annual.dayOfYear} of ${data.annual.daysInYear} (${data.annual.pctOfYearLabel} of year)`}
-        rightFooter={`${data.annual.toGoFormatted} to clear · forecast ${data.annual.forecastFormatted} EOY`}
-      />
-
-      <p className="mt-4 border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">
-        Avg fee {data.avgFeeFormatted} · {data.placementsYtd} placement
-        {data.placementsYtd === 1 ? "" : "s"} YTD
-      </p>
-    </div>
-  );
-}
-
-function PacingBlock({
-  eyebrow,
-  revenueFormatted,
-  goalFormatted,
-  pctToGoal,
-  pctToGoalLabel,
-  leftFooter,
-  rightFooter,
-  className,
-}: {
-  eyebrow: string;
-  revenueFormatted: string;
-  goalFormatted: string;
-  pctToGoal: number;
-  pctToGoalLabel: string;
-  leftFooter: string;
-  rightFooter: string;
-  className?: string;
-}) {
-  const barWidth = Math.max(0, Math.min(100, pctToGoal));
-  return (
-    <div className={className}>
-      <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
-        {eyebrow}
-      </p>
-      <p className="mt-2 font-serif text-[26px] font-semibold leading-none tabular-nums text-court-fg">
-        {revenueFormatted}
-      </p>
-      <p className="mt-1 text-xs text-court-fg-muted">
-        of {goalFormatted} · {pctToGoalLabel} to goal
-      </p>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-court-surface-subtle">
-        <div
-          className="h-full rounded-full bg-court-brand"
-          style={{ width: `${barWidth}%` }}
-        />
-      </div>
-      <div className="mt-2 flex items-baseline justify-between gap-3 text-xs text-court-fg-muted">
-        <span>{leftFooter}</span>
-        <span className="text-right">{rightFooter}</span>
-      </div>
-    </div>
   );
 }
 

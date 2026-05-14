@@ -1,6 +1,5 @@
 import {
   ArrowUpRight,
-  Clock,
   Trophy,
 } from "lucide-react";
 import {
@@ -13,6 +12,8 @@ import {
 } from "@/app/dashboard/scoreboard-drilldowns";
 import { PeriodTabs } from "@/app/dashboard/period-tabs";
 import type { DashboardPeriod } from "@/app/dashboard/period-tabs-shared";
+import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { GoalPacingCard, getGoalPacingData } from "@/app/dashboard/goal-pacing";
 
 // Top-level Scoreboard server component. Real Neon data only; sections
 // that need data we don't yet track (sparklines, win-rate trend,
@@ -23,7 +24,11 @@ export async function Scoreboard({
 }: {
   period?: DashboardPeriod;
 } = {}) {
-  const data = await getScoreboardData(period);
+  const org = await getCurrentOrg();
+  const [data, goalPacing] = await Promise.all([
+    getScoreboardData(period),
+    getGoalPacingData(org.id),
+  ]);
 
   return (
     <div className="flex flex-col gap-6 pt-6">
@@ -43,7 +48,7 @@ export async function Scoreboard({
         <TopRolesCard rows={data.topRoles} />
         <MomentumCard events={data.momentum} />
       </div>
-      <StalledDealsCard />
+      <GoalPacingCard data={goalPacing} />
     </div>
   );
 }
@@ -464,30 +469,6 @@ function MomentumCard({ events }: { events: MomentumEvent[] }) {
         </ul>
       )}
     </ListCard>
-  );
-}
-
-function StalledDealsCard() {
-  // Per CLAUDE.md rule 13, Placement.stage is the canonical truth — but
-  // we don't yet stamp stage-change timestamps, so "days in current
-  // stage" is unknowable. Render the section title and an honest empty
-  // state until that telemetry lands.
-  return (
-    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <div className="flex items-end justify-between gap-3 py-2">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Stalled Deals</p>
-          <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">Where the desk is stuck</h3>
-          <p className="text-xs text-court-fg-muted">Per-stage idle thresholds: Submitted 5d · Interview 10d · Offer 7d.</p>
-        </div>
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800">
-          <Clock className="h-3 w-3" /> Coming soon
-        </span>
-      </div>
-      <EmptyBlock>
-        We don&apos;t yet stamp stage-transition timestamps on placements, so days-in-stage is unknowable today. Lands with the next placement-stage refactor.
-      </EmptyBlock>
-    </div>
   );
 }
 
