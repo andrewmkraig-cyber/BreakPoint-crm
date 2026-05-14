@@ -4,6 +4,7 @@ import { DashboardTabs, resolveDashboardTab } from "@/app/dashboard/tabs";
 import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
+import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs";
 import { CalendarWidget } from "@/components/dashboard/calendar-widget";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +26,9 @@ export default async function DashboardPage({
 
   const resolved = (await Promise.resolve(searchParams ?? {})) as RawParams;
   const active = resolveDashboardTab(firstParam(resolved.tab));
-  const period = resolvePlacementsPeriod(firstParam(resolved.period));
+  const periodRaw = firstParam(resolved.period);
+  const placementsPeriod = resolvePlacementsPeriod(periodRaw);
+  const scoreboardPeriod = resolveDashboardPeriod(periodRaw);
 
   return (
     <div className="relative flex w-full flex-col gap-2">
@@ -36,8 +39,8 @@ export default async function DashboardPage({
         </div>
       </div>
       {active === "dashboard" && <MyDashboard />}
-      {active === "scoreboard" && <Scoreboard />}
-      {active === "placements" && <PlacementsTab period={period} />}
+      {active === "scoreboard" && <Scoreboard period={scoreboardPeriod} />}
+      {active === "placements" && <PlacementsTab period={placementsPeriod} />}
     </div>
   );
 }

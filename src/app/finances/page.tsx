@@ -1,6 +1,6 @@
-import { SectionHero } from "@/components/section-hero";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
+import { PeriodTabs, resolveDashboardPeriod } from "@/app/dashboard/period-tabs";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
 import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -67,7 +67,7 @@ function formatDate(d: Date | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-type RawParams = { tab?: string; filter?: string };
+type RawParams = { tab?: string; filter?: string; period?: string };
 type ParamsInput = Promise<RawParams> | RawParams;
 
 export default async function FinancesPage({
@@ -77,17 +77,20 @@ export default async function FinancesPage({
 }) {
   const params = (await Promise.resolve(searchParams ?? {})) as RawParams;
   const tab = resolveFinancesTab(params.tab);
+  const period = resolveDashboardPeriod(params.period);
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <SectionHero eyebrow="FINANCES" title="Finances" />
-      <TabStrip<FinancesTab>
-        ariaLabel="Finances sections"
-        activeId={tab}
-        items={TAB_ITEMS}
-      />
+    <div className="flex w-full flex-col gap-6 pt-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <TabStrip<FinancesTab>
+          ariaLabel="Finances sections"
+          activeId={tab}
+          items={TAB_ITEMS}
+        />
+        {tab === "overview" ? <PeriodTabs period={period} /> : null}
+      </div>
       {tab === "overview" && (
-        <FinancialPerformanceTab mode="revenue-profitability" />
+        <FinancialPerformanceTab mode="revenue-profitability" period={period} />
       )}
       {tab === "invoices" && <InvoicesTab rawFilter={params.filter} />}
       {tab === "expenses" && <FinancialPerformanceTab mode="expenses" />}
@@ -226,11 +229,11 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
 
 function KpiCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
-      <p className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
+    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]">
+      <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
         {label}
       </p>
-      <div className="mt-2 text-center font-serif text-[26px] font-semibold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
+      <div className="mt-2 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
         {value}
       </div>
     </div>

@@ -4,7 +4,6 @@ import { FinancialStrip } from "@/app/dashboard/financial-strip";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { ThisWeekWidget } from "@/app/dashboard/this-week-widget";
 import { NewsFeed } from "@/components/news-feed";
-import { SectionHero } from "@/components/section-hero";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getInvoiceSummary } from "@/lib/invoices";
@@ -31,7 +30,6 @@ export async function MyDashboard() {
     getCurrentOrg(),
     getServerSession(authOptions),
   ]);
-  const firstName = session?.user?.name?.split(" ")[0]?.trim() ?? null;
   const selfPerson = {
     name: session?.user?.name ?? null,
     email: session?.user?.email ?? null,
@@ -77,16 +75,14 @@ export async function MyDashboard() {
   const q2RevenuePct = Q2_GOAL_USD > 0 ? (billedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
 
-  const greeting = firstName ? `Welcome back, ${firstName}.` : "Welcome back.";
-  const weekRange = formatEasternWeekRange(weekStart, weekEnd);
+  const weekRange = formatEasternWeekRange(weekStart, weekEnd).replace(/^Week of /, "");
+  const activityEyebrow = `ACTIVITY FOR WEEK OF ${weekRange}`.toUpperCase();
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <SectionHero
-        eyebrow="THIS WEEK"
-        title={greeting}
-        description={`Activity for ${weekRange}. Everything here is live - no targets, just actuals.`}
-      />
+    <div className="flex w-full flex-col gap-6 pt-6">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+        {activityEyebrow}
+      </p>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Clients" value={newClientsCount} icon={Building2} live={newClientsCount > 0} />

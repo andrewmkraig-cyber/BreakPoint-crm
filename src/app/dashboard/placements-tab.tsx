@@ -4,8 +4,7 @@ import {
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
-import { SectionHero } from "@/components/section-hero";
-import { TabStrip } from "@/components/ui/tab-strip";
+import { PeriodTabs, resolveDashboardPeriod } from "@/app/dashboard/period-tabs";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   getPlacementsDashboardData,
@@ -14,18 +13,18 @@ import {
 } from "@/lib/placements-dashboard";
 import { aggregateByCity } from "@/lib/placements-map-geo";
 
-const PERIODS: ReadonlyArray<{ id: PlacementsDashboardPeriod; label: string }> = [
-  { id: "YTD", label: `YTD ${new Date().getFullYear()}` },
-  { id: "THIS_QUARTER", label: "This Quarter" },
-  { id: "LAST_90_DAYS", label: "Last 90 Days" },
-];
-
 export function resolvePlacementsPeriod(
   raw: string | undefined | null,
 ): PlacementsDashboardPeriod {
-  if (raw === "THIS_QUARTER" || raw === "LAST_90_DAYS") return raw;
-  return "YTD";
+  return resolveDashboardPeriod(raw);
 }
+
+const LEDGER_TITLE: Record<PlacementsDashboardPeriod, string> = {
+  YTD: `All placements YTD ${new Date().getFullYear()}`,
+  THIS_QUARTER: "All placements this quarter",
+  LAST_QUARTER: "All placements · last quarter",
+  NEXT_QUARTER: "All placements · next quarter",
+};
 
 export async function PlacementsTab({ period }: { period: PlacementsDashboardPeriod }) {
   const org = await getCurrentOrg();
@@ -33,17 +32,13 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
   const cities = aggregateByCity(rows);
   const totalFee = cities.reduce((s, c) => s + c.totalFee, 0);
   const ledgerRows = toLedgerRows(rows);
-  const ledgerTitle =
-    period === "YTD"
-      ? `All placements YTD ${new Date().getFullYear()}`
-      : period === "THIS_QUARTER"
-        ? "All placements this quarter"
-        : "All placements · last 90 days";
 
   return (
-    <div className="flex flex-col gap-6">
-      <PlacementsHeader period={period} />
-      <PlacementsLedger rows={ledgerRows} title={ledgerTitle} />
+    <div className="flex flex-col gap-6 pt-6">
+      <div className="flex justify-end">
+        <PeriodTabs period={period} />
+      </div>
+      <PlacementsLedger rows={ledgerRows} title={LEDGER_TITLE[period]} />
       <PlacementsBreakdowns rows={rows} />
       <PlacementsMapCard cities={cities} totalFee={totalFee} />
     </div>
@@ -70,26 +65,3 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
   }));
 }
 
-function PlacementsHeader({ period }: { period: PlacementsDashboardPeriod }) {
-  return (
-    <SectionHero
-      eyebrow="PLACEMENTS"
-      title="Placements on the books."
-      description="Every hire and pending start in the selected window, with the map, ledger, and breakdowns below."
-      trailing={
-        <TabStrip<PlacementsDashboardPeriod>
-          ariaLabel="Placements period"
-          activeId={period}
-          items={PERIODS.map((p) => ({
-            id: p.id,
-            label: p.label,
-            href:
-              p.id === "YTD"
-                ? "/dashboard?tab=placements"
-                : `/dashboard?tab=placements&period=${p.id}`,
-          }))}
-        />
-      }
-    />
-  );
-}

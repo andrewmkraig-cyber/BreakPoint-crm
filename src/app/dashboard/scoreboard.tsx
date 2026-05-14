@@ -1,31 +1,35 @@
 import {
   ArrowUpRight,
-  CalendarRange,
   Clock,
   Trophy,
 } from "lucide-react";
 import {
   formatMoneyShort,
-  formatPeriodRange,
   getScoreboardData,
 } from "@/app/dashboard/scoreboard-data";
 import {
   ClientDrilldownTrigger,
   RoleDrilldownTrigger,
 } from "@/app/dashboard/scoreboard-drilldowns";
-import { SectionHero } from "@/components/section-hero";
+import { PeriodTabs, type DashboardPeriod } from "@/app/dashboard/period-tabs";
 
 // Top-level Scoreboard server component. Real Neon data only; sections
 // that need data we don't yet track (sparklines, win-rate trend,
 // Billed/Collected forecast, stalled-deal stage timers) render honest
 // empty/placeholder states rather than mock numbers.
-export async function Scoreboard() {
-  const data = await getScoreboardData();
+export async function Scoreboard({
+  period = "THIS_QUARTER",
+}: {
+  period?: DashboardPeriod;
+} = {}) {
+  const data = await getScoreboardData(period);
 
   return (
-    <div className="flex flex-col gap-6">
-      <ScoreboardHeader periodLabel={data.period.label} periodRange={formatPeriodRange(data.period.start, data.period.endExclusive)} />
-      <KpiRow kpis={data.kpis} />
+    <div className="flex flex-col gap-6 pt-6">
+      <div className="flex justify-end">
+        <PeriodTabs period={period} />
+      </div>
+      <KpiRow kpis={data.kpis} periodLabel={data.period.label} />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <FunnelCard funnel={data.funnel} />
         <CashForecastCard cash={data.cashForecast} />
@@ -40,26 +44,9 @@ export async function Scoreboard() {
   );
 }
 
-function ScoreboardHeader({ periodLabel, periodRange }: { periodLabel: string; periodRange: string }) {
-  return (
-    <SectionHero
-      eyebrow="SCOREBOARD"
-      title="The numbers that matter."
-      description="Deal flow, forecast, and where the desk is winning. Everything here is live - no targets, just actuals."
-      trailing={
-        <div className="inline-flex items-center gap-2 rounded-full border border-court-border bg-court-surface px-3.5 py-1.5 text-sm font-medium text-court-fg">
-          <CalendarRange className="h-4 w-4 text-court-fg-muted" />
-          {periodLabel}
-          <span className="text-[11px] text-court-fg-muted">· {periodRange}</span>
-        </div>
-      }
-    />
-  );
-}
-
 type Kpis = Awaited<ReturnType<typeof getScoreboardData>>["kpis"];
 
-function KpiRow({ kpis }: { kpis: Kpis }) {
+function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
   // When there are open deals but every one has a null/zero fee, the
   // dashboard would otherwise read "$0 · Active offers + pending starts"
   // and hide the gap. Surface the count + "fee unset" instead so the
@@ -82,7 +69,7 @@ function KpiRow({ kpis }: { kpis: Kpis }) {
     {
       label: "Placements",
       value: String(kpis.placementsQtd),
-      sub: "Q2 to date",
+      sub: periodLabel,
     },
     {
       label: "Win Rate",
@@ -104,29 +91,26 @@ function KpiRow({ kpis }: { kpis: Kpis }) {
   return (
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {tiles.map((t) => (
-        <KpiTile key={t.label} {...t} />
+        <ScoreboardKpiTile key={t.label} {...t} />
       ))}
     </div>
   );
 }
 
-function KpiTile({ label, value, sub }: { label: string; value: string; sub: string }) {
-  // Compact slim-bar variant of the Clubhouse KpiTile chrome —
-  // borderless, soft long-shadow, 9px extrabold label, 20px serif value
-  // so the five tiles read as a single dense top strip on the Scoreboard.
+function ScoreboardKpiTile({ label, value, sub }: { label: string; value: string; sub: string }) {
   const isEmpty = value === "—";
   return (
-    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_8px_20px_rgba(16,36,24,0.03)]">
-      <p className="text-[9px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">{label}</p>
+    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]">
+      <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">{label}</p>
       <div
         className={
-          "mt-1.5 text-center font-serif text-[20px] font-semibold leading-none tracking-[-0.04em] tabular-nums " +
+          "mt-1.5 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums " +
           (isEmpty ? "text-court-fg-dim" : "text-court-fg")
         }
       >
         {value}
       </div>
-      <p className="mt-1 truncate text-center text-[9px] text-court-fg-muted">{sub}</p>
+      <p className="mt-1 truncate text-center text-[10px] text-court-fg-muted">{sub}</p>
     </div>
   );
 }

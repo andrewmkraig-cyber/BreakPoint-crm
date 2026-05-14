@@ -3,6 +3,10 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getRfClientsForOrg, getRfJobsForOrg } from "@/lib/candidates";
 import { getInvoiceSummary } from "@/lib/invoices";
 import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
+import {
+  dashboardPeriodRange,
+  type DashboardPeriod,
+} from "@/app/dashboard/period-tabs";
 
 // Stages observed on Placement.stage today: offer | pending_start | hired.
 // Anything earlier than "offer" lives outside this table — submitted /
@@ -10,11 +14,6 @@ import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 const IN_PIPELINE_STAGES = ["offer", "pending_start"] as const;
 
 const DAYS = 24 * 60 * 60 * 1000;
-
-// Q2 2026 is the same window MyDashboard pins to. When we get a period
-// picker we'll derive this from a search param.
-const Q2_START = new Date("2026-04-01T00:00:00.000Z");
-const Q2_END_EXCLUSIVE = new Date("2026-07-01T00:00:00.000Z");
 
 export type ScoreboardData = {
   period: { label: string; start: Date; endExclusive: Date };
@@ -78,10 +77,15 @@ export type ScoreboardData = {
   }>;
 };
 
-export async function getScoreboardData(): Promise<ScoreboardData> {
+export async function getScoreboardData(
+  period: DashboardPeriod = "THIS_QUARTER",
+): Promise<ScoreboardData> {
   const org = await getCurrentOrg();
   const now = new Date();
   const ninetyDaysAgo = new Date(now.getTime() - 90 * DAYS);
+  const range = dashboardPeriodRange(period, now);
+  const periodStart = range.start;
+  const periodEnd = range.endExclusive;
 
   const [
     pipelinePlacementsRaw,
@@ -127,7 +131,7 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
     prisma.placement.count({
       where: {
         organizationId: org.id,
-        placedAt: { gte: Q2_START, lt: Q2_END_EXCLUSIVE },
+        placedAt: { gte: periodStart, lt: periodEnd },
       },
     }),
     // Funnel left edge: submit actions in last 90d. Each row is a single
@@ -179,7 +183,7 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
       where: {
         organizationId: org.id,
         stage: { in: ["pending_start", "hired"] },
-        expectedStartDate: { gte: Q2_START, lt: Q2_END_EXCLUSIVE },
+        expectedStartDate: { gte: periodStart, lt: periodEnd },
       },
     }),
     getInvoiceSummary(org.id),
@@ -402,7 +406,7 @@ export async function getScoreboardData(): Promise<ScoreboardData> {
     .slice(0, 6);
 
   return {
-    period: { label: "This Quarter", start: Q2_START, endExclusive: Q2_END_EXCLUSIVE },
+    period: { label: range.label, start: periodStart, endExclusive: periodEnd },
     kpis: {
       pipelineValueUsd: pipelineValueUsd > 0 ? pipelineValueUsd : null,
       pipelineCount: pipelinePlacementsRaw.length,

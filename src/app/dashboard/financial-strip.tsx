@@ -129,12 +129,12 @@ function Stat({
 }) {
   const inner = (
     <>
-      <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
+      <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
         {label}
       </div>
       <div
         className={cn(
-          "mt-0.5 font-serif text-[26px] font-extrabold leading-none tracking-[-0.02em] tabular-nums",
+          "mt-0.5 font-serif text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums",
           dim ? "text-court-fg-dim" : "text-court-fg",
         )}
       >
@@ -175,10 +175,10 @@ function GoalStat({
 }) {
   return (
     <div className="flex min-w-0 flex-col sm:border-l-2 sm:border-court-border-soft sm:pl-6">
-      <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-brand-dark">
+      <div className="text-[10px] font-extrabold uppercase tracking-wide text-court-brand-dark">
         Goal Progress · {formatGoalUsd(goalUsd)} Quarter
       </div>
-      <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[26px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
+      <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[26px] font-bold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
         {pct}%
         <span className="text-[11.5px] font-semibold tracking-normal text-court-fg-muted">
           · {formatGoalUsd(remainingUsd)} to go

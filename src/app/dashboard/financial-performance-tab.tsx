@@ -23,6 +23,10 @@ import {
   type OneTimeRow,
   type MoneyInRow,
 } from "@/app/dashboard/subscriptions-list";
+import {
+  dashboardPeriodRange,
+  type DashboardPeriod,
+} from "@/app/dashboard/period-tabs";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -40,10 +44,6 @@ function decimalToNumber(d: { toString(): string } | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-const MONTH_SHORT = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
 const MONTH_FULL = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -72,14 +72,24 @@ export type FinancialPerformanceMode =
 
 export async function FinancialPerformanceTab({
   mode = "full",
+  period = "THIS_QUARTER",
 }: {
   mode?: FinancialPerformanceMode;
+  period?: DashboardPeriod;
 } = {}) {
   const org = await getCurrentOrg();
   const now = new Date();
   const year = now.getFullYear();
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year + 1, 0, 1);
+  // Revenue & Profitability section honors the selected period. The
+  // Expenses tab stays calendar-year scoped because it has its own
+  // structure (catalog rows + YTD aggregates) and no period selector.
+  const range = mode === "expenses"
+    ? { start: yearStart, endExclusive: yearEnd, label: `YTD ${year}` }
+    : dashboardPeriodRange(period, now);
+  const revStart = range.start;
+  const revEnd = range.endExclusive;
 
   // Current calendar quarter bounds — for the Trend card. Months are
   // 0-indexed (April = 3, June = 5), so qStartMonth jumps in steps of 3.
@@ -116,8 +126,8 @@ export async function FinancialPerformanceTab({
         organizationId: org.id,
         status: { in: ["SENT", "PAID"] },
         OR: [
-          { sentAt: { gte: yearStart, lt: yearEnd } },
-          { paidAt: { gte: yearStart, lt: yearEnd } },
+          { sentAt: { gte: revStart, lt: revEnd } },
+          { paidAt: { gte: revStart, lt: revEnd } },
         ],
       },
       select: {
@@ -132,7 +142,7 @@ export async function FinancialPerformanceTab({
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
-        placedAt: { gte: yearStart, lt: yearEnd },
+        placedAt: { gte: revStart, lt: revEnd },
       },
       select: { clientId: true, candidateSource: true },
     }),
@@ -140,6 +150,8 @@ export async function FinancialPerformanceTab({
       where: {
         organizationId: org.id,
         stage: "hired",
+        // Money In list under the Expenses card stays calendar-year so
+        // the "Money In · YTD" reading isn't surprised by a quarter cut.
         placedAt: { gte: yearStart, lt: yearEnd },
       },
       select: {
@@ -169,7 +181,7 @@ export async function FinancialPerformanceTab({
 
   // ---- Revenue section data ----
 
-  const periodLabel = `YTD · Jan 1 – ${MONTH_SHORT[currentMonth]} ${now.getDate()}, ${year}`;
+  const periodLabel = range.label;
 
   // Placement counts per client + per source (YTD).
   const placementsByClient = new Map<string, number>();
@@ -799,7 +811,7 @@ export async function FinancialPerformanceTab({
       {showRevenueProfitability && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiTile
-            label="Total Revenue YTD"
+            label="Total Revenue"
             value={formatUsd(revenueUsd)}
             icon={CircleDollarSign}
             live={revenueUsd > 0}
@@ -812,7 +824,7 @@ export async function FinancialPerformanceTab({
           />
           <KpiTile label="Net Margin" value={netMarginLabel} icon={Scale} />
           <KpiTile
-            label="Total Expenses YTD"
+            label="Total Expenses"
             value={formatUsd(expensesUsd)}
             icon={Wallet}
             live={expensesUsd > 0}

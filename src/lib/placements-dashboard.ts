@@ -14,7 +14,11 @@ import { prisma } from "@/lib/prisma";
 // the canonical Neon Placement.stage values "hired" / "pending_start"
 // (the source of truth — see CLAUDE.md rule 13).
 
-export type PlacementsDashboardPeriod = "YTD" | "THIS_QUARTER" | "LAST_90_DAYS";
+export type PlacementsDashboardPeriod =
+  | "YTD"
+  | "THIS_QUARTER"
+  | "LAST_QUARTER"
+  | "NEXT_QUARTER";
 
 export type PlacementsDashboardBillingStatus =
   | "PENDING_START"
@@ -72,17 +76,37 @@ type ClientLocationJson = {
 } | null;
 
 function periodRange(period: PlacementsDashboardPeriod, now: Date): { start: Date; end: Date } {
-  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const year = now.getFullYear();
+  const currentQuarter = Math.floor(now.getMonth() / 3);
   if (period === "YTD") {
-    return { start: new Date(now.getFullYear(), 0, 1), end };
+    return {
+      start: new Date(year, 0, 1),
+      end: new Date(year + 1, 0, 1),
+    };
   }
-  if (period === "THIS_QUARTER") {
-    const startMonth = Math.floor(now.getMonth() / 3) * 3;
-    return { start: new Date(now.getFullYear(), startMonth, 1), end };
+  if (period === "LAST_QUARTER") {
+    const startMonth = currentQuarter * 3 - 3;
+    const startYear = startMonth < 0 ? year - 1 : year;
+    const m = ((startMonth % 12) + 12) % 12;
+    return {
+      start: new Date(startYear, m, 1),
+      end: new Date(startYear, m + 3, 1),
+    };
   }
-  const start = new Date(now);
-  start.setDate(start.getDate() - 90);
-  return { start, end };
+  if (period === "NEXT_QUARTER") {
+    const startMonth = currentQuarter * 3 + 3;
+    const startYear = startMonth >= 12 ? year + 1 : year;
+    const m = startMonth % 12;
+    return {
+      start: new Date(startYear, m, 1),
+      end: new Date(startYear, m + 3, 1),
+    };
+  }
+  const startMonth = currentQuarter * 3;
+  return {
+    start: new Date(year, startMonth, 1),
+    end: new Date(year, startMonth + 3, 1),
+  };
 }
 
 function toDollars(amount: Prisma.Decimal | null | undefined): number | null {
