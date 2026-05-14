@@ -123,6 +123,7 @@ export function TopBar() {
           </span>
           <Music className="h-4 w-4" />
         </button>
+        <span aria-hidden="true" className="mx-1 h-7 w-px bg-court-border" />
         <WeatherWidget />
         <CalendarPopoverButton />
       </div>

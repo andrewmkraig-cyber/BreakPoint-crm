@@ -644,15 +644,15 @@ export function WeatherWidget() {
       onMouseLeave={() => setHovered(false)}
     >
       <div
-        className="inline-flex cursor-default items-center gap-1.5 text-court-fg"
+        className="inline-flex cursor-default items-center gap-2 text-court-fg"
         aria-label={`Current temperature ${rounded} degrees Fahrenheit`}
       >
         <WeatherIcon
           code={data.code}
           isDay={data.isCurrentDay}
-          sizeClass="h-5 w-5"
+          sizeClass="h-6 w-6"
         />
-        <span className="text-base font-medium tabular-nums">{rounded}°</span>
+        <span className="text-xl font-semibold tabular-nums">{rounded}°</span>
       </div>
 
       {hovered && (

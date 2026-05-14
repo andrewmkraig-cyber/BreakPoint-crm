@@ -19,6 +19,7 @@ type TodayParts = {
   weekdayLong: string;
   weekdayShort: string;
   monthLong: string;
+  monthShort: string;
 };
 
 function formatYmd(year: number, month0: number, day: number): string {
@@ -50,6 +51,13 @@ function todayParts(): TodayParts {
   });
   const weekdayShort =
     shortFmt.formatToParts(now).find((p) => p.type === "weekday")?.value ?? "";
+  const monthShortFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: ZONE,
+    month: "short",
+  });
+  const monthShort =
+    monthShortFmt.formatToParts(now).find((p) => p.type === "month")?.value ??
+    "";
   return {
     year: nGet("year"),
     month0: nGet("month") - 1,
@@ -57,6 +65,7 @@ function todayParts(): TodayParts {
     weekdayLong: lGet("weekday"),
     weekdayShort,
     monthLong: lGet("month"),
+    monthShort,
   };
 }
 
@@ -185,14 +194,14 @@ export function CalendarPopoverButton() {
           (open ? "ring-court-brand" : "ring-court-border")
         }
       >
-        <span className="bg-court-brand-tint px-2.5 py-[1px] text-center text-[9px] font-extrabold uppercase tracking-wide text-court-brand">
+        <span className="bg-court-brand-tint px-3 py-0.5 text-center text-[10px] font-extrabold uppercase tracking-wider text-court-brand">
           {today.weekdayShort}
         </span>
-        <span className="flex flex-col bg-court-surface px-2.5 py-0.5 text-center">
-          <span className="text-[8px] font-medium uppercase tracking-wide text-court-fg-muted">
-            {today.monthLong}
+        <span className="flex flex-col items-center bg-court-surface px-3 pb-1 pt-0.5 text-center">
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-court-fg-muted">
+            {today.monthShort}
           </span>
-          <span className="text-base font-black leading-none text-court-fg">
+          <span className="text-xl font-black leading-none text-court-fg">
             {today.day}
           </span>
         </span>
