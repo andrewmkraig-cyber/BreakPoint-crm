@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -192,6 +192,18 @@ export function CalendarView({
     setDrawerMode("create");
     setDrawerOpen(true);
   };
+
+  // The "+ New event" button now lives in the global TopBar, which sits
+  // above the calendar tree. It dispatches a window event when clicked;
+  // we listen here so the local drawer state still opens.
+  useEffect(() => {
+    const handler = () => openCreate();
+    window.addEventListener("ace:calendar:new-event", handler);
+    return () => window.removeEventListener("ace:calendar:new-event", handler);
+    // openCreate closes over stable setState identifiers — safe to
+    // subscribe once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const openCreateAt = (
     date: Date,
     hour?: number,
@@ -275,7 +287,6 @@ export function CalendarView({
 
   return (
     <div className="flex min-h-[calc(100vh-6rem)] flex-col gap-5">
-      <CalHeader onNew={openCreate} />
       <CalSubheader
         view={view}
         scope={scope}
@@ -366,24 +377,6 @@ export function CalendarView({
         onClose={closeDrawer}
       />
     </div>
-  );
-}
-
-// ---- Page header ----
-function CalHeader({ onNew }: { onNew: () => void }) {
-  return (
-    <header className="flex flex-wrap items-center gap-4">
-      <h1 className="font-serif text-3xl font-black leading-none tracking-tight text-court-fg sm:text-4xl">
-        Calendar
-      </h1>
-      <button
-        type="button"
-        onClick={onNew}
-        className="inline-flex items-center gap-2 rounded-full border-[1.5px] border-court-brand bg-court-surface px-5 py-2.5 text-sm font-semibold text-court-brand-dark transition hover:bg-court-brand-tint/40 hover:shadow-[0_0_0_4px_rgba(90,150,66,0.08)]"
-      >
-        <Plus className="h-3.5 w-3.5" /> New event
-      </button>
-    </header>
   );
 }
 

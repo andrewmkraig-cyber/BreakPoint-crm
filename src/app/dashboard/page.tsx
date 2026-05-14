@@ -4,7 +4,6 @@ import { DashboardTabs, resolveDashboardTab } from "@/app/dashboard/tabs";
 import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
-import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
 import { CalendarWidget } from "@/components/dashboard/calendar-widget";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +38,6 @@ export default async function DashboardPage({
       {active === "dashboard" && <MyDashboard />}
       {active === "scoreboard" && <Scoreboard />}
       {active === "placements" && <PlacementsTab period={period} />}
-      {active === "financial-performance" && <FinancialPerformanceTab />}
     </div>
   );
 }

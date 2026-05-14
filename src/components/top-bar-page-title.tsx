@@ -30,7 +30,8 @@ type ActionSpec =
   | { kind: "link"; label: string; href: string }
   | { kind: "compose-mail"; label: string }
   | { kind: "phone-dial"; label: string }
-  | { kind: "new-invoice"; label: string };
+  | { kind: "new-invoice"; label: string }
+  | { kind: "calendar-new-event"; label: string };
 
 type Spec = { group?: string; title: TitleSpec; action?: ActionSpec };
 
@@ -60,7 +61,11 @@ function resolveGroup(pathname: string): string | undefined {
   if (pathname.startsWith("/mail") || pathname.startsWith("/phone")) {
     return "Inbox";
   }
-  if (pathname.startsWith("/invoices")) {
+  if (
+    pathname.startsWith("/finances")
+    || pathname.startsWith("/invoices")
+    || pathname.startsWith("/calendar")
+  ) {
     return "Ops";
   }
   return undefined;
@@ -140,14 +145,25 @@ function resolveBaseSpec(
     };
   }
 
-  if (pathname === "/invoices") {
+  if (pathname === "/finances") {
+    const tab = searchParams?.get("tab") ?? "overview";
     return {
-      title: { label: "Invoices" },
-      action: { kind: "new-invoice", label: "New Invoice" },
+      title: { label: "Finances" },
+      action:
+        tab === "invoices"
+          ? { kind: "new-invoice", label: "New Invoice" }
+          : undefined,
     };
   }
   if (/^\/invoices\/[^/]+/.test(pathname)) {
-    return { title: { label: "Invoices", href: "/invoices" } };
+    return { title: { label: "Finances", href: "/finances?tab=invoices" } };
+  }
+
+  if (pathname === "/calendar" || pathname.startsWith("/calendar/")) {
+    return {
+      title: { label: "Calendar" },
+      action: { kind: "calendar-new-event", label: "New event" },
+    };
   }
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
@@ -266,7 +282,28 @@ function ActionButton({ action }: { action: ActionSpec }) {
   if (action.kind === "new-invoice") {
     return <NewInvoiceTopBarButton label={action.label} />;
   }
+  if (action.kind === "calendar-new-event") {
+    return <CalendarNewEventButton label={action.label} />;
+  }
   return null;
+}
+
+// Calendar page owns its own create-drawer state. The TopBar lives in
+// AppShell, far above the calendar tree, so we bridge with a custom
+// window event the calendar view subscribes to on mount.
+function CalendarNewEventButton({ label }: { label: string }) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        window.dispatchEvent(new CustomEvent("ace:calendar:new-event"))
+      }
+      className={ACTION_BUTTON_CLASS}
+    >
+      <Plus className="h-3 w-3" />
+      {label}
+    </button>
+  );
 }
 
 function NewInvoiceTopBarButton({ label }: { label: string }) {

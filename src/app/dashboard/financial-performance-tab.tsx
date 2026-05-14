@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { ExpenseAddForm } from "@/app/dashboard/expense-add-form";
-import { SectionHero } from "@/components/section-hero";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -63,7 +62,19 @@ const ANNUAL_REVENUE_GOAL_USD = 300_000;
 const CONTRIBUTION_MARGIN_DRAG_PCT = 5;
 const NET_MARGIN_DRAG_PCT = 10;
 
-export async function FinancialPerformanceTab() {
+// Section selector lets the /finances page slice this surface into its
+// "Revenue & Profitability" tab and its "Expenses" tab without
+// duplicating any of the data-loading work below.
+export type FinancialPerformanceMode =
+  | "full"
+  | "revenue-profitability"
+  | "expenses";
+
+export async function FinancialPerformanceTab({
+  mode = "full",
+}: {
+  mode?: FinancialPerformanceMode;
+} = {}) {
   const org = await getCurrentOrg();
   const now = new Date();
   const year = now.getFullYear();
@@ -632,81 +643,87 @@ export async function FinancialPerformanceTab() {
     placementsYtd: totalPlacementsYtd,
   };
 
+  const showRevenueProfitability =
+    mode === "full" || mode === "revenue-profitability";
+  const showExpenses = mode === "full" || mode === "expenses";
+
   return (
     <div className="flex flex-col gap-6">
-      <SectionHero
-        eyebrow="FINANCIAL PERFORMANCE"
-        title="Revenue, margins, and ROI."
-        description="Year-to-date revenue from sent and paid invoices, measured against desk expenses and performance."
-      />
+      {showRevenueProfitability && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <KpiTile
+            label="Total Revenue YTD"
+            value={formatUsd(revenueUsd)}
+            icon={CircleDollarSign}
+            live={revenueUsd > 0}
+          />
+          <KpiTile
+            label="Gross Margin"
+            value={grossMarginLabel}
+            icon={PercentCircle}
+            live={grossMarginPct != null && grossMarginPct > 0}
+          />
+          <KpiTile label="Net Margin" value={netMarginLabel} icon={Scale} />
+          <KpiTile
+            label="Total Expenses YTD"
+            value={formatUsd(expensesUsd)}
+            icon={Wallet}
+            live={expensesUsd > 0}
+          />
+          <KpiTile
+            label="Blended ROI"
+            value={roiLabel}
+            icon={Sparkles}
+            live={blendedRoiPct != null && blendedRoiPct > 0}
+          />
+        </div>
+      )}
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <KpiTile
-          label="Total Revenue YTD"
-          value={formatUsd(revenueUsd)}
-          icon={CircleDollarSign}
-          live={revenueUsd > 0}
+      {showRevenueProfitability && (
+        <RevenueSection
+          periodLabel={periodLabel}
+          byClientTop={byClientTop}
+          byClientOthersCount={byClientOthers.length}
+          byClientOthersUsd={byClientOthersUsd}
+          byClientTotalUsd={byClientTotalUsd}
+          byClientMaxUsd={byClientMaxUsd}
+          totalPlacementsYtd={totalPlacementsYtd}
+          bySourceTop={bySourceTop}
+          bySourceOthersCount={bySourceOthers.length}
+          bySourceOthersUsd={bySourceOthersUsd}
+          bySourceTotalUsd={bySourceTotalUsd}
+          bySourceMaxUsd={bySourceMaxUsd}
+          quarterLabel={quarterLabel}
+          quarterMonths={quarterMonths}
+          currentMonth={currentMonth}
+          monthlyRevenue={monthlyRevenue}
+          maxMonthUsd={maxMonthUsd}
+          quarterRevenueUsd={quarterRevenueUsd}
+          forecastQuarterUsd={forecastQuarterUsd}
         />
-        <KpiTile
-          label="Gross Margin"
-          value={grossMarginLabel}
-          icon={PercentCircle}
-          live={grossMarginPct != null && grossMarginPct > 0}
-        />
-        <KpiTile label="Net Margin" value={netMarginLabel} icon={Scale} />
-        <KpiTile
-          label="Total Expenses YTD"
-          value={formatUsd(expensesUsd)}
-          icon={Wallet}
-          live={expensesUsd > 0}
-        />
-        <KpiTile
-          label="Blended ROI"
-          value={roiLabel}
-          icon={Sparkles}
-          live={blendedRoiPct != null && blendedRoiPct > 0}
-        />
-      </div>
+      )}
 
-      <RevenueSection
-        periodLabel={periodLabel}
-        byClientTop={byClientTop}
-        byClientOthersCount={byClientOthers.length}
-        byClientOthersUsd={byClientOthersUsd}
-        byClientTotalUsd={byClientTotalUsd}
-        byClientMaxUsd={byClientMaxUsd}
-        totalPlacementsYtd={totalPlacementsYtd}
-        bySourceTop={bySourceTop}
-        bySourceOthersCount={bySourceOthers.length}
-        bySourceOthersUsd={bySourceOthersUsd}
-        bySourceTotalUsd={bySourceTotalUsd}
-        bySourceMaxUsd={bySourceMaxUsd}
-        quarterLabel={quarterLabel}
-        quarterMonths={quarterMonths}
-        currentMonth={currentMonth}
-        monthlyRevenue={monthlyRevenue}
-        maxMonthUsd={maxMonthUsd}
-        quarterRevenueUsd={quarterRevenueUsd}
-        forecastQuarterUsd={forecastQuarterUsd}
-      />
+      {showExpenses && (
+        <ExpensesSection
+          mercuryConnected={mercuryConnected}
+          recurringMonthly={recurringMonthly}
+          recurringAnnual={recurringAnnual}
+          oneTimeRows={oneTimeRows}
+          moneyInRows={moneyInRows}
+          subscriptionsYtdUsd={subscriptionsYtdUsd}
+          activeSubscriptionsCount={activeSubscriptionsCount}
+          monthlyRecurringUsd={monthlyRecurringUsd}
+          roiRows={roiRows}
+          blendedExpensesRoiPct={blendedExpensesRoiPct}
+        />
+      )}
 
-      <ExpensesSection
-        mercuryConnected={mercuryConnected}
-        recurringMonthly={recurringMonthly}
-        recurringAnnual={recurringAnnual}
-        oneTimeRows={oneTimeRows}
-        moneyInRows={moneyInRows}
-        subscriptionsYtdUsd={subscriptionsYtdUsd}
-        activeSubscriptionsCount={activeSubscriptionsCount}
-        monthlyRecurringUsd={monthlyRecurringUsd}
-        roiRows={roiRows}
-        blendedExpensesRoiPct={blendedExpensesRoiPct}
-      />
-
-      <ProfitabilitySection
-        margins={marginsCardData}
-        goalPacing={goalPacingData}
-      />
+      {showRevenueProfitability && (
+        <ProfitabilitySection
+          margins={marginsCardData}
+          goalPacing={goalPacingData}
+        />
+      )}
     </div>
   );
 }

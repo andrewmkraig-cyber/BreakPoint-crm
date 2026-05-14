@@ -80,7 +80,7 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     title: "Ops",
     items: [
       { href: "/calendar", label: "Calendar", icon: Calendar, iconColor: "text-orange-400" },
-      { href: "/invoices", label: "Invoices", icon: Receipt, iconColor: "text-lime-400" },
+      { href: "/finances", label: "Finances", icon: Receipt, iconColor: "text-lime-400" },
     ],
   },
 ];

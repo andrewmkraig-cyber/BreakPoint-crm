@@ -1,29 +1,18 @@
 import { TabStrip } from "@/components/ui/tab-strip";
 
-export type DashboardTab =
-  | "dashboard"
-  | "scoreboard"
-  | "placements"
-  | "financial-performance";
+export type DashboardTab = "dashboard" | "scoreboard" | "placements";
 
 export const DASHBOARD_TAB_LABELS: Record<DashboardTab, string> = {
   dashboard: "Clubhouse",
   scoreboard: "Scoreboard",
   placements: "Placements",
-  "financial-performance": "Financial Performance",
 };
 
-const TAB_ORDER: DashboardTab[] = [
-  "dashboard",
-  "scoreboard",
-  "placements",
-  "financial-performance",
-];
+const TAB_ORDER: DashboardTab[] = ["dashboard", "scoreboard", "placements"];
 
 export function resolveDashboardTab(raw: string | undefined | null): DashboardTab {
   if (raw === "scoreboard") return raw;
   if (raw === "placements") return raw;
-  if (raw === "financial-performance") return raw;
   return "dashboard";
 }
 
