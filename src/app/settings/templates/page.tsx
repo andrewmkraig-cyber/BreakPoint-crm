@@ -24,6 +24,7 @@ export default async function TemplatesSettingsPage() {
     audience: t.audience,
     category: t.category,
     isActive: t.isActive,
+    sendAsDraft: t.sendAsDraft,
     sortOrder: t.sortOrder,
     updatedAt: t.updatedAt.toISOString(),
   }));

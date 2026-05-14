@@ -127,6 +127,12 @@ model EmailTemplate {
   // variants) from one dropdown.
   category  String? // "interview" | "submittal" | "offer" | "rejection" | "reference"
   isActive  Boolean  @default(true)
+  // When true, the composer/send path should route this template's output
+  // to the user's Gmail Drafts folder instead of sending immediately, so
+  // the recruiter can approve before it goes out. Wired on the data layer
+  // here; UI toggle ships with this column. Composer behavior is wired
+  // in a follow-up.
+  sendAsDraft Boolean @default(false)
   // Manual display order. Lower = earlier in the list. Settings ▸
   // Templates uses up/down chevrons to swap adjacent rows; the mail
   // composer's Use Template dropdown reads templates in this order so

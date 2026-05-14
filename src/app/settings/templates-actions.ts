@@ -133,6 +133,23 @@ export async function reorderEmailTemplate(
   }
 }
 
+export async function updateTemplateSendAsDraft(
+  templateId: string,
+  value: boolean,
+): Promise<Result> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  try {
+    await prisma.emailTemplate.update({
+      where: { id: templateId },
+      data: { sendAsDraft: value },
+    });
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to update template." };
+  }
+}
+
 export async function deleteEmailTemplate(id: string): Promise<Result> {
   if (!(await requireSession())) return { ok: false, error: "Not signed in." };
   try {
