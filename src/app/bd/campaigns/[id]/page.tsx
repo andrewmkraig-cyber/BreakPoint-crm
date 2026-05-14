@@ -37,10 +37,10 @@ export default async function CampaignDetailPage({
 
       <header className="flex flex-col gap-2">
         <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
-          {run.vertical.name}
+          {run.vertical?.name ?? "Discovery"}
         </p>
         <h1 className="font-serif text-2xl font-bold text-court-fg sm:text-3xl">
-          {run.savedSearch.name}
+          {run.savedSearch?.name ?? "Org-wide BD discovery"}
         </h1>
         <p className="text-sm text-court-fg-muted">
           Status {run.status} · Started {run.createdAt.toLocaleString()}

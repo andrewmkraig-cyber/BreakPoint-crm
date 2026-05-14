@@ -78,8 +78,8 @@ export default async function CampaignsPage() {
     );
     return {
       runId: run.id,
-      verticalName: run.vertical.name,
-      campaignName: run.savedSearch.name,
+      verticalName: run.vertical?.name ?? "Discovery",
+      campaignName: run.savedSearch?.name ?? "Org-wide BD discovery",
       sequenceName: run.campaigns[0]?.name ?? "BD Outbound v1",
       startedLabel: formatBdDate(run.createdAt),
       dayNumber: computeDayNumber(run.createdAt, nowMs),

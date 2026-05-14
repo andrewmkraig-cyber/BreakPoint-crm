@@ -1435,8 +1435,12 @@ model DailyNewsFeed {
 enum BDRunStatus {
   QUEUED
   RUNNING
+  AWAITING_APPROVAL
+  APPROVED
+  ENROLLING
   COMPLETE
   FAILED
+  DISMISSED
 }
 
 enum SendingDomainStatus {
@@ -1560,27 +1564,37 @@ model SendingDomain {
 // Active Campaigns + Activity tabs can render the daily breakdown
 // without re-hitting Indeed/Apollo on every load.
 model BDRun {
-  id             String      @id @default(cuid())
-  organizationId String
-  verticalId     String
-  savedSearchId  String
-  status         BDRunStatus @default(QUEUED)
+  id                String      @id @default(cuid())
+  organizationId    String
+  // verticalId/savedSearchId are nullable so the org-wide BD discovery
+  // cron can write a run that isn't tied to a single Launch saved-search.
+  // Launch-initiated runs still pass both; only the cron leaves them null.
+  verticalId        String?
+  savedSearchId     String?
+  status            BDRunStatus @default(QUEUED)
+  discoveryProvider String      @default("theirstack")
+  discoveredCount   Int         @default(0)
+  // Post-filter discovered jobs array written by the BD discovery cron.
+  // Approval flow reads this; once approved, the BDRun moves on to enroll.
+  discoveredPayload Json?
+  approvedAt        DateTime?
+  enrolledCount     Int         @default(0)
   // Launch-time snapshot the cron reads when it picks the run up:
   // contact cap, sequence id, rotation pool, etc. Shape will drift
   // as we wire Apollo, so it stays as Json instead of a column wave.
-  plan           Json?
+  plan              Json?
   // Cron writes the final breakdown here on completion:
   // { companies, contacts, enrolled, errors }. Null until complete.
-  metrics        Json?
-  startedAt      DateTime?
-  completedAt    DateTime?
-  errorMessage   String?     @db.Text
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  metrics           Json?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  errorMessage      String?     @db.Text
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  vertical     Vertical     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
-  savedSearch  SavedSearch  @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
+  vertical     Vertical?    @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+  savedSearch  SavedSearch? @relation(fields: [savedSearchId], references: [id], onDelete: Cascade)
   campaigns    Campaign[]
   activities   BDActivity[]
 

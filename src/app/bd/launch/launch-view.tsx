@@ -15,7 +15,15 @@ export type SavedSearchOption = {
 export type DomainPreview = { domain: string; status: string };
 export type LastRun = {
   id: string;
-  status: "QUEUED" | "RUNNING" | "COMPLETE" | "FAILED";
+  status:
+    | "QUEUED"
+    | "RUNNING"
+    | "AWAITING_APPROVAL"
+    | "APPROVED"
+    | "ENROLLING"
+    | "COMPLETE"
+    | "FAILED"
+    | "DISMISSED";
   createdAt: string;
   companies: number | null;
 };
@@ -405,10 +413,18 @@ function formatStatus(status: LastRun["status"]): string {
       return "Queued";
     case "RUNNING":
       return "Running";
+    case "AWAITING_APPROVAL":
+      return "Awaiting approval";
+    case "APPROVED":
+      return "Approved";
+    case "ENROLLING":
+      return "Enrolling";
     case "COMPLETE":
       return "Complete";
     case "FAILED":
       return "Failed";
+    case "DISMISSED":
+      return "Dismissed";
   }
 }
 

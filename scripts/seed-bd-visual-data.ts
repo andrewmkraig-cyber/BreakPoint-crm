@@ -175,12 +175,23 @@ async function main(): Promise<void> {
     console.warn("  Run /bd/launch and click Launch BD Run first.");
     return;
   }
+  if (!run.verticalId || !run.savedSearchId || !run.savedSearch) {
+    console.warn(
+      "⚠ Found a QUEUED BDRun but it has no vertical/savedSearch (likely a discovery run). Skipping campaign seed.",
+    );
+    return;
+  }
   console.log(`Using BDRun ${run.id} (search: "${run.savedSearch.name}")\n`);
 
   await seedBdActivities(org.id, run.id);
   console.log("");
 
-  const campaign = await seedCampaign(org.id, run);
+  const campaign = await seedCampaign(org.id, {
+    id: run.id,
+    verticalId: run.verticalId,
+    savedSearchId: run.savedSearchId,
+    savedSearch: run.savedSearch,
+  });
   console.log("");
 
   if (campaign) {
