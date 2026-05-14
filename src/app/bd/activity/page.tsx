@@ -118,10 +118,6 @@ export default async function ActivityPage({
         <h2 className="font-serif text-xl font-bold tracking-tight text-court-fg">
           What BD has been up to
         </h2>
-        <p className="max-w-2xl text-sm text-court-fg-muted">
-          Scan completes, enrollments, opens, replies, bounces, and domain warm/cool events,
-          newest first.
-        </p>
       </header>
 
       <TabStrip<Filter> items={tabs} activeId={filter} ariaLabel="Activity filters" />

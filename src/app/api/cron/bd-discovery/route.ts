@@ -160,14 +160,32 @@ export async function GET(req: NextRequest) {
 
   const clients = await prisma.client.findMany({
     where: { organizationId },
-    select: { name: true },
+    select: { id: true, name: true },
   });
+  // Map each normalized client name back to a `{id, name}` pair so a
+  // fuzzy hit on the discovery side can resolve to the actual Client
+  // row when writing ClientSignal. Order is stable for deterministic
+  // first-match wins on the rare normalization collision.
+  const clientNormPairs: { id: string; name: string; norm: string }[] = [];
   const clientNormSet = new Set<string>();
   for (const c of clients) {
     const norm = normalizeClientName(c.name);
-    if (norm) clientNormSet.add(norm);
+    if (!norm) continue;
+    clientNormSet.add(norm);
+    clientNormPairs.push({ id: c.id, name: c.name, norm });
   }
   const clientNorms = Array.from(clientNormSet);
+
+  function resolveClientMatch(companyName: string): { id: string; name: string } | null {
+    const norm = normalizeClientName(companyName);
+    if (!norm) return null;
+    for (const cp of clientNormPairs) {
+      if (norm.includes(cp.norm) || cp.norm.includes(norm)) {
+        return { id: cp.id, name: cp.name };
+      }
+    }
+    return null;
+  }
 
   const dedupSet = new Set<string>();
   const windowStart = new Date(Date.now() - DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -231,17 +249,73 @@ export async function GET(req: NextRequest) {
       return headcount >= MIN_HEADCOUNT && headcount <= MAX_HEADCOUNT;
     });
 
+    // Client matches used to be dropped here. Now they're routed to
+    // ClientSignal so the recruiter sees "these clients are hiring
+    // publicly — reach out before someone else does". `clientId` is
+    // set when the fuzzy match resolved to a Client row; left null on
+    // a soft match where the resolver couldn't pick a single client.
     let clientExcludedCount = 0;
+    const clientSignalCandidates: { row: DiscoveredCompany; clientId: string | null }[] = [];
     const afterClientExclusion: DiscoveredCompany[] = afterHeadcount.filter((r) => {
       if (isExcludedByClients(r.companyName, clientNorms)) {
         clientExcludedCount++;
+        const match = resolveClientMatch(r.companyName);
+        clientSignalCandidates.push({ row: r, clientId: match?.id ?? null });
         return false;
       }
       return true;
     });
 
+    let clientSignalsWritten = 0;
+    for (const { row, clientId } of clientSignalCandidates) {
+      const postedAtRaw = (row.rawPayload && typeof row.rawPayload === "object")
+        ? (row.rawPayload as Record<string, unknown>).date_posted ??
+          (row.rawPayload as Record<string, unknown>).posted_at ??
+          (row.rawPayload as Record<string, unknown>).datePosted ??
+          null
+        : null;
+      const postedAt =
+        typeof postedAtRaw === "string" && !Number.isNaN(Date.parse(postedAtRaw))
+          ? new Date(postedAtRaw)
+          : null;
+      try {
+        await prisma.clientSignal.upsert({
+          where: {
+            organizationId_companyName_jobTitle: {
+              organizationId,
+              companyName: row.companyName,
+              jobTitle: row.jobTitle,
+            },
+          },
+          update: {
+            jobLocation: row.jobLocation || null,
+            jobPostingUrl: row.jobPostingUrl ?? null,
+            postedAt: postedAt ?? undefined,
+            clientId: clientId ?? undefined,
+            raw: (row.rawPayload as object) ?? undefined,
+          },
+          create: {
+            organizationId,
+            companyName: row.companyName,
+            clientId,
+            jobTitle: row.jobTitle,
+            jobLocation: row.jobLocation || null,
+            jobPostingUrl: row.jobPostingUrl ?? null,
+            postedAt,
+            raw: (row.rawPayload as object) ?? undefined,
+          },
+        });
+        clientSignalsWritten++;
+      } catch (sigErr) {
+        console.error(
+          `[bd-discovery] clientSignal upsert failed for ${row.companyName} / ${row.jobTitle}:`,
+          sigErr instanceof Error ? sigErr.message : sigErr,
+        );
+      }
+    }
+
     console.log(
-      `[bd-discovery] runId=${run.id} raw=${raw.length} excluded=${excludedCount} dedupFiltered=${dedupFilteredCount} clientExcluded=${clientExcludedCount} final=${afterClientExclusion.length}`,
+      `[bd-discovery] runId=${run.id} raw=${raw.length} excluded=${excludedCount} dedupFiltered=${dedupFilteredCount} clientExcluded=${clientExcludedCount} clientSignals=${clientSignalsWritten} final=${afterClientExclusion.length}`,
     );
 
     await prisma.bDRun.update({
@@ -261,6 +335,7 @@ export async function GET(req: NextRequest) {
       excludedCount,
       dedupFilteredCount,
       clientExcludedCount,
+      clientSignalsWritten,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

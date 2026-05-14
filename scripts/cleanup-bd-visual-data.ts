@@ -75,7 +75,7 @@ async function main(): Promise<void> {
   const signalRes = await prisma.clientSignal.deleteMany({
     where: {
       organizationId: org.id,
-      externalUrl: { in: CLIENT_SIGNAL_URLS },
+      jobPostingUrl: { in: CLIENT_SIGNAL_URLS },
     },
   });
   console.log(`ClientSignal: deleted ${signalRes.count}`);

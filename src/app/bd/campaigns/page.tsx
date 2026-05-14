@@ -120,10 +120,6 @@ export default async function CampaignsPage() {
         <h1 className="font-serif text-2xl font-bold text-court-fg sm:text-3xl">
           Outbound in flight
         </h1>
-        <p className="max-w-2xl text-sm text-court-fg-muted">
-          One row per BD run. Counters update as Apollo writes opens, replies, and bounces back
-          via webhook.
-        </p>
       </header>
 
       <CampaignsList rows={rows} />

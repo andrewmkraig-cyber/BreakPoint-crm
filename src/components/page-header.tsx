@@ -18,24 +18,32 @@ export function PageHeader({
   eyebrow,
   description,
   actions,
+  leading,
 }: {
   title: string;
   eyebrow?: string;
   description?: string;
   actions?: ReactNode;
+  // Optional slot rendered to the left of the title — used by the
+  // client profile to show a Clearbit logo / initials avatar inline
+  // with the company name.
+  leading?: ReactNode;
 }) {
   return (
     <div className="-mt-2 mb-3 flex flex-col gap-1 md:-mt-4 md:flex-row md:items-center md:justify-between md:gap-3">
-      <div>
-        {eyebrow && (
-          <div className="text-[10px] font-semibold uppercase tracking-widest text-court-accent">
-            {eyebrow}
-          </div>
-        )}
-        <h1 className="font-serif text-xl font-semibold text-court-fg">{title}</h1>
-        {description && (
-          <p className="text-xs text-court-fg-muted">{description}</p>
-        )}
+      <div className="flex items-center gap-3">
+        {leading}
+        <div>
+          {eyebrow && (
+            <div className="text-[10px] font-semibold uppercase tracking-widest text-court-accent">
+              {eyebrow}
+            </div>
+          )}
+          <h1 className="font-serif text-xl font-semibold text-court-fg">{title}</h1>
+          {description && (
+            <p className="text-xs text-court-fg-muted">{description}</p>
+          )}
+        </div>
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}
     </div>

@@ -683,6 +683,12 @@ model Client {
   legacyRfId     Int?      @unique // Phase 5: drop
   name           String
   domain         String?
+  // Brand mark for the client surface (40px header avatar on the
+  // client profile, 32px row avatar on BD Client Signal cards).
+  // Derived from `domain` at create time via Clearbit's free logo
+  // CDN (https://logo.clearbit.com/{domain}); UI falls back to an
+  // initials chip when this is null or the image 404s.
+  logoUrl        String?
   industry       String?
   linkedinPage   String?
   careersPage    String?
@@ -1717,28 +1723,38 @@ model BdOrgConfig {
 // on the Client Signal tab so the recruiter can act before a competitor
 // does. NEW → ACTED (reach-out sent) or DISMISSED. externalUrl is
 // unique per org so re-scanning the same posting upserts cleanly.
+// One row per public job posting at a company that fuzzy-matched an
+// existing Client. Written by the BD discovery cron when a TheirStack
+// hit would otherwise be excluded for being an existing client —
+// instead of dropping it we route it here so the recruiter sees
+// "these clients are hiring publicly, reach out before someone else
+// does". `clientId` is set when the fuzzy match resolved to a Client
+// row; left null when we want to keep the signal but the match was
+// soft.
 model ClientSignal {
   id             String             @id @default(cuid())
   organizationId String
-  clientId       String
+  companyName    String
+  clientId       String?
   verticalId     String?
-  externalUrl    String
-  externalId     String?
-  jobTitle       String?
-  location       String?
+  jobTitle       String
+  jobLocation    String?
+  jobPostingUrl  String?
+  postedAt       DateTime?
+  discoveredAt   DateTime           @default(now())
   status         ClientSignalStatus @default(NEW)
-  detectedAt     DateTime           @default(now())
   actedAt        DateTime?
   dismissedAt    DateTime?
   raw            Json?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  client       Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
   vertical     Vertical?    @relation(fields: [verticalId], references: [id], onDelete: SetNull)
 
-  @@unique([organizationId, externalUrl])
+  @@unique([organizationId, companyName, jobTitle])
   @@index([organizationId, status])
   @@index([clientId])
+  @@index([organizationId, discoveredAt])
 }
 
 // Ace-native reminders. Toast/panel only — never pushed to Google
