@@ -33,43 +33,54 @@ import { usePhoneContext } from "@/lib/phone-context";
 // alert (or a billing task) pulls them there.
 type NavGroup = {
   title: string | null;
-  items: ReadonlyArray<{ href: string; label: string; icon: NavItem["icon"] }>;
+  items: ReadonlyArray<{
+    href: string;
+    label: string;
+    icon: NavItem["icon"];
+    iconColor: string;
+  }>;
 };
 
+// Per-icon accent colors. Tailwind palette tokens (not raw hex) so they
+// inherit theme inversion through the Court Mode setup. Used only on
+// inactive nav rows — active rows keep the high-contrast sidebar
+// foreground so the lit-up state still reads.
 const NAV_GROUPS: ReadonlyArray<NavGroup> = [
   {
     title: null,
-    items: [{ href: "/dashboard", label: "Clubhouse", icon: Home }],
+    items: [
+      { href: "/dashboard", label: "Clubhouse", icon: Home, iconColor: "text-emerald-400" },
+    ],
   },
   {
     title: "ATS",
     items: [
-      { href: "/pipeline", label: "Pipeline", icon: GitBranch },
-      { href: "/applicants", label: "Applicants", icon: User },
-      { href: "/candidates", label: "Candidates", icon: Users },
+      { href: "/pipeline", label: "Pipeline", icon: GitBranch, iconColor: "text-sky-400" },
+      { href: "/applicants", label: "Applicants", icon: User, iconColor: "text-amber-400" },
+      { href: "/candidates", label: "Candidates", icon: Users, iconColor: "text-violet-400" },
     ],
   },
   {
     title: "CRM",
     items: [
-      { href: "/jobs", label: "Jobs", icon: Briefcase },
-      { href: "/clients", label: "Clients", icon: Building2 },
-      { href: "/bd", label: "BD", icon: Megaphone },
+      { href: "/jobs", label: "Jobs", icon: Briefcase, iconColor: "text-indigo-400" },
+      { href: "/clients", label: "Clients", icon: Building2, iconColor: "text-cyan-400" },
+      { href: "/bd", label: "BD", icon: Megaphone, iconColor: "text-rose-400" },
     ],
   },
   {
     title: "Inbox",
     items: [
-      { href: "/mail", label: "Mail", icon: Mail },
-      { href: "/phone", label: "Phone", icon: Phone },
+      { href: "/mail", label: "Mail", icon: Mail, iconColor: "text-red-400" },
+      { href: "/phone", label: "Phone", icon: Phone, iconColor: "text-teal-400" },
     ],
   },
   // OPS · back-office surfaces. Calendar first, Invoices below it.
   {
     title: "Ops",
     items: [
-      { href: "/calendar", label: "Calendar", icon: Calendar },
-      { href: "/invoices", label: "Invoices", icon: Receipt },
+      { href: "/calendar", label: "Calendar", icon: Calendar, iconColor: "text-orange-400" },
+      { href: "/invoices", label: "Invoices", icon: Receipt, iconColor: "text-lime-400" },
     ],
   },
 ];
@@ -78,7 +89,9 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
 // from the main nav by a border and its own padding block. Matches the
 // "account / settings drawer at the bottom" treatment used by most
 // CRMs (Apollo, HubSpot, Linear).
-const FOOTER_NAV = [{ href: "/settings", label: "Settings", icon: Settings }] as const;
+const FOOTER_NAV = [
+  { href: "/settings", label: "Settings", icon: Settings, iconColor: "text-slate-400" },
+] as const;
 
 export function Sidebar({ width }: { width?: number } = {}) {
   const pathname = usePathname();
@@ -159,6 +172,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
+  iconColor: string;
 };
 
 function NavLink({
@@ -192,7 +206,7 @@ function NavLink({
           className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-court-sidebar-rail/80"
         />
       )}
-      <Icon className={cn("h-4 w-4", active ? "text-court-sidebar-active-fg" : "text-court-sidebar-icon")} />
+      <Icon className={cn("h-4 w-4", active ? "text-court-sidebar-active-fg" : item.iconColor)} />
       <span className="flex-1">{item.label}</span>
       {showBadge && (
         <span
