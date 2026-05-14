@@ -1633,11 +1633,11 @@ function MonthlyOperatingCostCard({
         </p>
       </div>
 
-      <div className="mt-4 flex items-end justify-between gap-3 rounded-2xl bg-court-brand-tint/50 px-4 py-3">
-        <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-brand-dark">
+      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-court-brand-tint/50 px-4 py-2">
+        <span className="text-xs font-extrabold uppercase tracking-[0.14em] text-court-brand-dark">
           Total Monthly Run Rate
         </span>
-        <span className="font-serif text-2xl font-bold tabular-nums leading-none text-court-brand-dark sm:text-3xl">
+        <span className="text-xs font-extrabold tabular-nums text-court-brand-dark">
           {formatUsdCents(totalMonthlyRunRate)}
         </span>
       </div>
