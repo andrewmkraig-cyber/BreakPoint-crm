@@ -87,7 +87,7 @@ export default async function LaunchPage() {
     : null;
 
   return (
-    <div className="space-y-5">
+    <div className="flex w-full flex-col gap-6">
       <ApprovalQueue initialRuns={pendingRuns} />
       <LaunchView
         verticals={verticals}

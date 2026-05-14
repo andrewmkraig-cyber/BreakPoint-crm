@@ -110,14 +110,14 @@ export default async function ActivityPage({
   const grouped = groupByBucket(visible);
 
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex w-full flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           Activity
         </p>
-        <h1 className="font-serif text-2xl font-bold text-court-fg sm:text-3xl">
+        <h2 className="font-serif text-xl font-bold tracking-tight text-court-fg">
           What BD has been up to
-        </h1>
+        </h2>
         <p className="max-w-2xl text-sm text-court-fg-muted">
           Scan completes, enrollments, opens, replies, bounces, and domain warm/cool events,
           newest first.
@@ -164,9 +164,9 @@ export default async function ActivityPage({
 function EmptyState() {
   return (
     <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
-      <p className="text-sm font-semibold text-court-fg">No activity yet.</p>
+      <p className="text-sm font-semibold text-court-fg">No BD activity yet.</p>
       <p className="mt-1 text-sm text-court-fg-muted">
-        Activity will appear here once contacts are enrolled and emails start sending.
+        Activity will appear here once your first BD run completes.
       </p>
     </div>
   );

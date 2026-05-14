@@ -38,11 +38,16 @@ type Props = {
   pauseAll: boolean;
 };
 
-// Amber-tinted Launch CTA — light and tinted, not solid orange.
-// Tailwind amber ramp only so the button reads consistently across
-// Court Mode themes without any hardcoded hex.
+// Launch CTA reads as a light amber-tinted pill rather than a solid
+// orange button so it sits inside the Court Mode palette without
+// dominating the page. Amber is the only semantic accent that earns a
+// surface here (per the BD handoff) and the styling mirrors the
+// `Sent` invoice badge in /finances: amber-50 wash, amber-100
+// hairline, amber-700 ink. Dark modes (Clay / Night) flip to a
+// translucent amber-950 wash with amber-200 ink so the button stays
+// legible without losing the amber identity.
 const LAUNCH_CTA_CLASS =
-  "inline-flex items-center gap-2 rounded-md border border-amber-100 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-2 rounded-md border border-amber-100 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 shadow-sm transition hover:border-amber-200 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:border-amber-800 dark:hover:bg-amber-950/60";
 
 const ESTIMATED_CONTACTS_PER_COMPANY = 4;
 const SEQUENCE_NAME_PLACEHOLDER = "BD Outbound v1";
@@ -108,12 +113,12 @@ export function LaunchView({
       <section className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm sm:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
               Today&apos;s Launch
             </p>
-            <h1 className="mt-1 font-serif text-2xl font-bold text-court-fg sm:text-3xl">
+            <h2 className="mt-1 font-serif text-xl font-bold tracking-tight text-court-fg">
               Ready to roll outbound
-            </h1>
+            </h2>
           </div>
           <LastRunChip lastRun={lastRun} />
         </div>
@@ -342,7 +347,7 @@ function ConfirmModal({
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 id="bd-confirm-title" className="font-serif text-lg font-bold text-court-fg">
+            <h2 id="bd-confirm-title" className="font-serif text-lg font-bold tracking-tight text-court-fg">
               Launch this BD run?
             </h2>
             <p className="mt-1 text-sm text-court-fg-muted">

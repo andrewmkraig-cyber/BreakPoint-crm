@@ -173,11 +173,15 @@ function resolveBaseSpec(
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
   if (pathname === "/applicants") return { title: { label: "Applicants" } };
-  if (pathname.startsWith("/bd/client-signal")) {
-    return { title: { label: "Client Signals" } };
-  }
+  // BD module — title flips per active tab so the topbar mirrors the
+  // section the recruiter is looking at, instead of a flat "BD" label.
+  // Detail page (/bd/campaigns/[id]) reuses "Active Campaigns" as a
+  // linked breadcrumb back to the list.
   if (/^\/bd\/campaigns\/[^/]+/.test(pathname)) {
     return { title: { label: "Active Campaigns", href: "/bd/campaigns" } };
+  }
+  if (pathname.startsWith("/bd/client-signal")) {
+    return { title: { label: "Client Signals" } };
   }
   if (pathname.startsWith("/bd/campaigns")) {
     return { title: { label: "Active Campaigns" } };

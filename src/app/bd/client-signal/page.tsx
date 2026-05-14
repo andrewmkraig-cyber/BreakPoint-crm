@@ -115,22 +115,22 @@ export default async function ClientSignalPage({
   ];
 
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex w-full flex-col gap-6">
       <header className="flex flex-col gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           Client Signal
         </p>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-serif text-2xl font-bold text-court-fg sm:text-3xl">
+          <h2 className="font-serif text-xl font-bold tracking-tight text-court-fg">
             Existing clients hiring publicly
-          </h1>
+          </h2>
           <span className="inline-flex items-center rounded-full border border-court-brand/30 bg-court-brand-tint px-2.5 py-0.5 text-[11px] font-semibold text-court-brand-dark">
             {newThisWeekCount} new this week
           </span>
         </div>
         <p className="max-w-2xl text-sm text-court-fg-muted">
-          Daily Indeed scan flags clients posting publicly — that usually means they aren&apos;t
-          filling it internally. Reach out before someone else does.
+          Daily Indeed scan flags clients posting publicly. That usually means they aren&apos;t
+          filling it internally, so reach out before someone else does.
         </p>
       </header>
 

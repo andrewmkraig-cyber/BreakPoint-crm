@@ -73,9 +73,9 @@ export function ApprovalQueue({ initialRuns }: Props) {
   }
 
   return (
-    <section className="space-y-3">
+    <section className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           Discovery Queue
         </p>
         <button
@@ -135,13 +135,13 @@ function RunCard({
   const preview = run.discoveredPayload.slice(0, MAX_PREVIEW_ROWS);
   const overflow = run.discoveredCount - preview.length;
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="rounded-2xl border border-court-border bg-court-surface p-6 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-court-fg-muted">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
             {formatRunDate(run.createdAt)}
           </p>
-          <p className="mt-1 text-base font-bold text-court-fg">
+          <p className="mt-1 font-serif text-xl font-bold tracking-tight text-court-fg">
             {run.discoveredCount} {run.discoveredCount === 1 ? "company" : "companies"} discovered
           </p>
         </div>

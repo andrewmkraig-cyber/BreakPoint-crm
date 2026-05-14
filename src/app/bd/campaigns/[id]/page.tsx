@@ -27,7 +27,7 @@ export default async function CampaignDetailPage({
   if (!run) notFound();
 
   return (
-    <section className="flex flex-col gap-5">
+    <section className="flex w-full flex-col gap-6">
       <Link
         href="/bd/campaigns"
         className="inline-flex items-center gap-1.5 text-xs font-medium text-court-fg-muted transition-colors hover:text-court-fg"
@@ -36,12 +36,12 @@ export default async function CampaignDetailPage({
       </Link>
 
       <header className="flex flex-col gap-2">
-        <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-court-brand-dark">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           {run.vertical?.name ?? "Discovery"}
         </p>
-        <h1 className="font-serif text-2xl font-bold text-court-fg sm:text-3xl">
+        <h2 className="font-serif text-xl font-bold tracking-tight text-court-fg">
           {run.savedSearch?.name ?? "Org-wide BD discovery"}
-        </h1>
+        </h2>
         <p className="text-sm text-court-fg-muted">
           Status {run.status} · Started {run.createdAt.toLocaleString()}
         </p>
