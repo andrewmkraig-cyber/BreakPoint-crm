@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
-import { Bookmark, CalendarClock, DollarSign, Loader2, Search, UserX, X } from "lucide-react";
+import { Bookmark, CalendarClock, DollarSign, Handshake, Loader2, Search, UserX, X } from "lucide-react";
 import { toast } from "sonner";
 import { Pagination } from "@/components/pagination";
 import { PIPELINE_LABELS } from "@/lib/rf-payload-shapes";
@@ -528,6 +528,27 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
                             >
                               <DollarSign className="h-3 w-3" />
                               <span className="hidden md:inline">Offer</span>
+                            </Link>
+                          )}
+                          {r.bucket === "offer" && (
+                            // Green Placement link mirroring the
+                            // candidate-profile Placement button.
+                            // ?edit=placement&jobId=NN auto-opens the
+                            // PlacementDialog when jobId is the RF
+                            // numeric — Ace-native cuid rows just land
+                            // on the profile (still the same modal,
+                            // one extra click). The candidate page
+                            // strips the params after firing so
+                            // refreshes don't re-open the modal.
+                            <Link
+                              href={`/candidates/${r.candidateId}?edit=placement&jobId=${r.jobId}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-court-brand bg-court-brand-tint px-2.5 text-[11px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25"
+                              title="Record placement"
+                              aria-label="Record placement"
+                            >
+                              <Handshake className="h-3 w-3" />
+                              <span className="hidden md:inline">Placement</span>
                             </Link>
                           )}
                           {(r.bucket === "submitted" ||

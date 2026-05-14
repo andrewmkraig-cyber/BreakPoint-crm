@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
+import { Pencil, Trash2, X, Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  updateToolExpense,
+  deleteToolExpense,
+} from "@/app/dashboard/expense-actions";
 
 export type RecurringRow = {
   key: string;
@@ -11,6 +16,12 @@ export type RecurringRow = {
   paidCount: number;
   matched: boolean;
   subline?: string;
+  // When set, this row is backed by a ToolExpense row and the trash /
+  // pencil affordances render. Mercury-matched + catalog rows leave
+  // it blank.
+  toolExpenseId?: string;
+  startDate?: Date | null;
+  notes?: string;
 };
 
 export type OneTimeRow = {
@@ -20,6 +31,7 @@ export type OneTimeRow = {
   date: Date | null;
   notes?: string;
   matched: boolean;
+  toolExpenseId?: string;
 };
 
 export type MoneyInRow = {
@@ -59,11 +71,22 @@ function avatarFor(name: string): string {
   const cleaned = name.replace(/[^a-zA-Z0-9]/g, "");
   return (cleaned.slice(0, 2) || "??").toUpperCase();
 }
+function dateInputValue(d: Date | null | undefined): string {
+  if (!d) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 const SECTION_PREVIEW = 10;
 
-const RECURRING_GRID = "grid grid-cols-[1.6fr_0.9fr_1fr_0.7fr]";
-const ONE_TIME_GRID = "grid grid-cols-[1.4fr_0.8fr_0.9fr_1.5fr]";
+// Recurring + one-time both reserve an actions column at the end.
+// Tool gets the lion's share of width so 1440px viewports never
+// truncate the longest manual entries (e.g. "Lone Wolf Course",
+// "LLC Formation Filing").
+const RECURRING_GRID = "grid grid-cols-[2fr_0.9fr_1fr_0.7fr_60px]";
+const ONE_TIME_GRID = "grid grid-cols-[2.2fr_0.8fr_0.9fr_1.3fr_60px]";
 const MONEY_IN_GRID = "grid grid-cols-[1.6fr_1fr_1fr]";
 
 function MatchedPill() {
@@ -77,12 +100,14 @@ function MatchedPill() {
 export function SubscriptionsList({
   recurringMonthly,
   recurringAnnual,
+  recurringEvery3Years,
   oneTime,
   moneyIn,
   monthlyRecurringUsd,
 }: {
   recurringMonthly: RecurringRow[];
   recurringAnnual: RecurringRow[];
+  recurringEvery3Years: RecurringRow[];
   oneTime: OneTimeRow[];
   moneyIn: MoneyInRow[];
   monthlyRecurringUsd: number;
@@ -95,6 +120,10 @@ export function SubscriptionsList({
     (s, r) => s + r.totalYtdUsd,
     0,
   );
+  const every3YearsSubtotal = recurringEvery3Years.reduce(
+    (s, r) => s + r.totalYtdUsd,
+    0,
+  );
   const oneTimeSubtotal = oneTime.reduce((s, r) => s + r.amountUsd, 0);
   const moneyInTotal = moneyIn.reduce((s, r) => s + r.amountUsd, 0);
 
@@ -103,6 +132,10 @@ export function SubscriptionsList({
     0,
   );
   const annualRecurringTotal = recurringAnnual.reduce(
+    (s, r) => s + r.catalogCost,
+    0,
+  );
+  const every3YearsTotal = recurringEvery3Years.reduce(
     (s, r) => s + r.catalogCost,
     0,
   );
@@ -136,6 +169,20 @@ export function SubscriptionsList({
         footerTotalLabel="Annual Recurring Total"
         footerTotalUsd={annualRecurringTotal}
       />
+
+      {recurringEvery3Years.length > 0 ? (
+        <>
+          <div className="h-px bg-court-border-soft" />
+          <RecurringSection
+            title="Every 3 years"
+            rows={recurringEvery3Years}
+            costLabel="Per-Cycle Cost"
+            ytdSubtotal={every3YearsSubtotal}
+            footerTotalLabel="Every-3-Years Total"
+            footerTotalUsd={every3YearsTotal}
+          />
+        </>
+      ) : null}
 
       <div className="h-px bg-court-border-soft" />
 
@@ -185,6 +232,7 @@ function RecurringSection({
             <span className="text-right">{costLabel}</span>
             <span className="text-right">Total Paid YTD</span>
             <span className="text-right">Status</span>
+            <span />
           </div>
           <ul className="divide-y divide-court-border-soft">
             {visible.map((r) => (
@@ -227,7 +275,21 @@ function RecurringSection({
 }
 
 function RecurringRowItem({ row }: { row: RecurringRow }) {
+  const [editing, setEditing] = useState(false);
   const initials = avatarFor(row.toolName);
+
+  if (editing && row.toolExpenseId) {
+    return (
+      <li className="px-1 py-2">
+        <RecurringEditForm
+          row={row}
+          onCancel={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      </li>
+    );
+  }
+
   return (
     <li className={`${RECURRING_GRID} items-center gap-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
@@ -235,13 +297,9 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
           {initials}
         </span>
         <div className="min-w-0">
-          <div className="truncate font-medium text-court-fg">
-            {row.toolName}
-          </div>
+          <div className="font-medium text-court-fg">{row.toolName}</div>
           {row.subline ? (
-            <div className="truncate text-[11px] text-court-fg-muted">
-              {row.subline}
-            </div>
+            <div className="text-[11px] text-court-fg-muted">{row.subline}</div>
           ) : null}
         </div>
       </div>
@@ -253,6 +311,14 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
       </span>
       <span className="flex items-center justify-end">
         {row.matched ? <MatchedPill /> : null}
+      </span>
+      <span className="flex items-center justify-end">
+        {row.toolExpenseId ? (
+          <ToolExpenseRowActions
+            id={row.toolExpenseId}
+            onEdit={() => setEditing(true)}
+          />
+        ) : null}
       </span>
     </li>
   );
@@ -285,6 +351,7 @@ function OneTimeSection({
             <span className="text-right">Amount</span>
             <span className="text-right">Date</span>
             <span>Notes</span>
+            <span />
           </div>
           <ul className="divide-y divide-court-border-soft">
             {visible.map((r) => (
@@ -318,7 +385,21 @@ function OneTimeSection({
 }
 
 function OneTimeRowItem({ row }: { row: OneTimeRow }) {
+  const [editing, setEditing] = useState(false);
   const initials = avatarFor(row.toolName);
+
+  if (editing && row.toolExpenseId) {
+    return (
+      <li className="px-1 py-2">
+        <OneTimeEditForm
+          row={row}
+          onCancel={() => setEditing(false)}
+          onSaved={() => setEditing(false)}
+        />
+      </li>
+    );
+  }
+
   return (
     <li className={`${ONE_TIME_GRID} items-center gap-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
@@ -326,9 +407,7 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
           {initials}
         </span>
         <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate font-medium text-court-fg">
-            {row.toolName}
-          </span>
+          <span className="font-medium text-court-fg">{row.toolName}</span>
           {row.matched ? <MatchedPill /> : null}
         </div>
       </div>
@@ -340,6 +419,14 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
       </span>
       <span className="truncate text-xs text-court-fg-muted">
         {row.notes ?? ""}
+      </span>
+      <span className="flex items-center justify-end">
+        {row.toolExpenseId ? (
+          <ToolExpenseRowActions
+            id={row.toolExpenseId}
+            onEdit={() => setEditing(true)}
+          />
+        ) : null}
       </span>
     </li>
   );
@@ -423,6 +510,295 @@ function EmptyBlock({ children }: { children: React.ReactNode }) {
   return (
     <div className="mt-2 rounded-xl border border-dashed border-court-border bg-court-surface-subtle px-3 py-3 text-center text-xs text-court-fg-muted">
       {children}
+    </div>
+  );
+}
+
+// ---- ToolExpense edit / delete affordances ----
+
+function ToolExpenseRowActions({
+  id,
+  onEdit,
+}: {
+  id: string;
+  onEdit: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [pending, startTransition] = useTransition();
+
+  const handleDelete = () => {
+    startTransition(async () => {
+      const res = await deleteToolExpense(id);
+      if (res.ok) setConfirming(false);
+    });
+  };
+
+  return (
+    <span className="relative inline-flex items-center gap-1">
+      <button
+        type="button"
+        aria-label="Edit expense"
+        onClick={onEdit}
+        className="grid h-6 w-6 place-items-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+      >
+        <Pencil className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        aria-label="Delete expense"
+        onClick={() => setConfirming((v) => !v)}
+        className="grid h-6 w-6 place-items-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-red-600"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+      {confirming ? (
+        <div className="absolute right-0 top-full z-20 mt-1 w-56 rounded-lg border border-court-border bg-court-surface p-3 shadow-lg">
+          <p className="text-xs font-semibold text-court-fg">
+            Delete this expense?
+          </p>
+          <p className="mt-1 text-[11px] text-court-fg-muted">
+            This can&apos;t be undone.
+          </p>
+          <div className="mt-2 flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={pending}
+              className="rounded-md border border-court-border px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={pending}
+              className="inline-flex items-center gap-1 rounded-md bg-red-600 px-2 py-1 text-[11px] font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
+            >
+              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              Delete
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+function RecurringEditForm({
+  row,
+  onCancel,
+  onSaved,
+}: {
+  row: RecurringRow;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(row.toolName);
+  const [cost, setCost] = useState(row.catalogCost.toString());
+  const [notes, setNotes] = useState(row.subline ?? row.notes ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const handleSave = () => {
+    if (!row.toolExpenseId) return;
+    const parsedCost = Number(cost);
+    if (!Number.isFinite(parsedCost) || parsedCost < 0) {
+      setError("Cost must be a non-negative number.");
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const res = await updateToolExpense({
+        id: row.toolExpenseId!,
+        name,
+        cost: parsedCost,
+        notes: notes.trim() || null,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      onSaved();
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-court-brand/30 bg-court-brand-tint/40 p-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.4fr_0.9fr_2fr]">
+        <FieldText label="Name" value={name} onChange={setName} />
+        <FieldNumber label="Cost" value={cost} onChange={setCost} />
+        <FieldText label="Notes" value={notes} onChange={setNotes} />
+      </div>
+      {error ? (
+        <p className="mt-2 text-[11px] text-red-600">{error}</p>
+      ) : null}
+      <FormButtons pending={pending} onCancel={onCancel} onSave={handleSave} />
+    </div>
+  );
+}
+
+function OneTimeEditForm({
+  row,
+  onCancel,
+  onSaved,
+}: {
+  row: OneTimeRow;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(row.toolName);
+  const [amount, setAmount] = useState(row.amountUsd.toString());
+  const [date, setDate] = useState(dateInputValue(row.date));
+  const [notes, setNotes] = useState(row.notes ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const handleSave = () => {
+    if (!row.toolExpenseId) return;
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+      setError("Amount must be a non-negative number.");
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const res = await updateToolExpense({
+        id: row.toolExpenseId!,
+        name,
+        cost: parsedAmount,
+        startDate: date || null,
+        notes: notes.trim() || null,
+      });
+      if (!res.ok) {
+        setError(res.error);
+        return;
+      }
+      onSaved();
+    });
+  };
+
+  return (
+    <div className="rounded-lg border border-court-brand/30 bg-court-brand-tint/40 p-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1.6fr_0.9fr_1fr_1.5fr]">
+        <FieldText label="Name" value={name} onChange={setName} />
+        <FieldNumber label="Amount" value={amount} onChange={setAmount} />
+        <FieldDate label="Date" value={date} onChange={setDate} />
+        <FieldText label="Notes" value={notes} onChange={setNotes} />
+      </div>
+      {error ? (
+        <p className="mt-2 text-[11px] text-red-600">{error}</p>
+      ) : null}
+      <FormButtons pending={pending} onCancel={onCancel} onSave={handleSave} />
+    </div>
+  );
+}
+
+function FieldText({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
+        {label}
+      </span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg focus:border-court-brand focus:outline-none"
+      />
+    </label>
+  );
+}
+
+function FieldNumber({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
+        {label}
+      </span>
+      <input
+        type="number"
+        inputMode="decimal"
+        step="0.01"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm tabular-nums text-court-fg focus:border-court-brand focus:outline-none"
+      />
+    </label>
+  );
+}
+
+function FieldDate({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block min-w-0">
+      <span className="text-[10px] font-extrabold uppercase tracking-[0.1em] text-court-fg-muted">
+        {label}
+      </span>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="mt-0.5 w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm text-court-fg focus:border-court-brand focus:outline-none"
+      />
+    </label>
+  );
+}
+
+function FormButtons({
+  pending,
+  onCancel,
+  onSave,
+}: {
+  pending: boolean;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <div className="mt-2 flex items-center justify-end gap-2">
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={pending}
+        className="inline-flex items-center gap-1 rounded-md border border-court-border px-2 py-1 text-[11px] font-medium text-court-fg-muted transition hover:bg-court-surface-subtle"
+      >
+        <X className="h-3 w-3" /> Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onSave}
+        disabled={pending}
+        className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2 py-1 text-[11px] font-semibold text-court-brand-dark transition hover:bg-court-brand/25 disabled:opacity-60"
+      >
+        {pending ? (
+          <Loader2 className="h-3 w-3 animate-spin" />
+        ) : (
+          <Check className="h-3 w-3" />
+        )}
+        Save
+      </button>
     </div>
   );
 }

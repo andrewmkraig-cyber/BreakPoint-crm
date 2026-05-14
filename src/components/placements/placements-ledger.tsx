@@ -21,6 +21,7 @@ export type LedgerRow = {
   startDateLabel: string | null;
   feeAmount: number | null;
   billingStatus: PlacementsDashboardBillingStatus;
+  leadSource: string | null;
 };
 
 type FilterId = "ALL" | PlacementsDashboardBillingStatus;
@@ -141,6 +142,7 @@ export function PlacementsLedger({
               <th className="px-3 py-1.5 font-semibold">City</th>
               <th className="px-3 py-1.5 font-semibold">Start</th>
               <th className="px-3 py-1.5 text-right font-semibold">Fee</th>
+              <th className="px-3 py-1.5 font-semibold">Source</th>
               <th className="px-4 py-1.5 font-semibold">Billing</th>
             </tr>
           </thead>
@@ -148,7 +150,7 @@ export function PlacementsLedger({
             {filtered.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="px-4 py-6 text-center text-[13px] text-court-fg-muted"
                 >
                   {rows.length === 0
@@ -203,6 +205,9 @@ function LedgerTableRow({ row }: { row: LedgerRow }) {
         {row.feeAmount != null && row.feeAmount > 0
           ? formatMoneyShort(row.feeAmount)
           : "—"}
+      </td>
+      <td className="px-3 py-1.5 align-middle text-court-fg-muted">
+        {row.leadSource ?? "—"}
       </td>
       <td className="px-4 py-1.5 align-middle">
         <span

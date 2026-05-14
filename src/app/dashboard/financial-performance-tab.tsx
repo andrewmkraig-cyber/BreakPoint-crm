@@ -113,6 +113,17 @@ export async function FinancialPerformanceTab({
     key ? getMercuryTransactions(key) : [],
   );
 
+  // One-shot cleanup: an early seed double-recorded the Lone Wolf
+  // training fee under both "Lone Wolf Course" and "Training Course".
+  // Idempotent deleteMany — does nothing once the duplicate row is
+  // gone, so it's safe to leave inline.
+  await prisma.toolExpense.deleteMany({
+    where: {
+      organizationId: org.id,
+      name: { contains: "Training Course", mode: "insensitive" },
+    },
+  });
+
   const [
     revenueInvoices,
     placementsYtd,
@@ -313,6 +324,12 @@ export async function FinancialPerformanceTab({
     // when omitted. GoDaddy bills $46.59 every 3 years but we surface its
     // $15.53/yr annual equivalent, so its match window centers on $46.59.
     matchCost?: number;
+    // Absolute min/max for the Mercury match window. When set, overrides
+    // the default ±30% band — used for Anthropic Claude Code where
+    // post-tax charges land in a $95–$115 corridor we want to catch
+    // without widening the band for every other tool.
+    matchMin?: number;
+    matchMax?: number;
     // Optional muted line under the tool name (e.g. "billed every 3 years").
     subline?: string;
     // When Mercury never sees this tool (paid via personal card, etc.),
@@ -322,7 +339,13 @@ export async function FinancialPerformanceTab({
   };
   const RECURRING_MONTHLY_CATALOG: RecurringCatalogEntry[] = [
     { displayName: "Pin", matcherName: "Pin", catalogCost: 299 },
-    { displayName: "Anthropic / Claude Code", matcherName: "Anthropic / Claude", catalogCost: 100 },
+    {
+      displayName: "Anthropic / Claude Code",
+      matcherName: "Anthropic / Claude",
+      catalogCost: 100,
+      matchMin: 95,
+      matchMax: 115,
+    },
     { displayName: "TheirStack", matcherName: "TheirStack", catalogCost: 58.95 },
     { displayName: "OpenPhone / Quo", matcherName: "OpenPhone / Quo", catalogCost: 35.64 },
     { displayName: "Vercel", matcherName: "Vercel", catalogCost: 21.6 },
@@ -344,12 +367,14 @@ export async function FinancialPerformanceTab({
       fallbackPaidCount: 1,
       fallbackTotalUsd: 321.29,
     },
+  ];
+  // Surfaced in its own "Every 3 Years" section below the annual list.
+  const RECURRING_EVERY_3_YEARS_CATALOG: RecurringCatalogEntry[] = [
     {
       displayName: "GoDaddy",
       matcherName: "GoDaddy",
-      catalogCost: 15.53,
-      matchCost: 46.59,
-      subline: "billed every 3 years",
+      catalogCost: 46.59,
+      subline: "$15.53/yr equivalent",
     },
   ];
 
@@ -360,12 +385,18 @@ export async function FinancialPerformanceTab({
   const ANTHROPIC_CONSOLE_DISPLAY = "Anthropic Console";
 
   const RECURRING_TOLERANCE = 0.3;
-  const inRecurringWindow = (amount: number, target: number) =>
-    Math.abs(amount - target) / target <= RECURRING_TOLERANCE;
+  const matchesRecurringEntry = (amount: number, c: RecurringCatalogEntry) => {
+    if (c.matchMin != null && c.matchMax != null) {
+      return amount >= c.matchMin && amount <= c.matchMax;
+    }
+    const target = c.matchCost ?? c.catalogCost;
+    return Math.abs(amount - target) / target <= RECURRING_TOLERANCE;
+  };
 
   type RecurringAgg = { totalUsd: number; paidCount: number };
   const monthlyAgg = new Map<string, RecurringAgg>();
   const annualAgg = new Map<string, RecurringAgg>();
+  const every3YearsAgg = new Map<string, RecurringAgg>();
   const oneTimeRowsRaw: OneTimeRow[] = [];
   const cashbackTxns: { amount: number; date: Date | null; key: string }[] = [];
 
@@ -397,9 +428,7 @@ export async function FinancialPerformanceTab({
     if (spend <= 0) continue;
 
     const monthlyHit = RECURRING_MONTHLY_CATALOG.find(
-      (c) =>
-        c.matcherName === tool &&
-        inRecurringWindow(spend, c.matchCost ?? c.catalogCost),
+      (c) => c.matcherName === tool && matchesRecurringEntry(spend, c),
     );
     if (monthlyHit) {
       const prev = monthlyAgg.get(monthlyHit.displayName) ?? {
@@ -413,9 +442,7 @@ export async function FinancialPerformanceTab({
     }
 
     const annualHit = RECURRING_ANNUAL_CATALOG.find(
-      (c) =>
-        c.matcherName === tool &&
-        inRecurringWindow(spend, c.matchCost ?? c.catalogCost),
+      (c) => c.matcherName === tool && matchesRecurringEntry(spend, c),
     );
     if (annualHit) {
       const prev = annualAgg.get(annualHit.displayName) ?? {
@@ -425,6 +452,20 @@ export async function FinancialPerformanceTab({
       prev.totalUsd += spend;
       prev.paidCount += 1;
       annualAgg.set(annualHit.displayName, prev);
+      continue;
+    }
+
+    const every3YearsHit = RECURRING_EVERY_3_YEARS_CATALOG.find(
+      (c) => c.matcherName === tool && matchesRecurringEntry(spend, c),
+    );
+    if (every3YearsHit) {
+      const prev = every3YearsAgg.get(every3YearsHit.displayName) ?? {
+        totalUsd: 0,
+        paidCount: 0,
+      };
+      prev.totalUsd += spend;
+      prev.paidCount += 1;
+      every3YearsAgg.set(every3YearsHit.displayName, prev);
       continue;
     }
 
@@ -466,6 +507,19 @@ export async function FinancialPerformanceTab({
       subline: c.subline,
     };
   });
+  const recurringEvery3Years: RecurringRow[] = RECURRING_EVERY_3_YEARS_CATALOG.map((c) => {
+    const agg = every3YearsAgg.get(c.displayName);
+    const matched = !!agg && agg.paidCount > 0;
+    return {
+      key: `e3y-${c.displayName}`,
+      toolName: c.displayName,
+      catalogCost: c.catalogCost,
+      totalYtdUsd: matched ? agg!.totalUsd : (c.fallbackTotalUsd ?? 0),
+      paidCount: matched ? agg!.paidCount : (c.fallbackPaidCount ?? 0),
+      matched,
+      subline: c.subline,
+    };
+  });
 
   // Manual entries from the "Add expense" form route into the bucket
   // that matches their frequency. Quarterly is normalized into the
@@ -484,6 +538,9 @@ export async function FinancialPerformanceTab({
         paidCount,
         matched: false,
         subline: m.notes ?? undefined,
+        toolExpenseId: m.id,
+        startDate: m.startDate ?? null,
+        notes: m.notes ?? undefined,
       });
     } else if (freq === "quarterly") {
       recurringMonthly.push({
@@ -494,6 +551,9 @@ export async function FinancialPerformanceTab({
         paidCount,
         matched: false,
         subline: m.notes ?? undefined,
+        toolExpenseId: m.id,
+        startDate: m.startDate ?? null,
+        notes: m.notes ?? undefined,
       });
     } else if (freq === "annual" || freq === "annually" || freq === "yearly") {
       recurringAnnual.push({
@@ -504,6 +564,9 @@ export async function FinancialPerformanceTab({
         paidCount,
         matched: false,
         subline: m.notes ?? undefined,
+        toolExpenseId: m.id,
+        startDate: m.startDate ?? null,
+        notes: m.notes ?? undefined,
       });
     } else {
       // "One-time" and any other unrecognized frequency falls through
@@ -515,6 +578,7 @@ export async function FinancialPerformanceTab({
         date: m.startDate ?? m.createdAt ?? null,
         matched: false,
         notes: m.notes ?? undefined,
+        toolExpenseId: m.id,
       });
     }
   }
@@ -665,9 +729,28 @@ export async function FinancialPerformanceTab({
   for (const r of recurringAnnual) {
     if (r.totalYtdUsd > 0) bump(r.toolName, r.totalYtdUsd);
   }
+  for (const r of recurringEvery3Years) {
+    if (r.totalYtdUsd > 0) bump(r.toolName, r.totalYtdUsd);
+  }
   for (const r of oneTimeRows) bump(r.toolName, r.amountUsd);
 
+  // Whitelist for the ROI card — the desk only weights ROI on its
+  // active sourcing channels. Other tools (Vercel, Anthropic, Zoho,
+  // etc.) cost money but aren't tracked against revenue attribution.
+  const ROI_WHITELIST_ARRAY = [
+    "Pin",
+    "Apollo",
+    "TheirStack",
+    "LinkedIn",
+    "Indeed",
+  ] as const;
+  const ROI_WHITELIST = new Set<string>(ROI_WHITELIST_ARRAY);
+  for (const name of ROI_WHITELIST_ARRAY) {
+    if (!spendByDisplayName.has(name)) spendByDisplayName.set(name, 0);
+  }
+
   const roiRows: RoiRow[] = Array.from(spendByDisplayName.entries())
+    .filter(([toolName]) => ROI_WHITELIST.has(toolName))
     .map(([toolName, spendUsd]) => {
       const rev = revByLowerSource.get(toolName.toLowerCase()) ?? 0;
       const roiPct =
@@ -867,6 +950,7 @@ export async function FinancialPerformanceTab({
           mercuryConnected={mercuryConnected}
           recurringMonthly={recurringMonthly}
           recurringAnnual={recurringAnnual}
+          recurringEvery3Years={recurringEvery3Years}
           oneTimeRows={oneTimeRows}
           moneyInRows={moneyInRows}
           subscriptionsYtdUsd={subscriptionsYtdUsd}
@@ -1257,6 +1341,7 @@ function ExpensesSection({
   mercuryConnected,
   recurringMonthly,
   recurringAnnual,
+  recurringEvery3Years,
   oneTimeRows,
   moneyInRows,
   subscriptionsYtdUsd,
@@ -1268,6 +1353,7 @@ function ExpensesSection({
   mercuryConnected: boolean;
   recurringMonthly: RecurringRow[];
   recurringAnnual: RecurringRow[];
+  recurringEvery3Years: RecurringRow[];
   oneTimeRows: OneTimeRow[];
   moneyInRows: MoneyInRow[];
   subscriptionsYtdUsd: number;
@@ -1301,6 +1387,7 @@ function ExpensesSection({
         <SubscriptionsCard
           recurringMonthly={recurringMonthly}
           recurringAnnual={recurringAnnual}
+          recurringEvery3Years={recurringEvery3Years}
           oneTimeRows={oneTimeRows}
           moneyInRows={moneyInRows}
           subscriptionsYtdUsd={subscriptionsYtdUsd}
@@ -1319,6 +1406,7 @@ function ExpensesSection({
 function SubscriptionsCard({
   recurringMonthly,
   recurringAnnual,
+  recurringEvery3Years,
   oneTimeRows,
   moneyInRows,
   subscriptionsYtdUsd,
@@ -1327,6 +1415,7 @@ function SubscriptionsCard({
 }: {
   recurringMonthly: RecurringRow[];
   recurringAnnual: RecurringRow[];
+  recurringEvery3Years: RecurringRow[];
   oneTimeRows: OneTimeRow[];
   moneyInRows: MoneyInRow[];
   subscriptionsYtdUsd: number;
@@ -1347,6 +1436,7 @@ function SubscriptionsCard({
       <SubscriptionsList
         recurringMonthly={recurringMonthly}
         recurringAnnual={recurringAnnual}
+        recurringEvery3Years={recurringEvery3Years}
         oneTime={oneTimeRows}
         moneyIn={moneyInRows}
         monthlyRecurringUsd={monthlyRecurringUsd}

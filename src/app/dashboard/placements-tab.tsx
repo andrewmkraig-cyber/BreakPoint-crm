@@ -63,6 +63,7 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
       : null,
     feeAmount: r.feeAmount,
     billingStatus: r.billingStatus,
+    leadSource: r.leadSource ?? null,
   }));
 }
 

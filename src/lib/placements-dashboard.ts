@@ -68,6 +68,10 @@ export type PlacementsDashboardRow = {
   // client KPI without forcing every consumer to run the same lookback
   // query independently.
   clientHadPriorYearPlacement: boolean;
+  // Recruiter-tagged lead source for this placement. Surfaced as the
+  // "Source" column on the placements ledger and as the source-mix
+  // input on the Financial Performance card.
+  leadSource: string | null;
 };
 
 type ClientLocationJson = {
@@ -212,6 +216,7 @@ export async function getPlacementsDashboardData(
         acceptedSalary: true,
         cityOverride: true,
         source: true,
+        candidateSource: true,
         candidate: { select: { firstName: true, lastName: true } },
         client: { select: { name: true, industry: true, location: true } },
         job: { select: { title: true, employmentType: true } },
@@ -287,6 +292,7 @@ export async function getPlacementsDashboardData(
       clientHadPriorYearPlacement: p.clientId
         ? priorYearClientIds.has(p.clientId)
         : false,
+      leadSource: p.candidateSource ?? null,
     };
   });
 }

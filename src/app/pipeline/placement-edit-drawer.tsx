@@ -27,14 +27,15 @@ export type PlacementDrawerContext = {
   candidateSource: string | null;
 };
 
-// Sourcing channels the desk uses. Stored as the display string so the
-// Financial Performance "By source" chart groups cleanly.
+// Lead source channels the desk uses. Stored as the display string so
+// the Financial Performance "By source" chart groups cleanly.
 const SOURCE_OPTIONS = [
-  "Apollo",
+  "Network",
+  "Referral",
   "LinkedIn",
   "Indeed",
-  "Referral",
-  "Network",
+  "Cold Outreach",
+  "BreakPoint Website",
   "Other",
 ] as const;
 
@@ -208,7 +209,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
           </div>
 
           <div>
-            <FieldLabel>Source</FieldLabel>
+            <FieldLabel>Lead Source</FieldLabel>
             <select
               value={source}
               onChange={(e) => setSource(e.target.value)}
@@ -220,9 +221,9 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                   {opt}
                 </option>
               ))}
-              {/* Preserve any legacy value (e.g. "Pin", "Apollo BD")
-                  that isn't in the canonical option list so it shows
-                  selected instead of silently reverting to "—". */}
+              {/* Preserve any legacy value (e.g. "Pin", "Apollo BD",
+                  "Apollo") that isn't in the canonical option list so
+                  it shows selected instead of silently reverting to "—". */}
               {source &&
                 !SOURCE_OPTIONS.some(
                   (o) => o.toLowerCase() === source.toLowerCase(),

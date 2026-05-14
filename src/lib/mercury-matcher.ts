@@ -17,7 +17,7 @@ const KNOWN_TOOLS: {
   category: ExpenseCategory;
 }[] = [
   { name: "Apollo", keywords: ["apollo.io", "apollo"], category: "Software" },
-  { name: "Pin", keywords: ["pin.com"], category: "Software" },
+  { name: "Pin", keywords: ["pin.com", "pin com", "pin,com"], category: "Software" },
   { name: "Anthropic / Claude", keywords: ["anthropic", "claude.ai", "claude team"], category: "Software" },
   { name: "Ringover", keywords: ["ringover"], category: "Communications" },
   { name: "Vercel", keywords: ["vercel"], category: "Hosting" },
