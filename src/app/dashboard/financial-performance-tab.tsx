@@ -1365,16 +1365,18 @@ function ExpensesSection({
           activeSubscriptionsCount={activeSubscriptionsCount}
           monthlyRecurringUsd={monthlyRecurringUsd}
         />
-        <RoiCard
-          rows={roiRows}
-          blendedRoiPct={blendedExpensesRoiPct}
-        />
+        <div className="flex flex-col gap-5">
+          <MonthlyOperatingCostCard
+            recurringMonthly={recurringMonthly}
+            recurringAnnual={recurringAnnual}
+            recurringEvery3Years={recurringEvery3Years}
+          />
+          <RoiCard
+            rows={roiRows}
+            blendedRoiPct={blendedExpensesRoiPct}
+          />
+        </div>
       </div>
-      <MonthlyOperatingCostCard
-        recurringMonthly={recurringMonthly}
-        recurringAnnual={recurringAnnual}
-        recurringEvery3Years={recurringEvery3Years}
-      />
     </section>
   );
 }
@@ -1568,11 +1570,6 @@ type OperatingCostRow = {
   key: string;
   toolName: string;
   monthlyEquivUsd: number;
-  // Inline muted hint shown next to the monthly equivalent — empty for
-  // monthly tools, "(annual / 12)" for annual, "(3yr / 36)" for every-
-  // 3-years entries.
-  conversionHint: string;
-  billingCycleLabel: string;
 };
 
 function buildOperatingCostRows(
@@ -1586,8 +1583,6 @@ function buildOperatingCostRows(
       key: `op-${r.key}`,
       toolName: r.toolName,
       monthlyEquivUsd: r.catalogCost,
-      conversionHint: "",
-      billingCycleLabel: "Monthly",
     });
   }
   for (const r of recurringAnnual) {
@@ -1595,8 +1590,6 @@ function buildOperatingCostRows(
       key: `op-${r.key}`,
       toolName: r.toolName,
       monthlyEquivUsd: r.catalogCost / 12,
-      conversionHint: "(annual / 12)",
-      billingCycleLabel: "Annual",
     });
   }
   for (const r of recurringEvery3Years) {
@@ -1604,15 +1597,13 @@ function buildOperatingCostRows(
       key: `op-${r.key}`,
       toolName: r.toolName,
       monthlyEquivUsd: r.catalogCost / 36,
-      conversionHint: "(3yr / 36)",
-      billingCycleLabel: "Every 3 Years",
     });
   }
   return rows.sort((a, b) => b.monthlyEquivUsd - a.monthlyEquivUsd);
 }
 
 const OPERATING_COST_GRID =
-  "grid grid-cols-[minmax(0,1.6fr)_minmax(120px,1fr)_minmax(110px,0.8fr)]";
+  "grid grid-cols-[minmax(0,1.6fr)_minmax(120px,1fr)]";
 
 function MonthlyOperatingCostCard({
   recurringMonthly,
@@ -1654,8 +1645,7 @@ function MonthlyOperatingCostCard({
             className={`${OPERATING_COST_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
           >
             <span>Tool</span>
-            <span className="text-right">Monthly Equivalent</span>
-            <span className="text-right">Billing Cycle</span>
+            <span className="text-right">Monthly Cost</span>
           </div>
           <ul className="divide-y divide-court-border-soft">
             {rows.map((r) => (
@@ -1669,18 +1659,8 @@ function MonthlyOperatingCostCard({
                 >
                   {r.toolName}
                 </span>
-                <span className="text-right tabular-nums text-court-fg">
-                  <span className="font-semibold">
-                    {formatUsdCents(r.monthlyEquivUsd)}
-                  </span>
-                  {r.conversionHint ? (
-                    <span className="ml-1 text-[11px] font-normal text-court-fg-muted">
-                      {r.conversionHint}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="text-right text-xs text-court-fg-muted">
-                  {r.billingCycleLabel}
+                <span className="text-right font-semibold tabular-nums text-court-fg">
+                  {formatUsdCents(r.monthlyEquivUsd)}
                 </span>
               </li>
             ))}
