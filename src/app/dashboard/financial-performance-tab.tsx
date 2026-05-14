@@ -1367,16 +1367,11 @@ function ExpensesSection({
     : "Mercury not connected";
   return (
     <section className="flex flex-col gap-4">
-      <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <h3 className="font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
-          Expenses
-        </h3>
+      <div className="flex items-center justify-end">
         <p
           className={
             "text-xs " +
-            (mercuryConnected
-              ? "text-court-fg-muted"
-              : "text-court-fg-dim")
+            (mercuryConnected ? "text-court-fg-muted" : "text-court-fg-dim")
           }
         >
           {statusLine}

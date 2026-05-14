@@ -1,5 +1,7 @@
+import { AlertTriangle, CheckCircle, Clock, Receipt } from "lucide-react";
 import { TabStrip } from "@/components/ui/tab-strip";
 import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
+import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { PeriodTabs } from "@/app/dashboard/period-tabs";
 import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
@@ -81,7 +83,7 @@ export default async function FinancesPage({
   const period = resolveDashboardPeriod(params.period);
 
   return (
-    <div className="flex w-full flex-col gap-6 pt-6">
+    <div className="flex w-full flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <TabStrip<FinancesTab>
           ariaLabel="Finances sections"
@@ -112,10 +114,30 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
   return (
     <div className="flex w-full flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiCard label="Outstanding" value={formatUsd(summary.outstandingCents)} />
-        <KpiCard label="Overdue" value={formatUsd(summary.overdueCents)} />
-        <KpiCard label="Billed this quarter" value={formatUsd(summary.billedThisQuarterCents)} />
-        <KpiCard label="Collected this quarter" value={formatUsd(summary.collectedThisQuarterCents)} />
+        <KpiTile
+          label="Outstanding"
+          value={formatUsd(summary.outstandingCents)}
+          icon={Clock}
+          live={summary.outstandingCents > 0}
+        />
+        <KpiTile
+          label="Overdue"
+          value={formatUsd(summary.overdueCents)}
+          icon={AlertTriangle}
+          live={summary.overdueCents > 0}
+        />
+        <KpiTile
+          label="Billed This Quarter"
+          value={formatUsd(summary.billedThisQuarterCents)}
+          icon={Receipt}
+          live={summary.billedThisQuarterCents > 0}
+        />
+        <KpiTile
+          label="Collected This Quarter"
+          value={formatUsd(summary.collectedThisQuarterCents)}
+          icon={CheckCircle}
+          live={summary.collectedThisQuarterCents > 0}
+        />
       </div>
 
       <div className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
@@ -228,15 +250,3 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
   );
 }
 
-function KpiCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex h-full flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]">
-      <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
-        {label}
-      </p>
-      <div className="mt-2 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums text-court-fg">
-        {value}
-      </div>
-    </div>
-  );
-}

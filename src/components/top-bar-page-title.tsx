@@ -147,8 +147,10 @@ function resolveBaseSpec(
 
   if (pathname === "/finances") {
     const tab = searchParams?.get("tab") ?? "overview";
+    const label =
+      tab === "invoices" ? "Invoices" : tab === "expenses" ? "Expenses" : "Finances";
     return {
-      title: { label: "Finances" },
+      title: { label },
       action:
         tab === "invoices"
           ? { kind: "new-invoice", label: "New Invoice" }

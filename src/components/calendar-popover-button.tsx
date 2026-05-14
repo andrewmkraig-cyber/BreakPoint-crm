@@ -1,34 +1,55 @@
 "use client";
 
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-// TopBar mini-calendar popover. Anchored to a green-outlined icon
-// button between the weather widget and the profile pill; reads
-// CalendarEvent days for the viewed month via /api/calendar/event-days
-// so the recruiter can glance at the month without leaving their
-// current page.
+// TopBar mini-calendar popover. The trigger is a compact horizontal
+// version of the dashboard CalendarWidget — green weekday band on top,
+// month label + bold day number underneath — sitting flush in the
+// topbar between the weather widget and the profile pill. Clicking it
+// opens the same month-grid popover that reads event days for the
+// current org from /api/calendar/event-days.
 
 const ZONE = "America/New_York";
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+type TodayParts = {
+  year: number;
+  month0: number;
+  day: number;
+  weekdayLong: string;
+  monthLong: string;
+};
 
 function formatYmd(year: number, month0: number, day: number): string {
   return `${year}-${String(month0 + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function todayParts(): { year: number; month0: number; day: number } {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
+function todayParts(): TodayParts {
+  const now = new Date();
+  const numericFmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   });
-  const parts = fmt.formatToParts(new Date());
-  const get = (t: string) => Number(parts.find((p) => p.type === t)?.value ?? "0");
+  const numericParts = numericFmt.formatToParts(now);
+  const nGet = (t: string) =>
+    Number(numericParts.find((p) => p.type === t)?.value ?? "0");
+  const labelFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: ZONE,
+    weekday: "long",
+    month: "long",
+  });
+  const labelParts = labelFmt.formatToParts(now);
+  const lGet = (t: string) =>
+    labelParts.find((p) => p.type === t)?.value ?? "";
   return {
-    year: get("year"),
-    month0: get("month") - 1,
-    day: get("day"),
+    year: nGet("year"),
+    month0: nGet("month") - 1,
+    day: nGet("day"),
+    weekdayLong: lGet("weekday"),
+    monthLong: lGet("month"),
   };
 }
 
@@ -150,22 +171,24 @@ export function CalendarPopoverButton() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Calendar"
+        aria-label={`Calendar — ${today.weekdayLong} ${today.monthLong} ${today.day}`}
         aria-expanded={open}
         className={
-          "group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
-          (open
-            ? "border-court-brand-dark bg-court-brand text-white hover:bg-court-brand-dark"
-            : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/30")
+          "group inline-flex flex-col overflow-hidden rounded-lg shadow-sm ring-1 transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+          (open ? "ring-court-brand" : "ring-court-border")
         }
       >
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute right-full mr-2 whitespace-nowrap rounded-md bg-court-fg px-2 py-1 text-xs font-medium text-court-surface opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-        >
-          Calendar
+        <span className="bg-court-brand-tint px-2.5 py-[1px] text-center text-[9px] font-extrabold uppercase tracking-wide text-court-brand">
+          {today.weekdayLong}
         </span>
-        <CalendarDays className="h-4 w-4" />
+        <span className="flex flex-col bg-court-surface px-2.5 py-0.5 text-center">
+          <span className="text-[8px] font-medium uppercase tracking-wide text-court-fg-muted">
+            {today.monthLong}
+          </span>
+          <span className="text-base font-black leading-none text-court-fg">
+            {today.day}
+          </span>
+        </span>
       </button>
 
       {open ? (
