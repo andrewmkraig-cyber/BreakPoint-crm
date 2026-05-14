@@ -1,10 +1,10 @@
 # Ace Roadmap
-Last updated: 2026-05-13 · Ace 44.0
+Last updated: 2026-05-14 · Ace 46.0
 
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full BD Phase 4 scoping rules live in ACE_STATE.md Next Task and ACE_RULES.md BD Phase 4 Rule.
 
-1. **BD Engine Phase 4** — opens Ace 45. ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts.
+1. **BD Engine Phase 4** — opens Ace 47. ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts.
 2. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.
 3. **Public Jobs Board — BreakPoint Website Sync** — Ace is source of truth. Website reads sanitized public API only. Client names NEVER exposed. Poster always BreakPoint Talent. Public API at `ace.breakpointtalent.com/api/public/jobs`. Safe fields only: title, location, employment type, salary range, public description, posted date, apply URL. Never returns client name, logo, contacts, fees, internal notes, placement data. New Job fields: `publishedToWebsite`, `publishedAt`, `publicSlug`, `publicTitle`, `publicDescription`, `publicLocation`, `publicSalaryRange`, `publicEmploymentType`, `publicApplyUrl`. Phase 2 later: applications flow back into Ace, source tagged "BreakPoint Website".
 4. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points before the 2026-05-15 launch.
@@ -19,7 +19,7 @@ Items scoped during recent sessions. Each needs its own prompt before slotting i
 - **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
 - **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
 - **Quiet Clients tab** — clients past 21-day threshold, tiered 14-30/30-60/60+, optional Claude summary.
-- **Mercury + QuickBooks integration follow-through** — Mercury feed is live for the Financials tab as of Ace 44; QuickBooks sync + variable-cost categorization still pending.
+- **Mercury + QuickBooks integration follow-through** — Mercury feed is live for the Finances module as of Ace 46; QuickBooks sync + variable-cost categorization still pending.
 
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.
@@ -42,6 +42,7 @@ Build soon, lower priority than the active sequence above.
 - **Resume text view with search highlighting** — add a "Text View" toggle button above the resume PDF on the candidate profile embed view. Switches from the PDF iframe to a styled HTML div rendering the candidate's extracted resume text from the DB (`CandidateResume.extractedText`). Search tokens from the active keyword / Boolean query are `<mark>`-highlighted in amber matching the search rail tokenizer (same one that drives the snippet enrichment). Toggle hidden when no extracted text exists.
 - **Resizable split-view divider on `/candidates`** — drag handle on the boundary between the candidate name list (left) and the profile iframe (right) so the recruiter can make the name list narrower or wider to suit their screen size. Persist the chosen width in localStorage so it survives reloads.
 - **Market Insights** — "Generate Market Brief" button on the client detail page that triggers the market brief PDF workflow for that client (salary benchmarks, talent supply, hiring velocity in the client's vertical and metro). Renders as a downloadable PDF + saves to the client's record so the recruiter can attach it to client conversations.
+- **Stalled Deals card** — requires adding stage-transition timestamps to Placement model so days-in-stage is calculable. Card shell exists on Scoreboard and has been removed — rebuild when timestamps land.
 
 ## Cleanup
 Do alongside other work.

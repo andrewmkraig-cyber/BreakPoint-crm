@@ -1,13 +1,81 @@
 # ACE_STATE.md
-Last updated: 2026-05-13 · Ace 44.0
+Last updated: 2026-05-14 · Ace 46.0
 
 ## Current Status
-Current Version: Ace 44.0
-Last Shipped: 2026-05-13
+Current Version: Ace 46.0
+Last Shipped: 2026-05-14
 Live at: ace.breakpointtalent.com
 
-## Known Issues Carrying Into Ace 45
-None carried forward. Calendar Prompts 1-6 closed, Financial Performance tab is live with Mercury auto-match, and the Ace 44 dashboard layout has shipped.
+## Known Issues Carrying Into Ace 47
+None carried forward.
+
+## Next Task
+Next session opens a NEW CHAT and starts BD Engine Phase 4. This is the gate into Ace 47.
+
+- SESSION 1 (next): BD Engine Phase 4 — ASK ALL SCOPING QUESTIONS FIRST. Full rules in ACE_RULES.md BD Phase 4 Rule.
+
+### BD Phase 4 Rules — Session 1 (PERMANENT — see ACE_RULES.md)
+CRITICAL: Before writing a single BD Phase 4 prompt, Claude MUST stop and ask Andrew a full set of scoping questions. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Ask the questions first, always.
+
+Andrew's standing direction: "BD has at least a usable launch version I would ship. BD Phase 4 carefully, but maybe not every automation. Discovery + Client Signals + approval queue matters more than fully automated send magic."
+
+Scoping answers confirmed in Ace 46 session:
+- TheirStack: subscribed at $58.95/month API plan, 1,500 credits/month. Key to be added to Vercel as THEIRSTACK_API_KEY.
+- Apollo enrichment: deferred
+- 6 AM ET cron: yes
+- Webhook handlers: yes
+- Approval queue: yes — BDRun stops at AWAITING_APPROVAL, Andrew reviews on Today's Launch, Approve & Enroll fires Apollo
+- Auto-enrollment + manual queue: both
+- Client Signals: moved to non-urgent
+- Daily volume cap: 75 contacts/day default, adjustable via globalDailyCap in Settings > BD
+
+Required questions before any BD Phase 4 code:
+1. Which specific parts of Phase 4 do you want for launch vs defer?
+2. Do you want the full cron auto-enrollment or manual approval queue only?
+3. Is TheirStack access confirmed and credentials available?
+4. What does "usable launch version" mean to you specifically for BD?
+5. Any changes to the approval queue flow since it was originally designed?
+6. Do you want Client Signals to surface before or after the approval queue?
+7. Any budget or rate limit concerns with Apollo enrollment volume?
+
+Do not write any BD Phase 4 code prompts until Andrew has answered all of these in the new chat.
+
+## Summary — Ace 46.0
+Ace 46 ships the Finances module consolidation, dashboard header cleanup, unified period selector, KPI tile unification, calendar header fix, global topbar date widget, expenses restructure with manual entries, mercury matcher fixes, placement lead source field, pipeline Placement button at Offer stage, candidate profile tab unification, P&L table, Goal Pacing move, Monthly Operating Cost table, Clubhouse activity period filter, and full topbar/UI polish across all six primary pages.
+
+**Finances module.** New /finances route under OPS sidebar replaces the standalone Invoices entry and the Financial Performance dashboard tab. Three tabs: Revenue & Profitability (default), Invoices, Expenses. /invoices redirects to /finances?tab=invoices. Topbar title reads Finances / Invoices / Expenses per active tab. "+ New Invoice" button in topbar on Invoices tab only. All three tabs have matching green eyebrows: REVENUE, MARGINS & PROFITABILITY / BILLED, COLLECTED & OUTSTANDING / SUBSCRIPTIONS, TOOLS & SPEND.
+
+**Dashboard header cleanup.** Scoreboard and Placements lost their SectionHero. Clubhouse keeps green eyebrow computed dynamically in ET. Scoreboard: DEAL FLOW & FORECAST. Placements: PLACEMENTS ON THE BOOKS. All six pages have identical top spacing and matching green eyebrow pattern.
+
+**Unified period selector.** period-tabs-shared.ts exports DashboardPeriod, resolveDashboardPeriod, dashboardPeriodRange so server components import without RSC boundary crash. Four-option selector (YTD / This Quarter / Last Quarter / Next Quarter) on Scoreboard, Placements, and Finances Revenue & Profitability. Default: This Quarter.
+
+**Clubhouse activity period filter.** Five-option period selector above the activity KPI strip (This Week / Last Week / This Month / Last Quarter / This Quarter). Default: This Week. Eyebrow text updates to match selected period. All six KPI values recompute for the selected window.
+
+**KPI tile unification.** Canonical spec enforced: 26px Bricolage Grotesque bold value, 10px extrabold uppercase label, canonical shadow across Finances, Scoreboard, and Clubhouse. Invoices KPI tiles gained green circle icons (Clock / AlertTriangle / Receipt / CheckCircle).
+
+**Topbar date widget.** Compact square widget (3-letter weekday abbreviation + month + large date number) in global topbar between weather and avatar. Clicking opens monthly calendar popover with event dots. Inline date widget removed from dashboard page body.
+
+**P&L table.** Profit & Loss card in Finances Profitability section. Income / Expenses / Gross Profit / Net Margin. Gross Profit and Net Margin green when positive, red when negative. Total Expenses synced to same calculation as Expenses tab YTD footer via shared helper.
+
+**Monthly Operating Cost table.** New card on Expenses tab below Subscriptions & tools. Shows every recurring tool as monthly equivalent (monthly as-is, annual / 12, every-3-years / 36). One-time charges excluded. Sorted descending by monthly equivalent. Total Monthly Run Rate footer.
+
+**Goal Pacing moved.** Goal Pacing card moved from Finances Profitability to Scoreboard, replacing non-functional Stalled Deals card.
+
+**Net Profit / Loss row.** Bottom of Expenses tab shows Total Money In minus YTD Expenses as Net Profit / Loss with green/red signal and margin percentage.
+
+**Mercury matcher fixes.** Pin.com variants added and confirmed matched. Apollo matcher catches charges across all Mercury accounts and routes to Recurring Annual. Anthropic Claude Code matches $95-$115 range. TheirStack added at $58.95/month. Edit/delete icons hidden on all MATCHED rows — only manual unmatched rows show pencil/trash.
+
+**Expenses restructure.** Four sections: Recurring Monthly, Recurring Annual, Every 3 Years (GoDaddy), One-Time. Manual entries folded into correct sections. Training Course duplicate deleted. ROI per tool scoped to Pin, Apollo, TheirStack, LinkedIn, Indeed only. Money In section shows placements + Mercury cashback. Responsive layout fixed for laptop viewports.
+
+**Placement lead source.** Lead Source dropdown in placement edit drawer. Source column on placements ledger. Wires to By Source breakdown.
+
+**Pipeline Placement button.** Green Placement button on pipeline rows at OFFER stage.
+
+**Candidate profile tabs.** Profile / Game Plan / Notes replaced with shared TabStrip component.
+
+**Stalled Deals.** Removed from Scoreboard. Added to non-urgent roadmap: requires placement stage-transition timestamp stamping.
+
+**TheirStack subscribed.** $58.95/month, 1,500 API credits/month. THEIRSTACK_API_KEY to be added to Vercel before BD Phase 4 Prompt 1.
 
 ## Summary — Ace 44.0
 Ace 44 closes Calendar Prompts 1-6 end-to-end, ships the full Financial Performance dashboard tab (revenue + expenses + profitability with live Mercury auto-match), overhauls the Clubhouse layout into a Billing Tower + Briefing split with a This Week widget under it, fixes the Analytics bar proportional scaling on both Deal Funnel and Offer-to-Start, restyles Offer to Start to match the Deal Funnel row pattern, merges Revenue by City into the Placements map card, condenses the Scoreboard, aligns Invoices KPI tiles to dashboard sizing, and captures the Public Jobs Board spec into the roadmap. /calendar now reads + writes against Google with full multi-calendar coverage, dedupes events across owners, surfaces Meet links inline, persists toggle state in localStorage, and runs an amber reminder toast site-wide. The Mercury connector lives in Settings > Connectors and auto-matches subscription spend against a 16-tool keyword matcher.
