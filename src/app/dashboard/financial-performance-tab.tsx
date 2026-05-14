@@ -804,8 +804,15 @@ export async function FinancialPerformanceTab({
     mode === "full" || mode === "revenue-profitability";
   const showExpenses = mode === "full" || mode === "expenses";
 
+  const eyebrowLabel = showExpenses
+    ? "SUBSCRIPTIONS, TOOLS & SPEND"
+    : "REVENUE, MARGINS & PROFITABILITY";
+
   return (
     <div className="flex flex-col gap-6">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+        {eyebrowLabel}
+      </p>
       {showRevenueProfitability && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiTile
@@ -1244,6 +1251,14 @@ const ROI_INT_FMT = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 });
 
+// minmax(0, …) on the Tool column lets the avatar + label compress and
+// truncate at narrow card widths (e.g. when the ROI card sits alongside
+// Subscriptions at 1280px viewport, before the xl breakpoint stacks
+// them). The numeric columns hold their minimum so dollar amounts never
+// collide with the Tool name.
+const ROI_GRID =
+  "grid grid-cols-[minmax(0,1.6fr)_minmax(70px,1fr)_minmax(80px,1.2fr)_minmax(56px,0.9fr)]";
+
 function avatarFor(name: string): string {
   const cleaned = name.replace(/[^a-zA-Z0-9]/g, "");
   return (cleaned.slice(0, 2) || "??").toUpperCase();
@@ -1290,7 +1305,7 @@ function ExpensesSection({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <SubscriptionsCard
           recurringMonthly={recurringMonthly}
           recurringAnnual={recurringAnnual}
@@ -1329,6 +1344,14 @@ function SubscriptionsCard({
   activeSubscriptionsCount: number;
   monthlyRecurringUsd: number;
 }) {
+  const moneyInTotal = moneyInRows.reduce((s, r) => s + r.amountUsd, 0);
+  const netProfit = moneyInTotal - subscriptionsYtdUsd;
+  const netProfitPositive = netProfit >= 0;
+  const marginPctLabel =
+    moneyInTotal > 0
+      ? `${((netProfit / moneyInTotal) * 100).toFixed(1)}% margin`
+      : "— margin";
+
   return (
     <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div>
@@ -1356,6 +1379,23 @@ function SubscriptionsCard({
         </span>
         <span className="text-sm font-semibold tabular-nums text-court-fg">
           YTD expenses {formatUsd(subscriptionsYtdUsd)}
+        </span>
+      </div>
+
+      <div className="mt-2 flex items-center justify-between border-t border-court-border-soft pt-3 text-sm">
+        <span className="font-semibold text-court-fg">Net Profit / Loss</span>
+        <span className="flex items-baseline gap-2">
+          <span
+            className={
+              "font-bold tabular-nums " +
+              (netProfitPositive ? "text-court-brand" : "text-red-600")
+            }
+          >
+            {formatUsd(netProfit)}
+          </span>
+          <span className="text-xs text-court-fg-muted">
+            ({marginPctLabel})
+          </span>
         </span>
       </div>
 
@@ -1390,7 +1430,7 @@ function RoiCard({
         </EmptyBlock>
       ) : (
         <div className="mt-4">
-          <div className="grid grid-cols-[1.6fr_1fr_1.2fr_0.9fr] gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
+          <div className={`${ROI_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}>
             <span>Tool</span>
             <span className="text-right">Spend</span>
             <span className="text-right">Rev. Attr.</span>
@@ -1421,12 +1461,15 @@ function RoiRowItem({ row }: { row: RoiRow }) {
       : "—";
   const initials = avatarFor(row.toolName);
   return (
-    <li className="grid grid-cols-[1.6fr_1fr_1.2fr_0.9fr] items-center gap-2 px-1 py-2 text-sm">
+    <li className={`${ROI_GRID} items-center gap-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
-        <span className="truncate font-medium text-court-fg">
+        <span
+          className="min-w-0 truncate font-medium text-court-fg"
+          title={row.toolName}
+        >
           {row.toolName}
         </span>
       </div>

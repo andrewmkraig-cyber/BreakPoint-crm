@@ -84,10 +84,17 @@ const SECTION_PREVIEW = 10;
 // Recurring + one-time both reserve an actions column at the end.
 // Tool gets the lion's share of width so 1440px viewports never
 // truncate the longest manual entries (e.g. "Lone Wolf Course",
-// "LLC Formation Filing").
-const RECURRING_GRID = "grid grid-cols-[2fr_0.9fr_1fr_0.7fr_60px]";
-const ONE_TIME_GRID = "grid grid-cols-[2.2fr_0.8fr_0.9fr_1.3fr_60px]";
-const MONEY_IN_GRID = "grid grid-cols-[1.6fr_1fr_1fr]";
+// "LLC Formation Filing"). minmax(0, …) on Tool lets the column
+// shrink below its fr-derived width and truncate cleanly at narrower
+// viewports instead of overflowing into the next column.
+const RECURRING_GRID =
+  "grid grid-cols-[minmax(0,2fr)_minmax(70px,0.9fr)_minmax(80px,1fr)_minmax(0,0.8fr)_56px]";
+// Date drops out below lg (1024px) so Tool + Amount + Notes still
+// breathe on laptop-tier card widths. Header + each row mirror the
+// hide-and-restore pattern via hidden lg:block on the Date cell.
+const ONE_TIME_GRID =
+  "grid grid-cols-[minmax(0,2.2fr)_minmax(80px,0.8fr)_minmax(0,1.3fr)_56px] lg:grid-cols-[minmax(0,2.2fr)_minmax(80px,0.8fr)_minmax(90px,0.9fr)_minmax(0,1.3fr)_56px]";
+const MONEY_IN_GRID = "grid grid-cols-[minmax(0,1.6fr)_1fr_1fr]";
 
 function MatchedPill() {
   return (
@@ -296,10 +303,20 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
-        <div className="min-w-0">
-          <div className="font-medium text-court-fg">{row.toolName}</div>
+        <div className="min-w-0 flex-1">
+          <div
+            className="truncate font-medium text-court-fg"
+            title={row.toolName}
+          >
+            {row.toolName}
+          </div>
           {row.subline ? (
-            <div className="text-[11px] text-court-fg-muted">{row.subline}</div>
+            <div
+              className="truncate text-[11px] text-court-fg-muted"
+              title={row.subline}
+            >
+              {row.subline}
+            </div>
           ) : null}
         </div>
       </div>
@@ -349,7 +366,7 @@ function OneTimeSection({
           >
             <span>Tool</span>
             <span className="text-right">Amount</span>
-            <span className="text-right">Date</span>
+            <span className="hidden text-right lg:block">Date</span>
             <span>Notes</span>
             <span />
           </div>
@@ -406,18 +423,26 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="font-medium text-court-fg">{row.toolName}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <span
+            className="min-w-0 truncate font-medium text-court-fg"
+            title={row.toolName}
+          >
+            {row.toolName}
+          </span>
           {row.matched ? <MatchedPill /> : null}
         </div>
       </div>
       <span className="text-right font-semibold tabular-nums text-court-fg">
         {formatUsdCents(row.amountUsd)}
       </span>
-      <span className="text-right tabular-nums text-court-fg-muted">
+      <span className="hidden text-right tabular-nums text-court-fg-muted lg:block">
         {formatDate(row.date)}
       </span>
-      <span className="truncate text-xs text-court-fg-muted">
+      <span
+        className="truncate text-xs text-court-fg-muted"
+        title={row.notes ?? ""}
+      >
         {row.notes ?? ""}
       </span>
       <span className="flex items-center justify-end">
@@ -493,7 +518,10 @@ function MoneyInSection({
 function MoneyInRowItem({ row }: { row: MoneyInRow }) {
   return (
     <li className={`${MONEY_IN_GRID} items-center gap-2 px-1 py-2 text-sm`}>
-      <span className="min-w-0 truncate font-medium text-court-fg">
+      <span
+        className="min-w-0 truncate font-medium text-court-fg"
+        title={row.source}
+      >
         {row.source}
       </span>
       <span className="text-right font-semibold tabular-nums text-court-fg">

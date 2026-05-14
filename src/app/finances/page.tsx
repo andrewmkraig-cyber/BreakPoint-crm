@@ -113,6 +113,9 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
 
   return (
     <div className="flex w-full flex-col gap-6">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+        BILLED, COLLECTED &amp; OUTSTANDING
+      </p>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <KpiTile
           label="Outstanding"

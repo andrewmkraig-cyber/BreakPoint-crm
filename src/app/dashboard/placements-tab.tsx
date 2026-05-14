@@ -35,7 +35,7 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
   const ledgerRows = toLedgerRows(rows);
 
   return (
-    <div className="flex flex-col gap-6 pt-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
           PLACEMENTS ON THE BOOKS

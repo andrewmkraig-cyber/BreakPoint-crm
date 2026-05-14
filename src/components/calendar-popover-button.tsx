@@ -3,12 +3,11 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-// TopBar mini-calendar popover. The trigger is a compact horizontal
-// version of the dashboard CalendarWidget — green weekday band on top,
-// month label + bold day number underneath — sitting flush in the
-// topbar between the weather widget and the profile pill. Clicking it
-// opens the same month-grid popover that reads event days for the
-// current org from /api/calendar/event-days.
+// TopBar mini-calendar popover. The trigger is a square date stamp —
+// green weekday-abbrev band on top, month label + bold day number
+// underneath — sitting flush in the topbar between the weather widget
+// and the profile pill. Clicking it opens a month-grid popover that
+// reads event days for the current org from /api/calendar/event-days.
 
 const ZONE = "America/New_York";
 const WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -18,6 +17,7 @@ type TodayParts = {
   month0: number;
   day: number;
   weekdayLong: string;
+  weekdayShort: string;
   monthLong: string;
 };
 
@@ -44,11 +44,18 @@ function todayParts(): TodayParts {
   const labelParts = labelFmt.formatToParts(now);
   const lGet = (t: string) =>
     labelParts.find((p) => p.type === t)?.value ?? "";
+  const shortFmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: ZONE,
+    weekday: "short",
+  });
+  const weekdayShort =
+    shortFmt.formatToParts(now).find((p) => p.type === "weekday")?.value ?? "";
   return {
     year: nGet("year"),
     month0: nGet("month") - 1,
     day: nGet("day"),
     weekdayLong: lGet("weekday"),
+    weekdayShort,
     monthLong: lGet("month"),
   };
 }
@@ -179,7 +186,7 @@ export function CalendarPopoverButton() {
         }
       >
         <span className="bg-court-brand-tint px-2.5 py-[1px] text-center text-[9px] font-extrabold uppercase tracking-wide text-court-brand">
-          {today.weekdayLong}
+          {today.weekdayShort}
         </span>
         <span className="flex flex-col bg-court-surface px-2.5 py-0.5 text-center">
           <span className="text-[8px] font-medium uppercase tracking-wide text-court-fg-muted">

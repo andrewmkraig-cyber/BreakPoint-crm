@@ -5,7 +5,6 @@ import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
 import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
-import { CalendarWidget } from "@/components/dashboard/calendar-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -31,13 +30,8 @@ export default async function DashboardPage({
   const scoreboardPeriod = resolveDashboardPeriod(periodRaw);
 
   return (
-    <div className="relative flex w-full flex-col gap-2">
+    <div className="flex w-full flex-col gap-6">
       <DashboardTabs active={active} />
-      <div className="pointer-events-none absolute right-0 top-0">
-        <div className="pointer-events-auto">
-          <CalendarWidget />
-        </div>
-      </div>
       {active === "dashboard" && <MyDashboard />}
       {active === "scoreboard" && <Scoreboard period={scoreboardPeriod} />}
       {active === "placements" && <PlacementsTab period={placementsPeriod} />}

@@ -79,7 +79,7 @@ export async function MyDashboard() {
   const activityEyebrow = `ACTIVITY FOR WEEK OF ${weekRange}`.toUpperCase();
 
   return (
-    <div className="flex w-full flex-col gap-6 pt-6">
+    <div className="flex w-full flex-col gap-6">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
         {activityEyebrow}
       </p>
