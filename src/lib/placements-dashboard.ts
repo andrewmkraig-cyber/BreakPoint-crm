@@ -37,6 +37,10 @@ export type PlacementsDashboardSourceChannel =
 
 export type PlacementsDashboardRow = {
   id: string;
+  // Canonical Neon stage literal — drives the placement edit drawer
+  // which needs to know whether the row is in offer / pending_start /
+  // hired to pick the right copy.
+  stage: "offer" | "pending_start" | "hired";
   candidateId: string | null;
   candidateFullName: string;
   // The most recent linked invoice, if any. Drives the ledger row's
@@ -50,6 +54,11 @@ export type PlacementsDashboardRow = {
   city: string | null;
   feeAmount: number | null;
   billingStatus: PlacementsDashboardBillingStatus;
+  // Raw placement-side fields for the edit drawer (separate from
+  // feeAmount, which prefers the invoice's amount when present).
+  feeTotal: number | null;
+  feePercentage: number | null;
+  placementNotes: string | null;
   // High-level bucket the placement maps to for the By-Sourcing card.
   // Derived from Placement.source — see deriveSourceChannel().
   sourceChannel: PlacementsDashboardSourceChannel;
@@ -213,6 +222,8 @@ export async function getPlacementsDashboardData(
         expectedStartDate: true,
         offerTitle: true,
         feeTotal: true,
+        feePercentage: true,
+        placementNotes: true,
         acceptedSalary: true,
         cityOverride: true,
         source: true,
@@ -269,6 +280,9 @@ export async function getPlacementsDashboardData(
     });
     return {
       id: p.id,
+      stage: (p.stage === "offer" || p.stage === "pending_start" || p.stage === "hired"
+        ? p.stage
+        : "hired") as "offer" | "pending_start" | "hired",
       candidateId: p.candidateId ?? null,
       candidateFullName,
       invoiceId: invoice?.id ?? null,
@@ -285,6 +299,9 @@ export async function getPlacementsDashboardData(
         invoiceDueDate: invoice?.dueDate ?? null,
         now,
       }),
+      feeTotal: p.feeTotal ?? null,
+      feePercentage: p.feePercentage ?? null,
+      placementNotes: p.placementNotes ?? null,
       sourceChannel: deriveSourceChannel(p.source),
       baseSalary: p.acceptedSalary ?? null,
       offerAcceptedAt: p.placedAt,

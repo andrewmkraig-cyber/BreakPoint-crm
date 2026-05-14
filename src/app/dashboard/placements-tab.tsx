@@ -54,6 +54,7 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
   // formatting here means the client component never touches Date.
   return rows.map((r) => ({
     id: r.id,
+    stage: r.stage,
     candidateId: r.candidateId,
     candidateFullName: r.candidateFullName,
     invoiceId: r.invoiceId,
@@ -64,7 +65,13 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     startDateLabel: r.startDate
       ? r.startDate.toISOString().slice(0, 10)
       : null,
+    expectedStartDateIso: r.startDate ? r.startDate.toISOString() : null,
     feeAmount: r.feeAmount,
+    feeTotal: r.feeTotal,
+    feePercentage: r.feePercentage,
+    placementNotes: r.placementNotes,
+    acceptedSalary: r.baseSalary,
+    candidateSource: r.leadSource ?? null,
     billingStatus: r.billingStatus,
     leadSource: r.leadSource ?? null,
   }));

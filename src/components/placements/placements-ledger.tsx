@@ -1,16 +1,20 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import type { PlacementsDashboardBillingStatus } from "@/lib/placements-dashboard";
 import { formatMoneyShort } from "@/lib/placements-map-geo";
+import {
+  PlacementEditDrawer,
+  type PlacementDrawerContext,
+} from "@/app/pipeline/placement-edit-drawer";
 
 // Ledger row data the table actually renders. Trimmed from the full
 // dashboard row + flattened to primitives so we don't ship Date objects
 // over the server/client boundary. Dates render as YYYY-MM-DD strings.
 export type LedgerRow = {
   id: string;
+  stage: "offer" | "pending_start" | "hired";
   candidateId: string | null;
   candidateFullName: string;
   invoiceId: string | null;
@@ -19,9 +23,24 @@ export type LedgerRow = {
   roleTitle: string | null;
   city: string | null;
   startDateLabel: string | null;
+  // ISO string used to seed the drawer's date input. Separate from the
+  // YYYY-MM-DD label above so the ledger column stays formatted while
+  // the drawer can re-parse a full ISO.
+  expectedStartDateIso: string | null;
   feeAmount: number | null;
+  feeTotal: number | null;
+  feePercentage: number | null;
+  placementNotes: string | null;
+  acceptedSalary: number | null;
+  candidateSource: string | null;
   billingStatus: PlacementsDashboardBillingStatus;
   leadSource: string | null;
+};
+
+const STAGE_LABEL: Record<LedgerRow["stage"], string> = {
+  offer: "Offer",
+  pending_start: "Pending start",
+  hired: "Hired",
 };
 
 type FilterId = "ALL" | PlacementsDashboardBillingStatus;
@@ -52,14 +71,21 @@ const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
     "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
 };
 
-// Click target priority: if a placement has a linked invoice, sending
-// the recruiter to the invoice is more useful (billing context). Else
-// fall back to the candidate detail page where the placement record
-// itself lives. There's no /placements/[id] route in this CRM.
-function rowHref(row: LedgerRow): string | null {
-  if (row.invoiceId) return `/invoices/${row.invoiceId}`;
-  if (row.candidateId) return `/candidates/${row.candidateId}`;
-  return null;
+function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
+  return {
+    placementId: row.id,
+    candidateName: row.candidateFullName || "—",
+    clientName: row.clientName || "—",
+    jobTitle: row.roleTitle ?? "—",
+    stage: row.stage,
+    stageLabel: STAGE_LABEL[row.stage],
+    expectedStartDate: row.expectedStartDateIso,
+    acceptedSalary: row.acceptedSalary,
+    feeTotal: row.feeTotal,
+    feePercentage: row.feePercentage,
+    placementNotes: row.placementNotes,
+    candidateSource: row.candidateSource,
+  };
 }
 
 export function PlacementsLedger({
@@ -70,6 +96,14 @@ export function PlacementsLedger({
   title: string;
 }) {
   const [filter, setFilter] = useState<FilterId>("ALL");
+  const [drawerCtx, setDrawerCtx] = useState<PlacementDrawerContext | null>(
+    null,
+  );
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  function openRow(row: LedgerRow) {
+    setDrawerCtx(toDrawerContext(row));
+    setDrawerOpen(true);
+  }
 
   const counts = useMemo(() => {
     const c: Record<FilterId, number> = {
@@ -159,34 +193,50 @@ export function PlacementsLedger({
                 </td>
               </tr>
             ) : (
-              filtered.map((row) => <LedgerTableRow key={row.id} row={row} />)
+              filtered.map((row) => (
+                <LedgerTableRow
+                  key={row.id}
+                  row={row}
+                  onOpen={() => openRow(row)}
+                />
+              ))
             )}
           </tbody>
         </table>
       </div>
+      <PlacementEditDrawer
+        open={drawerOpen}
+        context={drawerCtx}
+        onClose={() => setDrawerOpen(false)}
+      />
     </div>
   );
 }
 
-function LedgerTableRow({ row }: { row: LedgerRow }) {
-  const href = rowHref(row);
-  const rowClass =
-    "border-b border-court-border-soft transition hover:bg-court-brand-tint/40" +
-    (href ? " cursor-pointer" : "");
+function LedgerTableRow({
+  row,
+  onOpen,
+}: {
+  row: LedgerRow;
+  onOpen: () => void;
+}) {
   const candidateLabel = row.candidateFullName || "—";
   return (
-    <tr className={rowClass}>
+    <tr
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      tabIndex={0}
+      role="button"
+      aria-label={`Edit placement for ${candidateLabel}`}
+      className="cursor-pointer border-b border-court-border-soft transition hover:bg-court-brand-tint/40 focus:bg-court-brand-tint/40 focus:outline-none"
+    >
       <td className="px-4 py-1.5 align-middle font-medium text-court-fg">
-        {href ? (
-          <Link
-            href={href}
-            className="block hover:text-court-brand-dark hover:underline"
-          >
-            {candidateLabel}
-          </Link>
-        ) : (
-          candidateLabel
-        )}
+        {candidateLabel}
       </td>
       <td className="px-3 py-1.5 align-middle text-court-fg">{row.roleTitle ?? "—"}</td>
       <td className="px-3 py-1.5 align-middle">
