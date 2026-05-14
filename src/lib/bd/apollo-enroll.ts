@@ -1,16 +1,12 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
-import { getClaude } from "@/lib/claude";
+import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
 // runs in UTC, so a fixed offset would silently misalign during DST —
 // we look up the live offset on each call.
 const ZONE = "America/New_York";
-
-// Pinned per BD spec — diverges from CLAUDE_MODEL because the BD pitch
-// is short, cost-sensitive, and benefits from a smaller fixed model.
-const BD_SUMMARY_MODEL = "claude-sonnet-4-20250514";
 
 // Decision-makers we want Apollo to surface at each target company.
 // Order matters loosely (HR-side first because that's who fields BD
@@ -131,7 +127,7 @@ async function generateCandidateSummary(
   try {
     const anthropic = getClaude();
     const response = await anthropic.messages.create({
-      model: BD_SUMMARY_MODEL,
+      model: CLAUDE_MODEL,
       max_tokens: 300,
       messages: [{ role: "user", content: prompt }],
     });
