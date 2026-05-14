@@ -4,7 +4,8 @@ import {
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
-import { PeriodTabs, resolveDashboardPeriod } from "@/app/dashboard/period-tabs";
+import { PeriodTabs } from "@/app/dashboard/period-tabs";
+import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   getPlacementsDashboardData,

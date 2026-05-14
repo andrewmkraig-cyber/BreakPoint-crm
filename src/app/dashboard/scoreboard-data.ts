@@ -6,7 +6,7 @@ import { normalizeClient, normalizeJob } from "@/lib/rf-payload-shapes";
 import {
   dashboardPeriodRange,
   type DashboardPeriod,
-} from "@/app/dashboard/period-tabs";
+} from "@/app/dashboard/period-tabs-shared";
 
 // Stages observed on Placement.stage today: offer | pending_start | hired.
 // Anything earlier than "offer" lives outside this table — submitted /

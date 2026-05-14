@@ -11,7 +11,8 @@ import {
   ClientDrilldownTrigger,
   RoleDrilldownTrigger,
 } from "@/app/dashboard/scoreboard-drilldowns";
-import { PeriodTabs, type DashboardPeriod } from "@/app/dashboard/period-tabs";
+import { PeriodTabs } from "@/app/dashboard/period-tabs";
+import type { DashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 
 // Top-level Scoreboard server component. Real Neon data only; sections
 // that need data we don't yet track (sparklines, win-rate trend,

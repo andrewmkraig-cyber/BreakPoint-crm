@@ -26,7 +26,7 @@ import {
 import {
   dashboardPeriodRange,
   type DashboardPeriod,
-} from "@/app/dashboard/period-tabs";
+} from "@/app/dashboard/period-tabs-shared";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",

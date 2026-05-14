@@ -1,6 +1,7 @@
 import { TabStrip } from "@/components/ui/tab-strip";
 import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
-import { PeriodTabs, resolveDashboardPeriod } from "@/app/dashboard/period-tabs";
+import { PeriodTabs } from "@/app/dashboard/period-tabs";
+import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
 import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";

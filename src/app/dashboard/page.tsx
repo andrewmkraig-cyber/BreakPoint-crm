@@ -4,7 +4,7 @@ import { DashboardTabs, resolveDashboardTab } from "@/app/dashboard/tabs";
 import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
-import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs";
+import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { CalendarWidget } from "@/components/dashboard/calendar-widget";
 
 export const dynamic = "force-dynamic";
