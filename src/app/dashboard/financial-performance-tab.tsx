@@ -14,7 +14,11 @@ import {
   getMercuryTransactions,
   mercuryTransactionDescription,
 } from "@/lib/mercury";
-import { matchTransaction, shouldIgnoreTransaction } from "@/lib/mercury-matcher";
+import {
+  categoryForTool,
+  matchTransaction,
+  shouldIgnoreTransaction,
+} from "@/lib/mercury-matcher";
 import {
   SubscriptionsList,
   type SubscriptionListRow,
@@ -134,25 +138,10 @@ export async function FinancialPerformanceTab() {
     mercuryTxnsPromise,
   ]);
 
-  // KPI strip math (unchanged).
   const revenueUsd = revenueInvoices.reduce(
     (sum, r) => sum + decimalToNumber(r.feeAmount),
     0,
   );
-  const expensesUsd = toolExpenses.reduce(
-    (sum, t) => sum + t.cost * t.paidCount,
-    0,
-  );
-  const grossMarginPct =
-    revenueUsd > 0 ? ((revenueUsd - expensesUsd) / revenueUsd) * 100 : null;
-  const blendedRoiPct =
-    expensesUsd > 0 ? ((revenueUsd - expensesUsd) / expensesUsd) * 100 : null;
-
-  const grossMarginLabel =
-    grossMarginPct != null ? `${grossMarginPct.toFixed(1)}%` : "—";
-  const netMarginLabel = `${NET_MARGIN_PLACEHOLDER_PCT.toFixed(1)}%`;
-  const roiLabel =
-    blendedRoiPct != null ? `${Math.round(blendedRoiPct)}%` : "—";
 
   // ---- Revenue section data ----
 
@@ -327,9 +316,11 @@ export async function FinancialPerformanceTab() {
     // and Total). Recurring rows keep the per-charge cost from
     // ToolExpense when set; "—" otherwise.
     const ytdCost = agg.totalUsd > 0 ? agg.totalUsd : null;
+    const toolName = te?.name ?? tool;
     const row: SubscriptionListRow = {
       key: `merc-${tool}`,
-      toolName: te?.name ?? tool,
+      toolName,
+      category: categoryForTool(toolName),
       cost: te?.cost ?? (isRecurring ? null : ytdCost),
       frequency: te?.frequency ?? (isRecurring ? "Annual" : "One-time"),
       paidCount: te?.paidCount ?? agg.count,
@@ -346,6 +337,7 @@ export async function FinancialPerformanceTab() {
     const row: SubscriptionListRow = {
       key: `te-${te.id}`,
       toolName: te.name,
+      category: categoryForTool(te.name),
       // Mirror cost == total for manual one-time rows that have no cost
       // (so the column doesn't show "—" alongside a populated total).
       cost: te.cost > 0 ? te.cost : goesOneTime ? totalYtdUsd : null,
@@ -370,6 +362,40 @@ export async function FinancialPerformanceTab() {
     0,
   );
   const activeSubscriptionsCount = subscriptionRows.length;
+
+  // Monthly recurring cost (MRR) = sum of recurring rows normalized to
+  // a monthly cadence. We prefer the explicit per-charge cost when set,
+  // otherwise fall back to totalYtd / paidCount as the average charge,
+  // and divide by the months the cadence implies.
+  const frequencyMonths = (f: string | null | undefined): number => {
+    const lower = (f ?? "").toLowerCase();
+    if (lower === "annual" || lower === "yearly") return 12;
+    if (lower === "quarterly") return 3;
+    if (lower === "biannual" || lower === "semi-annual") return 6;
+    return 1;
+  };
+  const monthlyRecurringUsd = recurringRows.reduce((sum, r) => {
+    const perCharge =
+      r.cost != null
+        ? r.cost
+        : r.paidCount > 0
+          ? r.totalYtdUsd / r.paidCount
+          : 0;
+    return sum + perCharge / frequencyMonths(r.frequency);
+  }, 0);
+
+  // KPI strip math reuses subscriptionsYtdUsd so the top-of-page tile
+  // always matches the YTD subtotal under the Subscriptions card.
+  const expensesUsd = subscriptionsYtdUsd;
+  const grossMarginPct =
+    revenueUsd > 0 ? ((revenueUsd - expensesUsd) / revenueUsd) * 100 : null;
+  const blendedRoiPct =
+    expensesUsd > 0 ? ((revenueUsd - expensesUsd) / expensesUsd) * 100 : null;
+  const grossMarginLabel =
+    grossMarginPct != null ? `${grossMarginPct.toFixed(1)}%` : "—";
+  const netMarginLabel = `${NET_MARGIN_PLACEHOLDER_PCT.toFixed(1)}%`;
+  const roiLabel =
+    blendedRoiPct != null ? `${Math.round(blendedRoiPct)}%` : "—";
 
   // Revenue attribution by source name (case-insensitive). Each
   // invoice carries the placement.candidateSource that the recruiter
@@ -582,6 +608,7 @@ export async function FinancialPerformanceTab() {
         oneTimeRows={oneTimeRows}
         subscriptionsYtdUsd={subscriptionsYtdUsd}
         activeSubscriptionsCount={activeSubscriptionsCount}
+        monthlyRecurringUsd={monthlyRecurringUsd}
         roiRows={roiRows}
         blendedExpensesRoiPct={blendedExpensesRoiPct}
       />
@@ -654,14 +681,9 @@ function RevenueSection({
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
-            Revenue
-          </p>
-          <h3 className="mt-1 font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
-            Where it&apos;s coming from.
-          </h3>
-        </div>
+        <h3 className="font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
+          Revenue
+        </h3>
         <p className="text-xs text-court-fg-muted">{periodLabel}</p>
       </div>
 
@@ -971,6 +993,7 @@ function ExpensesSection({
   oneTimeRows,
   subscriptionsYtdUsd,
   activeSubscriptionsCount,
+  monthlyRecurringUsd,
   roiRows,
   blendedExpensesRoiPct,
 }: {
@@ -979,6 +1002,7 @@ function ExpensesSection({
   oneTimeRows: SubscriptionListRow[];
   subscriptionsYtdUsd: number;
   activeSubscriptionsCount: number;
+  monthlyRecurringUsd: number;
   roiRows: RoiRow[];
   blendedExpensesRoiPct: number | null;
 }) {
@@ -988,14 +1012,9 @@ function ExpensesSection({
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
-            Expenses
-          </p>
-          <h3 className="mt-1 font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
-            Tools, fees, and where it goes.
-          </h3>
-        </div>
+        <h3 className="font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
+          Expenses
+        </h3>
         <p
           className={
             "text-xs " +
@@ -1014,6 +1033,7 @@ function ExpensesSection({
           oneTimeRows={oneTimeRows}
           subscriptionsYtdUsd={subscriptionsYtdUsd}
           activeSubscriptionsCount={activeSubscriptionsCount}
+          monthlyRecurringUsd={monthlyRecurringUsd}
         />
         <RoiCard
           rows={roiRows}
@@ -1029,11 +1049,13 @@ function SubscriptionsCard({
   oneTimeRows,
   subscriptionsYtdUsd,
   activeSubscriptionsCount,
+  monthlyRecurringUsd,
 }: {
   recurringRows: SubscriptionListRow[];
   oneTimeRows: SubscriptionListRow[];
   subscriptionsYtdUsd: number;
   activeSubscriptionsCount: number;
+  monthlyRecurringUsd: number;
 }) {
   const isEmpty = recurringRows.length === 0 && oneTimeRows.length === 0;
   return (
@@ -1056,6 +1078,7 @@ function SubscriptionsCard({
         <SubscriptionsList
           recurring={recurringRows}
           oneTime={oneTimeRows}
+          monthlyRecurringUsd={monthlyRecurringUsd}
         />
       )}
 
@@ -1213,17 +1236,9 @@ function ProfitabilitySection({
   return (
     <section className="flex flex-col gap-4">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
-            Profitability
-          </p>
-          <h3 className="mt-1 font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
-            Margins and pacing.
-          </h3>
-        </div>
-        <p className="text-xs text-court-fg-muted">
-          Margins · goal pacing
-        </p>
+        <h3 className="font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
+          Profitability
+        </h3>
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">

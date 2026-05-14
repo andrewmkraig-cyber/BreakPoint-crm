@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 export type SubscriptionListRow = {
   key: string;
   toolName: string;
+  category: string;
   cost: number | null;
   frequency: string | null;
   paidCount: number;
@@ -30,18 +31,37 @@ function avatarFor(name: string): string {
 
 const SECTION_PREVIEW = 10;
 
+// Column template shared by header + rows. Cost is left-aligned per
+// desk preference; Paid / Total YTD stay right-aligned since they read
+// as numeric columns.
+const ROW_GRID_CLASS =
+  "grid grid-cols-[1.6fr_0.7fr_0.9fr_0.9fr_0.4fr_0.85fr_0.55fr]";
+
 export function SubscriptionsList({
   recurring,
   oneTime,
+  monthlyRecurringUsd,
 }: {
   recurring: SubscriptionListRow[];
   oneTime: SubscriptionListRow[];
+  monthlyRecurringUsd: number;
 }) {
   if (recurring.length === 0 && oneTime.length === 0) return null;
   return (
     <div className="mt-4 flex flex-col gap-5">
       {recurring.length > 0 && (
-        <Section title="Recurring subscriptions" rows={recurring} />
+        <Section
+          title="Recurring subscriptions"
+          rows={recurring}
+          footer={
+            <div className="mt-2 flex items-center justify-end gap-2 border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
+              <span>Monthly recurring cost</span>
+              <span className="text-sm font-semibold tabular-nums text-court-fg">
+                {formatUsd(monthlyRecurringUsd)}
+              </span>
+            </div>
+          }
+        />
       )}
       {recurring.length > 0 && oneTime.length > 0 && (
         <div className="h-px bg-court-border-soft" />
@@ -56,9 +76,11 @@ export function SubscriptionsList({
 function Section({
   title,
   rows,
+  footer,
 }: {
   title: string;
   rows: SubscriptionListRow[];
+  footer?: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? rows : rows.slice(0, SECTION_PREVIEW);
@@ -69,9 +91,10 @@ function Section({
       <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
         {title}
       </p>
-      <div className="mt-2 grid grid-cols-[1.7fr_0.7fr_0.9fr_0.5fr_0.9fr_0.55fr] gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
+      <div className={`mt-2 ${ROW_GRID_CLASS} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}>
         <span>Tool</span>
-        <span className="text-right">Cost</span>
+        <span>Cost</span>
+        <span>Category</span>
         <span>Frequency</span>
         <span className="text-right">Paid</span>
         <span className="text-right">Total YTD</span>
@@ -94,6 +117,7 @@ function Section({
           </Button>
         </div>
       )}
+      {footer}
     </div>
   );
 }
@@ -101,7 +125,7 @@ function Section({
 function RowItem({ row }: { row: SubscriptionListRow }) {
   const initials = avatarFor(row.toolName);
   return (
-    <li className="grid grid-cols-[1.7fr_0.7fr_0.9fr_0.5fr_0.9fr_0.55fr] items-center gap-2 px-1 py-2 text-sm">
+    <li className={`${ROW_GRID_CLASS} items-center gap-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
@@ -110,8 +134,13 @@ function RowItem({ row }: { row: SubscriptionListRow }) {
           {row.toolName}
         </span>
       </div>
-      <span className="text-right tabular-nums text-court-fg">
+      <span className="tabular-nums text-court-fg">
         {row.cost != null ? formatUsd(row.cost) : "—"}
+      </span>
+      <span>
+        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
+          {row.category}
+        </span>
       </span>
       <span>
         {row.frequency ? (

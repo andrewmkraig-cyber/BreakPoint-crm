@@ -1,20 +1,38 @@
-const KNOWN_TOOLS: { name: string; keywords: string[] }[] = [
-  { name: "Apollo", keywords: ["apollo.io", "apollo"] },
-  { name: "Pin", keywords: ["pin.com"] },
-  { name: "Anthropic / Claude", keywords: ["anthropic", "claude.ai", "claude team"] },
-  { name: "Ringover", keywords: ["ringover"] },
-  { name: "Vercel", keywords: ["vercel"] },
-  { name: "OpenAI / ChatGPT", keywords: ["openai", "chatgpt"] },
-  { name: "Slack", keywords: ["slack"] },
-  { name: "QuickBooks", keywords: ["quickbooks", "intuit *quickbooks"] },
-  { name: "GoDaddy", keywords: ["godaddy"] },
-  { name: "Amazon", keywords: ["amazon mktplace", "amazon"] },
-  { name: "Apple", keywords: ["apple.com"] },
-  { name: "Krispcall", keywords: ["krispcall"] },
-  { name: "Mercury", keywords: ["mercury subscription"] },
-  { name: "Recruiterflow", keywords: ["recruiterflow"] },
-  { name: "Zoho", keywords: ["zoho"] },
-  { name: "OpenPhone / Quo", keywords: ["quo", "openphone"] },
+// Expense category buckets surfaced in the Financial Performance
+// expenses table. Adding a new tool? Pick the bucket that matches how
+// the desk thinks about the spend, not what the vendor calls itself
+// (e.g. Amazon hardware buys go in "Equipment", not "Software"). If
+// none fit, fall back to "Other".
+export type ExpenseCategory =
+  | "Software"
+  | "Hosting"
+  | "Communications"
+  | "Equipment"
+  | "Banking"
+  | "Other";
+
+const KNOWN_TOOLS: {
+  name: string;
+  keywords: string[];
+  category: ExpenseCategory;
+}[] = [
+  { name: "Apollo", keywords: ["apollo.io", "apollo"], category: "Software" },
+  { name: "Pin", keywords: ["pin.com"], category: "Software" },
+  { name: "Anthropic / Claude", keywords: ["anthropic", "claude.ai", "claude team"], category: "Software" },
+  { name: "Ringover", keywords: ["ringover"], category: "Communications" },
+  { name: "Vercel", keywords: ["vercel"], category: "Hosting" },
+  { name: "Neon", keywords: ["neon database", "neon tech", "neon.tech", "neon"], category: "Hosting" },
+  { name: "OpenAI / ChatGPT", keywords: ["openai", "chatgpt"], category: "Software" },
+  { name: "Slack", keywords: ["slack"], category: "Communications" },
+  { name: "QuickBooks", keywords: ["quickbooks", "intuit *quickbooks"], category: "Software" },
+  { name: "GoDaddy", keywords: ["godaddy"], category: "Hosting" },
+  { name: "Amazon", keywords: ["amazon mktplace", "amazon"], category: "Equipment" },
+  { name: "Apple", keywords: ["apple.com"], category: "Equipment" },
+  { name: "Krispcall", keywords: ["krispcall"], category: "Communications" },
+  { name: "Mercury", keywords: ["mercury subscription"], category: "Banking" },
+  { name: "Recruiterflow", keywords: ["recruiterflow"], category: "Software" },
+  { name: "Zoho", keywords: ["zoho"], category: "Software" },
+  { name: "OpenPhone / Quo", keywords: ["quo", "openphone"], category: "Communications" },
 ];
 
 export function matchTransaction(description: string): string | null {
@@ -25,6 +43,12 @@ export function matchTransaction(description: string): string | null {
     }
   }
   return null;
+}
+
+export function categoryForTool(name: string): ExpenseCategory {
+  const lower = name.toLowerCase();
+  const hit = KNOWN_TOOLS.find((t) => t.name.toLowerCase() === lower);
+  return hit?.category ?? "Other";
 }
 
 // Filters out transactions that aren't tool/subscription spend and would
