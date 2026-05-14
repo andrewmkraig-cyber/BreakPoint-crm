@@ -3,15 +3,27 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 
-export type SubscriptionListRow = {
+export type RecurringRow = {
   key: string;
   toolName: string;
-  category: string;
-  cost: number | null;
-  frequency: string | null;
-  paidCount: number;
+  catalogCost: number;
   totalYtdUsd: number;
-  status: "Mercury matched" | "Manual";
+  paidCount: number;
+};
+
+export type OneTimeRow = {
+  key: string;
+  toolName: string;
+  amountUsd: number;
+  date: Date | null;
+};
+
+export type MoneyInRow = {
+  key: string;
+  name: string;
+  source: "Placement" | "Mercury Cashback";
+  amountUsd: number;
+  date: Date | null;
 };
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
@@ -19,11 +31,27 @@ const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 0,
 });
+const USD_CENTS = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 function formatUsd(n: number): string {
   return USD_NO_CENTS.format(Math.round(n));
 }
-
+function formatUsdCents(n: number): string {
+  return USD_CENTS.format(n);
+}
+function formatDate(d: Date | null): string {
+  if (!d) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(d);
+}
 function avatarFor(name: string): string {
   const cleaned = name.replace(/[^a-zA-Z0-9]/g, "");
   return (cleaned.slice(0, 2) || "??").toUpperCase();
@@ -31,56 +59,83 @@ function avatarFor(name: string): string {
 
 const SECTION_PREVIEW = 10;
 
-// Column template shared by header + rows. Cost is left-aligned per
-// desk preference; Paid / Total YTD stay right-aligned since they read
-// as numeric columns.
-const ROW_GRID_CLASS =
-  "grid grid-cols-[1.6fr_0.7fr_0.9fr_0.9fr_0.4fr_0.85fr_0.55fr]";
+const RECURRING_GRID = "grid grid-cols-[1.6fr_0.9fr_0.6fr_1fr]";
+const ONE_TIME_GRID = "grid grid-cols-[1.6fr_1fr_1fr]";
+const MONEY_IN_GRID = "grid grid-cols-[1.6fr_0.9fr_1fr_1fr]";
 
 export function SubscriptionsList({
-  recurring,
+  recurringMonthly,
+  recurringAnnual,
   oneTime,
+  moneyIn,
   monthlyRecurringUsd,
 }: {
-  recurring: SubscriptionListRow[];
-  oneTime: SubscriptionListRow[];
+  recurringMonthly: RecurringRow[];
+  recurringAnnual: RecurringRow[];
+  oneTime: OneTimeRow[];
+  moneyIn: MoneyInRow[];
   monthlyRecurringUsd: number;
 }) {
-  if (recurring.length === 0 && oneTime.length === 0) return null;
+  const monthlySubtotal = recurringMonthly.reduce(
+    (s, r) => s + r.totalYtdUsd,
+    0,
+  );
+  const annualSubtotal = recurringAnnual.reduce(
+    (s, r) => s + r.totalYtdUsd,
+    0,
+  );
+  const oneTimeSubtotal = oneTime.reduce((s, r) => s + r.amountUsd, 0);
+  const moneyInTotal = moneyIn.reduce((s, r) => s + r.amountUsd, 0);
+
   return (
-    <div className="mt-4 flex flex-col gap-5">
-      {recurring.length > 0 && (
-        <Section
-          title="Recurring subscriptions"
-          rows={recurring}
-          footer={
-            <div className="mt-2 flex items-center justify-end gap-2 border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
-              <span>Monthly recurring cost</span>
-              <span className="text-sm font-semibold tabular-nums text-court-fg">
-                {formatUsd(monthlyRecurringUsd)}
-              </span>
-            </div>
-          }
-        />
-      )}
-      {recurring.length > 0 && oneTime.length > 0 && (
-        <div className="h-px bg-court-border-soft" />
-      )}
-      {oneTime.length > 0 && (
-        <Section title="One-time charges" rows={oneTime} />
-      )}
+    <div className="mt-4 flex flex-col gap-6">
+      <RecurringSection
+        title="Recurring monthly"
+        rows={recurringMonthly}
+        costLabel="Monthly cost"
+        ytdSubtotal={monthlySubtotal}
+        footerExtra={
+          <span className="text-xs text-court-fg-muted">
+            Monthly recurring cost{" "}
+            <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
+              {formatUsdCents(monthlyRecurringUsd)}
+            </span>
+          </span>
+        }
+      />
+
+      <div className="h-px bg-court-border-soft" />
+
+      <RecurringSection
+        title="Recurring annual"
+        rows={recurringAnnual}
+        costLabel="Annual cost"
+        ytdSubtotal={annualSubtotal}
+      />
+
+      <div className="h-px bg-court-border-soft" />
+
+      <OneTimeSection rows={oneTime} subtotal={oneTimeSubtotal} />
+
+      <div className="h-px bg-court-border-soft" />
+
+      <MoneyInSection rows={moneyIn} total={moneyInTotal} />
     </div>
   );
 }
 
-function Section({
+function RecurringSection({
   title,
   rows,
-  footer,
+  costLabel,
+  ytdSubtotal,
+  footerExtra,
 }: {
   title: string;
-  rows: SubscriptionListRow[];
-  footer?: React.ReactNode;
+  rows: RecurringRow[];
+  costLabel: string;
+  ytdSubtotal: number;
+  footerExtra?: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
   const visible = expanded ? rows : rows.slice(0, SECTION_PREVIEW);
@@ -91,41 +146,54 @@ function Section({
       <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
         {title}
       </p>
-      <div className={`mt-2 ${ROW_GRID_CLASS} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}>
-        <span>Tool</span>
-        <span>Cost</span>
-        <span>Category</span>
-        <span>Frequency</span>
-        <span className="text-right">Paid</span>
-        <span className="text-right">Total YTD</span>
-        <span className="text-right">Status</span>
-      </div>
-      <ul className="divide-y divide-court-border-soft">
-        {visible.map((r) => (
-          <RowItem key={r.key} row={r} />
-        ))}
-      </ul>
-      {remaining > 0 && (
-        <div className="mt-2 flex justify-center">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setExpanded((e) => !e)}
+      {rows.length === 0 ? (
+        <EmptyBlock>No matching charges this year.</EmptyBlock>
+      ) : (
+        <>
+          <div
+            className={`mt-2 ${RECURRING_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
           >
-            {expanded ? "Show fewer" : `Show ${remaining} more`}
-          </Button>
-        </div>
+            <span>Tool</span>
+            <span className="text-right">{costLabel}</span>
+            <span className="text-right">Paid</span>
+            <span className="text-right">Total YTD</span>
+          </div>
+          <ul className="divide-y divide-court-border-soft">
+            {visible.map((r) => (
+              <RecurringRowItem key={r.key} row={r} />
+            ))}
+          </ul>
+          {remaining > 0 && (
+            <div className="mt-2 flex justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded((e) => !e)}
+              >
+                {expanded ? "Show fewer" : `Show ${remaining} more`}
+              </Button>
+            </div>
+          )}
+        </>
       )}
-      {footer}
+      <div className="mt-2 flex items-center justify-between border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
+        <span>{footerExtra ?? <span>&nbsp;</span>}</span>
+        <span>
+          Subtotal YTD{" "}
+          <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
+            {formatUsd(ytdSubtotal)}
+          </span>
+        </span>
+      </div>
     </div>
   );
 }
 
-function RowItem({ row }: { row: SubscriptionListRow }) {
+function RecurringRowItem({ row }: { row: RecurringRow }) {
   const initials = avatarFor(row.toolName);
   return (
-    <li className={`${ROW_GRID_CLASS} items-center gap-2 px-1 py-2 text-sm`}>
+    <li className={`${RECURRING_GRID} items-center gap-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
@@ -134,22 +202,8 @@ function RowItem({ row }: { row: SubscriptionListRow }) {
           {row.toolName}
         </span>
       </div>
-      <span className="tabular-nums text-court-fg">
-        {row.cost != null ? formatUsd(row.cost) : "—"}
-      </span>
-      <span>
-        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
-          {row.category}
-        </span>
-      </span>
-      <span>
-        {row.frequency ? (
-          <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
-            {row.frequency}
-          </span>
-        ) : (
-          <span className="text-xs text-court-fg-dim">—</span>
-        )}
+      <span className="text-right tabular-nums text-court-fg">
+        {formatUsdCents(row.catalogCost)}
       </span>
       <span className="text-right tabular-nums text-court-fg">
         {row.paidCount}
@@ -157,28 +211,174 @@ function RowItem({ row }: { row: SubscriptionListRow }) {
       <span className="text-right font-semibold tabular-nums text-court-fg">
         {formatUsd(row.totalYtdUsd)}
       </span>
-      <span className="flex justify-end">
-        <StatusChip status={row.status} />
+    </li>
+  );
+}
+
+function OneTimeSection({
+  rows,
+  subtotal,
+}: {
+  rows: OneTimeRow[];
+  subtotal: number;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? rows : rows.slice(0, SECTION_PREVIEW);
+  const remaining = rows.length - SECTION_PREVIEW;
+
+  return (
+    <div>
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
+        One-time / non-recurring
+      </p>
+      {rows.length === 0 ? (
+        <EmptyBlock>No one-time charges logged this year.</EmptyBlock>
+      ) : (
+        <>
+          <div
+            className={`mt-2 ${ONE_TIME_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
+          >
+            <span>Tool</span>
+            <span className="text-right">Amount</span>
+            <span className="text-right">Date</span>
+          </div>
+          <ul className="divide-y divide-court-border-soft">
+            {visible.map((r) => (
+              <OneTimeRowItem key={r.key} row={r} />
+            ))}
+          </ul>
+          {remaining > 0 && (
+            <div className="mt-2 flex justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded((e) => !e)}
+              >
+                {expanded ? "Show fewer" : `Show ${remaining} more`}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      <div className="mt-2 flex items-center justify-end border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
+        <span>
+          Subtotal YTD{" "}
+          <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
+            {formatUsd(subtotal)}
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function OneTimeRowItem({ row }: { row: OneTimeRow }) {
+  const initials = avatarFor(row.toolName);
+  return (
+    <li className={`${ONE_TIME_GRID} items-center gap-2 px-1 py-2 text-sm`}>
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
+          {initials}
+        </span>
+        <span className="truncate font-medium text-court-fg">
+          {row.toolName}
+        </span>
+      </div>
+      <span className="text-right font-semibold tabular-nums text-court-fg">
+        {formatUsdCents(row.amountUsd)}
+      </span>
+      <span className="text-right tabular-nums text-court-fg-muted">
+        {formatDate(row.date)}
       </span>
     </li>
   );
 }
 
-function StatusChip({
-  status,
+function MoneyInSection({
+  rows,
+  total,
 }: {
-  status: "Mercury matched" | "Manual";
+  rows: MoneyInRow[];
+  total: number;
 }) {
-  if (status === "Mercury matched") {
-    return (
-      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-brand-dark">
-        Matched
-      </span>
-    );
-  }
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? rows : rows.slice(0, SECTION_PREVIEW);
+  const remaining = rows.length - SECTION_PREVIEW;
+
   return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
-      Manual
-    </span>
+    <div>
+      <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
+        Money in
+      </p>
+      {rows.length === 0 ? (
+        <EmptyBlock>No revenue logged this year yet.</EmptyBlock>
+      ) : (
+        <>
+          <div
+            className={`mt-2 ${MONEY_IN_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
+          >
+            <span>Item</span>
+            <span>Source</span>
+            <span className="text-right">Date</span>
+            <span className="text-right">Amount</span>
+          </div>
+          <ul className="divide-y divide-court-border-soft">
+            {visible.map((r) => (
+              <MoneyInRowItem key={r.key} row={r} />
+            ))}
+          </ul>
+          {remaining > 0 && (
+            <div className="mt-2 flex justify-center">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setExpanded((e) => !e)}
+              >
+                {expanded ? "Show fewer" : `Show ${remaining} more`}
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      <div className="mt-2 flex items-center justify-end border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
+        <span>
+          Total money in{" "}
+          <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
+            {formatUsd(total)}
+          </span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function MoneyInRowItem({ row }: { row: MoneyInRow }) {
+  return (
+    <li className={`${MONEY_IN_GRID} items-center gap-2 px-1 py-2 text-sm`}>
+      <span className="min-w-0 truncate font-medium text-court-fg">
+        {row.name}
+      </span>
+      <span>
+        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
+          {row.source}
+        </span>
+      </span>
+      <span className="text-right tabular-nums text-court-fg-muted">
+        {formatDate(row.date)}
+      </span>
+      <span className="text-right font-semibold tabular-nums text-court-fg">
+        {formatUsdCents(row.amountUsd)}
+      </span>
+    </li>
+  );
+}
+
+function EmptyBlock({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-2 rounded-xl border border-dashed border-court-border bg-court-surface-subtle px-3 py-3 text-center text-xs text-court-fg-muted">
+      {children}
+    </div>
   );
 }

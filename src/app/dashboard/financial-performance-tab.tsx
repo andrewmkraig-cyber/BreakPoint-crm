@@ -15,13 +15,14 @@ import {
   mercuryTransactionDescription,
 } from "@/lib/mercury";
 import {
-  categoryForTool,
   matchTransaction,
   shouldIgnoreTransaction,
 } from "@/lib/mercury-matcher";
 import {
   SubscriptionsList,
-  type SubscriptionListRow,
+  type RecurringRow,
+  type OneTimeRow,
+  type MoneyInRow,
 } from "@/app/dashboard/subscriptions-list";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
@@ -93,8 +94,8 @@ export async function FinancialPerformanceTab() {
 
   const [
     revenueInvoices,
-    toolExpenses,
     placementsYtd,
+    placementsHiredYtd,
     mercuryApiKey,
     mercuryTxnsAll,
   ] = await Promise.all([
@@ -116,23 +117,27 @@ export async function FinancialPerformanceTab() {
         placement: { select: { candidateSource: true } },
       },
     }),
-    prisma.toolExpense.findMany({
-      where: { organizationId: org.id },
-      select: {
-        id: true,
-        name: true,
-        cost: true,
-        frequency: true,
-        paidCount: true,
-      },
-      orderBy: { name: "asc" },
-    }),
     prisma.placement.findMany({
       where: {
         organizationId: org.id,
         placedAt: { gte: yearStart, lt: yearEnd },
       },
       select: { clientId: true, candidateSource: true },
+    }),
+    prisma.placement.findMany({
+      where: {
+        organizationId: org.id,
+        stage: "hired",
+        placedAt: { gte: yearStart, lt: yearEnd },
+      },
+      select: {
+        id: true,
+        feeTotal: true,
+        placedAt: true,
+        candidateRfId: true,
+        candidate: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { placedAt: "desc" },
     }),
     mercuryKeyPromise,
     mercuryTxnsPromise,
@@ -255,11 +260,12 @@ export async function FinancialPerformanceTab() {
   const quarterLabel = `Q${currentQuarterIndex + 1} ${year}`;
 
   // ---- Expenses section data ----
-  // Mercury debits arrive as negative numbers; negating turns them into
-  // positive spend. Credits (refunds) shrink the figure honestly. We
-  // bucket by `matchTransaction()` — anything it can't classify is
-  // ignored here and remains visible to the recruiter in the connector
-  // panel rather than guessed into a tool.
+  // Catalog drives the recurring sections — Mercury matches enrich each
+  // catalog row with a Total Paid YTD figure. Any Mercury debit that
+  // matches a known tool family but falls outside ±30% of the catalog
+  // price drops into the one-time section instead (e.g. OpenPhone has
+  // a $35.64 recurring charge plus ad-hoc $1.40 / $19.50 fees, all
+  // sharing the "OpenPhone / Quo" matcher name).
   const mercuryConnected = mercuryApiKey != null;
   const mercuryTxns = mercuryTxnsAll.filter((t) => {
     const stamp = t.postedAt ?? t.createdAt;
@@ -267,122 +273,187 @@ export async function FinancialPerformanceTab() {
     return new Date(stamp).getFullYear() === year;
   });
 
-  const mercuryByTool = new Map<string, { count: number; totalUsd: number }>();
+  type RecurringCatalogEntry = {
+    displayName: string;
+    matcherName: string;
+    catalogCost: number;
+  };
+  const RECURRING_MONTHLY_CATALOG: RecurringCatalogEntry[] = [
+    { displayName: "Pin", matcherName: "Pin", catalogCost: 299 },
+    { displayName: "Anthropic / Claude Code", matcherName: "Anthropic / Claude", catalogCost: 100 },
+    { displayName: "TheirStack", matcherName: "TheirStack", catalogCost: 58.95 },
+    { displayName: "OpenPhone / Quo", matcherName: "OpenPhone / Quo", catalogCost: 35.64 },
+    { displayName: "Vercel", matcherName: "Vercel", catalogCost: 21.6 },
+    { displayName: "OpenAI / ChatGPT", matcherName: "OpenAI / ChatGPT", catalogCost: 20 },
+  ];
+  const RECURRING_ANNUAL_CATALOG: RecurringCatalogEntry[] = [
+    { displayName: "Apollo", matcherName: "Apollo", catalogCost: 500 },
+    { displayName: "Zoho", matcherName: "Zoho", catalogCost: 104 },
+  ];
+
+  // Anthropic txns that aren't the Claude subscription are pay-as-you-go
+  // Console charges. Same matcher tool name, different display in the
+  // one-time bucket.
+  const ANTHROPIC_MATCHER_NAME = "Anthropic / Claude";
+  const ANTHROPIC_CONSOLE_DISPLAY = "Anthropic Console";
+
+  const RECURRING_TOLERANCE = 0.3;
+  const inRecurringWindow = (amount: number, target: number) =>
+    Math.abs(amount - target) / target <= RECURRING_TOLERANCE;
+
+  type RecurringAgg = { totalUsd: number; paidCount: number };
+  const monthlyAgg = new Map<string, RecurringAgg>();
+  const annualAgg = new Map<string, RecurringAgg>();
+  const oneTimeRowsRaw: OneTimeRow[] = [];
+  const cashbackTxns: { amount: number; date: Date | null; key: string }[] = [];
+
   for (const t of mercuryTxns) {
-    if (shouldIgnoreTransaction(t)) continue;
     const description = mercuryTransactionDescription(t);
+    const cp = (t.counterpartyName ?? "").toLowerCase();
+    const bd = (t.bankDescription ?? "").toLowerCase();
+    const isCashback = cp.includes("io cashback") || bd.includes("io cashback");
+
+    if (isCashback) {
+      const raw = Number(t.amount ?? 0);
+      if (!Number.isFinite(raw)) continue;
+      const stamp = t.postedAt ?? t.createdAt;
+      cashbackTxns.push({
+        amount: raw,
+        date: stamp ? new Date(stamp) : null,
+        key: `cashback-${t.id ?? `${stamp}-${raw}`}`,
+      });
+      continue;
+    }
+
+    if (shouldIgnoreTransaction(t)) continue;
     if (!description) continue;
     const tool = matchTransaction(description);
     if (!tool) continue;
     const raw = Number(t.amount ?? 0);
     if (!Number.isFinite(raw)) continue;
-    const signedSpend = -raw;
-    const prev = mercuryByTool.get(tool) ?? { count: 0, totalUsd: 0 };
-    prev.count += 1;
-    prev.totalUsd += signedSpend;
-    mercuryByTool.set(tool, prev);
+    const spend = -raw;
+    if (spend <= 0) continue;
+
+    const monthlyHit = RECURRING_MONTHLY_CATALOG.find(
+      (c) => c.matcherName === tool && inRecurringWindow(spend, c.catalogCost),
+    );
+    if (monthlyHit) {
+      const prev = monthlyAgg.get(monthlyHit.displayName) ?? {
+        totalUsd: 0,
+        paidCount: 0,
+      };
+      prev.totalUsd += spend;
+      prev.paidCount += 1;
+      monthlyAgg.set(monthlyHit.displayName, prev);
+      continue;
+    }
+
+    const annualHit = RECURRING_ANNUAL_CATALOG.find(
+      (c) => c.matcherName === tool && inRecurringWindow(spend, c.catalogCost),
+    );
+    if (annualHit) {
+      const prev = annualAgg.get(annualHit.displayName) ?? {
+        totalUsd: 0,
+        paidCount: 0,
+      };
+      prev.totalUsd += spend;
+      prev.paidCount += 1;
+      annualAgg.set(annualHit.displayName, prev);
+      continue;
+    }
+
+    const displayName =
+      tool === ANTHROPIC_MATCHER_NAME ? ANTHROPIC_CONSOLE_DISPLAY : tool;
+    const stamp = t.postedAt ?? t.createdAt;
+    oneTimeRowsRaw.push({
+      key: `merc-onetime-${t.id ?? `${displayName}-${stamp}-${spend}`}`,
+      toolName: displayName,
+      amountUsd: spend,
+      date: stamp ? new Date(stamp) : null,
+    });
   }
 
-  // A merchant that appears 2+ times in the YTD list is a recurring
-  // subscription; once-per-year hits land in the One-time section.
-  // Manual ToolExpense rows fall into whichever section their frequency
-  // implies — Annual / One-time go to the one-time bucket, everything
-  // else (Monthly, Quarterly, unset) is treated as recurring.
-  const isOneTimeManualFrequency = (f: string | null | undefined) => {
-    if (!f) return false;
-    const lower = f.toLowerCase();
-    return lower === "annual" || lower === "yearly" || lower === "one-time" || lower === "once";
-  };
-
-  // Tools we know are subscriptions even if Mercury has only billed them
-  // once YTD (annual plans haven't renewed yet, or just started).
-  const FORCED_RECURRING_TOOLS = new Set(
-    ["Vercel", "OpenAI / ChatGPT"].map((s) => s.toLowerCase()),
-  );
-
-  const recurringRows: SubscriptionListRow[] = [];
-  const oneTimeRows: SubscriptionListRow[] = [];
-  const consumedExpenseIds = new Set<string>();
-
-  Array.from(mercuryByTool.entries()).forEach(([tool, agg]) => {
-    const te = toolExpenses.find(
-      (t) => t.name.toLowerCase() === tool.toLowerCase(),
-    );
-    if (te) consumedExpenseIds.add(te.id);
-    const isRecurring =
-      agg.count >= 2 || FORCED_RECURRING_TOOLS.has(tool.toLowerCase());
-    // For the one-time bucket, mirror YTD spend into the Cost column so
-    // every row reads like Apollo (lump-sum charge shows up as both Cost
-    // and Total). Recurring rows keep the per-charge cost from
-    // ToolExpense when set; "—" otherwise.
-    const ytdCost = agg.totalUsd > 0 ? agg.totalUsd : null;
-    const toolName = te?.name ?? tool;
-    const row: SubscriptionListRow = {
-      key: `merc-${tool}`,
-      toolName,
-      category: categoryForTool(toolName),
-      cost: te?.cost ?? (isRecurring ? null : ytdCost),
-      frequency: te?.frequency ?? (isRecurring ? "Annual" : "One-time"),
-      paidCount: te?.paidCount ?? agg.count,
+  const recurringMonthly: RecurringRow[] = RECURRING_MONTHLY_CATALOG.map((c) => {
+    const agg = monthlyAgg.get(c.displayName) ?? { totalUsd: 0, paidCount: 0 };
+    return {
+      key: `mo-${c.displayName}`,
+      toolName: c.displayName,
+      catalogCost: c.catalogCost,
       totalYtdUsd: agg.totalUsd,
-      status: "Mercury matched",
+      paidCount: agg.paidCount,
     };
-    (isRecurring ? recurringRows : oneTimeRows).push(row);
+  });
+  const recurringAnnual: RecurringRow[] = RECURRING_ANNUAL_CATALOG.map((c) => {
+    const agg = annualAgg.get(c.displayName) ?? { totalUsd: 0, paidCount: 0 };
+    return {
+      key: `yr-${c.displayName}`,
+      toolName: c.displayName,
+      catalogCost: c.catalogCost,
+      totalYtdUsd: agg.totalUsd,
+      paidCount: agg.paidCount,
+    };
   });
 
-  for (const te of toolExpenses) {
-    if (consumedExpenseIds.has(te.id)) continue;
-    const goesOneTime = isOneTimeManualFrequency(te.frequency);
-    const totalYtdUsd = te.cost * te.paidCount;
-    const row: SubscriptionListRow = {
-      key: `te-${te.id}`,
-      toolName: te.name,
-      category: categoryForTool(te.name),
-      // Mirror cost == total for manual one-time rows that have no cost
-      // (so the column doesn't show "—" alongside a populated total).
-      cost: te.cost > 0 ? te.cost : goesOneTime ? totalYtdUsd : null,
-      frequency: te.frequency,
-      paidCount: te.paidCount,
-      totalYtdUsd,
-      status: "Manual",
+  oneTimeRowsRaw.sort((a, b) => {
+    const at = a.date?.getTime() ?? 0;
+    const bt = b.date?.getTime() ?? 0;
+    return bt - at;
+  });
+  const oneTimeRows = oneTimeRowsRaw;
+
+  // ---- Money In section data ----
+  const placementMoneyInRows: MoneyInRow[] = placementsHiredYtd.map((p) => {
+    const name =
+      [p.candidate?.firstName, p.candidate?.lastName]
+        .filter(Boolean)
+        .join(" ")
+        .trim() ||
+      (p.candidateRfId != null ? `RF candidate #${p.candidateRfId}` : "Unknown candidate");
+    return {
+      key: `placement-${p.id}`,
+      name,
+      source: "Placement",
+      amountUsd: p.feeTotal ?? 0,
+      date: p.placedAt ?? null,
     };
-    (goesOneTime ? oneTimeRows : recurringRows).push(row);
-  }
+  });
+  const cashbackMoneyInRows: MoneyInRow[] = cashbackTxns.map((c) => ({
+    key: c.key,
+    name: "Mercury Cashback",
+    source: "Mercury Cashback",
+    amountUsd: c.amount,
+    date: c.date,
+  }));
+  const moneyInRows = [...placementMoneyInRows, ...cashbackMoneyInRows].sort(
+    (a, b) => (b.date?.getTime() ?? 0) - (a.date?.getTime() ?? 0),
+  );
 
-  recurringRows.sort((a, b) => b.totalYtdUsd - a.totalYtdUsd);
-  oneTimeRows.sort((a, b) => b.totalYtdUsd - a.totalYtdUsd);
-
-  const subscriptionRows: SubscriptionListRow[] = [
-    ...recurringRows,
-    ...oneTimeRows,
-  ];
-
-  const subscriptionsYtdUsd = subscriptionRows.reduce(
-    (sum, r) => sum + r.totalYtdUsd,
+  // ---- Aggregates ----
+  const monthlyRecurringSubtotal = recurringMonthly.reduce(
+    (s, r) => s + r.totalYtdUsd,
     0,
   );
-  const activeSubscriptionsCount = subscriptionRows.length;
+  const annualRecurringSubtotal = recurringAnnual.reduce(
+    (s, r) => s + r.totalYtdUsd,
+    0,
+  );
+  const oneTimeSubtotal = oneTimeRows.reduce((s, r) => s + r.amountUsd, 0);
+  const subscriptionsYtdUsd =
+    monthlyRecurringSubtotal + annualRecurringSubtotal + oneTimeSubtotal;
 
-  // Monthly recurring cost (MRR) = sum of recurring rows normalized to
-  // a monthly cadence. We prefer the explicit per-charge cost when set,
-  // otherwise fall back to totalYtd / paidCount as the average charge,
-  // and divide by the months the cadence implies.
-  const frequencyMonths = (f: string | null | undefined): number => {
-    const lower = (f ?? "").toLowerCase();
-    if (lower === "annual" || lower === "yearly") return 12;
-    if (lower === "quarterly") return 3;
-    if (lower === "biannual" || lower === "semi-annual") return 6;
-    return 1;
-  };
-  const monthlyRecurringUsd = recurringRows.reduce((sum, r) => {
-    const perCharge =
-      r.cost != null
-        ? r.cost
-        : r.paidCount > 0
-          ? r.totalYtdUsd / r.paidCount
-          : 0;
-    return sum + perCharge / frequencyMonths(r.frequency);
-  }, 0);
+  const activeSubscriptionsCount =
+    recurringMonthly.filter((r) => r.paidCount > 0).length +
+    recurringAnnual.filter((r) => r.paidCount > 0).length;
+
+  // Monthly recurring cost — sum of catalog monthly costs + annual/12,
+  // counting only catalog rows that Mercury has actually charged YTD.
+  const monthlyRecurringUsd =
+    recurringMonthly
+      .filter((r) => r.paidCount > 0)
+      .reduce((s, r) => s + r.catalogCost, 0) +
+    recurringAnnual
+      .filter((r) => r.paidCount > 0)
+      .reduce((s, r) => s + r.catalogCost / 12, 0);
 
   // KPI strip math reuses subscriptionsYtdUsd so the top-of-page tile
   // always matches the YTD subtotal under the Subscriptions card.
@@ -411,20 +482,37 @@ export async function FinancialPerformanceTab() {
     );
   }
 
-  const roiRows: RoiRow[] = subscriptionRows.map((r) => {
-    const rev = revByLowerSource.get(r.toolName.toLowerCase()) ?? 0;
-    const roiPct =
-      r.totalYtdUsd > 0 && rev > 0
-        ? ((rev - r.totalYtdUsd) / r.totalYtdUsd) * 100
-        : null;
-    return {
-      key: r.key,
-      toolName: r.toolName,
-      spendUsd: r.totalYtdUsd,
-      revUsd: rev,
-      roiPct,
-    };
-  });
+  // Roll up YTD spend per display name across all three expense sections
+  // so ROI lines can show one row per tool family rather than separate
+  // recurring vs one-time entries.
+  const spendByDisplayName = new Map<string, number>();
+  const bump = (name: string, usd: number) => {
+    spendByDisplayName.set(name, (spendByDisplayName.get(name) ?? 0) + usd);
+  };
+  for (const r of recurringMonthly) {
+    if (r.totalYtdUsd > 0) bump(r.toolName, r.totalYtdUsd);
+  }
+  for (const r of recurringAnnual) {
+    if (r.totalYtdUsd > 0) bump(r.toolName, r.totalYtdUsd);
+  }
+  for (const r of oneTimeRows) bump(r.toolName, r.amountUsd);
+
+  const roiRows: RoiRow[] = Array.from(spendByDisplayName.entries())
+    .map(([toolName, spendUsd]) => {
+      const rev = revByLowerSource.get(toolName.toLowerCase()) ?? 0;
+      const roiPct =
+        spendUsd > 0 && rev > 0
+          ? ((rev - spendUsd) / spendUsd) * 100
+          : null;
+      return {
+        key: `roi-${toolName}`,
+        toolName,
+        spendUsd,
+        revUsd: rev,
+        roiPct,
+      };
+    })
+    .sort((a, b) => b.spendUsd - a.spendUsd);
 
   const totalRoiSpend = roiRows.reduce((s, r) => s + r.spendUsd, 0);
   const totalRoiRev = roiRows.reduce((s, r) => s + r.revUsd, 0);
@@ -604,8 +692,10 @@ export async function FinancialPerformanceTab() {
 
       <ExpensesSection
         mercuryConnected={mercuryConnected}
-        recurringRows={recurringRows}
+        recurringMonthly={recurringMonthly}
+        recurringAnnual={recurringAnnual}
         oneTimeRows={oneTimeRows}
+        moneyInRows={moneyInRows}
         subscriptionsYtdUsd={subscriptionsYtdUsd}
         activeSubscriptionsCount={activeSubscriptionsCount}
         monthlyRecurringUsd={monthlyRecurringUsd}
@@ -989,8 +1079,10 @@ function avatarFor(name: string): string {
 
 function ExpensesSection({
   mercuryConnected,
-  recurringRows,
+  recurringMonthly,
+  recurringAnnual,
   oneTimeRows,
+  moneyInRows,
   subscriptionsYtdUsd,
   activeSubscriptionsCount,
   monthlyRecurringUsd,
@@ -998,8 +1090,10 @@ function ExpensesSection({
   blendedExpensesRoiPct,
 }: {
   mercuryConnected: boolean;
-  recurringRows: SubscriptionListRow[];
-  oneTimeRows: SubscriptionListRow[];
+  recurringMonthly: RecurringRow[];
+  recurringAnnual: RecurringRow[];
+  oneTimeRows: OneTimeRow[];
+  moneyInRows: MoneyInRow[];
   subscriptionsYtdUsd: number;
   activeSubscriptionsCount: number;
   monthlyRecurringUsd: number;
@@ -1029,8 +1123,10 @@ function ExpensesSection({
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <SubscriptionsCard
-          recurringRows={recurringRows}
+          recurringMonthly={recurringMonthly}
+          recurringAnnual={recurringAnnual}
           oneTimeRows={oneTimeRows}
+          moneyInRows={moneyInRows}
           subscriptionsYtdUsd={subscriptionsYtdUsd}
           activeSubscriptionsCount={activeSubscriptionsCount}
           monthlyRecurringUsd={monthlyRecurringUsd}
@@ -1045,19 +1141,22 @@ function ExpensesSection({
 }
 
 function SubscriptionsCard({
-  recurringRows,
+  recurringMonthly,
+  recurringAnnual,
   oneTimeRows,
+  moneyInRows,
   subscriptionsYtdUsd,
   activeSubscriptionsCount,
   monthlyRecurringUsd,
 }: {
-  recurringRows: SubscriptionListRow[];
-  oneTimeRows: SubscriptionListRow[];
+  recurringMonthly: RecurringRow[];
+  recurringAnnual: RecurringRow[];
+  oneTimeRows: OneTimeRow[];
+  moneyInRows: MoneyInRow[];
   subscriptionsYtdUsd: number;
   activeSubscriptionsCount: number;
   monthlyRecurringUsd: number;
 }) {
-  const isEmpty = recurringRows.length === 0 && oneTimeRows.length === 0;
   return (
     <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div>
@@ -1065,22 +1164,17 @@ function SubscriptionsCard({
           Subscriptions &amp; tools
         </p>
         <p className="mt-0.5 text-xs text-court-fg-muted">
-          Recurring spend pulled from Mercury transactions
+          Catalog of recurring and one-time spend, plus money in
         </p>
       </div>
 
-      {isEmpty ? (
-        <EmptyBlock>
-          No subscription spend logged yet. Add one below or connect Mercury to
-          auto-match transactions.
-        </EmptyBlock>
-      ) : (
-        <SubscriptionsList
-          recurring={recurringRows}
-          oneTime={oneTimeRows}
-          monthlyRecurringUsd={monthlyRecurringUsd}
-        />
-      )}
+      <SubscriptionsList
+        recurringMonthly={recurringMonthly}
+        recurringAnnual={recurringAnnual}
+        oneTime={oneTimeRows}
+        moneyIn={moneyInRows}
+        monthlyRecurringUsd={monthlyRecurringUsd}
+      />
 
       <div className="mt-4 flex items-center justify-between border-t border-court-border-soft pt-3 text-xs text-court-fg-muted">
         <span>
@@ -1088,7 +1182,7 @@ function SubscriptionsCard({
           {activeSubscriptionsCount === 1 ? "" : "s"}
         </span>
         <span className="text-sm font-semibold tabular-nums text-court-fg">
-          YTD subtotal {formatUsd(subscriptionsYtdUsd)}
+          YTD expenses {formatUsd(subscriptionsYtdUsd)}
         </span>
       </div>
 

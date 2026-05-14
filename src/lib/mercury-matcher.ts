@@ -33,6 +33,7 @@ const KNOWN_TOOLS: {
   { name: "Recruiterflow", keywords: ["recruiterflow"], category: "Software" },
   { name: "Zoho", keywords: ["zoho"], category: "Software" },
   { name: "OpenPhone / Quo", keywords: ["quo", "openphone"], category: "Communications" },
+  { name: "TheirStack", keywords: ["theirstack"], category: "Software" },
 ];
 
 export function matchTransaction(description: string): string | null {
