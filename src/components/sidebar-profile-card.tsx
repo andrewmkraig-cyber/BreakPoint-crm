@@ -2,42 +2,31 @@
 
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { useSession } from "next-auth/react";
 import { signOut } from "next-auth/react";
 import { Copy, ExternalLink, Globe, LogOut, Mail, Phone } from "lucide-react";
 import { toast } from "sonner";
 
-// Replaces the old name + email block + standalone sign-out button in
-// the top bar. Click the avatar → small dropdown surfaces the contact
-// info Andrew copies into candidate-facing emails most often (work
-// email, work number, LinkedIn URL). Each row has a copy-icon button
-// for one-click copy. Click outside or press Escape to dismiss.
-//
-// This is intentionally small and personal (one user's contact card)
-// rather than a generic "user menu." Sign Out lives at the bottom so
-// the previous dedicated logout button can go away too.
 const PROFILE = {
   email: "andrew@breakpointtalent.com",
   phone: "216-340-9511",
   linkedin: "https://www.linkedin.com/in/andrewkraig/",
 } as const;
 
-export function TopBarProfileCard({
-  name,
-  imageUrl,
-}: {
-  name: string | null;
-  imageUrl: string | null;
-}) {
+export function SidebarProfileCard() {
+  const { data: session } = useSession();
+  const name = session?.user?.name ?? "Andrew Kraig";
+  const imageUrl = session?.user?.image ?? null;
+
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
     function onClick(e: MouseEvent) {
       const node = wrapperRef.current;
       if (!node) return;
-      if (e.target instanceof Node && !node.contains(e.target)) {
-        setOpen(false);
-      }
+      if (e.target instanceof Node && !node.contains(e.target)) setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
@@ -65,24 +54,50 @@ export function TopBarProfileCard({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Open profile contact card"
-        className="block rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg"
+        aria-expanded={open}
+        className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left transition hover:bg-[var(--court-sidebar-active-bg)] focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50"
       >
         {imageUrl ? (
           <Image
             src={imageUrl}
-            alt={name ?? "avatar"}
-            width={40}
-            height={40}
-            className="rounded-full border border-court-border"
+            alt={name}
+            width={36}
+            height={36}
+            className="h-9 w-9 shrink-0 rounded-full border border-court-sidebar-border object-cover"
           />
         ) : (
-          <span className="flex h-10 w-10 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-court-accent-tint text-sm font-semibold text-court-accent-dark">
             {name?.[0] ?? "?"}
           </span>
         )}
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-[13px] font-semibold text-court-sidebar-fg">
+            {name}
+          </div>
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label={`Copy phone number ${PROFILE.phone}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              void copy(PROFILE.phone, "phone");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                e.stopPropagation();
+                void copy(PROFILE.phone, "phone");
+              }
+            }}
+            className="mt-0.5 block truncate rounded text-[11px] font-medium text-court-sidebar-fg-muted transition hover:text-court-sidebar-fg focus:outline-none focus-visible:ring-1 focus-visible:ring-court-accent/50"
+          >
+            {PROFILE.phone}
+          </span>
+        </div>
       </button>
+
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-xl border border-court-border bg-court-surface text-sm shadow-lg">
+        <div className="absolute bottom-0 left-full z-50 ml-2 w-72 overflow-hidden rounded-xl border border-court-border bg-court-surface text-sm shadow-lg">
           <div className="px-4 pb-2 pt-3">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
               My contact info
@@ -90,16 +105,16 @@ export function TopBarProfileCard({
           </div>
           <ul className="space-y-1 px-2 pb-2">
             <ContactRow
-              icon={<Mail className="h-3.5 w-3.5" />}
-              label="Email"
-              value={PROFILE.email}
-              onCopy={() => copy(PROFILE.email, "email")}
-            />
-            <ContactRow
               icon={<Phone className="h-3.5 w-3.5" />}
               label="Work number"
               value={PROFILE.phone}
               onCopy={() => copy(PROFILE.phone, "phone")}
+            />
+            <ContactRow
+              icon={<Mail className="h-3.5 w-3.5" />}
+              label="Email"
+              value={PROFILE.email}
+              onCopy={() => copy(PROFILE.email, "email")}
             />
             <ContactRow
               icon={<Globe className="h-3.5 w-3.5" />}

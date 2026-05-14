@@ -1,12 +1,10 @@
 "use client";
 
 import { Music, Play } from "lucide-react";
-import { useSession } from "next-auth/react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
 import { TopBarPageAction, TopBarPageTitle } from "@/components/top-bar-page-title";
 import { MobileNav } from "@/components/mobile-nav";
-import { TopBarProfileCard } from "@/components/top-bar-profile-card";
 import { InConversation } from "@/components/icons/in-conversation";
 import { useClaudePanel } from "@/lib/claude-panel-context";
 import { useYouTubePanel } from "@/components/youtube-panel/YouTubePanelProvider";
@@ -15,8 +13,6 @@ import { WeatherWidget } from "@/components/weather-widget";
 import { CalendarPopoverButton } from "@/components/calendar-popover-button";
 
 export function TopBar() {
-  const { data: session } = useSession();
-  const user = session?.user;
   const { open: claudeOpen, toggle: toggleClaude } = useClaudePanel();
   const { open: youtubeOpen, toggle: toggleYouTube } = useYouTubePanel();
   const { open: spotifyOpen, toggle: toggleSpotify } = useSpotifyPanel();
@@ -129,7 +125,6 @@ export function TopBar() {
         </button>
         <WeatherWidget />
         <CalendarPopoverButton />
-        <TopBarProfileCard name={user?.name ?? null} imageUrl={user?.image ?? null} />
       </div>
     </header>
   );

@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
+import { SidebarProfileCard } from "@/components/sidebar-profile-card";
 import { useMailContext } from "@/lib/mail-context";
 import { usePhoneContext } from "@/lib/phone-context";
 
@@ -164,6 +165,9 @@ export function Sidebar({ width }: { width?: number } = {}) {
           <NavLink key={item.href} item={item} pathname={pathname} badge={0} />
         ))}
       </nav>
+      <div className="shrink-0 border-t border-court-sidebar-border p-1.5">
+        <SidebarProfileCard />
+      </div>
     </aside>
   );
 }
