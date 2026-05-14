@@ -7,7 +7,11 @@ import { NewsFeed } from "@/components/news-feed";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { getInvoiceSummary } from "@/lib/invoices";
-import { getEasternWeekBounds, formatEasternWeekRange } from "@/lib/week";
+import {
+  clubhousePeriodRange,
+  type ClubhousePeriod,
+} from "@/app/dashboard/clubhouse-period";
+import { ClubhousePeriodTabs } from "@/app/dashboard/clubhouse-period-tabs";
 import {
   Building2,
   CalendarDays,
@@ -17,14 +21,22 @@ import {
   Send,
 } from "lucide-react";
 
-// Every count in the "This week" strip is ACTIVITY-based: it counts
-// the stage transition that happened in the last 7 days, NOT the
+// Every count in the activity strip is ACTIVITY-based: it counts the
+// stage transition that happened inside the selected window, NOT the
 // current state of the placement. A candidate submitted Monday who
 // got rejected Wednesday still counts as 1 in "Candidates submitted"
 // for that week — the rejection doesn't remove them from the count.
-export async function MyDashboard() {
+export async function MyDashboard({
+  period = "THIS_WEEK",
+}: {
+  period?: ClubhousePeriod;
+} = {}) {
   const now = new Date();
-  const { start: weekStart, end: weekEnd } = getEasternWeekBounds(now);
+  const {
+    start: activityStart,
+    endExclusive: activityEnd,
+    eyebrowLabel: activityEyebrow,
+  } = clubhousePeriodRange(period, now);
 
   const [org, session] = await Promise.all([
     getCurrentOrg(),
@@ -45,22 +57,22 @@ export async function MyDashboard() {
     invoiceSummary,
   ] = await Promise.all([
     prisma.client.count({
-      where: { organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, createdAt: { gte: activityStart, lt: activityEnd } },
     }),
     prisma.actionLog.count({
-      where: { actionType: "submit", organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
+      where: { actionType: "submit", organizationId: org.id, createdAt: { gte: activityStart, lt: activityEnd } },
     }),
     prisma.interview.count({
-      where: { organizationId: org.id, createdAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, createdAt: { gte: activityStart, lt: activityEnd } },
     }),
     prisma.placement.count({
-      where: { organizationId: org.id, offerReceivedAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, offerReceivedAt: { gte: activityStart, lt: activityEnd } },
     }),
     prisma.placement.count({
-      where: { organizationId: org.id, placedAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, placedAt: { gte: activityStart, lt: activityEnd } },
     }),
     prisma.clientAgreement.count({
-      where: { organizationId: org.id, uploadedAt: { gte: weekStart, lt: weekEnd } },
+      where: { organizationId: org.id, uploadedAt: { gte: activityStart, lt: activityEnd } },
     }),
     getInvoiceSummary(org.id),
   ]);
@@ -75,14 +87,14 @@ export async function MyDashboard() {
   const q2RevenuePct = Q2_GOAL_USD > 0 ? (billedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
 
-  const weekRange = formatEasternWeekRange(weekStart, weekEnd).replace(/^Week of /, "");
-  const activityEyebrow = `ACTIVITY FOR WEEK OF ${weekRange}`.toUpperCase();
-
   return (
     <div className="flex w-full flex-col gap-6">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-        {activityEyebrow}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+          {activityEyebrow}
+        </p>
+        <ClubhousePeriodTabs period={period} />
+      </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Clients" value={newClientsCount} icon={Building2} live={newClientsCount > 0} />

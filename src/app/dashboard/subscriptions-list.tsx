@@ -330,7 +330,7 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
         {row.matched ? <MatchedPill /> : null}
       </span>
       <span className="flex items-center justify-end">
-        {row.toolExpenseId ? (
+        {row.toolExpenseId && !row.matched ? (
           <ToolExpenseRowActions
             id={row.toolExpenseId}
             onEdit={() => setEditing(true)}
@@ -446,7 +446,7 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
         {row.notes ?? ""}
       </span>
       <span className="flex items-center justify-end">
-        {row.toolExpenseId ? (
+        {row.toolExpenseId && !row.matched ? (
           <ToolExpenseRowActions
             id={row.toolExpenseId}
             onEdit={() => setEditing(true)}

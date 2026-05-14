@@ -27,7 +27,7 @@ import {
   dashboardPeriodRange,
   type DashboardPeriod,
 } from "@/app/dashboard/period-tabs-shared";
-import { getPnlData, PnlCard, type PnlData } from "@/app/dashboard/pnl-card";
+import { buildPnlData, PnlCard, type PnlData } from "@/app/dashboard/pnl-card";
 import { QUARTERLY_REVENUE_GOAL_USD } from "@/app/dashboard/goal-pacing";
 
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
@@ -123,6 +123,15 @@ export async function FinancialPerformanceTab({
       name: { contains: "Training Course", mode: "insensitive" },
     },
   });
+  // Apollo lives in the annual catalog with its own fallback. Any
+  // manual Apollo ToolExpense row is now a duplicate of the catalog
+  // entry — strip it so Recurring Annual shows exactly one Apollo row.
+  await prisma.toolExpense.deleteMany({
+    where: {
+      organizationId: org.id,
+      name: { contains: "apollo", mode: "insensitive" },
+    },
+  });
 
   const [
     revenueInvoices,
@@ -131,7 +140,7 @@ export async function FinancialPerformanceTab({
     mercuryApiKey,
     mercuryTxnsAll,
     manualExpenses,
-    pnlData,
+    paidInvoicesYtd,
   ] = await Promise.all([
     prisma.invoice.findMany({
       where: {
@@ -184,7 +193,16 @@ export async function FinancialPerformanceTab({
       where: { organizationId: org.id },
       orderBy: { createdAt: "desc" },
     }),
-    getPnlData(org.id, now),
+    // YTD paid invoices feed the P&L card's placement-fee line. Always
+    // calendar-year regardless of the selected period filter.
+    prisma.invoice.findMany({
+      where: {
+        organizationId: org.id,
+        status: "PAID",
+        paidAt: { gte: yearStart, lt: yearEnd },
+      },
+      select: { feeAmount: true },
+    }),
   ]);
 
   const revenueUsd = revenueInvoices.reduce(
@@ -358,6 +376,11 @@ export async function FinancialPerformanceTab({
       displayName: "Apollo",
       matcherName: "Apollo",
       catalogCost: 500,
+      // Renewals land at $505.44 (subscription + tax). Explicit window
+      // overrides the ±30% rule so post-tax amounts always hit the
+      // annual bucket instead of falling through to one-time.
+      matchMin: 400,
+      matchMax: 700,
       fallbackPaidCount: 1,
       fallbackTotalUsd: 500,
     },
@@ -673,9 +696,33 @@ export async function FinancialPerformanceTab({
     (s, r) => s + r.totalYtdUsd,
     0,
   );
+  const every3YearsRecurringSubtotal = recurringEvery3Years.reduce(
+    (s, r) => s + r.totalYtdUsd,
+    0,
+  );
   const oneTimeSubtotal = oneTimeRows.reduce((s, r) => s + r.amountUsd, 0);
+  // `subscriptionsYtdUsd` is the canonical YTD expense total. The
+  // "YTD expenses" footer on the Subscriptions card AND the P&L's
+  // "Total Expenses" row both render this exact number — so the four
+  // section subtotals (monthly + annual + every-3-years + one-time)
+  // must add up here and only here.
   const subscriptionsYtdUsd =
-    monthlyRecurringSubtotal + annualRecurringSubtotal + oneTimeSubtotal;
+    monthlyRecurringSubtotal +
+    annualRecurringSubtotal +
+    every3YearsRecurringSubtotal +
+    oneTimeSubtotal;
+
+  const placementFeesYtdUsd = paidInvoicesYtd.reduce(
+    (sum, r) => sum + decimalToNumber(r.feeAmount),
+    0,
+  );
+  const pnlData: PnlData = buildPnlData({
+    placementFeesUsd: placementFeesYtdUsd,
+    recurringMonthlyUsd: monthlyRecurringSubtotal,
+    recurringAnnualUsd: annualRecurringSubtotal,
+    recurringEvery3YearsUsd: every3YearsRecurringSubtotal,
+    oneTimeUsd: oneTimeSubtotal,
+  });
 
   const activeSubscriptionsCount =
     recurringMonthly.filter((r) => r.paidCount > 0).length +

@@ -5,10 +5,18 @@ import { MyDashboard } from "@/app/dashboard/my-dashboard";
 import { Scoreboard } from "@/app/dashboard/scoreboard";
 import { PlacementsTab, resolvePlacementsPeriod } from "@/app/dashboard/placements-tab";
 import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
+import {
+  CLUBHOUSE_PERIOD_PARAM,
+  resolveClubhousePeriod,
+} from "@/app/dashboard/clubhouse-period";
 
 export const dynamic = "force-dynamic";
 
-type RawParams = { tab?: string | string[]; period?: string | string[] };
+type RawParams = {
+  tab?: string | string[];
+  period?: string | string[];
+  [CLUBHOUSE_PERIOD_PARAM]?: string | string[];
+};
 type SearchParams = Promise<RawParams> | RawParams;
 
 function firstParam(value: string | string[] | undefined): string | undefined {
@@ -28,11 +36,14 @@ export default async function DashboardPage({
   const periodRaw = firstParam(resolved.period);
   const placementsPeriod = resolvePlacementsPeriod(periodRaw);
   const scoreboardPeriod = resolveDashboardPeriod(periodRaw);
+  const clubhousePeriod = resolveClubhousePeriod(
+    firstParam(resolved[CLUBHOUSE_PERIOD_PARAM]),
+  );
 
   return (
     <div className="flex w-full flex-col gap-6">
       <DashboardTabs active={active} />
-      {active === "dashboard" && <MyDashboard />}
+      {active === "dashboard" && <MyDashboard period={clubhousePeriod} />}
       {active === "scoreboard" && <Scoreboard period={scoreboardPeriod} />}
       {active === "placements" && <PlacementsTab period={placementsPeriod} />}
     </div>

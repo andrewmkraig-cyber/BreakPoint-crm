@@ -1,5 +1,3 @@
-import { prisma } from "@/lib/prisma";
-
 const USD_NO_CENTS = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
@@ -10,81 +8,51 @@ function formatUsd(n: number): string {
   return USD_NO_CENTS.format(Math.round(n));
 }
 
-function decimalToNumber(d: { toString(): string } | null): number {
-  if (d == null) return 0;
-  const n = Number(d.toString());
-  return Number.isFinite(n) ? n : 0;
-}
-
 export type PnlData = {
   placementFeesUsd: number;
   totalIncomeUsd: number;
   recurringMonthlyUsd: number;
   recurringAnnualUsd: number;
+  recurringEvery3YearsUsd: number;
   oneTimeUsd: number;
   totalExpensesUsd: number;
   grossProfitUsd: number;
   netMarginPct: number | null;
 };
 
-// Pulls PAID invoices and all ToolExpense rows for the current calendar
-// year, then buckets ToolExpense into monthly / annual / one-time based
-// on the frequency string. Quarterly entries fall into the monthly
-// bucket — matches how the Expenses tab normalizes them today.
-export async function getPnlData(
-  organizationId: string,
-  now: Date = new Date(),
-): Promise<PnlData> {
-  const year = now.getFullYear();
-  const yearStart = new Date(year, 0, 1);
-  const yearEnd = new Date(year + 1, 0, 1);
-
-  const [paidInvoices, toolExpenses] = await Promise.all([
-    prisma.invoice.findMany({
-      where: {
-        organizationId,
-        status: "PAID",
-        paidAt: { gte: yearStart, lt: yearEnd },
-      },
-      select: { feeAmount: true },
-    }),
-    prisma.toolExpense.findMany({
-      where: { organizationId },
-      select: { cost: true, paidCount: true, frequency: true },
-    }),
-  ]);
-
-  const placementFeesUsd = paidInvoices.reduce(
-    (s, r) => s + decimalToNumber(r.feeAmount),
-    0,
-  );
+// Pure builder: takes the same YTD subtotals already computed for the
+// Subscriptions card and returns the matching PnlData. Centralizing
+// construction here guarantees the P&L card and the "YTD expenses"
+// footer never drift — both render from the same source numbers.
+export function buildPnlData(input: {
+  placementFeesUsd: number;
+  recurringMonthlyUsd: number;
+  recurringAnnualUsd: number;
+  recurringEvery3YearsUsd: number;
+  oneTimeUsd: number;
+}): PnlData {
+  const {
+    placementFeesUsd,
+    recurringMonthlyUsd,
+    recurringAnnualUsd,
+    recurringEvery3YearsUsd,
+    oneTimeUsd,
+  } = input;
   const totalIncomeUsd = placementFeesUsd;
-
-  let recurringMonthlyUsd = 0;
-  let recurringAnnualUsd = 0;
-  let oneTimeUsd = 0;
-  for (const m of toolExpenses) {
-    const paid = m.paidCount > 0 ? m.paidCount : 1;
-    const total = m.cost * paid;
-    const freq = m.frequency.trim().toLowerCase();
-    if (freq === "monthly" || freq === "quarterly") {
-      recurringMonthlyUsd += total;
-    } else if (freq === "annual" || freq === "annually" || freq === "yearly") {
-      recurringAnnualUsd += total;
-    } else {
-      oneTimeUsd += total;
-    }
-  }
-  const totalExpensesUsd = recurringMonthlyUsd + recurringAnnualUsd + oneTimeUsd;
+  const totalExpensesUsd =
+    recurringMonthlyUsd +
+    recurringAnnualUsd +
+    recurringEvery3YearsUsd +
+    oneTimeUsd;
   const grossProfitUsd = totalIncomeUsd - totalExpensesUsd;
   const netMarginPct =
     totalIncomeUsd > 0 ? (grossProfitUsd / totalIncomeUsd) * 100 : null;
-
   return {
     placementFeesUsd,
     totalIncomeUsd,
     recurringMonthlyUsd,
     recurringAnnualUsd,
+    recurringEvery3YearsUsd,
     oneTimeUsd,
     totalExpensesUsd,
     grossProfitUsd,
@@ -121,6 +89,9 @@ export function PnlCard({ data }: { data: PnlData }) {
           <SectionHeaderRow label="Expenses" />
           <Row label="Recurring Monthly" value={formatUsd(data.recurringMonthlyUsd)} />
           <Row label="Recurring Annual" value={formatUsd(data.recurringAnnualUsd)} />
+          {data.recurringEvery3YearsUsd > 0 ? (
+            <Row label="Every 3 Years" value={formatUsd(data.recurringEvery3YearsUsd)} />
+          ) : null}
           <Row label="One-Time Charges" value={formatUsd(data.oneTimeUsd)} />
           <Row label="Total Expenses" value={formatUsd(data.totalExpensesUsd)} bold topDivider />
 

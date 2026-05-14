@@ -17,7 +17,7 @@ const KNOWN_TOOLS: {
   category: ExpenseCategory;
 }[] = [
   { name: "Apollo", keywords: ["apollo.io", "apollo"], category: "Software" },
-  { name: "Pin", keywords: ["pin.com", "pin com", "pin,com"], category: "Software" },
+  { name: "Pin", keywords: ["pin.com", "pin com", "pin,com", "pin .com", "pin, com"], category: "Software" },
   { name: "Anthropic / Claude", keywords: ["anthropic", "claude.ai", "claude team"], category: "Software" },
   { name: "Ringover", keywords: ["ringover"], category: "Communications" },
   { name: "Vercel", keywords: ["vercel"], category: "Hosting" },
@@ -38,6 +38,12 @@ const KNOWN_TOOLS: {
 
 export function matchTransaction(description: string): string | null {
   const haystack = description.toLowerCase();
+  // Diagnostic log to confirm the exact bankDescription Mercury sends
+  // for Pin.com charges — we've seen variants like "Pin.com", "Pin,com",
+  // and " PIN .COM" land in production. Surfaces in Vercel logs.
+  if (haystack.includes("pin")) {
+    console.log(`[mercury-matcher] pin-substring txn description=${JSON.stringify(description)}`);
+  }
   for (const tool of KNOWN_TOOLS) {
     for (const keyword of tool.keywords) {
       if (haystack.includes(keyword)) return tool.name;
