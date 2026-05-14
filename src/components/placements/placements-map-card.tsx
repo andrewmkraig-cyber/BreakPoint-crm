@@ -102,8 +102,12 @@ function RevenueByCity({
             maxFee > 0 ? Math.round((city.totalFee / maxFee) * 100) : 0;
           return (
             <li key={city.key} className="flex flex-col gap-0.5">
-              <div className="flex items-baseline gap-2">
-                <span className="flex-1 truncate text-sm text-court-fg">
+              {/* City + numbers sit on one inline-flex row so the dollar
+                  amount + percentage hug the right edge of the city
+                  name instead of being pushed to the far side of the
+                  card. */}
+              <div className="inline-flex items-baseline gap-2 self-start">
+                <span className="truncate text-sm text-court-fg">
                   {city.city}
                 </span>
                 <span className="shrink-0 text-xs tabular-nums text-court-fg">
