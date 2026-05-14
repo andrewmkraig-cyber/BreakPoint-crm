@@ -20,11 +20,13 @@ import {
   useFloatingThread,
 } from "@/lib/floating-thread-context";
 import { useFloatingZ } from "@/lib/floating-z";
+import { useMailContext } from "@/lib/mail-context";
 import {
   messageHasOtherRecipients,
   MoveToMenu,
   ThreadDetail,
 } from "@/app/mail/mail-view";
+import { mailToastIdForThread } from "@/components/mail-notification-toast";
 import type { MailThreadDetail } from "@/lib/gmail";
 
 // Portal-rendered draggable + resizable window for a single Gmail
@@ -57,6 +59,7 @@ export function FloatingThreadWindow() {
   // a popup from a notification toast brings it on top of whatever was
   // already floating.
   const { z: floatingZ, bringToFront } = useFloatingZ(threadId !== null);
+  const { markThreadRead } = useMailContext();
 
   const [mounted, setMounted] = useState(false);
   const [detail, setDetail] = useState<MailThreadDetail | null>(null);
@@ -130,7 +133,25 @@ export function FloatingThreadWindow() {
           }
           return;
         }
-        if (!cancelled) setDetail(body as MailThreadDetail);
+        if (!cancelled) {
+          setDetail(body as MailThreadDetail);
+          // Mirror the Mail Tab's open-thread side effects so opening
+          // from a notification toast (or any other entry point) marks
+          // the thread read in Gmail and clears the unread badge / new-
+          // mail toast for it. Fire-and-forget; failures must not block
+          // the popup. Skipped on the reloadTick refresh path (e.g.
+          // after a reply send) is harmless — the endpoints and the
+          // optimistic clear are idempotent.
+          markThreadRead(threadId);
+          toast.dismiss(mailToastIdForThread(threadId));
+          void fetch(
+            `/api/mail/threads/${encodeURIComponent(threadId)}/read`,
+            { method: "POST" },
+          ).catch((err: unknown) => {
+            // eslint-disable-next-line no-console
+            console.warn("[mail] floating markThreadRead failed", err);
+          });
+        }
       } catch (e) {
         if (!cancelled) {
           setError(e instanceof Error ? e.message : "fetch failed");
@@ -142,7 +163,7 @@ export function FloatingThreadWindow() {
     return () => {
       cancelled = true;
     };
-  }, [threadId, reloadTick]);
+  }, [threadId, reloadTick, markThreadRead]);
 
   if (!mounted || !threadId || !toolkit) return null;
 
