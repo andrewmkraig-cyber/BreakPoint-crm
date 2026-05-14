@@ -88,7 +88,7 @@ const SECTION_PREVIEW = 10;
 // shrink below its fr-derived width and truncate cleanly at narrower
 // viewports instead of overflowing into the next column.
 const RECURRING_GRID =
-  "grid grid-cols-[minmax(0,2fr)_minmax(70px,0.9fr)_minmax(80px,1fr)_minmax(0,0.8fr)_56px]";
+  "grid grid-cols-[minmax(0,2fr)_minmax(70px,0.9fr)_minmax(80px,1fr)_minmax(80px,0.7fr)_56px]";
 // Date drops out below lg (1024px) so Tool + Amount + Notes still
 // breathe on laptop-tier card widths. Header + each row mirror the
 // hide-and-restore pattern via hidden lg:block on the Date cell.
@@ -98,7 +98,7 @@ const MONEY_IN_GRID = "grid grid-cols-[minmax(0,1.6fr)_1fr_1fr]";
 
 function MatchedPill() {
   return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-brand-tint px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-court-brand-dark">
+    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-brand-tint px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-[0.06em] text-court-brand-dark">
       Matched
     </span>
   );
@@ -233,7 +233,7 @@ function RecurringSection({
       ) : (
         <>
           <div
-            className={`mt-2 ${RECURRING_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
+            className={`mt-2 ${RECURRING_GRID} gap-x-4 gap-y-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
           >
             <span>Tool</span>
             <span className="text-right">{costLabel}</span>
@@ -298,7 +298,7 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
   }
 
   return (
-    <li className={`${RECURRING_GRID} items-center gap-2 px-1 py-2 text-sm`}>
+    <li className={`${RECURRING_GRID} items-center gap-x-4 gap-y-2 px-1 py-2 text-sm`}>
       <div className="flex min-w-0 items-center gap-2">
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}

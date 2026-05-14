@@ -1635,6 +1635,15 @@ function MonthlyOperatingCostCard({
         </p>
       </div>
 
+      <div className="mt-4 flex items-end justify-between gap-3 rounded-2xl bg-court-brand-tint/50 px-4 py-3">
+        <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-brand-dark">
+          Total Monthly Run Rate
+        </span>
+        <span className="font-serif text-2xl font-bold tabular-nums leading-none text-court-brand-dark sm:text-3xl">
+          {formatUsdCents(totalMonthlyRunRate)}
+        </span>
+      </div>
+
       {rows.length === 0 ? (
         <EmptyBlock>
           No recurring subscriptions logged yet — monthly run rate will land here once tools are tracked.
@@ -1667,15 +1676,6 @@ function MonthlyOperatingCostCard({
           </ul>
         </div>
       )}
-
-      <div className="mt-3 flex items-center justify-between border-t border-court-border-soft pt-3 text-sm">
-        <span className="font-semibold text-court-fg">
-          Total Monthly Run Rate
-        </span>
-        <span className="font-bold tabular-nums text-court-fg">
-          {formatUsdCents(totalMonthlyRunRate)}
-        </span>
-      </div>
     </div>
   );
 }
