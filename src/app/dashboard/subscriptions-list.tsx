@@ -9,6 +9,8 @@ export type RecurringRow = {
   catalogCost: number;
   totalYtdUsd: number;
   paidCount: number;
+  matched: boolean;
+  subline?: string;
 };
 
 export type OneTimeRow = {
@@ -16,12 +18,13 @@ export type OneTimeRow = {
   toolName: string;
   amountUsd: number;
   date: Date | null;
+  notes?: string;
+  matched: boolean;
 };
 
 export type MoneyInRow = {
   key: string;
-  name: string;
-  source: "Placement" | "Mercury Cashback";
+  source: string;
   amountUsd: number;
   date: Date | null;
 };
@@ -59,9 +62,17 @@ function avatarFor(name: string): string {
 
 const SECTION_PREVIEW = 10;
 
-const RECURRING_GRID = "grid grid-cols-[1.6fr_0.9fr_0.6fr_1fr]";
-const ONE_TIME_GRID = "grid grid-cols-[1.6fr_1fr_1fr]";
-const MONEY_IN_GRID = "grid grid-cols-[1.6fr_0.9fr_1fr_1fr]";
+const RECURRING_GRID = "grid grid-cols-[1.6fr_0.9fr_1fr_0.7fr]";
+const ONE_TIME_GRID = "grid grid-cols-[1.4fr_0.8fr_0.9fr_1.5fr]";
+const MONEY_IN_GRID = "grid grid-cols-[1.6fr_1fr_1fr]";
+
+function MatchedPill() {
+  return (
+    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-brand-tint px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.08em] text-court-brand-dark">
+      Matched
+    </span>
+  );
+}
 
 export function SubscriptionsList({
   recurringMonthly,
@@ -87,16 +98,27 @@ export function SubscriptionsList({
   const oneTimeSubtotal = oneTime.reduce((s, r) => s + r.amountUsd, 0);
   const moneyInTotal = moneyIn.reduce((s, r) => s + r.amountUsd, 0);
 
+  const monthlyRecurringTotal = recurringMonthly.reduce(
+    (s, r) => s + r.catalogCost,
+    0,
+  );
+  const annualRecurringTotal = recurringAnnual.reduce(
+    (s, r) => s + r.catalogCost,
+    0,
+  );
+
   return (
     <div className="mt-4 flex flex-col gap-6">
       <RecurringSection
         title="Recurring monthly"
         rows={recurringMonthly}
-        costLabel="Monthly cost"
+        costLabel="Monthly Cost"
         ytdSubtotal={monthlySubtotal}
+        footerTotalLabel="Monthly Recurring Total"
+        footerTotalUsd={monthlyRecurringTotal}
         footerExtra={
           <span className="text-xs text-court-fg-muted">
-            Monthly recurring cost{" "}
+            Monthly burn{" "}
             <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
               {formatUsdCents(monthlyRecurringUsd)}
             </span>
@@ -109,8 +131,10 @@ export function SubscriptionsList({
       <RecurringSection
         title="Recurring annual"
         rows={recurringAnnual}
-        costLabel="Annual cost"
+        costLabel="Annual Cost"
         ytdSubtotal={annualSubtotal}
+        footerTotalLabel="Annual Recurring Total"
+        footerTotalUsd={annualRecurringTotal}
       />
 
       <div className="h-px bg-court-border-soft" />
@@ -129,12 +153,16 @@ function RecurringSection({
   rows,
   costLabel,
   ytdSubtotal,
+  footerTotalLabel,
+  footerTotalUsd,
   footerExtra,
 }: {
   title: string;
   rows: RecurringRow[];
   costLabel: string;
   ytdSubtotal: number;
+  footerTotalLabel: string;
+  footerTotalUsd: number;
   footerExtra?: React.ReactNode;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -155,8 +183,8 @@ function RecurringSection({
           >
             <span>Tool</span>
             <span className="text-right">{costLabel}</span>
-            <span className="text-right">Paid</span>
-            <span className="text-right">Total YTD</span>
+            <span className="text-right">Total Paid YTD</span>
+            <span className="text-right">Status</span>
           </div>
           <ul className="divide-y divide-court-border-soft">
             {visible.map((r) => (
@@ -177,12 +205,20 @@ function RecurringSection({
           )}
         </>
       )}
-      <div className="mt-2 flex items-center justify-between border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
+      <div className="mt-2 flex items-center justify-between gap-3 border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
         <span>{footerExtra ?? <span>&nbsp;</span>}</span>
-        <span>
-          Subtotal YTD{" "}
-          <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
-            {formatUsd(ytdSubtotal)}
+        <span className="flex items-baseline gap-3">
+          <span>
+            Subtotal YTD{" "}
+            <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
+              {formatUsd(ytdSubtotal)}
+            </span>
+          </span>
+          <span>
+            {footerTotalLabel}{" "}
+            <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
+              {formatUsdCents(footerTotalUsd)}
+            </span>
           </span>
         </span>
       </div>
@@ -198,18 +234,25 @@ function RecurringRowItem({ row }: { row: RecurringRow }) {
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
-        <span className="truncate font-medium text-court-fg">
-          {row.toolName}
-        </span>
+        <div className="min-w-0">
+          <div className="truncate font-medium text-court-fg">
+            {row.toolName}
+          </div>
+          {row.subline ? (
+            <div className="truncate text-[11px] text-court-fg-muted">
+              {row.subline}
+            </div>
+          ) : null}
+        </div>
       </div>
       <span className="text-right tabular-nums text-court-fg">
         {formatUsdCents(row.catalogCost)}
       </span>
-      <span className="text-right tabular-nums text-court-fg">
-        {row.paidCount}
-      </span>
       <span className="text-right font-semibold tabular-nums text-court-fg">
-        {formatUsd(row.totalYtdUsd)}
+        {row.totalYtdUsd > 0 ? formatUsdCents(row.totalYtdUsd) : "—"}
+      </span>
+      <span className="flex items-center justify-end">
+        {row.matched ? <MatchedPill /> : null}
       </span>
     </li>
   );
@@ -241,6 +284,7 @@ function OneTimeSection({
             <span>Tool</span>
             <span className="text-right">Amount</span>
             <span className="text-right">Date</span>
+            <span>Notes</span>
           </div>
           <ul className="divide-y divide-court-border-soft">
             {visible.map((r) => (
@@ -263,9 +307,9 @@ function OneTimeSection({
       )}
       <div className="mt-2 flex items-center justify-end border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
         <span>
-          Subtotal YTD{" "}
+          One-Time Total{" "}
           <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
-            {formatUsd(subtotal)}
+            {formatUsdCents(subtotal)}
           </span>
         </span>
       </div>
@@ -281,15 +325,21 @@ function OneTimeRowItem({ row }: { row: OneTimeRow }) {
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
         </span>
-        <span className="truncate font-medium text-court-fg">
-          {row.toolName}
-        </span>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate font-medium text-court-fg">
+            {row.toolName}
+          </span>
+          {row.matched ? <MatchedPill /> : null}
+        </div>
       </div>
       <span className="text-right font-semibold tabular-nums text-court-fg">
         {formatUsdCents(row.amountUsd)}
       </span>
       <span className="text-right tabular-nums text-court-fg-muted">
         {formatDate(row.date)}
+      </span>
+      <span className="truncate text-xs text-court-fg-muted">
+        {row.notes ?? ""}
       </span>
     </li>
   );
@@ -318,10 +368,9 @@ function MoneyInSection({
           <div
             className={`mt-2 ${MONEY_IN_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
           >
-            <span>Item</span>
             <span>Source</span>
-            <span className="text-right">Date</span>
             <span className="text-right">Amount</span>
+            <span className="text-right">Date</span>
           </div>
           <ul className="divide-y divide-court-border-soft">
             {visible.map((r) => (
@@ -344,9 +393,9 @@ function MoneyInSection({
       )}
       <div className="mt-2 flex items-center justify-end border-t border-court-border-soft pt-2 text-xs text-court-fg-muted">
         <span>
-          Total money in{" "}
+          Total Money In{" "}
           <span className="ml-1 text-sm font-semibold tabular-nums text-court-fg">
-            {formatUsd(total)}
+            {formatUsdCents(total)}
           </span>
         </span>
       </div>
@@ -358,18 +407,13 @@ function MoneyInRowItem({ row }: { row: MoneyInRow }) {
   return (
     <li className={`${MONEY_IN_GRID} items-center gap-2 px-1 py-2 text-sm`}>
       <span className="min-w-0 truncate font-medium text-court-fg">
-        {row.name}
-      </span>
-      <span>
-        <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
-          {row.source}
-        </span>
-      </span>
-      <span className="text-right tabular-nums text-court-fg-muted">
-        {formatDate(row.date)}
+        {row.source}
       </span>
       <span className="text-right font-semibold tabular-nums text-court-fg">
         {formatUsdCents(row.amountUsd)}
+      </span>
+      <span className="text-right tabular-nums text-court-fg-muted">
+        {formatDate(row.date)}
       </span>
     </li>
   );

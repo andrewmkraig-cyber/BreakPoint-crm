@@ -295,7 +295,18 @@ export async function FinancialPerformanceTab({
   type RecurringCatalogEntry = {
     displayName: string;
     matcherName: string;
+    // What we show in the Cost column (e.g. annual-equivalent for GoDaddy).
     catalogCost: number;
+    // The dollar amount Mercury actually charges. Defaults to catalogCost
+    // when omitted. GoDaddy bills $46.59 every 3 years but we surface its
+    // $15.53/yr annual equivalent, so its match window centers on $46.59.
+    matchCost?: number;
+    // Optional muted line under the tool name (e.g. "billed every 3 years").
+    subline?: string;
+    // When Mercury never sees this tool (paid via personal card, etc.),
+    // fall back to a stated YTD spend so the row doesn't sit at $0.
+    fallbackPaidCount?: number;
+    fallbackTotalUsd?: number;
   };
   const RECURRING_MONTHLY_CATALOG: RecurringCatalogEntry[] = [
     { displayName: "Pin", matcherName: "Pin", catalogCost: 299 },
@@ -306,8 +317,28 @@ export async function FinancialPerformanceTab({
     { displayName: "OpenAI / ChatGPT", matcherName: "OpenAI / ChatGPT", catalogCost: 20 },
   ];
   const RECURRING_ANNUAL_CATALOG: RecurringCatalogEntry[] = [
-    { displayName: "Apollo", matcherName: "Apollo", catalogCost: 500 },
+    {
+      displayName: "Apollo",
+      matcherName: "Apollo",
+      catalogCost: 500,
+      fallbackPaidCount: 1,
+      fallbackTotalUsd: 500,
+    },
     { displayName: "Zoho", matcherName: "Zoho", catalogCost: 104 },
+    {
+      displayName: "DocuSign",
+      matcherName: "DocuSign",
+      catalogCost: 321.29,
+      fallbackPaidCount: 1,
+      fallbackTotalUsd: 321.29,
+    },
+    {
+      displayName: "GoDaddy",
+      matcherName: "GoDaddy",
+      catalogCost: 15.53,
+      matchCost: 46.59,
+      subline: "billed every 3 years",
+    },
   ];
 
   // Anthropic txns that aren't the Claude subscription are pay-as-you-go
@@ -354,7 +385,9 @@ export async function FinancialPerformanceTab({
     if (spend <= 0) continue;
 
     const monthlyHit = RECURRING_MONTHLY_CATALOG.find(
-      (c) => c.matcherName === tool && inRecurringWindow(spend, c.catalogCost),
+      (c) =>
+        c.matcherName === tool &&
+        inRecurringWindow(spend, c.matchCost ?? c.catalogCost),
     );
     if (monthlyHit) {
       const prev = monthlyAgg.get(monthlyHit.displayName) ?? {
@@ -368,7 +401,9 @@ export async function FinancialPerformanceTab({
     }
 
     const annualHit = RECURRING_ANNUAL_CATALOG.find(
-      (c) => c.matcherName === tool && inRecurringWindow(spend, c.catalogCost),
+      (c) =>
+        c.matcherName === tool &&
+        inRecurringWindow(spend, c.matchCost ?? c.catalogCost),
     );
     if (annualHit) {
       const prev = annualAgg.get(annualHit.displayName) ?? {
@@ -389,27 +424,34 @@ export async function FinancialPerformanceTab({
       toolName: displayName,
       amountUsd: spend,
       date: stamp ? new Date(stamp) : null,
+      matched: true,
     });
   }
 
   const recurringMonthly: RecurringRow[] = RECURRING_MONTHLY_CATALOG.map((c) => {
-    const agg = monthlyAgg.get(c.displayName) ?? { totalUsd: 0, paidCount: 0 };
+    const agg = monthlyAgg.get(c.displayName);
+    const matched = !!agg && agg.paidCount > 0;
     return {
       key: `mo-${c.displayName}`,
       toolName: c.displayName,
       catalogCost: c.catalogCost,
-      totalYtdUsd: agg.totalUsd,
-      paidCount: agg.paidCount,
+      totalYtdUsd: matched ? agg!.totalUsd : (c.fallbackTotalUsd ?? 0),
+      paidCount: matched ? agg!.paidCount : (c.fallbackPaidCount ?? 0),
+      matched,
+      subline: c.subline,
     };
   });
   const recurringAnnual: RecurringRow[] = RECURRING_ANNUAL_CATALOG.map((c) => {
-    const agg = annualAgg.get(c.displayName) ?? { totalUsd: 0, paidCount: 0 };
+    const agg = annualAgg.get(c.displayName);
+    const matched = !!agg && agg.paidCount > 0;
     return {
       key: `yr-${c.displayName}`,
       toolName: c.displayName,
       catalogCost: c.catalogCost,
-      totalYtdUsd: agg.totalUsd,
-      paidCount: agg.paidCount,
+      totalYtdUsd: matched ? agg!.totalUsd : (c.fallbackTotalUsd ?? 0),
+      paidCount: matched ? agg!.paidCount : (c.fallbackPaidCount ?? 0),
+      matched,
+      subline: c.subline,
     };
   });
 
@@ -428,6 +470,8 @@ export async function FinancialPerformanceTab({
         catalogCost: m.cost,
         totalYtdUsd,
         paidCount,
+        matched: false,
+        subline: m.notes ?? undefined,
       });
     } else if (freq === "quarterly") {
       recurringMonthly.push({
@@ -436,6 +480,8 @@ export async function FinancialPerformanceTab({
         catalogCost: m.cost / 3,
         totalYtdUsd,
         paidCount,
+        matched: false,
+        subline: m.notes ?? undefined,
       });
     } else if (freq === "annual" || freq === "annually" || freq === "yearly") {
       recurringAnnual.push({
@@ -444,6 +490,8 @@ export async function FinancialPerformanceTab({
         catalogCost: m.cost,
         totalYtdUsd,
         paidCount,
+        matched: false,
+        subline: m.notes ?? undefined,
       });
     } else {
       // "One-time" and any other unrecognized frequency falls through
@@ -453,9 +501,58 @@ export async function FinancialPerformanceTab({
         toolName: m.name,
         amountUsd: totalYtdUsd,
         date: m.startDate ?? m.createdAt ?? null,
+        matched: false,
+        notes: m.notes ?? undefined,
       });
     }
   }
+
+  // Hardcoded one-time manual entries (paid outside Mercury or pre-dating
+  // the Mercury connection). Surface them alongside Mercury-matched rows
+  // so the section is comprehensive.
+  const HARDCODED_ONE_TIME: OneTimeRow[] = [
+    {
+      key: "manual-amazon-usbc",
+      toolName: "Amazon",
+      amountUsd: 7.33,
+      date: new Date(2026, 2, 30),
+      notes: "USBC to USB converter",
+      matched: false,
+    },
+    {
+      key: "manual-lone-wolf",
+      toolName: "Lone Wolf Course",
+      amountUsd: 1600,
+      date: new Date(2026, 2, 16),
+      notes: "biz dev expense",
+      matched: false,
+    },
+    {
+      key: "manual-llc-formation",
+      toolName: "LLC Formation Filing",
+      amountUsd: 99,
+      date: new Date(2026, 2, 10),
+      notes: "startup legal fee",
+      matched: false,
+    },
+    {
+      key: "manual-trade-name",
+      toolName: "Trade Name Filing",
+      amountUsd: 39,
+      date: new Date(2026, 2, 18),
+      notes: "startup legal fee",
+      matched: false,
+    },
+    {
+      key: "manual-claude-pro",
+      toolName: "Claude Pro 1 month",
+      amountUsd: 100,
+      date: new Date(2026, 3, 1),
+      notes: "1 month Claude Pro",
+      matched: false,
+    },
+  ];
+  oneTimeRowsRaw.push(...HARDCODED_ONE_TIME);
 
   oneTimeRowsRaw.sort((a, b) => {
     const at = a.date?.getTime() ?? 0;
@@ -474,15 +571,13 @@ export async function FinancialPerformanceTab({
       (p.candidateRfId != null ? `RF candidate #${p.candidateRfId}` : "Unknown candidate");
     return {
       key: `placement-${p.id}`,
-      name,
-      source: "Placement",
+      source: name,
       amountUsd: p.feeTotal ?? 0,
       date: p.placedAt ?? null,
     };
   });
   const cashbackMoneyInRows: MoneyInRow[] = cashbackTxns.map((c) => ({
     key: c.key,
-    name: "Mercury Cashback",
     source: "Mercury Cashback",
     amountUsd: c.amount,
     date: c.date,
