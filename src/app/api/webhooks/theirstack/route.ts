@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { getBDSettings } from "@/lib/bd/bd-settings";
 import type { DiscoveredCompany } from "@/lib/bd/job-discovery-provider";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +108,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  let organizationId = process.env.ORG_ID;
+  if (!organizationId) {
+    const firstOrg = await prisma.organization.findFirst({
+      orderBy: { createdAt: "asc" },
+      select: { id: true },
+    });
+    organizationId = firstOrg?.id;
+  }
+  if (!organizationId) {
+    console.error("[theirstack-webhook] no organization resolved");
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  const settings = await getBDSettings(organizationId);
+  if (!settings.engineActive) {
+    return NextResponse.json({ skipped: true }, { status: 200 });
+  }
+
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(rawBody) as Record<string, unknown>;
@@ -168,19 +187,6 @@ export async function POST(req: NextRequest) {
     console.log(
       `[theirstack-webhook] filtered: headcount=${employeeCount} out of range company="${companyName}"`,
     );
-    return NextResponse.json({ ok: true }, { status: 200 });
-  }
-
-  let organizationId = process.env.ORG_ID;
-  if (!organizationId) {
-    const firstOrg = await prisma.organization.findFirst({
-      orderBy: { createdAt: "asc" },
-      select: { id: true },
-    });
-    organizationId = firstOrg?.id;
-  }
-  if (!organizationId) {
-    console.error("[theirstack-webhook] no organization resolved");
     return NextResponse.json({ ok: true }, { status: 200 });
   }
 

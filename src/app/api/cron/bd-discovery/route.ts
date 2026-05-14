@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { TheirStackProvider } from "@/lib/bd/theirstack-provider";
+import { getBDSettings } from "@/lib/bd/bd-settings";
 import type { DiscoveredCompany } from "@/lib/bd/job-discovery-provider";
 
 export const dynamic = "force-dynamic";
@@ -136,6 +137,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       { ok: false, error: "No organization found and ORG_ID env var not set" },
       { status: 500 },
+    );
+  }
+
+  const settings = await getBDSettings(organizationId);
+  if (!settings.engineActive) {
+    return NextResponse.json(
+      { skipped: true, reason: "BD engine inactive" },
+      { status: 200 },
     );
   }
 

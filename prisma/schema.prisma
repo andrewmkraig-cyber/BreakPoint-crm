@@ -1691,6 +1691,10 @@ model BDActivity {
 model BdOrgConfig {
   organizationId String @id
 
+  // Master gate for the BD engine. The daily discovery cron and the
+  // TheirStack webhook both no-op when false. Distinct from pauseAll,
+  // which gates the Launch CTA only.
+  engineActive   Boolean @default(false)
   globalDailyCap Int     @default(80)
   pauseAll       Boolean @default(false)
 
