@@ -3,7 +3,16 @@ import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 import { createGmailDraft, plainToHtml, sendGmail, type SendEmailResult } from "@/lib/gmail";
 
 export type TriggerLookupResult =
-  | { kind: "ok"; template: { id: string; name: string; subject: string; body: string } }
+  | {
+      kind: "ok";
+      template: {
+        id: string;
+        name: string;
+        subject: string;
+        body: string;
+        sendAsDraft: boolean;
+      };
+    }
   | { kind: "missing" }
   | { kind: "inactive"; name: string };
 
@@ -13,13 +22,26 @@ export async function loadTriggeredTemplate(trigger: string): Promise<TriggerLoo
   const any = await prisma.emailTemplate.findFirst({
     where: { trigger },
     orderBy: { updatedAt: "desc" },
-    select: { id: true, name: true, subject: true, body: true, isActive: true },
+    select: {
+      id: true,
+      name: true,
+      subject: true,
+      body: true,
+      isActive: true,
+      sendAsDraft: true,
+    },
   });
   if (!any) return { kind: "missing" };
   if (!any.isActive) return { kind: "inactive", name: any.name };
   return {
     kind: "ok",
-    template: { id: any.id, name: any.name, subject: any.subject, body: any.body },
+    template: {
+      id: any.id,
+      name: any.name,
+      subject: any.subject,
+      body: any.body,
+      sendAsDraft: any.sendAsDraft,
+    },
   };
 }
 
@@ -81,7 +103,13 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
 
   try {
     const cc = (input.cc ?? []).map((e) => e.trim()).filter(Boolean);
-    if (input.mode === "send") {
+    // Per-template "Approve before sending" override: when the
+    // template is flagged sendAsDraft, force the draft path even if
+    // the caller asked for a direct send. The recruiter reviews and
+    // hits Send themselves from /mail ▸ Drafts.
+    const effectiveMode: "send" | "draft" =
+      look.template.sendAsDraft ? "draft" : input.mode;
+    if (effectiveMode === "send") {
       const sent = await sendGmail({
         userId: input.userId,
         from: input.fromEmail,
@@ -104,6 +132,20 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
       bodyText: body,
       bodyHtml: html,
     });
+    // Log the draft id explicitly when the sendAsDraft override
+    // diverted a would-be send, so the recruiter (and ops) can
+    // correlate a deferred draft back to the lifecycle event that
+    // queued it.
+    if (look.template.sendAsDraft && input.mode === "send") {
+      // eslint-disable-next-line no-console
+      console.log("[templated-email] sendAsDraft override", {
+        trigger: input.trigger,
+        template: look.template.name,
+        draftId: drafted.draftId,
+        messageId: drafted.messageId,
+        threadId: drafted.threadId,
+      });
+    }
     // Ace 28.0b — createGmailDraft returns { draftId, messageId,
     // threadId } now. The fire-result shape carries SendEmailResult
     // (= { id, threadId }) for backward compatibility with downstream
