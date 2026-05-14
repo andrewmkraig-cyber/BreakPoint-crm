@@ -43,7 +43,7 @@ export async function createToolExpense(
       },
       select: { id: true },
     });
-    revalidatePath("/dashboard");
+    revalidatePath("/finances");
     return { ok: true, id: row.id };
   } catch (e) {
     return {

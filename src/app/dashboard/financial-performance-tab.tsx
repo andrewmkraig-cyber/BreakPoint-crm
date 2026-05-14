@@ -109,6 +109,7 @@ export async function FinancialPerformanceTab({
     placementsHiredYtd,
     mercuryApiKey,
     mercuryTxnsAll,
+    manualExpenses,
   ] = await Promise.all([
     prisma.invoice.findMany({
       where: {
@@ -152,6 +153,13 @@ export async function FinancialPerformanceTab({
     }),
     mercuryKeyPromise,
     mercuryTxnsPromise,
+    // Manually-entered subscriptions / one-time tool spend from the
+    // "Add expense" form. Merged into the same recurring/one-time
+    // buckets below so they appear alongside Mercury-matched rows.
+    prisma.toolExpense.findMany({
+      where: { organizationId: org.id },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   const revenueUsd = revenueInvoices.reduce(
@@ -404,6 +412,50 @@ export async function FinancialPerformanceTab({
       paidCount: agg.paidCount,
     };
   });
+
+  // Manual entries from the "Add expense" form route into the bucket
+  // that matches their frequency. Quarterly is normalized into the
+  // monthly recurring section so its standing cost still flows into
+  // the monthly-recurring tile (catalogCost = cost/3 monthly equivalent).
+  for (const m of manualExpenses) {
+    const paidCount = m.paidCount > 0 ? m.paidCount : 1;
+    const totalYtdUsd = m.cost * paidCount;
+    const freq = m.frequency.trim().toLowerCase();
+    if (freq === "monthly") {
+      recurringMonthly.push({
+        key: `manual-mo-${m.id}`,
+        toolName: m.name,
+        catalogCost: m.cost,
+        totalYtdUsd,
+        paidCount,
+      });
+    } else if (freq === "quarterly") {
+      recurringMonthly.push({
+        key: `manual-q-${m.id}`,
+        toolName: m.name,
+        catalogCost: m.cost / 3,
+        totalYtdUsd,
+        paidCount,
+      });
+    } else if (freq === "annual" || freq === "annually" || freq === "yearly") {
+      recurringAnnual.push({
+        key: `manual-yr-${m.id}`,
+        toolName: m.name,
+        catalogCost: m.cost,
+        totalYtdUsd,
+        paidCount,
+      });
+    } else {
+      // "One-time" and any other unrecognized frequency falls through
+      // to the one-time list — best surface for a single charge.
+      oneTimeRowsRaw.push({
+        key: `manual-onetime-${m.id}`,
+        toolName: m.name,
+        amountUsd: totalYtdUsd,
+        date: m.startDate ?? m.createdAt ?? null,
+      });
+    }
+  }
 
   oneTimeRowsRaw.sort((a, b) => {
     const at = a.date?.getTime() ?? 0;
