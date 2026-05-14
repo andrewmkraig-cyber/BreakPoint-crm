@@ -1,10 +1,16 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
+import { getClaude } from "@/lib/claude";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
 // runs in UTC, so a fixed offset would silently misalign during DST —
 // we look up the live offset on each call.
 const ZONE = "America/New_York";
+
+// Pinned per BD spec — diverges from CLAUDE_MODEL because the BD pitch
+// is short, cost-sensitive, and benefits from a smaller fixed model.
+const BD_SUMMARY_MODEL = "claude-sonnet-4-20250514";
 
 // Decision-makers we want Apollo to surface at each target company.
 // Order matters loosely (HR-side first because that's who fields BD
@@ -76,6 +82,83 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
     out.push({ companyName, jobTitle, jobUrl: rawUrl || undefined });
   }
   return out;
+}
+
+function genericCandidateSummary(jobTitle: string): string {
+  const role = jobTitle.trim() || "this role";
+  return [
+    `• Proven ${role} background with direct, relevant experience`,
+    `• Track record of delivering measurable impact in similar functions`,
+    `• Strong communication and stakeholder skills for cross-team work`,
+    `• Ready to step in quickly with minimal ramp-up time`,
+  ].join("\n");
+}
+
+// Sends a single short call to Claude per discovered job to produce a
+// 4-bullet candidate profile we attach to every Apollo contact enrolled
+// at that company. The summary is the BD pitch's load-bearing line — if
+// Claude fails (timeout, key unset, malformed output) we fall back to a
+// generic 4-bullet block keyed off the job title so enrollment is never
+// blocked on the AI step.
+async function generateCandidateSummary(
+  jobTitle: string,
+  companyName: string,
+  jobPostingUrl?: string,
+): Promise<string> {
+  const titleForFallback = jobTitle.trim() || "this role";
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return genericCandidateSummary(titleForFallback);
+  }
+
+  // No description scraping in Phase 2 — we only have a job URL string.
+  // Pass the first 500 chars of the URL plus the job title so Claude has
+  // something concrete to anchor on; spec said "or just job title if no
+  // description" and the URL is a halfway anchor.
+  const urlSnippet = (jobPostingUrl ?? "").slice(0, 500);
+  const descBlock = urlSnippet
+    ? `Job URL (first 500 chars): ${urlSnippet}`
+    : `(No description available — derive solely from the job title.)`;
+
+  const prompt =
+    `You are a recruiter writing a 4-bullet candidate summary for a cold BD email. ` +
+    `Based on this job posting, write 4 concise bullets describing the ideal candidate ` +
+    `profile you would bring for this role. Each bullet should be 10-15 words max. ` +
+    `No intros, no headers, just 4 bullets starting with •. ` +
+    `Job title: ${titleForFallback}. Company: ${companyName}. ` +
+    `Job description snippet: ${descBlock}`;
+
+  try {
+    const anthropic = getClaude();
+    const response = await anthropic.messages.create({
+      model: BD_SUMMARY_MODEL,
+      max_tokens: 300,
+      messages: [{ role: "user", content: prompt }],
+    });
+    const raw = response.content
+      .filter((b): b is Anthropic.Messages.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("\n")
+      .trim();
+    const bullets = raw
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith("•"))
+      .slice(0, 4);
+    if (bullets.length < 4) {
+      console.warn(
+        `[Apollo] candidate summary parse short (${bullets.length}/4) for "${companyName}" — falling back to generic`,
+      );
+      return genericCandidateSummary(titleForFallback);
+    }
+    return bullets.join("\n");
+  } catch (err) {
+    console.warn(
+      `[Apollo] candidate summary threw for "${companyName}":`,
+      err instanceof Error ? err.message : err,
+    );
+    return genericCandidateSummary(titleForFallback);
+  }
 }
 
 type ApolloPerson = {
@@ -228,6 +311,15 @@ export async function enrollCompaniesInApollo(
     const people = await apolloSearchPeople(apiKey, c.companyName);
     const candidates = people.slice(0, Math.min(4, remaining));
 
+    // One Claude call per company — every contact enrolled here gets
+    // the same 4-bullet block. Cheaper than per-contact and the pitch
+    // is the same regardless of which decision-maker fielded it.
+    const candidateSummary = await generateCandidateSummary(
+      c.jobTitle,
+      c.companyName,
+      c.jobUrl,
+    );
+
     if (candidates.length > 0) {
       for (const p of candidates) {
         if (remaining <= 0) break;
@@ -239,7 +331,7 @@ export async function enrollCompaniesInApollo(
           organization_name: p.organization_name ?? c.companyName,
           job_title: c.jobTitle,
           job_posting_url: c.jobUrl,
-          candidate_summary: "",
+          candidate_summary: candidateSummary,
         });
         if (ok) {
           enrolledThisRun += 1;
@@ -261,7 +353,7 @@ export async function enrollCompaniesInApollo(
         organization_name: c.companyName,
         job_title: c.jobTitle,
         job_posting_url: c.jobUrl,
-        candidate_summary: "",
+        candidate_summary: candidateSummary,
       });
       if (ok) {
         enrolledThisRun += 1;

@@ -164,9 +164,9 @@ export default async function ActivityPage({
 function EmptyState() {
   return (
     <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-10 text-center">
-      <p className="text-sm font-semibold text-court-fg">No BD activity yet.</p>
+      <p className="text-sm font-semibold text-court-fg">No activity yet.</p>
       <p className="mt-1 text-sm text-court-fg-muted">
-        Activity will appear here once your first BD run completes.
+        Activity will appear here once contacts are enrolled and emails start sending.
       </p>
     </div>
   );
