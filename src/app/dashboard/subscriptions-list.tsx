@@ -99,7 +99,7 @@ const MONEY_IN_GRID = "grid grid-cols-[minmax(0,1.6fr)_1fr_1fr]";
 
 function MatchedPill() {
   return (
-    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-brand-tint px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-[0.06em] text-court-brand-dark">
+    <span className="inline-flex items-center whitespace-nowrap rounded-full border border-court-border bg-court-surface-subtle px-1.5 py-[1px] text-[9px] font-bold uppercase tracking-[0.06em] text-court-fg">
       Matched
     </span>
   );
