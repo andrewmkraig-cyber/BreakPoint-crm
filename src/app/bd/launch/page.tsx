@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { ApprovalQueue } from "@/components/bd/approval-queue";
+import { getPendingBDRuns } from "./bd-run-actions";
 import { LaunchView, type VerticalOption, type SavedSearchOption, type LastRun } from "./launch-view";
 
 export const dynamic = "force-dynamic";
@@ -12,7 +14,7 @@ const DEFAULT_DAILY_CONTACT_CAP = 80;
 export default async function LaunchPage() {
   const org = await getCurrentOrg();
 
-  const [verticalRows, savedSearchRows, domains, lastRunRow, todaysRuns, orgConfig] = await Promise.all([
+  const [verticalRows, savedSearchRows, domains, lastRunRow, todaysRuns, orgConfig, pendingRuns] = await Promise.all([
     prisma.vertical.findMany({
       where: { organizationId: org.id, active: true },
       orderBy: { name: "asc" },
@@ -50,6 +52,7 @@ export default async function LaunchPage() {
     // globalDailyCap is the fallback when neither SavedSearch.contactCap
     // nor the legacy DEFAULT_DAILY_CONTACT_CAP applies.
     prisma.bdOrgConfig.findUnique({ where: { organizationId: org.id } }),
+    getPendingBDRuns(),
   ]);
   const PAUSE_ALL = orgConfig?.pauseAll ?? false;
   const orgDailyCap = orgConfig?.globalDailyCap ?? DEFAULT_DAILY_CONTACT_CAP;
@@ -84,15 +87,18 @@ export default async function LaunchPage() {
     : null;
 
   return (
-    <LaunchView
-      verticals={verticals}
-      savedSearches={savedSearches}
-      domains={domains.map((d) => ({ domain: d.domain, status: d.status }))}
-      lastRun={lastRun}
-      defaultContactCap={orgDailyCap}
-      contactsUsedToday={contactsUsedToday}
-      pauseAll={PAUSE_ALL}
-    />
+    <div className="space-y-5">
+      <ApprovalQueue initialRuns={pendingRuns} />
+      <LaunchView
+        verticals={verticals}
+        savedSearches={savedSearches}
+        domains={domains.map((d) => ({ domain: d.domain, status: d.status }))}
+        lastRun={lastRun}
+        defaultContactCap={orgDailyCap}
+        contactsUsedToday={contactsUsedToday}
+        pauseAll={PAUSE_ALL}
+      />
+    </div>
   );
 }
 

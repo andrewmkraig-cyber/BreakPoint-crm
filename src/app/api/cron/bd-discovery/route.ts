@@ -56,6 +56,42 @@ function nameMatchesAny(name: string, keywords: string[]): boolean {
   return keywords.some((kw) => lower.includes(kw.toLowerCase()));
 }
 
+// Strip the common legal-entity tails so "Acme LLC" and "Acme Inc."
+// fold to the same key as "Acme" when comparing against existing
+// Client rows. Order matters: "& Associates" must come before "&"
+// candidates so it strips as a unit.
+const CLIENT_SUFFIX_PATTERNS = [
+  /\s*&\s*associates\b/i,
+  /\bp\s*l\s*l\s*c\b\.?/i,
+  /\bllp\b\.?/i,
+  /\bllc\b\.?/i,
+  /\binc\b\.?/i,
+  /\bpc\b\.?/i,
+  /\bco\b\.?/i,
+];
+
+function normalizeClientName(name: string): string {
+  let s = name.toLowerCase().trim();
+  // Strip suffixes iteratively in case of stacks like "Foo LLC, Inc."
+  for (const pat of CLIENT_SUFFIX_PATTERNS) {
+    s = s.replace(pat, "");
+  }
+  // Collapse residual punctuation + whitespace so trailing commas
+  // from a stripped suffix don't break the includes() comparison.
+  s = s.replace(/[.,]+/g, " ").replace(/\s+/g, " ").trim();
+  return s;
+}
+
+function isExcludedByClients(companyName: string, clientNorms: string[]): boolean {
+  const norm = normalizeClientName(companyName);
+  if (!norm) return false;
+  for (const client of clientNorms) {
+    if (!client) continue;
+    if (norm.includes(client) || client.includes(norm)) return true;
+  }
+  return false;
+}
+
 function extractEmployeeCount(raw: unknown): number | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
@@ -112,6 +148,17 @@ export async function GET(req: NextRequest) {
     select: { createdAt: true },
   });
   const postedSince = lastRun?.createdAt ?? undefined;
+
+  const clients = await prisma.client.findMany({
+    where: { organizationId },
+    select: { name: true },
+  });
+  const clientNormSet = new Set<string>();
+  for (const c of clients) {
+    const norm = normalizeClientName(c.name);
+    if (norm) clientNormSet.add(norm);
+  }
+  const clientNorms = Array.from(clientNormSet);
 
   const dedupSet = new Set<string>();
   const windowStart = new Date(Date.now() - DEDUP_WINDOW_DAYS * 24 * 60 * 60 * 1000);
@@ -175,16 +222,25 @@ export async function GET(req: NextRequest) {
       return headcount >= MIN_HEADCOUNT && headcount <= MAX_HEADCOUNT;
     });
 
+    let clientExcludedCount = 0;
+    const afterClientExclusion: DiscoveredCompany[] = afterHeadcount.filter((r) => {
+      if (isExcludedByClients(r.companyName, clientNorms)) {
+        clientExcludedCount++;
+        return false;
+      }
+      return true;
+    });
+
     console.log(
-      `[bd-discovery] runId=${run.id} raw=${raw.length} excluded=${excludedCount} dedupFiltered=${dedupFilteredCount} final=${afterHeadcount.length}`,
+      `[bd-discovery] runId=${run.id} raw=${raw.length} excluded=${excludedCount} dedupFiltered=${dedupFilteredCount} clientExcluded=${clientExcludedCount} final=${afterClientExclusion.length}`,
     );
 
     await prisma.bDRun.update({
       where: { id: run.id },
       data: {
         status: "AWAITING_APPROVAL",
-        discoveredCount: afterHeadcount.length,
-        discoveredPayload: afterHeadcount as unknown as object[],
+        discoveredCount: afterClientExclusion.length,
+        discoveredPayload: afterClientExclusion as unknown as object[],
         completedAt: new Date(),
       },
     });
@@ -192,9 +248,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       runId: run.id,
       status: "AWAITING_APPROVAL",
-      discoveredCount: afterHeadcount.length,
+      discoveredCount: afterClientExclusion.length,
       excludedCount,
       dedupFilteredCount,
+      clientExcludedCount,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
