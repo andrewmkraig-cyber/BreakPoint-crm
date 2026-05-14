@@ -8,7 +8,7 @@ export default function SignInPage() {
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-muted via-white to-brand-tint p-6">
       <div className="w-full max-w-md rounded-2xl border border-border bg-white p-10 shadow-sm">
         <div className="mb-8 flex flex-col items-center gap-4">
-          <BrandMark withTag />
+          <BrandMark />
           <div className="text-center">
             <h1 className="font-serif text-2xl font-semibold text-ink">Welcome back</h1>
             <p className="mt-1 text-sm text-muted-foreground">

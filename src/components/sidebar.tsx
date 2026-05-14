@@ -120,7 +120,7 @@ export function Sidebar({ width }: { width?: number } = {}) {
         aria-label="Ace dashboard"
         className="flex h-20 shrink-0 items-center border-b border-court-sidebar-border px-5 transition-opacity hover:opacity-80"
       >
-        <BrandMark withTag />
+        <BrandMark />
       </Link>
       {/* Compact-by-default: 13px nav text, h-9 rows, tighter group
           spacing. The [@media(max-height:...)] variants shave one more
