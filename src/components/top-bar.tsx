@@ -80,16 +80,13 @@ export function TopBar() {
           </span>
           <InConversation size={22} />
         </button>
-        {/* YouTube + Spotify share a slightly tighter (h-9 w-9)
-            footprint than the Claude / Compose buttons so the topbar
-            doesn't feel crowded with media affordances. */}
         <button
           type="button"
           onClick={toggleYouTube}
           aria-label="YouTube"
           aria-pressed={youtubeOpen}
           className={
-            "group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+            "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
             (youtubeOpen
               ? "border-court-brand-dark bg-court-brand text-white hover:bg-court-brand-dark"
               : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/30")
@@ -109,7 +106,7 @@ export function TopBar() {
           aria-label="Spotify"
           aria-pressed={spotifyOpen}
           className={
-            "group relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+            "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
             (spotifyOpen
               ? "border-court-brand-dark bg-court-brand text-white hover:bg-court-brand-dark"
               : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/30")
