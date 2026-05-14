@@ -854,12 +854,31 @@ export async function FinancialPerformanceTab({
   const eyebrowLabel = showExpenses
     ? "SUBSCRIPTIONS, TOOLS & SPEND"
     : "REVENUE, MARGINS & PROFITABILITY";
+  // Mercury status sits inline with the eyebrow on the Expenses tab so
+  // the cards rise to the top of the column instead of being pushed
+  // down by a dedicated status row. Mirrors the Clubhouse tab pattern
+  // (eyebrow + period selector share one row).
+  const mercuryStatusLine = mercuryConnected
+    ? "Auto-matched from Mercury · last sync just now"
+    : "Mercury not connected";
 
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-        {eyebrowLabel}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+          {eyebrowLabel}
+        </p>
+        {showExpenses ? (
+          <p
+            className={
+              "text-xs " +
+              (mercuryConnected ? "text-court-fg-muted" : "text-court-fg-dim")
+            }
+          >
+            {mercuryStatusLine}
+          </p>
+        ) : null}
+      </div>
       {showRevenueProfitability && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <KpiTile
@@ -916,7 +935,6 @@ export async function FinancialPerformanceTab({
 
       {showExpenses && (
         <ExpensesSection
-          mercuryConnected={mercuryConnected}
           recurringMonthly={recurringMonthly}
           recurringAnnual={recurringAnnual}
           recurringEvery3Years={recurringEvery3Years}
@@ -1312,7 +1330,6 @@ function avatarFor(name: string): string {
 }
 
 function ExpensesSection({
-  mercuryConnected,
   recurringMonthly,
   recurringAnnual,
   recurringEvery3Years,
@@ -1324,7 +1341,6 @@ function ExpensesSection({
   roiRows,
   blendedExpensesRoiPct,
 }: {
-  mercuryConnected: boolean;
   recurringMonthly: RecurringRow[];
   recurringAnnual: RecurringRow[];
   recurringEvery3Years: RecurringRow[];
@@ -1336,22 +1352,8 @@ function ExpensesSection({
   roiRows: RoiRow[];
   blendedExpensesRoiPct: number | null;
 }) {
-  const statusLine = mercuryConnected
-    ? "Auto-matched from Mercury · last sync just now"
-    : "Mercury not connected";
   return (
-    <section className="flex flex-col gap-4">
-      <div className="flex items-center justify-end">
-        <p
-          className={
-            "text-xs " +
-            (mercuryConnected ? "text-court-fg-muted" : "text-court-fg-dim")
-          }
-        >
-          {statusLine}
-        </p>
-      </div>
-
+    <section className="flex flex-col gap-5">
       <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <SubscriptionsCard
           recurringMonthly={recurringMonthly}
@@ -1368,6 +1370,11 @@ function ExpensesSection({
           blendedRoiPct={blendedExpensesRoiPct}
         />
       </div>
+      <MonthlyOperatingCostCard
+        recurringMonthly={recurringMonthly}
+        recurringAnnual={recurringAnnual}
+        recurringEvery3Years={recurringEvery3Years}
+      />
     </section>
   );
 }
@@ -1539,6 +1546,157 @@ function RoiRowItem({ row }: { row: RoiRow }) {
         {roiLabel}
       </span>
     </li>
+  );
+}
+
+// Monthly Operating Cost answers: "what does it cost to keep the lights
+// on each month?". Every recurring subscription is normalized to a
+// monthly equivalent — annual / 12, every-3-years / 36 — so the desk
+// can see the true monthly burn at a glance. One-time charges are
+// excluded by construction (they're not operating costs).
+const USD_CENTS = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+function formatUsdCents(n: number): string {
+  return USD_CENTS.format(n);
+}
+
+type OperatingCostRow = {
+  key: string;
+  toolName: string;
+  monthlyEquivUsd: number;
+  // Inline muted hint shown next to the monthly equivalent — empty for
+  // monthly tools, "(annual / 12)" for annual, "(3yr / 36)" for every-
+  // 3-years entries.
+  conversionHint: string;
+  billingCycleLabel: string;
+};
+
+function buildOperatingCostRows(
+  recurringMonthly: RecurringRow[],
+  recurringAnnual: RecurringRow[],
+  recurringEvery3Years: RecurringRow[],
+): OperatingCostRow[] {
+  const rows: OperatingCostRow[] = [];
+  for (const r of recurringMonthly) {
+    rows.push({
+      key: `op-${r.key}`,
+      toolName: r.toolName,
+      monthlyEquivUsd: r.catalogCost,
+      conversionHint: "",
+      billingCycleLabel: "Monthly",
+    });
+  }
+  for (const r of recurringAnnual) {
+    rows.push({
+      key: `op-${r.key}`,
+      toolName: r.toolName,
+      monthlyEquivUsd: r.catalogCost / 12,
+      conversionHint: "(annual / 12)",
+      billingCycleLabel: "Annual",
+    });
+  }
+  for (const r of recurringEvery3Years) {
+    rows.push({
+      key: `op-${r.key}`,
+      toolName: r.toolName,
+      monthlyEquivUsd: r.catalogCost / 36,
+      conversionHint: "(3yr / 36)",
+      billingCycleLabel: "Every 3 Years",
+    });
+  }
+  return rows.sort((a, b) => b.monthlyEquivUsd - a.monthlyEquivUsd);
+}
+
+const OPERATING_COST_GRID =
+  "grid grid-cols-[minmax(0,1.6fr)_minmax(120px,1fr)_minmax(110px,0.8fr)]";
+
+function MonthlyOperatingCostCard({
+  recurringMonthly,
+  recurringAnnual,
+  recurringEvery3Years,
+}: {
+  recurringMonthly: RecurringRow[];
+  recurringAnnual: RecurringRow[];
+  recurringEvery3Years: RecurringRow[];
+}) {
+  const rows = buildOperatingCostRows(
+    recurringMonthly,
+    recurringAnnual,
+    recurringEvery3Years,
+  );
+  const totalMonthlyRunRate = rows.reduce(
+    (s, r) => s + r.monthlyEquivUsd,
+    0,
+  );
+
+  return (
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+      <div>
+        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+          Monthly Operating Cost
+        </p>
+        <p className="mt-0.5 text-xs text-court-fg-muted">
+          What it costs to keep the lights on each month.
+        </p>
+      </div>
+
+      {rows.length === 0 ? (
+        <EmptyBlock>
+          No recurring subscriptions logged yet — monthly run rate will land here once tools are tracked.
+        </EmptyBlock>
+      ) : (
+        <div className="mt-4">
+          <div
+            className={`${OPERATING_COST_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
+          >
+            <span>Tool</span>
+            <span className="text-right">Monthly Equivalent</span>
+            <span className="text-right">Billing Cycle</span>
+          </div>
+          <ul className="divide-y divide-court-border-soft">
+            {rows.map((r) => (
+              <li
+                key={r.key}
+                className={`${OPERATING_COST_GRID} items-center gap-2 px-1 py-2 text-sm`}
+              >
+                <span
+                  className="min-w-0 truncate font-medium text-court-fg"
+                  title={r.toolName}
+                >
+                  {r.toolName}
+                </span>
+                <span className="text-right tabular-nums text-court-fg">
+                  <span className="font-semibold">
+                    {formatUsdCents(r.monthlyEquivUsd)}
+                  </span>
+                  {r.conversionHint ? (
+                    <span className="ml-1 text-[11px] font-normal text-court-fg-muted">
+                      {r.conversionHint}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="text-right text-xs text-court-fg-muted">
+                  {r.billingCycleLabel}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-3 flex items-center justify-between border-t border-court-border-soft pt-3 text-sm">
+        <span className="font-semibold text-court-fg">
+          Total Monthly Run Rate
+        </span>
+        <span className="font-bold tabular-nums text-court-fg">
+          {formatUsdCents(totalMonthlyRunRate)}
+        </span>
+      </div>
+    </div>
   );
 }
 
