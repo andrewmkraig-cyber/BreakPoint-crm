@@ -69,7 +69,7 @@ function Section({
       <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
         {title}
       </p>
-      <div className="mt-2 grid grid-cols-[1.6fr_0.7fr_0.9fr_0.5fr_0.9fr_1.1fr] gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
+      <div className="mt-2 grid grid-cols-[1.7fr_0.7fr_0.9fr_0.5fr_0.9fr_0.55fr] gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted">
         <span>Tool</span>
         <span className="text-right">Cost</span>
         <span>Frequency</span>
@@ -101,7 +101,7 @@ function Section({
 function RowItem({ row }: { row: SubscriptionListRow }) {
   const initials = avatarFor(row.toolName);
   return (
-    <li className="grid grid-cols-[1.6fr_0.7fr_0.9fr_0.5fr_0.9fr_1.1fr] items-center gap-2 px-1 py-2 text-sm">
+    <li className="grid grid-cols-[1.7fr_0.7fr_0.9fr_0.5fr_0.9fr_0.55fr] items-center gap-2 px-1 py-2 text-sm">
       <div className="flex min-w-0 items-center gap-2">
         <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
           {initials}
@@ -142,13 +142,13 @@ function StatusChip({
 }) {
   if (status === "Mercury matched") {
     return (
-      <span className="inline-flex items-center rounded-full bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-brand-dark">
-        Mercury matched
+      <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-brand-tint px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-brand-dark">
+        Matched
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
+    <span className="inline-flex items-center whitespace-nowrap rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-court-fg-muted">
       Manual
     </span>
   );

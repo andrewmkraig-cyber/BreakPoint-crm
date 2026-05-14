@@ -305,6 +305,12 @@ export async function FinancialPerformanceTab() {
     return lower === "annual" || lower === "yearly" || lower === "one-time" || lower === "once";
   };
 
+  // Tools we know are subscriptions even if Mercury has only billed them
+  // once YTD (annual plans haven't renewed yet, or just started).
+  const FORCED_RECURRING_TOOLS = new Set(
+    ["Vercel", "OpenAI / ChatGPT"].map((s) => s.toLowerCase()),
+  );
+
   const recurringRows: SubscriptionListRow[] = [];
   const oneTimeRows: SubscriptionListRow[] = [];
   const consumedExpenseIds = new Set<string>();
@@ -314,12 +320,18 @@ export async function FinancialPerformanceTab() {
       (t) => t.name.toLowerCase() === tool.toLowerCase(),
     );
     if (te) consumedExpenseIds.add(te.id);
-    const isRecurring = agg.count >= 2;
+    const isRecurring =
+      agg.count >= 2 || FORCED_RECURRING_TOOLS.has(tool.toLowerCase());
+    // For the one-time bucket, mirror YTD spend into the Cost column so
+    // every row reads like Apollo (lump-sum charge shows up as both Cost
+    // and Total). Recurring rows keep the per-charge cost from
+    // ToolExpense when set; "—" otherwise.
+    const ytdCost = agg.totalUsd > 0 ? agg.totalUsd : null;
     const row: SubscriptionListRow = {
       key: `merc-${tool}`,
       toolName: te?.name ?? tool,
-      cost: te?.cost ?? null,
-      frequency: te?.frequency ?? (isRecurring ? "Monthly" : "Annual"),
+      cost: te?.cost ?? (isRecurring ? null : ytdCost),
+      frequency: te?.frequency ?? (isRecurring ? "Annual" : "One-time"),
       paidCount: te?.paidCount ?? agg.count,
       totalYtdUsd: agg.totalUsd,
       status: "Mercury matched",
@@ -329,16 +341,20 @@ export async function FinancialPerformanceTab() {
 
   for (const te of toolExpenses) {
     if (consumedExpenseIds.has(te.id)) continue;
+    const goesOneTime = isOneTimeManualFrequency(te.frequency);
+    const totalYtdUsd = te.cost * te.paidCount;
     const row: SubscriptionListRow = {
       key: `te-${te.id}`,
       toolName: te.name,
-      cost: te.cost,
+      // Mirror cost == total for manual one-time rows that have no cost
+      // (so the column doesn't show "—" alongside a populated total).
+      cost: te.cost > 0 ? te.cost : goesOneTime ? totalYtdUsd : null,
       frequency: te.frequency,
       paidCount: te.paidCount,
-      totalYtdUsd: te.cost * te.paidCount,
+      totalYtdUsd,
       status: "Manual",
     };
-    (isOneTimeManualFrequency(te.frequency) ? oneTimeRows : recurringRows).push(row);
+    (goesOneTime ? oneTimeRows : recurringRows).push(row);
   }
 
   recurringRows.sort((a, b) => b.totalYtdUsd - a.totalYtdUsd);
@@ -465,8 +481,6 @@ export async function FinancialPerformanceTab() {
   const avgFeeUsd =
     totalPlacementsYtd > 0 ? revenueUsd / totalPlacementsYtd : 0;
 
-  const periodLabelEt = `YTD · Jan 1 – ${MONTH_SHORT[etMonth - 1]} ${etDay}, ${etYear}`;
-
   const marginsCardData: MarginsCardData = {
     grossLabel: fmtPct1(grossMarginProfPct),
     contributionLabel: fmtPct1(contributionMarginProfPct),
@@ -503,28 +517,6 @@ export async function FinancialPerformanceTab() {
     avgFeeFormatted: formatUsd(avgFeeUsd),
     placementsYtd: totalPlacementsYtd,
   };
-
-  // Budget-vs-actual: one row per ToolExpense. No budget field exists
-  // yet, so every row shows "No budget set" and the bar scales to the
-  // highest-spending category for relative comparison.
-  const budgetActuals = toolExpenses.map((te) => ({
-    id: te.id,
-    name: te.name,
-    actualUsd: te.cost * te.paidCount,
-  }));
-  const maxBudgetActualUsd = Math.max(
-    1,
-    ...budgetActuals.map((r) => r.actualUsd),
-  );
-  const budgetRows: BudgetRowData[] = budgetActuals
-    .map((r) => ({
-      id: r.id,
-      name: r.name,
-      actualFormatted: formatUsd(r.actualUsd),
-      actualPctOfMax: (r.actualUsd / maxBudgetActualUsd) * 100,
-      actualUsd: r.actualUsd,
-    }))
-    .sort((a, b) => b.actualUsd - a.actualUsd);
 
   return (
     <div className="flex flex-col gap-6">
@@ -597,8 +589,6 @@ export async function FinancialPerformanceTab() {
       <ProfitabilitySection
         margins={marginsCardData}
         goalPacing={goalPacingData}
-        budgetRows={budgetRows}
-        periodLabel={periodLabelEt}
       />
     </div>
   );
@@ -1213,24 +1203,12 @@ type GoalPacingCardData = {
   placementsYtd: number;
 };
 
-type BudgetRowData = {
-  id: string;
-  name: string;
-  actualFormatted: string;
-  actualPctOfMax: number;
-  actualUsd: number;
-};
-
 function ProfitabilitySection({
   margins,
   goalPacing,
-  budgetRows,
-  periodLabel,
 }: {
   margins: MarginsCardData;
   goalPacing: GoalPacingCardData;
-  budgetRows: BudgetRowData[];
-  periodLabel: string;
 }) {
   return (
     <section className="flex flex-col gap-4">
@@ -1240,18 +1218,17 @@ function ProfitabilitySection({
             Profitability
           </p>
           <h3 className="mt-1 font-serif text-xl font-extrabold tracking-tight text-court-fg sm:text-2xl">
-            Margins, pacing, and discipline.
+            Margins and pacing.
           </h3>
         </div>
         <p className="text-xs text-court-fg-muted">
-          Margins · goal pacing · budget discipline
+          Margins · goal pacing
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <MarginsCard data={margins} />
         <GoalPacingCard data={goalPacing} />
-        <BudgetVsActualCard rows={budgetRows} periodLabel={periodLabel} />
       </div>
     </section>
   );
@@ -1407,73 +1384,3 @@ function PacingBlock({
   );
 }
 
-function BudgetVsActualCard({
-  rows,
-  periodLabel,
-}: {
-  rows: BudgetRowData[];
-  periodLabel: string;
-}) {
-  return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
-            Budget vs. actual
-          </p>
-          <p className="mt-0.5 text-xs text-court-fg-muted">{periodLabel}</p>
-        </div>
-        <div className="shrink-0 text-xs text-court-fg-muted">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-court-brand" />
-            Actual
-          </span>
-          <span className="ml-3 inline-flex items-center gap-1.5">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-court-fg-muted" />
-            Budget
-          </span>
-        </div>
-      </div>
-
-      {rows.length === 0 ? (
-        <EmptyBlock>
-          No tool expenses logged yet — add one in the Subscriptions card.
-        </EmptyBlock>
-      ) : (
-        <ul className="mt-4 space-y-2.5">
-          {rows.map((r) => (
-            <BudgetRow key={r.id} row={r} />
-          ))}
-        </ul>
-      )}
-
-      <p className="mt-4 border-t border-court-border-soft pt-3 text-xs text-court-fg-dim">
-        Set budgets per category coming soon
-      </p>
-    </div>
-  );
-}
-
-function BudgetRow({ row }: { row: BudgetRowData }) {
-  return (
-    <li>
-      <div className="flex items-baseline gap-3 px-1">
-        <div className="min-w-0 flex-1 truncate text-sm font-medium text-court-fg">
-          {row.name}
-        </div>
-        <div className="shrink-0 text-sm font-semibold tabular-nums tracking-tight text-court-fg">
-          {row.actualFormatted}
-        </div>
-        <div className="shrink-0 text-right text-xs text-court-fg-dim">
-          No budget set
-        </div>
-      </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-court-surface-subtle">
-        <div
-          className="h-full rounded-full bg-court-brand"
-          style={{ width: `${Math.max(0, Math.min(100, row.actualPctOfMax))}%` }}
-        />
-      </div>
-    </li>
-  );
-}

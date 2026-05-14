@@ -41,6 +41,7 @@ export type PlacementDetails = {
   // sub-label on the Invoicing pill so the desk can scan payment mix.
   invoicePaymentMethod: "CHECK" | "ACH" | "CREDIT" | null;
   placementNotes: string | null;
+  candidateSource: string | null;
 };
 
 export type NextInterview = {
@@ -137,6 +138,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
       feeTotal: row.placement.feeTotal,
       feePercentage: row.placement.feePercentage,
       placementNotes: row.placement.placementNotes,
+      candidateSource: row.placement.candidateSource,
     });
     setDrawerOpen(true);
   }

@@ -19,6 +19,7 @@ export type UpdatePlacementInput = {
   feeTotal: number | null;
   feePercentage: number | null;
   placementNotes: string | null;
+  candidateSource: string | null;
 };
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -43,6 +44,7 @@ export async function updatePlacement(
     }
 
     const trimmedNotes = input.placementNotes?.trim() ?? "";
+    const trimmedSource = input.candidateSource?.trim() ?? "";
 
     await prisma.placement.update({
       where: { id: existing.id },
@@ -52,6 +54,7 @@ export async function updatePlacement(
         feeTotal: input.feeTotal,
         feePercentage: input.feePercentage,
         placementNotes: trimmedNotes ? trimmedNotes : null,
+        candidateSource: trimmedSource ? trimmedSource : null,
       },
     });
 

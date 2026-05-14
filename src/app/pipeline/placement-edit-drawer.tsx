@@ -24,7 +24,19 @@ export type PlacementDrawerContext = {
   feeTotal: number | null;
   feePercentage: number | null;
   placementNotes: string | null;
+  candidateSource: string | null;
 };
+
+// Sourcing channels the desk uses. Stored as the display string so the
+// Financial Performance "By source" chart groups cleanly.
+const SOURCE_OPTIONS = [
+  "Apollo",
+  "LinkedIn",
+  "Indeed",
+  "Referral",
+  "Network",
+  "Other",
+] as const;
 
 type Props = {
   open: boolean;
@@ -57,6 +69,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const [feeTotal, setFeeTotal] = useState("");
   const [feePct, setFeePct] = useState("");
   const [notes, setNotes] = useState("");
+  const [source, setSource] = useState("");
 
   // Re-seed the form whenever a different placement is loaded into the
   // drawer (or the same one is re-opened after a close). Keying on
@@ -68,6 +81,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     setFeeTotal(context.feeTotal != null ? String(context.feeTotal) : "");
     setFeePct(context.feePercentage != null ? String(context.feePercentage) : "");
     setNotes(context.placementNotes ?? "");
+    setSource(context.candidateSource ?? "");
   }, [context, open]);
 
   function handleSave() {
@@ -80,6 +94,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         feeTotal: parseNumberOrNull(feeTotal),
         feePercentage: parseNumberOrNull(feePct),
         placementNotes: notes,
+        candidateSource: source.trim() ? source.trim() : null,
       });
       if (!res.ok) {
         toast.error("Couldn't save changes", { description: res.error });
@@ -190,6 +205,31 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 className={INPUT_CLS}
               />
             </div>
+          </div>
+
+          <div>
+            <FieldLabel>Source</FieldLabel>
+            <select
+              value={source}
+              onChange={(e) => setSource(e.target.value)}
+              className={INPUT_CLS}
+            >
+              <option value="">—</option>
+              {SOURCE_OPTIONS.map((opt) => (
+                <option key={opt} value={opt}>
+                  {opt}
+                </option>
+              ))}
+              {/* Preserve any legacy value (e.g. "Pin", "Apollo BD")
+                  that isn't in the canonical option list so it shows
+                  selected instead of silently reverting to "—". */}
+              {source &&
+                !SOURCE_OPTIONS.some(
+                  (o) => o.toLowerCase() === source.toLowerCase(),
+                ) && (
+                  <option value={source}>{source}</option>
+                )}
+            </select>
           </div>
 
           <div>

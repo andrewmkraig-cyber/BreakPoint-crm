@@ -365,6 +365,7 @@ function toPlacementDetails(
     invoiceStatus,
     invoicePaymentMethod,
     placementNotes: p.placementNotes ?? null,
+    candidateSource: p.candidateSource ?? null,
   };
 }
 
