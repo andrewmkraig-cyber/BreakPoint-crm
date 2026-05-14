@@ -1,8 +1,8 @@
 # ACE_STATE.md
-Last updated: 2026-05-14 · Ace 46.1
+Last updated: 2026-05-14 · Ace 47.0
 
 ## Current Status
-Current Version: Ace 46.1
+Current Version: Ace 47.0
 Last Shipped: 2026-05-14
 Live at: ace.breakpointtalent.com
 
@@ -12,39 +12,36 @@ Live at: ace.breakpointtalent.com
 - `src/app/api/webhooks/apollo/route.ts` — POST handler, no signature auth. Maps `email_opened/email_replied/email_bounced/unsubscribed` to BDActivityKind `OPEN/REPLY/BOUNCE/UNSUB`, writes one BDActivity row per event with `email`/`sequenceId`/`eventType` in metadata. Always returns 200, never throws.
 - vercel.json crons untouched (`news-feed @ 11:00 UTC`, `bd-discovery @ 10:00 UTC`).
 
-## Known Issues Carrying Into Ace 47
+## Known Issues Carrying Into Ace 48
 None carried forward.
 
 ## Next Task
-Next session opens a NEW CHAT and starts BD Engine Phase 4. This is the gate into Ace 47.
+Next session opens Ace 48.0. First task: BD history on approval cards - show prior outreach count and contacts tried per company before approving. Then: fresh contact suggestions on approval cards, pre-launch hardening (Vercel Blob migration, S3 backup cron, Public Jobs Board, template send-as-draft).
 
-- SESSION 1 (next): BD Engine Phase 4 — ASK ALL SCOPING QUESTIONS FIRST. Full rules in ACE_RULES.md BD Phase 4 Rule.
+## Summary — Ace 47.0
+Ace 47 ships the BD Engine Phase 4 + Phase 5 stack end-to-end. The desk now has a real outbound surface: TheirStack discovers public job postings every morning, the approval queue lets Andrew review what the cron found before any contact is touched, Apollo enriches + enrolls the approved companies into a sequence with a Claude-generated candidate-side summary, the TheirStack webhook handler verifies HMAC-SHA256 signatures, the BD engine can be paused with a one-toggle Active switch in Settings > BD, and the Client Signal surface now reads real TheirStack-routed client matches instead of an empty placeholder. Client logos auto-pull from Clearbit on client creation, BD page headers lose their subtitle paragraphs, and the visual-seed data inserted during the BD 3.x build is gone from Activity / Client Signals / Active Campaigns.
 
-### BD Phase 4 Rules — Session 1 (PERMANENT — see ACE_RULES.md)
-CRITICAL: Before writing a single BD Phase 4 prompt, Claude MUST stop and ask Andrew a full set of scoping questions. Do not skip this even if Andrew says "start BD Phase 4" or "let's go." Ask the questions first, always.
+**TheirStack JobDiscoveryProvider abstraction.** New `src/lib/bd/job-discovery-provider.ts` defines `JobDiscoveryProvider` (`discoverJobs(params): Promise<DiscoveredCompany[]>`) + `DiscoveredCompany` (companyName / domain / jobTitle / jobLocation / jobPostingUrl / source / rawPayload). `src/lib/bd/theirstack-provider.ts` implements the interface against TheirStack's `/v1/jobs/search` endpoint with `THEIRSTACK_API_KEY` Bearer auth, posted-since filtering, and a 25-result cap. Provider lives behind the interface so we can swap in Indeed / Apollo job-search / a manual seed without rewriting the cron.
 
-Andrew's standing direction: "BD has at least a usable launch version I would ship. BD Phase 4 carefully, but maybe not every automation. Discovery + Client Signals + approval queue matters more than fully automated send magic."
+**BD discovery cron.** New `/api/cron/bd-discovery` route at `vercel.json` 10:00 UTC (6 AM ET). `CRON_SECRET` Bearer auth. Walks every org's BD settings, skips orgs with `BdOrgConfig.engineActive = false`, calls the provider, applies four filters in order: (1) Big4 + staffing-keyword exclusion (Deloitte / PwC / EY / KPMG / Accenture + Staffing / Recruiting / Talent / Search Group / Search Firm / Placement / Headhunt), (2) 30-day dedup against prior BDRun `discoveredPayload` fingerprints (`companyName|jobTitle` lowercased), (3) headcount filter (10 ≤ employees ≤ 300 via `company.num_employees` / `employee_count` / `employees` on the raw payload, with null = pass), (4) existing-client exclusion against normalized client names (strips `LLC` / `Inc` / `LLP` / `PLLC` / `PC` / `Co` / `& Associates` suffixes, then `includes` both ways so `Acme LLC` matches `Acme Inc`). Surviving rows land in a new `BDRun { status: AWAITING_APPROVAL, discoveryProvider: "theirstack", discoveredPayload, discoveredCount }` row. Client-matched rows now route to `ClientSignal` instead of being dropped (see Client Signal below). Returns a JSON summary of all four filter counts.
 
-Scoping answers confirmed in Ace 46 session:
-- TheirStack: subscribed at $58.95/month API plan, 1,500 credits/month. Key to be added to Vercel as THEIRSTACK_API_KEY.
-- Apollo enrichment: deferred
-- 6 AM ET cron: yes
-- Webhook handlers: yes
-- Approval queue: yes — BDRun stops at AWAITING_APPROVAL, Andrew reviews on Today's Launch, Approve & Enroll fires Apollo
-- Auto-enrollment + manual queue: both
-- Client Signals: moved to non-urgent
-- Daily volume cap: 75 contacts/day default, adjustable via globalDailyCap in Settings > BD
+**Approval queue UI with Run Discovery Now.** `/bd/launch` reads pending `BDRun { status: AWAITING_APPROVAL }` rows and renders one approval card per run. Card shows discovered company count, discovery provider, created-at relative time, and a preview of the first 5 companies. Approve & Enroll button kicks `approveBDRun` which flips status to `APPROVED` then calls `enrollCompaniesInApollo`. Archive button flips to `DISMISSED` (tombstone-only — keeps BDActivity history but pulls the run out of Active Campaigns). New "Run Discovery Now" button on `/settings/bd` triggers `/api/cron/bd-discovery` with the configured `CRON_SECRET` so Andrew doesn't have to wait for the 6 AM tick to see what the provider would have surfaced today.
 
-Required questions before any BD Phase 4 code:
-1. Which specific parts of Phase 4 do you want for launch vs defer?
-2. Do you want the full cron auto-enrollment or manual approval queue only?
-3. Is TheirStack access confirmed and credentials available?
-4. What does "usable launch version" mean to you specifically for BD?
-5. Any changes to the approval queue flow since it was originally designed?
-6. Do you want Client Signals to surface before or after the approval queue?
-7. Any budget or rate limit concerns with Apollo enrollment volume?
+**Apollo enrollment with people search + Claude candidate summary.** `enrollCompaniesInApollo(runId, orgId)` reads the run's `discoveredPayload`, sums today's `enrolledCount` across all org BDRuns since ET midnight, caps at 75 contacts/day (configurable per-org via `BdOrgConfig.globalDailyCap`). For each surviving company: calls Apollo `/v1/mixed_people/search` filtered to the company domain + a small allowlist of accounting / audit / finance titles, picks up to N contacts under the remaining cap, then calls Apollo `/v1/emailer_campaigns/{id}/add_contact_ids` to push them into the sequence id stored in `BdOrgConfig.apolloSequenceId`. Each enrolled company gets a Claude-generated 2-3 sentence candidate-side summary (`buildCandidateSummary`) written into `BDRun.candidateSummary` so Andrew can see "this is what the candidate would read" before approving. Updates `BDRun { status: COMPLETE, enrolledCount, completedAt }` and writes one `BDActivity { kind: ENROLL }` row per company with `{ contacts, company }` metadata.
 
-Do not write any BD Phase 4 code prompts until Andrew has answered all of these in the new chat.
+**TheirStack webhook handler with HMAC-SHA256 verification.** New `/api/webhooks/theirstack` route accepts POSTs from TheirStack's job-update / job-removal webhook. Verifies the `X-TheirStack-Signature` header as `HMAC-SHA256(THEIRSTACK_WEBHOOK_SECRET, rawBody)` using `crypto.timingSafeEqual` to dodge timing attacks. Rejects unsigned / invalid signatures with 401. Logs accepted payloads to `BDActivity { kind: SCAN_COMPLETE }` for now so we have the audit trail before downstream consumers attach.
+
+**BD Engine Active toggle.** New `BdOrgConfig { engineActive: Boolean @default(true) }` column. `/settings/bd` gains an Active toggle pill at the top of the BD Engine card. When flipped off, `/api/cron/bd-discovery` skips the org and returns `{ skipped: true, reason: "BD engine inactive" }`. Pause-and-resume without touching env vars or unscheduling the cron.
+
+**Client Signal wired to real TheirStack routing.** `ClientSignal` model restructured: `companyName String` (required, source-of-truth display name from the provider), `clientId String?` (optional — set when the fuzzy match resolved to a Client row, null on soft matches), `jobTitle String`, `jobLocation String?`, `jobPostingUrl String?`, `postedAt DateTime?`, `discoveredAt DateTime @default(now())`, `status ClientSignalStatus @default(NEW)`. Composite unique on `(organizationId, companyName, jobTitle)` so re-runs upsert cleanly. BD discovery cron now routes client-name fuzzy matches into ClientSignal via upsert instead of dropping them, resolving `clientId` via the same name-normalization logic used for the exclusion filter. `/bd/client-signal` queries real rows ordered by `discoveredAt desc`, with a four-tab strip (All / New this week / Acted on / Dismissed) carrying real counts, View listing / Reach out / Dismiss actions, and a click-through to the matched Client profile when present. Empty state updated.
+
+**Client logo auto-pull via Clearbit.** New `Client.logoUrl String?` column. `createClient` derives the bare domain from the website field and stamps `https://logo.clearbit.com/{domain}` onto the row at insert time — no HEAD probe, since the broken-image fallback is cheaper than a synchronous round-trip on the create path. New `<ClientLogo>` client component renders the image with an initials-chip fallback for null URL or 404. `<PageHeader>` got an optional `leading` slot; client profile renders the logo at 40px next to the company name. Client Signal cards render the same component at 32px so the row pattern reads as one family with the profile header.
+
+**Subtitle text removed from BD page headers.** Active Campaigns ("One row per BD run. Counters update as Apollo writes opens, replies, and bounces back via webhook."), Activity ("Scan completes, enrollments, opens, replies, bounces, and domain warm/cool events, newest first."), and Client Signal ("Daily Indeed scan flags clients posting publicly. That usually means they aren't filling it internally, so reach out before someone else does.") all lose their description paragraphs. Eyebrows + h2 headings stay; content tightens up to match the Clubhouse / Finances top-spacing rhythm.
+
+**Seeded data removal.** One-shot `scripts/cleanup-bd-visual-data.ts` ran against Neon to remove the 3 ClientSignal, 8 BDActivity, 1 Campaign, and 72 CampaignEvent rows that `seed-bd-visual-data.ts` had inserted during the BD 3.x visual build. Vertical / SavedSearch / SendingDomain infrastructure rows + any real BDRun left alone. Activity / Client Signals / Active Campaigns all read clean empty-state UI until real TheirStack + Apollo traffic arrives. Seed script deleted.
+
+**CLAUDE_MODEL normalization.** Every Claude API call in the BD engine path (candidate summary, Personal Trainer block resolution, future JD-style extractions) routes through the shared `CLAUDE_MODEL` constant in `src/lib/claude.ts` instead of hardcoded `claude-opus-4-7` / `claude-sonnet-4-6` strings. Single point to bump when the next model family ships.
 
 ## Summary — Ace 46.0
 Ace 46 ships the Finances module consolidation, dashboard header cleanup, unified period selector, KPI tile unification, calendar header fix, global topbar date widget, expenses restructure with manual entries, mercury matcher fixes, placement lead source field, pipeline Placement button at Offer stage, candidate profile tab unification, P&L table, Goal Pacing move, Monthly Operating Cost table, Clubhouse activity period filter, and full topbar/UI polish across all six primary pages.

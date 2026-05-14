@@ -1,18 +1,18 @@
 # Ace Roadmap
-Last updated: 2026-05-14 · Ace 46.0
+Last updated: 2026-05-14 · Ace 47.0
 
 ## Active Build Sequence
-In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline. Full BD Phase 4 scoping rules live in ACE_STATE.md Next Task and ACE_RULES.md BD Phase 4 Rule.
+In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
-1. **BD Engine Phase 4** — opens Ace 47. ASK ALL SCOPING QUESTIONS FIRST before any code. TheirStack wiring, Apollo enrichment, 6 AM ET cron, webhook handlers, approval queue. Scope to be confirmed with Andrew before any prompts.
-2. **BD Engine Phase 5** — secure Apollo key storage, real Instantly reputation pull, domain cooldown derivation, Client Signal dismiss/acted-on flows, mapped Apollo sequence ids.
-3. **Public Jobs Board — BreakPoint Website Sync** — Ace is source of truth. Website reads sanitized public API only. Client names NEVER exposed. Poster always BreakPoint Talent. Public API at `ace.breakpointtalent.com/api/public/jobs`. Safe fields only: title, location, employment type, salary range, public description, posted date, apply URL. Never returns client name, logo, contacts, fees, internal notes, placement data. New Job fields: `publishedToWebsite`, `publishedAt`, `publicSlug`, `publicTitle`, `publicDescription`, `publicLocation`, `publicSalaryRange`, `publicEmploymentType`, `publicApplyUrl`. Phase 2 later: applications flow back into Ace, source tagged "BreakPoint Website".
-4. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points before the 2026-05-15 launch.
-5. **Client Preference Learning + Personal Trainer Suggestions** — capture per-client signal (placed candidates' patterns, rejection reasons, must-haves vs nice-to-haves) and surface it as Personal Trainer rule suggestions Andrew can accept / edit / dismiss inside Settings > Personal Trainer.
+1. **BD history on approval cards + fresh contact suggestions** — opens Ace 48. Approval cards on `/bd/launch` show prior outreach count + contacts already tried per company before Andrew approves, so the same target doesn't get re-enrolled into the same sequence. Follow-up: fresh contact suggestions on the same card (titles Apollo found that haven't been touched in the last N days), so the recruiter can see what's actually new vs recycled before clicking Approve & Enroll.
+2. **Public Jobs Board — BreakPoint Website Sync** — Ace is source of truth. Website reads sanitized public API only. Client names NEVER exposed. Poster always BreakPoint Talent. Public API at `ace.breakpointtalent.com/api/public/jobs`. Safe fields only: title, location, employment type, salary range, public description, posted date, apply URL. Never returns client name, logo, contacts, fees, internal notes, placement data. New Job fields: `publishedToWebsite`, `publishedAt`, `publicSlug`, `publicTitle`, `publicDescription`, `publicLocation`, `publicSalaryRange`, `publicEmploymentType`, `publicApplyUrl`. Phase 2 later: applications flow back into Ace, source tagged "BreakPoint Website".
+3. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points before the 2026-05-15 launch.
+4. **Client Preference Learning + Personal Trainer Suggestions** — capture per-client signal (placed candidates' patterns, rejection reasons, must-haves vs nice-to-haves) and surface it as Personal Trainer rule suggestions Andrew can accept / edit / dismiss inside Settings > Personal Trainer.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
+- **Template send-as-draft** — two prompts already written in Ace 47.0 session, paste-ready.
 - **Tighter applied-jobs strip** — PlacementActionsIsland refactor required first; needs its own scoped prompt.
 - **Skills/keywords field on Job Description tab** — feeds Find Matches scoring and Boolean search. Add to the Boolean search prompt when that ships.
 - **JD/email markdown architecture verification** — `[Job Description]` merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
@@ -86,6 +86,18 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 47.0 BD Engine Phase 4 + Phase 5 + Client Signal + Clearbit logos + BD header polish (May 14, 2026)
+
+Closes BD Engine Phase 4 and Phase 5 from the active sequence. BD now has a real end-to-end outbound surface: TheirStack discovers, Andrew approves, Apollo enrolls, webhooks report back.
+
+- **BD Engine Phase 4** — `JobDiscoveryProvider` interface + `TheirStackProvider` implementation, `/api/cron/bd-discovery` route on 6 AM ET (`vercel.json` 10:00 UTC) with `CRON_SECRET` Bearer auth, four-filter pipeline (Big4/staffing exclusion → 30-day fingerprint dedup → headcount 10–300 → existing-client exclusion), `BDRun { status: AWAITING_APPROVAL }` rows for surviving discoveries, `/bd/launch` approval queue with Approve & Enroll + Archive actions, "Run Discovery Now" button on `/settings/bd` that hits the cron route on demand, Apollo people search + sequence enrollment via `/v1/mixed_people/search` + `/v1/emailer_campaigns/{id}/add_contact_ids` capped at 75 contacts/day, Claude-generated candidate-side summary on each enrolled BDRun, `/api/webhooks/theirstack` HMAC-SHA256 verification using `crypto.timingSafeEqual`.
+- **BD Engine Phase 5** — `BdOrgConfig.engineActive` toggle so the BD engine can be paused without unscheduling the cron, Client Signal dismiss / acted-on flows wired through `markSignalActed` + `markSignalDismissed` server actions, Apollo sequence id stored on `BdOrgConfig.apolloSequenceId` for per-org mapping.
+- **Client Signal wired to real TheirStack data** — `ClientSignal` model restructured (`companyName`, optional `clientId`, `jobPostingUrl`, `jobLocation`, `postedAt`, `discoveredAt`, composite unique on org+companyName+jobTitle). Discovery cron upserts a ClientSignal row whenever a TheirStack hit fuzzy-matches an existing client (previously dropped). `/bd/client-signal` queries real rows with All / New this week / Acted on / Dismissed tabs and working Reach out / Dismiss buttons.
+- **Client logo auto-pull** — `Client.logoUrl` derived from domain at create time via `https://logo.clearbit.com/{domain}`. New `<ClientLogo>` client component renders the image with an initials-chip fallback. `<PageHeader>` got an optional `leading` slot — client profile shows the logo at 40px, Client Signal cards at 32px.
+- **BD header subtitles removed** — Active Campaigns, Activity, and Client Signal all lose their description paragraphs. Eyebrows + headings stay; top spacing matches Clubhouse / Finances.
+- **Seeded data removal** — one-shot `cleanup-bd-visual-data.ts` ran against Neon to remove the 3 ClientSignal, 8 BDActivity, 1 Campaign, and 72 CampaignEvent rows seeded during BD 3.x. `seed-bd-visual-data.ts` deleted. Activity / Client Signals / Active Campaigns all read clean empty-state UI until real traffic arrives.
+- **CLAUDE_MODEL normalization** — every BD-engine Claude call routes through the shared constant in `src/lib/claude.ts` instead of hardcoded model strings.
 
 ## Completed - Ace 44.0 Calendar Prompts 1-6 + Financial Performance tab + Dashboard layout overhaul + Analytics fixes + polish (May 13, 2026)
 
