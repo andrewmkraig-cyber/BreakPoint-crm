@@ -1160,6 +1160,23 @@ export function MailComposer({
         toast.error("Couldn't send email", { description: msg });
         return;
       }
+      // Successful send. If the composer was hosting an existing
+      // Gmail draft (the recruiter opened a draft from /mail ▸ Drafts
+      // or popped one out mid-edit), delete that draft now so Gmail
+      // doesn't leave a duplicate in the Drafts label after the same
+      // content also lands in Sent. messages.send doesn't auto-remove
+      // the draft — we have to call DELETE explicitly. Fire-and-forget
+      // because the user-visible outcome (email delivered) already
+      // succeeded; a stale draft cleanup failure shouldn't surface as
+      // an error toast on top of the success.
+      if (gmailDraftId) {
+        void fetch(
+          `/api/mail/drafts/${encodeURIComponent(gmailDraftId)}`,
+          { method: "DELETE" },
+        ).catch(() => {
+          // Stale draft will linger; not worth scaring the user.
+        });
+      }
       toast.success(threadId ? "Reply sent" : "Email sent");
       onSent();
     } catch (e) {

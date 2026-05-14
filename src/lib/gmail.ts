@@ -553,6 +553,20 @@ export type MailThreadDetail = {
   id: string;
   subject: string;
   messages: MailThreadMessage[];
+  // Populated when one of the thread's messages carries the system
+  // DRAFT label and we can resolve it back to a Draft.id via
+  // findDraftIdForThread. /mail uses this to open the composer
+  // pre-loaded against the existing Gmail draft instead of rendering
+  // the read-only thread view. Null for non-drafts and when the
+  // draft lookup fails (treated as fail-soft so the read path still
+  // works for the recruiter).
+  draftId: string | null;
+  // The Message.id of the draft inside this thread, used by the
+  // client to find the right entry in `messages` and copy
+  // subject/body/to/cc into the composer. Paired with draftId so
+  // the recruiter can keep editing the existing Gmail draft instead
+  // of starting a new one.
+  draftMessageId: string | null;
 };
 
 // Recursively walks the MIME tree looking for the first html part, then
@@ -646,7 +660,50 @@ export async function getGmailThread(userId: string, threadId: string): Promise<
   // The top-level subject is the subject of the first message (usually the
   // originating send before anyone hit Reply).
   const subject = messages[0]?.subject ?? "(no subject)";
-  return { id: j.id, subject, messages };
+  // When the thread carries the DRAFT label on any of its messages,
+  // resolve the corresponding Gmail Draft.id so /mail can swap the
+  // read-only thread view for the composer. Fail-soft: a failed
+  // lookup returns null and the thread renders normally.
+  const hasDraftLabel = (j.messages ?? []).some((m) =>
+    (m.labelIds ?? []).includes("DRAFT"),
+  );
+  const draftLookup = hasDraftLabel
+    ? await findDraftForThread(userId, j.id).catch(() => null)
+    : null;
+  return {
+    id: j.id,
+    subject,
+    messages,
+    draftId: draftLookup?.draftId ?? null,
+    draftMessageId: draftLookup?.messageId ?? null,
+  };
+}
+
+// Walks the signed-in user's Drafts list and returns the Draft.id +
+// underlying Message.id whose message lives on the given threadId.
+// Gmail's drafts.list doesn't support a threadId filter, so we
+// paginate by hand. The 500-result page cap is Gmail's max — a
+// recruiter with more than 500 outstanding drafts (extremely unlikely
+// on a working inbox) falls back to "treat as a regular thread" since
+// the lookup misses.
+export async function findDraftForThread(
+  userId: string,
+  threadId: string,
+): Promise<{ draftId: string; messageId: string } | null> {
+  const accessToken = await getFreshAccessToken(userId);
+  const url = new URL("https://gmail.googleapis.com/gmail/v1/users/me/drafts");
+  url.searchParams.set("maxResults", "500");
+  const r = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    cache: "no-store",
+  });
+  if (!r.ok) return null;
+  const j = (await r.json()) as {
+    drafts?: Array<{ id: string; message?: { id?: string; threadId?: string } }>;
+  };
+  const match = (j.drafts ?? []).find((d) => d.message?.threadId === threadId);
+  if (!match?.id || !match.message?.id) return null;
+  return { draftId: match.id, messageId: match.message.id };
 }
 
 function escapeHtml(s: string): string {

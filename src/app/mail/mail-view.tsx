@@ -71,6 +71,14 @@ export function MailView({
   const [archiving, setArchiving] = useState<string | null>(null);
   const [moving, setMoving] = useState<string | null>(null);
   const [markingUnread, setMarkingUnread] = useState<string | null>(null);
+  // When the loaded thread is a Gmail draft, /mail opens the Ace
+  // composer pre-loaded against it instead of rendering ThreadDetail.
+  // The composer launches as a non-blocking modal so the recruiter can
+  // keep scanning the Drafts list while editing. We clear the selected
+  // thread id after the composer opens so a re-click on the same row
+  // re-loads and re-opens it (otherwise detail would be cached and the
+  // open-on-detail effect wouldn't fire again).
+  const composerManagerForDrafts = useComposerManager();
   // Bulk-selection set: thread IDs the user has checkbox-ticked.
   // Stays a Set so add/remove is cheap and Set identity changes
   // trigger re-renders only when the contents actually change.
@@ -384,6 +392,52 @@ export function MailView({
     void loadThread(selected, ac.signal);
     return () => ac.abort();
   }, [selected, loadThread]);
+
+  // Draft hand-off: when the loaded thread is a Gmail draft, pop the
+  // composer pre-loaded against it instead of rendering ThreadDetail.
+  // Pull the draft-flavored message out of the thread (the one whose
+  // id matches detail.draftMessageId — that's the message Gmail will
+  // overwrite on the next Save Draft). The thread reply chain that
+  // came before stays in Gmail untouched; the composer's threadId
+  // keeps the new send threaded with it on Send.
+  useEffect(() => {
+    if (!detail?.draftId || !detail.draftMessageId) return;
+    const draftMessage =
+      detail.messages.find((m) => m.id === detail.draftMessageId) ??
+      detail.messages[detail.messages.length - 1];
+    if (!draftMessage) return;
+    composerManagerForDrafts.open({
+      threadId: detail.messages.length > 1 ? detail.id : undefined,
+      defaultTo: draftMessage.to ?? "",
+      defaultCc: draftMessage.cc ?? "",
+      defaultSubject: draftMessage.subject ?? detail.subject ?? "",
+      defaultBody: draftMessage.bodyHtml ?? "",
+      defaultDraftId: detail.draftId,
+      templates,
+      mergeContext: {
+        user: {
+          firstName: currentUserFirstName,
+          fullName: currentUserFullName,
+        },
+      },
+      modalTitle: "Draft",
+      nonBlocking: true,
+      onSent: () => {
+        // Refresh the thread list so the now-sent draft drops out of
+        // the Drafts label view.
+        setRefreshTick((n) => n + 1);
+      },
+    });
+    // Deselect immediately so re-clicking the same row re-loads and
+    // re-opens (detail-based effect needs a fresh detail object).
+    setSelected(null);
+  }, [
+    detail,
+    composerManagerForDrafts,
+    templates,
+    currentUserFirstName,
+    currentUserFullName,
+  ]);
 
   async function moveThread(id: string, labelId: string, labelName: string) {
     setMoving(id);

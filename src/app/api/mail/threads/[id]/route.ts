@@ -103,6 +103,10 @@ export async function GET(
 
     const safe: MailThreadDetail = {
       ...detail,
+      // detail already carries draftId from getGmailThread when one of
+      // the thread's messages has the DRAFT label. We spread `...detail`
+      // so it flows through verbatim — no transformation needed; the
+      // draft id is an opaque Gmail handle.
       messages: detail.messages.map((m) => ({
         ...m,
         senderClient:
