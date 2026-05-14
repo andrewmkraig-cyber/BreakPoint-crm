@@ -59,23 +59,23 @@ export function FinancialStrip({
   const remainingUsd = Math.max(0, goalUsd - billedThisQuarterUsd);
 
   return (
-    <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <section className="rounded-3xl bg-court-surface px-5 py-3.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-[12px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
+        <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
           Billing Tower
         </div>
         <select
           aria-label="Billing Tower period"
           value={period}
           onChange={(e) => setPeriod(e.target.value as PeriodKey)}
-          className="rounded-lg border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40"
+          className="rounded-lg border border-court-border bg-court-surface px-2 py-0.5 text-[11px] text-court-fg-muted transition hover:text-court-fg focus:outline-none focus:ring-2 focus:ring-court-brand/40"
         >
           <option value="current">{`Current Quarter (${currentQuarterLabel})`}</option>
           <option value="previous">Previous Quarter</option>
           <option value="ytd">Annual / YTD</option>
         </select>
       </div>
-      <div className="mt-4 grid grid-cols-1 items-center gap-6 sm:grid-cols-[1fr_1fr_1.6fr] sm:gap-8">
+      <div className="mt-2.5 grid grid-cols-1 items-center gap-5 sm:grid-cols-[1fr_1fr_1.6fr] sm:gap-7">
         <Stat
           label="Revenue"
           value={formatCompactUsd(billedThisQuarterUsd)}
@@ -129,18 +129,18 @@ function Stat({
 }) {
   const inner = (
     <>
-      <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
+      <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-fg-muted">
         {label}
       </div>
       <div
         className={cn(
-          "mt-1 font-serif text-[32px] font-extrabold leading-none tracking-[-0.02em] tabular-nums",
+          "mt-0.5 font-serif text-[26px] font-extrabold leading-none tracking-[-0.02em] tabular-nums",
           dim ? "text-court-fg-dim" : "text-court-fg",
         )}
       >
         {value}
       </div>
-      <div className="mt-1.5 text-[11.5px] text-court-fg-dim">{meta}</div>
+      <div className="mt-1 text-[11px] text-court-fg-dim">{meta}</div>
     </>
   );
   const wrapCls = cn(
@@ -175,16 +175,16 @@ function GoalStat({
 }) {
   return (
     <div className="flex min-w-0 flex-col sm:border-l-2 sm:border-court-border-soft sm:pl-6">
-      <div className="text-[10.5px] font-extrabold uppercase tracking-[0.18em] text-court-brand-dark">
+      <div className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-court-brand-dark">
         Goal Progress · {formatGoalUsd(goalUsd)} Quarter
       </div>
-      <div className="mt-1 flex items-baseline gap-2.5 font-serif text-[32px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
+      <div className="mt-0.5 flex items-baseline gap-2.5 font-serif text-[26px] font-extrabold leading-none tracking-[-0.02em] tabular-nums text-court-fg">
         {pct}%
-        <span className="text-[12.5px] font-semibold tracking-normal text-court-fg-muted">
+        <span className="text-[11.5px] font-semibold tracking-normal text-court-fg-muted">
           · {formatGoalUsd(remainingUsd)} to go
         </span>
       </div>
-      <div className="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-court-surface-subtle">
+      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-court-surface-subtle">
         <div
           className="h-full rounded-full transition-[width]"
           style={{

@@ -190,7 +190,7 @@ export function NewsFeed() {
   const current = byTab[active];
   const stories = current.status === "ready" ? current.headlines : [];
   const lead = stories[0];
-  const list = stories.slice(1, 4);
+  const list = stories.slice(1, 3);
 
   const readKey = (story: Headline) => `${active}::${story.headline}`;
   const isRead = (story: Headline) => readKeys.has(readKey(story));
