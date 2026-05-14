@@ -173,6 +173,18 @@ function resolveBaseSpec(
 
   if (pathname === "/pipeline") return { title: { label: "Pipeline" } };
   if (pathname === "/applicants") return { title: { label: "Applicants" } };
+  if (pathname.startsWith("/bd/client-signal")) {
+    return { title: { label: "Client Signals" } };
+  }
+  if (/^\/bd\/campaigns\/[^/]+/.test(pathname)) {
+    return { title: { label: "Active Campaigns", href: "/bd/campaigns" } };
+  }
+  if (pathname.startsWith("/bd/campaigns")) {
+    return { title: { label: "Active Campaigns" } };
+  }
+  if (pathname.startsWith("/bd/activity")) {
+    return { title: { label: "BD Activity" } };
+  }
   if (pathname.startsWith("/bd")) return { title: { label: "BD" } };
   if (pathname === "/dashboard") {
     const tab = resolveDashboardTab(searchParams?.get("tab"));

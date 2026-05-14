@@ -38,12 +38,11 @@ type Props = {
   pauseAll: boolean;
 };
 
-// Amber #F59E0B is reserved for the Launch CTA per the BD handoff —
-// the only hardcoded hex allowed in BD pages. Hover deepens to #D97706
-// (Tailwind amber-600) so the button still reads as the amber family
-// in both Court Mode light and dark themes.
+// Amber-tinted Launch CTA — light and tinted, not solid orange.
+// Tailwind amber ramp only so the button reads consistently across
+// Court Mode themes without any hardcoded hex.
 const LAUNCH_CTA_CLASS =
-  "inline-flex items-center gap-2 rounded-md border border-[#D97706] bg-[#F59E0B] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#D97706] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F59E0B]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-50";
+  "inline-flex items-center gap-2 rounded-md border border-amber-100 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300/60 focus-visible:ring-offset-2 focus-visible:ring-offset-court-bg disabled:cursor-not-allowed disabled:opacity-50";
 
 const ESTIMATED_CONTACTS_PER_COMPANY = 4;
 const SEQUENCE_NAME_PLACEHOLDER = "BD Outbound v1";
