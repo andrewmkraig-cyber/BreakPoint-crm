@@ -16,7 +16,6 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
-  Music,
   Pause,
   Play,
   Search,
@@ -26,6 +25,33 @@ import {
   Volume2,
   X,
 } from "lucide-react";
+
+// Spotify wordmark glyph — three stacked arcs inside a filled circle.
+// Used wherever the panel previously fell back to lucide's generic
+// Music note (minimized dock header, unauthenticated empty state,
+// Home bottom-nav tab) so every "Spotify presence" indicator inside
+// this surface reads as Spotify rather than as a music app in
+// general. Single path drawn with `currentColor` so callers control
+// the tint via parent text color or inline style.
+function SpotifyGlyph({
+  className,
+  style,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+      className={className}
+      style={style}
+    >
+      <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12C24 5.374 18.628.002 12 0Zm5.521 17.34a.747.747 0 0 1-1.028.247c-2.813-1.719-6.354-2.107-10.523-1.155a.747.747 0 1 1-.333-1.457c4.564-1.044 8.479-.596 11.637 1.337.353.215.464.676.247 1.028Zm1.475-3.272a.935.935 0 0 1-1.284.308c-3.222-1.98-8.13-2.553-11.937-1.398a.935.935 0 1 1-.547-1.79c4.355-1.32 9.762-.682 13.463 1.594.44.27.581.84.305 1.286Zm.13-3.403c-3.86-2.294-10.232-2.504-13.913-1.387a1.122 1.122 0 1 1-.653-2.149c4.247-1.29 11.284-1.043 15.728 1.594a1.122 1.122 0 0 1-1.162 1.942Z" />
+    </svg>
+  );
+}
 import { toast } from "sonner";
 import {
   SPOTIFY_PANEL_MIN_H,
@@ -1794,7 +1820,7 @@ export function SpotifyPanel() {
           onPointerDown={onHeaderPointerDown}
           className="flex h-full cursor-grab select-none items-center gap-2 px-3 active:cursor-grabbing"
         >
-          <Music className="h-4 w-4 shrink-0" style={{ color: COLOR_GREEN }} />
+          <SpotifyGlyph className="h-4 w-4 shrink-0" style={{ color: COLOR_GREEN }} />
           <span
             title={
               activeTrack ? `${activeTrack.name} — ${activeTrack.artist}` : ""
@@ -1902,7 +1928,7 @@ export function SpotifyPanel() {
           </div>
         ) : authState.status === "unauthenticated" ? (
           <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-            <Music className="h-10 w-10" style={{ color: COLOR_GREEN }} />
+            <SpotifyGlyph className="h-10 w-10" style={{ color: COLOR_GREEN }} />
             <div className="text-base font-semibold text-white">
               Connect your Spotify account
             </div>
@@ -3108,7 +3134,7 @@ function BottomNav(props: {
         aria-label="Home"
       >
         <span className="relative inline-flex">
-          <Music className="h-4 w-4" />
+          <SpotifyGlyph className="h-4 w-4" />
           {props.hasActiveTrack && (
             <span
               aria-label="Now playing"
