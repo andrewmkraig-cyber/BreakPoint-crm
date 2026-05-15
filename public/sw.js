@@ -84,17 +84,34 @@ async function networkFirst(request, { fallback }) {
 // title + body, optionally url and tag. Tag dedupes: subsequent
 // pushes with the same tag replace the previous notification rather
 // than stacking (e.g. 5 texts in one thread => one notification).
+//
+// Visibility short-circuit: if any same-origin Ace window is open AND
+// currently visible, suppress the system notification — the in-app
+// toast (mail-context, reminder-toast-provider, etc.) already fired
+// on that surface and a duplicate OS notification would just be
+// noise. includeUncontrolled covers windows that opened before this
+// SW activated.
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   const data = event.data.json();
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/icon-192.png",
-      data: { url: data.url || "/" },
-      tag: data.tag,
-    }),
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        const aceOpen = clients.some(
+          (c) =>
+            c.url.includes(self.location.origin) &&
+            c.visibilityState === "visible",
+        );
+        if (aceOpen) return;
+        return self.registration.showNotification(data.title, {
+          body: data.body,
+          icon: "/icons/icon-192.png",
+          badge: "/icons/icon-192.png",
+          data: { url: data.url || "/" },
+          tag: data.tag,
+        });
+      }),
   );
 });
 
