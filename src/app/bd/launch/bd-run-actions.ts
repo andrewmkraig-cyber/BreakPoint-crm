@@ -6,6 +6,10 @@ import { revalidatePath } from "next/cache";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { enrollCompaniesInApollo } from "@/lib/bd/apollo-enroll";
+import {
+  getCompanyOutreachHistory,
+  type CompanyOutreachHistory,
+} from "@/lib/bd/bd-history";
 
 export type PendingBDRun = {
   id: string;
@@ -18,6 +22,14 @@ export type PendingBDRun = {
 export type DiscoveredCompanyLite = {
   companyName: string;
   jobTitle: string;
+  domain: string;
+  history: SerializedOutreachHistory;
+};
+
+export type SerializedOutreachHistory = {
+  runCount: number;
+  contactsTriedTotal: number;
+  lastOutreachAt: string | null;
 };
 
 export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
@@ -33,13 +45,53 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
       discoveryProvider: true,
     },
   });
-  return rows.map((r) => ({
+
+  const rawRuns = rows.map((r) => ({
     id: r.id,
     discoveredCount: r.discoveredCount,
-    discoveredPayload: extractDiscoveredCompanies(r.discoveredPayload),
+    companies: extractDiscoveredCompaniesRaw(r.discoveredPayload),
     createdAt: r.createdAt.toISOString(),
     discoveryProvider: r.discoveryProvider,
   }));
+
+  const allCompanies = rawRuns.flatMap((r) => r.companies);
+  const histories = await Promise.all(
+    allCompanies.map((c) =>
+      getCompanyOutreachHistory({ domain: c.domain, companyName: c.companyName }, org.id),
+    ),
+  );
+  const historyByCompany = new Map<string, CompanyOutreachHistory>();
+  allCompanies.forEach((c, i) => {
+    historyByCompany.set(companyKey(c.companyName, c.domain), histories[i]);
+  });
+
+  return rawRuns.map((r) => ({
+    id: r.id,
+    discoveredCount: r.discoveredCount,
+    discoveredPayload: r.companies.map((c) => {
+      const h = historyByCompany.get(companyKey(c.companyName, c.domain)) ?? {
+        runCount: 0,
+        contactsTriedTotal: 0,
+        lastOutreachAt: null,
+      };
+      return {
+        companyName: c.companyName,
+        jobTitle: c.jobTitle,
+        domain: c.domain,
+        history: {
+          runCount: h.runCount,
+          contactsTriedTotal: h.contactsTriedTotal,
+          lastOutreachAt: h.lastOutreachAt ? h.lastOutreachAt.toISOString() : null,
+        },
+      };
+    }),
+    createdAt: r.createdAt,
+    discoveryProvider: r.discoveryProvider,
+  }));
+}
+
+function companyKey(name: string, domain: string): string {
+  return `${name.trim().toLowerCase()}|${domain.trim().toLowerCase()}`;
 }
 
 type ApproveResult =
@@ -131,15 +183,22 @@ export async function triggerManualDiscovery(): Promise<TriggerResult> {
   }
 }
 
-function extractDiscoveredCompanies(payload: unknown): DiscoveredCompanyLite[] {
+type DiscoveredCompanyRaw = {
+  companyName: string;
+  jobTitle: string;
+  domain: string;
+};
+
+function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[] {
   if (!Array.isArray(payload)) return [];
-  const out: DiscoveredCompanyLite[] = [];
+  const out: DiscoveredCompanyRaw[] = [];
   for (const item of payload) {
     if (!item || typeof item !== "object") continue;
     const obj = item as Record<string, unknown>;
     const companyName = typeof obj.companyName === "string" ? obj.companyName : "";
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
-    if (companyName) out.push({ companyName, jobTitle });
+    const domain = typeof obj.domain === "string" ? obj.domain : "";
+    if (companyName) out.push({ companyName, jobTitle, domain });
   }
   return out;
 }

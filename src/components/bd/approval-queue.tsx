@@ -3,12 +3,14 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, RefreshCw } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 
 import {
   approveBDRun,
   dismissBDRun,
   triggerManualDiscovery,
   type PendingBDRun,
+  type SerializedOutreachHistory,
 } from "@/app/bd/launch/bd-run-actions";
 
 const MAX_PREVIEW_ROWS = 5;
@@ -151,13 +153,16 @@ function RunCard({
       </div>
 
       {preview.length > 0 && (
-        <ul className="mt-4 space-y-1.5">
+        <ul className="mt-4 space-y-2.5">
           {preview.map((c, i) => (
-            <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-              <span className="font-medium text-court-fg">{c.companyName}</span>
-              {c.jobTitle && (
-                <span className="text-[12px] text-court-fg-muted">{c.jobTitle}</span>
-              )}
+            <li key={i} className="flex flex-col gap-0.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                <span className="font-medium text-court-fg">{c.companyName}</span>
+                {c.jobTitle && (
+                  <span className="text-[12px] text-court-fg-muted">{c.jobTitle}</span>
+                )}
+              </div>
+              <OutreachHistoryRow history={c.history} />
             </li>
           ))}
           {overflow > 0 && (
@@ -189,6 +194,27 @@ function RunCard({
         </button>
       </div>
     </div>
+  );
+}
+
+function OutreachHistoryRow({ history }: { history: SerializedOutreachHistory }) {
+  if (history.runCount === 0) {
+    return (
+      <span className="inline-flex w-fit items-center rounded-full border border-court-border bg-court-surface-subtle px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.1em] text-court-fg-muted">
+        No prior outreach
+      </span>
+    );
+  }
+  const runLabel = `${history.runCount} time${history.runCount === 1 ? "" : "s"}`;
+  const contactLabel = `${history.contactsTriedTotal} contact${history.contactsTriedTotal === 1 ? "" : "s"} tried`;
+  const lastLabel = history.lastOutreachAt
+    ? `Last: ${formatDistanceToNow(new Date(history.lastOutreachAt), { addSuffix: true })}`
+    : null;
+  return (
+    <span className="text-[11px] text-court-fg-muted">
+      Contacted {runLabel} · {contactLabel}
+      {lastLabel ? ` · ${lastLabel}` : ""}
+    </span>
   );
 }
 
