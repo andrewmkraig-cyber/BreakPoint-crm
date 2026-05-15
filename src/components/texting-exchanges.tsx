@@ -16,13 +16,23 @@ type SmsRow = {
   createdAt: string;
 };
 
-// Collapsible SMS thread for a single candidate. Mount fetches the full thread
-// once and then polls every 30 s for new rows (inbound arrivals via the
-// Krispcall webhook write into SmsMessage, which this fetch picks up). The
-// layout is a standard SMS chat: outbound right (green), inbound left (gray).
-// Polling only continues while the accordion is open — no point burning a
-// network round-trip every 30 s for a section the recruiter isn't looking at.
-export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: string; defaultOpen?: boolean }) {
+// Collapsible SMS thread scoped either to one candidate or to one
+// client. Mount fetches the full thread once and then polls every 30s
+// for new rows (inbound arrivals via the Quo webhook write into
+// SmsMessage, which this fetch picks up). The layout is a standard SMS
+// chat: outbound right (green), inbound left (gray). Polling only
+// continues while the accordion is open — no point burning a network
+// round-trip every 30 s for a section the recruiter isn't looking at.
+//
+// Discriminated prop: pass exactly one of candidateId or clientId.
+// candidateId wins when both are supplied (defensive — should not
+// happen with TS narrowing). Mirrors the CallLogs prop shape.
+export type TextingExchangesProps =
+  | { candidateId: string; clientId?: undefined; defaultOpen?: boolean }
+  | { clientId: string; candidateId?: undefined; defaultOpen?: boolean };
+
+export function TextingExchanges(props: TextingExchangesProps) {
+  const { candidateId, clientId, defaultOpen } = props;
   const [open, setOpen] = useState(defaultOpen ?? false);
   const [messages, setMessages] = useState<SmsRow[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -68,10 +78,10 @@ export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: st
 
   const fetchMessages = useCallback(async () => {
     try {
-      const res = await fetch(
-        `/api/sms?candidateId=${encodeURIComponent(candidateId)}`,
-        { cache: "no-store" },
-      );
+      const queryParam = candidateId
+        ? `candidateId=${encodeURIComponent(candidateId)}`
+        : `clientId=${encodeURIComponent(clientId!)}`;
+      const res = await fetch(`/api/sms?${queryParam}`, { cache: "no-store" });
       if (!res.ok) {
         setError(`Couldn't load messages (${res.status})`);
         return;
@@ -89,7 +99,7 @@ export function TextingExchanges({ candidateId, defaultOpen }: { candidateId: st
     } finally {
       setLoaded(true);
     }
-  }, [candidateId]);
+  }, [candidateId, clientId]);
 
   useEffect(() => {
     if (!open) return;

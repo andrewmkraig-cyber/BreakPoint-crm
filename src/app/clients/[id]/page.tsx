@@ -28,6 +28,7 @@ import AiWorkspace from "@/components/AiWorkspace";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import { ActivityFeed } from "@/components/activity-feed";
 import { CallLogs } from "@/components/call-logs";
+import { TextingExchanges } from "@/components/texting-exchanges";
 import { TaggedThreadList } from "@/components/mail/tagged-thread-list";
 
 export const dynamic = "force-dynamic";
@@ -526,13 +527,18 @@ export default async function ClientDetailPage({
         </section>
       ) : tab === "activity" ? (
         <div className="space-y-6">
-          {/* Call log first — auto-populated through the Quo webhook
-              (call.completed → call.transcript.completed → call.summary.completed).
-              Surfaces transcripts + AI summaries inline per row. Note: requires
-              CallLog.clientId to be stamped on the write path; until the webhook
-              also matches Contact-side phones, this list will be empty for
-              client-only conversations. */}
-          <CallLogs clientId={client.id} defaultOpen />
+          {/* Calls & SMS — auto-populated through the Quo webhook. The
+              call.completed / message.received branches now stamp
+              clientId on the write path by matching Contact.phoneNumbers,
+              so client-only conversations land here without manual
+              tagging. CallLogs handles transcripts + AI summaries
+              inline; TextingExchanges renders the inbound/outbound
+              chat bubbles. */}
+          <section className="space-y-3 rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
+            <h2 className="font-serif text-lg font-semibold text-court-fg">Calls &amp; SMS</h2>
+            <CallLogs clientId={client.id} defaultOpen />
+            <TextingExchanges clientId={client.id} defaultOpen />
+          </section>
           <ActivityFeed entityType="client" entityId={client.id} />
         </div>
       ) : tab === "email" ? (

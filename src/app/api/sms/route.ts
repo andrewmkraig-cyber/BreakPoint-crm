@@ -38,10 +38,15 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  // Accept either candidateId or clientId. Mirrors /api/calls — the
+  // client profile's <TextingExchanges clientId={...}/> reads through
+  // here; candidateId remains the primary scope for the candidate
+  // profile. When both are supplied (defensive) candidateId wins.
   const candidateId = req.nextUrl.searchParams.get('candidateId')
-  if (!candidateId) return NextResponse.json([])
+  const clientId = req.nextUrl.searchParams.get('clientId')
+  if (!candidateId && !clientId) return NextResponse.json([])
   const messages = await prisma.smsMessage.findMany({
-    where: { candidateId },
+    where: candidateId ? { candidateId } : { clientId: clientId! },
     orderBy: { createdAt: 'asc' },
   })
   return NextResponse.json(messages)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
+import { matchClientByPhone } from '@/lib/quo-contact-match'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -52,15 +53,21 @@ export async function POST(req: NextRequest) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: fromNumber.replace(/\D/g, '').slice(-10) } },
       })
+      // Fall through to a Contact-side lookup when no candidate matches —
+      // the same number might belong to a client contact, in which case
+      // we stamp SmsMessage.clientId so the row shows up under
+      // <TextingExchanges clientId={...}/> on the client profile.
+      const clientMatch = candidate ? null : await matchClientByPhone(fromNumber)
       // Always persist the row — even when the from-number doesn't match
       // any candidate. The Phone tab now surfaces unknown-number threads
       // with an "Add to Ace" action, so dropping them on the floor would
       // hide real activity (e.g. inbound texts from a client contact who
       // hasn't been added to the CRM yet).
-      const orgId = candidate?.organizationId ?? (await defaultOrgId())
+      const orgId = candidate?.organizationId ?? clientMatch?.organizationId ?? (await defaultOrgId())
       await prisma.smsMessage.create({
         data: {
           candidateId: candidate?.id ?? null,
+          clientId: clientMatch?.clientId ?? null,
           organizationId: orgId,
           direction: 'inbound',
           body: content ?? '',
@@ -239,24 +246,41 @@ export async function POST(req: NextRequest) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: phoneToMatch } },
       })
+      // Same fallthrough as the SMS branch: a non-candidate number might
+      // belong to a client contact. Match against Contact.phoneNumbers
+      // so CallLog.clientId lands on the row at write-time, surfacing
+      // the call under <CallLogs clientId={...}/> on the client profile.
+      const phoneRaw = (direction === 'inbound' ? fromNumber : toNumber) || ''
+      const clientMatch = candidate ? null : await matchClientByPhone(phoneRaw)
       // Persist the call log even when the other-party number doesn't
       // match a known Candidate. The Phone tab surfaces those rows as
       // unknown-number threads with an "Add to Ace" action so the
       // recruiter can find calls they had with people not yet in the
       // CRM (e.g. a client contact, or a referral they haven't logged).
-      const orgId = candidate?.organizationId ?? (await defaultOrgId())
+      const orgId = candidate?.organizationId ?? clientMatch?.organizationId ?? (await defaultOrgId())
       const existing = quoId
         ? await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
         : null
       if (existing) {
         await prisma.callLog.update({
           where: { id: existing.id },
-          data: { duration, status: 'completed', recordingUrl, organizationId: orgId },
+          data: {
+            duration,
+            status: 'completed',
+            recordingUrl,
+            organizationId: orgId,
+            // Only stamp clientId on update when we resolved a Contact
+            // match — leaving it untouched preserves any earlier write
+            // (e.g. the call.completed event already wrote clientId, and
+            // this is a re-delivery / late update).
+            ...(clientMatch?.clientId ? { clientId: clientMatch.clientId } : {}),
+          },
         })
       } else {
         await prisma.callLog.create({
           data: {
             candidateId: candidate?.id ?? null,
+            clientId: clientMatch?.clientId ?? null,
             organizationId: orgId,
             direction,
             fromNumber: fromNumber ?? '',
