@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
+import { sendPushToOrg } from '@/lib/web-push'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -77,6 +78,32 @@ export async function POST(req: NextRequest) {
           krispcallId: pickStr(body, ['data.object.id', 'id']),
         },
       })
+      // Push notification — best-effort. Tag scopes by candidate id (so
+      // multiple texts in one thread collapse to one notification) or
+      // by the bare digits of the from-number when the sender isn't
+      // linked to a Candidate yet. Body trimmed to 100 chars to stay
+      // inside the platform-default notification body cap.
+      if (orgId) {
+        const senderName =
+          (candidate
+            ? [candidate.firstName, candidate.lastName]
+                .filter(Boolean)
+                .join(' ')
+                .trim()
+            : '') || fromNumber
+        const tagKey =
+          candidate?.id ??
+          (fromNumber.replace(/\D/g, '').slice(-10) || fromNumber)
+        const dest = candidate
+          ? `/phone?candidateId=${candidate.id}`
+          : `/phone?from=${encodeURIComponent(fromNumber)}`
+        await sendPushToOrg(orgId, {
+          title: `New text from ${senderName}`,
+          body: (content ?? '').slice(0, 100),
+          url: dest,
+          tag: `sms-${tagKey}`,
+        })
+      }
     }
   }
 
@@ -261,35 +288,55 @@ export async function POST(req: NextRequest) {
       const existing = quoId
         ? await prisma.callLog.findFirst({ where: { krispcallId: quoId } })
         : null
-      if (existing) {
-        await prisma.callLog.update({
-          where: { id: existing.id },
-          data: {
-            duration,
-            status: 'completed',
-            recordingUrl,
-            organizationId: orgId,
-            // Only stamp clientId on update when we resolved a Contact
-            // match — leaving it untouched preserves any earlier write
-            // (e.g. the call.completed event already wrote clientId, and
-            // this is a re-delivery / late update).
-            ...(clientMatch?.clientId ? { clientId: clientMatch.clientId } : {}),
-          },
-        })
-      } else {
-        await prisma.callLog.create({
-          data: {
-            candidateId: candidate?.id ?? null,
-            clientId: clientMatch?.clientId ?? null,
-            organizationId: orgId,
-            direction,
-            fromNumber: fromNumber ?? '',
-            toNumber: toNumber ?? '',
-            duration,
-            status: 'completed',
-            recordingUrl,
-            krispcallId: quoId,
-          },
+      const callLogRow = existing
+        ? await prisma.callLog.update({
+            where: { id: existing.id },
+            data: {
+              duration,
+              status: 'completed',
+              recordingUrl,
+              organizationId: orgId,
+              // Only stamp clientId on update when we resolved a Contact
+              // match — leaving it untouched preserves any earlier write
+              // (e.g. the call.completed event already wrote clientId,
+              // and this is a re-delivery / late update).
+              ...(clientMatch?.clientId ? { clientId: clientMatch.clientId } : {}),
+            },
+          })
+        : await prisma.callLog.create({
+            data: {
+              candidateId: candidate?.id ?? null,
+              clientId: clientMatch?.clientId ?? null,
+              organizationId: orgId,
+              direction,
+              fromNumber: fromNumber ?? '',
+              toNumber: toNumber ?? '',
+              duration,
+              status: 'completed',
+              recordingUrl,
+              krispcallId: quoId,
+            },
+          })
+      // Push notification — inbound only. Outbound calls are user-
+      // initiated so a "Call ended" toast there would just be noise.
+      // Duration ≤ 3s (or missing) is treated as a missed call —
+      // typical voicemail / no-answer cutoffs land well above that.
+      if (orgId && direction === 'inbound' && callLogRow?.id) {
+        const callerName =
+          (candidate
+            ? [candidate.firstName, candidate.lastName]
+                .filter(Boolean)
+                .join(' ')
+                .trim()
+            : '') || fromNumber || 'Unknown'
+        const isMissed = !duration || duration <= 3
+        await sendPushToOrg(orgId, {
+          title: isMissed ? 'Missed call' : 'Call ended',
+          body: duration
+            ? `${callerName} · ${formatMmss(duration)}`
+            : callerName,
+          url: `/phone?call=${callLogRow.id}`,
+          tag: `call-${callLogRow.id}`,
         })
       }
     }

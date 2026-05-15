@@ -70,6 +70,7 @@ model User {
   createdCandidateLists CandidateList[]          @relation("CandidateListCreatedBy")
   chessPuzzleStreak     ChessPuzzleStreak?
   funFactFeedback       FunFactFeedback[]
+  pushSubscriptions     PushSubscription[]
 }
 
 // Per-user branding for the email signature, resume header, and any
@@ -994,6 +995,7 @@ model Organization {
   calendarEvents       CalendarEvent[]
   aceReminders         AceReminder[]
   toolExpenses         ToolExpense[]
+  pushSubscriptions    PushSubscription[]
 }
 
 // Tracks the recurring + one-time tool/software costs the desk pays.
@@ -1837,4 +1839,27 @@ model AceReminder {
   @@index([organizationId])
   @@index([userId])
   @@index([calendarEventId])
+}
+
+// Web push subscription stamped per browser/device that opts in. The
+// `endpoint` from the Push API uniquely identifies a (browser, profile,
+// VAPID public key) tuple — using it as the unique key dedupes when the
+// same device re-subscribes. Sender path: sendPushToUser /
+// sendPushToOrg in src/lib/web-push.ts. On 410/404 from the push
+// service the row is deleted (subscription expired / user revoked).
+model PushSubscription {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  endpoint       String   @unique
+  p256dh         String
+  auth           String
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([organizationId])
 }

@@ -78,3 +78,44 @@ async function networkFirst(request, { fallback }) {
     throw err;
   }
 }
+
+// Push handler. Payload shape comes from sendPushToUser /
+// sendPushToOrg in src/lib/web-push.ts — always JSON with at least
+// title + body, optionally url and tag. Tag dedupes: subsequent
+// pushes with the same tag replace the previous notification rather
+// than stacking (e.g. 5 texts in one thread => one notification).
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+  const data = event.data.json();
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: data.url || "/" },
+      tag: data.tag,
+    }),
+  );
+});
+
+// Click handler: focus the first existing Ace window if one is open
+// (so we don't pile up tabs), otherwise open a fresh one. The window
+// is navigated to the payload's url so the click deep-links to the
+// thread / call that triggered the notification.
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window" }).then((clients) => {
+      const existing = clients.find((c) =>
+        c.url.includes(self.location.origin),
+      );
+      if (existing) {
+        existing.focus();
+        existing.navigate(url);
+        return;
+      }
+      return self.clients.openWindow(url);
+    }),
+  );
+});
