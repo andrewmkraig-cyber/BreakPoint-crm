@@ -2,18 +2,44 @@
 
 import { useEffect } from "react";
 import { useMailContext } from "@/lib/mail-context";
+import { usePhoneContext } from "@/lib/phone-context";
 
-// Mirrors Gmail's tab-title behavior: shows "(N) Ace · BreakPoint Talent"
-// when the user has unread inbox threads, plain "Ace · BreakPoint Talent"
-// otherwise. Reads the unread count from MailContext so it updates on
-// the same 30s polling cadence as the sidebar badge — no second Gmail
-// API call.
+// Tab-title + PWA app-icon badge sync. Combines mail unread + phone
+// unread into a single total so the home-screen badge and the browser
+// tab counter agree. Reads from MailContext (30s Gmail unread poll)
+// and PhoneContext (30s /api/phone/unread-count poll) — no extra
+// network traffic introduced here, this is purely a presentation
+// mirror of state that's already maintained upstream.
+//
+// Despite the legacy file name, this owns the combined-total surface
+// now (badge + tab title); both providers are mounted ancestors via
+// app-shell so the hooks are safe to call here.
 const BASE_TITLE = "Ace · BreakPoint Talent";
 
+// Badging API typing. Chrome / Edge / Safari ship `navigator.setAppBadge`
+// + `navigator.clearAppBadge` (Web App Badging spec) but lib.dom.d.ts
+// doesn't include them yet, so narrow against an explicit shape.
+type NavigatorWithBadge = Navigator & {
+  setAppBadge?: (contents?: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+};
+
 export function MailTabTitleSync() {
-  const { unreadCount } = useMailContext();
+  const { unreadCount: mailUnread } = useMailContext();
+  const { unreadCount: phoneUnread } = usePhoneContext();
   useEffect(() => {
-    document.title = unreadCount > 0 ? `(${unreadCount}) ${BASE_TITLE}` : BASE_TITLE;
-  }, [unreadCount]);
+    const total = (mailUnread ?? 0) + (phoneUnread ?? 0);
+    document.title = total > 0 ? `(${total}) ${BASE_TITLE}` : BASE_TITLE;
+    // Badging API is best-effort: only fires on Chromium-family PWAs
+    // and macOS Safari 16.4+. Other browsers silently no-op. Wrap in
+    // a try/catch because the promises can reject if the page isn't
+    // visible / installed and we don't want to noise the console.
+    const nav = navigator as NavigatorWithBadge;
+    if (total > 0 && typeof nav.setAppBadge === "function") {
+      void nav.setAppBadge(total).catch(() => {});
+    } else if (total === 0 && typeof nav.clearAppBadge === "function") {
+      void nav.clearAppBadge().catch(() => {});
+    }
+  }, [mailUnread, phoneUnread]);
   return null;
 }
