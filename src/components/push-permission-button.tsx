@@ -137,6 +137,15 @@ export function PushPermissionButton() {
           setStatus("granted");
           setHasSubscription(true);
           toast.success("Notifications enabled.");
+          // Re-read permission state explicitly so the console log
+          // surfaces what the browser settled on after subscribe()
+          // (subscribe handled the prompt internally). On macOS this
+          // call is also a redundant "register intent" signal that
+          // can nudge the OS into surfacing Ace in System Settings →
+          // Notifications immediately rather than after a restart.
+          void Notification.requestPermission().then((permission) => {
+            console.log("[push] notification permission:", permission);
+          });
         }),
       )
       .catch((err) => {

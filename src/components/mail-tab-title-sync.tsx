@@ -27,6 +27,20 @@ type NavigatorWithBadge = Navigator & {
 export function MailTabTitleSync() {
   const { unreadCount: mailUnread } = useMailContext();
   const { unreadCount: phoneUnread } = usePhoneContext();
+  // One-time registration on mount. macOS won't surface the installed
+  // PWA in System Settings → Notifications until the page has
+  // exercised the Badging API at least once. Calling setAppBadge(0)
+  // up front registers Ace as a badge-capable app without showing a
+  // dot for "0 unread", and the dependency-driven effect below takes
+  // over from there as soon as a real count arrives.
+  useEffect(() => {
+    const nav = navigator as Navigator & {
+      setAppBadge?: (contents?: number) => Promise<void>;
+    };
+    if (typeof nav.setAppBadge === "function") {
+      void nav.setAppBadge(0).catch(() => {});
+    }
+  }, []);
   useEffect(() => {
     const total = (mailUnread ?? 0) + (phoneUnread ?? 0);
     // Diagnostic log so the next time the badge looks wrong we can
