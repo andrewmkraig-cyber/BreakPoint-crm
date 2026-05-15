@@ -9,10 +9,18 @@ import { SettingsNav } from "@/app/settings/settings-nav";
 // TopBarPageTitle, so this layout no longer renders a separate
 // header — the lg sidebar shows just the nav, and on narrow widths
 // the topbar's title is the only header.
+//
+// Mobile/tablet (< lg): the parent flex is column, so the nav stacks
+// above the page content. The aside used to be `hidden lg:block`,
+// which meant /settings/<category> routes had no navigation surface
+// on phones — the /settings root redirects to /settings/appearance,
+// stranding users on Court Mode with no way to reach Notifications,
+// Templates, etc. Dropping the `hidden` exposes the full category
+// list above whatever panel they're on.
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:items-start">
-      <aside className="hidden lg:sticky lg:top-24 lg:block lg:w-56 lg:shrink-0">
+      <aside className="lg:sticky lg:top-24 lg:w-56 lg:shrink-0">
         <SettingsNav />
       </aside>
 
