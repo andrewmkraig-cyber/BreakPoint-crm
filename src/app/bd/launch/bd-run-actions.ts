@@ -10,6 +10,9 @@ import {
   getCompanyOutreachHistory,
   type CompanyOutreachHistory,
 } from "@/lib/bd/bd-history";
+import { fetchApolloContacts, type ApolloContact } from "@/lib/bd/apollo-contacts";
+
+export type { ApolloContact };
 
 export type PendingBDRun = {
   id: string;
@@ -24,6 +27,7 @@ export type DiscoveredCompanyLite = {
   jobTitle: string;
   domain: string;
   history: SerializedOutreachHistory;
+  contacts: ApolloContact[];
 };
 
 export type SerializedOutreachHistory = {
@@ -55,21 +59,36 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
   }));
 
   const allCompanies = rawRuns.flatMap((r) => r.companies);
-  const histories = await Promise.all(
-    allCompanies.map((c) =>
-      getCompanyOutreachHistory({ domain: c.domain, companyName: c.companyName }, org.id),
+  const [histories, contactLists] = await Promise.all([
+    Promise.all(
+      allCompanies.map((c) =>
+        getCompanyOutreachHistory({ domain: c.domain, companyName: c.companyName }, org.id),
+      ),
     ),
-  );
+    Promise.all(
+      allCompanies.map((c) =>
+        c.persistedContacts.length > 0
+          ? Promise.resolve(c.persistedContacts)
+          : c.domain
+            ? fetchApolloContacts(c.domain, org.id)
+            : Promise.resolve([] as ApolloContact[]),
+      ),
+    ),
+  ]);
   const historyByCompany = new Map<string, CompanyOutreachHistory>();
+  const contactsByCompany = new Map<string, ApolloContact[]>();
   allCompanies.forEach((c, i) => {
-    historyByCompany.set(companyKey(c.companyName, c.domain), histories[i]);
+    const key = companyKey(c.companyName, c.domain);
+    if (!historyByCompany.has(key)) historyByCompany.set(key, histories[i]);
+    if (!contactsByCompany.has(key)) contactsByCompany.set(key, contactLists[i]);
   });
 
   return rawRuns.map((r) => ({
     id: r.id,
     discoveredCount: r.discoveredCount,
     discoveredPayload: r.companies.map((c) => {
-      const h = historyByCompany.get(companyKey(c.companyName, c.domain)) ?? {
+      const key = companyKey(c.companyName, c.domain);
+      const h = historyByCompany.get(key) ?? {
         runCount: 0,
         contactsTriedTotal: 0,
         lastOutreachAt: null,
@@ -83,6 +102,7 @@ export async function getPendingBDRuns(): Promise<PendingBDRun[]> {
           contactsTriedTotal: h.contactsTriedTotal,
           lastOutreachAt: h.lastOutreachAt ? h.lastOutreachAt.toISOString() : null,
         },
+        contacts: contactsByCompany.get(key) ?? [],
       };
     }),
     createdAt: r.createdAt,
@@ -98,11 +118,14 @@ type ApproveResult =
   | { success: true; runId: string; enrolled: number; capped: boolean }
   | { success: false; error: string };
 
-export async function approveBDRun(runId: string): Promise<ApproveResult> {
+export async function approveBDRun(
+  runId: string,
+  curatedContacts?: Record<string, ApolloContact[]>,
+): Promise<ApproveResult> {
   const org = await getCurrentOrg();
   const existing = await prisma.bDRun.findUnique({
     where: { id: runId },
-    select: { id: true, organizationId: true, status: true },
+    select: { id: true, organizationId: true, status: true, discoveredPayload: true },
   });
   if (!existing || existing.organizationId !== org.id) {
     return { success: false, error: "Run not found" };
@@ -110,9 +133,29 @@ export async function approveBDRun(runId: string): Promise<ApproveResult> {
   if (existing.status !== "AWAITING_APPROVAL") {
     return { success: false, error: `Run is ${existing.status}, not awaiting approval` };
   }
+
+  // Normalize curated keys to lowercase company names so the merge is
+  // case-insensitive (the component keys by companyName as-rendered).
+  const normalizedCurated: Record<string, ApolloContact[]> = {};
+  if (curatedContacts) {
+    for (const [name, contacts] of Object.entries(curatedContacts)) {
+      normalizedCurated[normalizeCompanyKey(name)] = contacts;
+    }
+  }
+
+  const updateData: { status: "APPROVED"; approvedAt: Date; discoveredPayload?: unknown } = {
+    status: "APPROVED",
+    approvedAt: new Date(),
+  };
+  if (Object.keys(normalizedCurated).length > 0) {
+    updateData.discoveredPayload = mergeCuratedContactsIntoPayload(
+      existing.discoveredPayload,
+      normalizedCurated,
+    );
+  }
   await prisma.bDRun.update({
     where: { id: runId },
-    data: { status: "APPROVED", approvedAt: new Date() },
+    data: updateData as never,
   });
   const result = await enrollCompaniesInApollo(runId, org.id);
   revalidatePath("/bd/launch");
@@ -187,6 +230,7 @@ type DiscoveredCompanyRaw = {
   companyName: string;
   jobTitle: string;
   domain: string;
+  persistedContacts: ApolloContact[];
 };
 
 function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[] {
@@ -198,7 +242,49 @@ function extractDiscoveredCompaniesRaw(payload: unknown): DiscoveredCompanyRaw[]
     const companyName = typeof obj.companyName === "string" ? obj.companyName : "";
     const jobTitle = typeof obj.jobTitle === "string" ? obj.jobTitle : "";
     const domain = typeof obj.domain === "string" ? obj.domain : "";
-    if (companyName) out.push({ companyName, jobTitle, domain });
+    const persistedContacts = parsePersistedContacts(obj.contacts);
+    if (companyName) out.push({ companyName, jobTitle, domain, persistedContacts });
   }
   return out;
+}
+
+function parsePersistedContacts(value: unknown): ApolloContact[] {
+  if (!Array.isArray(value)) return [];
+  const out: ApolloContact[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const obj = item as Record<string, unknown>;
+    const firstName = typeof obj.firstName === "string" ? obj.firstName : "";
+    const lastName = typeof obj.lastName === "string" ? obj.lastName : "";
+    if (!firstName && !lastName) continue;
+    out.push({
+      id: typeof obj.id === "string" ? obj.id : `${firstName}-${lastName}`.toLowerCase(),
+      firstName,
+      lastName,
+      title: typeof obj.title === "string" ? obj.title : "",
+      linkedinUrl: typeof obj.linkedinUrl === "string" ? obj.linkedinUrl : null,
+    });
+  }
+  return out;
+}
+
+function normalizeCompanyKey(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+function mergeCuratedContactsIntoPayload(
+  payload: unknown,
+  curated: Record<string, ApolloContact[]>,
+): unknown[] {
+  if (!Array.isArray(payload)) return [];
+  return payload.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const obj = item as Record<string, unknown>;
+    const companyName = typeof obj.companyName === "string" ? obj.companyName : "";
+    if (!companyName) return obj;
+    const key = normalizeCompanyKey(companyName);
+    const curatedForCompany = curated[key];
+    if (!curatedForCompany) return obj;
+    return { ...obj, contacts: curatedForCompany };
+  });
 }

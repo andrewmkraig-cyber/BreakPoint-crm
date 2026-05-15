@@ -52,10 +52,20 @@ function easternMidnightUtc(now: Date = new Date()): Date {
   return new Date(placeholder.getTime() - offsetMinutes * 60_000);
 }
 
+type CuratedContact = {
+  firstName: string;
+  lastName: string;
+  title: string;
+};
+
 type DiscoveredItem = {
   companyName: string;
   jobTitle: string;
   jobUrl?: string;
+  // Andrew-curated contact list captured at approval time. When present
+  // and non-empty, the enroll loop uses these instead of re-querying
+  // Apollo for decision-makers.
+  curatedContacts: CuratedContact[];
 };
 
 function extractDiscovered(payload: unknown): DiscoveredItem[] {
@@ -75,9 +85,31 @@ function extractDiscovered(payload: unknown): DiscoveredItem[] {
           : typeof obj.jobPostingUrl === "string"
             ? obj.jobPostingUrl
             : "";
-    out.push({ companyName, jobTitle, jobUrl: rawUrl || undefined });
+    const curatedContacts: CuratedContact[] = [];
+    if (Array.isArray(obj.contacts)) {
+      for (const raw of obj.contacts) {
+        if (!raw || typeof raw !== "object") continue;
+        const r = raw as Record<string, unknown>;
+        const firstName = typeof r.firstName === "string" ? r.firstName : "";
+        const lastName = typeof r.lastName === "string" ? r.lastName : "";
+        const title = typeof r.title === "string" ? r.title : "";
+        if (!firstName && !lastName) continue;
+        curatedContacts.push({ firstName, lastName, title });
+      }
+    }
+    out.push({ companyName, jobTitle, jobUrl: rawUrl || undefined, curatedContacts });
   }
   return out;
+}
+
+function formatCuratedContacts(contacts: CuratedContact[]): string {
+  if (contacts.length === 0) return "(none)";
+  return contacts
+    .map((c) => {
+      const name = [c.firstName, c.lastName].filter(Boolean).join(" ") || "(unnamed)";
+      return c.title ? `${name} (${c.title})` : name;
+    })
+    .join(", ");
 }
 
 function genericCandidateSummary(jobTitle: string): string {
@@ -292,6 +324,13 @@ export async function enrollCompaniesInApollo(
     console.warn(
       `[Apollo] runId=${run.id} cannot enroll — APOLLO_API_KEY or APOLLO_SEQUENCE_ID unset`,
     );
+    // Echo Andrew's curated list per company so the approval flow is
+    // verifiable end-to-end even without live Apollo credentials.
+    for (const c of companies) {
+      console.log(
+        `[Apollo stub] Would enroll ${c.companyName}: ${formatCuratedContacts(c.curatedContacts)}`,
+      );
+    }
     await prisma.bDRun.update({
       where: { id: run.id },
       data: { status: "COMPLETE", completedAt: new Date() },
@@ -304,7 +343,18 @@ export async function enrollCompaniesInApollo(
   for (const c of companies) {
     if (remaining <= 0) break;
 
-    const people = await apolloSearchPeople(apiKey, c.companyName);
+    // Prefer the curated list Andrew approved on the queue card. Only
+    // fall back to a live Apollo people search when the run was approved
+    // before this UI shipped (no curated array on the payload entry).
+    const people: ApolloPerson[] =
+      c.curatedContacts.length > 0
+        ? c.curatedContacts.map((cc) => ({
+            first_name: cc.firstName || undefined,
+            last_name: cc.lastName || undefined,
+            title: cc.title || undefined,
+            organization_name: c.companyName,
+          }))
+        : await apolloSearchPeople(apiKey, c.companyName);
     const candidates = people.slice(0, Math.min(4, remaining));
 
     // One Claude call per company — every contact enrolled here gets
