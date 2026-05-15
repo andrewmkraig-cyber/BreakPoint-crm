@@ -141,6 +141,8 @@ export async function FinancialPerformanceTab({
     mercuryTxnsAll,
     manualExpenses,
     paidInvoicesYtd,
+    uninvoicedPlacementsPeriod,
+    uninvoicedPlacementsYtd,
   ] = await Promise.all([
     prisma.invoice.findMany({
       where: {
@@ -203,12 +205,50 @@ export async function FinancialPerformanceTab({
       },
       select: { feeAmount: true },
     }),
+    // Uninvoiced placements (locked fee, no invoice yet) folded into the
+    // same revenue aggregations as invoiced placements. Mirrors the
+    // Clubhouse Billing Tower's "earned this period" semantic — a
+    // placement that's been recorded but not yet invoiced shouldn't
+    // disappear from By Client / By Source / Trend just because the
+    // invoice flow hasn't run. Outstanding/unpaid surfaces stay
+    // invoice-only (handled on the Invoices tab, not here).
+    prisma.placement.findMany({
+      where: {
+        organizationId: org.id,
+        stage: { in: ["pending_start", "hired"] },
+        feeTotal: { gt: 0 },
+        invoices: { none: {} },
+        placedAt: { gte: revStart, lt: revEnd },
+      },
+      select: {
+        feeTotal: true,
+        placedAt: true,
+        clientId: true,
+        client: { select: { name: true } },
+        candidateSource: true,
+      },
+    }),
+    // YTD uninvoiced bucket feeds the P&L card's Placement Fees line so
+    // the YTD total matches the "earned" reading instead of "collected".
+    prisma.placement.findMany({
+      where: {
+        organizationId: org.id,
+        stage: { in: ["pending_start", "hired"] },
+        feeTotal: { gt: 0 },
+        invoices: { none: {} },
+        placedAt: { gte: yearStart, lt: yearEnd },
+      },
+      select: { feeTotal: true },
+    }),
   ]);
 
-  const revenueUsd = revenueInvoices.reduce(
-    (sum, r) => sum + decimalToNumber(r.feeAmount),
+  const uninvoicedRevenueUsd = uninvoicedPlacementsPeriod.reduce(
+    (sum, p) => sum + (p.feeTotal ?? 0),
     0,
   );
+  const revenueUsd =
+    revenueInvoices.reduce((sum, r) => sum + decimalToNumber(r.feeAmount), 0) +
+    uninvoicedRevenueUsd;
 
   // ---- Revenue section data ----
 
@@ -249,6 +289,18 @@ export async function FinancialPerformanceTab({
     existing.revenueUsd += decimalToNumber(inv.feeAmount);
     byClientMap.set(id, existing);
   }
+  for (const p of uninvoicedPlacementsPeriod) {
+    const id = p.clientId ?? "__unattached__";
+    const name = p.client?.name ?? "Unattached";
+    const existing = byClientMap.get(id) ?? {
+      id,
+      name,
+      revenueUsd: 0,
+      placements: id === "__unattached__" ? 0 : (placementsByClient.get(id) ?? 0),
+    };
+    existing.revenueUsd += p.feeTotal ?? 0;
+    byClientMap.set(id, existing);
+  }
   const byClientAll = Array.from(byClientMap.values()).sort(
     (a, b) => b.revenueUsd - a.revenueUsd,
   );
@@ -267,6 +319,10 @@ export async function FinancialPerformanceTab({
   for (const inv of revenueInvoices) {
     const src = inv.placement?.candidateSource?.trim() || "Untagged";
     bySourceMap.set(src, (bySourceMap.get(src) ?? 0) + decimalToNumber(inv.feeAmount));
+  }
+  for (const p of uninvoicedPlacementsPeriod) {
+    const src = p.candidateSource?.trim() || "Untagged";
+    bySourceMap.set(src, (bySourceMap.get(src) ?? 0) + (p.feeTotal ?? 0));
   }
   const bySourceAll: SourceRow[] = Array.from(bySourceMap, ([source, revenueUsd]) => ({
     source,
@@ -295,6 +351,17 @@ export async function FinancialPerformanceTab({
     monthlyRevenue.set(
       m,
       (monthlyRevenue.get(m) ?? 0) + decimalToNumber(inv.feeAmount),
+    );
+  }
+  for (const p of uninvoicedPlacementsPeriod) {
+    const refDate = p.placedAt;
+    if (!refDate) continue;
+    if (refDate.getFullYear() !== year) continue;
+    const m = refDate.getMonth();
+    if (m < qStartMonth || m >= qStartMonth + 3) continue;
+    monthlyRevenue.set(
+      m,
+      (monthlyRevenue.get(m) ?? 0) + (p.feeTotal ?? 0),
     );
   }
   const quarterRevenueUsd = quarterMonths.reduce(
@@ -712,10 +779,13 @@ export async function FinancialPerformanceTab({
     every3YearsRecurringSubtotal +
     oneTimeSubtotal;
 
-  const placementFeesYtdUsd = paidInvoicesYtd.reduce(
-    (sum, r) => sum + decimalToNumber(r.feeAmount),
-    0,
-  );
+  // P&L card's Placement Fees line: PAID invoices YTD plus YTD
+  // uninvoiced placements (locked fee, no invoice). Mirrors the "earned"
+  // semantic the Clubhouse Billing Tower and the Total Revenue tile use
+  // so all three reads agree.
+  const placementFeesYtdUsd =
+    paidInvoicesYtd.reduce((sum, r) => sum + decimalToNumber(r.feeAmount), 0) +
+    uninvoicedPlacementsYtd.reduce((sum, p) => sum + (p.feeTotal ?? 0), 0);
   const pnlData: PnlData = buildPnlData({
     placementFeesUsd: placementFeesYtdUsd,
     recurringMonthlyUsd: monthlyRecurringSubtotal,
