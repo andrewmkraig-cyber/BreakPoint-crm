@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { StageBadge } from "@/components/stage-badge";
 import { cn } from "@/lib/utils";
 import { updatePlacement } from "@/app/pipeline/placement-update-action";
+import { LEAD_SOURCES } from "@/lib/lead-sources";
 
 export type PlacementDrawerContext = {
   placementId: string;
@@ -30,17 +31,9 @@ export type PlacementDrawerContext = {
   cityOverride: string | null;
 };
 
-// Lead source channels the desk uses. Stored as the display string so
-// the Financial Performance "By source" chart groups cleanly.
-const SOURCE_OPTIONS = [
-  "Network",
-  "Referral",
-  "LinkedIn",
-  "Indeed",
-  "Cold Outreach",
-  "BreakPoint Website",
-  "Other",
-] as const;
+// Lead source options — canonical list shared with the candidate-
+// profile RecordPlacementModal. See src/lib/lead-sources.ts.
+const SOURCE_OPTIONS = LEAD_SOURCES;
 
 type Props = {
   open: boolean;

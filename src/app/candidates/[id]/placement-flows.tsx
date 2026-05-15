@@ -62,6 +62,7 @@ import {
   formatInterviewNextLine,
 } from "@/lib/interview-format";
 import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
+import { LEAD_SOURCES } from "@/lib/lead-sources";
 
 export type ClientContactRef = {
   id: number;
@@ -1442,16 +1443,16 @@ function PlacementDialog({
           className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           <option value="">—</option>
-          {["Network", "Referral", "LinkedIn", "Inbound", "Other"].map((opt) => (
+          {LEAD_SOURCES.map((opt) => (
             <option key={opt} value={opt}>
               {opt}
             </option>
           ))}
-          {/* Preserve any legacy value (e.g. "Pin", "Apollo BD") that
-              isn't in the canonical option list so it shows selected
-              instead of silently reverting to "—". */}
+          {/* Preserve any legacy value (e.g. "Pin", "Apollo BD",
+              "Cold Outreach") that isn't in the canonical option list
+              so it shows selected instead of silently reverting to "—". */}
           {leadSource &&
-            !["Network", "Referral", "LinkedIn", "Inbound", "Other"].some(
+            !LEAD_SOURCES.some(
               (o) => o.toLowerCase() === leadSource.toLowerCase(),
             ) && <option value={leadSource}>{leadSource}</option>}
         </select>
