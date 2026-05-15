@@ -167,24 +167,25 @@ export default async function ClientsPage({
   const inactiveCards = all.filter((c) => !c.isActive).sort(sortFn);
   const verifiedCount = all.filter((c) => c.isVerified).length;
 
-  // Quiet = active client whose most-recent ActivityLog is past the
-  // QUIET_MIN_DAYS threshold (or who has no ActivityLog at all). The
-  // three tier labels render as a chip on each card; the "60+" bucket
-  // also absorbs the never-logged set so they don't fall through.
+  // Quiet = active client that HAS prior ActivityLog history AND
+  // whose most-recent entry is past the QUIET_MIN_DAYS threshold.
+  // Brand-new clients with zero ActivityLog rows are intentionally
+  // excluded (no history = no signal that the client has gone quiet).
   const quietCards = activeCards
     .map((c) => {
       const days = c.daysSinceLastActivity;
+      if (days == null) return null;
       let tier: QuietTier | null = null;
-      if (days == null || days >= 60) tier = "60+";
+      if (days >= 60) tier = "60+";
       else if (days >= 30) tier = "30-60";
       else if (days >= QUIET_MIN_DAYS) tier = "14-30";
       return tier ? { ...c, quietTier: tier } : null;
     })
     .filter((c): c is ClientCard & { quietTier: QuietTier } => c !== null)
     .sort((a, b) => {
-      // Stalest first; null lastActivity sorts to the top of 60+.
-      const aDays = a.daysSinceLastActivity ?? Number.POSITIVE_INFINITY;
-      const bDays = b.daysSinceLastActivity ?? Number.POSITIVE_INFINITY;
+      // Stalest first.
+      const aDays = a.daysSinceLastActivity ?? 0;
+      const bDays = b.daysSinceLastActivity ?? 0;
       if (aDays !== bDays) return bDays - aDays;
       return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
     });
