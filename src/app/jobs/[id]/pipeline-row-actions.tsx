@@ -393,6 +393,13 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
         </ActionRow>
       );
     case "pending_start":
+      // Cancel + Reject intentionally omitted here. Pending Start is a
+      // narrow window between Offer Accepted and Day 1; the only
+      // recruiter intents are "they started" (Confirm) or "open the
+      // placement to make edits" (Edit Placement). Cancellation lives
+      // inside the Edit Placement modal (it has the cancel-reason
+      // picker the row-level button never had), and Reject doesn't
+      // apply to a candidate who's already been placed.
       return (
         <ActionRow disabled={isPending}>
           <DialogOrNav
@@ -411,15 +418,6 @@ export function PipelineRowActions(props: PipelineRowActionsProps) {
             onClick={props.onConfirmStart}
             href={profileHref}
           />
-          <DialogOrNav
-            icon={Ban}
-            label="Cancel"
-            title="Cancel placement"
-            tone="danger"
-            onClick={props.onCancelPlacement}
-            href={profileHref}
-          />
-          <ActionButton icon={UserX} label="Reject" tone="danger" onClick={onReject} />
         </ActionRow>
       );
     case "hired":
