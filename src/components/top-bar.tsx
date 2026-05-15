@@ -153,12 +153,8 @@ export function TopBar() {
           aria-hidden="true"
           className="mx-1 hidden h-7 w-px bg-court-border md:inline-block"
         />
-        <div className="hidden md:block">
-          <WeatherWidget />
-        </div>
-        <div className="hidden md:block">
-          <CalendarPopoverButton />
-        </div>
+        <WeatherWidget />
+        <CalendarPopoverButton />
       </div>
     </header>
   );
