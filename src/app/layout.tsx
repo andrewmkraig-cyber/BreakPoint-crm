@@ -40,7 +40,7 @@ export const metadata: Metadata = {
   // Ace logo from P3 / refreshed metadata without users having to
   // uninstall + reinstall by hand. Bump this when the manifest
   // (icons, theme, name) changes again.
-  manifest: "/manifest.json?v=2",
+  manifest: "/manifest.json?v=3",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
     ],
     apple: [
       { url: "/apple-touch-icon.png" },
-      { url: "/icons/icon-192.png", sizes: "192x192" },
+      { url: "/icons/icon-192.png?v=2", sizes: "192x192" },
     ],
   },
 };
