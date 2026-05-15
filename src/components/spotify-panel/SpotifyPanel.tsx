@@ -1923,7 +1923,22 @@ export function SpotifyPanel() {
             recentlyPlayed={recentlyPlayed}
             recentPlaylists={recentPlaylists}
             onSearch={() => goTo({ kind: "search" })}
-            onPlayTrack={(uri) => playTrackList([uri])}
+            onPlayTrack={(uri) => {
+              // Build a deduped URI queue from the visible Recently
+              // Played list and start at the clicked track. A one-track
+              // uris[] would leave Spotify's /next with nowhere to go,
+              // so end-of-track auto-skip would silently fail.
+              if (!recentlyPlayed) return;
+              const seen = new Set<string>();
+              const queue: string[] = [];
+              for (const t of recentlyPlayed) {
+                if (!t.uri || seen.has(t.uri)) continue;
+                seen.add(t.uri);
+                queue.push(t.uri);
+              }
+              if (queue.length === 0) return;
+              playUriQueue(queue, uri);
+            }}
             onOpenPlaylist={(id) => goTo({ kind: "playlist", id })}
           />
         ) : view.kind === "library" ? (
