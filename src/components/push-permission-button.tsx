@@ -30,6 +30,12 @@ export function PushPermissionButton() {
   // the UI lies that everything succeeded — the recruiter has no way
   // back to a Try-again affordance from that copy.
   const [errored, setErrored] = useState(false);
+  // Tracks whether the *server* has a live subscription row for this
+  // browser. Browser permission can be "granted" while the server has
+  // no row (the user clicked Disable, or never finished enabling).
+  // Drives the granted-state copy: "Enabled" + Disable when a row
+  // exists, "Enable notifications" otherwise.
+  const [hasSubscription, setHasSubscription] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -38,6 +44,15 @@ export function PushPermissionButton() {
       return;
     }
     setStatus(Notification.permission as Status);
+    // If permission is already granted on this device, check whether a
+    // pushManager subscription still exists — that's the closest
+    // browser-side signal that the server has a row.
+    if (Notification.permission === "granted") {
+      navigator.serviceWorker.ready
+        .then((reg) => reg.pushManager.getSubscription())
+        .then((sub) => setHasSubscription(!!sub))
+        .catch(() => setHasSubscription(false));
+    }
   }, []);
 
   async function enable() {
@@ -91,6 +106,7 @@ export function PushPermissionButton() {
         return;
       }
       toast.success("Notifications enabled.");
+      setHasSubscription(true);
       succeeded = true;
     } catch (err) {
       console.error("[push] enable failed", err);
@@ -99,6 +115,33 @@ export function PushPermissionButton() {
     } finally {
       setBusy(false);
       if (succeeded) setErrored(false);
+    }
+  }
+
+  async function disable() {
+    setBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        // Tell the server first so we delete the row even if the
+        // browser-side unsubscribe fails / hangs. Endpoint scopes the
+        // delete to the caller's userId so it's a safe no-op when the
+        // row's already gone.
+        await fetch("/api/push/unsubscribe", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ endpoint: subscription.endpoint }),
+        }).catch(() => {});
+        await subscription.unsubscribe().catch(() => {});
+      }
+      setHasSubscription(false);
+      toast.success("Notifications disabled on this device.");
+    } catch (err) {
+      console.error("[push] disable failed", err);
+      toast.error("Couldn't disable notifications.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -128,11 +171,20 @@ export function PushPermissionButton() {
     );
   }
 
-  if (status === "granted") {
+  if (status === "granted" && hasSubscription) {
     return (
-      <p className="text-xs text-court-fg-muted">
-        Notifications are enabled on this device.
-      </p>
+      <div className="flex items-center gap-3">
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-court-accent-tint px-2 py-1 text-xs font-semibold text-court-accent-dark">
+          <span
+            aria-hidden="true"
+            className="inline-block h-1.5 w-1.5 rounded-full bg-court-accent"
+          />
+          Enabled
+        </span>
+        <Button variant="secondary" size="sm" onClick={disable} disabled={busy}>
+          {busy ? "Disabling…" : "Disable"}
+        </Button>
+      </div>
     );
   }
 
@@ -145,6 +197,9 @@ export function PushPermissionButton() {
     );
   }
 
+  // Either status === "default" OR status === "granted" but the server
+  // has no live subscription (user disabled, or never finished
+  // enabling). Both surface the same Enable affordance.
   return (
     <Button variant="primary" size="sm" onClick={enable} disabled={busy}>
       {busy ? "Enabling…" : "Enable notifications"}
