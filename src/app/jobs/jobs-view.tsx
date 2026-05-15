@@ -154,7 +154,7 @@ export function JobsView(props: JobsViewProps) {
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1080px] text-left text-sm">
             <DataTableHead>
@@ -169,7 +169,7 @@ export function JobsView(props: JobsViewProps) {
                 <DataTableHeaderCell align="right"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
               </tr>
             </DataTableHead>
-            <tbody className="divide-y divide-court-border-soft">
+            <tbody>
               {rows.length === 0 && !error && (
                 <tr>
                   <td colSpan={8} className="px-5 py-12 text-center text-sm text-court-fg-muted">
@@ -185,7 +185,7 @@ export function JobsView(props: JobsViewProps) {
               {rows.map((r) => (
                 <tr
                   key={r.id}
-                  className="cursor-pointer transition hover:bg-court-accent-tint/50"
+                  className="cursor-pointer border-b border-court-border/40 transition hover:bg-court-surface-subtle"
                   onClick={() => router.push(`/jobs/${r.slug}`)}
                 >
                   <td className="px-5 py-3 align-top font-medium text-court-fg">

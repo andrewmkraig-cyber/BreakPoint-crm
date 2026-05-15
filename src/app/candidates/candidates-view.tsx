@@ -297,7 +297,7 @@ export function CandidatesView({
 
       <div
         className={
-          "overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm transition " +
+          "overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm transition " +
           (isPending ? "opacity-60" : "")
         }
       >
@@ -325,7 +325,7 @@ export function CandidatesView({
               <DataTableHeaderCell align="center">Last Updated</DataTableHeaderCell>
             </tr>
           </DataTableHead>
-          <tbody className="divide-y divide-court-border-soft">
+          <tbody>
             {candidates.length === 0 && !error && (
               <tr>
                 <td colSpan={6} className="px-5 py-12 text-center text-sm text-court-fg-muted">
@@ -339,10 +339,10 @@ export function CandidatesView({
                 <tr
                   key={c.id}
                   className={
-                    "cursor-pointer transition " +
+                    "cursor-pointer border-b border-court-border/40 transition " +
                     (checked
                       ? "bg-court-accent-tint/60"
-                      : "hover:bg-court-accent-tint/40")
+                      : "hover:bg-court-surface-subtle")
                   }
                   onClick={() => router.push(`/candidates/${c.id}`)}
                 >
@@ -369,8 +369,8 @@ export function CandidatesView({
                   </td>
                   <td className="px-5 py-3 text-court-fg-muted">{c.title || "—"}</td>
                   <td className="px-5 py-3 text-court-fg-muted">{c.employer || "—"}</td>
-                  <td className="px-5 py-3 text-court-fg-muted">{c.location || "—"}</td>
-                  <td className="px-5 py-3 text-center text-court-fg-muted">
+                  <td className="px-5 py-3 text-xs text-court-fg-muted/70">{c.location || "—"}</td>
+                  <td className="px-5 py-3 text-center text-xs text-court-fg-muted/70">
                     {c.updatedAt ? new Date(c.updatedAt).toLocaleDateString() : "—"}
                   </td>
                 </tr>
