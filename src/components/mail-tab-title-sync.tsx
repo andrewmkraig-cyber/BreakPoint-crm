@@ -29,6 +29,18 @@ export function MailTabTitleSync() {
   const { unreadCount: phoneUnread } = usePhoneContext();
   useEffect(() => {
     const total = (mailUnread ?? 0) + (phoneUnread ?? 0);
+    // Diagnostic log so the next time the badge looks wrong we can
+    // see in DevTools which source is drifting (mail thread count vs
+    // phone thread count) without instrumenting upstream contexts.
+    // Cheap — fires only when either count changes.
+    console.log(
+      "[badge] mail unread:",
+      mailUnread,
+      "phone unread:",
+      phoneUnread,
+      "total:",
+      total,
+    );
     document.title = total > 0 ? `(${total}) ${BASE_TITLE}` : BASE_TITLE;
     // Badging API is best-effort: only fires on Chromium-family PWAs
     // and macOS Safari 16.4+. Other browsers silently no-op. Wrap in
