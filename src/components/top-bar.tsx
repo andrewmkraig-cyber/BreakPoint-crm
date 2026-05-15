@@ -17,18 +17,20 @@ export function TopBar() {
   const { open: youtubeOpen, toggle: toggleYouTube } = useYouTubePanel();
   const { open: spotifyOpen, toggle: toggleSpotify } = useSpotifyPanel();
 
-  // h-20 (80px) on the header — matches the sidebar's Ace/BreakPoint
-  // header so the topbar's bottom edge aligns with the sidebar
-  // header's bottom border on every page. Previously h-[72px] sat 8px
-  // above that line, making page titles (e.g. "Settings") read as
-  // floating higher than the sidebar wordmark.
+  // Desktop: h-20 (80px) icon row matches the sidebar header. Mobile:
+  // icon row collapses to h-14 (56px) chrome plus a full-width search
+  // line that wraps beneath via `order-last w-full` (single TopBarSearch
+  // instance — duplicating it would mount two debounced inputs, two
+  // dropdowns, two server actions in flight).
   return (
-    <header className="sticky top-0 z-30 flex h-20 items-center justify-between gap-4 bg-court-surface px-6">
+    <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 bg-court-surface px-4 pb-2 md:h-20 md:flex-nowrap md:gap-4 md:px-6 md:pb-0">
       {/* MobileNav appears only below md (where the desktop sidebar is
           hidden). Click opens a left drawer with the same nav groups
           the sidebar shows so the recruiter never loses access to nav
           on a phone or shrunk window. */}
-      <MobileNav />
+      <div className="flex h-14 items-center md:h-auto md:contents">
+        <MobileNav />
+      </div>
       {/* Page title (breadcrumb "Group › Page") sits to the left, search
           bar tucks immediately to its right, and the page's +Add action
           (when present) sits just to the right of search — that whole
@@ -39,7 +41,7 @@ export function TopBar() {
         <TopBarPageTitle />
       </div>
 
-      <div className="min-w-0 flex-1 md:flex-none md:w-56 lg:ml-8 lg:w-64 xl:ml-12 xl:w-80 2xl:w-96">
+      <div className="order-last w-full md:order-none md:w-56 md:flex-none lg:ml-8 lg:w-64 xl:ml-12 xl:w-80 2xl:w-96">
         <div className="rounded-full border border-court-border bg-court-surface transition focus-within:border-court-accent">
           <TopBarSearch />
         </div>
@@ -51,7 +53,7 @@ export function TopBar() {
 
       <div className="hidden flex-1 lg:block" />
 
-      <div className="flex items-center gap-3">
+      <div className="flex h-14 items-center gap-3 md:h-auto">
         <ComposeFAB />
         {/* Matches ComposeFAB's icon-button vocabulary: same h-10 w-10
             footprint, same rounded-full + brand border + brand-tint
@@ -86,7 +88,7 @@ export function TopBar() {
           aria-label="YouTube"
           aria-pressed={youtubeOpen}
           className={
-            "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+            "group relative hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 md:inline-flex " +
             (youtubeOpen
               ? "border-court-brand-dark bg-court-brand text-white hover:bg-court-brand-dark"
               : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/30")
@@ -133,7 +135,7 @@ export function TopBar() {
           aria-label="Spotify"
           aria-pressed={spotifyOpen}
           className={
-            "group relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 " +
+            "group relative hidden h-10 w-10 shrink-0 items-center justify-center rounded-full border shadow-sm transition-all duration-150 ease-out hover:-translate-y-0.5 focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-brand/40 md:inline-flex " +
             (spotifyOpen
               ? "border-court-brand-dark bg-court-brand text-white hover:bg-court-brand-dark"
               : "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/30")
@@ -147,9 +149,16 @@ export function TopBar() {
           </span>
           <Music className="h-4 w-4" />
         </button>
-        <span aria-hidden="true" className="mx-1 h-7 w-px bg-court-border" />
-        <WeatherWidget />
-        <CalendarPopoverButton />
+        <span
+          aria-hidden="true"
+          className="mx-1 hidden h-7 w-px bg-court-border md:inline-block"
+        />
+        <div className="hidden md:block">
+          <WeatherWidget />
+        </div>
+        <div className="hidden md:block">
+          <CalendarPopoverButton />
+        </div>
       </div>
     </header>
   );

@@ -96,7 +96,7 @@ export async function MyDashboard({
         <ClubhousePeriodTabs period={period} />
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-6">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 md:grid-cols-6">
         <KpiTile label="New Clients" value={newClientsCount} icon={Building2} live={newClientsCount > 0} />
         <KpiTile label="Agreements Signed" value={agreementsSignedCount} icon={FileSignature} live={agreementsSignedCount > 0} />
         <KpiTile label="Candidates Submitted" value={submitLogCount} icon={Send} live={submitLogCount > 0} />
@@ -116,11 +116,11 @@ export async function MyDashboard({
         currentQuarterLabel={currentQuarterLabel}
       />
 
-      <div className="grid grid-cols-5 items-stretch gap-5">
-        <div className="col-span-3 h-full">
+      <div className="grid grid-cols-1 items-stretch gap-5 md:grid-cols-5">
+        <div className="h-full md:col-span-3">
           <ThisWeekWidget orgId={org.id} selfPerson={selfPerson} />
         </div>
-        <div className="col-span-2 h-full">
+        <div className="h-full md:col-span-2">
           <NewsFeed />
         </div>
       </div>

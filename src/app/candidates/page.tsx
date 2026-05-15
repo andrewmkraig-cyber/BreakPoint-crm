@@ -1332,8 +1332,12 @@ export default function CandidatesPage() {
         // in the top-right corner so the wasted full-width chrome row
         // it used to share with the prev/next controls is gone.
         <div className="flex min-h-0 flex-1">
+          {/* Mobile (<md): list column hidden so the iframe section fills
+              the viewport — taps a candidate, gets the full profile
+              flush. The X / "All Candidates" buttons in the iframe pane
+              return them to the list. md+ keeps the resizable split. */}
           <section
-            className="flex shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface"
+            className="hidden shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface md:flex"
             style={{ width: listWidth }}
           >
             {/* List-column chrome strip. Used to be the LEFT segment
@@ -1501,7 +1505,7 @@ export default function CandidatesPage() {
             aria-label="Resize candidate list"
             onMouseDown={beginSplitDrag}
             className={
-              "group relative w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-court-accent/40 " +
+              "group relative hidden w-1 shrink-0 cursor-col-resize bg-transparent transition-colors hover:bg-court-accent/40 md:block " +
               (draggingSplit ? "bg-court-accent/60" : "")
             }
           >
