@@ -80,8 +80,11 @@ export type CityAggregate = {
   totalFee: number;
   leadClient: string | null;
   statusMix: Record<PlacementsDashboardBillingStatus, number>;
-  lat: number;
-  lng: number;
+  // Null when the city isn't in CITY_COORDS — the row still appears in
+  // the Revenue by City list but the map filters it out so we don't
+  // pin to a fallback centroid (a wrong-place pin reads as real data).
+  lat: number | null;
+  lng: number | null;
 };
 
 function normalizeKey(city: string): string {
@@ -156,9 +159,10 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
   buckets.forEach((bucket) => {
     const coord =
       coordIndex.get(bucket.key) ?? coordIndex.get(cityOnly(bucket.key));
-    // Unknown cities are dropped from the map rather than plotted at
-    // a centroid — a misplaced pin reads as real data.
-    if (!coord) return;
+    // Cities with no coord match are kept in the aggregate (so they
+    // appear in the Revenue by City list) but carry null lat/lng — the
+    // leaflet map filters those out at render time rather than pinning
+    // to a fallback centroid.
     let leadClient: string | null = null;
     let leadFee = -1;
     bucket.clientFees.forEach((fee, name) => {
@@ -174,8 +178,8 @@ export function aggregateByCity(rows: PlacementsDashboardRow[]): CityAggregate[]
       totalFee: bucket.totalFee,
       leadClient,
       statusMix: bucket.statusMix,
-      lat: coord.lat,
-      lng: coord.lng,
+      lat: coord?.lat ?? null,
+      lng: coord?.lng ?? null,
     });
   });
 

@@ -210,6 +210,9 @@ export type PlacementSnapshot = {
   expectedStartDate: string | null;
   placementNotes: string | null;
   startConfirmedAt: string | null;
+  // Recruiter-tagged lead source. Seeded into the placement modal's
+  // Lead Source dropdown and written back through recordPlacement.
+  candidateSource: string | null;
 };
 
 type Bucket = PipelineBucket;
@@ -341,6 +344,7 @@ export function PlacementActions({
           expectedStartDate: null,
           placementNotes: null,
           startConfirmedAt: null,
+          candidateSource: null,
         },
         interviews: [],
       };
@@ -1229,6 +1233,7 @@ function PlacementDialog({
   });
   const [hiringName, setHiringName] = useState(job.placement?.hiringManagerName ?? "");
   const [hiringEmail, setHiringEmail] = useState(job.placement?.hiringManagerEmail ?? "");
+  const [leadSource, setLeadSource] = useState(job.placement?.candidateSource ?? "");
   const [startDate, setStartDate] = useState(
     job.placement?.expectedStartDate
       ? job.placement.expectedStartDate.slice(0, 10)
@@ -1343,6 +1348,7 @@ function PlacementDialog({
         hiringManagerEmail: hiringEmail.trim(),
         expectedStartDate: startDate,
         notes: notes.trim(),
+        candidateSource: leadSource.trim() ? leadSource.trim() : null,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1425,6 +1431,31 @@ function PlacementDialog({
           </div>
         )}
       </div>
+
+      <label className="mt-4 block text-sm">
+        <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+          Lead Source
+        </span>
+        <select
+          value={leadSource}
+          onChange={(e) => setLeadSource(e.target.value)}
+          className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="">—</option>
+          {["Network", "Referral", "LinkedIn", "Inbound", "Other"].map((opt) => (
+            <option key={opt} value={opt}>
+              {opt}
+            </option>
+          ))}
+          {/* Preserve any legacy value (e.g. "Pin", "Apollo BD") that
+              isn't in the canonical option list so it shows selected
+              instead of silently reverting to "—". */}
+          {leadSource &&
+            !["Network", "Referral", "LinkedIn", "Inbound", "Other"].some(
+              (o) => o.toLowerCase() === leadSource.toLowerCase(),
+            ) && <option value={leadSource}>{leadSource}</option>}
+        </select>
+      </label>
 
       <div className="mt-4 flex items-end justify-between gap-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">

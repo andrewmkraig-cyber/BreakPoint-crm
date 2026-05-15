@@ -291,6 +291,10 @@ export type RecordPlacementInput = {
   hiringManagerEmail: string;
   expectedStartDate: string; // ISO
   notes: string;
+  // Recruiter-tagged lead source — drives the dashboard's By Source
+  // bucketing. Free-form so legacy values (Pin, Apollo BD) survive; the
+  // modal renders a fixed dropdown for the canonical channels.
+  candidateSource?: string | null;
 };
 
 export async function recordPlacement(input: RecordPlacementInput): Promise<Result<{ id: string; syncedToRf: boolean }>> {
@@ -339,6 +343,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
     // Contact" flow would fight the single fields for the mirrored slot.
     const mirroredName = primaryContact?.name || input.billingContactName || null;
     const mirroredEmail = primaryContact?.email || input.billingContactEmail || null;
+    const trimmedSource = input.candidateSource?.trim();
     const commonData = {
       acceptedSalary: input.acceptedSalary,
       acceptedCurrency: input.acceptedCurrency || "USD",
@@ -353,6 +358,7 @@ export async function recordPlacement(input: RecordPlacementInput): Promise<Resu
       hiringManagerEmail: input.hiringManagerEmail || null,
       expectedStartDate: new Date(input.expectedStartDate),
       placementNotes: input.notes || null,
+      candidateSource: trimmedSource ? trimmedSource : null,
       syncedToRf: sync.synced,
     };
     let row: { id: string; syncedToRf: boolean };

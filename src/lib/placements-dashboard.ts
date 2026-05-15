@@ -308,7 +308,7 @@ export async function getPlacementsDashboardData(
       feeTotal: p.feeTotal ?? null,
       feePercentage: p.feePercentage ?? null,
       placementNotes: p.placementNotes ?? null,
-      sourceChannel: deriveSourceChannel(p.source),
+      sourceChannel: deriveSourceChannel(p.candidateSource ?? p.source),
       baseSalary: p.acceptedSalary ?? null,
       offerAcceptedAt: p.placedAt,
       placementType,

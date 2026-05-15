@@ -63,10 +63,23 @@ type Props = {
   cities: CityAggregate[];
 };
 
+// Narrowed shape used inside the map render — guarantees lat/lng are
+// real numbers so the CircleMarker/bounds code below doesn't need
+// non-null casts. Unmappable cities (no CITY_COORDS entry) are kept in
+// the Revenue by City list upstream but filtered out here.
+type MappableCity = CityAggregate & { lat: number; lng: number };
+
 export function PlacementsLeafletMap({ cities }: Props) {
-  const maxFee = useMemo(
-    () => cities.reduce((max, c) => Math.max(max, c.totalFee), 0),
+  const mappable = useMemo<MappableCity[]>(
+    () =>
+      cities.filter(
+        (c): c is MappableCity => c.lat != null && c.lng != null,
+      ),
     [cities],
+  );
+  const maxFee = useMemo(
+    () => mappable.reduce((max, c) => Math.max(max, c.totalFee), 0),
+    [mappable],
   );
 
   // Lazy state so localStorage is read exactly once, before MapContainer
@@ -77,12 +90,12 @@ export function PlacementsLeafletMap({ cities }: Props) {
   const [savedView] = useState<SavedView | null>(() => readSavedView());
 
   const clusterBounds = useMemo<LatLngBoundsExpression | null>(() => {
-    if (cities.length === 0) return null;
+    if (mappable.length === 0) return null;
     let minLat = Infinity;
     let maxLat = -Infinity;
     let minLng = Infinity;
     let maxLng = -Infinity;
-    for (const c of cities) {
+    for (const c of mappable) {
       if (c.lat < minLat) minLat = c.lat;
       if (c.lat > maxLat) maxLat = c.lat;
       if (c.lng < minLng) minLng = c.lng;
@@ -98,7 +111,7 @@ export function PlacementsLeafletMap({ cities }: Props) {
       [minLat, minLng],
       [maxLat, maxLng],
     ];
-  }, [cities]);
+  }, [mappable]);
 
   // Saved view wins over cluster auto-fit which wins over the full-US
   // default. Once a user pans/zooms, the moveend handler persists their
@@ -130,7 +143,7 @@ export function PlacementsLeafletMap({ cities }: Props) {
 
       <MapViewPersistor />
 
-      {cities.map((city) => {
+      {mappable.map((city) => {
         const radius = bubbleRadius(city.totalFee, maxFee);
         const borderColor = STATUS_COLORS[dominantStatus(city.statusMix)];
         const feeLabel =
