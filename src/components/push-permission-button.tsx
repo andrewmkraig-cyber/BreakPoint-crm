@@ -12,14 +12,18 @@ type Status = "loading" | "unsupported" | "default" | "granted" | "denied";
 
 // URL-base64 → Uint8Array. Web Push wants applicationServerKey as a
 // byte array; the VAPID public key we expose is the URL-safe base64
-// string. Padded back to a 4-multiple before decode.
+// string (RFC 4648 §5: `-` and `_` instead of `+` and `/`, no padding).
+// Standard atob() only accepts canonical base64, so we re-pad and
+// flip the URL-safe chars back before decoding.
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  const out = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
-  return out;
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
 }
 
 export function PushPermissionButton() {
@@ -79,7 +83,14 @@ export function PushPermissionButton() {
   function enable() {
     setBusy(true);
     setErrored(false);
-    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    // Trim aggressively. The InvalidCharacterError that this codepath
+    // used to throw was almost always a Vercel env var with a trailing
+    // newline or wrapping quotes — atob() chokes on whitespace and on
+    // `"`, neither of which are base64 chars. Stripping them up front
+    // is cheaper than chasing it down in Vercel UI each redeploy.
+    const vapidKey = (process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? "")
+      .trim()
+      .replace(/^"|"$/g, "");
     const reg = registrationRef.current;
     if (!vapidKey) {
       toast.error("VAPID public key missing — push not configured.");
