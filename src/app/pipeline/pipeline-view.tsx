@@ -42,6 +42,7 @@ export type PlacementDetails = {
   invoicePaymentMethod: "CHECK" | "ACH" | "CREDIT" | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  cityOverride: string | null;
 };
 
 export type NextInterview = {
@@ -139,6 +140,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
       feePercentage: row.placement.feePercentage,
       placementNotes: row.placement.placementNotes,
       candidateSource: row.placement.candidateSource,
+      cityOverride: row.placement.cityOverride,
     });
     setDrawerOpen(true);
   }

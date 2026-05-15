@@ -20,6 +20,9 @@ export type UpdatePlacementInput = {
   feePercentage: number | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  // Free-form per-placement city override. Null clears the override
+  // so the dashboard falls back to client.location.city.
+  cityOverride: string | null;
 };
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -45,6 +48,7 @@ export async function updatePlacement(
 
     const trimmedNotes = input.placementNotes?.trim() ?? "";
     const trimmedSource = input.candidateSource?.trim() ?? "";
+    const trimmedCity = input.cityOverride?.trim() ?? "";
 
     await prisma.placement.update({
       where: { id: existing.id },
@@ -55,10 +59,15 @@ export async function updatePlacement(
         feePercentage: input.feePercentage,
         placementNotes: trimmedNotes ? trimmedNotes : null,
         candidateSource: trimmedSource ? trimmedSource : null,
+        cityOverride: trimmedCity ? trimmedCity : null,
       },
     });
 
     revalidatePath("/pipeline");
+    // /dashboard hosts the Placements tab with the map — needs busting
+    // so a cityOverride change shows up on the next render without a
+    // hard refresh.
+    revalidatePath("/dashboard");
     if (existing.candidateId) {
       revalidatePath(`/candidates/${existing.candidateId}`);
     }

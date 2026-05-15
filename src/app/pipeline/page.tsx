@@ -366,6 +366,7 @@ function toPlacementDetails(
     invoicePaymentMethod,
     placementNotes: p.placementNotes ?? null,
     candidateSource: p.candidateSource ?? null,
+    cityOverride: p.cityOverride ?? null,
   };
 }
 

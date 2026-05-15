@@ -52,6 +52,11 @@ export type PlacementsDashboardRow = {
   roleTitle: string | null;
   startDate: Date | null;
   city: string | null;
+  // Raw Placement.cityOverride (separate from `city` above, which
+  // falls back to client.location.city when the override is empty).
+  // The edit drawer seeds its City input from this so an empty drawer
+  // value means "clear the override" rather than "no client city set".
+  cityOverride: string | null;
   feeAmount: number | null;
   billingStatus: PlacementsDashboardBillingStatus;
   // Raw placement-side fields for the edit drawer (separate from
@@ -292,6 +297,7 @@ export async function getPlacementsDashboardData(
       roleTitle: p.offerTitle ?? p.job?.title ?? null,
       startDate: p.expectedStartDate,
       city: cityOverride ? cityOverride : fallbackCity,
+      cityOverride: cityOverride ? cityOverride : null,
       feeAmount: toDollars(invoice?.feeAmount ?? null) ?? (p.feeTotal != null ? p.feeTotal : null),
       billingStatus: deriveBillingStatus({
         startDate: p.expectedStartDate,

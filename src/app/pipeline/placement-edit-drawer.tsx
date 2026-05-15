@@ -25,6 +25,9 @@ export type PlacementDrawerContext = {
   feePercentage: number | null;
   placementNotes: string | null;
   candidateSource: string | null;
+  // Placement.cityOverride. Empty = fall back to client.location.city
+  // when the dashboard derives the per-placement city.
+  cityOverride: string | null;
 };
 
 // Lead source channels the desk uses. Stored as the display string so
@@ -71,6 +74,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
   const [feePct, setFeePct] = useState("");
   const [notes, setNotes] = useState("");
   const [source, setSource] = useState("");
+  const [city, setCity] = useState("");
 
   // Re-seed the form whenever a different placement is loaded into the
   // drawer (or the same one is re-opened after a close). Keying on
@@ -83,6 +87,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
     setFeePct(context.feePercentage != null ? String(context.feePercentage) : "");
     setNotes(context.placementNotes ?? "");
     setSource(context.candidateSource ?? "");
+    setCity(context.cityOverride ?? "");
   }, [context, open]);
 
   function handleSave() {
@@ -96,6 +101,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         feePercentage: parseNumberOrNull(feePct),
         placementNotes: notes,
         candidateSource: source.trim() ? source.trim() : null,
+        cityOverride: city.trim() ? city.trim() : null,
       });
       if (!res.ok) {
         toast.error("Couldn't save changes", { description: res.error });
@@ -112,7 +118,10 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
       <div
         onClick={onClose}
         className={cn(
-          "fixed inset-0 z-40 bg-black/30 backdrop-blur-[2px] transition-opacity",
+          // Leaflet renders panes up to z-index 700, so the drawer
+          // overlay + aside live above that band on z-[1100] / z-[1101]
+          // (matching the modal precedent in candidates-view.tsx).
+          "fixed inset-0 z-[1100] bg-black/30 backdrop-blur-[2px] transition-opacity",
           open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
         aria-hidden="true"
@@ -121,7 +130,7 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
         role="dialog"
         aria-label="Edit placement"
         className={cn(
-          "fixed inset-y-0 right-0 z-50 flex w-full max-w-[520px] flex-col border-l border-court-border bg-court-surface shadow-2xl transition-transform duration-200",
+          "fixed inset-y-0 right-0 z-[1101] flex w-full max-w-[520px] flex-col border-l border-court-border bg-court-surface shadow-2xl transition-transform duration-200",
           open ? "translate-x-0" : "translate-x-full",
         )}
       >
@@ -206,6 +215,17 @@ export function PlacementEditDrawer({ open, context, onClose }: Props) {
                 className={INPUT_CLS}
               />
             </div>
+          </div>
+
+          <div>
+            <FieldLabel>City</FieldLabel>
+            <input
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              placeholder="e.g. Pittsburgh — leave blank to use client's city"
+              className={INPUT_CLS}
+            />
           </div>
 
           <div>

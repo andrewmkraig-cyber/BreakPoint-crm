@@ -62,6 +62,7 @@ function toLedgerRows(rows: PlacementsDashboardRow[]): LedgerRow[] {
     clientIndustry: r.clientIndustry,
     roleTitle: r.roleTitle,
     city: r.city,
+    cityOverride: r.cityOverride,
     startDateLabel: r.startDate
       ? r.startDate.toISOString().slice(0, 10)
       : null,

@@ -22,6 +22,10 @@ export type LedgerRow = {
   clientIndustry: string | null;
   roleTitle: string | null;
   city: string | null;
+  // Raw Placement.cityOverride — what the drawer's City input should
+  // seed from. Distinct from `city` which already resolves the
+  // override → client-location fallback for display.
+  cityOverride: string | null;
   startDateLabel: string | null;
   // ISO string used to seed the drawer's date input. Separate from the
   // YYYY-MM-DD label above so the ledger column stays formatted while
@@ -85,6 +89,7 @@ function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
     feePercentage: row.feePercentage,
     placementNotes: row.placementNotes,
     candidateSource: row.candidateSource,
+    cityOverride: row.cityOverride,
   };
 }
 
