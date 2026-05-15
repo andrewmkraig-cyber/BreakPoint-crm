@@ -48,6 +48,7 @@ Live at: ace.breakpointtalent.com
 - **Notification read state for Quo: reading in Quo doesn't clear the Ace badge.** Quo doesn't ship a read-receipt webhook event so Ace can't observe when a thread is read on the Quo side; the unread count stays inflated until the recruiter opens the thread inside Ace. Workaround would be either a periodic Quo API poll (rate-limit risk) or a manual "Mark as read in Quo" affordance.
 - **Settings nav on mobile is functional but tall.** Currently stacks 11 category links vertically above the panel content. Horizontal scrollable pill strip — same pattern as the `MobileBucketTabs` on /phone — queued.
 - **`+ New` menu missing Event + Reminder entries.** ComposeFAB currently doesn't surface New Event / New Reminder; both flows exist via the calendar drawer but need to be reachable from the global add affordance. Queued.
+- **Unread badge count showing incorrect total.** Sidebar / topbar unread badge surfaces a number that doesn't match the actual unread thread count — likely an off-by-one or stale-cache issue in the count source. Needs an audit pass against the Gmail unread query + Quo unread count + reminder due count to identify which input is drifting. Queued.
 
 ## Next Task
 Next session opens with the **design overhaul** (one-off polish pass) before resuming the numbered priority list. Priority order after that:
