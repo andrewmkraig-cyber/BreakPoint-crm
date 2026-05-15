@@ -1,33 +1,32 @@
 # Ace Roadmap
-Last updated: 2026-05-14 · Ace 47.0
+Last updated: 2026-05-15 · Ace 48.0
 
 ## Active Build Sequence
 In this order. Each item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
-1. **BD history on approval cards + fresh contact suggestions** — opens Ace 48. Approval cards on `/bd/launch` show prior outreach count + contacts already tried per company before Andrew approves, so the same target doesn't get re-enrolled into the same sequence. Follow-up: fresh contact suggestions on the same card (titles Apollo found that haven't been touched in the last N days), so the recruiter can see what's actually new vs recycled before clicking Approve & Enroll.
-2. **Public Jobs Board — BreakPoint Website Sync** — Ace is source of truth. Website reads sanitized public API only. Client names NEVER exposed. Poster always BreakPoint Talent. Public API at `ace.breakpointtalent.com/api/public/jobs`. Safe fields only: title, location, employment type, salary range, public description, posted date, apply URL. Never returns client name, logo, contacts, fees, internal notes, placement data. New Job fields: `publishedToWebsite`, `publishedAt`, `publicSlug`, `publicTitle`, `publicDescription`, `publicLocation`, `publicSalaryRange`, `publicEmploymentType`, `publicApplyUrl`. Phase 2 later: applications flow back into Ace, source tagged "BreakPoint Website".
-3. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points before the 2026-05-15 launch.
-4. **Client Preference Learning + Personal Trainer Suggestions** — capture per-client signal (placed candidates' patterns, rejection reasons, must-haves vs nice-to-haves) and surface it as Personal Trainer rule suggestions Andrew can accept / edit / dismiss inside Settings > Personal Trainer.
+1. **PWA — mobile layout pass + service worker + push notifications mirroring Gmail and Quo** — opens Ace 49. Manifest + install prompt + responsive layout pass on every primary surface (Mail, Phone, /candidates, /clients, /jobs, /pipeline, dashboard). Service worker for offline shell + asset caching. Web push wired to the same notification triggers that already drive the in-app mail/text toasts (mail receive, SMS receive, call completed) so push delivery mirrors Gmail and Quo and the recruiter doesn't need both phones open.
+2. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points.
+3. **Template send-as-draft** — when sending from a template, write to Gmail Drafts instead of Send so Andrew can eyeball before launch. Two prompts already drafted in the Ace 47.0 session, paste-ready.
+4. **Public Jobs Board — BreakPoint Website Sync** — Ace is source of truth. Website reads sanitized public API only. Client names NEVER exposed. Poster always BreakPoint Talent. Public API at `ace.breakpointtalent.com/api/public/jobs`. Safe fields only: title, location, employment type, salary range, public description, posted date, apply URL. Never returns client name, logo, contacts, fees, internal notes, placement data. New Job fields: `publishedToWebsite`, `publishedAt`, `publicSlug`, `publicTitle`, `publicDescription`, `publicLocation`, `publicSalaryRange`, `publicEmploymentType`, `publicApplyUrl`. Phase 2 later: applications flow back into Ace, source tagged "BreakPoint Website".
+5. **Client Preference Learning + Personal Trainer Suggestions** — capture per-client signal (placed candidates' patterns, rejection reasons, must-haves vs nice-to-haves) and surface it as Personal Trainer rule suggestions Andrew can accept / edit / dismiss inside Settings > Personal Trainer.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
-- **Template send-as-draft** — two prompts already written in Ace 47.0 session, paste-ready.
 - **Tighter applied-jobs strip** — PlacementActionsIsland refactor required first; needs its own scoped prompt.
 - **Skills/keywords field on Job Description tab** — feeds Find Matches scoring and Boolean search. Add to the Boolean search prompt when that ships.
 - **JD/email markdown architecture verification** — `[Job Description]` merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
 - **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
 - **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
-- **Quiet Clients tab** — clients past 21-day threshold, tiered 14-30/30-60/60+, optional Claude summary.
 - **Mercury + QuickBooks integration follow-through** — Mercury feed is live for the Finances module as of Ace 46; QuickBooks sync + variable-cost categorization still pending.
 
 ## Non-Urgent
 Build soon, lower priority than the active sequence above.
 
-- **PWA conversion** — manifest, service worker, push notifications.
 - **APRO / job order worksheet** — structured intake form.
 - **Invite flow in Settings** — reuses OrganizationMembership; invite + role chip + revoke.
-- **Quo setup wizard** — guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
+- **Quo setup wizard** (future) — guided Settings flow to connect Quo, configure webhook URL, verify inbound SMS/call routing, confirm transcription is live.
+- **LinkedIn import via RapidAPI** (future) — backfill candidate profiles from a LinkedIn URL via a RapidAPI scraper provider. Lands once the Apollo enrichment path stabilizes and we know what fields actually need to come from LinkedIn vs Apollo.
 - **Slack sidebar panel**.
 - **DocuSign auto-import** — ~2-3 hr via DocuSign Connect webhook.
 - **Invoicing + QuickBooks + Mercury** — invoicing workflow, QuickBooks sync, Mercury account integration.
@@ -86,6 +85,21 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 48.0 BD approval cards + settings polish + Quiet tab + Client Quo + JSearch fallback (May 15, 2026)
+
+Closes the BD-approval-card + BD-settings cleanup items from the Ace 47 active sequence and lands the Client Quo tagging + Quiet Clients tab + JSearch fallback work scoped during the session.
+
+- **BD approval cards** — prior outreach count per company surfaces on each `/bd/launch` approval row so recycled targets are obvious before approve. Fresh contact suggestions render inline with remove/swap affordances so Andrew can drop a Partner already hit and swap in someone untouched without leaving the queue.
+- **BD settings polish** — Sending Domains reputation bar replaced with real Apollo mailbox data (`/v1/email_accounts` lookup). Verticals & Saved Searches `SavedSearchCriteria` simplified from 7 fields to 2 (apolloSequenceId + locationOverride). Contact Targeting now editable via new `BdContactTargeting` table (3 tiers + max per firm) with the hardcoded defaults as fallback. Contact-Targeting tag-input click-to-delete bug fixed (whitespace clicks no longer drop tags; only the X removes). Open in Apollo URL fix. Test Connection button removed from Apollo Integration (ByteString-on-smart-dash error was confusing). Apollo contact priority rewrite (Primary / Small-firm fallback / Practice-specific tiers with title-keyword exclusion).
+- **Reply routing — Prompt to create client on positive reply.** Auto-create candidate toggle replaced. New `BdOrgConfig.replyPromptCreateClient` (default ON) drives an inline banner on mail threads carrying the "BD" Gmail label. Yes creates a Client with Apollo enrichment (company name + extra contacts) + stamps GmailThreadTag.clientId. Skip records a `BdReplyPromptDismissal` row so the prompt only shows once per thread. `MailThreadDetail.labelIds` propagates so the client detects BD without an extra Gmail call.
+- **Client Signal CLIENT_MONITOR scan + JSearch fallback** — `syncClientSignals` runs alongside the discovery cron and queries TheirStack for every Client domain, surfacing existing-client postings before competitors do. New `src/lib/bd/jsearch-provider.ts` queries JSearch via RapidAPI when TheirStack misses a client domain; filters returned rows to ones whose `employer_website` / `job_apply_link` host matches. Upserts under the same `CLIENT_MONITOR` source so the UI badge stays unified. `JSEARCH_API_KEY` env added to Vercel.
+- **Quiet Clients tab on /clients** — third tab between Active and Inactive. Quiet = active client with prior ActivityLog history whose most-recent entry is past 21 days. Brand-new clients with zero ActivityLog rows are excluded (no history = no signal that the client has gone quiet). Sub-tier chips: 14–30 / 30–60 / 60+ days quiet. Server reads cover both Client cuid and stringified legacyRfId targetId conventions.
+- **Client logo on profile page header** — profile now uses the domain-based ClientLogo variant (Google favicons + initials fallback) instead of the Clearbit-only variant that depended on `logoUrl` being backfilled. Older clients without a stored logoUrl now show a real logo.
+- **Saved search renamed in DB** — "Public Accounting - Tax Partners - Ohio" → "Public Accounting - Nationwide" via `scripts/rename-public-accounting-savedsearch.ts` (1 row updated).
+- **Client Quo call + SMS tagging** — Quo webhook stamps `CallLog.clientId` / `SmsMessage.clientId` at write-time by matching toNumber/fromNumber against `Contact.phoneNumbers` (new `src/lib/quo-contact-match.ts`). `/api/sms` GET supports `?clientId=` mirroring `/api/calls`. `<TextingExchanges>` accepts a discriminated `candidateId | clientId` prop. Client profile Activity tab gains a "Calls & SMS" section with both CallLogs and TextingExchanges scoped to clientId. One-shot `scripts/backfill-quo-clientid.ts` stamped 2 historical CallLog rows + 1 SmsMessage row from the existing 7-number Contact phone index.
+- **Green preview bar compact fix** — `/bd/launch` inline preview chip sizes to content (inline-flex / w-fit) instead of stretching the section width.
+- **Vercel CLI bumped** 51.5.0 → 54.0.0.
 
 ## Completed - Ace 47.0 BD Engine Phase 4 + Phase 5 + Client Signal + Clearbit logos + BD header polish (May 14, 2026)
 
