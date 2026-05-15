@@ -79,9 +79,15 @@ export async function MyDashboard({
 
   const billedThisQuarterUsd = invoiceSummary.billedThisQuarterCents / 100;
   const cashCollectedUsd = invoiceSummary.collectedThisQuarterCents / 100;
-  const outstandingUsd = invoiceSummary.outstandingCents / 100;
-  const outstandingCount = invoiceSummary.outstandingCount;
-  const billedCount = invoiceSummary.billedThisQuarterCount;
+  // Outstanding on the Clubhouse view is "money earned but not yet
+  // collected" — fold uninvoiced placements (locked fee, no invoice
+  // yet) in with SENT invoices so today's placement shows up the
+  // instant it's recorded instead of waiting on the invoice flow.
+  const outstandingUsd =
+    (invoiceSummary.outstandingCents + invoiceSummary.pendingBillingCents) / 100;
+  const outstandingCount =
+    invoiceSummary.outstandingCount + invoiceSummary.pendingBillingCount;
+  const collectedCount = invoiceSummary.collectedThisQuarterCount;
 
   const Q2_GOAL_USD = 125_000;
   const q2RevenuePct = Q2_GOAL_USD > 0 ? (billedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
@@ -110,7 +116,7 @@ export async function MyDashboard({
         cashCollectedUsd={cashCollectedUsd}
         outstandingUsd={outstandingUsd}
         outstandingCount={outstandingCount}
-        billedCount={billedCount}
+        collectedCount={collectedCount}
         goalUsd={Q2_GOAL_USD}
         goalPct={q2RevenuePct}
         currentQuarterLabel={currentQuarterLabel}

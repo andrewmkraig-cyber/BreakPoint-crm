@@ -23,7 +23,7 @@ export function FinancialStrip({
   cashCollectedUsd,
   outstandingUsd,
   outstandingCount,
-  billedCount,
+  collectedCount,
   goalUsd,
   goalPct,
   currentQuarterLabel,
@@ -32,7 +32,7 @@ export function FinancialStrip({
   cashCollectedUsd: number;
   outstandingUsd: number;
   outstandingCount: number;
-  billedCount: number;
+  collectedCount: number;
   goalUsd: number;
   goalPct: number;
   currentQuarterLabel: string;
@@ -44,18 +44,16 @@ export function FinancialStrip({
   const [period, setPeriod] = useState<PeriodKey>("current");
   const clampedPct = Math.max(0, Math.min(100, goalPct));
 
-  const collectedPct =
-    billedThisQuarterUsd > 0
-      ? Math.round((cashCollectedUsd / billedThisQuarterUsd) * 100)
-      : 0;
   const revenueMeta =
-    billedCount > 0
-      ? `${billedCount} placement${billedCount === 1 ? "" : "s"} · ${collectedPct}% collected`
-      : "No placements yet";
+    collectedCount > 0
+      ? `${collectedCount} collected`
+      : "No collections yet";
+  // Outstanding now mixes SENT invoices and uninvoiced placements, so
+  // "open invoices" is too narrow — drop to a generic "open" count.
   const outstandingMeta =
     outstandingCount > 0
-      ? `${outstandingCount} open invoice${outstandingCount === 1 ? "" : "s"}`
-      : "No open invoices";
+      ? `${outstandingCount} open`
+      : "No open billing";
   const remainingUsd = Math.max(0, goalUsd - billedThisQuarterUsd);
 
   return (
@@ -78,12 +76,12 @@ export function FinancialStrip({
       <div className="mt-2.5 grid grid-cols-1 items-center gap-5 sm:grid-cols-[1fr_1fr_1.6fr] sm:gap-7">
         <Stat
           label="Revenue"
-          value={formatCompactUsd(billedThisQuarterUsd)}
+          value={formatCompactUsd(cashCollectedUsd)}
           meta={revenueMeta}
           onClick={() =>
             setDrilldown({
-              query: { kind: "billed_revenue" },
-              title: "Billed This Quarter",
+              query: { kind: "cash_collected" },
+              title: "Collected This Quarter",
             })
           }
         />

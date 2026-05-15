@@ -355,6 +355,16 @@ export type InvoiceSummary = {
   billedThisQuarterCents: number;
   billedThisQuarterCount: number;
   collectedThisQuarterCents: number;
+  collectedThisQuarterCount: number;
+  // Placements with a locked fee (stage = pending_start | hired,
+  // feeTotal > 0) that don't have an invoice row yet. Surfaced
+  // alongside SENT invoices in the Clubhouse Billing Tower so a
+  // freshly-recorded placement isn't invisible until the invoice
+  // flow runs. Kept as separate fields (rather than rolled into
+  // outstandingCents) so the Finances page's invoice-focused KPIs
+  // stay strictly invoice-driven.
+  pendingBillingCents: number;
+  pendingBillingCount: number;
   draftCount: number;
 };
 
@@ -377,33 +387,43 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
   const now = new Date();
   const { start: qStart, end: qEnd } = quarterRange(now);
 
-  const [outstanding, overdue, billedQ, collectedQ, draftCount] = await Promise.all([
-    prisma.invoice.findMany({
-      where: { organizationId, status: "SENT" },
-      select: { feeAmount: true },
-    }),
-    prisma.invoice.findMany({
-      where: { organizationId, status: "SENT", dueDate: { lt: now } },
-      select: { feeAmount: true },
-    }),
-    prisma.invoice.findMany({
-      where: {
-        organizationId,
-        status: { in: ["SENT", "PAID"] },
-        sentAt: { gte: qStart, lt: qEnd },
-      },
-      select: { feeAmount: true },
-    }),
-    prisma.invoice.findMany({
-      where: {
-        organizationId,
-        status: "PAID",
-        paidAt: { gte: qStart, lt: qEnd },
-      },
-      select: { feeAmount: true },
-    }),
-    prisma.invoice.count({ where: { organizationId, status: "DRAFT" } }),
-  ]);
+  const [outstanding, overdue, billedQ, collectedQ, draftCount, uninvoicedPlacements] =
+    await Promise.all([
+      prisma.invoice.findMany({
+        where: { organizationId, status: "SENT" },
+        select: { feeAmount: true },
+      }),
+      prisma.invoice.findMany({
+        where: { organizationId, status: "SENT", dueDate: { lt: now } },
+        select: { feeAmount: true },
+      }),
+      prisma.invoice.findMany({
+        where: {
+          organizationId,
+          status: { in: ["SENT", "PAID"] },
+          sentAt: { gte: qStart, lt: qEnd },
+        },
+        select: { feeAmount: true },
+      }),
+      prisma.invoice.findMany({
+        where: {
+          organizationId,
+          status: "PAID",
+          paidAt: { gte: qStart, lt: qEnd },
+        },
+        select: { feeAmount: true },
+      }),
+      prisma.invoice.count({ where: { organizationId, status: "DRAFT" } }),
+      prisma.placement.findMany({
+        where: {
+          organizationId,
+          stage: { in: ["pending_start", "hired"] },
+          feeTotal: { gt: 0 },
+          invoices: { none: {} },
+        },
+        select: { feeTotal: true },
+      }),
+    ]);
 
   return {
     outstandingCents: outstanding.reduce((s, r) => s + toCents(r.feeAmount), 0),
@@ -413,6 +433,15 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
     billedThisQuarterCents: billedQ.reduce((s, r) => s + toCents(r.feeAmount), 0),
     billedThisQuarterCount: billedQ.length,
     collectedThisQuarterCents: collectedQ.reduce((s, r) => s + toCents(r.feeAmount), 0),
+    collectedThisQuarterCount: collectedQ.length,
+    // feeTotal is whole dollars (per the Placement schema convention,
+    // mirroring offerSalary). Multiply by 100 to align with the cents-
+    // based fields above.
+    pendingBillingCents: uninvoicedPlacements.reduce(
+      (s, p) => s + (p.feeTotal ?? 0) * 100,
+      0,
+    ),
+    pendingBillingCount: uninvoicedPlacements.length,
     draftCount,
   };
 }
