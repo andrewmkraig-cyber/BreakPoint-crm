@@ -106,7 +106,7 @@ export function WordOfDayCard() {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-haspopup="dialog"
-        className="flex w-full items-center gap-2 rounded-xl bg-court-surface-subtle px-3 py-2 text-xs font-medium text-court-fg-muted transition hover:text-court-fg"
+        className="flex w-full items-center gap-2 rounded-xl bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800 transition hover:bg-sky-100 hover:text-sky-900 dark:bg-sky-950/40 dark:text-sky-200 dark:hover:bg-sky-950/60"
       >
         <span aria-hidden="true" className="text-[14px] leading-none">📖</span>
         <span className="truncate">Word of the Day</span>
