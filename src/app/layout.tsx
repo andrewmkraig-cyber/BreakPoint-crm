@@ -1,10 +1,12 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Outfit, Inter } from "next/font/google";
 import { getServerSession } from "next-auth";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { AppShell } from "@/components/app-shell";
 import { ReminderToastProvider } from "@/components/reminder-toast-provider";
+import { SwRegister } from "@/components/sw-register";
+import { PwaInstallPrompt } from "@/components/pwa-install-prompt";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getUnreadMailCount } from "@/lib/gmail";
@@ -34,6 +36,12 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Ace · BreakPoint Talent",
   description: "Ace — BreakPoint Talent's internal recruiting CRM",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Ace",
+  },
   icons: {
     icon: [
       { url: "/favicon.ico" },
@@ -41,8 +49,16 @@ export const metadata: Metadata = {
       { url: "/favicon-32.png", sizes: "32x32", type: "image/png" },
       { url: "/favicon-16.png", sizes: "16x16", type: "image/png" },
     ],
-    apple: "/apple-touch-icon.png",
+    apple: [
+      { url: "/apple-touch-icon.png" },
+      { url: "/icons/icon-192.png", sizes: "192x192" },
+    ],
   },
+};
+
+// Next 14 moved themeColor from `metadata` to the `viewport` export.
+export const viewport: Viewport = {
+  themeColor: "#5A9642",
 };
 
 export default async function RootLayout({
@@ -84,6 +100,8 @@ export default async function RootLayout({
             <ReminderToastProvider />
           </CourtModeProvider>
         </Providers>
+        <SwRegister />
+        <PwaInstallPrompt />
       </body>
     </html>
   );
