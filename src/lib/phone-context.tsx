@@ -63,10 +63,18 @@ export function PhoneProvider({ children }: { children: ReactNode }) {
     function onThreadRead() {
       void refreshUnread();
     }
+    // Push-arrival fast path: sw.js relays PUSH_RECEIVED through
+    // MailTabTitleSync as ace:refresh-unread so the phone badge bumps
+    // up on the same tick as the OS notification, not 30s later.
+    function onRefresh() {
+      void refreshUnread();
+    }
     window.addEventListener("ace:phone-thread-read", onThreadRead);
+    window.addEventListener("ace:refresh-unread", onRefresh);
     return () => {
       window.clearInterval(id);
       window.removeEventListener("ace:phone-thread-read", onThreadRead);
+      window.removeEventListener("ace:refresh-unread", onRefresh);
     };
   }, [refreshUnread]);
 

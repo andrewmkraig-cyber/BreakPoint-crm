@@ -41,6 +41,21 @@ export function MailTabTitleSync() {
       void nav.setAppBadge(0).catch(() => {});
     }
   }, []);
+  // Bridge from sw.js: when a push lands, the SW fans out a
+  // PUSH_RECEIVED message to every open Ace window. Rebroadcast it as
+  // a window event so MailProvider + PhoneProvider can re-fetch
+  // immediately instead of waiting for the next 30s poll.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const handler = (event: MessageEvent) => {
+      if (event.data?.type === "PUSH_RECEIVED") {
+        window.dispatchEvent(new Event("ace:refresh-unread"));
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", handler);
+    return () =>
+      navigator.serviceWorker.removeEventListener("message", handler);
+  }, []);
   useEffect(() => {
     const total = (mailUnread ?? 0) + (phoneUnread ?? 0);
     // Diagnostic log so the next time the badge looks wrong we can

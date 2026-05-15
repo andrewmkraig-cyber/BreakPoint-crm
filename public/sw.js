@@ -97,19 +97,34 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     self.clients
       .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clients) => {
+      .then(async (clients) => {
         const aceOpen = clients.some(
           (c) =>
             c.url.includes(self.location.origin) &&
             c.visibilityState === "visible",
         );
-        if (aceOpen) return;
-        return self.registration.showNotification(data.title, {
-          body: data.body,
-          icon: "/icons/icon-192.png",
-          badge: "/icons/icon-192.png",
-          data: { url: data.url || "/" },
-          tag: data.tag,
+        if (!aceOpen) {
+          await self.registration.showNotification(data.title, {
+            body: data.body,
+            icon: "/icons/icon-192.png",
+            badge: "/icons/icon-192.png",
+            data: { url: data.url || "/" },
+            tag: data.tag,
+          });
+        }
+        // Update badge count via badging API if supported. When Ace is
+        // closed there's no client to call setAppBadge, so the SW does
+        // it from here — otherwise the home-screen dot only appears
+        // after the user opens Ace and the 30s poll fires.
+        if ("setAppBadge" in self.navigator) {
+          self.navigator.setAppBadge().catch(() => {});
+        }
+        // Also tell any open Ace windows (even backgrounded ones) to
+        // refresh their unread counts immediately instead of waiting
+        // for the next 30s poll.
+        const windows = await self.clients.matchAll({ type: "window" });
+        windows.forEach((client) => {
+          client.postMessage({ type: "PUSH_RECEIVED" });
         });
       }),
   );

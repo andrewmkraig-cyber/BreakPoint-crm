@@ -161,7 +161,17 @@ export function MailProvider({
     const id = window.setInterval(() => {
       void refreshUnread();
     }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(id);
+    // Push-arrival fast path: when sw.js receives a push, MailTabTitleSync
+    // dispatches ace:refresh-unread so the badge + toast fire on the
+    // same tick instead of lagging up to 30s behind the OS notification.
+    function onRefresh() {
+      void refreshUnread();
+    }
+    window.addEventListener("ace:refresh-unread", onRefresh);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("ace:refresh-unread", onRefresh);
+    };
   }, [refreshUnread]);
 
   return (
