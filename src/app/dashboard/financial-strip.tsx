@@ -19,7 +19,6 @@ import { cn } from "@/lib/utils";
 type PeriodKey = "current" | "previous" | "ytd";
 
 export function FinancialStrip({
-  billedThisQuarterUsd,
   revenueUsd,
   revenueCount,
   outstandingUsd,
@@ -28,10 +27,11 @@ export function FinancialStrip({
   goalPct,
   currentQuarterLabel,
 }: {
-  billedThisQuarterUsd: number;
   // Revenue = PAID invoices this quarter + uninvoiced placements this
   // quarter (locked fee, no invoice attached). Read as "fees earned in
-  // the current period" rather than "cash in hand."
+  // the current period" rather than "cash in hand." Goal Progress's
+  // "to go" math reads off this same value so the three tiles stay
+  // numerically consistent.
   revenueUsd: number;
   revenueCount: number;
   outstandingUsd: number;
@@ -57,7 +57,7 @@ export function FinancialStrip({
     outstandingCount > 0
       ? `${outstandingCount} open`
       : "No open billing";
-  const remainingUsd = Math.max(0, goalUsd - billedThisQuarterUsd);
+  const remainingUsd = Math.max(0, goalUsd - revenueUsd);
 
   return (
     <section className="rounded-3xl bg-court-surface px-5 py-3.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">

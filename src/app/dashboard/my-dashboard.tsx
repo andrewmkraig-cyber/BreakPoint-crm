@@ -77,7 +77,6 @@ export async function MyDashboard({
     getInvoiceSummary(org.id),
   ]);
 
-  const billedThisQuarterUsd = invoiceSummary.billedThisQuarterCents / 100;
   // Revenue is "total fees earned this quarter" — PAID invoices this
   // quarter plus this-quarter uninvoiced placements (locked fee, no
   // invoice yet). An invoiced placement only ever shows up on the
@@ -99,7 +98,11 @@ export async function MyDashboard({
     invoiceSummary.outstandingCount + invoiceSummary.pendingBillingCount;
 
   const Q2_GOAL_USD = 125_000;
-  const q2RevenuePct = Q2_GOAL_USD > 0 ? (billedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
+  // Goal Progress denominator mirrors the Revenue tile so all three
+  // tiles read off the same "earned this quarter" figure — switching
+  // to billedThisQuarter (SENT + PAID) would let Goal % drift below
+  // Revenue the moment an uninvoiced placement lands.
+  const q2RevenuePct = Q2_GOAL_USD > 0 ? (revenueUsd / Q2_GOAL_USD) * 100 : 0;
   const currentQuarterLabel = `Q${Math.floor(now.getMonth() / 3) + 1} ${now.getFullYear()}`;
 
   return (
@@ -121,7 +124,6 @@ export async function MyDashboard({
       </div>
 
       <FinancialStrip
-        billedThisQuarterUsd={billedThisQuarterUsd}
         revenueUsd={revenueUsd}
         revenueCount={revenueCount}
         outstandingUsd={outstandingUsd}
