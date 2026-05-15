@@ -154,46 +154,47 @@ html[data-surface='clay'][data-theme='light'] {
   --brand:                           90 150  66; /* legacy alias */
 }
 
-/* CLAY COURT - DARK (Roland-Garros, toned) — palette v5 (button polish:
-   surfaces desaturated by ~5 channels of green/blue so the page reads as
-   warm charcoal instead of raw brown. Lightness held; only the muddy
-   brown saturation is dialed back) */
+/* CLAY COURT - DARK (Roland-Garros) — palette v6: neutral warm-charcoal
+   canvas on the Tailwind stone family. Replaces the v5 brown surfaces
+   that read muddy. Clay slam (peach #E89055) stays as the accent;
+   #5A9642 is reserved for --court-brand only. */
 html[data-surface='clay'][data-theme='dark'] {
-  --court-bg:                        28  22  19; /* #1C1613 */
-  --court-surface:                   46  33  26; /* #2E211A */
-  --court-surface-subtle:            38  27  21; /* #261B15 */
-  --court-border:                    64  46  38; /* #402E26 */
-  --court-border-soft:               55  38  28; /* #37261C */
-  --court-fg:                       248 235 220; /* #F8EBDC */
-  --court-fg-muted:                 212 191 174; /* #D4BFAE */
-  --court-fg-dim:                   184 152 130; /* #B89882 */
-  --court-accent:                   232 144  85; /* #E89055 — slam */
+  --court-bg:                        28  25  23; /* #1C1917 — warm charcoal */
+  --court-surface:                   39  36  29; /* #27241D */
+  --court-surface-subtle:            49  46  37; /* #312E25 */
+  --court-border:                    68  64  60; /* #44403C */
+  --court-border-soft:               41  37  36; /* #292524 — stone-800 softer than border */
+  --court-fg:                       250 250 249; /* #FAFAF9 */
+  --court-fg-muted:                 168 162 158; /* #A8A29E */
+  --court-fg-dim:                   120 113 108; /* #78716C — stone-500 */
+
+  --court-accent:                   232 144  85; /* #E89055 — clay peach slam */
   --court-accent-light:             245 168 120; /* #F5A878 */
   --court-accent-dark:              245 168 120; /* mirror of accent-light for hover/link compat */
   --court-accent-mid:               140 110  92; /* #8C6E5C */
   --court-accent-tint:               70  38  22; /* preserved — used for active-nav bg */
   --court-accent-border:            186 110  68; /* derived */
 
-  --court-sidebar-bg:                42  27  20; /* #2A1B14 */
-  --court-sidebar-border:            61  40  32; /* #3D2820 */
-  --court-sidebar-fg:               248 235 220; /* #F8EBDC */
-  --court-sidebar-fg-muted:         212 191 174; /* #D4BFAE */
-  --court-sidebar-fg-dim:           184 152 130; /* #B89882 */
-  --court-sidebar-icon:             212 191 174; /* #D4BFAE */
-  --court-sidebar-active-bg:        rgb(61 40 32); /* #3D2820 */
-  --court-sidebar-active-fg:        245 168 120; /* #F5A878 */
-  --court-sidebar-rail:             232 144  85; /* #E89055 */
+  --court-sidebar-bg:                39  36  29; /* #27241D — matches surface, neutral dark */
+  --court-sidebar-border:            68  64  60; /* #44403C */
+  --court-sidebar-fg:               250 250 249; /* #FAFAF9 */
+  --court-sidebar-fg-muted:         168 162 158; /* #A8A29E */
+  --court-sidebar-fg-dim:           120 113 108; /* #78716C */
+  --court-sidebar-icon:             168 162 158; /* #A8A29E */
+  --court-sidebar-active-bg:        rgb(68 64 60); /* #44403C */
+  --court-sidebar-active-fg:        245 168 120; /* #F5A878 — peach on active */
+  --court-sidebar-rail:             232 144  85; /* #E89055 — peach rail */
 
-  --court-brand:                    123 184  91; /* #7BB85B */
-  --court-brand-dark:               156 214 131; /* #9CD683 */
+  --court-brand:                     90 150  66; /* #5A9642 — brand reserved */
+  --court-brand-dark:                63 112  48; /* #3F7030 */
   --court-brand-tint:                31  42  24;
 
   --court-badge:                    rgba(232, 144, 85, 0.30); /* tinted accent peach */
   --court-badge-fg:                 245 168 120; /* #F5A878 */
   --court-badge-bg:                  42  27  58; /* preserved (unused) */
 
-  --brand:                          123 184  91;
-  --brand-light:                    156 214 131;
+  --brand:                           90 150  66;
+  --brand-light:                     63 112  48;
 }
 
 /* GRASS COURT - LIGHT (Wimbledon Pantone 349 C) — palette v5 */
@@ -232,35 +233,39 @@ html[data-surface='grass'][data-theme='light'] {
   --brand:                           90 150  66;
 }
 
-/* GRASS COURT - DARK (Wimbledon) — palette v5 */
+/* GRASS COURT - DARK (Wimbledon) — palette v6: neutral cool-charcoal
+   canvas on the Tailwind zinc family. Wimbledon dark green (#1F3A1F)
+   is now bound only to --court-sidebar-bg; the previous v5 leaked the
+   same green onto --court-bg / --court-surface so the whole page read
+   green. #5A9642 stays as an accent only via --court-brand. */
 html[data-surface='grass'][data-theme='dark'] {
-  --court-bg:                        12  20  16; /* #0C1410 */
-  --court-surface:                   17  40  28; /* #11281C */
-  --court-surface-subtle:            14  34  24; /* #0E2218 */
-  --court-border:                    26  58  40; /* #1A3A28 */
-  --court-border-soft:               22  51  34; /* #163322 */
-  --court-fg:                       240 245 238; /* #F0F5EE */
-  --court-fg-muted:                 168 192 176; /* #A8C0B0 */
-  --court-fg-dim:                   125 160 138; /* #7DA08A */
-  --court-accent-mid:                85 117 102; /* #557566 */
-  --court-accent:                   123 184  91; /* #7BB85B — brand green is the slam */
-  --court-accent-dark:              156 214 131; /* mirror of brand-light for hover/link compat */
-  --court-accent-tint:               28  58  32; /* preserved — used for active-nav bg */
-  --court-accent-border:             47 110  60; /* derived */
+  --court-bg:                        24  24  27; /* #18181B — neutral dark */
+  --court-surface:                   31  31  35; /* #1F1F23 */
+  --court-surface-subtle:            39  39  42; /* #27272A */
+  --court-border:                    63  63  70; /* #3F3F46 */
+  --court-border-soft:               49  49  55; /* derived softer */
+  --court-fg:                       250 250 250; /* #FAFAFA */
+  --court-fg-muted:                 161 161 170; /* #A1A1AA */
+  --court-fg-dim:                   113 113 122; /* #71717A — zinc-500 */
+  --court-accent-mid:               113 138 102; /* #71896A */
+  --court-accent:                    90 150  66; /* #5A9642 — brand-green accent */
+  --court-accent-dark:               63 112  48; /* #3F7030 */
+  --court-accent-tint:               39  60  37; /* derived deep wash for active-nav bg */
+  --court-accent-border:             90 150  66; /* #5A9642 */
 
-  --court-sidebar-bg:                17  40  28; /* #11281C */
-  --court-sidebar-border:            26  58  40; /* #1A3A28 */
-  --court-sidebar-fg:               240 245 238; /* #F0F5EE */
-  --court-sidebar-fg-muted:         168 192 176; /* #A8C0B0 */
-  --court-sidebar-fg-dim:           125 160 138; /* #7DA08A */
-  --court-sidebar-icon:             168 192 176; /* #A8C0B0 */
-  --court-sidebar-active-bg:        rgb(26 58 40); /* #1A3A28 */
-  --court-sidebar-active-fg:        156 214 131; /* #9CD683 */
-  --court-sidebar-rail:             123 184  91; /* #7BB85B */
+  --court-sidebar-bg:                31  58  31; /* #1F3A1F — Wimbledon dark green, sidebar only */
+  --court-sidebar-border:            24  46  24; /* derived darker */
+  --court-sidebar-fg:               255 255 255; /* #FFFFFF */
+  --court-sidebar-fg-muted:         200 221 208; /* #C8DDD0 */
+  --court-sidebar-fg-dim:           165 201 181; /* #A5C9B5 */
+  --court-sidebar-icon:             200 221 208; /* #C8DDD0 */
+  --court-sidebar-active-bg:        rgba(255, 255, 255, 0.10); /* translucent white wash */
+  --court-sidebar-active-fg:        255 255 255; /* #FFFFFF */
+  --court-sidebar-rail:              90 150  66; /* #5A9642 — brand rail */
 
-  --court-brand:                    123 184  91; /* #7BB85B */
-  --court-brand-dark:               156 214 131; /* #9CD683 */
-  --court-brand-tint:                31  42  24;
+  --court-brand:                     90 150  66; /* #5A9642 — accent only */
+  --court-brand-dark:                63 112  48; /* #3F7030 */
+  --court-brand-tint:                39  60  37; /* derived wash */
 
   --court-badge:                    rgb(79 45 127); /* #4F2D7F — Wimbledon trophy */
   --court-badge-fg:                 232 222 243; /* #E8DEF3 */
@@ -268,8 +273,8 @@ html[data-surface='grass'][data-theme='dark'] {
   --court-badge-light:              184 157 224; /* #B89DE0 — preserved */
   --court-badge-tint:               232 222 243; /* #E8DEF3 — preserved */
 
-  --brand:                          123 184  91;
-  --brand-light:                    156 214 131;
+  --brand:                           90 150  66;
+  --brand-light:                     63 112  48;
 }
 
 /* ============================================================
