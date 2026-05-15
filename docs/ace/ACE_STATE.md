@@ -1,22 +1,33 @@
 # ACE_STATE.md
-Last updated: 2026-05-14 · Ace 47.0
+Last updated: 2026-05-15 · Ace 48.0
 
 ## Current Status
-Current Version: Ace 47.0
-Last Shipped: 2026-05-14
+Current Version: Ace 48.0
+Last Shipped: 2026-05-15
 Live at: ace.breakpointtalent.com
 
-## What Shipped in Ace 46.1 (2026-05-14)
-- `src/lib/bd/apollo-enroll.ts` — `enrollCompaniesInApollo(runId, orgId)`. Reads `BDRun.discoveredPayload`, sums today's `enrolledCount` across all org BDRuns since ET midnight, caps at 75 contacts/day. Stub only — logs `[Apollo stub] Would enroll <company> into sequence ${APOLLO_SEQUENCE_ID}` (with title + URL) per company. Updates BDRun status to `COMPLETE` with `enrolledCount`, writes one `BDActivity { kind: ENROLL }` row. Returns `{ enrolled, capped }`.
-- `approveBDRun` in `src/app/bd/launch/bd-run-actions.ts` now sets `APPROVED`, then calls `enrollCompaniesInApollo`. Result includes `enrolled`/`capped`.
-- `src/app/api/webhooks/apollo/route.ts` — POST handler, no signature auth. Maps `email_opened/email_replied/email_bounced/unsubscribed` to BDActivityKind `OPEN/REPLY/BOUNCE/UNSUB`, writes one BDActivity row per event with `email`/`sequenceId`/`eventType` in metadata. Always returns 200, never throws.
-- vercel.json crons untouched (`news-feed @ 11:00 UTC`, `bd-discovery @ 10:00 UTC`).
+## What Shipped in Ace 48.0 (2026-05-15)
+- **BD settings — real Apollo mailbox data in Sending Domains.** Reputation bar (hardcoded `85` since Phase 3) is gone. New `src/lib/bd/apollo-email-accounts.ts` fetches `GET /api/v1/email_accounts` with `X-Api-Key: APOLLO_API_KEY` on the BD settings server render. Each `SendingDomain` row matches by domain part of the Apollo email and renders three real fields: Connected/Disconnected pill, Daily limit, Sent today. Silent degrade to "—" when the Apollo call fails or no key is configured; muted "Not found in Apollo" when no mailbox matches the row's domain.
+- **BD settings — simplified Verticals & Saved Searches.** `SavedSearchCriteria` stripped from 7 fields down to 2: `apolloSequenceId` + new optional `locationOverride` string (passed to TheirStack when set, blank = nationwide). Form drops Target Titles chip input, City/State/Radius location editor, Company Size min/max, Boolean Keywords textarea, and Min Posting Freshness dropdown. `coerceCriteria` silently ignores legacy JSON fields so existing saved searches load without breaking. Section description updated from "the morning Indeed scan" to "the morning TheirStack discovery run."
+- **BD settings — Apollo contact priority rewrite.** `src/lib/bd/apollo-contacts.ts` now classifies each search hit into three tiers: **Primary** (Firm Administrator, Practice Administrator, Director of Operations, COO, HR Director, Director of People, People Operations Manager, Recruiting Manager, Talent Acquisition Manager, Head of Talent Acquisition), **Small firm fallback** (Managing Partner, Executive Partner, Office Managing Partner, Owner, Shareholder, Principal), **Practice-specific** (Tax Partner, Tax Director, Tax Practice Leader, Audit Partner, Assurance Partner, CAS Partner, Client Accounting Services Director). Enforcement: max 4 contacts/firm; prefer primary first; small-firm fallback only when no primary returned; max 1 practice-specific. Excludes any title containing `staffing` / `staff agency` / `in-house` and exact matches for `Staff Accountant` / `Senior Accountant` / `Bookkeeper` / `Accounting Clerk`. `per_page` bumped from 5 to 25 to give the ranker more options.
+- **BD settings — Open in Apollo URL fix.** Apollo sequence link in `apollo-section.tsx` now renders `null` instead of a muted disabled span when `s.apolloId` is empty. URL format `app.apollo.io/#/emailer/sequences/{id}` was already correct from Phase 4.
+- **Reply routing reconfirmed.** Replies already flow into Ace Mail via Gmail sync; Ace identifies BD replies by the existing `BD` thread tag. No webhook rewiring needed — reply routing is fine as-is.
+- **Vercel CLI bumped** from `51.5.0` → `54.0.0` in `package.json` (standalone commit, no functional change).
 
-## Known Issues Carrying Into Ace 48
+## Known Issues Carrying Into Ace 49
 None carried forward.
 
 ## Next Task
-Next session opens Ace 48.0. First task: BD history on approval cards - show prior outreach count and contacts tried per company before approving. Then: fresh contact suggestions on approval cards, pre-launch hardening (Vercel Blob migration, S3 backup cron, Public Jobs Board, template send-as-draft).
+Next session opens Ace 49.0. Priority order:
+1. **Client Quo tagging** — auto-tag inbound Quo messages by matching sender phone/email to existing Client contacts so client conversations land in the right thread.
+2. **Vercel Blob migration** — move uploaded resumes / agreements / candidate files off local `/public/uploads` (which doesn't survive Vercel deploys) onto Vercel Blob storage with signed URLs.
+3. **S3 backup cron** — nightly Neon → S3 dump for disaster recovery before we open the door to real client data.
+4. **Template send-as-draft** — when sending from a template, write to Gmail Drafts instead of Send so Andrew can eyeball before launch.
+5. **Quo setup wizard** — first-run flow for Quo API key + default inbox selection + outbound number assignment, so new orgs aren't editing env vars.
+6. **Teams interviews** — Microsoft Teams meeting link generation on Interview create (currently Google Meet only).
+7. **Resizable split view** — drag-to-resize divider between the candidate list and the candidate detail pane on `/candidates`.
+8. **Invite flow polish** — finish the invite flow back-button preservation work started in Ace 35.x (forward-button consistency, prefilled venue/duration).
+9. **Bulk email to candidates** — multi-select on candidate list with a "Email selected" action that opens a composer with all addresses BCC'd.
 
 ## Summary — Ace 47.0
 Ace 47 ships the BD Engine Phase 4 + Phase 5 stack end-to-end. The desk now has a real outbound surface: TheirStack discovers public job postings every morning, the approval queue lets Andrew review what the cron found before any contact is touched, Apollo enriches + enrolls the approved companies into a sequence with a Claude-generated candidate-side summary, the TheirStack webhook handler verifies HMAC-SHA256 signatures, the BD engine can be paused with a one-toggle Active switch in Settings > BD, and the Client Signal surface now reads real TheirStack-routed client matches instead of an empty placeholder. Client logos auto-pull from Clearbit on client creation, BD page headers lose their subtitle paragraphs, and the visual-seed data inserted during the BD 3.x build is gone from Activity / Client Signals / Active Campaigns.
