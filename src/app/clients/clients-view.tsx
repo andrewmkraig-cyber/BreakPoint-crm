@@ -33,6 +33,21 @@ export type ClientCard = {
   offerCount: number;
   pendingStartCount: number;
   hiredCount: number;
+  // Set when the card has activity history. Computed server-side from
+  // ActivityLog's most recent timestamp (under either the cuid or the
+  // stringified legacyRfId) so the Quiet tab can bucket without
+  // recomputing on every render.
+  lastActivityAtIso: string | null;
+  daysSinceLastActivity: number | null;
+};
+
+export type QuietTier = "14-30" | "30-60" | "60+";
+type QuietCard = ClientCard & { quietTier: QuietTier };
+
+const QUIET_TIER_LABEL: Record<QuietTier, string> = {
+  "14-30": "14–30 days quiet",
+  "30-60": "30–60 days quiet",
+  "60+": "60+ days quiet",
 };
 
 type ViewKind = "grid" | "list";
@@ -90,7 +105,7 @@ function ShieldCheck() {
   );
 }
 
-function ClientGridCard({ card }: { card: ClientCard }) {
+function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: QuietTier }) {
   const activeStages = PIPELINE_STAGES.filter((s: StageEntry) => (card[s.countField] ?? 0) > 0);
   return (
     <Link
@@ -114,6 +129,11 @@ function ClientGridCard({ card }: { card: ClientCard }) {
             <p className="mt-0.5 truncate text-xs text-court-fg-muted">
               {[card.industry, card.location].filter(Boolean).join(" · ")}
             </p>
+          )}
+          {quietTier && (
+            <span className="mt-1 inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900">
+              {QUIET_TIER_LABEL[quietTier]}
+            </span>
           )}
         </div>
         {card.website && (
@@ -161,7 +181,7 @@ function ClientGridCard({ card }: { card: ClientCard }) {
   );
 }
 
-function ClientListRowView({ card }: { card: ClientCard }) {
+function ClientListRowView({ card, quietTier }: { card: ClientCard; quietTier?: QuietTier }) {
   const router = useRouter();
   const activeStages = PIPELINE_STAGES.filter((s: StageEntry) => (card[s.countField] ?? 0) > 0);
   return (
@@ -172,11 +192,18 @@ function ClientListRowView({ card }: { card: ClientCard }) {
       <td className="px-5 py-3 align-middle">
         <div className="flex items-center gap-3">
           <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={32} />
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-court-fg">{card.name || "(unnamed)"}</span>
-            {card.isVerified && (
-              <span className="text-brand" title="Signed fee agreement on file">
-                <ShieldCheck />
+          <div className="flex flex-col gap-0.5">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-court-fg">{card.name || "(unnamed)"}</span>
+              {card.isVerified && (
+                <span className="text-brand" title="Signed fee agreement on file">
+                  <ShieldCheck />
+                </span>
+              )}
+            </div>
+            {quietTier && (
+              <span className="inline-flex w-fit items-center rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900">
+                {QUIET_TIER_LABEL[quietTier]}
               </span>
             )}
           </div>
@@ -232,21 +259,24 @@ function ClientListRowView({ card }: { card: ClientCard }) {
 export function ClientsView({
   activeCards,
   inactiveCards,
+  quietCards = [],
   initialView = "grid",
   verifiedCount = 0,
   error = null,
 }: {
   activeCards: ClientCard[];
   inactiveCards: ClientCard[];
+  quietCards?: QuietCard[];
   initialView?: ViewKind;
   verifiedCount?: number;
   error?: string | null;
 }) {
-  const [tab, setTab] = useState<"active" | "inactive">("active");
+  const [tab, setTab] = useState<"active" | "quiet" | "inactive">("active");
   const [query, setQuery] = useState("");
   const [view, setView] = useState<ViewKind>(initialView);
 
-  const cards = tab === "active" ? activeCards : inactiveCards;
+  const cards: ClientCard[] =
+    tab === "active" ? activeCards : tab === "quiet" ? quietCards : inactiveCards;
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return cards;
@@ -258,6 +288,14 @@ export function ClientsView({
     );
   }, [cards, query]);
 
+  // tier lookup so the grid + list renderers can label each Quiet card
+  // without a per-row recompute.
+  const quietTierById = useMemo(() => {
+    const m = new Map<string, QuietTier>();
+    for (const q of quietCards) m.set(q.id, q.quietTier);
+    return m;
+  }, [quietCards]);
+
   return (
     <div>
       {/* Title + New Client button now live in the global TopBar via
@@ -265,12 +303,13 @@ export function ClientsView({
           the tab strip. */}
 
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <TabStrip<"active" | "inactive">
+        <TabStrip<"active" | "quiet" | "inactive">
           ariaLabel="Client status"
           activeId={tab}
           onChange={setTab}
           items={[
             { id: "active", label: "Active", count: activeCards.length },
+            { id: "quiet", label: "Quiet", count: quietCards.length },
             { id: "inactive", label: "Inactive", count: inactiveCards.length },
           ]}
         />
@@ -303,7 +342,7 @@ export function ClientsView({
       ) : view === "grid" ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filtered.map((c) => (
-            <ClientGridCard key={c.id} card={c} />
+            <ClientGridCard key={c.id} card={c} quietTier={quietTierById.get(c.id)} />
           ))}
         </div>
       ) : (
@@ -323,7 +362,7 @@ export function ClientsView({
               </DataTableHead>
               <tbody className="divide-y divide-court-border-soft">
                 {filtered.map((c) => (
-                  <ClientListRowView key={c.id} card={c} />
+                  <ClientListRowView key={c.id} card={c} quietTier={quietTierById.get(c.id)} />
                 ))}
               </tbody>
             </table>

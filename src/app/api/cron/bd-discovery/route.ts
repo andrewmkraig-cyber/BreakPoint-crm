@@ -335,11 +335,12 @@ export async function GET(req: NextRequest) {
       clientsScanned: 0,
       postingsUpserted: 0,
       skipped: 0,
+      fallbackClients: 0,
     };
     try {
       clientMonitor = await syncClientSignals(organizationId);
       console.log(
-        `[bd-discovery] clientMonitor scanned=${clientMonitor.clientsScanned} upserted=${clientMonitor.postingsUpserted} skipped=${clientMonitor.skipped}`,
+        `[bd-discovery] clientMonitor scanned=${clientMonitor.clientsScanned} upserted=${clientMonitor.postingsUpserted} skipped=${clientMonitor.skipped} fallback=${clientMonitor.fallbackClients}`,
       );
     } catch (monitorErr) {
       console.error(

@@ -9,6 +9,7 @@
 // get one daily morning sweep without a second cron schedule.
 
 import { prisma } from "@/lib/prisma";
+import { fetchJSearchPostingsByDomain, type JSearchPosting } from "@/lib/bd/jsearch-provider";
 
 const THEIRSTACK_ENDPOINT = "https://api.theirstack.com/v1/jobs/search";
 
@@ -67,14 +68,22 @@ export type SyncClientSignalsResult = {
   clientsScanned: number;
   postingsUpserted: number;
   skipped: number;
+  // Count of clients that landed on the JSearch fallback because
+  // TheirStack returned no postings. Useful for dashboards / dry-runs
+  // to spot how much coverage the secondary provider is buying.
+  fallbackClients: number;
 };
 
 export async function syncClientSignals(
   organizationId: string,
 ): Promise<SyncClientSignalsResult> {
-  const apiKey = process.env.THEIRSTACK_API_KEY;
-  if (!apiKey) {
-    return { clientsScanned: 0, postingsUpserted: 0, skipped: 0 };
+  const theirStackKey = process.env.THEIRSTACK_API_KEY ?? null;
+  const jsearchKey = process.env.JSEARCH_API_KEY ?? null;
+  // Skip entirely only when both providers are unconfigured — otherwise
+  // run with whichever is available so a partially-keyed env still
+  // surfaces something on the Client Signal page.
+  if (!theirStackKey && !jsearchKey) {
+    return { clientsScanned: 0, postingsUpserted: 0, skipped: 0, fallbackClients: 0 };
   }
 
   const clients = await prisma.client.findMany({
@@ -85,6 +94,7 @@ export async function syncClientSignals(
   let clientsScanned = 0;
   let postingsUpserted = 0;
   let skipped = 0;
+  let fallbackClients = 0;
   const now = new Date();
 
   for (const client of clients) {
@@ -95,14 +105,36 @@ export async function syncClientSignals(
     }
     clientsScanned += 1;
     let postings: TheirStackJob[] = [];
-    try {
-      postings = await fetchClientPostings(apiKey, domain);
-    } catch (err) {
-      console.warn(
-        `[client-signal-sync] TheirStack fetch failed for client=${client.name} domain=${domain}:`,
-        err instanceof Error ? err.message : err,
-      );
-      continue;
+    if (theirStackKey) {
+      try {
+        postings = await fetchClientPostings(theirStackKey, domain);
+      } catch (err) {
+        console.warn(
+          `[client-signal-sync] TheirStack fetch failed for client=${client.name} domain=${domain}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+
+    // JSearch fallback. Runs when TheirStack returned nothing (either
+    // because it isn't keyed or because its index didn't carry this
+    // company). JSearch wraps Indeed/LinkedIn/ZipRecruiter so it can
+    // catch postings on boards TheirStack misses. Silent degrade when
+    // JSEARCH_API_KEY isn't set or the lookup returns no domain match.
+    let fallbackPostings: JSearchPosting[] = [];
+    if (postings.length === 0 && jsearchKey) {
+      try {
+        fallbackPostings = await fetchJSearchPostingsByDomain({
+          companyName: client.name,
+          domain,
+        });
+        if (fallbackPostings.length > 0) fallbackClients += 1;
+      } catch (err) {
+        console.warn(
+          `[client-signal-sync] JSearch fallback failed for client=${client.name} domain=${domain}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
 
     for (const p of postings) {
@@ -155,7 +187,50 @@ export async function syncClientSignals(
         );
       }
     }
+
+    // Upsert JSearch fallback postings using the same CLIENT_MONITOR
+    // source — UI doesn't distinguish providers, the recruiter just
+    // sees that this client has a public posting we should act on.
+    for (const p of fallbackPostings) {
+      try {
+        await prisma.clientSignal.upsert({
+          where: {
+            organizationId_companyName_jobTitle: {
+              organizationId,
+              companyName: client.name,
+              jobTitle: p.jobTitle,
+            },
+          },
+          update: {
+            jobLocation: p.jobLocation,
+            jobPostingUrl: p.jobPostingUrl,
+            postedAt: p.postedAt ?? undefined,
+            clientId: client.id,
+            raw: (p.raw as object) ?? undefined,
+            lastSeenAt: now,
+          },
+          create: {
+            organizationId,
+            companyName: client.name,
+            clientId: client.id,
+            jobTitle: p.jobTitle,
+            jobLocation: p.jobLocation,
+            jobPostingUrl: p.jobPostingUrl,
+            postedAt: p.postedAt,
+            raw: (p.raw as object) ?? undefined,
+            source: "CLIENT_MONITOR",
+            lastSeenAt: now,
+          },
+        });
+        postingsUpserted += 1;
+      } catch (err) {
+        console.error(
+          `[client-signal-sync] JSearch upsert failed for ${client.name} / ${p.jobTitle}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
   }
 
-  return { clientsScanned, postingsUpserted, skipped };
+  return { clientsScanned, postingsUpserted, skipped, fallbackClients };
 }

@@ -1,4 +1,4 @@
-import { ClientsView, type ClientCard } from "@/app/clients/clients-view";
+import { ClientsView, type ClientCard, type QuietTier } from "@/app/clients/clients-view";
 import { canonicalStage, emptyJobCounts, type JobPipelineCounts } from "@/lib/rf-payload-shapes";
 import { getRfCandidatesForOrg } from "@/lib/candidates";
 import { getClientsForOrg } from "@/lib/clients";
@@ -8,6 +8,10 @@ import { prisma } from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 const PLACEMENT_WINDOW_MS = 1000 * 60 * 60 * 24 * 30 * 6; // ~6 months
+const DAY_MS = 1000 * 60 * 60 * 24;
+// Inactivity threshold for the Quiet tab. Anything past this is bucketed
+// into one of the three tier labels rendered on the card.
+const QUIET_MIN_DAYS = 21;
 
 export default async function ClientsPage({
   searchParams,
@@ -73,12 +77,53 @@ export default async function ClientsPage({
     // Keying by legacyRfId here keeps the existing Active/Inactive
     // logic intact while the counters move to Neon.
     const recentPlacementIds = recentlyPlacedClientIds(candidates);
+
+    // Last ActivityLog per client — used to build the Quiet tab. Writers
+    // stamp `targetType="client"` with `targetId` set to either the
+    // Client cuid (Ace-native) or a stringified legacyRfId (legacy RF
+    // back-compat per /app/clients/[id]/actions.ts:447). Group by
+    // targetId so a single query covers both keying conventions.
+    const clientCuids = clients.map((c) => c.id);
+    const clientLegacyIds = clients
+      .map((c) => (c.legacyRfId != null ? String(c.legacyRfId) : null))
+      .filter((x): x is string => x !== null);
+    const targetIdNeedles = [...clientCuids, ...clientLegacyIds];
+    const lastActivityByTargetId = new Map<string, Date>();
+    if (targetIdNeedles.length > 0) {
+      const groups = await prisma.activityLog.groupBy({
+        by: ["targetId"],
+        where: {
+          organizationId: org.id,
+          targetType: "client",
+          targetId: { in: targetIdNeedles },
+        },
+        _max: { timestamp: true },
+      });
+      for (const g of groups) {
+        if (g._max.timestamp) lastActivityByTargetId.set(g.targetId, g._max.timestamp);
+      }
+    }
+
+    const now = Date.now();
     all = clients.map((c) => {
       const legacyId = c.legacyRfId;
       const pc = counts.get(c.id) ?? emptyJobCounts();
       const hadRecentPlacement = legacyId != null && recentPlacementIds.has(legacyId);
       const hasOpenJob = c.openJobsCount > 0;
       const website = c.domain ? (c.domain.startsWith("http") ? c.domain : `https://${c.domain}`) : null;
+
+      const cuidActivity = lastActivityByTargetId.get(c.id);
+      const legacyActivity = legacyId != null ? lastActivityByTargetId.get(String(legacyId)) : undefined;
+      const lastActivityAt =
+        cuidActivity && legacyActivity
+          ? cuidActivity.getTime() >= legacyActivity.getTime()
+            ? cuidActivity
+            : legacyActivity
+          : (cuidActivity ?? legacyActivity ?? null);
+      const daysSinceLastActivity = lastActivityAt
+        ? Math.floor((now - lastActivityAt.getTime()) / DAY_MS)
+        : null;
+
       return {
         id: c.id,
         slug: c.slug,
@@ -103,6 +148,8 @@ export default async function ClientsPage({
         pendingStartCount: pc.pendingStart,
         hiredCount: pc.hired,
         isActive: hasOpenJob || hadRecentPlacement,
+        lastActivityAtIso: lastActivityAt?.toISOString() ?? null,
+        daysSinceLastActivity,
       };
     });
   } catch (e) {
@@ -120,10 +167,33 @@ export default async function ClientsPage({
   const inactiveCards = all.filter((c) => !c.isActive).sort(sortFn);
   const verifiedCount = all.filter((c) => c.isVerified).length;
 
+  // Quiet = active client whose most-recent ActivityLog is past the
+  // QUIET_MIN_DAYS threshold (or who has no ActivityLog at all). The
+  // three tier labels render as a chip on each card; the "60+" bucket
+  // also absorbs the never-logged set so they don't fall through.
+  const quietCards = activeCards
+    .map((c) => {
+      const days = c.daysSinceLastActivity;
+      let tier: QuietTier | null = null;
+      if (days == null || days >= 60) tier = "60+";
+      else if (days >= 30) tier = "30-60";
+      else if (days >= QUIET_MIN_DAYS) tier = "14-30";
+      return tier ? { ...c, quietTier: tier } : null;
+    })
+    .filter((c): c is ClientCard & { quietTier: QuietTier } => c !== null)
+    .sort((a, b) => {
+      // Stalest first; null lastActivity sorts to the top of 60+.
+      const aDays = a.daysSinceLastActivity ?? Number.POSITIVE_INFINITY;
+      const bDays = b.daysSinceLastActivity ?? Number.POSITIVE_INFINITY;
+      if (aDays !== bDays) return bDays - aDays;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: "base" });
+    });
+
   return (
     <ClientsView
       activeCards={activeCards}
       inactiveCards={inactiveCards}
+      quietCards={quietCards}
       initialView={initialView}
       verifiedCount={verifiedCount}
       error={error}

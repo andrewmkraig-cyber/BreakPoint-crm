@@ -23,7 +23,7 @@ import { BenefitsTab } from "@/app/clients/[id]/benefits-tab";
 import { EditableCompany, type CompanyState } from "@/app/clients/[id]/editable-company";
 import { DeleteClientButton } from "@/app/clients/[id]/delete-client-button";
 import { AddClientNote } from "@/app/clients/[id]/add-client-note";
-import { ClientLogo } from "@/components/client-logo";
+import { ClientLogo } from "@/components/clients/client-logo";
 import AiWorkspace from "@/components/AiWorkspace";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import { ActivityFeed } from "@/components/activity-feed";
@@ -279,7 +279,7 @@ export default async function ClientDetailPage({
 
       <PageHeader
         title={displayName}
-        leading={<ClientLogo name={displayName} logoUrl={client.logoUrl} size={40} />}
+        leading={<ClientLogo name={displayName} domain={client.domain} size={40} />}
         actions={
           agreements.length > 0 ? (
             <span className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-3 py-1 text-xs font-semibold text-brand-dark">
