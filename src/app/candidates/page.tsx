@@ -17,6 +17,7 @@ import {
   Minus,
   Search,
   Send,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import {
@@ -448,6 +449,22 @@ function hasAnyFilter(f: Filters): boolean {
   );
 }
 
+// Count of distinct active filter categories — drives the badge on
+// the mobile Filters button. Compensation min + max collapse to one
+// category because both share a single "Compensation" rail section.
+function countActiveFilters(f: Filters): number {
+  return (
+    (f.q.trim() !== "" ? 1 : 0) +
+    (f.skills.length > 0 ? 1 : 0) +
+    (f.jobTitles.length > 0 ? 1 : 0) +
+    (f.minComp.trim() !== "" || f.maxComp.trim() !== "" ? 1 : 0) +
+    (f.locations.length > 0 ? 1 : 0) +
+    (f.employers.length > 0 ? 1 : 0) +
+    (f.lastApply !== "" && f.lastApply !== "any" ? 1 : 0) +
+    (f.lastAction !== "" && f.lastAction !== "any" ? 1 : 0)
+  );
+}
+
 function avatarColor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) {
@@ -653,6 +670,10 @@ export default function CandidatesPage() {
   // results pane swaps to a narrow name list + iframe of the
   // candidate's profile. Cleared by the close X.
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Mobile-only: the filter rail is a full-screen sheet on phones
+  // (rail eats too much horizontal space inline). md+ keeps the
+  // permanent left rail and ignores this flag.
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState("");
   const [sidebarTab, setSidebarTab] = useState<"all" | "submitted">("all");
   // Column-sort state. Click cycles: idle → desc → asc → cleared. Null
@@ -1096,12 +1117,41 @@ export default function CandidatesPage() {
     // Grass mode between AppShell's nav and this aside — the aside's
     // bg-court-surface visually consumes the handle once they overlap.
     <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
+      {/* Mobile filter sheet wrapper. md:contents makes the wrapper
+          inert at md+ so the aside renders as a direct flex child
+          exactly as before. On phones, the wrapper becomes a fixed
+          full-screen overlay holding the same aside content plus a
+          close header and Apply/Reset footer. Single mount keeps
+          filter state coherent across viewports. */}
+      <div
+        className={
+          (mobileFiltersOpen
+            ? "fixed inset-0 z-50 flex flex-col bg-court-surface"
+            : "hidden") +
+          " md:contents"
+        }
+      >
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-court-border bg-court-surface px-4 py-3 md:hidden">
+          <h2 className="text-base font-semibold text-court-fg">Filters</h2>
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen(false)}
+            aria-label="Close filters"
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       <aside
         className={
-          "flex shrink-0 flex-col overflow-hidden bg-court-surface transition-[width,border] duration-200 " +
+          "flex shrink-0 flex-col bg-court-surface transition-[width,border] duration-200 " +
+          // Mobile (inside sheet): full-width, scrolls inside the
+          // sheet's flex column. md+ keeps the original fixed-width
+          // permanent rail with overflow-hidden + internal scrollers.
+          "w-full flex-1 overflow-y-auto md:flex-none md:overflow-hidden " +
           (selectedId
-            ? "w-0 border-r-0"
-            : "w-[220px] min-w-[220px] border-r border-court-border")
+            ? "md:w-0 md:min-w-0 md:border-r-0"
+            : "md:w-[220px] md:min-w-[220px] md:border-r md:border-court-border")
         }
       >
         {/* Header block — title + Reset. Faint top border separates
@@ -1322,6 +1372,26 @@ export default function CandidatesPage() {
           </Button>
         </div>
       </aside>
+        <div className="sticky bottom-0 z-10 flex gap-2 border-t border-court-border bg-court-surface p-4 md:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              resetFilters();
+              setMobileFiltersOpen(false);
+            }}
+            className="flex-1 rounded-md border border-court-border bg-court-surface px-4 py-2.5 text-sm font-semibold text-court-fg transition hover:bg-court-surface-subtle"
+          >
+            Reset
+          </button>
+          <button
+            type="button"
+            onClick={() => setMobileFiltersOpen(false)}
+            className="flex-1 rounded-md border border-court-brand bg-court-brand-tint px-4 py-2.5 text-sm font-semibold text-court-brand-dark transition hover:bg-court-brand/25"
+          >
+            Apply
+          </button>
+        </div>
+      </div>
 
       {selectedId ? (
         // Split view = chrome bar on top, then the two-column body
@@ -1550,17 +1620,35 @@ export default function CandidatesPage() {
               outer row uses items-center so the pill verticals balance
               against the big count number. */}
           <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-6 py-4">
-            <div className="flex items-baseline gap-2.5">
-              <span className="font-serif text-[28px] font-extrabold leading-none text-court-fg">
-                {total ?? 0}
-              </span>
-              <span className="text-sm text-court-fg-muted">
-                {!hasFilters
-                  ? "No filters applied yet"
-                  : (total ?? 0) === 0
-                    ? "candidates match"
-                    : `candidate${total === 1 ? "" : "s"} match · sorted by Recent activity`}
-              </span>
+            <div className="flex items-center gap-3">
+              {/* Mobile-only Filters trigger. Desktop has the always-on
+                  left rail and doesn't need this surface; md:hidden
+                  drops it out of the layout at md+. */}
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(true)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle md:hidden"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                Filters
+                {countActiveFilters(filters) > 0 && (
+                  <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-court-accent px-1 text-[10px] font-bold tabular-nums text-white">
+                    {countActiveFilters(filters)}
+                  </span>
+                )}
+              </button>
+              <div className="flex items-baseline gap-2.5">
+                <span className="font-serif text-[28px] font-extrabold leading-none text-court-fg">
+                  {total ?? 0}
+                </span>
+                <span className="text-sm text-court-fg-muted">
+                  {!hasFilters
+                    ? "No filters applied yet"
+                    : (total ?? 0) === 0
+                      ? "candidates match"
+                      : `candidate${total === 1 ? "" : "s"} match · sorted by Recent activity`}
+                </span>
+              </div>
             </div>
             <Link
               href="/candidates/lists"

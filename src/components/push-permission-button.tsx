@@ -24,6 +24,12 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export function PushPermissionButton() {
   const [status, setStatus] = useState<Status>("loading");
   const [busy, setBusy] = useState(false);
+  // Captures any failure that lands after permission was granted (VAPID
+  // env missing, /api/push/subscribe non-2xx, pushManager.subscribe
+  // throws). Without this, status="granted" wins the render branch and
+  // the UI lies that everything succeeded — the recruiter has no way
+  // back to a Try-again affordance from that copy.
+  const [errored, setErrored] = useState(false);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -36,6 +42,8 @@ export function PushPermissionButton() {
 
   async function enable() {
     setBusy(true);
+    setErrored(false);
+    let succeeded = false;
     try {
       const permission = await Notification.requestPermission();
       setStatus(permission as Status);
@@ -51,6 +59,7 @@ export function PushPermissionButton() {
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
       if (!vapidKey) {
         toast.error("VAPID public key missing — push not configured.");
+        setErrored(true);
         return;
       }
       // Reuse an existing subscription when present — the browser
@@ -78,14 +87,18 @@ export function PushPermissionButton() {
       });
       if (!res.ok) {
         toast.error("Couldn't register notifications — try again later.");
+        setErrored(true);
         return;
       }
       toast.success("Notifications enabled.");
+      succeeded = true;
     } catch (err) {
       console.error("[push] enable failed", err);
       toast.error("Couldn't enable notifications.");
+      setErrored(true);
     } finally {
       setBusy(false);
+      if (succeeded) setErrored(false);
     }
   }
 
@@ -96,6 +109,22 @@ export function PushPermissionButton() {
       <p className="text-xs text-court-fg-muted">
         This browser doesn&apos;t support web push notifications.
       </p>
+    );
+  }
+
+  // Error branch wins over status="granted" — without this, a failed
+  // /api/push/subscribe call would leave the UI claiming success
+  // because the browser permission did flip to granted.
+  if (errored) {
+    return (
+      <div className="space-y-1.5">
+        <Button variant="primary" size="sm" onClick={enable} disabled={busy}>
+          {busy ? "Trying…" : "Try again"}
+        </Button>
+        <p className="text-xs text-court-fg-muted">
+          Check browser settings if this persists.
+        </p>
+      </div>
     );
   }
 

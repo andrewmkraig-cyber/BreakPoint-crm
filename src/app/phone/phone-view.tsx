@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   Building2,
+  ChevronLeft,
   ExternalLink,
   Loader2,
   Mic,
@@ -318,9 +319,18 @@ export function PhoneView() {
         TopBarPageTitle, so PhoneView starts directly with the threads
         grid and reclaims the row of vertical space the inline header
         used to occupy. */}
+    {/* Mobile-only horizontal tab strip. Replaces the LEFT SIDEBAR
+        nav (which is hidden below lg). Scrolls horizontally so all
+        nine buckets stay reachable on a 375px viewport. */}
+    <MobileBucketTabs
+      bucket={bucket}
+      setBucket={setBucket}
+      counts={bucketCounts}
+    />
     <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-12">
-      {/* LEFT SIDEBAR */}
-      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2">
+      {/* LEFT SIDEBAR — hidden below lg (mobile + tablet rely on
+          MobileBucketTabs above). */}
+      <aside className="hidden flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-2 lg:flex">
         <div className="shrink-0 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Phone
         </div>
@@ -398,8 +408,15 @@ export function PhoneView() {
         </nav>
       </aside>
 
-      {/* MIDDLE: THREAD LIST */}
-      <aside className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
+      {/* MIDDLE: THREAD LIST. Below md the list is the single visible
+          pane when no thread is selected; the detail section takes
+          over when one is. md+ keeps both visible side-by-side. */}
+      <aside
+        className={
+          (selectedId ? "hidden md:flex" : "flex") +
+          " flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3"
+        }
+      >
         <div className="flex shrink-0 items-center gap-2 border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
           <span>
             {filteredThreads.length}{" "}
@@ -445,8 +462,15 @@ export function PhoneView() {
         )}
       </aside>
 
-      {/* RIGHT: DETAIL */}
-      <section className="flex flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7">
+      {/* RIGHT: DETAIL. Hidden on mobile when no thread is selected
+          so the thread list owns the viewport; flips to full-bleed
+          when a row is tapped. md+ unchanged. */}
+      <section
+        className={
+          (selectedId ? "flex" : "hidden md:flex") +
+          " flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-7"
+        }
+      >
         {!selectedId ? (
           <EmptyDetail keyboardCapture={!dialPadOpen} />
         ) : detailLoading && !detail ? (
@@ -459,6 +483,7 @@ export function PhoneView() {
           <ThreadDetailPane
             detail={detail}
             profileMatch={profileMatch}
+            onBack={() => setSelectedId(null)}
             onSent={() => {
               void loadThreads();
               setDetailRefresh((c) => c + 1);
@@ -476,10 +501,83 @@ export function PhoneView() {
           callback registered above. */}
     </div>
     </div>
+    {/* Mobile-only FAB. Hidden when a thread is open so it doesn't
+        cover the message composer at the bottom of ThreadDetailPane.
+        Calls into the same DialPadModal the topbar uses — mounts
+        globally via GlobalPhonePanels. */}
+    {!selectedId && (
+      <button
+        type="button"
+        onClick={phonePanels.openDialPad}
+        aria-label="Open dial pad"
+        className="fixed bottom-5 right-5 z-30 inline-flex h-14 w-14 items-center justify-center rounded-full bg-court-accent text-white shadow-lg transition hover:bg-court-accent-dark focus:outline-none focus-visible:ring-[3px] focus-visible:ring-court-accent/40 md:hidden"
+      >
+        <PhoneCall className="h-6 w-6" />
+      </button>
+    )}
     {/* DialPadModal mounts globally via GlobalPhonePanels so the
         topbar's "+ New Text/Call" button can pop the modal from any
         route, not just /phone. */}
     </>
+  );
+}
+
+// Mobile-only horizontal tab strip. Mirrors the lg+ left sidebar's
+// bucket nav but lays out as a scrollable pill row so all nine
+// buckets stay reachable on a 375px viewport. Hidden at lg+ where
+// the sidebar takes over.
+function MobileBucketTabs({
+  bucket,
+  setBucket,
+  counts,
+}: {
+  bucket: PhoneBucket;
+  setBucket: (k: PhoneBucket) => void;
+  counts: BucketCounts;
+}) {
+  const pills: Array<{
+    key: PhoneBucket;
+    icon: React.ReactNode;
+    label: string;
+    count: number;
+  }> = [
+    { key: "all", icon: <Phone className="h-3.5 w-3.5" />, label: "All", count: counts.all },
+    { key: "texts", icon: <Send className="h-3.5 w-3.5" />, label: "Texts", count: counts.texts },
+    { key: "calls", icon: <PhoneCall className="h-3.5 w-3.5" />, label: "Calls", count: counts.calls },
+    { key: "missed", icon: <PhoneMissed className="h-3.5 w-3.5" />, label: "Missed", count: counts.missed },
+    { key: "voicemails", icon: <Voicemail className="h-3.5 w-3.5" />, label: "Voicemails", count: counts.voicemails },
+    { key: "candidates", icon: <UserIcon className="h-3.5 w-3.5" />, label: "Candidates", count: counts.candidates },
+    { key: "clients", icon: <UsersIcon className="h-3.5 w-3.5" />, label: "Clients", count: counts.clients },
+    { key: "unknown", icon: <AlertCircle className="h-3.5 w-3.5" />, label: "Unknown", count: counts.unknown },
+    { key: "needsReply", icon: <Mic className="h-3.5 w-3.5" />, label: "Needs Reply", count: counts.needsReply },
+  ];
+  return (
+    <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden">
+      {pills.map((p) => {
+        const active = bucket === p.key;
+        return (
+          <button
+            key={p.key}
+            type="button"
+            onClick={() => setBucket(p.key)}
+            className={
+              "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition " +
+              (active
+                ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+                : "border-court-border bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle")
+            }
+          >
+            {p.icon}
+            <span>{p.label}</span>
+            {p.count > 0 && (
+              <span className="rounded-full bg-court-fg/10 px-1.5 text-[10px] tabular-nums text-court-fg-muted">
+                {p.count}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -827,11 +925,11 @@ function DialPad({
 export function DialPadModal({ onClose }: { onClose: () => void }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4"
+      className="fixed inset-0 z-50 flex bg-ink/40 md:items-center md:justify-center md:p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-6 shadow-xl"
+        className="flex w-full flex-col bg-court-surface p-6 shadow-xl md:max-w-sm md:rounded-xl md:border md:border-court-border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
@@ -876,16 +974,31 @@ function ThreadDetailPane({
   detail,
   profileMatch,
   onSent,
+  onBack,
 }: {
   detail: ThreadDetail;
   profileMatch: PhoneMatch | null;
   onSent: () => void;
+  // Mobile-only — the desktop split view already has the list visible
+  // alongside, so the back affordance only renders below md.
+  onBack?: () => void;
 }) {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between gap-3 border-b border-court-border px-5 py-3">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-2">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Back to thread list"
+              className="-ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg md:hidden"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+          )}
+          <div className="min-w-0">
           <h2 className="truncate text-base font-semibold text-court-fg">
             {detail.contact.name}
           </h2>
@@ -904,6 +1017,7 @@ function ThreadDetailPane({
               <span>{detail.contact.phoneNumber}</span>
             )}
           </p>
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {/* Text button removed — the inline composer at the bottom of

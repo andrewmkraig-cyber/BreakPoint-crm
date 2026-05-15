@@ -2308,7 +2308,16 @@ export function ThreadDetail({
           );
         })}
       </div>
-      {!isFloating && composerOpen && composerNode}
+      {!isFloating && composerOpen && (
+        // Mobile sheet: full-screen fixed overlay so the composer
+        // isn't clipped at the bottom of the thread on a phone. md+
+        // collapses to display:contents so the wrapper disappears
+        // from layout and the inline composer renders exactly as
+        // before — one composerNode instance, two layout modes.
+        <div className="fixed inset-0 z-50 flex flex-col bg-court-surface md:contents">
+          {composerNode}
+        </div>
+      )}
     </div>
   );
 }
