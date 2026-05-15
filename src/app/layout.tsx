@@ -36,7 +36,11 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "Ace · BreakPoint Talent",
   description: "Ace — BreakPoint Talent's internal recruiting CRM",
-  manifest: "/manifest.json",
+  // ?v=2 busts the manifest cache so installed PWAs pick up the real
+  // Ace logo from P3 / refreshed metadata without users having to
+  // uninstall + reinstall by hand. Bump this when the manifest
+  // (icons, theme, name) changes again.
+  manifest: "/manifest.json?v=2",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

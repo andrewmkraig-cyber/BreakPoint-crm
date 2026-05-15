@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import crypto from 'node:crypto'
 import { prisma } from '@/lib/prisma'
 import { matchClientByPhone } from '@/lib/quo-contact-match'
-import { sendPushToOrg } from '@/lib/web-push'
+import { sendPushToOrg, sendPushToUser } from '@/lib/web-push'
 
 // Quo (formerly KrispCall / OpenPhone) inbound webhook.
 //
@@ -83,6 +83,12 @@ export async function POST(req: NextRequest) {
       // by the bare digits of the from-number when the sender isn't
       // linked to a Candidate yet. Body trimmed to 100 chars to stay
       // inside the platform-default notification body cap.
+      //
+      // Per-user routing: there's no Quo Inbox model in Ace, so the
+      // closest "ownership" signal is Candidate.createdById — the
+      // recruiter who first added that candidate. When we have it we
+      // push only to that user's devices. When no candidate matches
+      // (unknown number) we fall back to fanning out across the org.
       if (orgId) {
         const senderName =
           (candidate
@@ -97,12 +103,18 @@ export async function POST(req: NextRequest) {
         const dest = candidate
           ? `/phone?candidateId=${candidate.id}`
           : `/phone?from=${encodeURIComponent(fromNumber)}`
-        await sendPushToOrg(orgId, {
+        const payload = {
           title: `New text from ${senderName}`,
           body: (content ?? '').slice(0, 100),
           url: dest,
           tag: `sms-${tagKey}`,
-        })
+        }
+        if (candidate?.createdById) {
+          await sendPushToUser(candidate.createdById, orgId, payload)
+        } else {
+          // Shared line: no owner to route to, fan out across the org.
+          await sendPushToOrg(orgId, payload)
+        }
       }
     }
   }
@@ -321,6 +333,10 @@ export async function POST(req: NextRequest) {
       // initiated so a "Call ended" toast there would just be noise.
       // Duration ≤ 3s (or missing) is treated as a missed call —
       // typical voicemail / no-answer cutoffs land well above that.
+      //
+      // Per-user routing: same logic as the SMS branch — push to the
+      // owning recruiter (Candidate.createdById) when the caller is a
+      // known candidate, fan out across the org otherwise.
       if (orgId && direction === 'inbound' && callLogRow?.id) {
         const callerName =
           (candidate
@@ -330,14 +346,20 @@ export async function POST(req: NextRequest) {
                 .trim()
             : '') || fromNumber || 'Unknown'
         const isMissed = !duration || duration <= 3
-        await sendPushToOrg(orgId, {
+        const payload = {
           title: isMissed ? 'Missed call' : 'Call ended',
           body: duration
             ? `${callerName} · ${formatMmss(duration)}`
             : callerName,
           url: `/phone?call=${callLogRow.id}`,
           tag: `call-${callLogRow.id}`,
-        })
+        }
+        if (candidate?.createdById) {
+          await sendPushToUser(candidate.createdById, orgId, payload)
+        } else {
+          // Shared line: no owner to route to, fan out across the org.
+          await sendPushToOrg(orgId, payload)
+        }
       }
     }
   }

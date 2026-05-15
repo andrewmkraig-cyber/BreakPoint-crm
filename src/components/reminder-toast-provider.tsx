@@ -51,6 +51,24 @@ export function ReminderToastProvider() {
           if (firedIds.current.has(r.id)) continue;
           firedIds.current.add(r.id);
           fire(r);
+          // Mirror the toast as a push to every subscribed device on
+          // this account. Relayed through /api/push/fire because
+          // sendPushToUser is server-only. Tag dedupes per reminder
+          // so repeated polls of the same /api/reminders/due payload
+          // don't restack the same notification.
+          void fetch("/api/push/fire", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              title: r.title,
+              body: `Reminder · ${new Date(r.reminderAt).toLocaleTimeString(
+                undefined,
+                { hour: "numeric", minute: "2-digit" },
+              )}`,
+              url: "/calendar",
+              tag: `reminder-${r.id}`,
+            }),
+          }).catch(() => {});
         }
       } catch (err) {
         console.error("Reminder poll failed", err);

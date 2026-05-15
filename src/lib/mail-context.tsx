@@ -103,7 +103,23 @@ export function MailProvider({
       typeof window !== "undefined" &&
       window.localStorage.getItem(MAIL_NOTIFICATIONS_KEY) === "true";
     if (enabled) {
-      for (const thread of fresh) renderNewMailToast(thread);
+      for (const thread of fresh) {
+        renderNewMailToast(thread);
+        // Web push for every other device the recruiter has logged in
+        // on. Relayed through /api/push/fire because sendPushToUser is
+        // server-only. Best-effort: fire-and-forget; a 4xx/5xx never
+        // surfaces to the toast UI.
+        void fetch("/api/push/fire", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            title: thread.fromName || thread.fromEmail || "New mail",
+            body: thread.subject || "(no subject)",
+            url: `/mail?thread=${encodeURIComponent(thread.id)}`,
+            tag: `mail-${thread.id}`,
+          }),
+        }).catch(() => {});
+      }
       // Ace 28.0: play the recruiter's chosen mail notification sound
       // when fresh threads land. Fires once per poll batch (not per
       // thread) so a flurry of new mail produces a single audible cue
