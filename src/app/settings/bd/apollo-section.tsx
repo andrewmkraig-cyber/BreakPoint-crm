@@ -1,7 +1,4 @@
-"use client";
-
-import { useState } from "react";
-import { CheckCircle2, XCircle, Loader2, ExternalLink, RotateCw } from "lucide-react";
+import { CheckCircle2, XCircle, ExternalLink, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type SequencePreview = {
@@ -15,12 +12,6 @@ export type SequencePreview = {
   status: "ACTIVE" | "PAUSED";
 };
 
-type TestResult =
-  | { state: "idle" }
-  | { state: "running" }
-  | { state: "ok"; email: string | null; name: string | null }
-  | { state: "fail"; message: string };
-
 export function ApolloSection({
   isConfigured,
   maskedKey,
@@ -30,29 +21,6 @@ export function ApolloSection({
   maskedKey: string | null;
   sequences: SequencePreview[];
 }) {
-  const [result, setResult] = useState<TestResult>({ state: "idle" });
-
-  async function testConnection() {
-    setResult({ state: "running" });
-    try {
-      const res = await fetch("/api/bd/apollo/test", { cache: "no-store" });
-      const data = (await res.json()) as
-        | { ok: true; email: string | null; name: string | null }
-        | { ok: false; error?: string; status?: number };
-      if (data.ok) {
-        setResult({ state: "ok", email: data.email, name: data.name });
-      } else {
-        const msg = "error" in data ? (data.error ?? "Apollo rejected the request") : "Apollo rejected";
-        setResult({ state: "fail", message: msg });
-      }
-    } catch (e) {
-      setResult({
-        state: "fail",
-        message: e instanceof Error ? e.message : "Network error",
-      });
-    }
-  }
-
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-court-border bg-court-surface-subtle px-4 py-3">
@@ -75,19 +43,6 @@ export function ApolloSection({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={testConnection}
-              disabled={result.state === "running"}
-              className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
-            >
-              {result.state === "running" ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <CheckCircle2 className="h-3.5 w-3.5" />
-              )}
-              Test connection
-            </button>
             <span
               title="Rotation ships in next session — set APOLLO_API_KEY in Vercel env for now"
               className="inline-flex cursor-not-allowed items-center gap-1.5 rounded-md border border-court-border bg-court-surface-subtle px-3 py-1.5 text-xs font-medium text-court-fg-muted opacity-60"
@@ -97,17 +52,6 @@ export function ApolloSection({
             </span>
           </div>
         </div>
-
-        {result.state === "ok" && (
-          <p className="mt-3 rounded-md border border-court-brand/30 bg-court-brand-tint px-3 py-2 text-xs text-court-brand-dark">
-            ✓ Connected as {result.name ?? "(no name)"} {result.email ? `· ${result.email}` : ""}
-          </p>
-        )}
-        {result.state === "fail" && (
-          <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
-            ✗ {result.message}
-          </p>
-        )}
       </div>
 
       <div>

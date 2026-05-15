@@ -9,7 +9,7 @@ import { updateBdOrgConfig } from "./actions";
 
 export type ReplyRoutingConfig = {
   replyForwardApollo: boolean;
-  replyAutoCreateCandidate: boolean;
+  replyPromptCreateClient: boolean;
   replyOooFilter: boolean;
 };
 
@@ -75,10 +75,10 @@ export function ReplyRoutingSection({
             onChange={(v) => toggle("replyForwardApollo", v)}
           />
           <RoutingPill
-            label="Auto-create candidate on positive reply"
-            on={config.replyAutoCreateCandidate}
+            label="Prompt to create client on positive reply"
+            on={config.replyPromptCreateClient}
             disabled={pending}
-            onChange={(v) => toggle("replyAutoCreateCandidate", v)}
+            onChange={(v) => toggle("replyPromptCreateClient", v)}
           />
           <RoutingPill
             label="Out-of-office filter"

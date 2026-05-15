@@ -40,6 +40,7 @@ import { toast } from "sonner";
 import type { MailListThread, MailThreadDetail, MailThreadMessage } from "@/lib/gmail";
 import type { ActiveTemplateSummary } from "@/app/email/actions";
 import { MailComposer, type ComposerStateSnapshot } from "@/app/mail/mail-composer";
+import { BdReplyPromptBanner } from "@/app/mail/bd-reply-prompt-banner";
 
 // Two-pane Mail Tab layout. The server fetched the thread list; the
 // client manages selection + loads each thread's detail on demand.
@@ -1769,6 +1770,27 @@ export function ThreadDetail({
   const latest =
     orderedMessages[orderedMessages.length - 1] ?? undefined;
 
+  // BD reply prompt: the banner shows when (a) the user has a label
+  // literally named "BD" applied to this thread and (b) there's at
+  // least one external message in the thread (the reply we're
+  // prompting about). The component itself defers the config +
+  // dismissal + Apollo-enrichment lookups to the server.
+  const bdLabelId = useMemo(
+    () => labels?.find((l) => l.name === "BD")?.id ?? null,
+    [labels],
+  );
+  const isBdThread =
+    bdLabelId !== null && detail.labelIds.includes(bdLabelId);
+  const externalReply = useMemo(() => {
+    const me = currentUserEmail.trim().toLowerCase();
+    for (let i = orderedMessages.length - 1; i >= 0; i--) {
+      const m = orderedMessages[i];
+      const from = (m.fromEmail || "").trim().toLowerCase();
+      if (from && from !== me) return m;
+    }
+    return null;
+  }, [orderedMessages, currentUserEmail]);
+
   // Gmail-style auto-scroll: land on the TOP of the latest message
   // so the actual reply text ("Morning Jeannie, Appreciate the
   // update here!") is what shows on open — not the signature /
@@ -2229,6 +2251,16 @@ export function ThreadDetail({
               "min-h-0 flex-1 overflow-y-auto"
         }
       >
+        {isBdThread && externalReply && !isFloating && !previewLatestOnly ? (
+          <div className="px-4 pt-3">
+            <BdReplyPromptBanner
+              threadId={detail.id}
+              isBd={isBdThread}
+              senderName={externalReply.fromName}
+              senderEmail={externalReply.fromEmail}
+            />
+          </div>
+        ) : null}
         {(previewLatestOnly && latest ? [latest] : orderedMessages).map((m, i, arr) => {
           // Inline mode: orderedMessages is sorted oldest → newest, so
           // the latest sits at the last index. Floating mode (legacy)

@@ -990,6 +990,7 @@ model Organization {
   clientSignals        ClientSignal[]
   bdOrgConfig          BdOrgConfig?
   bdContactTargeting   BdContactTargeting[]
+  bdReplyPromptDismissals BdReplyPromptDismissal[]
   calendarEvents       CalendarEvent[]
   aceReminders         AceReminder[]
   toolExpenses         ToolExpense[]
@@ -1714,6 +1715,10 @@ model BdOrgConfig {
   replyForwardApollo       Boolean @default(false)
   replyAutoCreateCandidate Boolean @default(true)
   replyOooFilter           Boolean @default(true)
+  // When true the mail thread view shows a one-shot prompt offering to
+  // create a Client (with prefilled name/domain/contacts) from a BD reply.
+  // Per-thread dismissal lives in BdReplyPromptDismissal.
+  replyPromptCreateClient  Boolean @default(true)
 
   updatedAt DateTime @updatedAt
   createdAt DateTime @default(now())
@@ -1740,6 +1745,24 @@ model BdContactTargeting {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   vertical     Vertical     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
 
+  @@index([organizationId])
+}
+
+// Per-(org, threadId) record that the BD-reply "Create client?" prompt
+// has been dealt with — either by creating a client (action="CREATED")
+// or by the recruiter explicitly skipping (action="SKIPPED"). The mail
+// thread view hides the banner whenever a row exists, satisfying the
+// "only shows once per thread" rule.
+model BdReplyPromptDismissal {
+  id             String   @id @default(cuid())
+  organizationId String
+  threadId       String
+  action         String
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, threadId])
   @@index([organizationId])
 }
 

@@ -553,6 +553,11 @@ export type MailThreadDetail = {
   id: string;
   subject: string;
   messages: MailThreadMessage[];
+  // Deduped union of Gmail labelIds across every message in the
+  // thread. Lets the client identify thread-level state (e.g. the
+  // BD-reply prompt banner only renders when the recruiter's "BD"
+  // label is present here).
+  labelIds: string[];
   // Populated when one of the thread's messages carries the system
   // DRAFT label and we can resolve it back to a Draft.id via
   // findDraftIdForThread. /mail uses this to open the composer
@@ -670,10 +675,14 @@ export async function getGmailThread(userId: string, threadId: string): Promise<
   const draftLookup = hasDraftLabel
     ? await findDraftForThread(userId, j.id).catch(() => null)
     : null;
+  const labelIds = Array.from(
+    new Set((j.messages ?? []).flatMap((m) => m.labelIds ?? [])),
+  );
   return {
     id: j.id,
     subject,
     messages,
+    labelIds,
     draftId: draftLookup?.draftId ?? null,
     draftMessageId: draftLookup?.messageId ?? null,
   };

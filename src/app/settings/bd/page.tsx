@@ -173,7 +173,7 @@ export default async function BdSettingsPage() {
 
   const replyConfig: ReplyRoutingConfig = {
     replyForwardApollo: config?.replyForwardApollo ?? false,
-    replyAutoCreateCandidate: config?.replyAutoCreateCandidate ?? true,
+    replyPromptCreateClient: config?.replyPromptCreateClient ?? true,
     replyOooFilter: config?.replyOooFilter ?? true,
   };
 

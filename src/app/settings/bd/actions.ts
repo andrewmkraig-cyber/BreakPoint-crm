@@ -263,7 +263,7 @@ export type BdOrgConfigPatch = Partial<{
   blackoutBefore7am: boolean;
   blackoutAfter530pm: boolean;
   replyForwardApollo: boolean;
-  replyAutoCreateCandidate: boolean;
+  replyPromptCreateClient: boolean;
   replyOooFilter: boolean;
 }>;
 

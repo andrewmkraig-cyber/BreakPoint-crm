@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { X, Save, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -132,6 +132,7 @@ function TitleTierField({
   onChange: (titles: string[]) => void;
 }) {
   const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   function commitDraft() {
     const tokens = draft
@@ -143,13 +144,25 @@ function TitleTierField({
     setDraft("");
   }
 
+  function removeTag(idx: number) {
+    onChange(titles.filter((_, i) => i !== idx));
+  }
+
+  // Whitespace clicks on the chip row should focus the input, not
+  // bubble into the chip's remove button. The remove button stops
+  // propagation so this handler only runs on actual whitespace.
+  function focusInputOnRowClick() {
+    inputRef.current?.focus();
+  }
+
   return (
-    <label className="block">
+    <div className="block">
       <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
         {label}
       </span>
       <span className="mt-0.5 block text-[11px] text-court-fg-dim">{hint}</span>
       <div
+        onClick={focusInputOnRowClick}
         className={cn(
           "mt-1 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1.5",
         )}
@@ -162,7 +175,15 @@ function TitleTierField({
             {t}
             <button
               type="button"
-              onClick={() => onChange(titles.filter((x) => x !== t))}
+              // Stop the parent row click from also firing (which would
+              // re-focus the input, harmless but the deletion is the
+              // intent here). Use onMouseDown preventDefault so the
+              // input never loses focus during the click.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                removeTag(i);
+              }}
               aria-label={`Remove ${t}`}
               className="text-court-brand-dark/70 hover:text-court-brand-dark"
             >
@@ -171,6 +192,7 @@ function TitleTierField({
           </span>
         ))}
         <input
+          ref={inputRef}
           type="text"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -178,15 +200,12 @@ function TitleTierField({
             if (e.key === "," || e.key === "Enter") {
               e.preventDefault();
               commitDraft();
-            } else if (e.key === "Backspace" && !draft && titles.length > 0) {
-              onChange(titles.slice(0, -1));
             }
           }}
-          onBlur={commitDraft}
           placeholder={titles.length === 0 ? "Type a title, press Enter or comma" : ""}
           className="flex-1 min-w-[160px] bg-transparent text-sm text-court-fg placeholder:text-court-fg-dim focus:outline-none"
         />
       </div>
-    </label>
+    </div>
   );
 }
