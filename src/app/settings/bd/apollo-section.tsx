@@ -153,7 +153,7 @@ export function ApolloSection({
                       )}
                     </Td>
                     <Td>
-                      {resolved ? (
+                      {s.apolloId ? (
                         <a
                           href={`https://app.apollo.io/#/emailer/sequences/${s.apolloId}`}
                           target="_blank"
@@ -162,14 +162,7 @@ export function ApolloSection({
                         >
                           <ExternalLink className="h-3 w-3" /> Open in Apollo
                         </a>
-                      ) : (
-                        <span
-                          title="Set APOLLO_API_KEY and wire the sequence ID to enable"
-                          className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-court-fg-dim opacity-60"
-                        >
-                          <ExternalLink className="h-3 w-3" /> Open in Apollo
-                        </span>
-                      )}
+                      ) : null}
                     </Td>
                   </tr>
                 );

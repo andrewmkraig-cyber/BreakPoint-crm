@@ -12,6 +12,16 @@ import {
   type SendingDomainStatus,
 } from "./actions";
 
+export type ApolloMailboxState =
+  | { state: "unavailable" }
+  | { state: "not-found" }
+  | {
+      state: "matched";
+      connection: "Connected" | "Disconnected";
+      dailyLimit: number | null;
+      sentToday: number | null;
+    };
+
 export type DomainRow = {
   id: string;
   domain: string;
@@ -19,7 +29,7 @@ export type DomainRow = {
   inboxOwner: string;
   priority: number;
   lastCooldownIso: string | null;
-  reputation: number;
+  apollo: ApolloMailboxState;
 };
 
 const STATUSES: SendingDomainStatus[] = ["HEALTHY", "WARMING", "COOLED"];
@@ -55,7 +65,7 @@ export function DomainsSection({ domains }: { domains: DomainRow[] }) {
               <Th className="w-12">#</Th>
               <Th>Domain</Th>
               <Th>Status</Th>
-              <Th>Reputation</Th>
+              <Th>Apollo mailbox</Th>
               <Th>Inbox owner</Th>
               <Th>Last cooldown</Th>
               <Th className="text-right">Actions</Th>
@@ -128,7 +138,7 @@ function DomainRowView({
           </select>
         </Td>
         <Td>
-          <ReputationBar value={row.reputation} />
+          <ApolloMailboxCell apollo={row.apollo} />
         </Td>
         <Td>
           <select
@@ -184,7 +194,7 @@ function DomainRowView({
         <StatusPill status={row.status} />
       </Td>
       <Td>
-        <ReputationBar value={row.reputation} />
+        <ApolloMailboxCell apollo={row.apollo} />
       </Td>
       <Td className="text-court-fg-muted">{row.inboxOwner}</Td>
       <Td className="text-court-fg-muted">
@@ -372,24 +382,33 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-function ReputationBar({ value }: { value: number }) {
-  const clamped = Math.max(0, Math.min(100, value));
+function ApolloMailboxCell({ apollo }: { apollo: ApolloMailboxState }) {
+  if (apollo.state === "unavailable") {
+    return <span className="text-court-fg-dim">—</span>;
+  }
+  if (apollo.state === "not-found") {
+    return <span className="text-[11px] text-court-fg-muted">Not found in Apollo</span>;
+  }
+  const connectedCls =
+    apollo.connection === "Connected"
+      ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
+      : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
   return (
-    <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-court-surface-subtle">
-        <div
-          className={cn(
-            "h-full rounded-full",
-            clamped >= 80
-              ? "bg-court-brand"
-              : clamped >= 50
-                ? "bg-amber-400"
-                : "bg-red-500",
-          )}
-          style={{ width: `${clamped}%` }}
-        />
-      </div>
-      <span className="tabular-nums text-[11px] text-court-fg-muted">{clamped}</span>
+    <div className="flex flex-col gap-0.5 text-[11px] text-court-fg-muted">
+      <span
+        className={cn(
+          "inline-flex w-fit items-center rounded-full border px-2 py-0.5 font-semibold",
+          connectedCls,
+        )}
+      >
+        {apollo.connection}
+      </span>
+      <span className="tabular-nums">
+        Daily limit: {apollo.dailyLimit ?? "—"}
+      </span>
+      <span className="tabular-nums">
+        Sent today: {apollo.sentToday ?? "—"}
+      </span>
     </div>
   );
 }

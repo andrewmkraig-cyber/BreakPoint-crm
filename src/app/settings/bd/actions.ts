@@ -16,20 +16,11 @@ function revalidateAll() {
 
 // ---- Saved-search criteria shape ----
 
-export type SavedSearchLocationInput = {
-  city: string;
-  state: string;
-  radiusMiles: number;
-};
-
 export type SavedSearchCriteria = {
   apolloSequenceId: string;
-  targetTitles: string[];
-  locations: SavedSearchLocationInput[];
-  companySizeMin: number;
-  companySizeMax: number;
-  keywords: string;
-  minFreshnessDays: number;
+  // Optional location string passed to TheirStack when set. Blank means
+  // nationwide — TheirStack uses no location filter.
+  locationOverride: string;
 };
 
 export type SavedSearchInput = {

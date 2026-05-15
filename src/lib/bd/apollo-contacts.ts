@@ -8,21 +8,55 @@
 
 const APOLLO_BASE = "https://api.apollo.io";
 
-// Decision-maker title keywords. Apollo's person_titles uses fuzzy
-// matching, so these keywords pull common variants (Director of X, VP of
-// Y, etc.) without needing exact title strings.
-const DECISION_MAKER_TITLES = [
-  "Director",
-  "VP",
-  "Manager",
-  "Head",
-  "Controller",
-  "CFO",
+// Three-tier title priority list. Apollo's person_titles uses fuzzy
+// matching so we send the literal titles below; client-side ranking
+// after the fetch decides which contacts survive the per-firm cap.
+const PRIMARY_TITLES = [
+  "Firm Administrator",
+  "Practice Administrator",
+  "Director of Operations",
   "COO",
-  "CEO",
-  "Partner",
+  "HR Director",
+  "Director of People",
+  "People Operations Manager",
+  "Recruiting Manager",
+  "Talent Acquisition Manager",
+  "Head of Talent Acquisition",
+];
+
+const SMALL_FIRM_FALLBACK_TITLES = [
+  "Managing Partner",
+  "Executive Partner",
+  "Office Managing Partner",
+  "Owner",
+  "Shareholder",
   "Principal",
 ];
+
+const PRACTICE_SPECIFIC_TITLES = [
+  "Tax Partner",
+  "Tax Director",
+  "Tax Practice Leader",
+  "Audit Partner",
+  "Assurance Partner",
+  "CAS Partner",
+  "Client Accounting Services Director",
+];
+
+// Excluded as substring matches against the raw Apollo title. Lowercase
+// — comparison is case-insensitive.
+const EXCLUDED_KEYWORDS = ["staffing", "staff agency", "in-house"];
+const EXCLUDED_EXACT_TITLES = new Set(
+  [
+    "Staff Accountant",
+    "Senior Accountant",
+    "Bookkeeper",
+    "Accounting Clerk",
+  ].map((t) => t.toLowerCase()),
+);
+
+const MAX_CONTACTS_PER_FIRM = 4;
+const MAX_PRACTICE_SPECIFIC_PER_FIRM = 1;
 
 export type ApolloContact = {
   id: string;
@@ -39,6 +73,22 @@ type ApolloPersonRaw = {
   title?: string;
   linkedin_url?: string;
 };
+
+type Tier = "primary" | "small-firm" | "practice-specific";
+
+function classify(title: string): Tier | null {
+  const t = title.toLowerCase();
+  if (PRIMARY_TITLES.some((p) => t.includes(p.toLowerCase()))) return "primary";
+  if (PRACTICE_SPECIFIC_TITLES.some((p) => t.includes(p.toLowerCase()))) return "practice-specific";
+  if (SMALL_FIRM_FALLBACK_TITLES.some((p) => t.includes(p.toLowerCase()))) return "small-firm";
+  return null;
+}
+
+function isExcluded(title: string): boolean {
+  const t = title.toLowerCase();
+  if (EXCLUDED_EXACT_TITLES.has(t)) return true;
+  return EXCLUDED_KEYWORDS.some((k) => t.includes(k));
+}
 
 export async function fetchApolloContacts(
   domain: string,
@@ -59,8 +109,12 @@ export async function fetchApolloContacts(
       },
       body: JSON.stringify({
         organization_domains: [normDomain],
-        person_titles: DECISION_MAKER_TITLES,
-        per_page: 5,
+        person_titles: [
+          ...PRIMARY_TITLES,
+          ...SMALL_FIRM_FALLBACK_TITLES,
+          ...PRACTICE_SPECIFIC_TITLES,
+        ],
+        per_page: 25,
       }),
       cache: "no-store",
     });
@@ -77,20 +131,53 @@ export async function fetchApolloContacts(
     const raw = data.people ?? data.contacts ?? [];
     if (!Array.isArray(raw)) return [];
 
-    const out: ApolloContact[] = [];
+    const primary: ApolloContact[] = [];
+    const smallFirm: ApolloContact[] = [];
+    const practiceSpecific: ApolloContact[] = [];
+
     for (const p of raw) {
       const first = (p.first_name ?? "").trim();
       const last = (p.last_name ?? "").trim();
       const title = (p.title ?? "").trim();
       if (!first && !last) continue;
-      out.push({
+      if (isExcluded(title)) continue;
+      const tier = classify(title);
+      if (!tier) continue;
+      const contact: ApolloContact = {
         id: p.id ?? `${first}-${last}-${title}`.toLowerCase().replace(/\s+/g, "-"),
         firstName: first,
         lastName: last,
         title,
         linkedinUrl: typeof p.linkedin_url === "string" && p.linkedin_url.trim() ? p.linkedin_url.trim() : null,
-      });
-      if (out.length >= 5) break;
+      };
+      if (tier === "primary") primary.push(contact);
+      else if (tier === "small-firm") smallFirm.push(contact);
+      else practiceSpecific.push(contact);
+    }
+
+    // Compose final list under the per-firm cap.
+    // 1. Prefer primary/HR/ops first — take up to MAX_CONTACTS_PER_FIRM.
+    // 2. Small-firm fallback ONLY when no primary contact was returned.
+    // 3. Practice-specific is capped to MAX_PRACTICE_SPECIFIC_PER_FIRM
+    //    and only fills remaining slots after primary/small-firm.
+    const out: ApolloContact[] = [];
+    if (primary.length > 0) {
+      for (const c of primary) {
+        if (out.length >= MAX_CONTACTS_PER_FIRM) break;
+        out.push(c);
+      }
+    } else {
+      for (const c of smallFirm) {
+        if (out.length >= MAX_CONTACTS_PER_FIRM) break;
+        out.push(c);
+      }
+    }
+    let practiceSpecificAdded = 0;
+    for (const c of practiceSpecific) {
+      if (out.length >= MAX_CONTACTS_PER_FIRM) break;
+      if (practiceSpecificAdded >= MAX_PRACTICE_SPECIFIC_PER_FIRM) break;
+      out.push(c);
+      practiceSpecificAdded += 1;
     }
     return out;
   } catch (err) {

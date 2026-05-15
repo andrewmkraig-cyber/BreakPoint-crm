@@ -12,7 +12,6 @@ import {
   createVertical,
   deleteVertical,
   type SavedSearchCriteria,
-  type SavedSearchLocationInput,
 } from "./actions";
 
 export type SavedSearchRow = {
@@ -32,17 +31,10 @@ export type VerticalRow = {
   savedSearches: SavedSearchRow[];
 };
 
-const FRESHNESS_OPTIONS = [3, 7, 14, 30] as const;
-
 function emptyCriteria(sequenceDefault: string): SavedSearchCriteria {
   return {
     apolloSequenceId: sequenceDefault,
-    targetTitles: [],
-    locations: [],
-    companySizeMin: 10,
-    companySizeMax: 500,
-    keywords: "",
-    minFreshnessDays: 7,
+    locationOverride: "",
   };
 }
 
@@ -53,27 +45,12 @@ function coerceCriteria(
   // Treat the incoming Json blob as unknown — Prisma's Json type erases
   // shape, so the static "Partial<SavedSearchCriteria>" annotation is
   // optimistic. Every field below validates at runtime before reading.
+  // Old saved searches with the legacy fields (targetTitles, locations,
+  // companySize, keywords, freshness) are silently dropped on load.
   const r = raw as Record<string, unknown>;
-  const rawTitles = r.targetTitles;
-  const rawLocations = r.locations;
   return {
     apolloSequenceId: typeof r.apolloSequenceId === "string" ? r.apolloSequenceId : sequenceDefault,
-    targetTitles: Array.isArray(rawTitles)
-      ? rawTitles.filter((t): t is string => typeof t === "string")
-      : [],
-    locations: Array.isArray(rawLocations)
-      ? rawLocations
-          .filter((l): l is Record<string, unknown> => l !== null && typeof l === "object")
-          .map((l) => ({
-            city: typeof l.city === "string" ? l.city : "",
-            state: typeof l.state === "string" ? l.state : "",
-            radiusMiles: typeof l.radiusMiles === "number" ? l.radiusMiles : 25,
-          }))
-      : [],
-    companySizeMin: typeof r.companySizeMin === "number" ? r.companySizeMin : 10,
-    companySizeMax: typeof r.companySizeMax === "number" ? r.companySizeMax : 500,
-    keywords: typeof r.keywords === "string" ? r.keywords : "",
-    minFreshnessDays: typeof r.minFreshnessDays === "number" ? r.minFreshnessDays : 7,
+    locationOverride: typeof r.locationOverride === "string" ? r.locationOverride : "",
   };
 }
 
@@ -245,16 +222,8 @@ function SavedSearchRowHeader({
   onClose: () => void;
 }) {
   const summaryParts = [
-    criteria.targetTitles.length > 0
-      ? `${criteria.targetTitles.slice(0, 3).join(", ")}${criteria.targetTitles.length > 3 ? "…" : ""}`
-      : null,
-    criteria.locations.length > 0
-      ? criteria.locations
-          .slice(0, 2)
-          .map((l) => `${l.city}, ${l.state}`)
-          .join(" · ")
-      : null,
-    `${criteria.companySizeMin}-${criteria.companySizeMax} ppl`,
+    criteria.apolloSequenceId ? `→ ${criteria.apolloSequenceId}` : null,
+    criteria.locationOverride.trim() ? `Location: ${criteria.locationOverride.trim()}` : "Nationwide",
   ].filter(Boolean);
 
   return (
@@ -319,41 +288,19 @@ function SavedSearchEditForm({
   const [name, setName] = useState(initialName);
   const [contactCap, setContactCap] = useState<number>(initialContactCap);
   const [sequence, setSequence] = useState(initialCriteria.apolloSequenceId);
-  const [titles, setTitles] = useState<string[]>(initialCriteria.targetTitles);
-  const [titlesDraft, setTitlesDraft] = useState("");
-  const [locations, setLocations] = useState<SavedSearchLocationInput[]>(initialCriteria.locations);
-  const [sizeMin, setSizeMin] = useState(initialCriteria.companySizeMin);
-  const [sizeMax, setSizeMax] = useState(initialCriteria.companySizeMax);
-  const [keywords, setKeywords] = useState(initialCriteria.keywords);
-  const [freshness, setFreshness] = useState(initialCriteria.minFreshnessDays);
+  const [locationOverride, setLocationOverride] = useState(initialCriteria.locationOverride);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const nextVersion = mode === "edit" ? version + 1 : 1;
 
-  function commitTitleDraft() {
-    const tokens = titlesDraft
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    if (tokens.length === 0) return;
-    setTitles((existing) => Array.from(new Set([...existing, ...tokens])));
-    setTitlesDraft("");
-  }
-
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (titlesDraft.trim()) commitTitleDraft();
     const input = {
       name,
       contactCap,
       criteria: {
         apolloSequenceId: sequence,
-        targetTitles: titles,
-        locations,
-        companySizeMin: sizeMin,
-        companySizeMax: sizeMax,
-        keywords,
-        minFreshnessDays: freshness,
+        locationOverride: locationOverride.trim(),
       } satisfies SavedSearchCriteria,
     };
     setError(null);
@@ -410,145 +357,14 @@ function SavedSearchEditForm({
         </Field>
       </div>
 
-      <Field label="Target titles" hint="Type a title and press Enter or comma to add">
-        <div className="flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1.5">
-          {titles.map((t, i) => (
-            <span
-              key={`${t}-${i}`}
-              className="inline-flex items-center gap-1 rounded-full bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark"
-            >
-              {t}
-              <button
-                type="button"
-                onClick={() => setTitles((titles) => titles.filter((x) => x !== t))}
-                aria-label={`Remove ${t}`}
-                className="text-court-brand-dark/70 hover:text-court-brand-dark"
-              >
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-          <input
-            type="text"
-            value={titlesDraft}
-            onChange={(e) => setTitlesDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "," || e.key === "Enter") {
-                e.preventDefault();
-                commitTitleDraft();
-              } else if (e.key === "Backspace" && !titlesDraft && titles.length > 0) {
-                setTitles((titles) => titles.slice(0, -1));
-              }
-            }}
-            onBlur={commitTitleDraft}
-            placeholder={titles.length === 0 ? "e.g. Tax Manager, Audit Partner" : ""}
-            className="flex-1 min-w-[120px] bg-transparent text-sm text-court-fg placeholder:text-court-fg-dim focus:outline-none"
-          />
-        </div>
-      </Field>
-
-      <Field label="Locations" hint="City + State + radius (miles)">
-        <div className="flex flex-col gap-2">
-          {locations.map((loc, idx) => (
-            <div key={idx} className="grid grid-cols-[2fr_1fr_1fr_auto] items-center gap-2">
-              <input
-                type="text"
-                value={loc.city}
-                placeholder="City"
-                onChange={(e) =>
-                  setLocations((rows) =>
-                    rows.map((r, i) => (i === idx ? { ...r, city: e.target.value } : r)),
-                  )
-                }
-                className="rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-              />
-              <input
-                type="text"
-                value={loc.state}
-                placeholder="State"
-                maxLength={2}
-                onChange={(e) =>
-                  setLocations((rows) =>
-                    rows.map((r, i) => (i === idx ? { ...r, state: e.target.value.toUpperCase() } : r)),
-                  )
-                }
-                className="rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-              />
-              <input
-                type="number"
-                min={1}
-                value={loc.radiusMiles}
-                onChange={(e) =>
-                  setLocations((rows) =>
-                    rows.map((r, i) =>
-                      i === idx ? { ...r, radiusMiles: Number(e.target.value) || 0 } : r,
-                    ),
-                  )
-                }
-                className="rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-              />
-              <button
-                type="button"
-                onClick={() => setLocations((rows) => rows.filter((_, i) => i !== idx))}
-                aria-label="Remove location"
-                className="rounded-md p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-          <button
-            type="button"
-            onClick={() => setLocations((rows) => [...rows, { city: "", state: "", radiusMiles: 25 }])}
-            className="inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed border-court-border bg-court-surface px-2.5 py-1 text-xs font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:text-court-fg"
-          >
-            <Plus className="h-3 w-3" /> Add location
-          </button>
-        </div>
-      </Field>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Company size — min">
-          <input
-            type="number"
-            min={0}
-            value={sizeMin}
-            onChange={(e) => setSizeMin(Number(e.target.value))}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-          />
-        </Field>
-        <Field label="Company size — max">
-          <input
-            type="number"
-            min={0}
-            value={sizeMax}
-            onChange={(e) => setSizeMax(Number(e.target.value))}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-          />
-        </Field>
-      </div>
-
-      <Field label="Boolean keywords" hint="e.g. tax AND (manager OR partner)">
-        <textarea
-          value={keywords}
-          onChange={(e) => setKeywords(e.target.value)}
-          rows={2}
-          className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+      <Field label="Location override" hint="Optional — passed to TheirStack when set; ignored when blank">
+        <input
+          type="text"
+          value={locationOverride}
+          onChange={(e) => setLocationOverride(e.target.value)}
+          placeholder="Nationwide — leave blank for all locations"
+          className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
         />
-      </Field>
-
-      <Field label="Min posting freshness">
-        <select
-          value={freshness}
-          onChange={(e) => setFreshness(Number(e.target.value))}
-          className="block w-full max-w-[12rem] rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
-        >
-          {FRESHNESS_OPTIONS.map((d) => (
-            <option key={d} value={d}>
-              {d} days
-            </option>
-          ))}
-        </select>
       </Field>
 
       {error && (

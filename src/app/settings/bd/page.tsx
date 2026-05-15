@@ -7,6 +7,7 @@ import { VerticalsSection, type SavedSearchRow, type VerticalRow } from "./verti
 import { ApolloSection, type SequencePreview } from "./apollo-section";
 import { APOLLO_SEQUENCES } from "@/lib/bd/apollo-sequences";
 import { DomainsSection, type DomainRow } from "./domains-section";
+import { fetchApolloMailboxes } from "@/lib/bd/apollo-email-accounts";
 import { LimitsSection, type LimitsConfig } from "./limits-section";
 import { ReplyRoutingSection, type ReplyRoutingConfig } from "./reply-routing-section";
 
@@ -20,7 +21,7 @@ export const dynamic = "force-dynamic";
 export default async function BdSettingsPage() {
   const org = await getCurrentOrg();
 
-  const [verticalsRaw, sendingDomainsRaw, config, lastReply, versionCounts, lastRuns] =
+  const [verticalsRaw, sendingDomainsRaw, config, lastReply, versionCounts, lastRuns, apolloMailboxes] =
     await Promise.all([
       prisma.vertical.findMany({
         where: { organizationId: org.id },
@@ -68,6 +69,7 @@ export default async function BdSettingsPage() {
         where: { organizationId: org.id },
         _max: { createdAt: true },
       }),
+      fetchApolloMailboxes(),
     ]);
 
   const versionCountBySearchId = new Map(
@@ -104,15 +106,31 @@ export default async function BdSettingsPage() {
     status: s.status,
   }));
 
-  const domains: DomainRow[] = sendingDomainsRaw.map((d, i) => ({
-    id: d.id,
-    domain: d.domain,
-    status: d.status,
-    inboxOwner: d.inboxOwner ?? "Andrew",
-    priority: i + 1,
-    lastCooldownIso: null,
-    reputation: 85,
-  }));
+  const mailboxByDomain = apolloMailboxes
+    ? new Map(apolloMailboxes.map((m) => [m.domain, m]))
+    : null;
+  const domains: DomainRow[] = sendingDomainsRaw.map((d, i) => {
+    const match = mailboxByDomain?.get(d.domain.toLowerCase()) ?? null;
+    return {
+      id: d.id,
+      domain: d.domain,
+      status: d.status,
+      inboxOwner: d.inboxOwner ?? "Andrew",
+      priority: i + 1,
+      lastCooldownIso: null,
+      apollo:
+        apolloMailboxes === null
+          ? { state: "unavailable" }
+          : match
+            ? {
+                state: "matched",
+                connection: match.status,
+                dailyLimit: match.dailyLimit,
+                sentToday: match.sentToday,
+              }
+            : { state: "not-found" },
+    };
+  });
 
   const limitsConfig: LimitsConfig = {
     globalDailyCap: config?.globalDailyCap ?? 80,
@@ -148,7 +166,7 @@ export default async function BdSettingsPage() {
       <CollapsibleSection
         id="verticals"
         title="Verticals & Saved Searches"
-        description="Targets for the morning Indeed scan. Each saved search defines who Apollo enriches and which sequence picks them up."
+        description="Targets for the morning TheirStack discovery run. Each saved search defines who Apollo enriches and which sequence picks them up."
       >
         <VerticalsSection verticals={verticals} sequences={sequences.map((s) => s.name)} />
       </CollapsibleSection>
