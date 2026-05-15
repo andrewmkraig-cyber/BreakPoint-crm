@@ -508,6 +508,26 @@ export function ClaudePanel() {
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, [draft]);
 
+  // Window-resize re-clamp. If the viewport shrinks (window resize,
+  // dev-tools docking, browser zoom changing inner dimensions), pull a
+  // now-out-of-bounds panel back inside so it doesn't get stranded
+  // beyond the right/bottom edge with no way to grab it.
+  useEffect(() => {
+    if (!position) return;
+    function onResize() {
+      if (!position) return;
+      const maxX = Math.max(0, window.innerWidth - size.w);
+      const maxY = Math.max(0, window.innerHeight - size.h);
+      const clampedX = Math.max(0, Math.min(maxX, position.x));
+      const clampedY = Math.max(0, Math.min(maxY, position.y));
+      if (clampedX !== position.x || clampedY !== position.y) {
+        setPosition({ x: clampedX, y: clampedY });
+      }
+    }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [position, size.w, size.h, setPosition]);
+
   const onHeaderPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (e.button !== 0) return;
@@ -544,8 +564,19 @@ export function ClaudePanel() {
       };
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerId !== e.pointerId) return;
-        dx = ev.clientX - startPx;
-        dy = ev.clientY - startPy;
+        const rawDx = ev.clientX - startPx;
+        const rawDy = ev.clientY - startPy;
+        // Live clamp: derive dx/dy from a viewport-clamped absolute
+        // position so the panel can't visibly leave the window during
+        // drag. The pointerup commit at the bottom also clamps, but it
+        // fires after the user has already seen the panel half off-
+        // screen; clamping in the move loop keeps the edge "sticky".
+        const maxX = Math.max(0, window.innerWidth - size.w);
+        const maxY = Math.max(0, window.innerHeight - size.h);
+        const clampedX = Math.max(0, Math.min(maxX, startX + rawDx));
+        const clampedY = Math.max(0, Math.min(maxY, startY + rawDy));
+        dx = clampedX - startX;
+        dy = clampedY - startY;
         if (rafId === 0) rafId = requestAnimationFrame(flush);
       };
       const finish = () => {
