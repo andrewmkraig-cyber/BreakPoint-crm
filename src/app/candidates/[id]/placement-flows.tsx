@@ -904,7 +904,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                       reapplyCancelledPlacement({ placementId }),
                     )
                   }
-                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-brand-tint"
+                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
                 >
                   Reapply (move to Submitted)
                 </button>
@@ -917,7 +917,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                       moveCancelledToAceStage({ placementId, target: "sourced" }),
                     )
                   }
-                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-brand-tint"
+                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
                 >
                   Move to Sourced
                 </button>
@@ -930,7 +930,7 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
                       moveCancelledToAceStage({ placementId, target: "applied" }),
                     )
                   }
-                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-brand-tint"
+                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
                 >
                   Move to Applied
                 </button>
@@ -3753,7 +3753,7 @@ function PickerOption({
           onToggle();
         }}
         disabled={!email}
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-court-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span
           aria-hidden="true"

@@ -732,7 +732,7 @@ export function EmailComposer({
                             <button
                               type="button"
                               onClick={() => onPickTemplate(t)}
-                              className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg hover:bg-brand-tint"
+                              className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg hover:bg-court-brand-tint"
                             >
                               <span className="font-medium">{t.name}</span>
                               <span className="truncate text-[11px] text-court-fg-muted">{t.subject}</span>
@@ -785,7 +785,7 @@ export function EmailComposer({
                               type="button"
                               onMouseDown={(e) => e.preventDefault()}
                               onClick={() => insertMergeToken(f.token)}
-                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-court-fg hover:bg-brand-tint"
+                              className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs text-court-fg hover:bg-court-brand-tint"
                             >
                               <span>{f.label}</span>
                               <code className="rounded bg-court-surface-subtle px-1 py-0.5 text-[10px] text-court-fg-muted">
@@ -982,7 +982,7 @@ function ContactMultiPicker({
               )}
               {options.map((c) => (
                 <li key={c.id}>
-                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-court-fg hover:bg-brand-tint">
+                  <label className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm text-court-fg hover:bg-court-brand-tint">
                     <input
                       type="checkbox"
                       checked={c.email ? selected.has(c.email) : false}
@@ -1202,7 +1202,7 @@ function ContactRow({
           onToggle();
         }}
         disabled={!c.email}
-        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left text-sm text-court-fg hover:bg-court-brand-tint disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span
           aria-hidden="true"

@@ -95,7 +95,7 @@ export function EditWithClaudeMenu({
                     setOpen(false);
                     onPick(opt.type);
                   }}
-                  className="block w-full px-3 py-1.5 text-left text-court-fg hover:bg-brand-tint"
+                  className="block w-full px-3 py-1.5 text-left text-court-fg hover:bg-court-brand-tint"
                 >
                   {opt.label}
                 </button>
