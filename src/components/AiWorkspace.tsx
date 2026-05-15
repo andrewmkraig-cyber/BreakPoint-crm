@@ -197,7 +197,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
     // the flex math deterministic.
     <div
       ref={cardRef}
-      className="sticky top-4 flex h-[calc(100dvh-20rem)] min-h-[360px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
+      className="sticky top-4 flex h-[calc(100dvh-22rem)] min-h-[360px] flex-col overflow-hidden rounded-xl border border-court-border bg-white shadow-sm dark:bg-court-surface"
     >
       <div className="flex shrink-0 items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
@@ -244,7 +244,7 @@ export function AiWorkspace({ entityType, entityId, title, recipientEmail }: AiW
         )}
       </div>
 
-      <div className="shrink-0 border-t border-court-border bg-white p-4 dark:bg-court-surface">
+      <div className="shrink-0 border-t border-court-border bg-white p-4 pb-6 dark:bg-court-surface">
         <div className="flex items-end gap-2">
           <textarea
             value={input}
