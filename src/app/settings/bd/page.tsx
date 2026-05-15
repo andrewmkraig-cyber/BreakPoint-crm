@@ -5,6 +5,7 @@ import { BdInPageNav } from "./in-page-nav";
 import { BdEngineSection } from "./bd-engine-section";
 import { VerticalsSection, type SavedSearchRow, type VerticalRow } from "./verticals-section";
 import { ApolloSection, type SequencePreview } from "./apollo-section";
+import { APOLLO_SEQUENCES } from "@/lib/bd/apollo-sequences";
 import { DomainsSection, type DomainRow } from "./domains-section";
 import { LimitsSection, type LimitsConfig } from "./limits-section";
 import { ReplyRoutingSection, type ReplyRoutingConfig } from "./reply-routing-section";
@@ -91,14 +92,17 @@ export default async function BdSettingsPage() {
     })),
   }));
 
-  // Phase 3 sequences are hardcoded placeholders until the Apollo
-  // integration ships in Phase 4. The dropdown in Section 1 sources
-  // from the same list so the UI is consistent end-to-end.
-  const sequences: SequencePreview[] = [
-    { name: "BD Outbound v1", verticalName: verticals[0]?.name ?? "—", steps: 5 },
-    { name: "Public Accounting Cold Sequence", verticalName: "Public Accounting", steps: 6 },
-    { name: "Legal Outreach v2", verticalName: "Legal", steps: 4 },
-  ];
+  // Sequences come from the real Apollo config — see apollo-sequences.ts.
+  // Each entry carries the live Apollo ID so the Section 1 dropdown and
+  // the Apollo Integration table both render against the same source of
+  // truth. Status "ACTIVE" means the sequence is wired and resolving.
+  const sequences: SequencePreview[] = APOLLO_SEQUENCES.map((s) => ({
+    name: s.name,
+    verticalName: s.verticalName,
+    steps: s.steps,
+    apolloId: s.apolloId,
+    status: s.status,
+  }));
 
   const domains: DomainRow[] = sendingDomainsRaw.map((d, i) => ({
     id: d.id,

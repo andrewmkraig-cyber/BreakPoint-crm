@@ -27,7 +27,10 @@ const SAVED_SEARCH_DAILY_CAP = 80;
 // here. The morning cron (BD Phase 3+) will read this blob to drive
 // Indeed scan + Apollo enrich + Apollo sequence enrollment.
 const SAVED_SEARCH_CRITERIA = {
-  apolloSequenceId: "placeholder-sequence-id",
+  // Maps to the real Apollo sequence wired in apollo-sequences.ts. The
+  // dropdown in /settings/bd stores the sequence *name* in this field,
+  // not the Apollo ID — keep them in sync.
+  apolloSequenceId: "BD Outbound v1",
   targetTitles: ["Tax Manager", "Tax Partner", "Senior Tax Manager"],
   locations: [{ city: "Cleveland", state: "OH", radiusMiles: 50 }],
   companySizeMin: 10,
@@ -37,11 +40,11 @@ const SAVED_SEARCH_CRITERIA = {
 };
 
 const SENDING_DOMAINS = [
-  "outreach1.breakpointconnect.com",
-  "outreach2.breakpointconnect.com",
-  "outreach3.breakpointconnect.com",
-  "outreach4.breakpointconnect.com",
-  "outreach5.breakpointconnect.com",
+  "andrew@breakpoint-talent.com",
+  "a.kraig@breakpoint-talent.com",
+  "andrew.kraig@breakpoint-talent.com",
+  "andrewk@breakpoint-talent.com",
+  "kraig@breakpoint-talent.com",
 ];
 
 async function main(): Promise<void> {
@@ -122,11 +125,13 @@ async function main(): Promise<void> {
         domain,
         status: "HEALTHY",
         dailyCap: 20,
+        inboxOwner: "Andrew",
         lastUsedAt,
       },
       update: {
         status: "HEALTHY",
         dailyCap: 20,
+        inboxOwner: "Andrew",
         lastUsedAt,
       },
       select: { id: true, domain: true, status: true },

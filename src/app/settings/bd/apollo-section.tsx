@@ -8,6 +8,11 @@ export type SequencePreview = {
   name: string;
   verticalName: string;
   steps: number;
+  // Real Apollo identifier the enroll step uses as sequence_id. Empty
+  // string means the sequence has no live wiring yet — UI falls back to
+  // "Pending API connection".
+  apolloId: string;
+  status: "ACTIVE" | "PAUSED";
 };
 
 type TestResult =
@@ -122,29 +127,53 @@ export function ApolloSection({
               </tr>
             </thead>
             <tbody className="divide-y divide-court-border">
-              {sequences.map((s) => (
-                <tr key={s.name}>
-                  <Td className="font-medium text-court-fg">{s.name}</Td>
-                  <Td className="font-mono text-[11px] text-court-fg-muted">
-                    Pending API connection
-                  </Td>
-                  <Td>{s.verticalName}</Td>
-                  <Td className="text-center tabular-nums">{s.steps}</Td>
-                  <Td>
-                    <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
-                      Pending
-                    </span>
-                  </Td>
-                  <Td>
-                    <span
-                      title="Opens in Apollo once API ID is wired in Phase 4"
-                      className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-court-fg-dim opacity-60"
-                    >
-                      <ExternalLink className="h-3 w-3" /> Open in Apollo
-                    </span>
-                  </Td>
-                </tr>
-              ))}
+              {sequences.map((s) => {
+                const resolved = isConfigured && s.apolloId.length > 0;
+                return (
+                  <tr key={s.name}>
+                    <Td className="font-medium text-court-fg">{s.name}</Td>
+                    <Td className="font-mono text-[11px] text-court-fg">
+                      {resolved ? (
+                        s.apolloId
+                      ) : (
+                        <span className="text-court-fg-muted">Pending API connection</span>
+                      )}
+                    </Td>
+                    <Td>{s.verticalName}</Td>
+                    <Td className="text-center tabular-nums">{s.steps}</Td>
+                    <Td>
+                      {resolved ? (
+                        <span className="inline-flex items-center rounded-full border border-court-brand/30 bg-court-brand-tint px-2 py-0.5 text-[11px] font-semibold text-court-brand-dark">
+                          {s.status === "ACTIVE" ? "Active" : "Paused"}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] font-medium text-court-fg-muted">
+                          Pending
+                        </span>
+                      )}
+                    </Td>
+                    <Td>
+                      {resolved ? (
+                        <a
+                          href={`https://app.apollo.io/#/emailer/sequences/${s.apolloId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-court-brand-dark hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" /> Open in Apollo
+                        </a>
+                      ) : (
+                        <span
+                          title="Set APOLLO_API_KEY and wire the sequence ID to enable"
+                          className="inline-flex cursor-not-allowed items-center gap-1 text-xs text-court-fg-dim opacity-60"
+                        >
+                          <ExternalLink className="h-3 w-3" /> Open in Apollo
+                        </span>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

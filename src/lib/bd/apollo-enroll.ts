@@ -1,6 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "@/lib/prisma";
 import { CLAUDE_MODEL, getClaude } from "@/lib/claude";
+import { getDefaultApolloSequence } from "@/lib/bd/apollo-sequences";
 
 // Cap is enforced against everything enrolled today across the org's
 // BDRuns, where "today" is calendar day in America/New_York. The cron
@@ -319,7 +320,10 @@ export async function enrollCompaniesInApollo(
   }
 
   const apiKey = process.env.APOLLO_API_KEY;
-  const sequenceId = process.env.APOLLO_SEQUENCE_ID;
+  // Prefer the explicit APOLLO_SEQUENCE_ID env var (set for staging /
+  // one-off overrides); otherwise resolve from apollo-sequences.ts so
+  // prod has a single source of truth for the live BD Outbound sequence.
+  const sequenceId = process.env.APOLLO_SEQUENCE_ID ?? getDefaultApolloSequence()?.apolloId ?? "";
   if (!apiKey || !sequenceId) {
     console.warn(
       `[Apollo] runId=${run.id} cannot enroll — APOLLO_API_KEY or APOLLO_SEQUENCE_ID unset`,
