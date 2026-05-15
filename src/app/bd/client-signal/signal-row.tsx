@@ -19,6 +19,7 @@ export type SignalRowData = {
   postedLabel: string;
   jobPostingUrl: string | null;
   status: "NEW" | "ACTED" | "DISMISSED";
+  source: "BD_DISCOVERY" | "CLIENT_MONITOR";
 };
 
 // Single client-signal row. Renders inert button states while a
@@ -88,6 +89,21 @@ export function SignalRow(props: SignalRowData) {
           )}
           <span className="inline-flex items-center gap-1">
             <Clock className="h-3.5 w-3.5" /> Posted {props.postedLabel}
+          </span>
+          <span
+            title={
+              props.source === "CLIENT_MONITOR"
+                ? "Surfaced by the nightly direct scan of your existing clients"
+                : "Surfaced by a BD discovery run that matched an existing client"
+            }
+            className={cn(
+              "inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              props.source === "CLIENT_MONITOR"
+                ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
+                : "border-court-border bg-court-surface-subtle text-court-fg-muted",
+            )}
+          >
+            {props.source === "CLIENT_MONITOR" ? "Client monitor" : "BD discovery"}
           </span>
         </div>
       </div>

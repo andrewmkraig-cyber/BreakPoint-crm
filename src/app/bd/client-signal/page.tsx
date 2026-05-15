@@ -59,6 +59,7 @@ export default async function ClientSignalPage({
         jobPostingUrl: true,
         discoveredAt: true,
         status: true,
+        source: true,
         client: { select: { id: true, legacyRfId: true, logoUrl: true } },
       },
     }),
@@ -80,6 +81,7 @@ export default async function ClientSignalPage({
     postedLabel: formatDaysAgo(s.discoveredAt, nowMs),
     jobPostingUrl: s.jobPostingUrl,
     status: s.status,
+    source: s.source === "CLIENT_MONITOR" ? "CLIENT_MONITOR" : "BD_DISCOVERY",
   }));
 
   const tabs: ReadonlyArray<TabStripItem<Filter>> = [

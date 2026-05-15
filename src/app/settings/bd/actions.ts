@@ -212,6 +212,47 @@ export async function deleteSendingDomain(id: string): Promise<void> {
   revalidateAll();
 }
 
+// ---- Contact targeting ----
+
+export type ContactTargetingInput = {
+  verticalId: string;
+  primaryTitles: string[];
+  smallFirmFallbackTitles: string[];
+  practiceSpecificTitles: string[];
+  maxPerFirm: number;
+};
+
+function cleanTitles(titles: string[]): string[] {
+  return Array.from(
+    new Set(
+      titles
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0),
+    ),
+  );
+}
+
+export async function saveContactTargeting(input: ContactTargetingInput): Promise<void> {
+  const org = await getCurrentOrg();
+  const vertical = await prisma.vertical.findFirst({
+    where: { id: input.verticalId, organizationId: org.id },
+    select: { id: true },
+  });
+  if (!vertical) throw new Error("Vertical not found");
+  const data = {
+    primaryTitles: cleanTitles(input.primaryTitles),
+    smallFirmFallbackTitles: cleanTitles(input.smallFirmFallbackTitles),
+    practiceSpecificTitles: cleanTitles(input.practiceSpecificTitles),
+    maxPerFirm: Math.max(1, Math.min(20, Math.floor(input.maxPerFirm))),
+  };
+  await prisma.bdContactTargeting.upsert({
+    where: { verticalId: vertical.id },
+    create: { organizationId: org.id, verticalId: vertical.id, ...data },
+    update: data,
+  });
+  revalidateAll();
+}
+
 // ---- BD org config (global cap, pause-all, blackouts, reply routing) ----
 
 export type BdOrgConfigPatch = Partial<{

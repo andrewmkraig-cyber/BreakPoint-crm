@@ -8,6 +8,11 @@ import { ApolloSection, type SequencePreview } from "./apollo-section";
 import { APOLLO_SEQUENCES } from "@/lib/bd/apollo-sequences";
 import { DomainsSection, type DomainRow } from "./domains-section";
 import { fetchApolloMailboxes } from "@/lib/bd/apollo-email-accounts";
+import {
+  ContactTargetingSection,
+  type ContactTargetingRow,
+} from "./contact-targeting-section";
+import { DEFAULT_CONTACT_TARGETING } from "@/lib/bd/apollo-contacts";
 import { LimitsSection, type LimitsConfig } from "./limits-section";
 import { ReplyRoutingSection, type ReplyRoutingConfig } from "./reply-routing-section";
 
@@ -106,6 +111,31 @@ export default async function BdSettingsPage() {
     status: s.status,
   }));
 
+  const targetingRows = await prisma.bdContactTargeting.findMany({
+    where: { organizationId: org.id },
+    select: {
+      verticalId: true,
+      primaryTitles: true,
+      smallFirmFallbackTitles: true,
+      practiceSpecificTitles: true,
+      maxPerFirm: true,
+    },
+  });
+  const targetingByVertical = new Map(targetingRows.map((t) => [t.verticalId, t]));
+  const contactTargeting: ContactTargetingRow[] = verticalsRaw.map((v) => {
+    const existing = targetingByVertical.get(v.id);
+    return {
+      verticalId: v.id,
+      verticalName: v.name,
+      primaryTitles: existing?.primaryTitles ?? DEFAULT_CONTACT_TARGETING.primaryTitles,
+      smallFirmFallbackTitles:
+        existing?.smallFirmFallbackTitles ?? DEFAULT_CONTACT_TARGETING.smallFirmFallbackTitles,
+      practiceSpecificTitles:
+        existing?.practiceSpecificTitles ?? DEFAULT_CONTACT_TARGETING.practiceSpecificTitles,
+      maxPerFirm: existing?.maxPerFirm ?? DEFAULT_CONTACT_TARGETING.maxPerFirm,
+    };
+  });
+
   const mailboxByDomain = apolloMailboxes
     ? new Map(apolloMailboxes.map((m) => [m.domain, m]))
     : null;
@@ -181,6 +211,14 @@ export default async function BdSettingsPage() {
           maskedKey={maskedApolloKey}
           sequences={sequences}
         />
+      </CollapsibleSection>
+
+      <CollapsibleSection
+        id="contact-targeting"
+        title="Contact Targeting"
+        description="Per-vertical title priority used by Apollo decision-maker fetches. Primary first, small-firm fallback only when no primary returned, max one practice-specific."
+      >
+        <ContactTargetingSection rows={contactTargeting} />
       </CollapsibleSection>
 
       <CollapsibleSection

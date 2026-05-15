@@ -989,6 +989,7 @@ model Organization {
   bdActivities         BDActivity[]
   clientSignals        ClientSignal[]
   bdOrgConfig          BdOrgConfig?
+  bdContactTargeting   BdContactTargeting[]
   calendarEvents       CalendarEvent[]
   aceReminders         AceReminder[]
   toolExpenses         ToolExpense[]
@@ -1493,6 +1494,7 @@ model Vertical {
   bdRuns        BDRun[]
   campaigns     Campaign[]
   clientSignals ClientSignal[]
+  contactTargeting BdContactTargeting?
 
   @@unique([organizationId, slug])
   @@index([organizationId])
@@ -1719,6 +1721,28 @@ model BdOrgConfig {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
+// Per-vertical Apollo contact targeting rules. apollo-contacts reads
+// this at runtime; if no row exists for an (org, vertical) pair the
+// fetcher falls back to the hardcoded defaults baked into the file.
+// One row per (org, vertical) so the Settings UI can edit titles +
+// per-firm cap without code changes.
+model BdContactTargeting {
+  id                      String   @id @default(cuid())
+  organizationId          String
+  verticalId              String   @unique
+  primaryTitles           String[] @default([])
+  smallFirmFallbackTitles String[] @default([])
+  practiceSpecificTitles  String[] @default([])
+  maxPerFirm              Int      @default(4)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  vertical     Vertical     @relation(fields: [verticalId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
 // Indeed-detected public job posting at an existing Client. Surfaced
 // on the Client Signal tab so the recruiter can act before a competitor
 // does. NEW → ACTED (reach-out sent) or DISMISSED. externalUrl is
@@ -1746,6 +1770,13 @@ model ClientSignal {
   actedAt        DateTime?
   dismissedAt    DateTime?
   raw            Json?
+  // Surface origin: "BD_DISCOVERY" (BD run flagged a client match) vs
+  // "CLIENT_MONITOR" (nightly direct scan of existing clients). Set
+  // once on create; subsequent upserts from either path leave it.
+  source         String             @default("BD_DISCOVERY")
+  // Last time a sync confirmed this posting still appears in
+  // TheirStack. CLIENT_MONITOR refreshes this every cron tick.
+  lastSeenAt     DateTime?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   client       Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)

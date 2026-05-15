@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { TheirStackProvider } from "@/lib/bd/theirstack-provider";
 import { getBDSettings } from "@/lib/bd/bd-settings";
 import type { DiscoveredCompany } from "@/lib/bd/job-discovery-provider";
+import { syncClientSignals } from "@/lib/bd/client-signal-sync";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -328,6 +329,25 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // Direct scan of existing clients runs on the same daily tick.
+    // Failures don't affect the discovery result we already wrote.
+    let clientMonitor: Awaited<ReturnType<typeof syncClientSignals>> = {
+      clientsScanned: 0,
+      postingsUpserted: 0,
+      skipped: 0,
+    };
+    try {
+      clientMonitor = await syncClientSignals(organizationId);
+      console.log(
+        `[bd-discovery] clientMonitor scanned=${clientMonitor.clientsScanned} upserted=${clientMonitor.postingsUpserted} skipped=${clientMonitor.skipped}`,
+      );
+    } catch (monitorErr) {
+      console.error(
+        `[bd-discovery] clientMonitor sync failed:`,
+        monitorErr instanceof Error ? monitorErr.message : monitorErr,
+      );
+    }
+
     return NextResponse.json({
       runId: run.id,
       status: "AWAITING_APPROVAL",
@@ -336,6 +356,7 @@ export async function GET(req: NextRequest) {
       dedupFilteredCount,
       clientExcludedCount,
       clientSignalsWritten,
+      clientMonitor,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);

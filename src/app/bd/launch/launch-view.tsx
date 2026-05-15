@@ -283,7 +283,7 @@ function PreviewChip({
   // org has fewer than 5 sending domains configured.
   const slots: ReadonlyArray<DomainPreview | null> = Array.from({ length: 5 }, (_, i) => domains[i] ?? null);
   return (
-    <div className="mt-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-2 text-[13px] text-court-brand-dark">
+    <div className="mt-5 inline-flex w-fit max-w-full flex-wrap items-center gap-x-3 gap-y-2 self-start rounded-lg border border-court-brand/30 bg-court-brand-tint px-3 py-1.5 text-[13px] text-court-brand-dark">
       <span className="font-semibold">{estimatedCompanies} companies</span>
       <span className="text-court-brand-dark/60">→</span>
       <span className="font-semibold">up to {contactCap} contacts</span>
