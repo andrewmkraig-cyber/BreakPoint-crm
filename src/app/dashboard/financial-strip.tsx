@@ -20,19 +20,22 @@ type PeriodKey = "current" | "previous" | "ytd";
 
 export function FinancialStrip({
   billedThisQuarterUsd,
-  cashCollectedUsd,
+  revenueUsd,
+  revenueCount,
   outstandingUsd,
   outstandingCount,
-  collectedCount,
   goalUsd,
   goalPct,
   currentQuarterLabel,
 }: {
   billedThisQuarterUsd: number;
-  cashCollectedUsd: number;
+  // Revenue = PAID invoices this quarter + uninvoiced placements this
+  // quarter (locked fee, no invoice attached). Read as "fees earned in
+  // the current period" rather than "cash in hand."
+  revenueUsd: number;
+  revenueCount: number;
   outstandingUsd: number;
   outstandingCount: number;
-  collectedCount: number;
   goalUsd: number;
   goalPct: number;
   currentQuarterLabel: string;
@@ -45,9 +48,9 @@ export function FinancialStrip({
   const clampedPct = Math.max(0, Math.min(100, goalPct));
 
   const revenueMeta =
-    collectedCount > 0
-      ? `${collectedCount} collected`
-      : "No collections yet";
+    revenueCount > 0
+      ? `${revenueCount} placement${revenueCount === 1 ? "" : "s"}`
+      : "No placements yet";
   // Outstanding now mixes SENT invoices and uninvoiced placements, so
   // "open invoices" is too narrow — drop to a generic "open" count.
   const outstandingMeta =
@@ -76,7 +79,7 @@ export function FinancialStrip({
       <div className="mt-2.5 grid grid-cols-1 items-center gap-5 sm:grid-cols-[1fr_1fr_1.6fr] sm:gap-7">
         <Stat
           label="Revenue"
-          value={formatCompactUsd(cashCollectedUsd)}
+          value={formatCompactUsd(revenueUsd)}
           meta={revenueMeta}
           onClick={() =>
             setDrilldown({

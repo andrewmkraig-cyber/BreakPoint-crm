@@ -78,16 +78,25 @@ export async function MyDashboard({
   ]);
 
   const billedThisQuarterUsd = invoiceSummary.billedThisQuarterCents / 100;
-  const cashCollectedUsd = invoiceSummary.collectedThisQuarterCents / 100;
-  // Outstanding on the Clubhouse view is "money earned but not yet
-  // collected" — fold uninvoiced placements (locked fee, no invoice
-  // yet) in with SENT invoices so today's placement shows up the
-  // instant it's recorded instead of waiting on the invoice flow.
+  // Revenue is "total fees earned this quarter" — PAID invoices this
+  // quarter plus this-quarter uninvoiced placements (locked fee, no
+  // invoice yet). An invoiced placement only ever shows up on the
+  // invoice side; an uninvoiced placement appears both here (earned
+  // work) and in Outstanding (uncollected work) without contradicting
+  // itself.
+  const revenueUsd =
+    (invoiceSummary.collectedThisQuarterCents +
+      invoiceSummary.pendingBillingThisQuarterCents) /
+    100;
+  const revenueCount =
+    invoiceSummary.collectedThisQuarterCount +
+    invoiceSummary.pendingBillingThisQuarterCount;
+  // Outstanding stays "money earned but not yet collected" — SENT
+  // invoices + all uninvoiced placements (any quarter).
   const outstandingUsd =
     (invoiceSummary.outstandingCents + invoiceSummary.pendingBillingCents) / 100;
   const outstandingCount =
     invoiceSummary.outstandingCount + invoiceSummary.pendingBillingCount;
-  const collectedCount = invoiceSummary.collectedThisQuarterCount;
 
   const Q2_GOAL_USD = 125_000;
   const q2RevenuePct = Q2_GOAL_USD > 0 ? (billedThisQuarterUsd / Q2_GOAL_USD) * 100 : 0;
@@ -113,10 +122,10 @@ export async function MyDashboard({
 
       <FinancialStrip
         billedThisQuarterUsd={billedThisQuarterUsd}
-        cashCollectedUsd={cashCollectedUsd}
+        revenueUsd={revenueUsd}
+        revenueCount={revenueCount}
         outstandingUsd={outstandingUsd}
         outstandingCount={outstandingCount}
-        collectedCount={collectedCount}
         goalUsd={Q2_GOAL_USD}
         goalPct={q2RevenuePct}
         currentQuarterLabel={currentQuarterLabel}

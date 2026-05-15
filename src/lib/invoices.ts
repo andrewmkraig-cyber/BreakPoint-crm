@@ -365,6 +365,13 @@ export type InvoiceSummary = {
   // stay strictly invoice-driven.
   pendingBillingCents: number;
   pendingBillingCount: number;
+  // Subset of the pendingBilling bucket where placedAt landed inside
+  // the current quarter. Powers the Clubhouse Revenue column, which
+  // sums PAID invoices this quarter + this-quarter uninvoiced
+  // placements so "$15K" reads as "I closed $15K of work in Q2"
+  // even before the invoice flow runs on the second placement.
+  pendingBillingThisQuarterCents: number;
+  pendingBillingThisQuarterCount: number;
   draftCount: number;
 };
 
@@ -421,9 +428,14 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
           feeTotal: { gt: 0 },
           invoices: { none: {} },
         },
-        select: { feeTotal: true },
+        select: { feeTotal: true, placedAt: true },
       }),
     ]);
+
+    const uninvoicedThisQuarter = uninvoicedPlacements.filter(
+      (p) =>
+        p.placedAt != null && p.placedAt >= qStart && p.placedAt < qEnd,
+    );
 
   return {
     outstandingCents: outstanding.reduce((s, r) => s + toCents(r.feeAmount), 0),
@@ -442,6 +454,11 @@ export async function getInvoiceSummary(organizationId: string): Promise<Invoice
       0,
     ),
     pendingBillingCount: uninvoicedPlacements.length,
+    pendingBillingThisQuarterCents: uninvoicedThisQuarter.reduce(
+      (s, p) => s + (p.feeTotal ?? 0) * 100,
+      0,
+    ),
+    pendingBillingThisQuarterCount: uninvoicedThisQuarter.length,
     draftCount,
   };
 }
