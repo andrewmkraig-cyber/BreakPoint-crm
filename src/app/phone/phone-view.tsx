@@ -1052,7 +1052,11 @@ function ThreadDetailPane({
                 }>
                   <div
                     className={
-                      "max-w-[75%] rounded-2xl px-3 py-2 text-sm " +
+                      // font-sans pins the bubble to Inter even when
+                      // next/font's CSS var hasn't applied yet on
+                      // iOS Safari first paint (otherwise falls back
+                      // to system-ui and reads as a different font).
+                      "max-w-[75%] rounded-2xl px-3 py-2 font-sans text-sm " +
                       (e.direction === "outbound"
                         ? "bg-[#5A9642] text-white"
                         : "bg-court-surface-subtle text-court-fg")

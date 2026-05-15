@@ -97,13 +97,39 @@ export async function POST(req: NextRequest): Promise<NextResponse<ApiResponse>>
       system,
       messages: [{ role: "user", content: body }],
     });
-    const first = response.content[0];
-    const raw = first && first.type === "text" ? first.text : "";
+    // Concatenate all text blocks. With web_search enabled, the
+    // response is a multi-block array (server_tool_use →
+    // web_search_tool_result → text); grabbing content[0] only
+    // would mis-classify the tool-use block as "no content" and
+    // 502 even though Claude wrote a perfectly good revision two
+    // slots later. Mirror of the fix in /api/mail/ai-compose.
+    const raw = response.content
+      .filter(
+        (b): b is Extract<(typeof response.content)[number], { type: "text" }> =>
+          b.type === "text",
+      )
+      .map((b) => b.text)
+      .join("\n\n")
+      .trim();
     if (!raw) {
-      return NextResponse.json({ error: "Claude returned no content." }, { status: 502 });
+      console.error("[edit-with-claude] no text content from Claude", {
+        stop_reason: response.stop_reason,
+        block_types: response.content.map((b) => b.type),
+      });
+      const hint =
+        response.stop_reason === "max_tokens"
+          ? "Claude hit the response length limit before finishing the revision."
+          : response.stop_reason === "tool_use"
+            ? "Claude got stuck mid-tool-use without writing a revision."
+            : "Claude returned no revised body.";
+      return NextResponse.json(
+        { error: `${hint} Try again or pick a different edit type.` },
+        { status: 502 },
+      );
     }
     return NextResponse.json({ body: stripFences(raw) });
   } catch (e) {
+    console.error("[edit-with-claude] Anthropic call failed", e);
     const msg = e instanceof Error ? e.message : "Claude call failed.";
     return NextResponse.json({ error: msg }, { status: 502 });
   }

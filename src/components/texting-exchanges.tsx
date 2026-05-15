@@ -189,7 +189,12 @@ export function TextingExchanges(props: TextingExchangesProps) {
                       </button>
                       <div
                         className={cn(
-                          "rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap break-words shadow-sm",
+                          // font-sans pins the bubble to Inter even
+                          // when the page-level inheritance chain
+                          // hiccups (iOS Safari can drop the next/font
+                          // CSS var on first paint, falling through to
+                          // system-ui which reads as a different font).
+                          "rounded-2xl px-3 py-2 font-sans text-sm whitespace-pre-wrap break-words shadow-sm",
                           outbound
                             ? "bg-emerald-600 text-white"
                             : "bg-court-surface-subtle text-court-fg",

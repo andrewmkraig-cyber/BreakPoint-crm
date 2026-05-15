@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -37,6 +37,14 @@ export function PushPermissionButton() {
   // Drives the granted-state copy: "Enabled" + Disable when a row
   // exists, "Enable notifications" otherwise.
   const [hasSubscription, setHasSubscription] = useState(false);
+  // Pre-resolved service worker registration. iOS Safari requires
+  // pushManager.subscribe() to be called inside the same task as the
+  // user-gesture event (a tap). Awaiting navigator.serviceWorker.ready
+  // inside the click handler breaks that gesture chain — by the time
+  // the await resolves, the gesture flag is gone and Safari rejects
+  // the subscribe with a generic NotAllowedError. Caching the reg on
+  // mount means the click handler can call subscribe() synchronously.
+  const registrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -45,85 +53,110 @@ export function PushPermissionButton() {
       return;
     }
     setStatus(Notification.permission as Status);
-    // If permission is already granted on this device, check whether a
-    // pushManager subscription still exists — that's the closest
-    // browser-side signal that the server has a row.
-    if (Notification.permission === "granted") {
-      navigator.serviceWorker.ready
-        .then((reg) => reg.pushManager.getSubscription())
-        .then((sub) => setHasSubscription(!!sub))
-        .catch(() => setHasSubscription(false));
-    }
+    navigator.serviceWorker.ready
+      .then((reg) => {
+        registrationRef.current = reg;
+        // Backfill: if permission is already granted on this device,
+        // check whether a live subscription exists so the granted
+        // branch renders "Enabled + Disable" rather than the Enable
+        // button again.
+        if (Notification.permission === "granted") {
+          return reg.pushManager.getSubscription();
+        }
+        return null;
+      })
+      .then((sub) => setHasSubscription(!!sub))
+      .catch(() => setHasSubscription(false));
   }, []);
 
-  async function enable() {
+  // CRITICAL: this handler is intentionally NOT async. iOS Safari for
+  // installed PWAs requires pushManager.subscribe() to be invoked
+  // inside the same task as the user-gesture event. async/await would
+  // push everything past the click into a microtask continuation
+  // where the gesture flag is gone. The promise chain below runs
+  // after subscribe(), which is fine — subscribe() itself is what
+  // needs the gesture, and we call it synchronously.
+  function enable() {
     setBusy(true);
     setErrored(false);
-    let succeeded = false;
-    try {
-      const permission = await Notification.requestPermission();
-      setStatus(permission as Status);
-      if (permission !== "granted") {
-        toast.error(
-          permission === "denied"
-            ? "Notifications blocked — enable them in browser settings."
-            : "Notifications not enabled.",
-        );
-        return;
-      }
-      const registration = await navigator.serviceWorker.ready;
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!vapidKey) {
-        toast.error("VAPID public key missing — push not configured.");
-        setErrored(true);
-        return;
-      }
-      // Reuse an existing subscription when present — the browser
-      // hands back the same object, the server upsert collapses it
-      // onto the existing row.
-      const existing = await registration.pushManager.getSubscription();
-      const subscription =
-        existing ??
-        (await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          // Cast: DOM lib types want Uint8Array<ArrayBuffer> here but
-          // our helper returns Uint8Array<ArrayBufferLike>. The runtime
-          // value is identical; the lib types just narrowed too tightly.
-          applicationServerKey: urlBase64ToUint8Array(
-            vapidKey,
-          ) as unknown as BufferSource,
-        }));
-      const res = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          ...subscription.toJSON(),
-          userAgent: navigator.userAgent,
-        }),
-      });
-      if (!res.ok) {
-        toast.error("Couldn't register notifications — try again later.");
-        setErrored(true);
-        return;
-      }
-      toast.success("Notifications enabled.");
-      setHasSubscription(true);
-      succeeded = true;
-    } catch (err) {
-      console.error("[push] enable failed", err);
-      toast.error("Couldn't enable notifications.");
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    const reg = registrationRef.current;
+    if (!vapidKey) {
+      toast.error("VAPID public key missing — push not configured.");
       setErrored(true);
-    } finally {
       setBusy(false);
-      if (succeeded) setErrored(false);
+      return;
     }
+    if (!reg) {
+      // useEffect populates this within a few ms of mount; landing
+      // here usually means the user tapped before the SW finished
+      // installing. Surface a soft retry — they can tap again.
+      toast.error("Service worker still installing — try again in a moment.");
+      setBusy(false);
+      return;
+    }
+    // subscribe() with userVisibleOnly:true triggers the OS permission
+    // prompt internally when Notification.permission === "default",
+    // so we don't call Notification.requestPermission() separately.
+    // That collapsed flow is what Safari's user-gesture check wants:
+    // one synchronous call from the click → permission prompt → push
+    // subscription, all in one promise chain.
+    reg.pushManager
+      .subscribe({
+        userVisibleOnly: true,
+        // Cast: DOM lib types want Uint8Array<ArrayBuffer> here but
+        // our helper returns Uint8Array<ArrayBufferLike>. The runtime
+        // value is identical; the lib types just narrowed too tightly.
+        applicationServerKey: urlBase64ToUint8Array(
+          vapidKey,
+        ) as unknown as BufferSource,
+      })
+      .then((subscription) =>
+        fetch("/api/push/subscribe", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            ...subscription.toJSON(),
+            userAgent: navigator.userAgent,
+          }),
+        }).then((res) => {
+          if (!res.ok) {
+            throw new Error(`/api/push/subscribe ${res.status}`);
+          }
+          setStatus("granted");
+          setHasSubscription(true);
+          toast.success("Notifications enabled.");
+        }),
+      )
+      .catch((err) => {
+        console.error("[push] enable failed", err);
+        // Re-read permission state here — subscribe()'s internal
+        // permission prompt may have flipped it to denied, in which
+        // case the user needs the browser-settings nudge rather than
+        // a generic retry button.
+        if (
+          typeof Notification !== "undefined" &&
+          Notification.permission === "denied"
+        ) {
+          setStatus("denied");
+          toast.error(
+            "Notifications blocked — enable them in browser settings.",
+          );
+        } else {
+          setErrored(true);
+          toast.error("Couldn't enable notifications.");
+        }
+      })
+      .finally(() => {
+        setBusy(false);
+      });
   }
 
   async function disable() {
     setBusy(true);
     try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
+      const reg = registrationRef.current ?? (await navigator.serviceWorker.ready);
+      const subscription = await reg.pushManager.getSubscription();
       if (subscription) {
         // Tell the server first so we delete the row even if the
         // browser-side unsubscribe fails / hangs. Endpoint scopes the
