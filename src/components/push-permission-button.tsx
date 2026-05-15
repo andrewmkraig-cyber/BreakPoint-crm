@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -161,11 +162,14 @@ export function PushPermissionButton() {
   if (errored) {
     return (
       <div className="space-y-1.5">
+        <p className="text-sm font-medium text-court-fg">
+          Couldn&apos;t enable notifications
+        </p>
         <Button variant="primary" size="sm" onClick={enable} disabled={busy}>
           {busy ? "Trying…" : "Try again"}
         </Button>
         <p className="text-xs text-court-fg-muted">
-          Check browser settings if this persists.
+          Check browser notification settings if this persists.
         </p>
       </div>
     );
@@ -175,11 +179,8 @@ export function PushPermissionButton() {
     return (
       <div className="flex items-center gap-3">
         <span className="inline-flex items-center gap-1.5 rounded-full bg-court-accent-tint px-2 py-1 text-xs font-semibold text-court-accent-dark">
-          <span
-            aria-hidden="true"
-            className="inline-block h-1.5 w-1.5 rounded-full bg-court-accent"
-          />
-          Enabled
+          <Check className="h-3.5 w-3.5" aria-hidden="true" />
+          Enabled on this device
         </span>
         <Button variant="secondary" size="sm" onClick={disable} disabled={busy}>
           {busy ? "Disabling…" : "Disable"}
