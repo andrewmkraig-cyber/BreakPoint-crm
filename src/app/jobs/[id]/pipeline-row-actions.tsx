@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import {
-  Ban,
   Bookmark,
   CalendarClock,
   CheckCircle2,
