@@ -54,6 +54,18 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
   if (!session?.user?.email) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Explicit env check so a missing key surfaces as a useful message
+  // instead of a generic Anthropic SDK 401. Build-time module load is
+  // fine since dynamic = "force-dynamic" defers it to request time —
+  // but a misconfigured Vercel env would otherwise produce confusing
+  // "Claude couldn't draft that" toasts with no clue why.
+  if (!process.env.ANTHROPIC_API_KEY) {
+    console.error("[ai-compose] ANTHROPIC_API_KEY missing from runtime env");
+    return NextResponse.json(
+      { error: "AI compose is not configured (ANTHROPIC_API_KEY missing)." },
+      { status: 500 },
+    );
+  }
   const user = await prisma.user.findUnique({
     where: { email: session.user.email },
     select: { id: true, email: true, name: true, profile: { select: { fullName: true, jobTitle: true } } },
@@ -161,10 +173,39 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
       system,
       messages: [{ role: "user", content: userMessage }],
     });
-    const first = response.content[0];
-    const raw = first && first.type === "text" ? first.text : "";
+    // Concatenate ALL text blocks rather than grabbing content[0]. When
+    // web_search fires, the response shape is:
+    //   [server_tool_use, web_search_tool_result, text]
+    // The previous content[0]-only path treated the tool_use block as
+    // "no content" and 502'd, even though Claude wrote a perfectly
+    // good draft sitting two slots later. Joining with blank lines
+    // collapses cleanly when there's only one text block.
+    const raw = response.content
+      .filter(
+        (b): b is Extract<(typeof response.content)[number], { type: "text" }> =>
+          b.type === "text",
+      )
+      .map((b) => b.text)
+      .join("\n\n")
+      .trim();
     if (!raw) {
-      return NextResponse.json({ error: "Claude returned no content" }, { status: 502 });
+      // Log the shape so Vercel surfaces what we actually got —
+      // helpful when Claude stops on tool_use loop / refusal / max
+      // tokens with no text block at all.
+      console.error("[ai-compose] no text content from Claude", {
+        stop_reason: response.stop_reason,
+        block_types: response.content.map((b) => b.type),
+      });
+      const hint =
+        response.stop_reason === "max_tokens"
+          ? "Claude hit the response length limit before writing a draft."
+          : response.stop_reason === "tool_use"
+            ? "Claude got stuck mid-tool-use without writing a draft."
+            : "Claude returned no draft body.";
+      return NextResponse.json(
+        { error: `${hint} Try rephrasing your prompt.` },
+        { status: 502 },
+      );
     }
     if (includeSubject) {
       // Parse the strict-JSON response. Claude occasionally still
@@ -184,6 +225,10 @@ export async function POST(req: NextRequest): Promise<NextResponse<AiComposeResp
     const bodyHtml = toSafeHtml(raw);
     return NextResponse.json({ bodyHtml });
   } catch (e) {
+    // Log full error server-side; surface a short user-facing
+    // message. The previous path returned the raw SDK message which
+    // could include keys / endpoints we don't want toast-rendering.
+    console.error("[ai-compose] Anthropic call failed", e);
     const msg = e instanceof Error ? e.message : "Claude call failed";
     return NextResponse.json({ error: msg }, { status: 502 });
   }
