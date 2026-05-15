@@ -1,6 +1,6 @@
 "use client";
 
-import { Music, Play } from "lucide-react";
+import { Music } from "lucide-react";
 import { TopBarSearch } from "@/components/top-bar-search";
 import { ComposeFAB } from "@/components/mail/compose-fab";
 import { TopBarPageAction, TopBarPageTitle } from "@/components/top-bar-page-title";
@@ -98,7 +98,34 @@ export function TopBar() {
           >
             YouTube
           </span>
-          <Play className="h-4 w-4" fill="currentColor" />
+          {/* Ringed play triangle to match the YouTube Music app icon
+              — same colors and same 40px button, just a ring + filled
+              triangle inside instead of the bare lucide Play glyph.
+              Lucide's PlayCircle would fill the outer circle along with
+              the triangle when `fill="currentColor"` is set, so the
+              ring would disappear. Hand-rolled SVG keeps the circle
+              stroke-only and fills just the triangle. */}
+          <svg
+            viewBox="0 0 24 24"
+            className="h-5 w-5"
+            aria-hidden="true"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            />
+            <path
+              d="M10 8.5 L16 12 L10 15.5 Z"
+              fill="currentColor"
+              stroke="currentColor"
+              strokeWidth="1"
+              strokeLinejoin="round"
+            />
+          </svg>
         </button>
         <button
           type="button"
