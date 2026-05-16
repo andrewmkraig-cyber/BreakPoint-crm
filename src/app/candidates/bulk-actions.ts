@@ -9,6 +9,7 @@ import { getRfJobsForOrg, getRfClientsForOrg } from "@/lib/candidates";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { logActivity } from "@/lib/activity";
 import { sendGmail } from "@/lib/gmail";
+import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 
 // Bulk Apply / Add-to-List actions backing the /candidates page's
 // multi-row checkbox toolbar. Single-candidate flows still live in
@@ -309,31 +310,17 @@ export type BulkEmailResult = {
   errors: string[];
 };
 
-function applyCandidateMergeFields(
-  text: string,
-  c: {
-    firstName: string | null;
-    lastName: string | null;
-    currentDesignation: string | null;
-    currentOrganization: string | null;
-  },
-): string {
-  // .split().join() instead of regex: token literals contain `[` and
-  // spaces, so escaping for new RegExp() is fragile. String-replace is
-  // case-sensitive on purpose — Andrew's templates use the exact
-  // bracketed casing surfaced in the composer hint.
-  return text
-    .split("[Candidate First Name]").join(c.firstName ?? "")
-    .split("[Candidate Last Name]").join(c.lastName ?? "")
-    .split("[Candidate Current Title]").join(c.currentDesignation ?? "")
-    .split("[Candidate Current Company]").join(c.currentOrganization ?? "");
-}
-
 export async function bulkSendEmail(input: {
   candidateIds: string[];
   subject: string;
   body: string;
   bodyHtml?: string;
+  // Job + client merge values resolved once on the client (via
+  // getJobMergeValuesForBulk) and reused across every recipient.
+  // Per-candidate fields (candidateFirstName, etc.) are layered on
+  // top per row inside the loop so the same job context can wrap
+  // many personalized sends in one batch.
+  jobMergeValues?: MergeFieldValues;
 }): Promise<BulkEmailResult> {
   const user = await requireUser();
   if (!user) {
@@ -355,6 +342,8 @@ export async function bulkSendEmail(input: {
       firstName: true,
       lastName: true,
       email: true,
+      phone: true,
+      location: true,
       currentDesignation: true,
       currentOrganization: true,
     },
@@ -364,16 +353,28 @@ export async function bulkSendEmail(input: {
   let skipped = 0;
   const errors: string[] = [];
 
+  const jobValues = input.jobMergeValues ?? {};
+
   for (const c of candidates) {
     const email = (c.email ?? "").trim();
     if (!email) {
       skipped += 1;
       continue;
     }
-    const mergedSubject = applyCandidateMergeFields(subject, c);
-    const mergedBody = applyCandidateMergeFields(input.body, c);
+    const values: MergeFieldValues = {
+      ...jobValues,
+      candidateFirstName: c.firstName ?? "",
+      candidateLastName: c.lastName ?? "",
+      candidateEmail: email,
+      candidatePhone: c.phone ?? "",
+      candidateLocation: c.location ?? "",
+      candidateCurrentTitle: c.currentDesignation ?? "",
+      candidateCurrentEmployer: c.currentOrganization ?? "",
+    };
+    const mergedSubject = applyMergeFields(subject, values);
+    const mergedBody = applyMergeFields(input.body, values);
     const mergedHtml = input.bodyHtml
-      ? applyCandidateMergeFields(input.bodyHtml, c)
+      ? applyMergeFields(input.bodyHtml, values)
       : undefined;
 
     try {
@@ -397,6 +398,7 @@ export async function bulkSendEmail(input: {
             source: "bulk_email",
             subject: mergedSubject,
             recipient: email,
+            jobMergeApplied: Object.keys(jobValues).length > 0,
           },
         });
       } catch {
@@ -418,4 +420,94 @@ export async function bulkSendEmail(input: {
   skipped += missing;
 
   return { ok: errors.length === 0, sent, skipped, errors };
+}
+
+// Lazy fetch for the BulkEmailDialog's "View N recipients" panel.
+// Returns each candidate's name + email (or null) so the recruiter
+// can spot no-email-on-file rows before sending. Org-scoped so a
+// forged candidateId from another tenant returns nothing.
+export type BulkRecipient = {
+  id: string;
+  name: string;
+  email: string | null;
+};
+
+export async function getCandidateContactsForBulk(
+  candidateIds: string[],
+): Promise<BulkRecipient[]> {
+  if (!(await requireUser())) return [];
+  if (candidateIds.length === 0) return [];
+  const { id: organizationId } = await getCurrentOrg();
+  const rows = await prisma.candidate.findMany({
+    where: { id: { in: candidateIds }, organizationId },
+    select: { id: true, firstName: true, lastName: true, email: true },
+  });
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  // Preserve the input order so the panel matches the recruiter's
+  // selection sequence.
+  return candidateIds.flatMap((id) => {
+    const r = byId.get(id);
+    if (!r) return [];
+    const name =
+      [r.firstName, r.lastName].filter(Boolean).join(" ").trim() || "(no name)";
+    return [{ id: r.id, name, email: r.email ?? null }];
+  });
+}
+
+// Resolves a job's merge values (job + client fields) for the bulk
+// dialog's "Job context" picker. Accepts the same id pair as
+// bulkApplyCandidatesToJob so the same BulkPickerJob row can drive
+// both flows. Org-scoped via getRfJobsForOrg / getRfClientsForOrg.
+export async function getJobMergeValuesForBulk(input: {
+  jobCuid: string | null;
+  jobRfId: number | null;
+  clientCuid: string | null;
+  clientRfId: number | null;
+}): Promise<MergeFieldValues> {
+  if (!(await requireUser())) return {};
+  const { id: organizationId } = await getCurrentOrg();
+
+  // Job lookup: prefer the cuid path, fall back to legacyRfId for
+  // RF-imported jobs. Job.locations is a String[] (one Job row can
+  // carry multiple location strings); we surface the first entry for
+  // the [Job Location] merge token since recruiters typically pick a
+  // single job per bulk send.
+  let jobRow: { title: string; locations: string[] } | null = null;
+  if (input.jobCuid) {
+    jobRow = await prisma.job.findFirst({
+      where: { id: input.jobCuid, organizationId },
+      select: { title: true, locations: true },
+    });
+  }
+  if (!jobRow && input.jobRfId != null) {
+    jobRow = await prisma.job.findFirst({
+      where: { legacyRfId: input.jobRfId, organizationId },
+      select: { title: true, locations: true },
+    });
+  }
+
+  // Client lookup mirrors the same id-pair pattern.
+  let clientRow:
+    | { name: string; domain: string | null; linkedinPage: string | null }
+    | null = null;
+  if (input.clientCuid) {
+    clientRow = await prisma.client.findFirst({
+      where: { id: input.clientCuid, organizationId },
+      select: { name: true, domain: true, linkedinPage: true },
+    });
+  }
+  if (!clientRow && input.clientRfId != null) {
+    clientRow = await prisma.client.findFirst({
+      where: { legacyRfId: input.clientRfId, organizationId },
+      select: { name: true, domain: true, linkedinPage: true },
+    });
+  }
+
+  return {
+    jobTitle: jobRow?.title ?? "",
+    jobLocation: jobRow?.locations[0] ?? "",
+    clientCompanyName: clientRow?.name ?? "",
+    clientCompanyWebsite: clientRow?.domain ?? "",
+    clientCompanyLinkedIn: clientRow?.linkedinPage ?? "",
+  };
 }

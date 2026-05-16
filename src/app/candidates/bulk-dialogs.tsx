@@ -1,17 +1,30 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { Loader2, Send, ListPlus, X } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  Send,
+  ListPlus,
+  Sparkles,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   bulkApplyCandidatesToJob,
   bulkAddCandidatesToList,
   bulkAddCandidatesToNewList,
   bulkSendEmail,
+  getCandidateContactsForBulk,
+  getJobMergeValuesForBulk,
+  getOpenJobsForBulkPicker,
   type BulkPickerJob,
+  type BulkRecipient,
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import type { MergeFieldValues } from "@/lib/merge-fields";
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -260,6 +273,22 @@ export function BulkAddToListDialog({
 // doesn't waste keystrokes filling in those fields.
 const BULK_EMAIL_CONFIRM_THRESHOLD = 25;
 
+// Job + client merge tokens that, when present in the composer text,
+// flip the Job Context picker visible. Subset of MERGE_FIELDS — only
+// fields that getJobMergeValuesForBulk actually populates today.
+const JOB_MERGE_TOKENS = [
+  "[Job Title]",
+  "[Job Location]",
+  "[Client Company Name]",
+  "[Client Company Website]",
+  "[Client Company LinkedIn]",
+];
+
+function detectJobTokens(subject: string, body: string): boolean {
+  const haystack = `${subject}\n${body}`;
+  return JOB_MERGE_TOKENS.some((t) => haystack.includes(t));
+}
+
 export function BulkEmailDialog({
   candidateIds,
   onClose,
@@ -270,10 +299,97 @@ export function BulkEmailDialog({
   onDone: () => void;
 }) {
   const n = candidateIds.length;
-  // When set, the recruiter clicked Send on a batch larger than
-  // BULK_EMAIL_CONFIRM_THRESHOLD. The draft is parked here and an
-  // overlay covers the composer until they Cancel (clear this state)
-  // or confirm Yes (call actualSend with the parked draft).
+
+  // Recruiter-typed prompt for Generate-with-Claude. Lives outside
+  // EmailComposer because the composer's onGenerate callback has no
+  // prompt arg — we read this state inside our onGenerate handler.
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
+
+  // Live mirror of EmailComposer's subject/body via the onSubjectChange
+  // and onBodyChange observers. Used only for detecting job tokens —
+  // the composer still owns the canonical state.
+  const [composerSubject, setComposerSubject] = useState("");
+  const [composerBody, setComposerBody] = useState("");
+  const showJobPicker = useMemo(
+    () => detectJobTokens(composerSubject, composerBody),
+    [composerSubject, composerBody],
+  );
+
+  // Lazy-fetched job picker payload. First time the recruiter types
+  // a job token (or selects a template that contains one) we fetch
+  // the org's open-job list. Cached for the dialog's lifetime.
+  const [jobs, setJobs] = useState<BulkPickerJob[] | null>(null);
+  const [jobsLoading, setJobsLoading] = useState(false);
+  const [pickedJobKey, setPickedJobKey] = useState("");
+  const [jobMergeValues, setJobMergeValues] = useState<MergeFieldValues | null>(null);
+  const [resolvingJob, setResolvingJob] = useState(false);
+  useEffect(() => {
+    if (!showJobPicker) return;
+    if (jobs !== null || jobsLoading) return;
+    setJobsLoading(true);
+    void (async () => {
+      try {
+        const rows = await getOpenJobsForBulkPicker();
+        setJobs(rows);
+      } catch {
+        toast.error("Couldn't load jobs for picker");
+        setJobs([]);
+      } finally {
+        setJobsLoading(false);
+      }
+    })();
+  }, [showJobPicker, jobs, jobsLoading]);
+
+  async function onPickJob(key: string) {
+    setPickedJobKey(key);
+    if (key === "") {
+      setJobMergeValues(null);
+      return;
+    }
+    const job = jobs?.find((j) => j.key === key);
+    if (!job) return;
+    setResolvingJob(true);
+    try {
+      const values = await getJobMergeValuesForBulk({
+        jobCuid: job.jobCuid,
+        jobRfId: job.jobRfId,
+        clientCuid: job.clientCuid,
+        clientRfId: job.clientRfId,
+      });
+      setJobMergeValues(values);
+    } catch {
+      toast.error("Couldn't resolve job fields");
+      setJobMergeValues(null);
+    } finally {
+      setResolvingJob(false);
+    }
+  }
+
+  // Recipients panel state — lazy-fetched on first toggle expand so a
+  // dialog the recruiter never opens the panel on doesn't pay the
+  // round-trip.
+  const [recipientsOpen, setRecipientsOpen] = useState(false);
+  const [recipients, setRecipients] = useState<BulkRecipient[] | null>(null);
+  const [recipientsLoading, setRecipientsLoading] = useState(false);
+  useEffect(() => {
+    if (!recipientsOpen) return;
+    if (recipients !== null || recipientsLoading) return;
+    setRecipientsLoading(true);
+    void (async () => {
+      try {
+        const rows = await getCandidateContactsForBulk(candidateIds);
+        setRecipients(rows);
+      } catch {
+        toast.error("Couldn't load recipient list");
+        setRecipients([]);
+      } finally {
+        setRecipientsLoading(false);
+      }
+    })();
+  }, [recipientsOpen, recipients, recipientsLoading, candidateIds]);
+
+  // Confirmation gate for batches > 25.
   const [confirmDraft, setConfirmDraft] = useState<EmailDraft | null>(null);
   const [confirming, setConfirming] = useState(false);
 
@@ -291,6 +407,7 @@ export function BulkEmailDialog({
       subject: draft.subject,
       body: draft.body,
       bodyHtml: draft.bodyHtml,
+      jobMergeValues: jobMergeValues ?? undefined,
     });
     if (res.sent === 0) {
       const head = res.errors[0] ?? "No candidates had an email on file.";
@@ -313,10 +430,13 @@ export function BulkEmailDialog({
   }
 
   async function onSend(draft: EmailDraft): Promise<void> {
+    // Block sending when job tokens are present but no job picked —
+    // the unmerged tokens would ship literally.
+    if (showJobPicker && !jobMergeValues) {
+      toast.error("Pick a job for the job context fields, or remove them from the body.");
+      throw new Error("job_context_required");
+    }
     if (n > BULK_EMAIL_CONFIRM_THRESHOLD) {
-      // Park the draft and let the composer transition out of its
-      // sending state — the overlay below covers it and gates the
-      // real send on the recruiter's explicit Yes.
       setConfirmDraft(draft);
       return;
     }
@@ -328,16 +448,47 @@ export function BulkEmailDialog({
     setConfirming(true);
     try {
       await actualSend(confirmDraft);
-      // actualSend resolves on success → onDone fires → parent
-      // unmounts this dialog, so we don't need to clear confirmDraft.
     } catch {
-      // actualSend already toasted the error. Drop the overlay so the
-      // recruiter is back in the composer to edit / retry.
       setConfirmDraft(null);
     } finally {
       setConfirming(false);
     }
   }
+
+  // Claude generator — reads aiPrompt from local state, POSTs to the
+  // same /api/mail/ai-compose endpoint the mail-tab composer uses, and
+  // returns the body string. EmailComposer replaces its body content
+  // with the returned text. Throws on missing prompt / empty response
+  // so the composer surfaces the error to the recruiter.
+  async function onGenerateBody(): Promise<string> {
+    const prompt = aiPrompt.trim();
+    if (!prompt) {
+      setAiPanelOpen(true);
+      throw new Error("Type a prompt in the AI panel above first.");
+    }
+    const res = await fetch("/api/mail/ai-compose", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, includeSubject: false }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      const msg = json?.error ?? `Generation failed (${res.status})`;
+      throw new Error(msg);
+    }
+    const text =
+      typeof json?.body === "string" && json.body
+        ? json.body
+        : typeof json?.bodyHtml === "string"
+          ? json.bodyHtml
+          : "";
+    if (!text) throw new Error("Claude returned an empty draft.");
+    return text;
+  }
+
+  const noEmailCount = recipients
+    ? recipients.filter((r) => !r.email).length
+    : 0;
 
   return (
     <div
@@ -356,14 +507,22 @@ export function BulkEmailDialog({
               Email {n} candidate{n === 1 ? "" : "s"}
             </h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
-              One Gmail send per recipient. Recipients are resolved
-              automatically from each candidate&apos;s email on file.
+              One Gmail send per recipient.{" "}
+              <button
+                type="button"
+                onClick={() => setRecipientsOpen((v) => !v)}
+                className="font-medium text-brand-dark hover:underline"
+              >
+                {recipientsOpen ? "Hide" : "View"} {n} recipient{n === 1 ? "" : "s"}
+              </button>
             </p>
             <p className="mt-1 text-[11px] text-court-fg-muted">
               Merge fields: <code>[Candidate First Name]</code>,{" "}
               <code>[Candidate Last Name]</code>,{" "}
               <code>[Candidate Current Title]</code>,{" "}
-              <code>[Candidate Current Company]</code>
+              <code>[Candidate Current Company]</code>,{" "}
+              <code>[Job Title]</code>, <code>[Job Location]</code>,{" "}
+              <code>[Client Company Name]</code>
             </p>
           </div>
           <button
@@ -375,6 +534,110 @@ export function BulkEmailDialog({
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {recipientsOpen && (
+          <div className="border-b border-court-border bg-court-surface-subtle/50">
+            {recipientsLoading && (
+              <div className="px-5 py-2 text-[11px] text-court-fg-muted">
+                Loading recipient list…
+              </div>
+            )}
+            {!recipientsLoading && recipients && (
+              <>
+                {noEmailCount > 0 && (
+                  <div className="border-b border-court-border px-5 py-1.5 text-[11px] font-medium text-red-700">
+                    {noEmailCount} of {recipients.length} recipient{recipients.length === 1 ? "" : "s"} {noEmailCount === 1 ? "has" : "have"} no email on file and will be skipped.
+                  </div>
+                )}
+                <ul className="max-h-48 overflow-y-auto px-5 py-2 text-xs">
+                  {recipients.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex items-center justify-between gap-2 py-0.5"
+                    >
+                      <span className="truncate font-medium text-court-fg">
+                        {r.name}
+                      </span>
+                      <span
+                        className={
+                          r.email
+                            ? "shrink-0 truncate text-court-fg-muted"
+                            : "shrink-0 truncate font-semibold text-red-700"
+                        }
+                      >
+                        {r.email ?? "No email on file"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="border-b border-court-border bg-court-surface-subtle/40">
+          <button
+            type="button"
+            onClick={() => setAiPanelOpen((v) => !v)}
+            className="flex w-full items-center gap-1.5 px-5 py-2 text-left text-[11px] font-medium uppercase tracking-wider text-court-fg-muted transition hover:text-court-fg"
+          >
+            {aiPanelOpen ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <Sparkles className="h-3 w-3" />
+            AI prompt
+            {aiPrompt.trim().length > 0 && !aiPanelOpen && (
+              <span className="ml-1 normal-case tracking-normal text-court-fg">
+                — &ldquo;{aiPrompt.trim().slice(0, 60)}
+                {aiPrompt.trim().length > 60 ? "…" : ""}&rdquo;
+              </span>
+            )}
+          </button>
+          {aiPanelOpen && (
+            <div className="px-5 pb-3">
+              <textarea
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                placeholder="Describe the email Claude should draft — e.g. 'Friendly outreach about a senior backend role at our fintech client, ask if they're open to a 15-min intro call.'"
+                rows={3}
+                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              />
+              <p className="mt-1 text-[11px] text-court-fg-muted">
+                Then click <span className="font-medium">Generate with Claude</span> in the composer toolbar to draft the body. Edit with Claude refines the body in place.
+              </p>
+            </div>
+          )}
+        </div>
+
+        {showJobPicker && (
+          <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle/40 px-5 py-2 text-xs">
+            <span className="font-medium text-court-fg">Job context:</span>
+            <select
+              value={pickedJobKey}
+              onChange={(e) => void onPickJob(e.target.value)}
+              disabled={jobsLoading || resolvingJob}
+              className="min-w-0 flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+            >
+              <option value="">
+                {jobsLoading ? "Loading jobs…" : "— pick a job to resolve job fields —"}
+              </option>
+              {(jobs ?? []).map((j) => (
+                <option key={j.key} value={j.key}>
+                  {j.label}
+                </option>
+              ))}
+            </select>
+            {resolvingJob && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
+            {!jobMergeValues && !resolvingJob && (
+              <span className="text-[11px] font-medium text-red-700">
+                Required — body contains job tokens.
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto">
           <EmailComposer
             title={`Bulk email — ${n} recipient${n === 1 ? "" : "s"}`}
@@ -383,6 +646,10 @@ export function BulkEmailDialog({
             onSend={onSend}
             showTemplatePicker
             hideRecipientFields
+            enableEditWithClaude
+            onGenerate={onGenerateBody}
+            onSubjectChange={setComposerSubject}
+            onBodyChange={setComposerBody}
             sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
             sendingLabel="Sending…"
             sendDisabled={confirmDraft !== null}
