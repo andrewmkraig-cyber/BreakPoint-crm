@@ -29,29 +29,67 @@ export const SETTINGS_CATEGORIES = [
 export function SettingsNav() {
   const pathname = usePathname();
 
+  // Match exact path OR a deeper sub-route under the same category, so
+  // future nested routes (e.g. /settings/templates/[id]) keep their
+  // parent active. Same predicate for both renderings below.
+  function isActive(slug: string): boolean {
+    const href = `/settings/${slug}`;
+    return pathname === href || pathname.startsWith(href + "/");
+  }
+
   return (
-    <nav className="space-y-0.5">
-      {SETTINGS_CATEGORIES.map((c) => {
-        const href = `/settings/${c.slug}`;
-        // Match exact path OR a deeper sub-route under the same
-        // category, so future nested routes (e.g.
-        // /settings/templates/[id]) keep their parent active.
-        const active = pathname === href || pathname.startsWith(href + "/");
-        return (
-          <Link
-            key={c.slug}
-            href={href}
-            className={cn(
-              "block border-l-2 px-3 py-2 text-sm font-medium transition",
-              active
-                ? "border-court-accent bg-court-surface-subtle text-court-fg"
-                : "border-transparent text-court-fg-muted hover:bg-court-surface-subtle/60 hover:text-court-fg",
-            )}
-          >
-            {c.label}
-          </Link>
-        );
-      })}
-    </nav>
+    <>
+      {/* Mobile (< lg): horizontal scrollable pill strip. Mirrors the
+          MobileBucketTabs pattern from /phone — all 11 categories stay
+          reachable on a 375px viewport via overflow-x scroll, no
+          wrapping. Hidden at lg+ where the vertical sidebar takes
+          over. */}
+      <nav
+        aria-label="Settings sections"
+        className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden"
+      >
+        {SETTINGS_CATEGORIES.map((c) => {
+          const active = isActive(c.slug);
+          return (
+            <Link
+              key={c.slug}
+              href={`/settings/${c.slug}`}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "inline-flex shrink-0 items-center rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                active
+                  ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
+                  : "border-court-border bg-court-surface text-court-fg-muted hover:bg-court-surface-subtle",
+              )}
+            >
+              {c.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      {/* Desktop (lg+): vertical stacked nav with left-rail accent.
+          Unchanged from the original layout. */}
+      <nav aria-label="Settings sections" className="hidden space-y-0.5 lg:block">
+        {SETTINGS_CATEGORIES.map((c) => {
+          const active = isActive(c.slug);
+          return (
+            <Link
+              key={c.slug}
+              href={`/settings/${c.slug}`}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "block border-l-2 px-3 py-2 text-sm font-medium transition",
+                active
+                  ? "border-court-accent bg-court-surface-subtle text-court-fg"
+                  : "border-transparent text-court-fg-muted hover:bg-court-surface-subtle/60 hover:text-court-fg",
+              )}
+            >
+              {c.label}
+            </Link>
+          );
+        })}
+      </nav>
+    </>
   );
 }
