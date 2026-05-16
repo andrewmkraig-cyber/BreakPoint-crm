@@ -1,38 +1,76 @@
 # ACE_STATE.md
-Last updated: 2026-05-16 · Ace 49.4
+Last updated: 2026-05-16 · Ace 50.0
 
 ## Current Status
-Current Version: Ace 49.4
+Current Version: Ace 50.0
 Last Shipped: 2026-05-16
 Live at: ace.breakpointtalent.com
 
-## What Shipped in Ace 49.4 (2026-05-16)
+## What Shipped in Ace 50.0 (2026-05-16)
 
-### Phone — New Text name search + MMS image rendering
-- **New Text recipient typeahead searches the full Candidate + Contact set.** New `GET /api/phone/people-search?q=…` route, tenant-scoped, hits Candidate (firstName/lastName/email/phone) and Contact (firstName/lastName/name/emails text[]/phoneNumbers Json via `Prisma.sql` raw cast). Flat-maps each Contact's `phoneNumbers` to one row per number; when the query is a digit substring only matching numbers surface so a 3-phone contact doesn't dump all three on an unrelated digit search. Results ranked candidate-name-startswith → contact-name-startswith → contains. Wired into the `NewTextRecipientInput` inside `NewTextPanel` (live dropdown, Enter picks first hit) AND the global ComposeFAB phone picker (hits appear above the recents list, de-duped against any recent thread for the same digits). Old "Phone number (then Enter)" copy + "use the + button" nudge are gone.
-- **MMS images render inline in SMS bubbles.** New `SmsMessage.mediaUrl String?` column (schema synced via `prisma db push`). Quo webhook gained `pickMediaUrl()` which scans `data.object.media[].url` (array of `{url, type}`) AND falls back to `data.object.mediaUrl` / `data.object.media_url`. Only http(s) URLs are accepted. `GET /api/phone/thread/[id]` selects + returns the new column for both candidate-thread and unknown-thread branches. Both bubble surfaces — `/phone`'s `ThreadDetailPane` and the candidate/client profile `<TextingExchanges>` — render an `<img>` (with `object-contain max-w max-h`) wrapped in an `<a target="_blank">` so the recruiter can click to open the full-res asset. Image renders above the text body; rows with only an image (no body text) suppress the empty body div.
+Cumulative roll-up of every commit between the Ace 49.0 close (`80fdbbf`) and the 50.0 close (`93272a0`). Design overhaul polish pass is now substantially done — the remaining items moved to the queued list on the roadmap.
 
-## What Shipped in Ace 49.3 (2026-05-16)
+### Court Mode — dark theme rebuild (Clay + Grass) + hover dropdown fix
+- **Clay + Grass dark tokens rebuilt on a neutral canvas (`e3f3af3`).** Old dark variants had brand-green bleed into surface, surface-subtle, and border tokens which made every panel read as a different green wash. Replaced with court-neutral grays so the brand-green only appears where it's intentional (primary buttons, active nav, brand pills). Hard / Grass / Clay all share the same dark canvas now; brand hue is the only differentiator between modes.
+- **Dropdown hover rows visible in dark Court themes (`72f848a`).** `<option>` hover in dark mode resolved to `bg-court-surface-subtle` on `text-court-fg`, both reading as the same near-black — the hovered row went invisible. Hardcoded a contrasting hover bg + fg pair on every `<select>` option across the app so the row is always visible regardless of which Court palette is active.
 
-### Invoice "Sent from" selector — and actual From wiring
-- **`Invoice.sendFromAlias String?` column.** New nullable Prisma column on `Invoice` so the recruiter's per-invoice From choice persists. Schema synced via `prisma db push` (no migration file — repo convention).
-- **`updateInvoiceSendFromAliasAction(id, alias)` server action.** Tenant-scoped, accepts all statuses (not just DRAFT — the recruiter may want to set the From for a re-send). Empty string clears the override.
-- **"Sent from" panel on `/invoices/[id]` is now a dropdown.** Fetches `/api/mail/send-as-aliases` on mount, renders a `<select>` populated with every verified Gmail alias when there's more than one. Defaults to `Invoice.sendFromAlias` when set; otherwise promotes the billing AR email (from Settings → Billing) to the default if it's actually a verified alias; otherwise falls back to Gmail's `isDefault`. On change, fires the action — no Save click needed. Single-alias accounts keep the legacy read-only label with a one-line nudge to add a second alias in Gmail Settings.
-- **Composer carries the selection through to the actual Gmail send.** `MailComposer` gained `defaultSendAsEmail` prop; `composer-manager` forwards it. The invoice Draft Email button passes the persisted alias when opening the composer so the From field is pre-selected to AR@ (the recruiter can still flip to andrew@ inside the composer before sending). The existing `sendAsEmail` payload field then drives the Gmail `From:` header — no separate plumbing.
+### Tables / lists / segmented controls polish
+- **Candidates + Jobs table row styling tightened (`abe0438`).** Subtle hover (no full-row tint), softer dividers (`border-court-border/40`), card border weight reduced. Stops the row from feeling like a button while still indicating hoverability.
+- **Client detail tabs migrated to canonical `TabStrip` (`690d803`).** Removes the one-off underline implementation; tab strip language is now consistent with /jobs, /candidates filter rails, dashboard period tabs, and /finances.
 
-## What Shipped in Ace 49.2 (2026-05-16)
+### Spacing + border + shadow reduction (`2bc4e14`)
+- 65 panel / card / sub-panel wrappers softened from `border border-court-border` → `border border-court-border/40` across /clients, /jobs, /pipeline, /candidates (33 files). Skipped table wrappers, buttons, inputs, chips, floating dropdowns, focus-within input wrappers, and modal dialogs.
+- Top-level `p-8` page wrappers normalized to `px-6 py-6` (only `/offline` had the legacy padding).
+- `hover:shadow-md` on hoverable cards → `hover:shadow-sm` (client cards, metric link tiles, calendar day/week event pills). Floating-UI resting `shadow-lg` (dropdowns, popovers, phone FAB, PWA install banner, minimized composer tray) untouched per the floating-panels exemption.
 
-### From-alias selector in the Mail composer
-- **New `GET /api/mail/send-as-aliases` route.** Calls `gmail.users.settings.sendAs.list` against the signed-in user's refresh token, filters to primary + accepted-verification rows, returns `{ aliases: [{sendAsEmail, displayName, isDefault}] }`. Same Account-row tenancy boundary as the rest of `src/lib/gmail.ts` — cross-user reads are physically impossible.
-- **From dropdown on `MailComposer`.** Fetched on mount, defaulted to the `isDefault` alias, rendered as a select row above To (only when more than one alias exists; single-alias accounts see the legacy layout). Covers both the fresh-compose and reply paths since `MailComposer` is the same component for new emails and thread replies (mail-view passes `threadId` to flip it into reply mode).
-- **`sendAsEmail` threaded through `/api/mail/send`, `/api/mail/drafts`, `/api/mail/threads/[id]/reply`.** Each route accepts the optional field, falls back to `user.email` when absent, and passes it as the `from` to `sendGmail` / `createGmailDraft`. Drafts persist the alias choice into the Gmail Drafts row so "Send from Gmail" later honors the recruiter's pick.
+### Dashboard — KPI tiles + panel chrome unified
+- **KPI tiles match exact spec across Clubhouse / Scoreboard / Invoices (`2f33230`).** Canonical `KpiTile` already matched; Scoreboard's local `ScoreboardKpiTile` dropped its third sub-line (moved to wrapper `title` for hover context). Shadow alpha normalized 0.06 → 0.08 so resting tiles all match.
+- **Big dashboard panels unified to `rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]` (`2f33230`).** Covers Billing Tower, Today's Briefing, This Week, Scoreboard (Funnel / Cash / Lists / Goal pacing), Placements (ledger / breakdowns / map), Finances (PnL / Margins / Subs / ROI / MOC / Trend / Revenue panels), and the Invoices table panel. /candidates /jobs /clients /pipeline panels intentionally untouched.
 
-## What Shipped in Ace 49.1 (2026-05-16)
+### Billing Tower + Finances revenue math
+- **Outstanding folds in uninvoiced placements (`e0bdbbe`).** Outstanding now reads "SENT invoices + all uninvoiced placements" so locked-fee placements that haven't been invoiced yet don't disappear from the open-billing surface. Revenue holds at "collected" only on this tile.
+- **Revenue = PAID invoices this quarter + this-quarter uninvoiced placements (`0ac1810`).** Revenue tile now matches "fees earned this quarter" rather than "cash in hand." Eyebrow meta reads `X placement(s)` regardless of invoice status.
+- **Goal Progress denominator aligned to revenueUsd (`5681b9f`).** All three Billing Tower tiles (Revenue / Outstanding / Goal Progress) now read off the same source figure so the percentages stay numerically consistent — switching to billedThisQuarter let Goal % drift below Revenue the moment an uninvoiced placement landed.
+- **Finances tab folds uninvoiced placements into KPI + By Client + By Source + Trend + P&L (`0bcc7eb`).** Single revenue definition across the dashboard and the Finances page; recruiter no longer sees three different "revenue this quarter" numbers depending on which surface they're on.
 
-### Design polish — borders, padding, shadows
-- **Panel borders softened across /clients, /jobs, /pipeline, /candidates.** 65 panel / card / sub-panel wrappers changed `border border-court-border` → `border border-court-border/40`. Skipped: table wrappers already tuned in abe0438, buttons, inputs, chips, floating dropdowns (`absolute z-[70] shadow-lg` pattern), input wrappers with `focus-within:border-brand`, modal dialogs (`shadow-2xl` / `shadow-xl`). 33 files touched.
-- **Page padding normalized.** Only top-level page wrapper using bare `p-8` was `/offline` (`src/app/offline/page.tsx`) — converted to `px-6 py-6`. All other `p-8` / `px-8` hits in `src/app/` were empty-state cells, dropzones, or responsive `sm:p-8` variants on section panels — left alone.
-- **Card hover-shadow reduced.** Four cards with `hover:shadow-md` lift effects → `hover:shadow-sm`: `clients/clients-view.tsx` client cards, `clients/[id]/page.tsx` metric link tiles, `components/calendar/day-view.tsx` + `week-view.tsx` event pills. All resting-state `shadow-lg` instances were on floating UI — dropdown menus, popovers, the phone FAB, the PWA install banner, the minimized composer tray — and stayed per the modals/drawers/floating-panels exemption.
+### Map + Ace Assistant fixes
+- **Edit Placement drawer renders above the Leaflet map (`f100a8e`).** City field added for map refresh; drawer z-index bumped to `z-[1100]` so it sits above the Leaflet pane on the Placements tab.
+- **Ace Assistant clamped to viewport during drag + on window resize (`975f296`).** Drag math previously allowed the panel to slide off the right/bottom edge when the user dragged past the viewport or resized the window with the panel near an edge; now it bounces back into the visible area.
+
+### From selector on mail composer + invoices
+- **Mail composer From dropdown (`5bc2533`).** New `/api/mail/send-as-aliases` route hits `gmail.users.settings.sendAs.list`, returns primary + accepted-verification rows. `MailComposer` renders the dropdown when more than one alias exists; `sendAsEmail` threads through send/draft/reply routes and drives the Gmail `From:` header.
+- **Invoice "Sent from" selector + Gmail wiring (`82ef66e`).** New `Invoice.sendFromAlias String?` column persists the per-invoice From choice. The Sent from panel on `/invoices/[id]` is now a dropdown that defaults to the billing AR email when it's a verified alias. The composer carries the selection through to the actual Gmail send — invoice Draft Email opens with the AR@ alias pre-selected.
+
+### SMS — silent-fail diagnostics + organizationId stamping + thread refresh
+- **Quo sends no longer report "sent" when the carrier rejects (`95e6de4`).** `sendSms` returns a structured `QuoSendResult` with httpStatus, parsed body, messageId, and providerStatus. Treats `data.status` of `undelivered` / `failed` as a send failure even on 2xx. Logs full request payload (sans API key) and full response body on every dispatch. `/api/sms` normalizes `toNumber` to E.164 before dispatch + persistence; persists `status: 'failed'` when the result isn't ok; returns `providerStatus` + `providerError` so composer banners can surface the actual carrier reason.
+- **Outbound row stamps organizationId; `/phone` detail pane refreshes on send (`a437ce1`, `2951bfb`).** Previously rows were written with `organizationId: null`, which made them invisible to `/api/phone/thread/[id]` (which filters by org for tenant isolation) — outbound bubbles only appeared in the un-scoped candidate sidebar. `/api/sms` POST now resolves org from the candidate (when linked) or `getCurrentOrg()`. Belt-and-suspenders: new `PHONE_SMS_SENT_EVENT` window event dispatched from every composer (`NewTextPanel`, `SmsComposer`, `InlineSmsComposer`, toast quick-reply); `PhoneView` subscribes directly and bumps `detailRefresh` so the open thread re-fetches even if a composer's `onSent` callback chain breaks in the future. Strips `cand:` / `unk:` thread-id prefixes off `candidateId` before persistence so unknown-thread sends don't corrupt the column.
+- **QUO_FROM_NUMBER guard relaxed (`2951bfb`).** Previous guard aborted dispatch when only `QUO_PHONE_NUMBER_ID` was set, even though OpenPhone accepts either identifier alone. Now we abort only when both are unset (or when `QUO_API_KEY` is missing) and only include `from` in the payload when it's set. Module-init log surfaces which Quo env vars actually reached the build.
+- **Outbound bubble font + color polish (`f1a251d`, `93272a0`).** `/phone` and candidate sidebar outbound bubbles swapped `bg-[#5A9642]` / `bg-emerald-600` → `bg-brand text-white` so the bubble re-skins with Court Mode and stops violating the no-hardcoded-hex rule. `font-sans` already pinned on both surfaces (pre-existing iOS Safari first-paint mitigation).
+
+### Phone — New Text recipient search + MMS image rendering
+- **New Text recipient typeahead searches the full Candidate + Contact set (`9a8848a`).** New tenant-scoped `GET /api/phone/people-search?q=…` route hits Candidate (firstName/lastName/email/phone) and Contact (firstName/lastName/name/emails text[]/phoneNumbers Json via raw cast). Flat-maps each Contact's `phoneNumbers` to one row per number; digit-substring queries surface only matching numbers. Wired into the `NewTextRecipientInput` inside `NewTextPanel` AND the global ComposeFAB phone picker (hits above recents, de-duped against any recent thread for the same digits).
+- **MMS images render inline in SMS bubbles (`9a8848a`).** New `SmsMessage.mediaUrl String?` column. Quo webhook scans `data.object.media[].url` array + falls back to `data.object.mediaUrl` / `data.object.media_url`. Both bubble surfaces (`/phone` ThreadDetailPane and candidate/client profile `<TextingExchanges>`) render an `<img>` wrapped in `<a target="_blank">`. Image renders above the text body; image-only rows suppress the empty body div.
+
+### Candidate profile polish
+- **Action row hierarchy (`e7510a8`).** New top-level Submit to Job (primary green) prepended so order reads Submit → Apply → Keep → Add Note → Add to List, with Submit reading as the affirmative action. `PlacementActionsIsland` always mounted in the non-embed view (was gated on `placementJobs.length > 0`) so the openSubmit deep link works even when the candidate has no placements yet. Reject stays inside the per-job pipeline row — no top-level Reject affordance.
+- **Compact overview field typography (`e7510a8`).** Label drops `font-medium`, `tracking-wider` → `tracking-wide`; value `text-xs` → `text-sm`. The dl already used `gap-y-2` with no per-field borders so spacing is the only separator.
+- **Pipeline row strip lighter (`e7510a8`).** Dividers → `divide-court-border/40`. Rejected / cancelled rows render at `opacity-50` (hover restores full opacity so they stay interactable). Client name + interview-date metadata shrinks to `text-[11px]` so the job title carries the row.
+- **Breathing room below AI Workspace (`0060032`).** Floating Delete button no longer crowded.
+
+### Lead Source field + unified options
+- **Lead Source persists end-to-end on the placement modal + dashboard (`fb6a62f`).** Field now writes through every save path and round-trips into the placement ledger + dashboard breakdowns.
+- **Shared Lead Source list across the pipeline drawer + placement modal (`82a02b4`).** Single options array sourced from one module so the drawer and the modal can't drift; new sources only need to land in one file.
+
+### Misc polish
+- **Spotify glyph swapped in for the lucide music icon in the topbar (`4a083d7`).** Matches the real Spotify panel's brand glyph.
+
+## Known Issues Carrying Into Ace 51
+- **Gmail push notifications require Google Pub/Sub buildout.** Mail is currently polled via `src/lib/mail-context.tsx` and the push relay only fires when at least one Ace tab is open + polling. True offline mail push needs a `users.watch` + Pub/Sub topic subscription with a server endpoint that fires `sendPushToUser` on each new-message event. Real piece of work, own phase.
+- **Notification read state for Quo: reading in Quo doesn't clear the Ace badge.** Quo doesn't ship a read-receipt webhook event so Ace can't observe when a thread is read on the Quo side; the unread count stays inflated until the recruiter opens the thread inside Ace. Workaround would be either a periodic Quo API poll (rate-limit risk) or a manual "Mark as read in Quo" affordance.
+- **Settings nav on mobile is functional but tall.** Currently stacks 11 category links vertically above the panel content. Horizontal scrollable pill strip — same pattern as the `MobileBucketTabs` on /phone — queued.
+- **`+ New` menu missing Event + Reminder entries.** ComposeFAB currently doesn't surface New Event / New Reminder; both flows exist via the calendar drawer but need to be reachable from the global add affordance. Queued.
+- **Unread badge count showing incorrect total.** Sidebar / topbar unread badge surfaces a number that doesn't match the actual unread thread count — likely an off-by-one or stale-cache issue in the count source. Needs an audit pass against the Gmail unread query + Quo unread count + reminder due count to identify which input is drifting. Queued.
+- **Mac PWA not appearing in System Settings > Notifications** (Chrome PWA registration quirk on macOS — not code-related).
 
 ## What Shipped in Ace 49.0 (2026-05-15)
 
@@ -81,7 +119,7 @@ Live at: ace.breakpointtalent.com
 - **Mac PWA not appearing in System Settings > Notifications** (Chrome PWA registration quirk on macOS — not code-related).
 
 ## Next Task
-Next session opens with the **design overhaul** (one-off polish pass) before resuming the numbered priority list. Priority order after that:
+Design overhaul polish pass is substantially complete after Ace 50.0 (dark token rebuild, tables/lists, segmented controls, spacing + border reduction, dashboard cards, candidate profile polish, outbound bubble colors). Ace 51 opens on **Vercel Blob migration** as the first numbered priority. Order after that:
 1. **Vercel Blob migration** — move uploaded resumes / agreements / candidate files off Postgres-stored bytes onto Vercel Blob storage with signed URLs.
 2. **S3 backup cron** — nightly Neon → S3 dump for disaster recovery before we open the door to real client data.
 3. **Template send-as-draft** — when sending from a template, write to Gmail Drafts instead of Send so Andrew can eyeball before launch.

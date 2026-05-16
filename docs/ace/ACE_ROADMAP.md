@@ -1,8 +1,8 @@
 # Ace Roadmap
-Last updated: 2026-05-16 · Ace 49.4
+Last updated: 2026-05-16 · Ace 50.0
 
 ## Active Build Sequence
-Design overhaul polish pass is in flight (border-weight + page-padding + shadow tightening shipped in 49.1). Remaining design items continue out-of-sequence before resuming the numbered list below. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
+Design overhaul polish pass is substantially complete after Ace 50.0 — dark token rebuild (Clay + Grass), tables/lists row styling, segmented controls (canonical TabStrip migration), spacing + border reduction, dashboard card chrome unification, candidate profile polish, and outbound SMS bubble color all shipped. Remaining design items move to the queued list below; Ace 51 opens on the numbered priority sequence. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
 1. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points.
 2. **Template send-as-draft** — when sending from a template, write to Gmail Drafts instead of Send so Andrew can eyeball before launch. Two prompts already drafted in the Ace 47.0 session, paste-ready.
