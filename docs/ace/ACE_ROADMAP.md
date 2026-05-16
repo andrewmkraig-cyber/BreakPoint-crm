@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-16 · Ace 49.2
+Last updated: 2026-05-16 · Ace 49.3
 
 ## Active Build Sequence
 Design overhaul polish pass is in flight (border-weight + page-padding + shadow tightening shipped in 49.1). Remaining design items continue out-of-sequence before resuming the numbered list below. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.

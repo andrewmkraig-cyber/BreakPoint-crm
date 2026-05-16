@@ -1,10 +1,18 @@
 # ACE_STATE.md
-Last updated: 2026-05-16 · Ace 49.2
+Last updated: 2026-05-16 · Ace 49.3
 
 ## Current Status
-Current Version: Ace 49.2
+Current Version: Ace 49.3
 Last Shipped: 2026-05-16
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 49.3 (2026-05-16)
+
+### Invoice "Sent from" selector — and actual From wiring
+- **`Invoice.sendFromAlias String?` column.** New nullable Prisma column on `Invoice` so the recruiter's per-invoice From choice persists. Schema synced via `prisma db push` (no migration file — repo convention).
+- **`updateInvoiceSendFromAliasAction(id, alias)` server action.** Tenant-scoped, accepts all statuses (not just DRAFT — the recruiter may want to set the From for a re-send). Empty string clears the override.
+- **"Sent from" panel on `/invoices/[id]` is now a dropdown.** Fetches `/api/mail/send-as-aliases` on mount, renders a `<select>` populated with every verified Gmail alias when there's more than one. Defaults to `Invoice.sendFromAlias` when set; otherwise promotes the billing AR email (from Settings → Billing) to the default if it's actually a verified alias; otherwise falls back to Gmail's `isDefault`. On change, fires the action — no Save click needed. Single-alias accounts keep the legacy read-only label with a one-line nudge to add a second alias in Gmail Settings.
+- **Composer carries the selection through to the actual Gmail send.** `MailComposer` gained `defaultSendAsEmail` prop; `composer-manager` forwards it. The invoice Draft Email button passes the persisted alias when opening the composer so the From field is pre-selected to AR@ (the recruiter can still flip to andrew@ inside the composer before sending). The existing `sendAsEmail` payload field then drives the Gmail `From:` header — no separate plumbing.
 
 ## What Shipped in Ace 49.2 (2026-05-16)
 

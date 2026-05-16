@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { ChevronDown } from "lucide-react";
 
 import { useComposerManager } from "@/lib/composer-manager";
 import type { AttachmentDraft } from "@/app/mail/mail-composer";
@@ -13,7 +14,14 @@ import {
   markInvoiceVoidAction,
   restoreInvoiceDraftAction,
   updateInvoiceAction,
+  updateInvoiceSendFromAliasAction,
 } from "../actions";
+
+type SendAsAlias = {
+  sendAsEmail: string;
+  displayName: string;
+  isDefault: boolean;
+};
 
 type Contact = { name: string; email: string; title?: string };
 
@@ -70,6 +78,11 @@ export type InvoiceDetailProps = {
   billingCompanyName: string;
   billingArEmail: string;
   billingDisplayAddress: string;
+  // Persisted "Send mail as" alias for this invoice's outgoing email.
+  // Null = no override; the panel defaults to billingArEmail (when it's
+  // a verified alias on the Gmail account) and ultimately to the Gmail
+  // primary if even that's missing.
+  sendFromAlias: string | null;
 };
 
 export function InvoiceDetail(props: InvoiceDetailProps) {
@@ -93,6 +106,67 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
   const [paymentMethod, setPaymentMethod] = useState<InvoicePaymentMethod | "">(
     props.paymentMethod ?? "",
   );
+
+  // Gmail "Send mail as" aliases. Powers the From dropdown in the
+  // "Sent from" panel. Empty until /api/mail/send-as-aliases returns —
+  // we render a single-line "Loading aliases…" hint during that window
+  // so the dropdown doesn't pop in late and shift the panel.
+  const [sendAsAliases, setSendAsAliases] = useState<SendAsAlias[]>([]);
+  const [aliasesLoaded, setAliasesLoaded] = useState(false);
+  // The currently-selected alias for this invoice. Initially mirrors
+  // props.sendFromAlias; once aliases load, we promote billingArEmail
+  // to the default when the invoice has no persisted choice AND the
+  // billing AR address is actually a verified alias on the user's
+  // Gmail account. Falls back to Gmail's isDefault otherwise.
+  const [selectedFromAlias, setSelectedFromAlias] = useState<string | null>(
+    props.sendFromAlias,
+  );
+  const [aliasSaving, setAliasSaving] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/mail/send-as-aliases", { cache: "no-store" });
+        if (!res.ok) {
+          if (!cancelled) setAliasesLoaded(true);
+          return;
+        }
+        const body = (await res.json().catch(() => null)) as
+          | { aliases?: SendAsAlias[] }
+          | null;
+        if (cancelled || !body?.aliases) {
+          if (!cancelled) setAliasesLoaded(true);
+          return;
+        }
+        setSendAsAliases(body.aliases);
+        setAliasesLoaded(true);
+        setSelectedFromAlias((prev) => {
+          if (prev) return prev;
+          const arMatch = body.aliases!.find(
+            (a) => a.sendAsEmail.toLowerCase() === props.billingArEmail.toLowerCase(),
+          );
+          if (arMatch) return arMatch.sendAsEmail;
+          const def = body.aliases!.find((a) => a.isDefault);
+          return def?.sendAsEmail ?? body.aliases![0]?.sendAsEmail ?? null;
+        });
+      } catch {
+        if (!cancelled) setAliasesLoaded(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [props.billingArEmail]);
+
+  function onPickAlias(next: string) {
+    setSelectedFromAlias(next);
+    setAliasSaving(true);
+    void updateInvoiceSendFromAliasAction(props.id, next)
+      .then((r) => {
+        if (!r.ok) setError(r.error);
+      })
+      .finally(() => setAliasSaving(false));
+  }
 
   const isDraft = props.status === "DRAFT";
   const statusPill = STATUS_PILL[props.status] ?? { label: props.status, tone: "" };
@@ -223,6 +297,11 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
         },
         modalTitle: "Draft invoice email",
         nonBlocking: true,
+        // Honor the invoice's persisted "Sent from" selection so the
+        // Gmail send actually goes out from AR@ (or whichever alias the
+        // recruiter picked). The composer falls back to its own default
+        // selection when this is null.
+        defaultSendAsEmail: selectedFromAlias,
       });
     } finally {
       setDraftingEmail(false);
@@ -516,8 +595,40 @@ export function InvoiceDetail(props: InvoiceDetailProps) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
             Sent from
           </p>
-          <p className="mt-1 text-sm font-semibold text-court-fg">Accounts Receivable</p>
-          <p className="text-[12px] text-court-fg-muted">{props.billingArEmail}</p>
+          {sendAsAliases.length > 1 ? (
+            <div className="relative mt-2">
+              <select
+                value={selectedFromAlias ?? ""}
+                onChange={(e) => onPickAlias(e.target.value)}
+                disabled={aliasSaving}
+                className="h-8 w-full appearance-none truncate rounded-md border border-court-border bg-court-surface py-1 pl-2 pr-8 text-sm font-semibold text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+              >
+                {sendAsAliases.map((a) => (
+                  <option key={a.sendAsEmail} value={a.sendAsEmail}>
+                    {a.displayName
+                      ? `${a.displayName} <${a.sendAsEmail}>`
+                      : a.sendAsEmail}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
+              />
+            </div>
+          ) : (
+            <>
+              <p className="mt-1 text-sm font-semibold text-court-fg">Accounts Receivable</p>
+              <p className="text-[12px] text-court-fg-muted">
+                {selectedFromAlias ?? props.billingArEmail}
+              </p>
+              {aliasesLoaded && sendAsAliases.length <= 1 && (
+                <p className="mt-1 text-[11px] text-court-fg-muted">
+                  Add a second &ldquo;Send mail as&rdquo; alias in your Gmail Settings to switch addresses.
+                </p>
+              )}
+            </>
+          )}
           <p className="mt-3 text-[11px] text-court-fg-muted">
             Bank details + payment instructions are baked into the PDF. No pay links, no Mercury sync. Configure them in{" "}
             <a href="/settings/billing" className="font-semibold text-court-brand-dark hover:underline">

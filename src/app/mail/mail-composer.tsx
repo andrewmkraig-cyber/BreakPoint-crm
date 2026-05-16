@@ -182,6 +182,13 @@ type Props = {
   // The composer card itself stays clickable. Used by the global
   // ComposeFAB so navigation, sidebar clicks, etc. aren't blocked.
   nonBlocking?: boolean;
+  // Pre-selects the From dropdown to a specific "Send mail as" alias on
+  // mount, overriding Gmail's isDefault. Used by surfaces that have an
+  // opinion about the sender — e.g. the Invoice detail page passes the
+  // invoice's persisted `sendFromAlias` (which defaults to the billing
+  // AR email) so invoice emails go out from AR@ without the recruiter
+  // having to re-pick on every Draft Email click.
+  defaultSendAsEmail?: string | null;
   onClose: () => void;
   onSent: () => void;
 };
@@ -212,6 +219,7 @@ export function MailComposer({
   nonBlocking = false,
   growToFill = false,
   replyingTo,
+  defaultSendAsEmail = null,
   onPopOut,
   onClose,
   onSent,
@@ -233,7 +241,9 @@ export function MailComposer({
   const [sendAsAliases, setSendAsAliases] = useState<
     Array<{ sendAsEmail: string; displayName: string; isDefault: boolean }>
   >([]);
-  const [selectedFromEmail, setSelectedFromEmail] = useState<string | null>(null);
+  const [selectedFromEmail, setSelectedFromEmail] = useState<string | null>(
+    defaultSendAsEmail,
+  );
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -251,11 +261,31 @@ export function MailComposer({
           | null;
         if (cancelled || !body?.aliases) return;
         setSendAsAliases(body.aliases);
+        // Caller-provided defaultSendAsEmail wins when it matches a
+        // verified alias — that's the Invoice "send from AR@" path. If
+        // it doesn't match (or isn't supplied), fall back to Gmail's
+        // isDefault, then the first alias in the list. We force the
+        // selection to a known-verified alias every time the list
+        // loads so a stale defaultSendAsEmail can't leave the select
+        // showing an empty value.
+        const callerMatch = defaultSendAsEmail
+          ? body.aliases.find(
+              (a) => a.sendAsEmail.toLowerCase() === defaultSendAsEmail.toLowerCase(),
+            )?.sendAsEmail
+          : null;
         const def =
+          callerMatch ??
           body.aliases.find((a) => a.isDefault)?.sendAsEmail ??
           body.aliases[0]?.sendAsEmail ??
           null;
-        setSelectedFromEmail((prev) => prev ?? def);
+        setSelectedFromEmail((prev) => {
+          // Keep prev if it's already a verified alias the user explicitly
+          // picked in this session; otherwise resync to def.
+          if (prev && body.aliases!.some((a) => a.sendAsEmail === prev)) {
+            return prev;
+          }
+          return def;
+        });
       } catch {
         // Silent: no aliases means the composer just falls back to the
         // primary user.email on the server.
@@ -264,7 +294,7 @@ export function MailComposer({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [defaultSendAsEmail]);
   // Tracks the Gmail draft id the most recent Save Draft created. Set
   // by Save Draft on success, carried over from defaults when the
   // composer is re-opened from a pop-out, and cleared after Delete.

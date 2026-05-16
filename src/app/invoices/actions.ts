@@ -174,6 +174,36 @@ export async function updateInvoiceAction(input: UpdateInvoiceInput): Promise<Re
   }
 }
 
+// Persists the "Send mail as" alias the invoice should go out from.
+// Allowed on every status (not just DRAFT) — recruiter may want to set
+// the From for a re-send of an already-sent invoice. Empty string /
+// null clears the override so the next send falls back to the billing
+// AR email or the Gmail primary.
+export async function updateInvoiceSendFromAliasAction(
+  id: string,
+  alias: string | null,
+): Promise<Result> {
+  const userId = await requireUserId();
+  if (!userId) return fail("Not signed in");
+  const org = await getCurrentOrg();
+  try {
+    const existing = await prisma.invoice.findFirst({
+      where: { id, organizationId: org.id },
+      select: { id: true },
+    });
+    if (!existing) return fail("Invoice not found");
+    const value = alias?.trim() || null;
+    await prisma.invoice.update({
+      where: { id: existing.id },
+      data: { sendFromAlias: value },
+    });
+    revalidatePath(`/invoices/${existing.id}`);
+    return ok(undefined);
+  } catch (e) {
+    return fail(e instanceof Error ? e.message : "Failed to update From alias");
+  }
+}
+
 export async function markInvoiceSentAction(id: string): Promise<Result> {
   const userId = await requireUserId();
   if (!userId) return fail("Not signed in");

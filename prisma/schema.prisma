@@ -1052,6 +1052,11 @@ model Invoice {
   // can scan how clients are actually paying without opening each PDF.
   paymentMethod   InvoicePaymentMethod?
   notes           String?
+  // Verified Gmail "Send mail as" alias the invoice email should go out
+  // from. Set by the From selector on the invoice detail page. Null =
+  // fall back to the billing AR email if it's a verified alias, otherwise
+  // the Gmail account's primary address.
+  sendFromAlias   String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
