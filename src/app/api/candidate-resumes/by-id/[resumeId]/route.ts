@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { getResumeBytes } from "@/lib/resume-bytes";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,9 @@ export async function GET(
   const wantsRedacted = req.nextUrl.searchParams.get("variant") === "redacted";
   const hasRedacted = Boolean(resume.redactedData && resume.redactedAt);
   const useRedacted = wantsRedacted && hasRedacted;
-  const bytes = useRedacted ? resume.redactedData! : resume.data;
-  if (!bytes) return new NextResponse("Not found", { status: 404 });
+  const bytes = useRedacted
+    ? await getResumeBytes({ blobUrl: resume.redactedBlobUrl, data: resume.redactedData })
+    : await getResumeBytes(resume);
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
   // Phase 5A.5.b (Ace 20.0): pick the extension off the actual mime
   // type rather than hardcoding .pdf — DOCX downloads were landing as

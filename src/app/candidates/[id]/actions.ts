@@ -8,6 +8,7 @@ import { linkedinUrlFrom } from "@/lib/rf-payload-shapes";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
+import { getResumeBytes } from "@/lib/resume-bytes";
 
 type ActionResult<T = void> =
   | (T extends void ? { ok: true } : { ok: true; value: T })
@@ -315,8 +316,7 @@ export async function convertDocxResumeToPdf(input: {
     const mammoth = await import("mammoth");
     const extract = mammoth.extractRawText ?? mammoth.default?.extractRawText;
     if (!extract) return { ok: false, error: "DOCX extractor unavailable." };
-    if (!source.data) return { ok: false, error: "Source resume bytes not found." };
-    const sourceBuffer = Buffer.from(source.data);
+    const sourceBuffer = await getResumeBytes(source);
     const { value: rawText } = await extract({ buffer: sourceBuffer });
     const text = (rawText ?? "").replace(/\r\n/g, "\n");
 

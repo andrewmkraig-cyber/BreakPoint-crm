@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { getResumeBytes } from "@/lib/resume-bytes";
 
 export const dynamic = "force-dynamic";
 
@@ -41,8 +42,9 @@ export async function GET(
   const hasRedacted = Boolean(resume.redactedData && resume.redactedAt);
 
   const useRedacted = wantsRedacted && hasRedacted;
-  const bytes = useRedacted ? resume.redactedData! : resume.data;
-  if (!bytes) return new NextResponse("Not found", { status: 404 });
+  const bytes = useRedacted
+    ? await getResumeBytes({ blobUrl: resume.redactedBlobUrl, data: resume.redactedData })
+    : await getResumeBytes(resume);
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
   const labelBase = (resume.displayName?.trim() || resume.filename).replace(/\.pdf$/i, "");
   const baseFilename = useRedacted

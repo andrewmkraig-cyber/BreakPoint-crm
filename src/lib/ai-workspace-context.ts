@@ -1,6 +1,7 @@
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { canonicalStage } from "@/lib/rf-payload-shapes";
+import { getResumeBytes } from "@/lib/resume-bytes";
 
 // Builds the system prompt for the per-entity AI workspace and Claude
 // Panel chats. Every read is Neon-cuid-keyed: RecruiterFlow was retired
@@ -639,15 +640,16 @@ async function extractResumeTextForCandidate(
     const resume = await prisma.candidateResume.findFirst({
       where: { candidateId, organizationId, uploadComplete: true },
       orderBy: { uploadedAt: "desc" },
-      select: { data: true, mimeType: true },
+      select: { data: true, blobUrl: true, mimeType: true },
     });
-    if (!resume?.data) return "";
+    if (!resume) return "";
+    if (!resume.blobUrl && !resume.data) return "";
     if (!resume.mimeType?.toLowerCase().includes("pdf")) return "";
     const mod = (await import("pdf-parse")) as unknown as
       | { default: (buf: Buffer) => Promise<{ text: string }> }
       | ((buf: Buffer) => Promise<{ text: string }>);
     const parse = typeof mod === "function" ? mod : mod.default;
-    const out = await parse(resume.data as Buffer);
+    const out = await parse(await getResumeBytes(resume));
     const text = (out.text ?? "").trim();
     if (!text) return "";
     return truncate(text, maxChars);

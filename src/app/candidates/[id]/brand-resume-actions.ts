@@ -6,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import { BRAND_LOGO_TRANSPARENT_BASE64 } from "@/lib/default-brand-logo";
+import { getResumeBytes } from "@/lib/resume-bytes";
 
 // Phase 5A.5.b — server action that produces a derivative PDF from a
 // source CandidateResume. The unified Edit Resume modal sends both
@@ -97,8 +98,7 @@ export async function brandCandidateResume(
     // pdf-lib is heavy (~1MB). Lazy-load to keep the rest of the
     // server-action bundle small.
     const { PDFDocument, rgb } = await import("pdf-lib");
-    if (!source.data) return { ok: false, error: "Source resume bytes not found." };
-    const sourceBytes = Buffer.from(source.data);
+    const sourceBytes = await getResumeBytes(source);
     const pdf = await PDFDocument.load(sourceBytes);
     const pages = pdf.getPages();
 

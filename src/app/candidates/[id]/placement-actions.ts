@@ -10,6 +10,7 @@ import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { generateSubmittalWriteup, type SubmittalInput } from "@/lib/claude";
 import { createGmailDraft, plainToHtml, sendGmail, type GmailAttachment } from "@/lib/gmail";
 import { prisma } from "@/lib/prisma";
+import { getResumeBytes } from "@/lib/resume-bytes";
 import { getRfCandidatesForOrg, getRfCandidateByRfId } from "@/lib/candidates";
 import {
   submittalEditorHtmlToPlainText,
@@ -1501,8 +1502,7 @@ async function loadSubmittalAttachment(
       },
     };
   }
-  const bytes = row.data;
-  if (!bytes) return { ok: false, error: "No resume bytes on file for this candidate." };
+  const bytes = await getResumeBytes(row);
   return {
     ok: true,
     value: {

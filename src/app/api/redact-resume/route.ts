@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { brandResume, BrandResumeUnsupportedError } from "@/lib/resume-redactor";
+import { getResumeBytes } from "@/lib/resume-bytes";
 
 export const dynamic = "force-dynamic";
 // pdfjs + pdf-lib on a multi-page resume can easily chew through the
@@ -61,10 +62,10 @@ export async function POST(req: NextRequest) {
     const cr = await prisma.candidateResume.findFirst({
       where: { candidateId: candidate.id, uploadComplete: true },
       orderBy: { uploadedAt: "desc" },
-      select: { data: true, mimeType: true, filename: true, uploadComplete: true },
+      select: { data: true, blobUrl: true, mimeType: true, filename: true, uploadComplete: true },
     });
-    if (cr && cr.uploadComplete && cr.data) {
-      data = new Uint8Array(cr.data);
+    if (cr && cr.uploadComplete && (cr.blobUrl || cr.data)) {
+      data = new Uint8Array(await getResumeBytes(cr));
       mimeType = cr.mimeType;
       filename = cr.filename;
     }

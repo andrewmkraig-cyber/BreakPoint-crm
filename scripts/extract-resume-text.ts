@@ -11,6 +11,7 @@
 //
 // Run: npx tsx scripts/extract-resume-text.ts
 import { PrismaClient } from "@prisma/client";
+import { getResumeBytes } from "../src/lib/resume-bytes";
 
 const prisma = new PrismaClient();
 
@@ -82,6 +83,7 @@ async function main() {
         filename: true,
         mimeType: true,
         data: true,
+        blobUrl: true,
       },
       take: BATCH_SIZE,
       orderBy: { uploadedAt: "asc" },
@@ -90,12 +92,18 @@ async function main() {
 
     for (const row of batch) {
       processed += 1;
-      if (!row.data) continue;
+      if (!row.blobUrl && !row.data) continue;
       const isPdf =
         (row.mimeType ?? "").toLowerCase().includes("pdf") ||
         row.filename.toLowerCase().endsWith(".pdf");
       let text: string | null = null;
-      if (isPdf) text = await extractPdfText(Buffer.from(row.data));
+      if (isPdf) {
+        try {
+          text = await extractPdfText(await getResumeBytes(row));
+        } catch {
+          text = null;
+        }
+      }
 
       if (text && text.length > 0) {
         await prisma.candidateResume.update({
