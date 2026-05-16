@@ -61,7 +61,7 @@ export const POST = createChunkedUploadHandler<RedactExtra>({
       const blob = await put(
         `resumes/${extra.candidateId}/redacted-${filename}`,
         firstChunk,
-        { access: "public", contentType: mimeType },
+        { access: "private", contentType: mimeType, addRandomSuffix: true },
       );
       const row = await prisma.candidateResume.create({
         data: {
@@ -120,7 +120,7 @@ export const POST = createChunkedUploadHandler<RedactExtra>({
       const blob = await put(
         `resumes/${existing.candidateId}/redacted-${existing.filename}`,
         combined,
-        { access: "public", contentType: existing.mimeType },
+        { access: "private", contentType: existing.mimeType, addRandomSuffix: true },
       );
       await prisma.candidateResume.update({
         where: { id },

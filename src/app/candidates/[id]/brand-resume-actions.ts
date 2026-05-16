@@ -169,7 +169,7 @@ export async function brandCandidateResume(
     const blob = await put(
       `resumes/${candidateIdForPath}/branded-${filename}`,
       Buffer.from(outputBytes),
-      { access: "public", contentType: "application/pdf" },
+      { access: "private", contentType: "application/pdf", addRandomSuffix: true },
     );
 
     const created = await prisma.candidateResume.create({
