@@ -3,7 +3,7 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Check,
   Download,
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { DocumentDropzone } from "@/components/document-dropzone";
 import { DocxPreview } from "@/components/docx-preview";
 import { PdfCanvasViewer } from "@/components/pdf-canvas-viewer";
+import { parseHighlightTokens } from "@/app/candidates/[id]/highlight-tokens";
 import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
   convertDocxResumeToPdf,
@@ -130,6 +131,15 @@ export function EditableResume({
   versions: ResumeVersion[];
 }) {
   const router = useRouter();
+  // Pulled directly from the URL so the candidates split-view's
+  // ?highlight=tax,cpa tokens reach the canvas viewer without
+  // plumbing a prop through three EditableResume mount sites
+  // (page.tsx embed + non-embed, local-profile.tsx embed + tab).
+  const searchParams = useSearchParams();
+  const highlightTokens = useMemo(
+    () => parseHighlightTokens(searchParams?.get("highlight") ?? null),
+    [searchParams],
+  );
   const [isUploading, setIsUploading] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [editorOpen, setEditorOpen] = useState(false);
@@ -538,6 +548,7 @@ export function EditableResume({
           <PdfCanvasViewer
             key={previewUrl}
             src={previewUrl}
+            highlightTokens={highlightTokens}
             className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
           />
         ) : docx ? (
