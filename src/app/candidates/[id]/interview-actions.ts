@@ -14,6 +14,7 @@ import {
   updateCalendarEvent,
   updateEventAsInvite,
 } from "@/lib/google-calendar";
+import { createTeamsMeeting } from "@/lib/microsoft-graph";
 import { prisma } from "@/lib/prisma";
 import {
   CANDIDATE_INTERVIEW_PREP_TRIGGER,
@@ -48,6 +49,12 @@ async function requireUser(): Promise<SessionUser | null> {
 
 export type InterviewType = "phone_screen" | "video" | "in_person";
 export type InterviewSource = "ace_scheduled" | "client_scheduled";
+// Which provider mints the video meeting link for a video interview.
+// Defaults to "google" everywhere it's omitted so existing callers
+// keep their current Google Meet behavior. "teams" routes through
+// Microsoft Graph /me/onlineMeetings on the org's connected
+// Microsoft account.
+export type MeetingProvider = "google" | "teams";
 
 export type InterviewAttendee = { id?: number; name: string; email: string };
 
@@ -78,6 +85,11 @@ export type ScheduleInterviewInput = {
   // When true (default), the Meet is created with Open access + guests
   // can invite others. When false, guests are locked to the invite list.
   openMeeting?: boolean;
+  // Provider used to mint the join link for video interviews. Defaults
+  // to "google". Only consulted when type === "video" AND source ===
+  // "ace_scheduled"; the client-scheduled path never mints a link
+  // either way.
+  meetingType?: MeetingProvider;
 };
 
 export type ScheduleInterviewResult =
@@ -248,6 +260,8 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
   let googleEventIdMine: string | null = null;
   let meetLink: string | null = null;
   let meetConferenceId: string | null = null;
+  const meetingProvider: MeetingProvider = input.meetingType ?? "google";
+  const wantsVideoLink = input.source === "ace_scheduled" && input.type === "video";
   try {
     const ev = await createCalendarEvent({
       userId: user.id,
@@ -256,10 +270,12 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       startISO: when.toISOString(),
       durationMin: input.durationMin,
       attendees: [],
-      // Video interviews get a Meet on the organizer-only event. The
-      // standard Calendar createRequest mints an open-by-default link
-      // for the user's workspace (no Meet spaces.patch needed).
-      createMeet: input.source === "ace_scheduled" && input.type === "video",
+      // Mint a Google Meet only when the video interview is staying on
+      // Google. For Teams we still create the tracking calendar event
+      // (so invite-send can patch attendees onto it later) but skip
+      // conferenceData entirely and overwrite meetLink below with the
+      // Teams joinWebUrl.
+      createMeet: wantsVideoLink && meetingProvider === "google",
       sendUpdates: false,
       location: input.location || undefined,
       timeZone: input.timeZone,
@@ -273,6 +289,38 @@ export async function scheduleInterview(input: ScheduleInterviewInput): Promise<
       ok: false,
       error: e instanceof Error ? `Calendar create failed: ${e.message}` : "Calendar create failed.",
     };
+  }
+
+  if (wantsVideoLink && meetingProvider === "teams") {
+    try {
+      const org = await getCurrentOrg();
+      const endISO = new Date(when.getTime() + input.durationMin * 60 * 1000).toISOString();
+      const meeting = await createTeamsMeeting({
+        organizationId: org.id,
+        startISO: when.toISOString(),
+        endISO,
+        subject: calendarSummary(input),
+      });
+      meetLink = meeting.joinWebUrl;
+      meetConferenceId = meeting.meetingId;
+    } catch (e) {
+      // Roll back the Google tracking event we just created so we
+      // don't leave an orphan with no working join link.
+      if (googleEventIdMine) {
+        try {
+          await deleteCalendarEvent({ userId: user.id, eventId: googleEventIdMine, sendUpdates: false });
+        } catch {
+          // best-effort
+        }
+      }
+      return {
+        ok: false,
+        error:
+          e instanceof Error
+            ? `Teams meeting create failed: ${e.message}`
+            : "Teams meeting create failed.",
+      };
+    }
   }
 
   try {

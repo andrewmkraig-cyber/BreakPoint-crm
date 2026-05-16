@@ -50,10 +50,12 @@ import {
   sendInterviewInvite,
   updateInterview,
   type InterviewType,
+  type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
 import { createClientContact } from "@/app/candidates/[id]/contact-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
+import { MeetingProviderSelect } from "@/components/meeting-provider-select";
 import { applyMergeFields as applyMergeFieldsClient } from "@/lib/merge-fields";
 import {
   formatInterviewDate as formatInterviewDateShared,
@@ -1796,6 +1798,8 @@ function ScheduleInterviewDialog({
   const [timeZone, setTimeZone] = useState<string>("America/New_York");
   const [openMeeting, setOpenMeeting] = useState<boolean>(true);
   const [type, setType] = useState<InterviewType>("video");
+  const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
+  const [microsoftConnected, setMicrosoftConnected] = useState<boolean>(false);
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
   const [location, setLocation] = useState("");
@@ -1804,6 +1808,27 @@ function ScheduleInterviewDialog({
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
+
+  // Probe the Microsoft connector on mount so the Teams option in the
+  // meeting-link dropdown is gated on the org actually having a token.
+  // A failure is treated as "not connected" — the worst case is the
+  // recruiter sees the disabled hint, never a silent Teams-create-fail.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/microsoft/status");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as { connected: boolean };
+        if (!cancelled) setMicrosoftConnected(Boolean(json.connected));
+      } catch {
+        if (!cancelled) setMicrosoftConnected(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function onSave() {
     setErr(null);
@@ -1841,6 +1866,7 @@ function ScheduleInterviewDialog({
         location: type === "in_person" ? location.trim() : undefined,
         timeZone,
         openMeeting,
+        meetingType: type === "video" ? meetingType : undefined,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -1927,7 +1953,7 @@ function ScheduleInterviewDialog({
             </select>
           </label>
         </div>
-        {type === "video" && (
+        {type === "video" && meetingType === "google" && (
           <label className="flex cursor-pointer items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -1946,10 +1972,17 @@ function ScheduleInterviewDialog({
             className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
           >
             <option value="phone_screen">Phone Screen</option>
-            <option value="video">Video (Google Meet)</option>
+            <option value="video">Video</option>
             <option value="in_person">In-Person</option>
           </select>
         </label>
+        {type === "video" && (
+          <MeetingProviderSelect
+            value={meetingType}
+            onChange={setMeetingType}
+            teamsConnected={microsoftConnected}
+          />
+        )}
         {type === "in_person" && (
           <label className="block text-sm">
             <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">Address</span>

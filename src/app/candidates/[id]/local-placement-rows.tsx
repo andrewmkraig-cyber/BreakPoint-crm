@@ -24,9 +24,11 @@ import {
   scheduleInterview,
   sendInterviewInvite,
   type InterviewType,
+  type MeetingProvider,
 } from "@/app/candidates/[id]/interview-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { DateTime15Picker } from "@/components/datetime-15-picker";
+import { MeetingProviderSelect } from "@/components/meeting-provider-select";
 import {
   CcBccPicker,
   DurationSelect,
@@ -485,6 +487,8 @@ function ScheduleDialog({
   // join" Meet for client/candidate convenience. Off locks the Meet to
   // the invited attendees only.
   const [openMeeting, setOpenMeeting] = useState(true);
+  const [meetingType, setMeetingType] = useState<MeetingProvider>("google");
+  const [microsoftConnected, setMicrosoftConnected] = useState(false);
   const [interviewerName, setInterviewerName] = useState("");
   const [interviewerEmail, setInterviewerEmail] = useState("");
   const [location, setLocation] = useState("");
@@ -493,6 +497,23 @@ function ScheduleDialog({
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [isPending, startSave] = useTransition();
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/microsoft/status");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = (await res.json()) as { connected: boolean };
+        if (!cancelled) setMicrosoftConnected(Boolean(json.connected));
+      } catch {
+        if (!cancelled) setMicrosoftConnected(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function onSave() {
     setErr(null);
@@ -520,6 +541,7 @@ function ScheduleDialog({
         candidateName,
         location: type === "in_person" ? location.trim() : undefined,
         openMeeting,
+        meetingType: type === "video" ? meetingType : undefined,
       });
       if (!result.ok) {
         setErr(result.error);
@@ -581,15 +603,24 @@ function ScheduleDialog({
         setNotes={setNotes}
         typeExtras={
           type === "video" ? (
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={openMeeting}
-                onChange={(e) => setOpenMeeting(e.target.checked)}
-                className="h-4 w-4 rounded border-court-border accent-brand-dark"
+            <div className="space-y-2">
+              <MeetingProviderSelect
+                value={meetingType}
+                onChange={setMeetingType}
+                teamsConnected={microsoftConnected}
               />
-              <span className="text-court-fg">Open meeting (anyone can join)</span>
-            </label>
+              {meetingType === "google" && (
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={openMeeting}
+                    onChange={(e) => setOpenMeeting(e.target.checked)}
+                    className="h-4 w-4 rounded border-court-border accent-brand-dark"
+                  />
+                  <span className="text-court-fg">Open meeting (anyone can join)</span>
+                </label>
+              )}
+            </div>
           ) : null
         }
         interviewerSlot={
@@ -808,7 +839,7 @@ function ScheduleFields(props: {
           className="mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
         >
           <option value="phone_screen">Phone Screen</option>
-          <option value="video">Video (Google Meet)</option>
+          <option value="video">Video</option>
           <option value="in_person">In-Person</option>
         </select>
       </label>
