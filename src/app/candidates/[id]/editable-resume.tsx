@@ -543,6 +543,22 @@ export function EditableResume({
         </div>
       </div>
 
+      {highlightTokens.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 border-t border-court-border bg-court-surface-subtle/60 px-3 py-2">
+          <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+            Highlighting:
+          </span>
+          {highlightTokens.map((t) => (
+            <span
+              key={t}
+              className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-700"
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="relative">
         {selected.mimeType === "application/pdf" || selected.kind === "redacted" ? (
           <PdfCanvasViewer
