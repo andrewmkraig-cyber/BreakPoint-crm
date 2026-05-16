@@ -12,6 +12,7 @@ import {
   ChevronsUpDown,
   ListPlus,
   Loader2,
+  Mail,
   Minus,
   RotateCcw,
   Search,
@@ -21,7 +22,7 @@ import {
 } from "lucide-react";
 import { toggleCandidateKept } from "@/app/candidates/[id]/keep-actions";
 import { saveJobSearchFilters } from "@/app/jobs/[id]/save-search-actions";
-import { BulkAddToListDialog } from "@/app/candidates/bulk-dialogs";
+import { BulkAddToListDialog, BulkEmailDialog } from "@/app/candidates/bulk-dialogs";
 import {
   listCandidateLists,
   type CandidateListSummary,
@@ -642,6 +643,7 @@ export function MatchesTab({
   // Add-to-List dialog state. Lists are lazy-fetched on first click so
   // the tab doesn't pay the round-trip on mount; null = not fetched.
   const [addToListOpen, setAddToListOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [bulkLists, setBulkLists] = useState<CandidateListSummary[] | null>(
     null,
   );
@@ -1855,6 +1857,17 @@ export function MatchesTab({
                       )}
                       Add to List
                     </button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => setEmailDialogOpen(true)}
+                      disabled={bulkInFlight}
+                      className="px-2.5 py-1 text-sm"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      Email
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1995,6 +2008,17 @@ export function MatchesTab({
             // Invalidate cached lists so a newly-created list shows up
             // on next open.
             setBulkLists(null);
+          }}
+        />
+      )}
+
+      {emailDialogOpen && (
+        <BulkEmailDialog
+          candidateIds={Array.from(selectedIds)}
+          onClose={() => setEmailDialogOpen(false)}
+          onDone={() => {
+            setEmailDialogOpen(false);
+            setSelectedIds(new Set());
           }}
         />
       )}
