@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -24,6 +24,7 @@ import {
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
+import type { ActiveTemplateSummary } from "@/app/email/actions";
 import type { MergeFieldValues } from "@/lib/merge-fields";
 
 // Shared bulk-action modals used by both the /candidates global page
@@ -273,9 +274,10 @@ export function BulkAddToListDialog({
 // doesn't waste keystrokes filling in those fields.
 const BULK_EMAIL_CONFIRM_THRESHOLD = 25;
 
-// Job + client merge tokens that, when present in the composer text,
-// flip the Job Context picker visible. Subset of MERGE_FIELDS — only
-// fields that getJobMergeValuesForBulk actually populates today.
+// Job + client tokens that, when present in a picked template OR in
+// the eventual send draft, require a job context to be resolved
+// before send. Subset of MERGE_FIELDS — only fields that
+// getJobMergeValuesForBulk actually populates today.
 const JOB_MERGE_TOKENS = [
   "[Job Title]",
   "[Job Location]",
@@ -284,9 +286,12 @@ const JOB_MERGE_TOKENS = [
   "[Client Company LinkedIn]",
 ];
 
-function detectJobTokens(subject: string, body: string): boolean {
-  const haystack = `${subject}\n${body}`;
-  return JOB_MERGE_TOKENS.some((t) => haystack.includes(t));
+function textNeedsJob(text: string): boolean {
+  return JOB_MERGE_TOKENS.some((t) => text.includes(t));
+}
+
+function templateNeedsJob(template: ActiveTemplateSummary): boolean {
+  return textNeedsJob(template.subject) || textNeedsJob(template.body);
 }
 
 export function BulkEmailDialog({
@@ -306,26 +311,29 @@ export function BulkEmailDialog({
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
-  // Live mirror of EmailComposer's subject/body via the onSubjectChange
-  // and onBodyChange observers. Used only for detecting job tokens —
-  // the composer still owns the canonical state.
-  const [composerSubject, setComposerSubject] = useState("");
-  const [composerBody, setComposerBody] = useState("");
-  const showJobPicker = useMemo(
-    () => detectJobTokens(composerSubject, composerBody),
-    [composerSubject, composerBody],
-  );
-
-  // Lazy-fetched job picker payload. First time the recruiter types
-  // a job token (or selects a template that contains one) we fetch
-  // the org's open-job list. Cached for the dialog's lifetime.
+  // Two-step Use Template → Pick Job flow, modeled on mail-composer's
+  // recruitMode bail. When the recruiter picks a template that
+  // contains job tokens, resolveTemplate parks the in-flight Promise
+  // here and shows an overlay job picker. The recruiter picks a job
+  // (or cancels), the parked Promise resolves, and EmailComposer
+  // continues applying the template. Stored merge values get passed
+  // to bulkSendEmail at send time so the server fills the tokens per
+  // recipient.
+  const [pendingJobPick, setPendingJobPick] = useState<{
+    template: ActiveTemplateSummary;
+    resolve: () => void;
+  } | null>(null);
+  const [jobMergeValues, setJobMergeValues] = useState<MergeFieldValues | null>(null);
   const [jobs, setJobs] = useState<BulkPickerJob[] | null>(null);
   const [jobsLoading, setJobsLoading] = useState(false);
   const [pickedJobKey, setPickedJobKey] = useState("");
-  const [jobMergeValues, setJobMergeValues] = useState<MergeFieldValues | null>(null);
   const [resolvingJob, setResolvingJob] = useState(false);
+
+  // Lazy-load the org's open jobs the first time the picker opens.
+  // Cached for the dialog's lifetime so subsequent template picks
+  // reuse the list.
   useEffect(() => {
-    if (!showJobPicker) return;
+    if (!pendingJobPick) return;
     if (jobs !== null || jobsLoading) return;
     setJobsLoading(true);
     void (async () => {
@@ -339,15 +347,32 @@ export function BulkEmailDialog({
         setJobsLoading(false);
       }
     })();
-  }, [showJobPicker, jobs, jobsLoading]);
+  }, [pendingJobPick, jobs, jobsLoading]);
 
-  async function onPickJob(key: string) {
-    setPickedJobKey(key);
-    if (key === "") {
-      setJobMergeValues(null);
-      return;
+  async function resolveTemplate(
+    template: ActiveTemplateSummary,
+  ): Promise<{ subject: string; body: string }> {
+    // No job tokens → resolve immediately with the raw template; the
+    // composer applies subject/body and the server still does the
+    // per-recipient candidate merge at send time.
+    if (!templateNeedsJob(template)) {
+      return { subject: template.subject, body: template.body };
     }
-    const job = jobs?.find((j) => j.key === key);
+    // Job tokens present → park the resolver and pop the picker.
+    // Returning the template literal (tokens unresolved) lets the
+    // composer apply it as-is; jobMergeValues set during the pick is
+    // what bulkSendEmail uses to fill tokens server-side per
+    // recipient. If the recruiter cancels, jobMergeValues stays null
+    // and the send-time guard catches it.
+    await new Promise<void>((resolveOuter) => {
+      setPendingJobPick({ template, resolve: resolveOuter });
+    });
+    return { subject: template.subject, body: template.body };
+  }
+
+  async function onConfirmJobPick() {
+    if (!pendingJobPick || !pickedJobKey) return;
+    const job = jobs?.find((j) => j.key === pickedJobKey);
     if (!job) return;
     setResolvingJob(true);
     try {
@@ -358,12 +383,22 @@ export function BulkEmailDialog({
         clientRfId: job.clientRfId,
       });
       setJobMergeValues(values);
+      pendingJobPick.resolve();
+      setPendingJobPick(null);
+      setPickedJobKey("");
     } catch {
       toast.error("Couldn't resolve job fields");
-      setJobMergeValues(null);
     } finally {
       setResolvingJob(false);
     }
+  }
+
+  function onCancelJobPick() {
+    if (!pendingJobPick) return;
+    setJobMergeValues(null);
+    pendingJobPick.resolve();
+    setPendingJobPick(null);
+    setPickedJobKey("");
   }
 
   // Recipients panel state — lazy-fetched on first toggle expand so a
@@ -430,9 +465,12 @@ export function BulkEmailDialog({
   }
 
   async function onSend(draft: EmailDraft): Promise<void> {
-    // Block sending when job tokens are present but no job picked —
-    // the unmerged tokens would ship literally.
-    if (showJobPicker && !jobMergeValues) {
+    // Block sending when the draft still contains job tokens but no
+    // job has been picked. Catches the case where the recruiter
+    // cancelled the picker after applying a job-using template, or
+    // typed tokens manually without picking a job.
+    const haystack = `${draft.subject}\n${draft.body}`;
+    if (textNeedsJob(haystack) && !jobMergeValues) {
       toast.error("Pick a job for the job context fields, or remove them from the body.");
       throw new Error("job_context_required");
     }
@@ -611,33 +649,6 @@ export function BulkEmailDialog({
           )}
         </div>
 
-        {showJobPicker && (
-          <div className="flex items-center gap-2 border-b border-court-border bg-court-surface-subtle/40 px-5 py-2 text-xs">
-            <span className="font-medium text-court-fg">Job context:</span>
-            <select
-              value={pickedJobKey}
-              onChange={(e) => void onPickJob(e.target.value)}
-              disabled={jobsLoading || resolvingJob}
-              className="min-w-0 flex-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
-            >
-              <option value="">
-                {jobsLoading ? "Loading jobs…" : "— pick a job to resolve job fields —"}
-              </option>
-              {(jobs ?? []).map((j) => (
-                <option key={j.key} value={j.key}>
-                  {j.label}
-                </option>
-              ))}
-            </select>
-            {resolvingJob && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
-            {!jobMergeValues && !resolvingJob && (
-              <span className="text-[11px] font-medium text-red-700">
-                Required — body contains job tokens.
-              </span>
-            )}
-          </div>
-        )}
-
         <div className="flex-1 overflow-y-auto">
           <EmailComposer
             title={`Bulk email — ${n} recipient${n === 1 ? "" : "s"}`}
@@ -645,16 +656,80 @@ export function BulkEmailDialog({
             onClose={onClose}
             onSend={onSend}
             showTemplatePicker
+            resolveTemplate={resolveTemplate}
             hideRecipientFields
             enableEditWithClaude
             onGenerate={onGenerateBody}
-            onSubjectChange={setComposerSubject}
-            onBodyChange={setComposerBody}
             sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
             sendingLabel="Sending…"
-            sendDisabled={confirmDraft !== null}
+            sendDisabled={confirmDraft !== null || pendingJobPick !== null}
           />
+          {jobMergeValues && (
+            <div className="border-t border-court-border bg-court-surface-subtle/40 px-5 py-1.5 text-[11px] text-court-fg-muted">
+              Job context resolved — recipients will receive filled job fields at send time.
+            </div>
+          )}
         </div>
+
+        {pendingJobPick && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
+              <h3 className="font-serif text-base font-semibold text-court-fg">
+                Pick a job for &ldquo;{pendingJobPick.template.name}&rdquo;
+              </h3>
+              <p className="mt-1 text-xs text-court-fg-muted">
+                Job context fields (<code>[Job Title]</code>, <code>[Client Company Name]</code>, etc.) will be filled the same way for every recipient at send time.
+              </p>
+              {jobsLoading ? (
+                <div className="mt-3 inline-flex items-center gap-2 text-xs text-court-fg-muted">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Loading jobs…
+                </div>
+              ) : (
+                <select
+                  value={pickedJobKey}
+                  onChange={(e) => setPickedJobKey(e.target.value)}
+                  disabled={resolvingJob}
+                  size={Math.min(6, Math.max(3, (jobs ?? []).length || 1))}
+                  className="mt-3 w-full rounded-md border border-court-border bg-court-surface px-2 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+                >
+                  {(jobs ?? []).length === 0 && (
+                    <option value="" disabled>
+                      No open jobs
+                    </option>
+                  )}
+                  {(jobs ?? []).map((j) => (
+                    <option key={j.key} value={j.key}>
+                      {j.label}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={onCancelJobPick}
+                  disabled={resolvingJob}
+                  className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onConfirmJobPick()}
+                  disabled={!pickedJobKey || resolvingJob || jobsLoading}
+                  className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+                >
+                  {resolvingJob ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Send className="h-3 w-3" />
+                  )}
+                  Use this job
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {confirmDraft && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">

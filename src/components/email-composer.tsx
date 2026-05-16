@@ -118,13 +118,6 @@ export type EmailComposerProps = {
   // button tooltip.
   sendDisabled?: boolean;
   sendDisabledReason?: string;
-  // Optional change observers. The composer keeps owning subject/body
-  // state — these just fire after every state update so parents that
-  // need to react (e.g. auto-detecting merge-field tokens) can do so
-  // without taking the state over. Both are opt-in; existing callers
-  // see no behavior change.
-  onSubjectChange?: (next: string) => void;
-  onBodyChange?: (next: string) => void;
   // When true, Cmd/Ctrl+B and Cmd/Ctrl+U in the body textarea wrap the
   // current selection in `**…**` / `__…__` markers (unwraps if already
   // wrapped). The submittal send path converts these markers into real
@@ -179,8 +172,6 @@ export function EmailComposer({
   attachmentsSlot,
   sendDisabled = false,
   sendDisabledReason,
-  onSubjectChange,
-  onBodyChange,
   bodyFormattingShortcuts = false,
   richTextBody = false,
   toEditorHtml,
@@ -226,17 +217,6 @@ export function EmailComposer({
     if (!draftKey) return;
     writeDraft(draftKey, { subject, body });
   }, [draftKey, subject, body]);
-
-  // Notify the parent of every subject/body change when callbacks are
-  // wired. Composer state stays canonical — these are observers, not
-  // controlled-input setters. Used by BulkEmailDialog to auto-detect
-  // job tokens in the composer text without owning the state.
-  useEffect(() => {
-    onSubjectChange?.(subject);
-  }, [subject, onSubjectChange]);
-  useEffect(() => {
-    onBodyChange?.(body);
-  }, [body, onBodyChange]);
 
   const [templates, setTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
