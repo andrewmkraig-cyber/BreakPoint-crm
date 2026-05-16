@@ -70,7 +70,7 @@ export function ListsManagementView({ initial }: { initial: CandidateListSummary
 
   return (
     <>
-      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <tr>

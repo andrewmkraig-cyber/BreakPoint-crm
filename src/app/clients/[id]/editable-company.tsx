@@ -80,7 +80,7 @@ export function EditableCompany({
   const websiteHref = draft.website ? (draft.website.startsWith("http") ? draft.website : `https://${draft.website}`) : "";
 
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm lg:col-span-2">
+    <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm lg:col-span-2">
       <div className="flex items-center justify-between">
         <h2 className="font-serif text-lg font-semibold text-court-fg">Company</h2>
         {!editing && (

@@ -89,7 +89,7 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="border-b border-court-border px-5 py-3">
           <h3 className="font-serif text-base font-semibold text-court-fg">Upload agreement</h3>
           <p className="text-xs text-court-fg-muted">
@@ -111,7 +111,7 @@ export function AgreementsTab({ clientId, items }: { clientId: number; items: Ag
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="border-b border-court-border px-5 py-3 text-sm font-semibold text-court-fg">Uploaded agreements</div>
         {items.length === 0 ? (
           <div className="px-5 py-12 text-center text-sm text-court-fg-muted">No agreements uploaded yet.</div>
@@ -230,7 +230,7 @@ function AgreementItem({
       {error && <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{error}</div>}
 
       {summary && expanded && (
-        <div className={cn("mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-4")}>
+        <div className={cn("mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-4")}>
           <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <Sparkles className="h-3 w-3 text-brand-dark" /> Key terms
             {summaryUpdatedAt && <span className="normal-case tracking-normal">· updated {new Date(summaryUpdatedAt).toLocaleString()}</span>}

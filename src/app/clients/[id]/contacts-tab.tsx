@@ -93,7 +93,7 @@ export function ContactsTab({
       )}
 
       {open && (
-        <form onSubmit={onSubmit} className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+        <form onSubmit={onSubmit} className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
           <div className="flex items-center gap-2 border-b border-court-border pb-3 text-sm font-semibold text-court-fg">
             <UserPlus className="h-4 w-4 text-brand-dark" /> New contact
           </div>
@@ -131,7 +131,7 @@ export function ContactsTab({
         </form>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <tr>

@@ -314,7 +314,7 @@ export function EditableResume({
 
   if (versions.length === 0) {
     return (
-      <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="flex items-center justify-between border-b border-court-border px-3 py-1.5">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">Resume</h2>
         </div>
@@ -379,7 +379,7 @@ export function EditableResume({
   const canEdit = !docx && selected.mimeType === "application/pdf";
 
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+    <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
       {/* Wrap to multiple rows when the column is narrow (resume +
           right-rail layout on candidate profiles squeezes this toolbar
           on smaller viewports, and the embed split-view further

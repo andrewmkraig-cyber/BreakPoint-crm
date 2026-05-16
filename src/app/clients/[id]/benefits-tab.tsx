@@ -196,7 +196,7 @@ function BenefitsTabInner({
 
   return (
     <div className="space-y-6">
-      <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">Benefits documents</h2>
@@ -230,7 +230,7 @@ function BenefitsTabInner({
         </div>
       </div>
 
-      <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="flex flex-col items-start justify-between gap-3 border-b border-court-border px-5 py-3 md:flex-row md:items-center">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">Benefits summary</h2>

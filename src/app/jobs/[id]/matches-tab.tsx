@@ -1218,7 +1218,7 @@ export function MatchesTab({
     // ml-* on the outer wrapper isn't used here because the parent
     // already controls the column geometry; matches tab fits inside its
     // col-span-7 region.
-    <div className="flex min-h-[640px] overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+    <div className="flex min-h-[640px] overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
       <aside
         className={
           "flex shrink-0 flex-col overflow-hidden border-r border-court-border bg-court-surface transition-[width,border] duration-200 " +

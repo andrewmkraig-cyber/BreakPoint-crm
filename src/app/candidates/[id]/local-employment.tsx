@@ -57,7 +57,7 @@ export function LocalEmployment({
   }
 
   return (
-    <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+    <section className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
       <div className="flex items-center justify-between">
         <h2 className="font-serif text-base font-semibold text-court-fg">Employment</h2>
         {!editing ? (

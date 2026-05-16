@@ -312,7 +312,7 @@ export default async function ClientDetailPage({
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <EditableCompany clientCuid={client.id} initial={companyInitial} />
 
-          <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+          <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-lg font-semibold text-court-fg">Fee Agreement</h2>
             <dl className="mt-4 space-y-3 text-sm">
               <Detail label="Status" icon={<ShieldCheck className="h-3 w-3" />}>
@@ -341,7 +341,7 @@ export default async function ClientDetailPage({
             </dl>
           </div>
 
-          <div className="rounded-xl border border-court-border bg-court-surface shadow-sm lg:col-span-3">
+          <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm lg:col-span-3">
             <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
               <h2 className="font-serif text-lg font-semibold text-court-fg">Jobs</h2>
               <span className="text-xs text-court-fg-muted">
@@ -506,7 +506,7 @@ export default async function ClientDetailPage({
           <AiWorkspace entityType="client" entityId={String(legacyRfId)} />
         </div>
       ) : tab === "notes" ? (
-        <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <section className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <header className="border-b border-court-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-court-fg">Notes</h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
@@ -535,7 +535,7 @@ export default async function ClientDetailPage({
               tagging. CallLogs handles transcripts + AI summaries
               inline; TextingExchanges renders the inbound/outbound
               chat bubbles. */}
-          <section className="space-y-3 rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
+          <section className="space-y-3 rounded-2xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
             <h2 className="font-serif text-lg font-semibold text-court-fg">Calls &amp; SMS</h2>
             <CallLogs clientId={client.id} defaultOpen />
             <TextingExchanges clientId={client.id} defaultOpen />
@@ -543,12 +543,12 @@ export default async function ClientDetailPage({
           <ActivityFeed entityType="client" entityId={client.id} />
         </div>
       ) : tab === "email" ? (
-        <section className="rounded-2xl border border-court-border bg-court-surface p-5 shadow-sm">
+        <section className="rounded-2xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
           <h2 className="mb-3 font-serif text-lg font-semibold text-court-fg">Email</h2>
           <TaggedThreadList url={`/api/clients/${encodeURIComponent(client.id)}/email-threads`} pageSize={10} />
         </section>
       ) : (
-        <div className="rounded-xl border border-court-border bg-court-surface p-6 text-sm text-court-fg-muted">
+        <div className="rounded-xl border border-court-border/40 bg-court-surface p-6 text-sm text-court-fg-muted">
           This tab isn&apos;t available yet for Ace-native clients.
         </div>
       )}
@@ -630,10 +630,10 @@ function Stat({
     </>
   );
   const wrapperCls =
-    "flex items-baseline justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-3.5 py-2 shadow-sm";
+    "flex items-baseline justify-between gap-3 rounded-xl border border-court-border/40 bg-court-surface px-3.5 py-2 shadow-sm";
   if (href) {
     return (
-      <Link href={href} className={cn(wrapperCls, "transition hover:border-court-accent hover:shadow-md")}>
+      <Link href={href} className={cn(wrapperCls, "transition hover:border-court-accent hover:shadow-sm")}>
         {inner}
       </Link>
     );

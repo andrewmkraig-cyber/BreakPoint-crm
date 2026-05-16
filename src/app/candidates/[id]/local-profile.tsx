@@ -730,7 +730,7 @@ function LocalNotesTab({
   initialNotes: string | null;
 }) {
   return (
-    <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+    <section className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
       <header className="border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">
           Notes

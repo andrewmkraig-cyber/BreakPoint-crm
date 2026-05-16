@@ -98,7 +98,7 @@ export default async function CandidateListDetailPage({
           No candidates in this list yet.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="overflow-x-auto rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <table className="w-full text-left text-xs">
             <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
               <tr>

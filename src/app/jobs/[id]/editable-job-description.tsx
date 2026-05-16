@@ -73,7 +73,7 @@ export function EditableJobDescription({
   }
 
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+    <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="font-serif text-lg font-semibold text-court-fg">Description</h2>

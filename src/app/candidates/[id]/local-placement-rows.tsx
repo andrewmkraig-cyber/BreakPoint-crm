@@ -138,7 +138,7 @@ export function LocalPlacementRows({
 
   return (
     <>
-      <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
+      <div className="divide-y divide-court-border rounded-xl border border-court-border/40 bg-court-surface">
         {jobsState.map((j) => (
           <LocalJobActionRow
             key={j.placementId}

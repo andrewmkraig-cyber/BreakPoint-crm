@@ -125,7 +125,7 @@ export function LocalCandidateActions(props: {
   }, [searchParams, pathname, router]);
 
   return (
-    <div className={props.hideButtons ? "contents" : "rounded-xl border border-court-border bg-court-surface px-5 py-4 shadow-sm"}>
+    <div className={props.hideButtons ? "contents" : "rounded-xl border border-court-border/40 bg-court-surface px-5 py-4 shadow-sm"}>
       {!props.hideButtons && (
         <div className="flex flex-wrap items-center gap-2">
           <Button

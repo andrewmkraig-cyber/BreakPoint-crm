@@ -1,10 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-05-15 · Ace 49.0
+Last updated: 2026-05-16 · Ace 49.1
 
 ## Current Status
-Current Version: Ace 49.0
-Last Shipped: 2026-05-15
+Current Version: Ace 49.1
+Last Shipped: 2026-05-16
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 49.1 (2026-05-16)
+
+### Design polish — borders, padding, shadows
+- **Panel borders softened across /clients, /jobs, /pipeline, /candidates.** 65 panel / card / sub-panel wrappers changed `border border-court-border` → `border border-court-border/40`. Skipped: table wrappers already tuned in abe0438, buttons, inputs, chips, floating dropdowns (`absolute z-[70] shadow-lg` pattern), input wrappers with `focus-within:border-brand`, modal dialogs (`shadow-2xl` / `shadow-xl`). 33 files touched.
+- **Page padding normalized.** Only top-level page wrapper using bare `p-8` was `/offline` (`src/app/offline/page.tsx`) — converted to `px-6 py-6`. All other `p-8` / `px-8` hits in `src/app/` were empty-state cells, dropzones, or responsive `sm:p-8` variants on section panels — left alone.
+- **Card hover-shadow reduced.** Four cards with `hover:shadow-md` lift effects → `hover:shadow-sm`: `clients/clients-view.tsx` client cards, `clients/[id]/page.tsx` metric link tiles, `components/calendar/day-view.tsx` + `week-view.tsx` event pills. All resting-state `shadow-lg` instances were on floating UI — dropdown menus, popovers, the phone FAB, the PWA install banner, the minimized composer tray — and stayed per the modals/drawers/floating-panels exemption.
 
 ## What Shipped in Ace 49.0 (2026-05-15)
 

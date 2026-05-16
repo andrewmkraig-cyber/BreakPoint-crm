@@ -527,7 +527,7 @@ export function PlacementActions({
       )}
 
       {!chromeless && (
-        <div className="divide-y divide-court-border rounded-xl border border-court-border bg-court-surface">
+        <div className="divide-y divide-court-border rounded-xl border border-court-border/40 bg-court-surface">
           {jobsState.map((j) => (
             <JobActionRow
               key={j.jobRfId}
@@ -1136,7 +1136,7 @@ function OfferDialog({
           <LabeledTextarea label="Notes" value={notes} onChange={setNotes} rows={3} />
         </div>
       </div>
-      <div className="mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3">
+      <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
         <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           {usedOverride ? "Fee (flat override)" : "Calculated fee"}
         </div>
@@ -1159,7 +1159,7 @@ function OfferDialog({
           </div>
         )}
       </div>
-      <label className="mt-4 flex items-start gap-2 rounded-lg border border-court-border bg-court-surface-subtle/60 p-3 text-xs">
+      <label className="mt-4 flex items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-xs">
         <input
           type="checkbox"
           checked={accepted}
@@ -1409,7 +1409,7 @@ function PlacementDialog({
         <LabeledField label="Expected start date" type="date" value={startDate} onChange={setStartDate} />
       </div>
 
-      <div className="mt-3 rounded-lg border border-court-border bg-court-surface-subtle/40 p-3">
+      <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-3">
         <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
           {usedOverride ? "Fee (flat override)" : "Calculated fee"}
         </div>
@@ -1474,7 +1474,7 @@ function PlacementDialog({
         {billingContacts.map((row) => (
           <div
             key={row.key}
-            className="rounded-lg border border-court-border bg-court-surface-subtle/30 p-2"
+            className="rounded-lg border border-court-border/40 bg-court-surface-subtle/30 p-2"
           >
             {/* Name + Email + Remove on a single row so the two inputs
                 stay visually aligned. Suggestion chips ride below in a
@@ -1733,7 +1733,7 @@ function ConfirmStartDialog({
         />
       </div>
       {previewUrl && (
-        <div className="mt-3 overflow-hidden rounded-lg border border-court-border bg-court-surface">
+        <div className="mt-3 overflow-hidden rounded-lg border border-court-border/40 bg-court-surface">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={previewUrl} alt="Start confirmation preview" className="max-h-64 w-full object-contain" />
         </div>
@@ -1746,7 +1746,7 @@ function ConfirmStartDialog({
           to miss. Closes Confirm and hands off to the parent, which
           opens the pre-filled PlacementDialog for the same (candidate,
           job). */}
-      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs">
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2 text-xs">
         <span className="text-court-fg-muted">
           Need to fix the fee, start date, or billing contacts first?
         </span>
@@ -2262,7 +2262,7 @@ function EditInterviewDialog({
           </select>
         </label>
         {type === "video" && interview.meetLink && (
-          <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 px-3 py-2 text-xs text-court-fg-muted">
+          <div className="rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2 text-xs text-court-fg-muted">
             Existing Meet link: <a href={interview.meetLink} target="_blank" rel="noreferrer" className="font-medium text-court-fg underline-offset-2 hover:underline">{interview.meetLink}</a>
           </div>
         )}
@@ -2845,7 +2845,7 @@ function SubmitToJobDialog({
         </select>
       </label>
       {picked && (
-        <div className="mt-3 rounded-lg border border-court-border bg-court-surface-subtle/60 p-3 text-xs text-court-fg">
+        <div className="mt-3 rounded-lg border border-court-border/40 bg-court-surface-subtle/60 p-3 text-xs text-court-fg">
           <div className="font-semibold">{picked.jobTitle}</div>
           <div className="text-court-fg-muted">{picked.clientName || "—"}</div>
           <div className="mt-1 text-[11px] text-court-fg-muted">
@@ -2959,7 +2959,7 @@ function SubmittalEmailCompose({
               composer's row above the footer) so the recruiter sees the
               current state at send time. Defaults ON; flipping OFF skips
               deliverCandidateConfirmation for this one send only. */}
-          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border bg-court-surface-subtle/30 px-3 py-2 text-xs">
+          <label className="flex cursor-pointer items-start gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/30 px-3 py-2 text-xs">
             <input
               type="checkbox"
               checked={sendCandidateConfirmation}

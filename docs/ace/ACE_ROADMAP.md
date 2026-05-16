@@ -1,8 +1,8 @@
 # Ace Roadmap
-Last updated: 2026-05-15 · Ace 49.0
+Last updated: 2026-05-16 · Ace 49.1
 
 ## Active Build Sequence
-Next session opens with the **design overhaul** (one-off polish pass — out-of-sequence) before resuming the numbered list below. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
+Design overhaul polish pass is in flight (border-weight + page-padding + shadow tightening shipped in 49.1). Remaining design items continue out-of-sequence before resuming the numbered list below. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
 1. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points.
 2. **Template send-as-draft** — when sending from a template, write to Gmail Drafts instead of Send so Andrew can eyeball before launch. Two prompts already drafted in the Ace 47.0 session, paste-ready.
@@ -13,6 +13,7 @@ Next session opens with the **design overhaul** (one-off polish pass — out-of-
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
+- **`UnderlineTabLink` canonical helper** — extract the shared underline-tab anchor markup (used by client detail tabs migrated in Ace 49.0 and any future tab strip that renders as `<a>` links instead of buttons) into a single component so the active/inactive class set lives in one file. Mirrors `TabStrip` for the link-anchor case.
 - **Settings nav horizontal pill strip on mobile** — Ace 49 dropped the `hidden lg:block` gate so the nav now stacks vertically above content on phones (functional but tall — 11 category links). Convert to a horizontal scrollable pill strip matching the `MobileBucketTabs` pattern from `/phone`.
 - **`+ New` menu — New Event + New Reminder entries** — ComposeFAB currently doesn't surface calendar event / reminder creation; both flows exist via the calendar drawer but need to be reachable from the global add affordance.
 - **Notification read-state sync for Quo** — reading a Quo thread on the Quo app side doesn't clear the Ace badge (Quo has no read-receipt webhook event). Workaround would be a periodic Quo API poll (rate-limit risk) or a manual "Mark as read in Quo" affordance on the thread.

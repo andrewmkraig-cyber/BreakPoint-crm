@@ -257,7 +257,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
 
       <form
         onSubmit={onSubmitSearch}
-        className="flex flex-col gap-2 rounded-xl border border-court-border bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
+        className="flex flex-col gap-2 rounded-xl border border-court-border/40 bg-court-surface p-3 shadow-sm md:flex-row md:items-center"
       >
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted" />
@@ -314,7 +314,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
+      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
             <DataTableHead>

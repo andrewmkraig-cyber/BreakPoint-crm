@@ -92,7 +92,7 @@ export function JobOverviewTab({
         <JobOverviewActionButtons jobId={state.jobId} lifecycle={state.lifecycle} />
       </section>
 
-      <section className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <section className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <InlineTextCell
             icon={<Briefcase className="h-3.5 w-3.5" />}

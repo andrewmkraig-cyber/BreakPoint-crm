@@ -136,7 +136,7 @@ export function EditableNotes({
             {notes.map((n, i) => {
               const isEditing = editingIndex === i;
               return (
-                <li key={n.id ?? `new-${i}`} className="rounded-lg border border-court-border bg-court-surface p-3 text-sm shadow-sm">
+                <li key={n.id ?? `new-${i}`} className="rounded-lg border border-court-border/40 bg-court-surface p-3 text-sm shadow-sm">
                   {isEditing ? (
                     <div className="space-y-2">
                       <textarea

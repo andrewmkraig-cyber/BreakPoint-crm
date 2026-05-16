@@ -378,7 +378,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
       {/* 1. Source Material card — merges Source Job Link URL input and
             Upload JD drop zone into one container, separated by an "or"
             divider. Parse & Generate JD with Claude lives with the URL row. */}
-      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm">
         <label className="block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Source Material
         </label>
@@ -518,7 +518,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
             bottom of the same card. The compensation row (Salary Type /
             Low / High / Currency / Openings) sits in a single 5-col sub-
             grid on md+ so the form doesn't burn rows on small fields. */}
-      <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm">
         <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
           <CompactField label="Job title" value={title} onChange={setTitle} />
           <CompactSelect
@@ -616,7 +616,7 @@ export function NewJobForm({ clients }: { clients: Array<{ id: string; name: str
               </div>
             )}
             {description.trim() && (
-              <div className="rounded-lg border border-court-border bg-court-surface-subtle/40 p-4">
+              <div className="rounded-lg border border-court-border/40 bg-court-surface-subtle/40 p-4">
                 <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
                   Preview
                 </div>

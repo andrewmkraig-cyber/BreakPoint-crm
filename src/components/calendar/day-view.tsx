@@ -149,7 +149,7 @@ export function CalendarDayView({
                   onEventClick(ev);
                 }}
                 className={cn(
-                  "absolute cursor-pointer overflow-hidden rounded-lg border px-4 py-3 text-left transition hover:-translate-y-px hover:shadow-md",
+                  "absolute cursor-pointer overflow-hidden rounded-lg border px-4 py-3 text-left transition hover:-translate-y-px hover:shadow-sm",
                   meta.pillClass,
                   isSelected &&
                     "outline outline-2 outline-offset-2 outline-court-brand",

@@ -223,7 +223,7 @@ export function NewClientForm() {
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-5">
       {/* Left: website + auto-fill */}
       <div className="space-y-6 lg:col-span-2">
-        <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <div className="border-b border-court-border px-5 py-3">
             <h2 className="font-serif text-base font-semibold text-court-fg">Website</h2>
             <p className="text-xs text-court-fg-muted">
@@ -288,7 +288,7 @@ export function NewClientForm() {
 
       {/* Right: editable fields */}
       <div className="lg:col-span-3">
-        <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+        <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
           <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
             <div>
               <h2 className="font-serif text-base font-semibold text-court-fg">Client fields</h2>

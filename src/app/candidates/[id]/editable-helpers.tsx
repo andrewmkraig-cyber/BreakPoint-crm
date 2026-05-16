@@ -13,7 +13,7 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+    <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
       <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
         <h2 className="font-serif text-base font-semibold text-court-fg">{title}</h2>
         {right}

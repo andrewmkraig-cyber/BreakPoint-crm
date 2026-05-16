@@ -96,7 +96,7 @@ export function LocalEditableIdentity({
     "(unnamed)";
 
   return (
-    <div className="rounded-xl border border-court-border bg-court-surface shadow-sm">
+    <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
       <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-4">
         <h1 className="break-words font-serif text-2xl font-bold leading-tight text-court-fg">
           {candidateFullName}

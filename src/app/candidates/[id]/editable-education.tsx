@@ -144,7 +144,7 @@ export function EditableEducation({
           <ol className="space-y-3">
             {items.map((e, i) =>
               editingIndex === i ? null : (
-                <li key={i} className="rounded-lg border border-court-border bg-court-surface p-3 shadow-sm">
+                <li key={i} className="rounded-lg border border-court-border/40 bg-court-surface p-3 shadow-sm">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-medium text-court-fg">{e.school || "—"}</div>

@@ -168,7 +168,7 @@ export function CalendarWeekView({
                         onEventClick(ev);
                       }}
                       className={cn(
-                        "absolute left-1 right-1 cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left leading-tight transition hover:-translate-y-px hover:shadow-md",
+                        "absolute left-1 right-1 cursor-pointer overflow-hidden rounded-md border px-2 py-1 text-left leading-tight transition hover:-translate-y-px hover:shadow-sm",
                         meta.pillClass,
                         isSelected &&
                           "outline-2 outline-offset-2 outline outline-court-brand",

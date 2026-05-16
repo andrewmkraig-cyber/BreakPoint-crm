@@ -476,7 +476,7 @@ export function ResumeEditor({
                     )}
                   </div>
                   <div
-                    className="relative cursor-crosshair select-none border border-court-border bg-white shadow-sm"
+                    className="relative cursor-crosshair select-none border border-court-border/40 bg-white shadow-sm"
                     style={{ width: p.widthPx, height: p.heightPx }}
                     onMouseDown={(e) => onPageMouseDown(pageIndex, e)}
                     onMouseMove={(e) => onPageMouseMove(pageIndex, e)}

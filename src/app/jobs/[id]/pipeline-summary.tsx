@@ -296,7 +296,7 @@ export function JobPipelineSummary({
       )}
 
       {activeItem && activeItem.count > 0 && (
-        <div className="mt-3 overflow-hidden rounded-xl border border-court-border bg-court-surface">
+        <div className="mt-3 overflow-hidden rounded-xl border border-court-border/40 bg-court-surface">
           <div className="flex items-center justify-between border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
             <span>
               {activeItem.label} · {activeItem.count} {activeItem.count === 1 ? "candidate" : "candidates"}
@@ -394,7 +394,7 @@ function MatchedTabContent({
   const showPager = rows.length > MATCHED_PAGE_SIZE;
 
   return (
-    <div className="mt-3 overflow-hidden rounded-xl border border-court-border bg-court-surface">
+    <div className="mt-3 overflow-hidden rounded-xl border border-court-border/40 bg-court-surface">
       <div className="flex items-center justify-between border-b border-court-border bg-court-surface-subtle/60 px-4 py-2 text-[11px] uppercase tracking-wider text-court-fg-muted">
         <span>
           Matched · {rows.length} {rows.length === 1 ? "candidate" : "candidates"}

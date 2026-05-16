@@ -110,7 +110,7 @@ function ClientGridCard({ card, quietTier }: { card: ClientCard; quietTier?: Qui
   return (
     <Link
       href={`/clients/${card.slug}`}
-      className="group relative flex cursor-pointer flex-col rounded-2xl border border-court-border bg-court-surface p-5 transition hover:border-brand/40 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
+      className="group relative flex cursor-pointer flex-col rounded-2xl border border-court-border/40 bg-court-surface p-5 transition hover:border-brand/40 hover:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/30"
     >
       <div className="flex items-start gap-3">
         <ClientLogo domain={card.domain} name={card.name || "(unnamed)"} size={44} />
@@ -336,7 +336,7 @@ export function ClientsView({
       )}
 
       {filtered.length === 0 ? (
-        <div className="rounded-2xl border border-court-border bg-court-surface p-12 text-center text-sm text-court-fg-muted">
+        <div className="rounded-2xl border border-court-border/40 bg-court-surface p-12 text-center text-sm text-court-fg-muted">
           No clients{query ? ` match "${query}"` : ""}.
         </div>
       ) : view === "grid" ? (
@@ -346,7 +346,7 @@ export function ClientsView({
           ))}
         </div>
       ) : (
-        <div className="overflow-hidden rounded-2xl border border-court-border bg-court-surface">
+        <div className="overflow-hidden rounded-2xl border border-court-border/40 bg-court-surface">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <DataTableHead>

@@ -75,7 +75,7 @@ export function PromoteTab({
     <div className="space-y-5">
       <ApplyLinkCard applyLink={applyLink} />
 
-      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+      <section className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">Major Boards</h2>
@@ -92,7 +92,7 @@ export function PromoteTab({
             <Sparkles className="h-3 w-3" /> Suggest Boards with Claude
           </button>
         </div>
-        <div className="mt-3 divide-y divide-court-border overflow-hidden rounded-lg border border-court-border">
+        <div className="mt-3 divide-y divide-court-border overflow-hidden rounded-lg border border-court-border/40">
           {majors.length === 0 ? (
             <div className="px-4 py-3 text-xs text-court-fg-muted">
               Major boards aren&apos;t seeded yet — refresh in a moment.
@@ -105,7 +105,7 @@ export function PromoteTab({
         </div>
       </section>
 
-      <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+      <section className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-serif text-lg font-semibold text-court-fg">
@@ -117,7 +117,7 @@ export function PromoteTab({
           </div>
         </div>
         <AddLocalBoardForm jobId={jobId} />
-        <div className="mt-3 divide-y divide-court-border overflow-hidden rounded-lg border border-court-border">
+        <div className="mt-3 divide-y divide-court-border overflow-hidden rounded-lg border border-court-border/40">
           {locals.length === 0 ? (
             <div className="px-4 py-3 text-xs text-court-fg-muted">
               No local or niche boards yet. Add one above.
@@ -157,7 +157,7 @@ function ApplyLinkCard({ applyLink }: { applyLink: string | null }) {
   }
 
   return (
-    <section className="rounded-xl border border-court-border bg-court-surface p-5 shadow-sm">
+    <section className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
       <h2 className="font-serif text-lg font-semibold text-court-fg">Public Apply Link</h2>
       <p className="text-[11px] text-court-fg-muted">
         Share this URL on any board or social post. Inbound applicants land on the candidate
