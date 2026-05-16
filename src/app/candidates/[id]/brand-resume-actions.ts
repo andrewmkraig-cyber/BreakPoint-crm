@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
+import { put } from "@vercel/blob";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
@@ -162,11 +163,14 @@ export async function brandCandidateResume(
         ? `${baseName} - redacted.pdf`
         : `${baseName} - BreakPoint.pdf`;
 
-    // Copy to a fresh ArrayBuffer-backed Uint8Array — Prisma's Bytes
-    // typing rejects the Buffer-from-Uint8Array form via TS.
-    const ab = new ArrayBuffer(outputBytes.byteLength);
-    const data = new Uint8Array(ab);
-    data.set(outputBytes);
+    // candidateId is nullable on CandidateResume; fall back to the
+    // source row id so the blob path is always unique.
+    const candidateIdForPath = source.candidateId ?? source.id;
+    const blob = await put(
+      `resumes/${candidateIdForPath}/branded-${filename}`,
+      Buffer.from(outputBytes),
+      { access: "public", contentType: "application/pdf" },
+    );
 
     const created = await prisma.candidateResume.create({
       data: {
@@ -175,8 +179,9 @@ export async function brandCandidateResume(
         organizationId: org.id,
         filename,
         mimeType: "application/pdf",
-        size: data.byteLength,
-        data,
+        size: outputBytes.byteLength,
+        data: Buffer.alloc(0),
+        blobUrl: blob.url,
         variant,
         uploadComplete: true,
         uploadedById: userId,

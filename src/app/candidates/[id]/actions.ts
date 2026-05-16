@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import { Prisma } from "@prisma/client";
 import { linkedinUrlFrom } from "@/lib/rf-payload-shapes";
 
+import { del } from "@vercel/blob";
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
@@ -235,8 +236,30 @@ export async function deleteCandidateResume(resumeId: string): Promise<ActionRes
     const org = await getCurrentOrg();
     const target = await prisma.candidateResume.findFirst({
       where: { id: resumeId, organizationId: org.id },
-      select: { candidateId: true, candidateRfId: true },
+      select: {
+        candidateId: true,
+        candidateRfId: true,
+        blobUrl: true,
+        redactedBlobUrl: true,
+      },
     });
+    // Best-effort blob cleanup before the DB row goes — a missing or
+    // already-deleted blob must not block the DB delete, so each call
+    // is wrapped in its own try/catch.
+    if (target?.blobUrl) {
+      try {
+        await del(target.blobUrl);
+      } catch {
+        // ignore — DB delete still proceeds
+      }
+    }
+    if (target?.redactedBlobUrl) {
+      try {
+        await del(target.redactedBlobUrl);
+      } catch {
+        // ignore — DB delete still proceeds
+      }
+    }
     const result = await prisma.candidateResume.deleteMany({
       where: { id: resumeId, organizationId: org.id },
     });

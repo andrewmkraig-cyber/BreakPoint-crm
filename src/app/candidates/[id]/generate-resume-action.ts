@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import Anthropic from "@anthropic-ai/sdk";
+import { put } from "@vercel/blob";
 
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -192,9 +193,11 @@ export async function generateAiResume(input: {
     const safeName = fullName.replace(/[^A-Za-z0-9_-]+/g, "_");
     const filename = `${safeName || "resume"}_AI_Generated.pdf`;
 
-    const ab = new ArrayBuffer(outputBytes.byteLength);
-    const data = new Uint8Array(ab);
-    data.set(outputBytes);
+    const blob = await put(
+      `resumes/${candidate.id}/generated-${filename}`,
+      Buffer.from(outputBytes),
+      { access: "public", contentType: "application/pdf" },
+    );
 
     const created = await prisma.candidateResume.create({
       data: {
@@ -206,8 +209,9 @@ export async function generateAiResume(input: {
         // dropdownLabelFor() in editable-resume.tsx.
         displayName: "AI Generated",
         mimeType: "application/pdf",
-        size: data.byteLength,
-        data,
+        size: outputBytes.byteLength,
+        data: Buffer.alloc(0),
+        blobUrl: blob.url,
         uploadComplete: true,
         uploadedById: user.id,
       },
