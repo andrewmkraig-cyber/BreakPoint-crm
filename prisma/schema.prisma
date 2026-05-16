@@ -820,6 +820,11 @@ model Job {
   // dealbreakers, etc.). Never rendered to candidates and never fed back
   // into the JD Generate prompt — read-only sidekick to description.
   internalRecruiterNotes String? @db.Text
+  // Comma-separated keywords / skills the recruiter wants emphasized
+  // when scoring candidates. Feeds Find Matches and any Boolean
+  // candidate search built off this job. Free-form text, no
+  // normalization — the consumers split + lowercase as needed.
+  searchKeywords  String?  @db.Text
   // Saved filter state for the per-job Matches tab. One snapshot per
   // job — the Save Search button on /jobs/[id] Matches writes the
   // current sidebar filter shape here, and the tab restores it on next

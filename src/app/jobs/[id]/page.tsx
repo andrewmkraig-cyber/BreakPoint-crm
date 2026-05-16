@@ -438,6 +438,7 @@ export default async function JobDetailPage({
                 ? jobRow.descriptionGeneratedAt.toISOString()
                 : null
             }
+            initialSearchKeywords={jobRow.searchKeywords ?? null}
             jobMeta={{
               title: job.title,
               clientName: job.company || "",

@@ -11,7 +11,10 @@ import { cn } from "@/lib/utils";
 import { Button, CLAUDE_PILL_CLASS } from "@/components/ui/button";
 import { FindMatchesButton } from "@/components/game-plan/find-matches-button";
 import type { MatchTarget } from "@/lib/find-matches-context";
-import { saveJobGeneratedDescription } from "@/app/jobs/[id]/job-overview-actions";
+import {
+  saveJobGeneratedDescription,
+  saveJobSearchKeywords,
+} from "@/app/jobs/[id]/job-overview-actions";
 
 // Job Description tab — single card showing the polished JD with
 // Copy / Regenerate / Edit affordances. Source URL parsing now lives on
@@ -21,12 +24,14 @@ export function JobDescriptionTab({
   jobId,
   initialDescription,
   initialDescriptionGeneratedAt,
+  initialSearchKeywords,
   jobMeta,
   matchTarget,
 }: {
   jobId: string;
   initialDescription: string | null;
   initialDescriptionGeneratedAt: string | null;
+  initialSearchKeywords: string | null;
   jobMeta: {
     title: string;
     clientName: string;
@@ -97,6 +102,77 @@ export function JobDescriptionTab({
         generating={generating}
         onGenerate={onGenerate}
         onSavedEdit={(next) => setGenerated(next || null)}
+      />
+
+      <SearchKeywordsCard
+        jobId={jobId}
+        initialKeywords={initialSearchKeywords}
+      />
+    </div>
+  );
+}
+
+// Recruiter-tunable keyword list that feeds Find Matches scoring and
+// any Boolean candidate search built off this job. Plain text — the
+// readers (find-matches, boolean search) split + lowercase as needed.
+// Save-on-blur mirrors saveJobInternalRecruiterNotes' UX so the
+// recruiter can tab away without a save button.
+function SearchKeywordsCard({
+  jobId,
+  initialKeywords,
+}: {
+  jobId: string;
+  initialKeywords: string | null;
+}) {
+  const [value, setValue] = useState(initialKeywords ?? "");
+  const [saving, setSaving] = useState(false);
+  // Last value successfully committed to the server. Used to short-
+  // circuit no-op blurs (open → focus → blur without typing) so we
+  // don't fire a write or a toast for unchanged input.
+  const lastSavedRef = useRef(initialKeywords ?? "");
+
+  async function commit() {
+    const next = value.trim();
+    if (next === lastSavedRef.current.trim()) return;
+    setSaving(true);
+    try {
+      const res = await saveJobSearchKeywords({ jobId, keywords: next });
+      if (!res.ok) {
+        toast.error("Couldn't save keywords", { description: res.error });
+        return;
+      }
+      lastSavedRef.current = next;
+      toast.success("Keywords saved");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-serif text-lg font-semibold text-court-fg">Search Keywords</h2>
+          <p className="text-[11px] text-court-fg-muted">
+            Used for Find Matches scoring and Boolean candidate search.
+          </p>
+        </div>
+        {saving && (
+          <span className="inline-flex items-center gap-1 text-[11px] text-court-fg-muted">
+            <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+          </span>
+        )}
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void commit()}
+        rows={3}
+        placeholder="e.g. python, kubernetes, terraform, distributed systems"
+        className={cn(
+          "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
+          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+        )}
       />
     </div>
   );
