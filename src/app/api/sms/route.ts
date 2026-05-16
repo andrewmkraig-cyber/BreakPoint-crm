@@ -1,19 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendSms, FROM } from '@/lib/quo'
+import { getCurrentOrg } from '@/lib/auth/getCurrentOrg'
 import { normalizeToE164 } from '@/lib/rf-payload-shapes'
 
 export async function POST(req: NextRequest) {
   const { candidateId, toNumber, body } = await req.json()
-  // candidateId is optional now — the dialer's new-conversation flow
-  // sends to numbers that aren't in Ace yet. The row still saves with
-  // candidateId=null so the conversation surfaces in the Phone tab as
-  // an unknown-number thread, and the recruiter can link it to a
-  // candidate / contact later via the "Add to Ace" affordance.
-  const resolvedCandidateId =
-    typeof candidateId === 'string' && candidateId.length > 0
-      ? candidateId
-      : null
+  console.log(
+    `[api/sms POST] entry candidateIdRaw=${typeof candidateId === 'string' ? candidateId : '(none)'} toNumberRaw=${typeof toNumber === 'string' ? toNumber : '(none)'} bodyLen=${typeof body === 'string' ? body.length : 0}`,
+  )
+
+  // candidateId is optional — the dialer's new-conversation flow sends
+  // to numbers that aren't in Ace yet. The row still saves with
+  // candidateId=null so it surfaces in the Phone tab as an unknown-
+  // number thread. The /phone detail pane passes detail.contact.id
+  // which is the prefixed THREAD id ("cand:<cuid>" or "unk:<digits>")
+  // — strip both prefixes so we never write a thread id into the
+  // candidateId column (would corrupt the row + break the FK-shaped
+  // join the candidate sidebar reads).
+  let resolvedCandidateId: string | null = null
+  if (typeof candidateId === 'string' && candidateId.length > 0) {
+    if (candidateId.startsWith('unk:')) {
+      resolvedCandidateId = null
+    } else if (candidateId.startsWith('cand:')) {
+      resolvedCandidateId = candidateId.slice('cand:'.length)
+    } else {
+      resolvedCandidateId = candidateId
+    }
+  }
 
   // E.164-normalize before we hand the number to OpenPhone. The
   // composer + recipient picker accept user-typed strings like
@@ -35,9 +49,30 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Persist the row in the same format we hand to the provider so the
-  // candidate's thread + the carrier's log share a canonical number
-  // shape.
+  // Tenant scope. Every SmsMessage row must carry organizationId so the
+  // /phone thread detail query (which filters by org) can see it. Prior
+  // code created rows with organizationId=null, leaving the new outbound
+  // row invisible to the thread pane even though it was in the DB.
+  // Prefer the candidate's org when we have a resolved candidate (keeps
+  // the row attached to the right tenant even if the user's session org
+  // somehow drifts); fall back to the active session org otherwise.
+  let organizationId: string | null = null
+  if (resolvedCandidateId) {
+    const cand = await prisma.candidate.findUnique({
+      where: { id: resolvedCandidateId },
+      select: { organizationId: true },
+    })
+    organizationId = cand?.organizationId ?? null
+  }
+  if (!organizationId) {
+    try {
+      const org = await getCurrentOrg()
+      organizationId = org.id
+    } catch (e) {
+      console.error('[api/sms POST] getCurrentOrg failed', e)
+    }
+  }
+
   let krispcallId: string | undefined
   let status = 'sent'
   let providerError: string | null = null
@@ -66,6 +101,7 @@ export async function POST(req: NextRequest) {
   const msg = await prisma.smsMessage.create({
     data: {
       candidateId: resolvedCandidateId,
+      organizationId,
       direction: 'outbound',
       body,
       fromNumber: FROM,
@@ -74,6 +110,9 @@ export async function POST(req: NextRequest) {
       krispcallId,
     },
   })
+  console.log(
+    `[api/sms POST] persisted id=${msg.id} candidateId=${resolvedCandidateId ?? '(null)'} organizationId=${organizationId ?? '(null)'} status=${status}`,
+  )
   return NextResponse.json({
     ...msg,
     // Surface provider diagnostics to the composer so the error banner

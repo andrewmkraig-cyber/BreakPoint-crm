@@ -223,6 +223,23 @@ export function PhoneView() {
     return () => window.removeEventListener("ace:phone-thread-read", onThreadRead);
   }, []);
 
+  // Belt-and-suspenders refresh: every composer (InlineSmsComposer,
+  // NewTextPanel, SmsComposer, toast quick-reply) broadcasts
+  // PHONE_SMS_SENT_EVENT after a /api/sms POST resolves. Subscribing
+  // PhoneView directly means the detail pane re-fetches even if a
+  // composer's own onSent callback chain is broken or hasn't been
+  // wired. The thread list + sidebar badge also catch up in the same
+  // tick. Detail-side dependency on selectedId via detailRefresh
+  // covers the "open thread, send, see new bubble" loop.
+  useEffect(() => {
+    function onSmsSent() {
+      void loadThreads();
+      setDetailRefresh((c) => c + 1);
+    }
+    window.addEventListener(PHONE_SMS_SENT_EVENT, onSmsSent);
+    return () => window.removeEventListener(PHONE_SMS_SENT_EVENT, onSmsSent);
+  }, [loadThreads]);
+
   // Per-thread fetch on selection. Aborts in-flight fetches when the
   // user clicks another row before the previous one resolves.
   useEffect(() => {

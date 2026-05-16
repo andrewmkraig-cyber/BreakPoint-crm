@@ -1,7 +1,20 @@
 const BASE = 'https://api.openphone.com/v1'
-const KEY = process.env.QUO_API_KEY!
-export const FROM = process.env.QUO_FROM_NUMBER!
-const PHONE_NUMBER_ID = process.env.QUO_PHONE_NUMBER_ID!
+const KEY = process.env.QUO_API_KEY ?? ''
+// Exported for use as the persisted fromNumber on outbound SmsMessage
+// rows. Fall back to empty string instead of throwing on `!` so module
+// import doesn't crash when the env var is missing in a build — the
+// runtime guard in sendSms surfaces the missing-config case loudly.
+export const FROM = process.env.QUO_FROM_NUMBER ?? ''
+const PHONE_NUMBER_ID = process.env.QUO_PHONE_NUMBER_ID ?? ''
+
+// One-time, deploy-scope diagnostic. Fires when the module is first
+// loaded by an invocation so Vercel logs reveal which of the three Quo
+// env vars actually reached the deployed bundle. Helps catch the silent
+// "env var is set in Preview but not Production" class of regression
+// where sends just stop working with no surface-level signal.
+console.log(
+  `[lib/quo init] env apiKey=${KEY ? 'set' : 'unset'} fromNumber=${FROM ? 'set' : 'unset'} phoneNumberId=${PHONE_NUMBER_ID ? 'set' : 'unset'}`,
+)
 
 function headers() {
   return {
@@ -37,9 +50,26 @@ export async function sendSms(
   toNumber: string,
   body: string,
 ): Promise<QuoSendResult> {
-  if (!FROM) {
+  // OpenPhone accepts either `from` (E.164) or `phoneNumberId` to
+  // identify the sending number. Refuse only when BOTH are missing —
+  // the previous code aborted on a missing QUO_FROM_NUMBER even when
+  // QUO_PHONE_NUMBER_ID was set, which silently broke every send on
+  // any deployment configured with the id-only env shape.
+  if (!FROM && !PHONE_NUMBER_ID) {
     const msg =
-      'QUO_FROM_NUMBER env var is not set — refusing to dispatch without a registered from-number'
+      'Both QUO_FROM_NUMBER and QUO_PHONE_NUMBER_ID are unset — at least one is required'
+    console.error('[lib/quo sendSms]', msg)
+    return {
+      ok: false,
+      httpStatus: 0,
+      body: null,
+      messageId: null,
+      providerStatus: null,
+      errorMessage: msg,
+    }
+  }
+  if (!KEY) {
+    const msg = 'QUO_API_KEY env var is not set — cannot authenticate to OpenPhone'
     console.error('[lib/quo sendSms]', msg)
     return {
       ok: false,
@@ -51,17 +81,20 @@ export async function sendSms(
     }
   }
 
-  const payload = {
+  // Only include `from` when set so OpenPhone doesn't reject on an
+  // empty-string from-number when we're authenticating via phoneNumberId.
+  const payload: Record<string, unknown> = {
     content: body,
-    from: FROM,
     to: [toNumber],
-    phoneNumberId: PHONE_NUMBER_ID,
   }
+  if (FROM) payload.from = FROM
+  if (PHONE_NUMBER_ID) payload.phoneNumberId = PHONE_NUMBER_ID
+
   // Log the outbound payload (without the API key) so Vercel logs show
   // exactly what we asked OpenPhone to send — the most common silent
   // failure has been an unnormalized to-number sneaking through.
   console.log(
-    `[lib/quo sendSms] dispatch to=${toNumber} from=${FROM} phoneNumberId=${PHONE_NUMBER_ID ? 'set' : 'unset'} contentLen=${body.length}`,
+    `[lib/quo sendSms] dispatch to=${toNumber} from=${FROM || '(omitted)'} phoneNumberId=${PHONE_NUMBER_ID || '(omitted)'} contentLen=${body.length}`,
   )
 
   const res = await fetch(`${BASE}/messages`, {
