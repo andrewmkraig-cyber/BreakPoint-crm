@@ -370,10 +370,38 @@ export function BulkEmailDialog({
     return { subject: template.subject, body: template.body };
   }
 
+  // Always-unblock pattern: the parked Promise inside resolveTemplate
+  // MUST resolve on every exit from this handler, otherwise the
+  // EmailComposer's onPickTemplate stays pending and its Use Template
+  // spinner spins forever. Earlier version only resolved on the
+  // success path; a throw from getJobMergeValuesForBulk (or any of
+  // the early-return guards firing while pendingJobPick was set)
+  // left the composer hanging.
   async function onConfirmJobPick() {
-    if (!pendingJobPick || !pickedJobKey) return;
+    if (!pendingJobPick) return;
+    const parked = pendingJobPick;
+    const finish = (values: MergeFieldValues | null) => {
+      setJobMergeValues(values);
+      parked.resolve();
+      setPendingJobPick(null);
+      setPickedJobKey("");
+    };
+    if (!pickedJobKey) {
+      // "Use this job" pressed with no selection — bail without a
+      // toast (button is disabled in this state anyway, this is just
+      // defensive).
+      finish(null);
+      return;
+    }
     const job = jobs?.find((j) => j.key === pickedJobKey);
-    if (!job) return;
+    if (!job) {
+      // Picked id isn't in the loaded list (jobs reloaded between
+      // pick + confirm, or list arrived empty). Fall back to raw
+      // tokens and let the send-time guard catch.
+      toast.error("Couldn't find that job in the loaded list.");
+      finish(null);
+      return;
+    }
     setResolvingJob(true);
     try {
       const values = await getJobMergeValuesForBulk({
@@ -382,12 +410,17 @@ export function BulkEmailDialog({
         clientCuid: job.clientCuid,
         clientRfId: job.clientRfId,
       });
-      setJobMergeValues(values);
-      pendingJobPick.resolve();
-      setPendingJobPick(null);
-      setPickedJobKey("");
-    } catch {
-      toast.error("Couldn't resolve job fields");
+      finish(values);
+    } catch (e) {
+      // Surface the error but still unblock the composer — the
+      // template applies with literal tokens, jobMergeValues stays
+      // null, and onSend's textNeedsJob guard prevents the send
+      // until the recruiter picks a job that resolves, removes the
+      // tokens, or chooses a different template.
+      toast.error("Couldn't resolve job fields", {
+        description: e instanceof Error ? e.message : "Server error",
+      });
+      finish(null);
     } finally {
       setResolvingJob(false);
     }
@@ -395,8 +428,9 @@ export function BulkEmailDialog({
 
   function onCancelJobPick() {
     if (!pendingJobPick) return;
+    const parked = pendingJobPick;
     setJobMergeValues(null);
-    pendingJobPick.resolve();
+    parked.resolve();
     setPendingJobPick(null);
     setPickedJobKey("");
   }
