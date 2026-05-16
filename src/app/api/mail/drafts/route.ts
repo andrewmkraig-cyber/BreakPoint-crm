@@ -35,6 +35,10 @@ type SaveDraftPayload = {
   // is created — keeps the Drafts label tidy across multiple Save Draft
   // clicks in a single composer session.
   draftId?: string;
+  // Selected "Send mail as" alias from the composer's From dropdown.
+  // Persisted into the draft's From header so Send-from-Gmail keeps
+  // the recruiter's alias choice.
+  sendAsEmail?: string;
   attachments?: Array<{
     filename: string;
     mimeType: string;
@@ -116,9 +120,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const fromAddress = payload.sendAsEmail?.trim() || user.email;
     const created = await createGmailDraft({
       userId: user.id,
-      from: user.email,
+      from: fromAddress,
       fromName: user.name ?? undefined,
       to: payload.to,
       cc: payload.cc,

@@ -24,6 +24,9 @@ type ReplyPayload = {
   subject: string;
   bodyHtml: string;
   bodyText?: string;
+  // Selected "Send mail as" alias from the composer's From dropdown.
+  // Falls back to the primary user.email when absent.
+  sendAsEmail?: string;
   attachments?: Array<{
     filename: string;
     mimeType: string;
@@ -92,9 +95,10 @@ export async function POST(
   const bodyText = payload.bodyText ?? htmlToPlainText(payload.bodyHtml);
 
   try {
+    const fromAddress = payload.sendAsEmail?.trim() || user.email;
     const sent = await sendGmail({
       userId: user.id,
-      from: user.email,
+      from: fromAddress,
       fromName: user.name ?? undefined,
       to: payload.to,
       cc: payload.cc,

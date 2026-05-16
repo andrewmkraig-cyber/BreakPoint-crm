@@ -225,6 +225,46 @@ export function MailComposer({
   const [cc, setCc] = useState(defaultCc ?? "");
   const [bcc, setBcc] = useState(defaultBcc ?? "");
   const [subject, setSubject] = useState(defaultSubject);
+  // "Send mail as" aliases pulled from Gmail. Powers the From dropdown
+  // above the To row. Empty array = single primary alias (or fetch not
+  // yet returned); we hide the dropdown in that case since there's
+  // nothing to choose. Selected value falls back to the isDefault
+  // alias whenever the list changes.
+  const [sendAsAliases, setSendAsAliases] = useState<
+    Array<{ sendAsEmail: string; displayName: string; isDefault: boolean }>
+  >([]);
+  const [selectedFromEmail, setSelectedFromEmail] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/mail/send-as-aliases", { cache: "no-store" });
+        if (!res.ok) return;
+        const body = (await res.json().catch(() => null)) as
+          | {
+              aliases?: Array<{
+                sendAsEmail: string;
+                displayName: string;
+                isDefault: boolean;
+              }>;
+            }
+          | null;
+        if (cancelled || !body?.aliases) return;
+        setSendAsAliases(body.aliases);
+        const def =
+          body.aliases.find((a) => a.isDefault)?.sendAsEmail ??
+          body.aliases[0]?.sendAsEmail ??
+          null;
+        setSelectedFromEmail((prev) => prev ?? def);
+      } catch {
+        // Silent: no aliases means the composer just falls back to the
+        // primary user.email on the server.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Tracks the Gmail draft id the most recent Save Draft created. Set
   // by Save Draft on success, carried over from defaults when the
   // composer is re-opened from a pop-out, and cleared after Delete.
@@ -1051,6 +1091,7 @@ export function MailComposer({
           // draft instead of stacking duplicates in Gmail's Drafts
           // label. New row otherwise.
           draftId: gmailDraftId ?? undefined,
+          sendAsEmail: selectedFromEmail ?? undefined,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -1151,6 +1192,7 @@ export function MailComposer({
             mimeType: a.mimeType,
             dataBase64: a.dataBase64,
           })),
+          sendAsEmail: selectedFromEmail ?? undefined,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -1315,6 +1357,32 @@ export function MailComposer({
               <> · {new Date(replyingTo.dateIso).toLocaleString()}</>
             )}
           </div>
+        )}
+        {sendAsAliases.length > 1 && (
+          <label className="flex items-center gap-2 text-sm">
+            <span className="w-14 shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
+              From
+            </span>
+            <div className="relative min-w-0 flex-1">
+              <select
+                value={selectedFromEmail ?? ""}
+                onChange={(e) => setSelectedFromEmail(e.target.value || null)}
+                className="h-7 w-full appearance-none truncate rounded-md border border-court-border bg-court-surface py-1 pl-2 pr-8 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              >
+                {sendAsAliases.map((a) => (
+                  <option key={a.sendAsEmail} value={a.sendAsEmail}>
+                    {a.displayName
+                      ? `${a.displayName} <${a.sendAsEmail}>`
+                      : a.sendAsEmail}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-court-fg-muted"
+              />
+            </div>
+          </label>
         )}
         <AddressRow
           label="To"

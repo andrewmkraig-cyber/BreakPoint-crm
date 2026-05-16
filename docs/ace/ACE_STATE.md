@@ -1,10 +1,17 @@
 # ACE_STATE.md
-Last updated: 2026-05-16 · Ace 49.1
+Last updated: 2026-05-16 · Ace 49.2
 
 ## Current Status
-Current Version: Ace 49.1
+Current Version: Ace 49.2
 Last Shipped: 2026-05-16
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 49.2 (2026-05-16)
+
+### From-alias selector in the Mail composer
+- **New `GET /api/mail/send-as-aliases` route.** Calls `gmail.users.settings.sendAs.list` against the signed-in user's refresh token, filters to primary + accepted-verification rows, returns `{ aliases: [{sendAsEmail, displayName, isDefault}] }`. Same Account-row tenancy boundary as the rest of `src/lib/gmail.ts` — cross-user reads are physically impossible.
+- **From dropdown on `MailComposer`.** Fetched on mount, defaulted to the `isDefault` alias, rendered as a select row above To (only when more than one alias exists; single-alias accounts see the legacy layout). Covers both the fresh-compose and reply paths since `MailComposer` is the same component for new emails and thread replies (mail-view passes `threadId` to flip it into reply mode).
+- **`sendAsEmail` threaded through `/api/mail/send`, `/api/mail/drafts`, `/api/mail/threads/[id]/reply`.** Each route accepts the optional field, falls back to `user.email` when absent, and passes it as the `from` to `sendGmail` / `createGmailDraft`. Drafts persist the alias choice into the Gmail Drafts row so "Send from Gmail" later honors the recruiter's pick.
 
 ## What Shipped in Ace 49.1 (2026-05-16)
 

@@ -31,6 +31,10 @@ type SendPayload = {
   bodyHtml: string;
   bodyText?: string;
   threadId?: string;
+  // Selected "Send mail as" alias from the composer's From dropdown.
+  // Must be a verified sendAs on the user's Gmail account; falls back
+  // to the primary user.email when absent.
+  sendAsEmail?: string;
   attachments?: Array<{
     filename: string;
     mimeType: string;
@@ -95,9 +99,10 @@ export async function POST(req: NextRequest) {
   const bodyText = payload.bodyText ?? htmlToPlainText(payload.bodyHtml);
 
   try {
+    const fromAddress = payload.sendAsEmail?.trim() || user.email;
     const sent = await sendGmail({
       userId: user.id,
-      from: user.email,
+      from: fromAddress,
       fromName: user.name ?? undefined,
       to: payload.to,
       cc: payload.cc,
