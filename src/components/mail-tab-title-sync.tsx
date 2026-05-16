@@ -6,8 +6,9 @@ import { usePhoneContext } from "@/lib/phone-context";
 
 // Tab-title + PWA app-icon badge sync. Combines mail unread + phone
 // unread into a single total so the home-screen badge and the browser
-// tab counter agree. Reads from MailContext (30s Gmail unread poll)
-// and PhoneContext (30s /api/phone/unread-count poll) — no extra
+// tab counter agree. Reads from MailContext (15s Gmail unread poll +
+// instant push-driven refresh) and PhoneContext (30s
+// /api/phone/unread-count poll + instant push refresh) — no extra
 // network traffic introduced here, this is purely a presentation
 // mirror of state that's already maintained upstream.
 //

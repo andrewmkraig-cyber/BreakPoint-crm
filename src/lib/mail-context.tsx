@@ -15,7 +15,12 @@ import { playMailSound } from "@/lib/notification-sound";
 // Live-polling source of truth for the Mail Tab's "what's unread right
 // now" state. Replaces the per-render server fetch the sidebar +
 // tab-title used to do, so all surfaces (badge, title, toasts) move
-// together every 30s without a hard refresh.
+// together every 15s without a hard refresh. The 15s cadence is a
+// fallback only: Gmail push (webhook → sendPushToOrg → sw.js →
+// PUSH_RECEIVED → ace:refresh-unread) drives the same refresh within
+// seconds of an inbound, so this interval mostly catches the case
+// where push didn't reach the client (no notification permission,
+// expired push subscription, etc.).
 //
 // The provider seeds itself from the server-rendered count passed in
 // at app-shell mount, then overwrites that with each poll's payload.
@@ -23,7 +28,7 @@ import { playMailSound } from "@/lib/notification-sound";
 // way a thread arriving + another being read in the same window still
 // surfaces a toast for the new one.
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 15_000;
 const MAIL_NOTIFICATIONS_KEY = "ace_mail_notifications";
 
 export type UnreadInboxThread = {
