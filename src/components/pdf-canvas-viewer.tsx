@@ -40,17 +40,27 @@ export type PdfCanvasViewerProps = {
   highlightTokens?: string[];
 };
 
-const HIGHLIGHT_BG = "rgba(250, 204, 21, 0.4)";
+// Subtle amber tint. Lower alpha + multiply blend on the text-layer
+// container (set at mount time below) means the highlight reads as a
+// pen swipe over the rasterized glyphs rather than an opaque block.
+const HIGHLIGHT_BG = "rgba(250, 204, 21, 0.25)";
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function tintMatchedSpans(spans: HTMLElement[], tokens: string[]): void {
-  const lowered = tokens
-    .map((t) => t.toLowerCase())
-    .filter((t) => t.length > 0);
-  if (lowered.length === 0) return;
+  const cleaned = tokens.filter((t) => t.length > 0);
+  if (cleaned.length === 0) return;
+  // Word-boundary regex per token. Catches "tax" inside "tax credit"
+  // but not inside "taxation" / "syntax". Escapes regex metacharacters
+  // so tokens like "C++" / "C#" don't blow up the constructor. Built
+  // once per call and reused across spans.
+  const probes = cleaned.map((t) => new RegExp(`\\b${escapeRegex(t)}\\b`, "i"));
   for (const span of spans) {
-    const text = (span.textContent ?? "").toLowerCase();
+    const text = span.textContent ?? "";
     if (!text.trim()) continue;
-    if (lowered.some((t) => text.includes(t))) {
+    if (probes.some((re) => re.test(text))) {
       span.style.backgroundColor = HIGHLIGHT_BG;
       span.style.borderRadius = "2px";
     }
@@ -189,6 +199,10 @@ export function PdfCanvasViewer({
           textLayerDiv.className = "absolute inset-0 overflow-hidden";
           textLayerDiv.style.color = "transparent";
           textLayerDiv.style.pointerEvents = "none";
+          // Multiply blend lets the amber tint mix with the canvas
+          // pixels underneath instead of laying down as flat color —
+          // highlighted text reads through the tint at full sharpness.
+          textLayerDiv.style.mixBlendMode = "multiply";
           textLayerDiv.style.setProperty("--scale-factor", String(effective));
           pageWrap.appendChild(textLayerDiv);
           try {
