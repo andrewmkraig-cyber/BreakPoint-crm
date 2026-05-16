@@ -1,13 +1,16 @@
-// Shared accessors for CandidateResume bytes. Prompt 1 migrated uploads
+// Shared accessor for CandidateResume bytes. Prompt 1 migrated uploads
 // to Vercel Blob and made `data` nullable; new rows carry bytes in
-// `blobUrl`, legacy rows still carry them in `data`. Every read path
-// must route through here so neither generation breaks until the
-// backfill clears the inline column.
+// `blobUrl`, legacy rows still carry them in `data` (before backfill
+// runs). Every read path must route through here so neither generation
+// breaks until the backfill clears the inline column.
 //
-// Uses @vercel/blob's head() for the downloadUrl handshake (matches the
-// existing `fetchBlobBytes` in clients/[id]/actions.ts — works for both
-// public and private blobs). Global `fetch` (Node 18+) avoids pulling
-// in undici as a direct dep.
+// Private-blob reads use get(url, { access: "private" }) — not head() +
+// raw fetch. head() returns metadata but the raw blob URL is 403 to an
+// unauthenticated fetcher. get() drains a stream authenticated by
+// BLOB_READ_WRITE_TOKEN and works whether the blob lives in a public
+// or private store.
+
+import { get } from "@vercel/blob";
 
 type ResumeBytesInput = {
   blobUrl?: string | null;
@@ -16,32 +19,13 @@ type ResumeBytesInput = {
 
 export async function getResumeBytes(resume: ResumeBytesInput): Promise<Buffer> {
   if (resume.blobUrl) {
-    const { head } = await import("@vercel/blob");
-    const meta = (await head(resume.blobUrl)) as { downloadUrl?: string; url?: string };
-    const downloadUrl = meta.downloadUrl ?? meta.url ?? resume.blobUrl;
-    const res = await fetch(downloadUrl, { cache: "no-store" });
-    if (!res.ok) throw new Error(`Blob fetch failed: ${res.status} ${resume.blobUrl}`);
-    return Buffer.from(await res.arrayBuffer());
+    const result = await get(resume.blobUrl, { access: "private" });
+    if (!result) throw new Error(`Blob not found: ${resume.blobUrl}`);
+    if (result.statusCode !== 200) {
+      throw new Error(`Blob fetch failed: ${result.statusCode} ${resume.blobUrl}`);
+    }
+    return Buffer.from(await new Response(result.stream).arrayBuffer());
   }
   if (resume.data && resume.data.byteLength > 0) return Buffer.from(resume.data);
-  throw new Error("CandidateResume has neither blobUrl nor data");
-}
-
-// For routes that hand a URL back to the browser. Prefers the direct
-// Blob URL (CDN-served, no proxy hop). Legacy rows fall back to an
-// inline data: URI built from the Postgres bytes — large but works
-// without any new round-trip.
-export function getResumeServeUrl(
-  resume: ResumeBytesInput & { mimeType: string },
-  fallbackBase64?: string,
-): string {
-  if (resume.blobUrl) return resume.blobUrl;
-  const buf =
-    resume.data && resume.data.byteLength > 0
-      ? Buffer.from(resume.data)
-      : fallbackBase64
-        ? Buffer.from(fallbackBase64, "base64")
-        : null;
-  if (buf) return `data:${resume.mimeType};base64,${buf.toString("base64")}`;
   throw new Error("CandidateResume has neither blobUrl nor data");
 }
