@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronDown, Loader2, MessageSquare, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  PHONE_SMS_SENT_EVENT,
+  type PhoneSmsSentEventDetail,
+} from "@/components/text-notification-toast";
 
 type SmsRow = {
   id: string;
@@ -110,6 +114,24 @@ export function TextingExchanges(props: TextingExchangesProps) {
     }, 30_000);
     return () => clearInterval(interval);
   }, [open, fetchMessages]);
+
+  // Listen for the sibling SmsComposer's "sent" broadcast so the new
+  // outbound bubble appears immediately instead of waiting on the 30 s
+  // poll. Reset lastFetchKey before re-fetching — the saved snapshot
+  // doesn't include the row we just sent, and the dedupe in
+  // fetchMessages would otherwise short-circuit.
+  useEffect(() => {
+    if (!open) return;
+    function onSmsSent(e: Event) {
+      const detail = (e as CustomEvent<PhoneSmsSentEventDetail>).detail;
+      if (!detail) return;
+      if (candidateId && detail.candidateId !== candidateId) return;
+      lastFetchKey.current = "";
+      void fetchMessages();
+    }
+    window.addEventListener(PHONE_SMS_SENT_EVENT, onSmsSent);
+    return () => window.removeEventListener(PHONE_SMS_SENT_EVENT, onSmsSent);
+  }, [open, candidateId, fetchMessages]);
 
   // Pin the scroll to the newest message every time the list mounts,
   // opens, or grows. Without this, the cap clips the latest bubble at

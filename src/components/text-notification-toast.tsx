@@ -48,6 +48,16 @@ export const PHONE_THREAD_READ_EVENT = "ace:phone-thread-read";
 
 export type PhoneThreadReadEventDetail = { candidateId: string };
 
+// Fired after a successful outbound SMS write to /api/sms. Anyone
+// rendering a thread for the affected candidate (TextingExchanges on
+// the candidate profile, the /phone detail pane) listens and re-fetches
+// so the new outbound bubble appears immediately instead of waiting on
+// the next 30 s poll. candidateId is null when the send was to a
+// brand-new number not yet linked in Ace.
+export const PHONE_SMS_SENT_EVENT = "ace:phone-sms-sent";
+
+export type PhoneSmsSentEventDetail = { candidateId: string | null };
+
 export function renderNewTextToast(event: InboundTextEvent) {
   toast.custom(
     (id) => <QuoToast mode="text" event={event} toastId={id} />,
@@ -128,6 +138,11 @@ function QuoToast(props: QuoToastProps) {
       }
       window.dispatchEvent(
         new CustomEvent<PhoneThreadReadEventDetail>(PHONE_THREAD_READ_EVENT, {
+          detail: { candidateId },
+        }),
+      );
+      window.dispatchEvent(
+        new CustomEvent<PhoneSmsSentEventDetail>(PHONE_SMS_SENT_EVENT, {
           detail: { candidateId },
         }),
       );

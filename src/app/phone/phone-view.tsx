@@ -26,6 +26,10 @@ import { Button } from "@/components/ui/button";
 import { usePhonePanels, type PhoneContact } from "@/lib/phone-panels-context";
 import { usePhoneContext } from "@/lib/phone-context";
 import { matchContactByPhone, markThreadRead, type PhoneMatch } from "@/app/phone/actions";
+import {
+  PHONE_SMS_SENT_EVENT,
+  type PhoneSmsSentEventDetail,
+} from "@/components/text-notification-toast";
 import { telHref } from "@/lib/rf-payload-shapes";
 
 // Phase 1 Phone Tab. Layout mirrors /mail exactly:
@@ -189,11 +193,14 @@ export function PhoneView() {
 
   // Register loadThreads as the global text panel's onSent hook so
   // sending a text from /phone (or anywhere while /phone is mounted)
-  // refreshes this list. Cleared on unmount so off-route sends are
-  // a no-op.
+  // refreshes this list AND re-fetches the open thread detail (so the
+  // new outbound bubble appears in the right pane immediately instead
+  // of waiting until the recruiter re-selects the row). Cleared on
+  // unmount so off-route sends are a no-op.
   useEffect(() => {
     phonePanels.setAfterSend(() => {
       void loadThreads();
+      setDetailRefresh((c) => c + 1);
     });
     return () => phonePanels.setAfterSend(null);
   }, [phonePanels, loadThreads]);
@@ -1164,9 +1171,19 @@ function InlineSmsComposer({
       }
       if (json?.status === "failed") {
         toast.error("Saved, but Quo reported send failed.");
+        window.dispatchEvent(
+          new CustomEvent<PhoneSmsSentEventDetail>(PHONE_SMS_SENT_EVENT, {
+            detail: { candidateId },
+          }),
+        );
         return;
       }
       setBody("");
+      window.dispatchEvent(
+        new CustomEvent<PhoneSmsSentEventDetail>(PHONE_SMS_SENT_EVENT, {
+          detail: { candidateId },
+        }),
+      );
       onSent();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Send failed.");
@@ -1680,9 +1697,22 @@ export function NewTextPanel({
       if (json?.status === "failed") {
         const detail = json?.providerError ? ` — ${json.providerError}` : "";
         setError(`Saved, but Quo reported send failed${detail}`);
+        // Still broadcast — the failed row landed in Neon and any open
+        // thread for this candidate should surface it (red bubble +
+        // "failed" footer) so the recruiter sees what tried to go out.
+        window.dispatchEvent(
+          new CustomEvent<PhoneSmsSentEventDetail>(PHONE_SMS_SENT_EVENT, {
+            detail: { candidateId: recipient.candidateId ?? null },
+          }),
+        );
         return;
       }
       setSuccess(true);
+      window.dispatchEvent(
+        new CustomEvent<PhoneSmsSentEventDetail>(PHONE_SMS_SENT_EVENT, {
+          detail: { candidateId: recipient.candidateId ?? null },
+        }),
+      );
       onSent();
       setTimeout(() => onClose(), 1500);
     } catch (e) {

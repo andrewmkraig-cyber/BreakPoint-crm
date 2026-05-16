@@ -3,6 +3,10 @@
 import { useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  PHONE_SMS_SENT_EVENT,
+  type PhoneSmsSentEventDetail,
+} from "@/components/text-notification-toast";
 
 // Single-line SMS composer that hangs off the candidate sidebar, right under
 // the phone number. POSTs to /api/sms which upserts the outbound row and
@@ -64,6 +68,14 @@ export function SmsComposer({
           `Saved, but send failed${detail}. Check your Quo number and API key in Vercel.`,
         );
       }
+      // Broadcast even when the carrier hard-rejected — the row is in
+      // Neon (status="failed") and TextingExchanges should still pick
+      // it up so the recruiter sees the red bubble that didn't go out.
+      window.dispatchEvent(
+        new CustomEvent<PhoneSmsSentEventDetail>(PHONE_SMS_SENT_EVENT, {
+          detail: { candidateId },
+        }),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Send failed.");
     } finally {
