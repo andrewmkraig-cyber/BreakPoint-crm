@@ -31,6 +31,7 @@ export async function GET(
   const hasRedacted = Boolean(resume.redactedData && resume.redactedAt);
   const useRedacted = wantsRedacted && hasRedacted;
   const bytes = useRedacted ? resume.redactedData! : resume.data;
+  if (!bytes) return new NextResponse("Not found", { status: 404 });
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
   // Phase 5A.5.b (Ace 20.0): pick the extension off the actual mime
   // type rather than hardcoding .pdf — DOCX downloads were landing as

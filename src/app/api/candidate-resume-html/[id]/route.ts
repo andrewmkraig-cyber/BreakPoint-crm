@@ -52,7 +52,7 @@ export async function GET(
   let bytes: Buffer | null = null;
   let filename: string | null = null;
   let mimeType: string | null = null;
-  if (cr && cr.uploadComplete) {
+  if (cr && cr.uploadComplete && cr.data) {
     bytes = Buffer.from(cr.data);
     filename = cr.filename;
     mimeType = cr.mimeType;

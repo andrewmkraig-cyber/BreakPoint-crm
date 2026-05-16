@@ -1502,6 +1502,7 @@ async function loadSubmittalAttachment(
     };
   }
   const bytes = row.data;
+  if (!bytes) return { ok: false, error: "No resume bytes on file for this candidate." };
   return {
     ok: true,
     value: {

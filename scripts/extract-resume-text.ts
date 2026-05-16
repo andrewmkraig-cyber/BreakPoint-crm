@@ -90,6 +90,7 @@ async function main() {
 
     for (const row of batch) {
       processed += 1;
+      if (!row.data) continue;
       const isPdf =
         (row.mimeType ?? "").toLowerCase().includes("pdf") ||
         row.filename.toLowerCase().endsWith(".pdf");

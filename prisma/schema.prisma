@@ -466,7 +466,13 @@ model CandidateResume {
   variant        String?
   mimeType       String
   size           Int
-  data           Bytes
+  data           Bytes?
+  // Vercel Blob URL for the original upload. New uploads write bytes to
+  // Blob and store the public URL here; `data` is cleared (empty buffer
+  // today, nulled by the backfill prompt). Old rows keep bytes in `data`
+  // until the backfill migrates them; read paths must fall back from
+  // blobUrl → data so neither generation breaks.
+  blobUrl        String?
   uploadComplete Boolean  @default(true)
   uploadedById   String
   uploadedAt     DateTime @default(now())
@@ -475,6 +481,10 @@ model CandidateResume {
   // blob so the original is never overwritten — recruiters always have the
   // unredacted copy if they need it.
   redactedData     Bytes?
+  // Vercel Blob URL for the legacy redacted-on-same-row pattern (paired
+  // with redactedData). New redactions create their own variant="redacted"
+  // row and store the URL in `blobUrl` above instead.
+  redactedBlobUrl  String?
   redactedMimeType String?
   redactedSize     Int?
   redactedAt       DateTime?

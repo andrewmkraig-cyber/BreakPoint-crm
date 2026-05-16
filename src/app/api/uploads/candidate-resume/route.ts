@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { createChunkedUploadHandler } from "@/lib/chunked-upload-server";
 import { revalidatePath } from "next/cache";
+import { put } from "@vercel/blob";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -49,13 +50,36 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
   allowedMime: ALLOWED,
   parseExtra: resolveCandidate,
   createFirstRow: async ({ userId, filename, mimeType, size, firstChunk, isLast, extra }) => {
-    // Phase 5A.5.a: every upload creates a NEW row instead of upserting
-    // by candidate. The @unique constraints on candidateId / candidateRfId
-    // were dropped in the same migration. Each candidate can now carry
-    // multiple uploaded versions; the version dropdown on the profile
-    // surfaces them. Phase 5A.5.b (Ace 20.0): candidateRfId is nullable —
-    // Ace-native rows pass through null. The previous -Date.now() hack
-    // overflowed PostgreSQL Int4 and 500'd every Ace-native upload.
+    // Single-chunk uploads (small files) finish in this call. Multi-chunk
+    // uploads buffer firstChunk into Postgres `data`; appendChunk assembles
+    // the rest and performs the Blob upload on the final chunk. Bytes only
+    // live in `data` during the assembly window — the final state for new
+    // rows is `blobUrl` set, `data` cleared to an empty buffer (backfill
+    // prompt nulls these out).
+    if (isLast) {
+      const blob = await put(`resumes/${extra.candidateId}/${filename}`, firstChunk, {
+        access: "public",
+        contentType: mimeType,
+      });
+      const row = await prisma.candidateResume.create({
+        data: {
+          candidateId: extra.candidateId,
+          candidateRfId: extra.candidateRfId,
+          organizationId: extra.organizationId,
+          filename,
+          mimeType,
+          size,
+          data: Buffer.alloc(0),
+          blobUrl: blob.url,
+          uploadComplete: true,
+          uploadedById: userId,
+        },
+        select: { id: true },
+      });
+      revalidatePath(`/candidates/${extra.candidateId}`);
+      if (extra.candidateRfId != null) revalidatePath(`/candidates/${extra.candidateRfId}`);
+      return { id: row.id, totalBytesStored: firstChunk.byteLength };
+    }
     const row = await prisma.candidateResume.create({
       data: {
         candidateId: extra.candidateId,
@@ -65,33 +89,46 @@ export const POST = createChunkedUploadHandler<UploadExtra>({
         mimeType,
         size,
         data: new Uint8Array(firstChunk),
-        uploadComplete: isLast,
+        uploadComplete: false,
         uploadedById: userId,
       },
       select: { id: true, data: true },
     });
-    if (isLast) {
-      revalidatePath(`/candidates/${extra.candidateId}`);
-      if (extra.candidateRfId != null) revalidatePath(`/candidates/${extra.candidateRfId}`);
-    }
-    return { id: row.id, totalBytesStored: row.data.byteLength };
+    return { id: row.id, totalBytesStored: row.data?.byteLength ?? 0 };
   },
   appendChunk: async ({ userId, id, chunk, isLast }) => {
     const existing = await prisma.candidateResume.findUnique({
       where: { id },
-      select: { data: true, uploadedById: true, candidateId: true, candidateRfId: true },
+      select: {
+        data: true,
+        uploadedById: true,
+        candidateId: true,
+        candidateRfId: true,
+        filename: true,
+        mimeType: true,
+      },
     });
     if (!existing) throw new Error("Upload session not found");
     if (existing.uploadedById !== userId) throw new Error("Not your upload");
 
-    const combined = Buffer.concat([Buffer.from(existing.data), chunk]);
-    await prisma.candidateResume.update({
-      where: { id },
-      data: { data: new Uint8Array(combined), uploadComplete: isLast },
-    });
+    const combined = Buffer.concat([Buffer.from(existing.data ?? Buffer.alloc(0)), chunk]);
     if (isLast) {
+      const blob = await put(
+        `resumes/${existing.candidateId}/${existing.filename}`,
+        combined,
+        { access: "public", contentType: existing.mimeType },
+      );
+      await prisma.candidateResume.update({
+        where: { id },
+        data: { data: Buffer.alloc(0), blobUrl: blob.url, uploadComplete: true },
+      });
       if (existing.candidateId) revalidatePath(`/candidates/${existing.candidateId}`);
       if (existing.candidateRfId != null) revalidatePath(`/candidates/${existing.candidateRfId}`);
+    } else {
+      await prisma.candidateResume.update({
+        where: { id },
+        data: { data: new Uint8Array(combined), uploadComplete: false },
+      });
     }
     return { totalBytesStored: combined.byteLength };
   },

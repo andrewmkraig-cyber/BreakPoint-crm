@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
       orderBy: { uploadedAt: "desc" },
       select: { data: true, mimeType: true, filename: true, uploadComplete: true },
     });
-    if (cr && cr.uploadComplete) {
+    if (cr && cr.uploadComplete && cr.data) {
       data = new Uint8Array(cr.data);
       mimeType = cr.mimeType;
       filename = cr.filename;

@@ -97,6 +97,7 @@ export async function brandCandidateResume(
     // pdf-lib is heavy (~1MB). Lazy-load to keep the rest of the
     // server-action bundle small.
     const { PDFDocument, rgb } = await import("pdf-lib");
+    if (!source.data) return { ok: false, error: "Source resume bytes not found." };
     const sourceBytes = Buffer.from(source.data);
     const pdf = await PDFDocument.load(sourceBytes);
     const pages = pdf.getPages();

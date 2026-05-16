@@ -42,6 +42,7 @@ export async function GET(
 
   const useRedacted = wantsRedacted && hasRedacted;
   const bytes = useRedacted ? resume.redactedData! : resume.data;
+  if (!bytes) return new NextResponse("Not found", { status: 404 });
   const mime = useRedacted ? (resume.redactedMimeType ?? "application/pdf") : resume.mimeType;
   const labelBase = (resume.displayName?.trim() || resume.filename).replace(/\.pdf$/i, "");
   const baseFilename = useRedacted
