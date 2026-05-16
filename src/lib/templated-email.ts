@@ -16,6 +16,35 @@ export type TriggerLookupResult =
   | { kind: "missing" }
   | { kind: "inactive"; name: string };
 
+// Loads a specific template by id. Mirrors loadTriggeredTemplate's
+// return shape so the override path inside fireTemplatedEmail can
+// reuse the same missing/inactive/usable branching.
+export async function loadTemplateById(id: string): Promise<TriggerLookupResult> {
+  const tpl = await prisma.emailTemplate.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      name: true,
+      subject: true,
+      body: true,
+      isActive: true,
+      sendAsDraft: true,
+    },
+  });
+  if (!tpl) return { kind: "missing" };
+  if (!tpl.isActive) return { kind: "inactive", name: tpl.name };
+  return {
+    kind: "ok",
+    template: {
+      id: tpl.id,
+      name: tpl.name,
+      subject: tpl.subject,
+      body: tpl.body,
+      sendAsDraft: tpl.sendAsDraft,
+    },
+  };
+}
+
 // Finds the most recently updated template for a trigger. Returns structured
 // info so callers can distinguish missing vs. disabled vs. usable.
 export async function loadTriggeredTemplate(trigger: string): Promise<TriggerLookupResult> {
@@ -54,12 +83,23 @@ export type FireTemplatedEmailInput = {
   cc?: string[];
   values: MergeFieldValues;
   mode: "send" | "draft";
+  // Per-org TriggerRule overrides. When templateOverrideId is set, that
+  // template is loaded instead of the most-recently-updated match for
+  // the trigger string. When forceDraft is true, the result is drafted
+  // even if the caller asked for send and the template's own
+  // sendAsDraft is false. Absence of both keeps default behavior.
+  templateOverrideId?: string | null;
+  forceDraft?: boolean;
 };
 
 export type FireResult =
   | { status: "sent"; result: SendEmailResult; subject: string; body: string; templateName: string }
   | { status: "drafted"; result: SendEmailResult; subject: string; body: string; templateName: string }
-  | { status: "skipped"; reason: "missing" | "inactive" | "no_recipient"; templateName?: string }
+  | {
+      status: "skipped";
+      reason: "missing" | "inactive" | "no_recipient" | "trigger_disabled";
+      templateName?: string;
+    }
   | { status: "error"; error: string };
 
 // Single choke point every auto-trigger routes through. Reads the template
@@ -70,7 +110,9 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
   const to = input.to.map((e) => e.trim()).filter(Boolean);
   if (to.length === 0) return { status: "skipped", reason: "no_recipient" };
 
-  const look = await loadTriggeredTemplate(input.trigger);
+  const look = input.templateOverrideId
+    ? await loadTemplateById(input.templateOverrideId)
+    : await loadTriggeredTemplate(input.trigger);
   if (look.kind === "missing") return { status: "skipped", reason: "missing" };
   if (look.kind === "inactive") return { status: "skipped", reason: "inactive", templateName: look.name };
 
@@ -108,7 +150,7 @@ export async function fireTemplatedEmail(input: FireTemplatedEmailInput): Promis
     // the caller asked for a direct send. The recruiter reviews and
     // hits Send themselves from /mail ▸ Drafts.
     const effectiveMode: "send" | "draft" =
-      look.template.sendAsDraft ? "draft" : input.mode;
+      input.forceDraft || look.template.sendAsDraft ? "draft" : input.mode;
     if (effectiveMode === "send") {
       const sent = await sendGmail({
         userId: input.userId,

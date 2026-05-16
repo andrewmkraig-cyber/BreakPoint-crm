@@ -46,6 +46,11 @@ export type FireTriggerInput = {
   // strings ([Offer Amount], [Start Date], [Interview Date Time]).
   overrides?: Partial<MergeFieldValues>;
   mode?: "send" | "draft";
+  // Per-org TriggerRule override knobs, surfaced here so callers that
+  // skip fireTriggerAndLog (the rare direct fireTriggerForPlacement
+  // path) can still honor a saved rule.
+  templateOverrideId?: string | null;
+  forceDraft?: boolean;
 };
 
 export type FireTriggerOutcome = {
@@ -97,6 +102,8 @@ export async function fireTriggerForPlacement(
     cc: input.cc ?? [],
     values,
     mode: input.mode ?? "send",
+    templateOverrideId: input.templateOverrideId ?? null,
+    forceDraft: input.forceDraft ?? false,
   });
 
   return { fire, candidateEmail };
@@ -122,6 +129,54 @@ export async function fireTriggerAndLog(args: {
   // (await getCurrentOrg()).id from inside its action.
   organizationId: string;
 }): Promise<FireTriggerOutcome> {
+  // Per-org TriggerRule override lookup. Absent row → default
+  // behavior. enabled=false → short-circuit skip and log. templateId
+  // → pinned template via templateOverrideId. sendAsDraft → force
+  // draft regardless of caller mode and template-level flag.
+  const rule = await prisma.triggerRule.findUnique({
+    where: {
+      organizationId_triggerKey: {
+        organizationId: args.organizationId,
+        triggerKey: args.trigger,
+      },
+    },
+    select: { enabled: true, sendAsDraft: true, templateId: true },
+  });
+
+  if (rule && rule.enabled === false) {
+    const sessionForUser = await getServerSession(authOptions);
+    const emailForUser = sessionForUser?.user?.email ?? "";
+    const userRow = emailForUser
+      ? await prisma.user.findUnique({
+          where: { email: emailForUser },
+          select: { id: true },
+        })
+      : null;
+    if (userRow && args.ref.candidateId) {
+      try {
+        await logActivity({
+          organizationId: args.organizationId,
+          userId: userRow.id,
+          actionType: args.actionType,
+          targetType: "candidate",
+          targetId: args.ref.candidateId,
+          metadata: {
+            ...(args.metadata ?? {}),
+            trigger: args.trigger,
+            fireStatus: "skipped",
+            fireDetail: { reason: "trigger_disabled" },
+          },
+        });
+      } catch {
+        // Audit-feed write is observability, never blocks the fire path.
+      }
+    }
+    return {
+      fire: { status: "skipped", reason: "trigger_disabled" },
+      candidateEmail: "",
+    };
+  }
+
   const outcome = await fireTriggerForPlacement({
     trigger: args.trigger,
     ref: args.ref,
@@ -129,6 +184,8 @@ export async function fireTriggerAndLog(args: {
     cc: args.cc,
     overrides: args.overrides,
     mode: args.mode,
+    templateOverrideId: rule?.templateId ?? null,
+    forceDraft: rule?.sendAsDraft ?? false,
   });
 
   // Targeted ActivityLog write so the candidate / placement timeline

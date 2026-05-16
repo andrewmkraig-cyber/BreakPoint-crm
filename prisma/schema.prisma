@@ -143,9 +143,35 @@ model EmailTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  triggerRules TriggerRule[]
+
   @@index([trigger])
   @@index([category])
   @@index([sortOrder])
+}
+
+// Per-org override for an auto-fire trigger. When a row exists for
+// (organizationId, triggerKey) it takes precedence over the default
+// trigger→template lookup: `enabled=false` short-circuits the fire,
+// `templateId` pins a specific template, and `sendAsDraft=true` forces
+// the result into Gmail Drafts for approval. Absence of a row keeps
+// the default behavior (most-recently-updated active template, send
+// per caller's mode).
+model TriggerRule {
+  id             String   @id @default(cuid())
+  organizationId String
+  triggerKey     String
+  enabled        Boolean  @default(true)
+  sendAsDraft    Boolean  @default(false)
+  templateId     String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  template     EmailTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, triggerKey])
+  @@index([organizationId])
 }
 
 model Setting {
@@ -1019,6 +1045,7 @@ model Organization {
   pushSubscriptions    PushSubscription[]
   gmailPushWatches     GmailPushWatch[]
   microsoftToken       MicrosoftToken?
+  triggerRules         TriggerRule[]
 }
 
 // One row per org holding the Microsoft Graph OAuth tokens that let us
