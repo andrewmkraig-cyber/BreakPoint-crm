@@ -1619,15 +1619,24 @@ export default function CandidatesPage() {
               + label keep items-baseline alignment internally while the
               outer row uses items-center so the pill verticals balance
               against the big count number. */}
-          <div className="flex items-center justify-between border-b border-court-border/60 bg-court-surface-subtle px-6 py-4">
-            <div className="flex items-center gap-3">
+          {/* flex-wrap so a narrow phone viewport doesn't push the
+              Filters trigger off-screen behind the page-level
+              overflow-hidden — without wrap, big count number +
+              Saved Lists pill overflow ~400px on a 375px viewport
+              and clip the trigger that opens the Boolean search
+              sheet. shrink-0 on the left and right children pins
+              both to their natural width as the row reflows. */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-court-border/60 bg-court-surface-subtle px-6 py-4">
+            <div className="flex min-w-0 shrink-0 items-center gap-3">
               {/* Mobile-only Filters trigger. Desktop has the always-on
                   left rail and doesn't need this surface; md:hidden
-                  drops it out of the layout at md+. */}
+                  drops it out of the layout at md+. shrink-0 keeps
+                  the button at natural width so the big count number
+                  beside it never squeezes it down. */}
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle md:hidden"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-xs font-semibold text-court-fg shadow-sm transition hover:bg-court-surface-subtle md:hidden"
               >
                 <SlidersHorizontal className="h-3.5 w-3.5" />
                 Filters
@@ -1652,7 +1661,7 @@ export default function CandidatesPage() {
             </div>
             <Link
               href="/candidates/lists"
-              className="group inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-bg px-3 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
+              className="group inline-flex shrink-0 items-center gap-1.5 rounded-full border border-court-border bg-court-bg px-3 py-1.5 transition hover:border-court-accent/40 hover:bg-court-accent-tint"
             >
               <ClipboardList className="h-3.5 w-3.5 text-court-accent-dark" strokeWidth={1.8} />
               <span className="text-xs font-semibold text-court-fg">Saved Lists</span>

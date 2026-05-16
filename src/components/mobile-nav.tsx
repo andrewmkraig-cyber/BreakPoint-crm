@@ -9,6 +9,7 @@ import {
   GitBranch,
   Home,
   Mail,
+  Megaphone,
   Menu,
   Phone,
   Settings,
@@ -56,6 +57,7 @@ const NAV_GROUPS: ReadonlyArray<NavGroup> = [
     items: [
       { href: "/jobs", label: "Jobs", icon: Briefcase },
       { href: "/clients", label: "Clients", icon: Building2 },
+      { href: "/bd", label: "BD", icon: Megaphone },
     ],
   },
   {
