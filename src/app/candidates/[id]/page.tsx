@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { NotebookPen, Target } from "lucide-react";
+import { FileSignature, NotebookPen, Target } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { formatLocation } from "@/lib/utils";
 import { extractCandidateFields } from "@/lib/candidate-fields";
@@ -590,6 +590,12 @@ export default async function CandidateProfilePage({
           <div className="flex min-w-0 flex-1 flex-col gap-4 overflow-y-auto pr-1">
             <div className="flex flex-wrap items-center gap-2">
               <Link
+                href={`/candidates/${id}?embed=true&openSubmit=1`}
+                className={SUBMIT_LINK_CLASS}
+              >
+                <FileSignature className="h-3 w-3" /> Submit to Job
+              </Link>
+              <Link
                 href={`/candidates/${id}?embed=true&openApply=1`}
                 className={APPLY_LINK_CLASS}
               >
@@ -650,11 +656,10 @@ export default async function CandidateProfilePage({
           page for SEO / a11y - it just renders inside the sidebar
           card now instead of as a floating header band. */}
 
-      {/* Pipeline section only renders when there are placements.
-          Header was removed — the row card already shows the job +
-          stage chip, and the redundant "Pipeline · N" label above
-          was just visual noise. */}
-      {placementJobs.length > 0 && (
+      {/* Pipeline section is always mounted so the header Submit to Job
+          link can open the Submit modal even when the candidate has no
+          placements yet. When jobs is empty, PlacementActions renders
+          its own dashed "click Submit to Job to add one" empty state. */}
       <section id="pipeline">
         <PlacementActionsIsland
           candidateRfId={id}
@@ -679,7 +684,6 @@ export default async function CandidateProfilePage({
           aceTeam={aceTeam}
         />
       </section>
-      )}
 
       {/* Two-column layout. Left column is the working surface — the
           Profile/Game Plan/Notes tab strip, then the action row, then
@@ -699,6 +703,12 @@ export default async function CandidateProfilePage({
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/candidates/${id}?openSubmit=1`}
+              className={SUBMIT_LINK_CLASS}
+            >
+              <FileSignature className="h-3 w-3" /> Submit to Job
+            </Link>
             <Link
               href={`/candidates/${id}?openApply=1`}
               className={APPLY_LINK_CLASS}
@@ -761,6 +771,12 @@ export default async function CandidateProfilePage({
 // Used for the candidate-level action row above the resume so the buttons
 // pick up the same Court Mode tokens as <Button> without nesting a
 // <button> inside an <a> (Link wraps an <a>).
+// Anchor-shaped twin of <Button variant="primary">. Mirrors the brand-
+// green primary variant so Submit to Job sits as the affirmative action
+// at the head of the row.
+const SUBMIT_LINK_CLASS =
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25";
+
 // Anchor-shaped twin of <Button variant="apply">. Token classes mirror
 // the amber apply variant so the Apply to Job link renders identically
 // to the matching <Button> without nesting a <button> inside an <a>.

@@ -527,7 +527,7 @@ export function PlacementActions({
       )}
 
       {!chromeless && (
-        <div className="divide-y divide-court-border rounded-xl border border-court-border/40 bg-court-surface">
+        <div className="divide-y divide-court-border/40 rounded-xl border border-court-border/40 bg-court-surface">
           {jobsState.map((j) => (
             <JobActionRow
               key={j.jobRfId}
@@ -773,6 +773,10 @@ function JobActionRow({
   // to the default "View-only" case and hide the Submit button.
   const effective: Bucket = ((job.placement?.stage ?? "sourced").trim().toLowerCase()) as Bucket;
   const isCancelled = effective === "cancelled";
+  // Disqualified / rejected / cancelled rows sit on the strip at half
+  // opacity so the eye lands on live deals first; hover restores full
+  // opacity so the row stays interactable when the recruiter needs it.
+  const isSubdued = effective === "rejected" || effective === "cancelled";
   // Inline next-upcoming interview. Past scheduled rows are
   // intentionally hidden — the stage chip already says
   // "Interviewing" / "Hired" / "Disqualified".
@@ -781,13 +785,13 @@ function JobActionRow({
     .sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime())[0];
 
   return (
-    <div>
+    <div className={isSubdued ? "opacity-50 transition-opacity hover:opacity-100" : undefined}>
       <div className="flex items-center justify-between gap-3 px-3 py-1.5">
         <div className="flex min-w-0 items-center gap-2">
           <Briefcase className="h-3 w-3 shrink-0 text-court-fg-muted" />
           <span className="truncate text-sm font-medium text-court-fg">{job.jobTitle}</span>
           {job.clientName && (
-            <span className="truncate text-xs text-court-fg-muted">· {job.clientName}</span>
+            <span className="truncate text-[11px] text-court-fg-muted">· {job.clientName}</span>
           )}
           {/* No label prop — StageBadge falls back to its canonical
               bucket label so an Ace-side stage move shows immediately
@@ -797,7 +801,7 @@ function JobActionRow({
             <button
               type="button"
               onClick={() => onEditInterview(nextInterview)}
-              className="truncate rounded text-xs text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/30"
+              className="truncate rounded text-[11px] text-court-fg-muted underline-offset-2 transition hover:text-court-fg hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/30"
               title="Edit interview"
             >
               {formatNextInterview(nextInterview)}

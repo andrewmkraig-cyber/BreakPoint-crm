@@ -108,10 +108,10 @@ function Field({
 }) {
   return (
     <div className={wide ? "col-span-2" : undefined}>
-      <dt className="text-[10px] font-medium uppercase tracking-wider text-court-fg-muted">
+      <dt className="text-[10px] uppercase tracking-wide text-court-fg-muted">
         {label}
       </dt>
-      <dd className="mt-0.5 truncate text-xs text-court-fg">{children}</dd>
+      <dd className="mt-0.5 truncate text-sm text-court-fg">{children}</dd>
     </div>
   );
 }
