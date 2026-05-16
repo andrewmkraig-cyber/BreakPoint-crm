@@ -2,9 +2,14 @@
 
 import { useState } from "react";
 import { signIn, signOut } from "next-auth/react";
-import { ExternalLink, Loader2, Music, RefreshCw } from "lucide-react";
+import { Bell, ExternalLink, Loader2, Music, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import type { ConnectorStatus, ConnectorState } from "@/lib/connectors";
+
+export type GmailPushStatus = {
+  enabled: boolean;
+  expiresAt: string | null;
+};
 
 // Ace 28.0 Connectors panel — three rows showing the live health of
 // each integration. The row UI follows the same shape across all three
@@ -23,10 +28,12 @@ export function ConnectorsView({
   gmail,
   claude,
   quo,
+  gmailPush,
 }: {
   gmail: ConnectorStatus;
   claude: ConnectorStatus;
   quo: ConnectorStatus;
+  gmailPush: GmailPushStatus;
 }) {
   return (
     <div className="space-y-2">
@@ -77,9 +84,110 @@ export function ConnectorsView({
           </div>
         }
       />
+      <GmailPushNotificationsRow gmailPush={gmailPush} />
       <SpotifyConnectorRow />
     </div>
   );
+}
+
+// Gmail INBOX push watch. Server-rendered status (enabled + expiry)
+// comes from the GmailPushWatch table. Watches die after 7 days, so
+// the daily renew-gmail-watch cron refreshes them automatically;
+// this button is the manual override for the first enable and for
+// any case where the cron missed.
+function GmailPushNotificationsRow({
+  gmailPush,
+}: {
+  gmailPush: GmailPushStatus;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [statusOverride, setStatusOverride] = useState<GmailPushStatus | null>(
+    null,
+  );
+  const current = statusOverride ?? gmailPush;
+
+  async function enableOrRenew() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/gmail/watch", { method: "POST" });
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as { expiresAt?: string };
+      setStatusOverride({
+        enabled: true,
+        expiresAt: json.expiresAt ?? null,
+      });
+      toast.success("Gmail push notifications active", {
+        description: json.expiresAt
+          ? `Renews automatically. Current watch expires ${formatExpiry(json.expiresAt)}.`
+          : "Renews automatically.",
+      });
+    } catch (e) {
+      toast.error("Couldn't enable Gmail push", {
+        description: e instanceof Error ? e.message : "Try again in a moment.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const detail = current.enabled
+    ? current.expiresAt
+      ? `Active — current watch expires ${formatExpiry(current.expiresAt)}`
+      : "Active"
+    : "Not enabled — turn on for instant mail alerts even when Ace is closed";
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Bell className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+            <span className="text-sm font-semibold text-court-fg">
+              Gmail Push Notifications
+            </span>
+          </div>
+          <div className="mt-1 truncate text-xs text-court-fg-muted">
+            {detail}
+          </div>
+        </div>
+        <div className="shrink-0">
+          <button
+            type="button"
+            onClick={() => void enableOrRenew()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+          >
+            {busy ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
+            {current.enabled ? "Renew" : "Enable"}
+          </button>
+        </div>
+      </div>
+      <p className="pl-1 text-[11px] italic text-court-fg-muted">
+        Renew every 7 days — watches expire automatically.
+      </p>
+    </div>
+  );
+}
+
+function formatExpiry(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
 }
 
 // Spotify connector lives client-side because its session is cookie-

@@ -1444,3 +1444,56 @@ export async function listTaggedThreadSummaries(
       r !== null,
   );
 }
+
+// Pub/Sub topic Gmail pushes new-mail notifications to. Hardcoded
+// to the breakpoint-crm GCP project since Ace is single-tenant; if
+// we ever move projects, update here.
+export const GMAIL_PUSH_TOPIC = "projects/breakpoint-crm/topics/ace-gmail-push";
+
+// Registers (or renews) a Gmail INBOX watch on this user's mailbox.
+// Gmail expires watches after 7 days, so this is called both from
+// the Settings "Enable / Renew" button and from the daily renew cron
+// for any row within 24h of expiration. The returned historyId is the
+// pointer the webhook reads from when filtering messages.history.list
+// down to only what arrived since the last push.
+export async function registerGmailWatch({
+  userId,
+  organizationId,
+  email,
+}: {
+  userId: string;
+  organizationId: string;
+  email: string;
+}): Promise<{ expiresAt: Date; historyId: string }> {
+  const accessToken = await getFreshAccessToken(userId);
+  const res = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/watch",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        labelIds: ["INBOX"],
+        topicName: GMAIL_PUSH_TOPIC,
+      }),
+      cache: "no-store",
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gmail watch failed (${res.status}): ${text || "no body"}`);
+  }
+  const json = (await res.json()) as { historyId: string; expiration: string };
+  const expiresAt = new Date(Number(json.expiration));
+  const historyId = String(json.historyId);
+
+  await prisma.gmailPushWatch.upsert({
+    where: { organizationId_email: { organizationId, email } },
+    create: { organizationId, email, expiresAt, lastHistoryId: historyId },
+    update: { expiresAt, lastHistoryId: historyId },
+  });
+
+  return { expiresAt, historyId };
+}

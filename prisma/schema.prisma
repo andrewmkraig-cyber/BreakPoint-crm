@@ -1012,6 +1012,26 @@ model Organization {
   aceReminders         AceReminder[]
   toolExpenses         ToolExpense[]
   pushSubscriptions    PushSubscription[]
+  gmailPushWatches     GmailPushWatch[]
+}
+
+// One row per Gmail mailbox we've registered a Pub/Sub watch on.
+// Gmail watches expire after 7 days max — the renew cron refreshes
+// any row whose expiresAt is within 24h. lastHistoryId is the
+// pointer we pass to users.history.list on the next push to fetch
+// only the new messages since the previous notification.
+model GmailPushWatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  email          String
+  expiresAt      DateTime
+  lastHistoryId  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
 }
 
 // Tracks the recurring + one-time tool/software costs the desk pays.
