@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { getRfJobsForOrg, getRfClientsForOrg } from "@/lib/candidates";
 import { normalizeJob, normalizeClient } from "@/lib/rf-payload-shapes";
 import { logActivity } from "@/lib/activity";
+import { sendGmail } from "@/lib/gmail";
 
 // Bulk Apply / Add-to-List actions backing the /candidates page's
 // multi-row checkbox toolbar. Single-candidate flows still live in
@@ -285,4 +286,136 @@ export async function bulkAddCandidatesToNewList(input: {
     }
     return { ok: false, added: 0, error: e instanceof Error ? e.message : "Failed to create list." };
   }
+}
+
+// Bulk email send. One Gmail send per recipient (not a single multi-To
+// message) so each candidate sees only their own address in the To
+// header, and per-row failures don't sink the rest of the batch.
+//
+// Merge fields supported (replaced per recipient before send):
+//   [Candidate First Name]      → Candidate.firstName
+//   [Candidate Last Name]       → Candidate.lastName
+//   [Candidate Current Title]   → Candidate.currentDesignation
+//   [Candidate Current Company] → Candidate.currentOrganization
+//
+// Candidates without an email on file are tallied as `skipped`. Any
+// per-row send failure lands in `errors` with the candidate name and
+// the Gmail error string; the action still resolves so the caller can
+// surface a partial-success toast.
+export type BulkEmailResult = {
+  ok: boolean;
+  sent: number;
+  skipped: number;
+  errors: string[];
+};
+
+function applyCandidateMergeFields(
+  text: string,
+  c: {
+    firstName: string | null;
+    lastName: string | null;
+    currentDesignation: string | null;
+    currentOrganization: string | null;
+  },
+): string {
+  // .split().join() instead of regex: token literals contain `[` and
+  // spaces, so escaping for new RegExp() is fragile. String-replace is
+  // case-sensitive on purpose — Andrew's templates use the exact
+  // bracketed casing surfaced in the composer hint.
+  return text
+    .split("[Candidate First Name]").join(c.firstName ?? "")
+    .split("[Candidate Last Name]").join(c.lastName ?? "")
+    .split("[Candidate Current Title]").join(c.currentDesignation ?? "")
+    .split("[Candidate Current Company]").join(c.currentOrganization ?? "");
+}
+
+export async function bulkSendEmail(input: {
+  candidateIds: string[];
+  subject: string;
+  body: string;
+  bodyHtml?: string;
+}): Promise<BulkEmailResult> {
+  const user = await requireUser();
+  if (!user) {
+    return { ok: false, sent: 0, skipped: 0, errors: ["Not signed in."] };
+  }
+  if (input.candidateIds.length === 0) {
+    return { ok: true, sent: 0, skipped: 0, errors: [] };
+  }
+  const subject = (input.subject ?? "").trim();
+  if (subject.length === 0) {
+    return { ok: false, sent: 0, skipped: 0, errors: ["Subject is required."] };
+  }
+
+  const { id: organizationId } = await getCurrentOrg();
+  const candidates = await prisma.candidate.findMany({
+    where: { id: { in: input.candidateIds }, organizationId },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      email: true,
+      currentDesignation: true,
+      currentOrganization: true,
+    },
+  });
+
+  let sent = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  for (const c of candidates) {
+    const email = (c.email ?? "").trim();
+    if (!email) {
+      skipped += 1;
+      continue;
+    }
+    const mergedSubject = applyCandidateMergeFields(subject, c);
+    const mergedBody = applyCandidateMergeFields(input.body, c);
+    const mergedHtml = input.bodyHtml
+      ? applyCandidateMergeFields(input.bodyHtml, c)
+      : undefined;
+
+    try {
+      await sendGmail({
+        userId: user.id,
+        from: user.email,
+        to: [email],
+        subject: mergedSubject,
+        bodyText: mergedBody,
+        bodyHtml: mergedHtml,
+      });
+      sent += 1;
+      try {
+        await logActivity({
+          organizationId,
+          userId: user.id,
+          actionType: "email_sent",
+          targetType: "candidate",
+          targetId: c.id,
+          metadata: {
+            source: "bulk_email",
+            subject: mergedSubject,
+            recipient: email,
+          },
+        });
+      } catch {
+        // Audit write is observability — never fail the send.
+      }
+    } catch (e) {
+      const name =
+        [c.firstName, c.lastName].filter(Boolean).join(" ").trim() || email;
+      errors.push(`${name}: ${e instanceof Error ? e.message : "send failed"}`);
+    }
+  }
+
+  // Skip any candidate that didn't come back from the org-scoped
+  // findMany (id forged for another tenant, or deleted between
+  // selection and send). Count those toward `skipped` so the UI
+  // reports an honest total.
+  const foundIds = new Set(candidates.map((c) => c.id));
+  const missing = input.candidateIds.filter((id) => !foundIds.has(id)).length;
+  skipped += missing;
+
+  return { ok: errors.length === 0, sent, skipped, errors };
 }

@@ -14,6 +14,7 @@ import {
   ClipboardList,
   ListPlus,
   Loader2,
+  Mail,
   Minus,
   Search,
   Send,
@@ -23,6 +24,7 @@ import {
 import {
   BulkApplyDialog,
   BulkAddToListDialog,
+  BulkEmailDialog,
 } from "@/app/candidates/bulk-dialogs";
 import {
   getOpenJobsForBulkPicker,
@@ -694,7 +696,7 @@ export default function CandidatesPage() {
   const [bulkSelectedIds, setBulkSelectedIds] = useState<Set<string>>(
     () => new Set(),
   );
-  const [bulkDialog, setBulkDialog] = useState<null | "apply" | "list">(null);
+  const [bulkDialog, setBulkDialog] = useState<null | "apply" | "list" | "email">(null);
   // Lazy-fetched bulk picker payloads. null = not fetched yet; [] =
   // fetched (possibly empty). Fetched on first open of the relevant
   // dialog so /candidates doesn't pay the round-trip on every mount.
@@ -800,6 +802,14 @@ export default function CandidatesPage() {
     } finally {
       setBulkLoading(false);
     }
+  }
+
+  // No lazy-fetched payload to load — bulkSendEmail resolves each
+  // candidate's email server-side at send time. Kept as a helper for
+  // symmetry with openBulkApply / openBulkList.
+  function openBulkEmail() {
+    if (bulkSelectedIds.size === 0) return;
+    setBulkDialog("email");
   }
 
   // Cancel any in-flight request when a newer one starts so a slow
@@ -1758,6 +1768,17 @@ export default function CandidatesPage() {
                       <ListPlus className="h-3.5 w-3.5" />
                       Add to List
                     </button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      onClick={openBulkEmail}
+                      disabled={bulkLoading}
+                      className="px-2.5 py-1 text-sm"
+                    >
+                      <Mail className="h-3.5 w-3.5" />
+                      Email
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1923,6 +1944,17 @@ export default function CandidatesPage() {
         <BulkApplyDialog
           candidateIds={Array.from(bulkSelectedIds)}
           jobs={bulkJobs}
+          onClose={() => setBulkDialog(null)}
+          onDone={() => {
+            setBulkDialog(null);
+            setBulkSelectedIds(new Set());
+          }}
+        />
+      )}
+
+      {bulkDialog === "email" && (
+        <BulkEmailDialog
+          candidateIds={Array.from(bulkSelectedIds)}
           onClose={() => setBulkDialog(null)}
           onDone={() => {
             setBulkDialog(null);

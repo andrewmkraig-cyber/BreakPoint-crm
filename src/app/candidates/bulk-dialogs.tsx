@@ -7,9 +7,11 @@ import {
   bulkApplyCandidatesToJob,
   bulkAddCandidatesToList,
   bulkAddCandidatesToNewList,
+  bulkSendEmail,
   type BulkPickerJob,
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
+import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -245,6 +247,114 @@ export function BulkAddToListDialog({
         </button>
       </div>
     </BulkModal>
+  );
+}
+
+// Email-specific bulk dialog. Wraps EmailComposer (which does not
+// render its own modal shell) in a wider backdrop than BulkModal —
+// the composer needs room for the body editor + template picker.
+//
+// Recipients are NOT taken from the composer's To/Cc/Bcc fields;
+// bulkSendEmail resolves Candidate.email per id server-side. The
+// notice above the composer makes this explicit so the recruiter
+// doesn't waste keystrokes filling in those fields.
+export function BulkEmailDialog({
+  candidateIds,
+  onClose,
+  onDone,
+}: {
+  candidateIds: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const n = candidateIds.length;
+  const initial: EmailDraft = {
+    to: [],
+    cc: [],
+    bcc: [],
+    subject: "",
+    body: "",
+  };
+
+  async function onSend(draft: EmailDraft): Promise<void> {
+    const res = await bulkSendEmail({
+      candidateIds,
+      subject: draft.subject,
+      body: draft.body,
+      bodyHtml: draft.bodyHtml,
+    });
+    if (res.sent === 0) {
+      const head = res.errors[0] ?? "No candidates had an email on file.";
+      toast.error("Bulk email send failed", { description: head });
+      // Throw so EmailComposer doesn't close — the recruiter can
+      // edit and retry.
+      throw new Error(head);
+    }
+    const tail = [
+      res.skipped > 0 ? `${res.skipped} skipped` : null,
+      res.errors.length > 0 ? `${res.errors.length} errors` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    toast.success(
+      `Sent to ${res.sent} candidate${res.sent === 1 ? "" : "s"}${tail ? ` — ${tail}` : ""}`,
+      res.errors.length > 0
+        ? { description: res.errors.slice(0, 3).join("\n") }
+        : undefined,
+    );
+    onDone();
+  }
+
+  return (
+    <div
+      role="dialog"
+      aria-label={`Email ${n} candidates`}
+      className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
+          <div className="min-w-0">
+            <h2 className="font-serif text-base font-semibold text-court-fg">
+              Email {n} candidate{n === 1 ? "" : "s"}
+            </h2>
+            <p className="mt-0.5 text-xs text-court-fg-muted">
+              One Gmail send per recipient. To / Cc / Bcc fields below are
+              ignored — recipients are resolved automatically from each
+              candidate&apos;s email on file.
+            </p>
+            <p className="mt-1 text-[11px] text-court-fg-muted">
+              Merge fields: <code>[Candidate First Name]</code>,{" "}
+              <code>[Candidate Last Name]</code>,{" "}
+              <code>[Candidate Current Title]</code>,{" "}
+              <code>[Candidate Current Company]</code>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-md p-1 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <EmailComposer
+            title={`Bulk email — ${n} recipient${n === 1 ? "" : "s"}`}
+            initial={initial}
+            onClose={onClose}
+            onSend={onSend}
+            showTemplatePicker
+            sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
+            sendingLabel="Sending…"
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
