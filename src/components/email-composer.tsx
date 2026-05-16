@@ -74,6 +74,13 @@ export type EmailComposerProps = {
   // for scoped flows (submittal) where recipients must come from a curated
   // client contact list.
   recipientOptions?: ContactOption[];
+  // When true, the To / Cc / Bcc row block is not rendered and the
+  // "at least one recipient" validation is skipped. Used by the bulk-
+  // email dialog where recipients are resolved server-side per
+  // candidate, not from the composer's draft. Wins over
+  // recipientOptions — if both are passed, the recipient block stays
+  // hidden.
+  hideRecipientFields?: boolean;
   // When provided, Cc and Bcc become multi-select dropdowns (contacts +
   // free-text entry). Cc and Bcc are sourced separately because their
   // intent is different:
@@ -155,6 +162,7 @@ export function EmailComposer({
   resolveTemplate,
   templateFilter,
   recipientOptions,
+  hideRecipientFields = false,
   ccOptions,
   bccOptions,
   ccBccOptions,
@@ -481,7 +489,7 @@ export function EmailComposer({
   function onSendClick() {
     setErr(null);
     const draft = draftValue();
-    if (draft.to.length === 0) {
+    if (!hideRecipientFields && draft.to.length === 0) {
       setErr("At least one recipient (To) is required.");
       return;
     }
@@ -578,7 +586,7 @@ export function EmailComposer({
         )}
 
         <div className="flex flex-col gap-2 px-5 py-3 text-sm">
-          {recipientOptions ? (
+          {hideRecipientFields ? null : recipientOptions ? (
             <>
               <Row label="To">
                 <ContactSinglePicker value={to} onChange={setTo} options={recipientOptions} />

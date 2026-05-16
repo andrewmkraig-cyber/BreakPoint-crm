@@ -258,6 +258,8 @@ export function BulkAddToListDialog({
 // bulkSendEmail resolves Candidate.email per id server-side. The
 // notice above the composer makes this explicit so the recruiter
 // doesn't waste keystrokes filling in those fields.
+const BULK_EMAIL_CONFIRM_THRESHOLD = 25;
+
 export function BulkEmailDialog({
   candidateIds,
   onClose,
@@ -268,6 +270,13 @@ export function BulkEmailDialog({
   onDone: () => void;
 }) {
   const n = candidateIds.length;
+  // When set, the recruiter clicked Send on a batch larger than
+  // BULK_EMAIL_CONFIRM_THRESHOLD. The draft is parked here and an
+  // overlay covers the composer until they Cancel (clear this state)
+  // or confirm Yes (call actualSend with the parked draft).
+  const [confirmDraft, setConfirmDraft] = useState<EmailDraft | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
   const initial: EmailDraft = {
     to: [],
     cc: [],
@@ -276,7 +285,7 @@ export function BulkEmailDialog({
     body: "",
   };
 
-  async function onSend(draft: EmailDraft): Promise<void> {
+  async function actualSend(draft: EmailDraft): Promise<void> {
     const res = await bulkSendEmail({
       candidateIds,
       subject: draft.subject,
@@ -286,8 +295,6 @@ export function BulkEmailDialog({
     if (res.sent === 0) {
       const head = res.errors[0] ?? "No candidates had an email on file.";
       toast.error("Bulk email send failed", { description: head });
-      // Throw so EmailComposer doesn't close — the recruiter can
-      // edit and retry.
       throw new Error(head);
     }
     const tail = [
@@ -305,6 +312,33 @@ export function BulkEmailDialog({
     onDone();
   }
 
+  async function onSend(draft: EmailDraft): Promise<void> {
+    if (n > BULK_EMAIL_CONFIRM_THRESHOLD) {
+      // Park the draft and let the composer transition out of its
+      // sending state — the overlay below covers it and gates the
+      // real send on the recruiter's explicit Yes.
+      setConfirmDraft(draft);
+      return;
+    }
+    await actualSend(draft);
+  }
+
+  async function onConfirmYes() {
+    if (!confirmDraft) return;
+    setConfirming(true);
+    try {
+      await actualSend(confirmDraft);
+      // actualSend resolves on success → onDone fires → parent
+      // unmounts this dialog, so we don't need to clear confirmDraft.
+    } catch {
+      // actualSend already toasted the error. Drop the overlay so the
+      // recruiter is back in the composer to edit / retry.
+      setConfirmDraft(null);
+    } finally {
+      setConfirming(false);
+    }
+  }
+
   return (
     <div
       role="dialog"
@@ -314,7 +348,7 @@ export function BulkEmailDialog({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
+        className="relative flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       >
         <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
           <div className="min-w-0">
@@ -322,9 +356,8 @@ export function BulkEmailDialog({
               Email {n} candidate{n === 1 ? "" : "s"}
             </h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
-              One Gmail send per recipient. To / Cc / Bcc fields below are
-              ignored — recipients are resolved automatically from each
-              candidate&apos;s email on file.
+              One Gmail send per recipient. Recipients are resolved
+              automatically from each candidate&apos;s email on file.
             </p>
             <p className="mt-1 text-[11px] text-court-fg-muted">
               Merge fields: <code>[Candidate First Name]</code>,{" "}
@@ -349,10 +382,48 @@ export function BulkEmailDialog({
             onClose={onClose}
             onSend={onSend}
             showTemplatePicker
+            hideRecipientFields
             sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
             sendingLabel="Sending…"
+            sendDisabled={confirmDraft !== null}
           />
         </div>
+
+        {confirmDraft && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
+              <h3 className="font-serif text-base font-semibold text-court-fg">
+                Confirm bulk send
+              </h3>
+              <p className="mt-2 text-sm text-court-fg-muted">
+                You&apos;re about to email <span className="font-semibold text-court-fg">{n}</span> candidate{n === 1 ? "" : "s"}. Are you sure?
+              </p>
+              <div className="mt-4 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDraft(null)}
+                  disabled={confirming}
+                  className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onConfirmYes()}
+                  disabled={confirming}
+                  className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
+                >
+                  {confirming ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Send className="h-3 w-3" />
+                  )}
+                  Yes, send to {n}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
