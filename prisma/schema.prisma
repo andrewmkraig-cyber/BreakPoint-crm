@@ -1013,6 +1013,24 @@ model Organization {
   toolExpenses         ToolExpense[]
   pushSubscriptions    PushSubscription[]
   gmailPushWatches     GmailPushWatch[]
+  microsoftToken       MicrosoftToken?
+}
+
+// One row per org holding the Microsoft Graph OAuth tokens that let us
+// mint Teams meeting links when scheduling interviews. Org-scoped (not
+// per-user) because BreakPoint runs one Microsoft tenant per
+// Organization; the email column records which Microsoft account was
+// connected so the Settings panel can show it back.
+model MicrosoftToken {
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  accessToken    String
+  refreshToken   String
+  expiresAt      DateTime
+  email          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 }
 
 // One row per Gmail mailbox we've registered a Pub/Sub watch on.
