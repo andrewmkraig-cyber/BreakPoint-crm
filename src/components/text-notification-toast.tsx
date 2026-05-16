@@ -110,9 +110,12 @@ function QuoToast(props: QuoToastProps) {
         setSendError(`Send failed (${res.status})`);
         return;
       }
-      const json = (await res.json().catch(() => null)) as { status?: string } | null;
+      const json = (await res.json().catch(() => null)) as
+        | { status?: string; providerError?: string | null }
+        | null;
       if (json?.status === "failed") {
-        setSendError("Saved, but Quo reported failure.");
+        const detail = json?.providerError ? ` — ${json.providerError}` : "";
+        setSendError(`Saved, but Quo reported failure${detail}`);
         return;
       }
       // Mark inbound rows in this thread as read so the sidebar

@@ -1678,7 +1678,8 @@ export function NewTextPanel({
         return;
       }
       if (json?.status === "failed") {
-        setError("Saved, but Quo reported send failed.");
+        const detail = json?.providerError ? ` — ${json.providerError}` : "";
+        setError(`Saved, but Quo reported send failed${detail}`);
         return;
       }
       setSuccess(true);

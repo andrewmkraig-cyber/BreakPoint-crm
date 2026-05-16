@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { sendSms, FROM } from '@/lib/quo'
+import { normalizeToE164 } from '@/lib/rf-payload-shapes'
 
 export async function POST(req: NextRequest) {
   const { candidateId, toNumber, body } = await req.json()
@@ -14,27 +15,73 @@ export async function POST(req: NextRequest) {
       ? candidateId
       : null
 
+  // E.164-normalize before we hand the number to OpenPhone. The
+  // composer + recipient picker accept user-typed strings like
+  // "216-340-9511" or "(216) 340-9511"; OpenPhone's 10DLC routes
+  // reject those without surfacing the format error on the synchronous
+  // response, which manifested as "UI says sent, phone never rings."
+  const normalizedTo = normalizeToE164(typeof toNumber === 'string' ? toNumber : null)
+  if (!normalizedTo) {
+    console.error('[api/sms POST] missing or unparseable toNumber', { toNumber })
+    return NextResponse.json(
+      { ok: false, error: 'missing or invalid toNumber' },
+      { status: 400 },
+    )
+  }
+  if (typeof body !== 'string' || body.trim().length === 0) {
+    return NextResponse.json(
+      { ok: false, error: 'missing body' },
+      { status: 400 },
+    )
+  }
+
+  // Persist the row in the same format we hand to the provider so the
+  // candidate's thread + the carrier's log share a canonical number
+  // shape.
   let krispcallId: string | undefined
   let status = 'sent'
+  let providerError: string | null = null
+  let providerStatus: string | null = null
   try {
-    const result = await sendSms(toNumber, body)
-    krispcallId = result?.data?.id
+    const result = await sendSms(normalizedTo, body)
+    krispcallId = result.messageId ?? undefined
+    providerStatus = result.providerStatus
+    if (!result.ok) {
+      status = 'failed'
+      providerError = result.errorMessage
+      console.error(
+        `[api/sms POST] Quo dispatch failed http=${result.httpStatus} providerStatus=${result.providerStatus} error=${result.errorMessage}`,
+      )
+    } else {
+      console.log(
+        `[api/sms POST] Quo accepted to=${normalizedTo} messageId=${result.messageId} providerStatus=${result.providerStatus}`,
+      )
+    }
   } catch (e) {
-    console.error('[api/sms POST] Quo dispatch failed', e)
+    console.error('[api/sms POST] Quo dispatch threw', e)
     status = 'failed'
+    providerError = e instanceof Error ? e.message : 'send threw'
   }
+
   const msg = await prisma.smsMessage.create({
     data: {
       candidateId: resolvedCandidateId,
       direction: 'outbound',
       body,
       fromNumber: FROM,
-      toNumber,
+      toNumber: normalizedTo,
       status,
       krispcallId,
     },
   })
-  return NextResponse.json(msg)
+  return NextResponse.json({
+    ...msg,
+    // Surface provider diagnostics to the composer so the error banner
+    // can explain *why* a save-with-failed-send happened instead of
+    // just "send failed."
+    providerStatus,
+    providerError,
+  })
 }
 
 export async function GET(req: NextRequest) {
