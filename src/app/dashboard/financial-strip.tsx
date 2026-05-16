@@ -60,7 +60,7 @@ export function FinancialStrip({
   const remainingUsd = Math.max(0, goalUsd - revenueUsd);
 
   return (
-    <section className="rounded-3xl bg-court-surface px-5 py-3.5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex items-center justify-between gap-3">
         <div className="text-[11px] font-extrabold uppercase tracking-[0.16em] text-court-fg-muted">
           Billing Tower

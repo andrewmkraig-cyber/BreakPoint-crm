@@ -143,7 +143,7 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
         />
       </div>
 
-      <div className="rounded-2xl border border-court-border bg-court-surface shadow-sm">
+      <div className="rounded-3xl bg-court-surface shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
         <div className="flex flex-col gap-3 border-b border-court-border p-6 pb-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">

@@ -12,7 +12,7 @@ import { formatMoneyShort } from "@/lib/placements-map-geo";
 // no client state, no network.
 
 const PANEL_CLASS =
-  "rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]";
+  "rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]";
 
 const EYEBROW_CLASS =
   "text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted";

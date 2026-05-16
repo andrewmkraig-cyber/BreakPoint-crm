@@ -1217,7 +1217,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
         {title}
       </p>
@@ -1322,7 +1322,7 @@ function TrendCard({
   const forecastLabel = `${formatUsd(forecastQuarterUsd)} forecast ${quarterLabel} close`;
 
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
@@ -1480,7 +1480,7 @@ function SubscriptionsCard({
       : "— margin";
 
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div>
         <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
           Subscriptions &amp; tools
@@ -1538,7 +1538,7 @@ function RoiCard({
   blendedRoiPct: number | null;
 }) {
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div>
         <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
           ROI per tool
@@ -1693,7 +1693,7 @@ function MonthlyOperatingCostCard({
   );
 
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div>
         <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
           Monthly Operating Cost
@@ -1781,7 +1781,7 @@ function ProfitabilitySection({
 
 function MarginsCard({ data }: { data: MarginsCardData }) {
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div>
         <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
           Margins

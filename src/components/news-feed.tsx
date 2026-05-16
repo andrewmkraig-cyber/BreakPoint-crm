@@ -205,7 +205,7 @@ export function NewsFeed() {
   return (
     <section
       id="todays-briefing"
-      className="flex h-full scroll-mt-24 flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]"
+      className="flex h-full scroll-mt-24 flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
     >
       <div className="flex items-start justify-between gap-4">
         <div>

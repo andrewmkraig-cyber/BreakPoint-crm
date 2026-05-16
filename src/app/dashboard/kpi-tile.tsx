@@ -26,7 +26,7 @@ export function KpiTile({
         "flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 transition-shadow",
         live
           ? "border border-court-brand/35"
-          : "shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]",
+          : "shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]",
       )}
       style={
         live

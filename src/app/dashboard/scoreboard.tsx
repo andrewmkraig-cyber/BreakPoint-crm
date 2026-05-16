@@ -109,7 +109,10 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
 function ScoreboardKpiTile({ label, value, sub }: { label: string; value: string; sub: string }) {
   const isEmpty = value === "—";
   return (
-    <div className="flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.06)]">
+    <div
+      title={sub}
+      className="flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
+    >
       <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">{label}</p>
       <div
         className={
@@ -119,7 +122,6 @@ function ScoreboardKpiTile({ label, value, sub }: { label: string; value: string
       >
         {value}
       </div>
-      <p className="mt-1 truncate text-center text-[10px] text-court-fg-muted">{sub}</p>
     </div>
   );
 }
@@ -161,7 +163,7 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
     },
   ];
   return (
-    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)] lg:col-span-2">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)] lg:col-span-2">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Deal Funnel</p>
@@ -285,7 +287,7 @@ function CashForecastCard({ cash }: { cash: Cash }) {
   const widthPct = (amount: number) =>
     maxAmount > 0 ? Math.max(8, Math.round((amount / maxAmount) * 100)) : 0;
   return (
-    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Cash Forecast</p>
       <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">Pipeline → Bank</h3>
       <p className="text-xs text-court-fg-muted">What&apos;s expected to land where.</p>
@@ -482,7 +484,7 @@ function ListCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl bg-court-surface p-4 shadow-[0_1px_2px_rgba(16,36,24,0.04),0_12px_32px_rgba(16,36,24,0.04)]">
+    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">{eyebrow}</p>
       <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">{title}</h3>
       {children}
