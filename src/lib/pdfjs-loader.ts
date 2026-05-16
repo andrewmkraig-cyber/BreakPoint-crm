@@ -27,40 +27,13 @@ type PdfJsDocument = {
   numPages: number;
   getPage(n: number): Promise<PdfJsPage>;
 };
-// Page viewport produced by getViewport(). Width/height are pixel
-// dimensions at the requested scale; the full v5 viewport carries
-// more (transform matrix, rotation) — typed loose since the text
-// layer is the only consumer that touches the rest.
-type PdfJsPageViewport = {
-  width: number;
-  height: number;
-};
-type PdfJsTextContent = unknown;
 type PdfJsPage = {
-  getViewport(args: { scale: number }): PdfJsPageViewport;
+  getViewport(args: { scale: number }): { width: number; height: number };
   render(args: {
     canvasContext: CanvasRenderingContext2D;
-    viewport: PdfJsPageViewport;
+    viewport: { width: number; height: number };
   }): { promise: Promise<void> };
-  // v5 text content stream consumed by TextLayer. Typed as unknown so
-  // we don't have to import pdfjs's internal TextContent shape — the
-  // text layer constructor accepts the raw value verbatim.
-  getTextContent(): Promise<PdfJsTextContent>;
 };
-// v5 in-DOM text layer. Mounts positioned spans into `container` that
-// mirror the rendered canvas at the same viewport — used here to
-// overlay keyword highlights on top of canvas-rasterized resume PDFs.
-type PdfJsTextLayerInstance = {
-  render(): Promise<void>;
-  cancel(): void;
-  textDivs: HTMLElement[];
-};
-type PdfJsTextLayerCtor = new (params: {
-  textContentSource: PdfJsTextContent;
-  container: HTMLElement;
-  viewport: PdfJsPageViewport;
-}) => PdfJsTextLayerInstance;
-
 type PdfJsLib = {
   getDocument: (src: {
     url?: string;
@@ -69,7 +42,6 @@ type PdfJsLib = {
   }) => { promise: Promise<PdfJsDocument> };
   GlobalWorkerOptions: { workerSrc: string };
   version: string;
-  TextLayer: PdfJsTextLayerCtor;
 };
 
 let cachedLib: Promise<PdfJsLib> | null = null;
@@ -110,10 +82,4 @@ export async function loadPdfjs({
   }
 }
 
-export type {
-  PdfJsDocument,
-  PdfJsLib,
-  PdfJsPage,
-  PdfJsPageViewport,
-  PdfJsTextLayerInstance,
-};
+export type { PdfJsDocument, PdfJsLib, PdfJsPage };

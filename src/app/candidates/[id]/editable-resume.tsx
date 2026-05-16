@@ -25,7 +25,9 @@ import { uploadFileInChunks } from "@/lib/chunked-upload";
 import {
   convertDocxResumeToPdf,
   deleteCandidateResume,
+  findResumeMatches,
   renameCandidateResume,
+  type ResumeMatchSnippet,
 } from "@/app/candidates/[id]/actions";
 import { generateAiResume } from "@/app/candidates/[id]/generate-resume-action";
 import { Sparkles } from "lucide-react";
@@ -559,12 +561,15 @@ export function EditableResume({
         </div>
       )}
 
+      {highlightTokens.length > 0 && (
+        <ResumeMatchesPanel resumeId={selected.resumeId} tokens={highlightTokens} />
+      )}
+
       <div className="relative">
         {selected.mimeType === "application/pdf" || selected.kind === "redacted" ? (
           <PdfCanvasViewer
             key={previewUrl}
             src={previewUrl}
-            highlightTokens={highlightTokens}
             className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
           />
         ) : docx ? (
@@ -598,6 +603,138 @@ export function EditableResume({
         />
       )}
     </div>
+  );
+}
+
+// Reads matching lines from CandidateResume.extractedText when a
+// search-driven highlight is active. The PDF viewer itself no longer
+// tints the canvas (pdfjs text runs were line-granular and the
+// resulting amber blocks were unreadable); this panel gives the
+// recruiter the keyword confirmation directly under the pills.
+function ResumeMatchesPanel({
+  resumeId,
+  tokens,
+}: {
+  resumeId: string;
+  tokens: string[];
+}) {
+  const [state, setState] = useState<
+    | { kind: "loading" }
+    | { kind: "ready"; snippets: ResumeMatchSnippet[]; totalMatches: number; hasExtractedText: boolean }
+    | { kind: "error"; error: string }
+  >({ kind: "loading" });
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: "loading" });
+    (async () => {
+      const res = await findResumeMatches(resumeId, tokens);
+      if (cancelled) return;
+      if (!res.ok) {
+        setState({ kind: "error", error: res.error });
+        return;
+      }
+      setState({
+        kind: "ready",
+        snippets: res.snippets,
+        totalMatches: res.totalMatches,
+        hasExtractedText: res.hasExtractedText,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [resumeId, tokens]);
+
+  if (state.kind === "loading") {
+    return (
+      <div className="border-t border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg-muted">
+        Looking for matches in resume text…
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <div className="border-t border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg-muted">
+        Couldn&apos;t load resume matches: {state.error}
+      </div>
+    );
+  }
+  if (!state.hasExtractedText) {
+    return (
+      <div className="border-t border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg-muted">
+        No extracted resume text on file yet — open the PDF below to scan manually.
+      </div>
+    );
+  }
+  if (state.totalMatches === 0) {
+    return (
+      <div className="border-t border-court-border bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg-muted">
+        No matches found in resume text.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1.5 border-t border-court-border bg-court-surface-subtle/60 px-3 py-2">
+      <div className="text-[11px] uppercase tracking-wider text-court-fg-muted">
+        Matches in resume text
+        {state.totalMatches > state.snippets.length && (
+          <span className="ml-2 normal-case tracking-normal">
+            (+{state.totalMatches - state.snippets.length} more)
+          </span>
+        )}
+      </div>
+      <ul className="space-y-1">
+        {state.snippets.map((s, i) => (
+          <li key={i} className="text-xs leading-snug text-court-fg">
+            <MarkedSnippet text={s.text} tokens={s.matchedTokens} />
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// Wraps each matched-token occurrence in the snippet with a <mark>
+// tinted to the same amber as the pill row above. Builds one global
+// regex per render — small inputs (≤240 chars × ≤5 lines) so the
+// cost is negligible.
+function MarkedSnippet({ text, tokens }: { text: string; tokens: string[] }) {
+  const segments = useMemo(() => {
+    if (tokens.length === 0) return [{ text, mark: false }];
+    const escaped = tokens
+      .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("|");
+    const re = new RegExp(`\\b(${escaped})\\b`, "gi");
+    const out: { text: string; mark: boolean }[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      if (m.index > last) out.push({ text: text.slice(last, m.index), mark: false });
+      out.push({ text: m[0], mark: true });
+      last = m.index + m[0].length;
+      if (m[0].length === 0) re.lastIndex++;
+    }
+    if (last < text.length) out.push({ text: text.slice(last), mark: false });
+    return out;
+  }, [text, tokens]);
+
+  return (
+    <>
+      {segments.map((seg, i) =>
+        seg.mark ? (
+          <mark
+            key={i}
+            className="rounded-sm bg-amber-100 px-0.5 text-amber-900"
+          >
+            {seg.text}
+          </mark>
+        ) : (
+          <span key={i}>{seg.text}</span>
+        ),
+      )}
+    </>
   );
 }
 

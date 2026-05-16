@@ -486,3 +486,92 @@ export async function renameCandidateResume(input: {
     return { ok: false, error: e instanceof Error ? e.message : "Failed to rename resume." };
   }
 }
+
+// Fallback for the search-result candidate profile: instead of tinting
+// matched words inside the rasterized PDF (which surfaces line-granular
+// pdfjs text runs that read as full-line blocks), we surface the
+// matching lines from CandidateResume.extractedText so the recruiter
+// gets keyword confirmation without painting over the resume.
+//
+// Tokens are matched with a word-boundary regex so "tax" hits inside
+// "tax credit" but not inside "syntax". Result is capped at 5 lines.
+// Each snippet carries the token set it matched so the UI can render
+// per-token <mark> spans against the same text.
+export type ResumeMatchSnippet = {
+  text: string;
+  matchedTokens: string[];
+};
+
+export type ResumeMatchesResult =
+  | { ok: true; snippets: ResumeMatchSnippet[]; totalMatches: number; hasExtractedText: boolean }
+  | { ok: false; error: string };
+
+const RESUME_MATCH_CAP = 5;
+const RESUME_MATCH_LINE_TRIM = 240;
+
+function escapeRegexToken(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export async function findResumeMatches(
+  resumeId: string,
+  rawTokens: string[],
+): Promise<ResumeMatchesResult> {
+  if (!(await requireSession())) return { ok: false, error: "Not signed in." };
+  const tokens = rawTokens.map((t) => t.trim()).filter((t) => t.length > 0);
+  if (tokens.length === 0) {
+    return { ok: true, snippets: [], totalMatches: 0, hasExtractedText: true };
+  }
+  try {
+    const { id: organizationId } = await getCurrentOrg();
+    const resume = await prisma.candidateResume.findFirst({
+      where: { id: resumeId, organizationId },
+      select: { extractedText: true },
+    });
+    if (!resume) return { ok: false, error: "Resume not found." };
+    const text = resume.extractedText ?? "";
+    if (!text.trim()) {
+      return { ok: true, snippets: [], totalMatches: 0, hasExtractedText: false };
+    }
+
+    const probes = tokens.map((t) => ({
+      token: t,
+      // Two regexes per token: `single` for the per-line membership
+      // test (fast early-exit), `global` for the `<mark>` segment
+      // walk in the UI — exported by token so the client doesn't
+      // have to reconstruct them.
+      single: new RegExp(`\\b${escapeRegexToken(t)}\\b`, "i"),
+    }));
+
+    // Split on any newline. PDFs piped through pdf-parse / pdfjs into
+    // CandidateResume.extractedText preserve line breaks; long lines
+    // get trimmed at the snippet boundary.
+    const lines = text.split(/\r?\n/);
+    const seen = new Set<string>();
+    const snippets: ResumeMatchSnippet[] = [];
+    let totalMatches = 0;
+    for (const raw of lines) {
+      const line = raw.replace(/\s+/g, " ").trim();
+      if (line.length === 0) continue;
+      const matched: string[] = [];
+      for (const p of probes) {
+        if (p.single.test(line)) matched.push(p.token);
+      }
+      if (matched.length === 0) continue;
+      totalMatches += 1;
+      if (snippets.length >= RESUME_MATCH_CAP) continue;
+      const trimmed =
+        line.length > RESUME_MATCH_LINE_TRIM
+          ? line.slice(0, RESUME_MATCH_LINE_TRIM) + "…"
+          : line;
+      const key = trimmed.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      snippets.push({ text: trimmed, matchedTokens: matched });
+    }
+
+    return { ok: true, snippets, totalMatches, hasExtractedText: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Failed to load resume matches." };
+  }
+}
