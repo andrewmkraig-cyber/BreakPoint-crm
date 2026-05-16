@@ -625,6 +625,12 @@ model SmsMessage {
   // Outbound rows are written true since the recruiter sent them;
   // inbound rows flip to true when the recruiter opens that thread.
   isRead         Boolean  @default(false)
+  // MMS: Quo's inbound message webhook delivers attachments (images,
+  // mostly) as a `media[]` array of { url, type, ... }. We persist the
+  // first URL so the thread bubble can render the image inline. Null
+  // for plain SMS rows. Multi-attachment MMS is rare on a recruiter
+  // line so we keep a single column instead of a String[].
+  mediaUrl       String?
   createdAt      DateTime @default(now())
 
   @@index([organizationId])

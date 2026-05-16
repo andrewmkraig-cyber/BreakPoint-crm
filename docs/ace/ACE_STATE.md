@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-16 · Ace 49.3
+Last updated: 2026-05-16 · Ace 49.4
 
 ## Current Status
-Current Version: Ace 49.3
+Current Version: Ace 49.4
 Last Shipped: 2026-05-16
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 49.4 (2026-05-16)
+
+### Phone — New Text name search + MMS image rendering
+- **New Text recipient typeahead searches the full Candidate + Contact set.** New `GET /api/phone/people-search?q=…` route, tenant-scoped, hits Candidate (firstName/lastName/email/phone) and Contact (firstName/lastName/name/emails text[]/phoneNumbers Json via `Prisma.sql` raw cast). Flat-maps each Contact's `phoneNumbers` to one row per number; when the query is a digit substring only matching numbers surface so a 3-phone contact doesn't dump all three on an unrelated digit search. Results ranked candidate-name-startswith → contact-name-startswith → contains. Wired into the `NewTextRecipientInput` inside `NewTextPanel` (live dropdown, Enter picks first hit) AND the global ComposeFAB phone picker (hits appear above the recents list, de-duped against any recent thread for the same digits). Old "Phone number (then Enter)" copy + "use the + button" nudge are gone.
+- **MMS images render inline in SMS bubbles.** New `SmsMessage.mediaUrl String?` column (schema synced via `prisma db push`). Quo webhook gained `pickMediaUrl()` which scans `data.object.media[].url` (array of `{url, type}`) AND falls back to `data.object.mediaUrl` / `data.object.media_url`. Only http(s) URLs are accepted. `GET /api/phone/thread/[id]` selects + returns the new column for both candidate-thread and unknown-thread branches. Both bubble surfaces — `/phone`'s `ThreadDetailPane` and the candidate/client profile `<TextingExchanges>` — render an `<img>` (with `object-contain max-w max-h`) wrapped in an `<a target="_blank">` so the recruiter can click to open the full-res asset. Image renders above the text body; rows with only an image (no body text) suppress the empty body div.
 
 ## What Shipped in Ace 49.3 (2026-05-16)
 

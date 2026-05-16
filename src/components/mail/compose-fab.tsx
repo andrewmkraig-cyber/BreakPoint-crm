@@ -87,6 +87,15 @@ type ProfileHit = {
   sublabel: string | null;
 };
 
+type PeopleSearchHit = {
+  key: string;
+  name: string;
+  phoneNumber: string;
+  type: "candidate" | "contact";
+  candidateId: string | null;
+  tag: string;
+};
+
 type ActionView = "menu" | "phone" | "notes";
 
 export function ComposeFAB() {
@@ -254,6 +263,48 @@ export function ComposeFAB() {
     null,
   );
   const phoneSearchInputRef = useRef<HTMLInputElement | null>(null);
+  // People-search hits (Candidate + Contact by name / phone / email).
+  // Surfaces matches that don't have a prior conversation, which the
+  // recents-only filter could never find. Empty until the query is
+  // ≥1 char.
+  const [peopleHits, setPeopleHits] = useState<PeopleSearchHit[]>([]);
+  const [peopleLoading, setPeopleLoading] = useState(false);
+  useEffect(() => {
+    if (!open || view !== "phone") {
+      setPeopleHits([]);
+      setPeopleLoading(false);
+      return;
+    }
+    const q = phoneSearch.trim();
+    if (q.length < 1) {
+      setPeopleHits([]);
+      setPeopleLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setPeopleLoading(true);
+    const handle = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/phone/people-search?q=${encodeURIComponent(q)}`,
+            { cache: "no-store" },
+          );
+          if (!res.ok) return;
+          const body = (await res.json().catch(() => null)) as
+            | { people?: PeopleSearchHit[] }
+            | null;
+          if (!cancelled) setPeopleHits(body?.people ?? []);
+        } finally {
+          if (!cancelled) setPeopleLoading(false);
+        }
+      })();
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [open, view, phoneSearch]);
 
   useEffect(() => {
     if (!open || view !== "phone") return;
@@ -535,6 +586,18 @@ export function ComposeFAB() {
     });
   }
 
+  function pickPeopleHit(hit: PeopleSearchHit) {
+    setPendingContact({
+      candidateId: hit.candidateId,
+      name: hit.name,
+      phoneNumber: hit.phoneNumber,
+      // PhoneContact.tag is the narrow chip set, not the rich label
+      // from the people-search row; map down so a contact whose tag
+      // is the client name still renders as the canonical "Client".
+      tag: hit.type === "candidate" ? "Candidate" : "Client",
+    });
+  }
+
   function commitText() {
     phonePanels.openText(pendingContact);
     closeAll();
@@ -808,18 +871,86 @@ export function ComposeFAB() {
                     Looking up contact…
                   </div>
                 )}
+                {/* People search: matches Candidate + Contact by name /
+                    phone / email. Sits above recents so a candidate
+                    with no prior conversation surfaces the moment the
+                    recruiter types their name. Filters out hits whose
+                    phone already appears in the recents list so we
+                    don't double-list the same person. */}
+                {peopleHits.length > 0 && (
+                  <ul className="mb-1 space-y-0.5">
+                    {peopleHits
+                      .filter((hit) => {
+                        const digits = hit.phoneNumber.replace(/\D/g, "");
+                        return !filteredRecents.some(
+                          (r) => r.phoneNumber.replace(/\D/g, "") === digits,
+                        );
+                      })
+                      .map((hit) => {
+                        const initials = hit.name
+                          .split(/\s+/)
+                          .filter(Boolean)
+                          .slice(0, 2)
+                          .map((s) => s[0]!.toUpperCase())
+                          .join("");
+                        const active =
+                          pendingContact?.phoneNumber === hit.phoneNumber &&
+                          pendingContact?.name === hit.name;
+                        return (
+                          <li key={hit.key}>
+                            <button
+                              type="button"
+                              onClick={() => pickPeopleHit(hit)}
+                              className={
+                                "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition " +
+                                (active
+                                  ? "bg-court-brand-tint text-court-brand-dark"
+                                  : "text-court-fg hover:bg-court-surface-subtle")
+                              }
+                            >
+                              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-court-surface-subtle text-[10px] font-semibold uppercase text-court-fg-muted">
+                                {initials || "?"}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-sm">
+                                  {hit.name}
+                                </span>
+                                <span className="block truncate text-[11px] text-court-fg-muted">
+                                  {hit.phoneNumber}
+                                </span>
+                              </span>
+                              <span className="shrink-0 rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
+                                {hit.tag}
+                              </span>
+                            </button>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                )}
+                {peopleLoading && peopleHits.length === 0 && (
+                  <div className="mb-1 px-2 py-1.5 text-[11px] text-court-fg-muted">
+                    Searching…
+                  </div>
+                )}
                 {recentLoading ? (
                   <div className="px-2 py-3 text-xs text-court-fg-muted">
                     Loading recents…
                   </div>
                 ) : filteredRecents.length === 0 ? (
-                  <div className="px-2 py-3 text-xs text-court-fg-muted">
-                    {adhocPhoneInput && !adhocAlreadyKnown
-                      ? "No saved contact — pick the number above to start fresh."
-                      : phoneSearch
-                        ? "No matches in recent contacts."
-                        : "No recent conversations yet."}
-                  </div>
+                  // Suppress the "no recents" copy when people-search
+                  // already surfaced matches — those satisfy the query
+                  // and the recents-empty hint would just read as a
+                  // contradiction.
+                  peopleHits.length > 0 ? null : (
+                    <div className="px-2 py-3 text-xs text-court-fg-muted">
+                      {adhocPhoneInput && !adhocAlreadyKnown
+                        ? "No saved contact — pick the number above to start fresh."
+                        : phoneSearch
+                          ? "No matches."
+                          : "No recent conversations yet."}
+                    </div>
+                  )
                 ) : (
                   <ul className="space-y-0.5">
                     {filteredRecents.map((t) => {

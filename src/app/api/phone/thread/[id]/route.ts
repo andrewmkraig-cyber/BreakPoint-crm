@@ -23,6 +23,7 @@ type SmsEntry = {
   fromNumber: string;
   toNumber: string;
   status: string;
+  mediaUrl: string | null;
   createdAt: string;
 };
 
@@ -80,6 +81,7 @@ export async function GET(
           fromNumber: true,
           toNumber: true,
           status: true,
+          mediaUrl: true,
           createdAt: true,
         },
       }),
@@ -113,6 +115,7 @@ export async function GET(
       fromNumber: s.fromNumber,
       toNumber: s.toNumber,
       status: s.status,
+      mediaUrl: s.mediaUrl,
       createdAt: s.createdAt.toISOString(),
     }));
     const calls: CallEntry[] = callRows.map((c) => ({
@@ -172,6 +175,7 @@ export async function GET(
         fromNumber: true,
         toNumber: true,
         status: true,
+        mediaUrl: true,
         createdAt: true,
       },
     }),
@@ -199,6 +203,7 @@ export async function GET(
     fromNumber: s.fromNumber,
     toNumber: s.toNumber,
     status: s.status,
+    mediaUrl: s.mediaUrl,
     createdAt: s.createdAt.toISOString(),
   }));
   const calls: CallEntry[] = callRows.map((c) => ({

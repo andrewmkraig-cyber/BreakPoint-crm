@@ -50,6 +50,11 @@ export async function POST(req: NextRequest) {
     const fromNumber = pickStr(body, ['data.object.from', 'from_number', 'from'])
     const toNumber = pickStr(body, ['data.object.to', 'to_number', 'to'])
     const content = pickStr(body, ['data.object.body', 'content', 'message'])
+    // MMS images. OpenPhone delivers attachments as either
+    // `data.object.media: [{ url, type }, ...]` or a top-level
+    // `data.object.mediaUrl` (varies across event versions). We grab
+    // the first http(s) URL we find and persist it on SmsMessage.
+    const mediaUrl = pickMediaUrl(body)
     if (fromNumber) {
       const candidate = await prisma.candidate.findFirst({
         where: { phone: { contains: fromNumber.replace(/\D/g, '').slice(-10) } },
@@ -76,6 +81,7 @@ export async function POST(req: NextRequest) {
           toNumber: toNumber ?? '',
           status: 'received',
           krispcallId: pickStr(body, ['data.object.id', 'id']),
+          mediaUrl,
         },
       })
       // Push notification — best-effort. Tag scopes by candidate id (so
@@ -410,6 +416,33 @@ function verifySignature(header: string | null, rawBody: string): boolean {
   const b = Buffer.from(computed)
   if (a.length !== b.length) return false
   return crypto.timingSafeEqual(a, b)
+}
+
+function pickMediaUrl(body: unknown): string | null {
+  // First, scan a `media` array under data.object.media or top-level media
+  // (Quo sends one or the other depending on the event version). Each
+  // entry is typically `{ url, type }`; treat bare strings as URLs too.
+  const arr =
+    (getPath(body, 'data.object.media') as unknown) ??
+    (getPath(body, 'media') as unknown)
+  if (Array.isArray(arr)) {
+    for (const m of arr) {
+      if (typeof m === 'string' && /^https?:\/\//i.test(m)) return m
+      if (m && typeof m === 'object') {
+        const u = (m as { url?: unknown }).url
+        if (typeof u === 'string' && /^https?:\/\//i.test(u)) return u
+      }
+    }
+  }
+  // Fallback: flat string fields some webhook variants set instead of
+  // a media array.
+  const flat = pickStr(body, [
+    'data.object.mediaUrl',
+    'data.object.media_url',
+    'mediaUrl',
+    'media_url',
+  ])
+  return flat && /^https?:\/\//i.test(flat) ? flat : null
 }
 
 function pickStr(obj: unknown, paths: string[]): string | undefined {

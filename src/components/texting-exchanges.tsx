@@ -13,6 +13,7 @@ type SmsRow = {
   toNumber: string;
   status: string;
   krispcallId: string | null;
+  mediaUrl: string | null;
   createdAt: string;
 };
 
@@ -194,14 +195,31 @@ export function TextingExchanges(props: TextingExchangesProps) {
                           // hiccups (iOS Safari can drop the next/font
                           // CSS var on first paint, falling through to
                           // system-ui which reads as a different font).
-                          "rounded-2xl px-3 py-2 font-sans text-sm whitespace-pre-wrap break-words shadow-sm",
+                          "rounded-2xl px-3 py-2 font-sans text-sm break-words shadow-sm",
                           outbound
                             ? "bg-emerald-600 text-white"
                             : "bg-court-surface-subtle text-court-fg",
                           m.status === "failed" && outbound && "bg-red-500",
                         )}
                       >
-                        {m.body}
+                        {m.mediaUrl && (
+                          <a
+                            href={m.mediaUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mb-1 block"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={m.mediaUrl}
+                              alt="MMS attachment"
+                              className="max-h-64 max-w-full rounded-lg object-contain"
+                            />
+                          </a>
+                        )}
+                        {m.body && (
+                          <div className="whitespace-pre-wrap">{m.body}</div>
+                        )}
                       </div>
                     </div>
                     <div className="mt-1 text-[10px] text-court-fg-muted">

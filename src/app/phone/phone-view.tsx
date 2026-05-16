@@ -82,6 +82,9 @@ type SmsEntry = {
   fromNumber: string;
   toNumber: string;
   status: string;
+  // Quo MMS attachment URL (image, typically). Null for plain SMS.
+  // Rendered as an <img> above the body inside the bubble.
+  mediaUrl: string | null;
   createdAt: string;
 };
 type CallEntry = {
@@ -1062,7 +1065,24 @@ function ThreadDetailPane({
                         : "bg-court-surface-subtle text-court-fg")
                     }
                   >
-                    <div className="whitespace-pre-wrap break-words">{e.body}</div>
+                    {e.mediaUrl && (
+                      <a
+                        href={e.mediaUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mb-1 block"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={e.mediaUrl}
+                          alt="MMS attachment"
+                          className="max-h-72 max-w-full rounded-lg object-contain"
+                        />
+                      </a>
+                    )}
+                    {e.body && (
+                      <div className="whitespace-pre-wrap break-words">{e.body}</div>
+                    )}
                     <div
                       className={
                         "mt-1 text-[10px] " +
@@ -1420,58 +1440,122 @@ const TEXT_BODY_MAX = 1000;
 // through to an ad-hoc entry — the panel's Send stays disabled in
 // that case because /api/sms requires a candidateId, but the user
 // still gets visible feedback that the number didn't match.
+type PeopleSearchHit = {
+  key: string;
+  name: string;
+  phoneNumber: string;
+  type: "candidate" | "contact";
+  candidateId: string | null;
+  tag: string;
+};
+
 function NewTextRecipientInput({
   onPick,
 }: {
   onPick: (contact: PhoneContact) => void;
 }) {
   const [value, setValue] = useState("");
+  const [results, setResults] = useState<PeopleSearchHit[]>([]);
+  const [searching, setSearching] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
 
-  async function commit() {
+  // Debounced people-search. Fires on every keystroke ≥1 char so the
+  // recruiter can type "lesley" and pick the candidate without ever
+  // typing the number. Searches both Candidate + Contact by
+  // name / phone / email.
+  useEffect(() => {
+    const q = value.trim();
+    if (q.length < 1) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const handle = setTimeout(() => {
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/phone/people-search?q=${encodeURIComponent(q)}`,
+            { cache: "no-store" },
+          );
+          if (!res.ok) return;
+          const body = (await res.json().catch(() => null)) as
+            | { people?: PeopleSearchHit[] }
+            | null;
+          if (!cancelled) setResults(body?.people ?? []);
+        } finally {
+          if (!cancelled) setSearching(false);
+        }
+      })();
+    }, 180);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [value]);
+
+  function pickHit(hit: PeopleSearchHit) {
+    setHint(null);
+    onPick({
+      candidateId: hit.candidateId,
+      name: hit.name,
+      phoneNumber: hit.phoneNumber,
+      // PhoneContact.tag is the narrow chip set ("Candidate" | "Client"
+      // | null); map the rich people-search label down to one of those.
+      tag: hit.type === "candidate" ? "Candidate" : "Client",
+    });
+  }
+
+  async function commitRaw() {
     const raw = value.trim();
     if (!raw) return;
     const digits = raw.replace(/\D/g, "");
     setHint(null);
-    if (digits.length >= 7) {
-      setResolving(true);
-      try {
-        const match = await matchContactByPhone(raw);
-        if (match.type === "candidate") {
-          onPick({
-            candidateId: match.id,
-            name: match.name,
-            phoneNumber: raw,
-            tag: "Candidate",
-          });
-          return;
-        }
-        // No candidate match — fall through to ad-hoc. /api/sms now
-        // accepts a null candidateId, so the recruiter can text the
-        // number even when it's not yet in Ace; we surface the
-        // unknown state but leave Send enabled.
-        setHint("Texting a number not yet in Ace — that's fine, the message still sends.");
+    if (digits.length < 7) {
+      setHint("Type a name or phone number to find someone.");
+      return;
+    }
+    // Free-typed phone number that didn't match a candidate-by-name
+    // search above: resolve against the Candidate phone column and
+    // fall through to ad-hoc when nothing matches. /api/sms accepts
+    // null candidateId, so the recruiter can still text the number.
+    setResolving(true);
+    try {
+      const match = await matchContactByPhone(raw);
+      if (match.type === "candidate") {
         onPick({
-          candidateId: null,
-          name: raw,
+          candidateId: match.id,
+          name: match.name,
           phoneNumber: raw,
-          tag: null,
+          tag: "Candidate",
         });
-      } finally {
-        setResolving(false);
+        return;
       }
-    } else {
-      // Too few digits to attempt a phone match — most likely a name
-      // search, which the FAB picker handles. Nudge the user there.
-      setHint("Type a phone number, or use the + button (top right) to search by name.");
+      setHint("Texting a number not yet in Ace — that's fine, the message still sends.");
+      onPick({
+        candidateId: null,
+        name: raw,
+        phoneNumber: raw,
+        tag: null,
+      });
+    } finally {
+      setResolving(false);
     }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter") {
       e.preventDefault();
-      void commit();
+      // Enter picks the first result if present; otherwise it falls
+      // through to the raw-phone commit path so a fully-typed number
+      // still sends without ceremony.
+      if (results.length > 0) {
+        pickHit(results[0]);
+      } else {
+        void commitRaw();
+      }
     }
   }
 
@@ -1482,17 +1566,40 @@ function NewTextRecipientInput({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={onKeyDown}
-        onBlur={() => void commit()}
-        placeholder="Phone number (then Enter)"
+        placeholder="Search by name or phone…"
         autoFocus
         className="h-9 w-full rounded-md border border-court-border bg-court-surface px-3 text-sm text-court-fg outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
       />
-      {resolving && (
+      {results.length > 0 && (
+        <ul className="max-h-56 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-sm">
+          {results.map((hit) => (
+            <li key={hit.key}>
+              <button
+                type="button"
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => pickHit(hit)}
+                className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-court-fg hover:bg-court-brand-tint"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{hit.name}</span>
+                  <span className="block truncate text-[11px] text-court-fg-muted">
+                    {hit.phoneNumber}
+                  </span>
+                </span>
+                <span className="shrink-0 rounded-sm bg-court-surface-subtle px-1 py-0.5 text-[10px] uppercase tracking-wider text-court-fg-muted">
+                  {hit.tag}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(searching || resolving) && (
         <div className="px-1 text-[11px] text-court-fg-muted">
-          Looking up contact…
+          {resolving ? "Looking up contact…" : "Searching…"}
         </div>
       )}
-      {hint && !resolving && (
+      {hint && !searching && !resolving && (
         <div className="px-1 text-[11px] text-court-fg-muted">{hint}</div>
       )}
     </div>
