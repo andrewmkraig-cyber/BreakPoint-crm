@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { prisma } from "@/lib/prisma";
 import {
+  createGmailDraft,
   getThreadReplyHeaders,
   sendGmail,
   tagThreadByAddresses,
@@ -35,6 +36,13 @@ type SendPayload = {
   // Must be a verified sendAs on the user's Gmail account; falls back
   // to the primary user.email when absent.
   sendAsEmail?: string;
+  // When the composer picked an EmailTemplate for this draft, its id
+  // travels with the payload so we can honor the per-template
+  // "Approve before sending" flag (EmailTemplate.sendAsDraft). When
+  // true we divert the send to Gmail Drafts instead of calling
+  // messages.send. Omitted for blank composers / AI-compose drafts /
+  // any other path with no template lineage.
+  templateId?: string;
   attachments?: Array<{
     filename: string;
     mimeType: string;
@@ -98,8 +106,51 @@ export async function POST(req: NextRequest) {
   }));
   const bodyText = payload.bodyText ?? htmlToPlainText(payload.bodyHtml);
 
+  // Per-template "Approve before sending" override. When the picked
+  // template has sendAsDraft=true, divert this send to Gmail Drafts
+  // instead of messages.send so the recruiter can review before it
+  // actually goes out. A missing/deleted templateId silently falls
+  // through to the normal send path — the toggle is opt-in.
+  let asDraft = false;
+  if (payload.templateId) {
+    const tpl = await prisma.emailTemplate.findUnique({
+      where: { id: payload.templateId },
+      select: { sendAsDraft: true },
+    });
+    asDraft = tpl?.sendAsDraft ?? false;
+  }
+
   try {
     const fromAddress = payload.sendAsEmail?.trim() || user.email;
+    if (asDraft) {
+      // Drafts share the same MIME/threading plumbing as send; we just
+      // POST to /drafts instead of /messages/send. No auto-tagging —
+      // tagThreadByAddresses runs on send (when a real message lands
+      // in Sent), not on draft creation.
+      const drafted = await createGmailDraft({
+        userId: user.id,
+        from: fromAddress,
+        fromName: user.name ?? undefined,
+        to: payload.to,
+        cc: payload.cc,
+        bcc: payload.bcc,
+        subject: payload.subject,
+        bodyHtml: payload.bodyHtml,
+        bodyText,
+        threadId: payload.threadId,
+        inReplyTo,
+        references,
+        attachments,
+      });
+      return NextResponse.json({
+        ok: true,
+        asDraft: true,
+        draftId: drafted.draftId,
+        messageId: drafted.messageId,
+        threadId: drafted.threadId,
+      });
+    }
+
     const sent = await sendGmail({
       userId: user.id,
       from: fromAddress,

@@ -233,6 +233,14 @@ export function MailComposer({
   const [cc, setCc] = useState(defaultCc ?? "");
   const [bcc, setBcc] = useState(defaultBcc ?? "");
   const [subject, setSubject] = useState(defaultSubject);
+  // Tracks which EmailTemplate seeded the current draft (set by
+  // pickTemplate, including the Candidate Recruit bail). /api/mail/send
+  // reads this to honor the template's sendAsDraft flag — when true,
+  // the route routes to Gmail Drafts instead of sending. Sticky across
+  // body edits: the flag belongs to the recruiter's stated approval
+  // preference for that template, not to whether the body is still
+  // pristine.
+  const [currentTemplateId, setCurrentTemplateId] = useState<string | null>(null);
   // "Send mail as" aliases pulled from Gmail. Powers the From dropdown
   // above the To row. Empty array = single primary alias (or fetch not
   // yet returned); we hide the dropdown in that case since there's
@@ -832,6 +840,11 @@ export function MailComposer({
       setOpenTemplateMenu(false);
       return;
     }
+    // Stash the template id so /api/mail/send can look up sendAsDraft
+    // at send time. Applies to both the regular pick and the Candidate
+    // Recruit two-step (the recruit body is still produced from the
+    // "Candidate Recruit" template row).
+    setCurrentTemplateId(template.id);
     if (template.name === "Candidate Recruit") {
       // Swap the Use Template dropdown over to the job picker. We
       // keep the dropdown open so the user can pick a job without an
@@ -1223,6 +1236,11 @@ export function MailComposer({
             dataBase64: a.dataBase64,
           })),
           sendAsEmail: selectedFromEmail ?? undefined,
+          // Template-level "Approve before sending" override: the route
+          // looks up sendAsDraft on this template and may divert the
+          // payload to Gmail Drafts instead of sending. Optional —
+          // omitted when the composer was opened blank or via AI compose.
+          templateId: currentTemplateId ?? undefined,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -1241,6 +1259,9 @@ export function MailComposer({
       // because the user-visible outcome (email delivered) already
       // succeeded; a stale draft cleanup failure shouldn't surface as
       // an error toast on top of the success.
+      // Same cleanup runs on the sendAsDraft override path too — the
+      // route landed a fresh draft, so a stale prior draft from a
+      // mid-session Save Draft would otherwise pile up.
       if (gmailDraftId) {
         void fetch(
           `/api/mail/drafts/${encodeURIComponent(gmailDraftId)}`,
@@ -1249,7 +1270,15 @@ export function MailComposer({
           // Stale draft will linger; not worth scaring the user.
         });
       }
-      toast.success(threadId ? "Reply sent" : "Email sent");
+      // The route flips `asDraft: true` when the picked template's
+      // sendAsDraft flag diverted Send to Gmail Drafts. Swap the toast
+      // so the recruiter knows nothing actually went out and where to
+      // find it.
+      if (body?.asDraft) {
+        toast.success("Draft created — check your Gmail Drafts to review and send.");
+      } else {
+        toast.success(threadId ? "Reply sent" : "Email sent");
+      }
       onSent();
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Send failed";
