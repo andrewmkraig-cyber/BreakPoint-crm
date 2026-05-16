@@ -1085,7 +1085,7 @@ function ThreadDetailPane({
                       // to system-ui and reads as a different font).
                       "max-w-[75%] rounded-2xl px-3 py-2 font-sans text-sm " +
                       (e.direction === "outbound"
-                        ? "bg-[#5A9642] text-white"
+                        ? "bg-brand text-white"
                         : "bg-court-surface-subtle text-court-fg")
                     }
                   >
