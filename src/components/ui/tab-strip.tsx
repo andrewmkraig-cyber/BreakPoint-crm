@@ -8,6 +8,11 @@ export type TabStripItem<TId extends string = string> = {
   label: string;
   count?: number;
   href?: string;
+  // Small brand-green pip after the label — used to signal "this tab
+  // has something to show" when there's no count to render (e.g. the
+  // Client Benefits tab when agreement info exists but no files are
+  // uploaded yet).
+  dot?: boolean;
 };
 
 type Common<TId extends string> = {
@@ -54,6 +59,15 @@ export function TabStrip<TId extends string = string>(
         const body = (
           <>
             <span>{item.label}</span>
+            {item.dot && (
+              <span
+                aria-hidden
+                className={cn(
+                  "ml-0.5 inline-block h-1.5 w-1.5 rounded-full",
+                  active ? "bg-court-brand" : "bg-court-brand/60",
+                )}
+              />
+            )}
             {typeof item.count === "number" && (
               <span
                 className={cn(

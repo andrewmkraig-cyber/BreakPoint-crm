@@ -30,6 +30,7 @@ import { ActivityFeed } from "@/components/activity-feed";
 import { CallLogs } from "@/components/call-logs";
 import { TextingExchanges } from "@/components/texting-exchanges";
 import { TaggedThreadList } from "@/components/mail/tagged-thread-list";
+import { TabStrip, type TabStripItem } from "@/components/ui/tab-strip";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -572,54 +573,23 @@ function Tabs({
   benefitsFilesCount: number;
   hasBenefits: boolean;
 }) {
-  return (
-    <div className="inline-flex flex-wrap rounded-lg border border-court-border bg-court-surface p-1 shadow-sm">
-      <TabLink label="Overview" href={`/clients/${slug}?tab=overview`} active={tab === "overview"} />
-      <TabLink label="Contacts" count={contactsCount} href={`/clients/${slug}?tab=contacts`} active={tab === "contacts"} />
-      <TabLink label="Agreements" count={agreementsCount} href={`/clients/${slug}?tab=agreements`} active={tab === "agreements"} />
-      <TabLink
-        label="Benefits"
-        count={benefitsFilesCount > 0 ? benefitsFilesCount : undefined}
-        dot={hasBenefits && benefitsFilesCount === 0}
-        href={`/clients/${slug}?tab=benefits`}
-        active={tab === "benefits"}
-      />
-      <TabLink label="Game Plan" href={`/clients/${slug}?tab=game-plan`} active={tab === "game-plan"} />
-      <TabLink label="Notes" href={`/clients/${slug}?tab=notes`} active={tab === "notes"} />
-      <TabLink label="Activity" href={`/clients/${slug}?tab=activity`} active={tab === "activity"} />
-      <TabLink label="Email" href={`/clients/${slug}?tab=email`} active={tab === "email"} />
-    </div>
-  );
-}
-
-function TabLink({ label, href, active, count, dot }: { label: string; href: string; active: boolean; count?: number; dot?: boolean }) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-brand-tint text-brand-dark" : "text-court-fg-muted hover:bg-court-surface-subtle",
-      )}
-    >
-      <span>{label}</span>
-      {dot && (
-        <span
-          aria-hidden
-          className={cn("h-1.5 w-1.5 rounded-full", active ? "bg-brand" : "bg-brand/60")}
-        />
-      )}
-      {typeof count === "number" && (
-        <span
-          className={cn(
-            "rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-            active ? "bg-brand text-white" : "bg-court-surface-subtle text-court-fg-muted",
-          )}
-        >
-          {count.toLocaleString()}
-        </span>
-      )}
-    </Link>
-  );
+  const items: ReadonlyArray<TabStripItem<ClientTab>> = [
+    { id: "overview", label: "Overview", href: `/clients/${slug}?tab=overview` },
+    { id: "contacts", label: "Contacts", count: contactsCount, href: `/clients/${slug}?tab=contacts` },
+    { id: "agreements", label: "Agreements", count: agreementsCount, href: `/clients/${slug}?tab=agreements` },
+    {
+      id: "benefits",
+      label: "Benefits",
+      count: benefitsFilesCount > 0 ? benefitsFilesCount : undefined,
+      dot: hasBenefits && benefitsFilesCount === 0,
+      href: `/clients/${slug}?tab=benefits`,
+    },
+    { id: "game-plan", label: "Game Plan", href: `/clients/${slug}?tab=game-plan` },
+    { id: "notes", label: "Notes", href: `/clients/${slug}?tab=notes` },
+    { id: "activity", label: "Activity", href: `/clients/${slug}?tab=activity` },
+    { id: "email", label: "Email", href: `/clients/${slug}?tab=email` },
+  ];
+  return <TabStrip<ClientTab> ariaLabel="Client section" activeId={tab} items={items} />;
 }
 
 function Detail({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
