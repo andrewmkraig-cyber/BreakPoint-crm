@@ -38,12 +38,34 @@ type MatchTarget = {
     salaryRangeStart: number | null;
     salaryRangeEnd: number | null;
     legacyRfId: number | null;
+    // Recruiter-tuned priority keywords from the JD tab. Drive an
+    // outsized pre-filter weight (5x a title token) and get called
+    // out explicitly in the Claude prompt as the recruiter's stated
+    // priorities for the role.
+    searchKeywords: string[];
   }>;
   // Combined display label for prompt + UI ("Tax Manager at Acme" or
   // "Acme Industries — 4 open roles").
   label: string;
   source: "job" | "client";
 };
+
+// Split a comma-separated keywords blob into trimmed lowercase tokens.
+// Used both for pre-filter scoring and the prompt's priority list.
+function splitKeywords(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(",")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
 
 type CandidateRow = {
   id: string;
@@ -480,6 +502,7 @@ async function loadTarget(
         salaryRangeStart: true,
         salaryRangeEnd: true,
         legacyRfId: true,
+        searchKeywords: true,
         client: { select: { name: true } },
         raw: true,
       },
@@ -496,6 +519,7 @@ async function loadTarget(
           salaryRangeStart: job.salaryRangeStart,
           salaryRangeEnd: job.salaryRangeEnd,
           legacyRfId: job.legacyRfId,
+          searchKeywords: splitKeywords(job.searchKeywords),
         },
       ],
       label: `${job.title}${job.client?.name ? ` at ${job.client.name}` : ""}`,
@@ -518,6 +542,7 @@ async function loadTarget(
         salaryRangeStart: true,
         salaryRangeEnd: true,
         legacyRfId: true,
+        searchKeywords: true,
         raw: true,
       },
     });
@@ -530,6 +555,7 @@ async function loadTarget(
         salaryRangeStart: j.salaryRangeStart,
         salaryRangeEnd: j.salaryRangeEnd,
         legacyRfId: j.legacyRfId,
+        searchKeywords: splitKeywords(j.searchKeywords),
       })),
       label: `${client.name} — ${jobs.length} open role${jobs.length === 1 ? "" : "s"}`,
       source: "client",
@@ -565,10 +591,17 @@ function readJobDescription(j: { description: string | null; raw: unknown }): st
 function preFilterPool(pool: CandidateRow[], target: MatchTarget): CandidateRow[] {
   const titleTokens = new Set<string>();
   const locTokens = new Set<string>();
+  // Recruiter priority keywords get a separate, higher-weighted bucket
+  // so a candidate matching them outranks one that only brushes the
+  // JD's auto-extracted tokens.
+  const keywordTokens = new Set<string>();
   for (const j of target.jobs) {
     for (const t of tokenize(j.title)) titleTokens.add(t);
     for (const t of tokenize(j.description).slice(0, 200)) titleTokens.add(t);
     for (const loc of j.locations) for (const t of tokenize(loc)) locTokens.add(t);
+    for (const kw of j.searchKeywords) {
+      for (const t of tokenize(kw)) keywordTokens.add(t);
+    }
   }
   const STOP = new Set([
     "the", "and", "for", "with", "you", "are", "our", "your", "this", "that",
@@ -579,6 +612,15 @@ function preFilterPool(pool: CandidateRow[], target: MatchTarget): CandidateRow[
   for (const t of Array.from(titleTokens)) {
     if (t.length < 3 || STOP.has(t)) titleTokens.delete(t);
   }
+  // Same length / stopword guards on keyword tokens so a recruiter
+  // typing "the, a, in" can't blow up the scoring.
+  for (const t of Array.from(keywordTokens)) {
+    if (t.length < 3 || STOP.has(t)) keywordTokens.delete(t);
+  }
+  // Title bucket also gets every keyword token so the two buckets
+  // don't double-credit the same hit (keyword bucket already counts
+  // it at x5).
+  keywordTokens.forEach((t) => titleTokens.delete(t));
 
   const scored = pool.map((c) => {
     const candText = [
@@ -592,12 +634,16 @@ function preFilterPool(pool: CandidateRow[], target: MatchTarget): CandidateRow[
     titleTokens.forEach((t) => {
       if (candTokens.has(t)) titleHits++;
     });
+    let keywordHits = 0;
+    keywordTokens.forEach((t) => {
+      if (candTokens.has(t)) keywordHits++;
+    });
     const candLocTokens = new Set(tokenize(c.location ?? ""));
     let locHits = 0;
     locTokens.forEach((t) => {
       if (candLocTokens.has(t)) locHits++;
     });
-    const score = titleHits * 3 + locHits;
+    const score = keywordHits * 5 + titleHits * 3 + locHits;
     return { c, score };
   });
 
@@ -649,8 +695,16 @@ function buildStreamingPrompt(
           ? `\n  Comp range: $${j.salaryRangeStart}-$${j.salaryRangeEnd}`
           : "";
       const loc = j.locations.length ? `\n  Locations: ${j.locations.join(", ")}` : "";
+      // Recruiter-tuned priority keywords. These are the skills/terms
+      // the recruiter explicitly flagged on the JD tab as what to
+      // weight highest. Surfaced inline with the job so Claude can
+      // factor them into the score for THIS specific role (vs. the
+      // general JD prose).
+      const kw = j.searchKeywords.length
+        ? `\n  RECRUITER PRIORITY KEYWORDS (weight these heavily): ${j.searchKeywords.join(", ")}`
+        : "";
       const desc = j.description.slice(0, 4000);
-      return `Job ${i + 1}: ${j.title}${loc}${sal}\n  Description:\n${desc}`;
+      return `Job ${i + 1}: ${j.title}${loc}${sal}${kw}\n  Description:\n${desc}`;
     })
     .join("\n\n---\n\n");
 

@@ -567,6 +567,7 @@ export function MatchesTab({
   jobRfId,
   jobTitle,
   savedFilters,
+  searchKeywords,
 }: {
   jobCuid: string;
   // jobRfId stays in the prop contract for callers that pass it in — the
@@ -577,15 +578,39 @@ export function MatchesTab({
   // Persisted filter snapshot from Job.savedSearchFilters (one per job).
   // Coerced through coerceFilters so a stale shape can't crash the tab.
   savedFilters: unknown;
+  // Comma-separated keywords from Job.searchKeywords. Used to seed the
+  // skills pill list on first mount when no saved snapshot supplied one
+  // — recruiter can still remove individual pills or clear the field.
+  searchKeywords: string | null;
 }) {
   void jobRfId;
 
   // Initial state comes from the persisted job snapshot when present;
   // otherwise the standard empty INITIAL_FILTERS. useState's lazy
-  // initializer keeps the coerce off the hot path.
-  const [filters, setFilters] = useState<Filters>(() =>
-    coerceFilters(savedFilters),
-  );
+  // initializer keeps the coerce off the hot path. When the coerced
+  // snapshot has no skills pills AND the JD tab populated
+  // Job.searchKeywords, seed those keywords as pills so Find Matches
+  // and the candidate filter start with a real signal instead of
+  // empty. The seed only fires once (initial render) — once filters
+  // are in state the recruiter owns them.
+  const [filters, setFilters] = useState<Filters>(() => {
+    const base = coerceFilters(savedFilters);
+    if (base.skills.length > 0 || !searchKeywords) return base;
+    const seeded = searchKeywords
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (seeded.length === 0) return base;
+    const seen = new Set<string>();
+    const pills: Pill[] = [];
+    for (const s of seeded) {
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pills.push({ value: s, exclude: false });
+    }
+    return { ...base, skills: pills };
+  });
   const [skillsBuffer, setSkillsBuffer] = useState("");
   const [jobTitlesBuffer, setJobTitlesBuffer] = useState("");
   const [locationsBuffer, setLocationsBuffer] = useState("");

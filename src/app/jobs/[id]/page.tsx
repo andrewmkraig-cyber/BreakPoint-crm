@@ -438,6 +438,7 @@ export default async function JobDetailPage({
                 ? jobRow.descriptionGeneratedAt.toISOString()
                 : null
             }
+            initialInternalNotes={jobRow.internalRecruiterNotes ?? null}
             initialSearchKeywords={jobRow.searchKeywords ?? null}
             jobMeta={{
               title: job.title,
@@ -463,6 +464,7 @@ export default async function JobDetailPage({
             jobRfId={rfId}
             jobTitle={job.title}
             savedFilters={jobRow.savedSearchFilters as unknown}
+            searchKeywords={jobRow.searchKeywords ?? null}
           />
         ) : (
           <TabStub label={JOB_TABS.find((t) => t.id === tab)?.label ?? ""} />
