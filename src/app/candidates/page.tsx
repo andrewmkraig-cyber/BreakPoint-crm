@@ -1811,7 +1811,7 @@ export default function CandidatesPage() {
                 </thead>
                 <tbody
                   className={
-                    "divide-y divide-court-border-soft transition-opacity " +
+                    "divide-y divide-court-border/60 transition-opacity " +
                     (loading ? "opacity-50" : "opacity-100")
                   }
                 >
@@ -1829,7 +1829,7 @@ export default function CandidatesPage() {
                     <Fragment key={c.id}>
                     <tr
                       onClick={() => setSelectedId(c.id)}
-                      className="h-12 cursor-pointer transition hover:bg-court-accent-tint/40"
+                      className="h-14 cursor-pointer py-1 transition hover:bg-court-accent-tint/40"
                     >
                       <td
                         className="w-10 px-3"
@@ -1850,7 +1850,7 @@ export default function CandidatesPage() {
                           className="h-4 w-4 cursor-pointer accent-brand"
                         />
                       </td>
-                      <td className="px-3 font-medium text-court-fg">
+                      <td className="px-3 text-sm font-semibold text-court-fg">
                         <Highlight text={c.name} tokens={matchTokens} />
                       </td>
                       <td className="px-3 text-court-fg-muted">
@@ -1897,7 +1897,7 @@ export default function CandidatesPage() {
                         <td className="px-3" />
                         <td
                           colSpan={7}
-                          className="px-3 pb-2 pt-0 text-[11px] italic leading-snug text-court-fg-muted"
+                          className="px-3 pb-3 pt-0.5 text-[11.5px] leading-snug text-court-fg-muted"
                         >
                           <span className="font-semibold not-italic text-court-fg-muted/80">
                             Resume:
