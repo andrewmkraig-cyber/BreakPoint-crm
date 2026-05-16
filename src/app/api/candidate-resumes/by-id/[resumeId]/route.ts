@@ -29,7 +29,11 @@ export async function GET(
   if (!resume) return new NextResponse("Not found", { status: 404 });
 
   const wantsRedacted = req.nextUrl.searchParams.get("variant") === "redacted";
-  const hasRedacted = Boolean(resume.redactedData && resume.redactedAt);
+  // Post-Blob backfill: redactedData is null on migrated rows; bytes
+  // moved to redactedBlobUrl. Either column counts as "has redacted".
+  const hasRedacted = Boolean(
+    (resume.redactedBlobUrl || resume.redactedData) && resume.redactedAt,
+  );
   const useRedacted = wantsRedacted && hasRedacted;
   const bytes = useRedacted
     ? await getResumeBytes({ blobUrl: resume.redactedBlobUrl, data: resume.redactedData })

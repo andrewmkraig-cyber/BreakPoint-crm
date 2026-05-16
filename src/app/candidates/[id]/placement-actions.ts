@@ -1489,10 +1489,15 @@ async function loadSubmittalAttachment(
     return { ok: false, error: "No resume uploaded for this candidate." };
   }
   if (variant === "branded") {
-    if (!row.redactedData || !row.redactedAt) {
+    // Post-Blob backfill: redactedData is null on migrated rows; bytes
+    // moved to redactedBlobUrl. Either column counts as "has branded".
+    if (!(row.redactedBlobUrl || row.redactedData) || !row.redactedAt) {
       return { ok: false, error: "No branded resume available for this candidate." };
     }
-    const bytes = row.redactedData;
+    const bytes = await getResumeBytes({
+      blobUrl: row.redactedBlobUrl,
+      data: row.redactedData,
+    });
     return {
       ok: true,
       value: {
