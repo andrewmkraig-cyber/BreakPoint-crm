@@ -8,6 +8,7 @@ import {
   Send,
   ListPlus,
   Sparkles,
+  Users,
   X,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -353,7 +354,13 @@ export function BulkEmailDialog({
     template: ActiveTemplateSummary,
   ): Promise<{ subject: string; body: string }> {
     // eslint-disable-next-line no-console
-    console.log("[bulk] resolveTemplate entered", template.name);
+    console.log("[bulk] resolveTemplate entered", {
+      name: template?.name,
+      id: template?.id,
+      hasSubject: typeof template?.subject === "string",
+      hasBody: typeof template?.body === "string",
+      keys: template ? Object.keys(template) : null,
+    });
     // No job tokens → resolve immediately with the raw template; the
     // composer applies subject/body and the server still does the
     // per-recipient candidate merge at send time.
@@ -373,6 +380,8 @@ export function BulkEmailDialog({
     await new Promise<void>((resolveOuter) => {
       setPendingJobPick({ template, resolve: resolveOuter });
     });
+    // eslint-disable-next-line no-console
+    console.log("[bulk] parked promise resolved, returning template literal");
     return { subject: template.subject, body: template.body };
   }
 
@@ -585,14 +594,7 @@ export function BulkEmailDialog({
               Email {n} candidate{n === 1 ? "" : "s"}
             </h2>
             <p className="mt-0.5 text-xs text-court-fg-muted">
-              One Gmail send per recipient.{" "}
-              <button
-                type="button"
-                onClick={() => setRecipientsOpen((v) => !v)}
-                className="font-medium text-brand-dark hover:underline"
-              >
-                {recipientsOpen ? "Hide" : "View"} {n} recipient{n === 1 ? "" : "s"}
-              </button>
+              One Gmail send per recipient. Recipients are resolved automatically from each candidate&apos;s email on file.
             </p>
             <p className="mt-1 text-[11px] text-court-fg-muted">
               Merge fields: <code>[Candidate First Name]</code>,{" "}
@@ -613,45 +615,67 @@ export function BulkEmailDialog({
           </button>
         </div>
 
-        {recipientsOpen && (
-          <div className="border-b border-court-border bg-court-surface-subtle/50">
-            {recipientsLoading && (
-              <div className="px-5 py-2 text-[11px] text-court-fg-muted">
-                Loading recipient list…
-              </div>
+        <div className="border-b border-court-border bg-court-surface-subtle/40">
+          <button
+            type="button"
+            onClick={() => setRecipientsOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 px-5 py-2 text-left transition hover:bg-court-surface-subtle/70"
+          >
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-court-fg">
+              {recipientsOpen ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+              <Users className="h-3.5 w-3.5" />
+              {recipientsOpen ? "Hide" : "View"} {n} recipient{n === 1 ? "" : "s"}
+            </span>
+            {!recipientsOpen && recipients && noEmailCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-700">
+                {noEmailCount} no email
+              </span>
             )}
-            {!recipientsLoading && recipients && (
-              <>
-                {noEmailCount > 0 && (
-                  <div className="border-b border-court-border px-5 py-1.5 text-[11px] font-medium text-red-700">
-                    {noEmailCount} of {recipients.length} recipient{recipients.length === 1 ? "" : "s"} {noEmailCount === 1 ? "has" : "have"} no email on file and will be skipped.
-                  </div>
-                )}
-                <ul className="max-h-48 overflow-y-auto px-5 py-2 text-xs">
-                  {recipients.map((r) => (
-                    <li
-                      key={r.id}
-                      className="flex items-center justify-between gap-2 py-0.5"
-                    >
-                      <span className="truncate font-medium text-court-fg">
-                        {r.name}
-                      </span>
-                      <span
-                        className={
-                          r.email
-                            ? "shrink-0 truncate text-court-fg-muted"
-                            : "shrink-0 truncate font-semibold text-red-700"
-                        }
+          </button>
+          {recipientsOpen && (
+            <div>
+              {recipientsLoading && (
+                <div className="px-5 pb-3 pt-1 text-[11px] text-court-fg-muted">
+                  Loading recipient list…
+                </div>
+              )}
+              {!recipientsLoading && recipients && (
+                <>
+                  {noEmailCount > 0 && (
+                    <div className="border-t border-court-border bg-red-50 px-5 py-1.5 text-[11px] font-semibold text-red-700">
+                      {noEmailCount} of {recipients.length} recipient{recipients.length === 1 ? "" : "s"} {noEmailCount === 1 ? "has" : "have"} no email on file and will be skipped.
+                    </div>
+                  )}
+                  <ul className="max-h-56 overflow-y-auto divide-y divide-court-border/60 border-t border-court-border bg-court-surface text-xs">
+                    {recipients.map((r) => (
+                      <li
+                        key={r.id}
+                        className="flex items-center justify-between gap-3 px-5 py-1.5"
                       >
-                        {r.email ?? "No email on file"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-          </div>
-        )}
+                        <span className="min-w-0 flex-1 truncate font-medium text-court-fg">
+                          {r.name}
+                        </span>
+                        {r.email ? (
+                          <span className="shrink-0 truncate text-court-fg-muted">
+                            {r.email}
+                          </span>
+                        ) : (
+                          <span className="inline-flex shrink-0 items-center rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-700">
+                            No email
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         <div className="border-b border-court-border bg-court-surface-subtle/40">
           <button
