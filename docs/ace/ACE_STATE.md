@@ -1,10 +1,69 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 54.0
+Last updated: 2026-05-17 · Ace 55.0
 
 ## Current Status
-Current Version: Ace 54.0
+Current Version: Ace 55.0
 Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 55.0 (2026-05-17)
+
+Applicants queue redesign — closes the applicants entry from the
+queued visual redesign Prompts 11-17.
+
+### Applicants queue rebuilt on the unified table card + chip spec (`d2bea12`)
+- **Page bg** — `bg-court-surface-subtle` wraps the whole
+  applicants surface (matches the Settings + Scoreboard treatment
+  from Ace 53/54).
+- **Toolbar** — left side now shows a 22px `font-serif
+  font-extrabold` tabular count + muted `13px` "applicants"
+  label; zero count dims to `text-court-border opacity-50` per
+  rule 6.
+- **Applied / Kept filter chips** — rendered inline as
+  `h-8 rounded-full` pills. Active: `bg-court-accent-tint
+  text-court-brand-dark font-semibold`; inactive:
+  `bg-court-surface-subtle text-court-fg-muted`. Replaces the
+  shared `TabStrip` here so the rest of the app's tab strips
+  don't shift.
+- **Table card** — `rounded-2xl border-0 shadow-sm
+  bg-court-surface`. Header bar: `bg-court-surface-subtle py-3
+  px-5` with `10px font-semibold tracking-[0.18em] uppercase
+  text-court-fg-muted` column labels. Rows: `divide-y
+  divide-court-border-soft hover:bg-court-surface-subtle/60`.
+  Replaces the prior `DataTableHead`/`DataTableHeaderCell` shared
+  components inline so the spec lands without touching the shared
+  table primitives.
+- **Row hierarchy** — candidate name `text-[13px] font-semibold`
+  (hover `text-court-brand-dark`), applied role `text-[12px]
+  font-medium` (hover `text-court-brand-dark`), source + date
+  rendered in `font-mono text-[11px] text-court-fg-muted` per
+  rule 2.
+- **Status column** — new column with `rounded-full h-7 px-3
+  text-[11px] font-semibold` chips. Applied rows render `New`
+  (accent-tint brand-dark), Kept rows render `Kept` (surface
+  subtle muted). `Rejected` chip wired (`bg-red-50 text-red-500`)
+  but not currently surfaced — rejected rows are filtered server
+  side, so the chip is only reachable if a future view lets them
+  through.
+- **Action buttons** — Submit / Keep / Reject / Remove all on
+  `rounded-full h-8 px-3 text-[12px] font-semibold`. Keep /
+  Reject / Remove route through the shared `Button` component
+  (`variant="keep"` / `variant="reject"`) with a className
+  override that swaps the default `rounded-md` for `rounded-full`
+  + the spec sizing. Submit stays as a `Link` so Cmd+click still
+  opens in a new tab; rendered with a matching className so the
+  three actions read as one button family. Rule 4 satisfied: no
+  raw text links acting as action triggers.
+- **Bulk reject toolbar** — restyled to `rounded-2xl border-0
+  bg-court-accent-tint shadow-sm` with the same `h-8
+  rounded-full` reject button as the row actions.
+- **Empty state** — `py-12 text-center text-[13px]
+  text-court-fg-muted` per rule 6.
+
+Per rule 12 every value lands on a Court Mode token. Red is the
+exception (status chip + reject Button variant) — same intent the
+red-tint was carrying before, just rebound to the spec'd `bg-red-50
+text-red-500` chip.
 
 ## What Shipped in Ace 54.0 (2026-05-17)
 
