@@ -249,10 +249,33 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
     });
   }
 
+  // Page-scoped derived counts for the summary chips below the tab
+  // strip. These count from the current page's `rows` (not the full
+  // stage), so they read as "what's in front of me right now" — an
+  // intentional caveat documented for the recruiter. Server-side
+  // totals would need an additional plumb through page.tsx.
+  const movementThisWeek = rows.filter(
+    (r) => r.daysInStage != null && r.daysInStage < 7,
+  ).length;
+  const staleCount = rows.filter(
+    (r) => r.daysInStage != null && r.daysInStage >= 14,
+  ).length;
+  const activeCount = counts[stage];
+  const stageEyebrow = PIPELINE_LABELS[stage];
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 rounded-2xl bg-court-brand-tint/60 p-4">
       <div className="flex flex-col items-start gap-3 md:flex-row md:items-center">
         <StageTabs stage={stage} counts={counts} buildHref={buildHref} />
+      </div>
+
+      {/* Summary chips: active count, movement this week, stale.
+          Page-row-derived, see comment above. Kept inline so the
+          recruiter scans them right under the tab strip. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <SummaryChip label="Active" value={activeCount} />
+        <SummaryChip label="Moved this week" value={movementThisWeek} />
+        <SummaryChip label="Stale" value={staleCount} muted={staleCount === 0} />
       </div>
 
       <form
@@ -314,7 +337,26 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
         </div>
       )}
 
-      <div className="overflow-hidden rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+      <div className="overflow-hidden rounded-2xl border-0 bg-court-surface p-4 shadow-sm">
+        {/* Column header: green uppercase eyebrow + Bricolage count.
+            Acts as the "stage column" header in the polished spec. The
+            count tracks the active stage's total (counts[stage]) and
+            mutes to court-fg-dim at zero. */}
+        <div className="mb-3 flex items-baseline justify-between gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+              {stageEyebrow}
+            </div>
+            <div
+              className={cn(
+                "mt-0.5 font-serif text-[28px] font-extrabold leading-none tabular-nums",
+                activeCount === 0 ? "text-court-fg-dim" : "text-court-fg",
+              )}
+            >
+              {activeCount.toLocaleString()}
+            </div>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[820px] text-left text-sm">
             <DataTableHead>
@@ -377,7 +419,7 @@ export function PipelineView({ rows, total, page, totalPages, pageSize, stage, q
               {rows.map((r) => (
                 <tr
                   key={`${r.candidateId}-${r.jobId}`}
-                  className="cursor-pointer transition hover:bg-court-accent-tint/40"
+                  className="cursor-pointer bg-court-brand-tint/50 transition hover:bg-court-surface hover:shadow-sm"
                   onClick={() => {
                     // Hired-stage rows open the inline edit drawer; every
                     // other stage keeps the existing candidate-profile
@@ -755,6 +797,33 @@ function formatMoney(n: number | null, currency: string | null | undefined): str
   return `${sym}${n.toLocaleString()}`;
 }
 
+function SummaryChip({
+  label,
+  value,
+  muted,
+}: {
+  label: string;
+  value: number;
+  muted?: boolean;
+}) {
+  const isZero = value === 0;
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-court-brand-tint px-3 py-1 text-[11px] text-court-fg-muted">
+      <span className="uppercase tracking-wider">{label}</span>
+      <span
+        className={cn(
+          "tabular-nums",
+          isZero || muted
+            ? "text-court-fg-dim"
+            : "font-extrabold text-court-fg",
+        )}
+      >
+        {value.toLocaleString()}
+      </span>
+    </span>
+  );
+}
+
 function StageTabs({
   stage,
   counts,
@@ -768,6 +837,7 @@ function StageTabs({
     <TabStrip<Stage>
       ariaLabel="Pipeline stage"
       activeId={stage}
+      variant="underline"
       items={STAGE_ORDER.map((s) => ({
         id: s,
         label: PIPELINE_LABELS[s],

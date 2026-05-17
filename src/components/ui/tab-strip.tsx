@@ -22,6 +22,13 @@ type Common<TId extends string> = {
   className?: string;
   /** Stretches each tab so the strip fills its parent (used by narrow split-view sidebars). */
   fullWidth?: boolean;
+  /**
+   * "default" — bordered chip with subtle bg (existing app-wide tabs).
+   * "underline" — opt-in flat style: 2px brand bottom border on active, no pill bg.
+   *   Used by /pipeline. Other consumers stay on "default" so this change
+   *   doesn't ripple through Dashboard / Jobs / Applicants / etc.
+   */
+  variant?: "default" | "underline";
 };
 
 type ControlledProps<TId extends string> = Common<TId> & {
@@ -35,7 +42,8 @@ type LinkProps<TId extends string> = Common<TId> & {
 export function TabStrip<TId extends string = string>(
   props: ControlledProps<TId> | LinkProps<TId>,
 ) {
-  const { items, activeId, ariaLabel, className, fullWidth } = props;
+  const { items, activeId, ariaLabel, className, fullWidth, variant = "default" } = props;
+  const isUnderline = variant === "underline";
 
   return (
     <div
@@ -44,18 +52,31 @@ export function TabStrip<TId extends string = string>(
       className={cn(
         "inline-flex flex-wrap items-center gap-1",
         fullWidth && "flex w-full",
+        isUnderline && "gap-0 border-b border-court-border",
         className,
       )}
     >
       {items.map((item) => {
         const active = item.id === activeId;
-        const sharedClass = cn(
-          "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[13px] transition-colors",
-          fullWidth && "flex-1 justify-center",
-          active
-            ? "border-court-brand bg-transparent font-semibold text-court-brand"
-            : "border-transparent bg-transparent font-medium text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
-        );
+        const sharedClass = isUnderline
+          ? cn(
+              // Underline variant: flat, no chip bg, 2px brand-dark
+              // bottom border when active. -mb-px tucks the active
+              // border underneath the strip's own border so the seam
+              // reads as one line, not two.
+              "inline-flex items-center gap-1 -mb-px border-b-2 px-3 py-2 text-[13px] transition-colors",
+              fullWidth && "flex-1 justify-center",
+              active
+                ? "border-court-brand-dark font-semibold text-court-brand-dark"
+                : "border-transparent font-medium text-court-fg-muted hover:text-court-fg",
+            )
+          : cn(
+              "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[13px] transition-colors",
+              fullWidth && "flex-1 justify-center",
+              active
+                ? "border-court-brand bg-transparent font-semibold text-court-brand"
+                : "border-transparent bg-transparent font-medium text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg",
+            );
         const body = (
           <>
             <span>{item.label}</span>
