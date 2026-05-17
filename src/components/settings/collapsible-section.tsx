@@ -24,6 +24,8 @@ export function CollapsibleSection({
   children,
   className,
   headerExtra,
+  variant = "default",
+  eyebrow,
 }: {
   id?: string;
   title: ReactNode;
@@ -32,6 +34,16 @@ export function CollapsibleSection({
   children: ReactNode;
   className?: string;
   headerExtra?: ReactNode;
+  /**
+   * "default" — the original chrome (rounded-xl card, accent rail,
+   * serif title, used by every non-BD settings page).
+   * "bd" — opt-in BD-Settings spec: rounded-2xl, no border, shadow-sm
+   * shell with an uppercase brand-dark eyebrow above an 18px Playfair
+   * title. Other settings pages keep the default look.
+   */
+  variant?: "default" | "bd";
+  /** Small uppercase label rendered above the title in the bd variant. */
+  eyebrow?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   useEffect(() => {
@@ -85,11 +97,14 @@ export function CollapsibleSection({
     };
   }, [id]);
 
+  const isBd = variant === "bd";
+
   return (
     <section
       id={id}
       className={cn(
-        "scroll-mt-24 rounded-xl border border-court-border bg-court-surface shadow-sm",
+        "scroll-mt-24 bg-court-surface shadow-sm",
+        isBd ? "rounded-2xl" : "rounded-xl border border-court-border",
         className,
       )}
     >
@@ -97,16 +112,36 @@ export function CollapsibleSection({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-start justify-between gap-3 rounded-t-xl px-6 py-5 text-left transition hover:bg-court-surface-subtle/40"
+        className={cn(
+          "flex w-full items-start justify-between gap-3 text-left transition hover:bg-court-surface-subtle/40",
+          isBd ? "rounded-t-2xl px-6 pt-6 pb-4" : "rounded-t-xl px-6 py-5",
+        )}
       >
-        <div className="flex min-w-0 flex-1 items-start gap-3">
-          <span aria-hidden="true" className="mt-2 h-4 w-1 shrink-0 rounded-full bg-court-accent" />
+        <div className={cn("flex min-w-0 flex-1 items-start gap-3", isBd && "gap-0")}>
+          {!isBd && (
+            <span aria-hidden="true" className="mt-2 h-4 w-1 shrink-0 rounded-full bg-court-accent" />
+          )}
           <div className="min-w-0 flex-1">
-            <h2 className="font-serif text-xl font-semibold leading-tight text-court-fg">
+            {isBd && eyebrow && (
+              <p className="mb-1 text-[10px] font-semibold uppercase leading-none tracking-[0.18em] text-court-brand-dark">
+                {eyebrow}
+              </p>
+            )}
+            <h2
+              className={cn(
+                "font-serif leading-tight text-court-fg",
+                isBd ? "mb-1 text-[18px] font-bold" : "text-xl font-semibold",
+              )}
+            >
               {title}
             </h2>
             {description && (
-              <p className="mt-1.5 text-[13px] leading-relaxed text-court-fg-muted">
+              <p
+                className={cn(
+                  "leading-relaxed text-court-fg-muted",
+                  isBd ? "text-[12px]" : "mt-1.5 text-[13px]",
+                )}
+              >
                 {description}
               </p>
             )}
@@ -122,7 +157,15 @@ export function CollapsibleSection({
           />
         </div>
       </button>
-      {open && <div className="border-t border-court-border px-6 py-5">{children}</div>}
+      {open && (
+        <div
+          className={cn(
+            isBd ? "px-6 pb-6" : "border-t border-court-border px-6 py-5",
+          )}
+        >
+          {children}
+        </div>
+      )}
     </section>
   );
 }

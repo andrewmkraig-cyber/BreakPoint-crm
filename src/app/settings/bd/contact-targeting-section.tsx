@@ -2,9 +2,13 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { X, Save, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { X, Loader2 } from "lucide-react";
 import { saveContactTargeting } from "./actions";
+import {
+  BD_CONTENT_TAG,
+  BD_NUMBER_INPUT,
+  BD_SAVE_BUTTON,
+} from "./spec-classes";
 
 export type ContactTargetingRow = {
   verticalId: string;
@@ -18,7 +22,7 @@ export type ContactTargetingRow = {
 export function ContactTargetingSection({ rows }: { rows: ContactTargetingRow[] }) {
   if (rows.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-court-border bg-court-surface-subtle p-6 text-center text-sm text-court-fg-muted">
+      <p className="rounded-2xl bg-court-surface-subtle/60 p-6 text-center text-[12px] text-court-fg-muted">
         Add a vertical first to configure contact targeting.
       </p>
     );
@@ -60,8 +64,8 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
   }
 
   return (
-    <div className="rounded-lg border border-court-border bg-court-surface p-4">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-court-brand-dark">
+    <div className="rounded-2xl bg-court-surface-subtle/60 p-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
         {row.verticalName}
       </p>
 
@@ -85,7 +89,7 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
           onChange={setPractice}
         />
         <label className="block max-w-[14rem]">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+          <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
             Max contacts per firm
           </span>
           <input
@@ -94,12 +98,12 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
             max={20}
             value={maxPerFirm}
             onChange={(e) => setMaxPerFirm(Number(e.target.value) || 1)}
-            className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            className={`${BD_NUMBER_INPUT} mt-1 w-full`}
           />
         </label>
 
         {error && (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+          <p className="rounded-xl bg-red-50 px-3 py-2 text-[11px] text-red-700 dark:bg-red-950/40 dark:text-red-200">
             {error}
           </p>
         )}
@@ -109,9 +113,9 @@ function VerticalTargetingCard({ row }: { row: ContactTargetingRow }) {
             type="button"
             onClick={onSave}
             disabled={pending}
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
+            className={BD_SAVE_BUTTON}
           >
-            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             Save targeting
           </button>
         </div>
@@ -157,21 +161,16 @@ function TitleTierField({
 
   return (
     <div className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+      <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
         {label}
       </span>
       <span className="mt-0.5 block text-[11px] text-court-fg-dim">{hint}</span>
       <div
         onClick={focusInputOnRowClick}
-        className={cn(
-          "mt-1 flex min-h-9 flex-wrap items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-2 py-1.5",
-        )}
+        className="mt-2 flex min-h-12 flex-wrap items-center gap-y-2 rounded-xl bg-court-surface px-3 py-2"
       >
         {titles.map((t, i) => (
-          <span
-            key={`${t}-${i}`}
-            className="inline-flex items-center gap-1 rounded-full bg-court-brand-tint px-2 py-0.5 text-[11px] font-medium text-court-brand-dark"
-          >
+          <span key={`${t}-${i}`} className={`${BD_CONTENT_TAG} mr-2`}>
             {t}
             <button
               type="button"
@@ -185,7 +184,7 @@ function TitleTierField({
                 removeTag(i);
               }}
               aria-label={`Remove ${t}`}
-              className="text-court-brand-dark/70 hover:text-court-brand-dark"
+              className="text-court-fg-muted hover:text-court-fg"
             >
               <X className="h-3 w-3" />
             </button>
@@ -203,7 +202,7 @@ function TitleTierField({
             }
           }}
           placeholder={titles.length === 0 ? "Type a title, press Enter or comma" : ""}
-          className="flex-1 min-w-[160px] bg-transparent text-sm text-court-fg placeholder:text-court-fg-dim focus:outline-none"
+          className="min-w-[160px] flex-1 bg-transparent text-[13px] text-court-fg placeholder:text-court-fg-dim focus:outline-none"
         />
       </div>
     </div>

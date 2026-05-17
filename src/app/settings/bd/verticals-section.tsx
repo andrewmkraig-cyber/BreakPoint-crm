@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, ChevronDown, X, Save, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronDown, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBdDateTime } from "@/app/bd/date-format";
 import {
@@ -13,6 +13,12 @@ import {
   deleteVertical,
   type SavedSearchCriteria,
 } from "./actions";
+import {
+  BD_NUMBER_INPUT,
+  BD_SAVE_BUTTON,
+  BD_SECONDARY_BUTTON,
+  BD_TEXT_INPUT,
+} from "./spec-classes";
 
 export type SavedSearchRow = {
   id: string;
@@ -79,19 +85,19 @@ export function VerticalsSection({
   return (
     <div className="flex flex-col gap-3">
       {verticals.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-court-border bg-court-surface-subtle p-6 text-center text-sm text-court-fg-muted">
+        <div className="rounded-2xl border border-dashed border-court-border bg-court-surface-subtle p-6 text-center text-[12px] text-court-fg-muted">
           No verticals yet. Add one to start scheduling outbound.
         </div>
       ) : (
         verticals.map((v) => {
           const isOpen = openVerticalId === v.id;
           return (
-            <div key={v.id} className="rounded-lg border border-court-border bg-court-surface">
+            <div key={v.id} className="rounded-2xl bg-court-surface-subtle/60">
               <button
                 type="button"
                 aria-expanded={isOpen}
                 onClick={() => setOpenVerticalId(isOpen ? null : v.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-t-lg px-4 py-3 text-left transition hover:bg-court-surface-subtle"
+                className="flex w-full items-center justify-between gap-3 rounded-t-2xl px-4 py-3 text-left transition hover:bg-court-brand-tint/40"
               >
                 <div className="flex items-center gap-2">
                   <ChevronDown
@@ -100,15 +106,15 @@ export function VerticalsSection({
                       isOpen ? "rotate-0" : "-rotate-90",
                     )}
                   />
-                  <span className="text-sm font-semibold text-court-fg">{v.name}</span>
-                  <span className="rounded-md bg-court-surface-subtle px-1.5 py-0.5 text-[10px] font-medium text-court-fg-muted">
+                  <span className="text-[13px] font-semibold text-court-fg">{v.name}</span>
+                  <span className="inline-flex h-6 items-center rounded-full bg-court-surface px-2.5 text-[10px] font-medium uppercase tracking-wider text-court-fg-muted">
                     {v.savedSearches.length} saved search{v.savedSearches.length === 1 ? "" : "es"}
                   </span>
                 </div>
                 <DeleteVerticalBtn id={v.id} disabled={v.savedSearches.length > 0} />
               </button>
               {isOpen && (
-                <div className="border-t border-court-border px-4 py-4">
+                <div className="px-4 pb-4">
                   <div className="flex flex-col gap-2">
                     {v.savedSearches.map((s) => {
                       const isEditing = editingSearchId === s.id && editingForVerticalId === v.id;
@@ -117,8 +123,8 @@ export function VerticalsSection({
                         <div
                           key={s.id}
                           className={cn(
-                            "rounded-md border bg-court-surface",
-                            isEditing ? "border-court-brand" : "border-court-border",
+                            "rounded-2xl bg-court-surface shadow-sm",
+                            isEditing && "ring-2 ring-court-brand/40",
                           )}
                         >
                           <SavedSearchRowHeader
@@ -148,15 +154,15 @@ export function VerticalsSection({
                     })}
 
                     {editingSearchId === "new" && editingForVerticalId === v.id ? (
-                      <div className="rounded-md border border-court-brand bg-court-surface">
-                        <div className="flex items-center justify-between px-4 py-2 border-b border-court-border">
-                          <span className="text-xs font-semibold uppercase tracking-wide text-court-brand-dark">
+                      <div className="rounded-2xl bg-court-surface shadow-sm ring-2 ring-court-brand/40">
+                        <div className="flex items-center justify-between border-b border-court-border-soft px-4 py-3">
+                          <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
                             New saved search
                           </span>
                           <button
                             type="button"
                             onClick={() => setEditingSearchId(null)}
-                            className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+                            className="rounded-full p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
                             aria-label="Cancel"
                           >
                             <X className="h-3.5 w-3.5" />
@@ -180,7 +186,7 @@ export function VerticalsSection({
                           setEditingForVerticalId(v.id);
                           setEditingSearchId("new");
                         }}
-                        className="inline-flex w-fit items-center gap-1.5 rounded-md border border-dashed border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:border-court-brand/40 hover:text-court-fg"
+                        className="inline-flex h-9 w-fit items-center gap-1.5 rounded-full border border-dashed border-court-border bg-court-surface px-4 text-[12.5px] font-medium text-court-fg-muted transition hover:border-court-brand hover:text-court-brand-dark"
                       >
                         <Plus className="h-3.5 w-3.5" /> New saved search
                       </button>
@@ -199,7 +205,7 @@ export function VerticalsSection({
         <button
           type="button"
           onClick={() => setNewVerticalOpen(true)}
-          className="inline-flex w-fit items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+          className={`${BD_SECONDARY_BUTTON} w-fit`}
         >
           <Plus className="h-3.5 w-3.5" /> New vertical
         </button>
@@ -229,8 +235,8 @@ function SavedSearchRowHeader({
   return (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-court-fg">{row.name}</p>
-        <p className="mt-0.5 truncate text-xs text-court-fg-muted">{summaryParts.join(" · ")}</p>
+        <p className="truncate text-[13px] font-medium text-court-fg">{row.name}</p>
+        <p className="mt-0.5 truncate text-[11px] text-court-fg-muted">{summaryParts.join(" · ")}</p>
         <p className="mt-0.5 text-[11px] text-court-fg-dim">
           {row.lastRunIso ? `Last run ${formatBdDateTime(new Date(row.lastRunIso))}` : "Never run"}
           {" · "}
@@ -243,7 +249,7 @@ function SavedSearchRowHeader({
             type="button"
             onClick={onClose}
             aria-label="Close edit"
-            className="rounded-md p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+            className="rounded-full p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -252,7 +258,7 @@ function SavedSearchRowHeader({
             type="button"
             onClick={onEdit}
             aria-label="Edit saved search"
-            className="rounded-md p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+            className="rounded-full p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>
@@ -327,7 +333,7 @@ function SavedSearchEditForm({
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
-          className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+          className={`${BD_TEXT_INPUT} block w-full`}
         />
       </Field>
 
@@ -336,7 +342,7 @@ function SavedSearchEditForm({
           <select
             value={sequence}
             onChange={(e) => setSequence(e.target.value)}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            className={`${BD_TEXT_INPUT} block w-full`}
           >
             {sequences.map((s) => (
               <option key={s} value={s}>
@@ -352,7 +358,7 @@ function SavedSearchEditForm({
             min={0}
             value={contactCap}
             onChange={(e) => setContactCap(Number(e.target.value))}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            className={`${BD_NUMBER_INPUT} block w-full`}
           />
         </Field>
       </div>
@@ -363,12 +369,12 @@ function SavedSearchEditForm({
           value={locationOverride}
           onChange={(e) => setLocationOverride(e.target.value)}
           placeholder="Nationwide — leave blank for all locations"
-          className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+          className={`${BD_TEXT_INPUT} block w-full`}
         />
       </Field>
 
       {error && (
-        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200">
+        <p className="rounded-xl bg-red-50 px-3 py-2 text-[11px] text-red-700 dark:bg-red-950/40 dark:text-red-200">
           {error}
         </p>
       )}
@@ -378,16 +384,12 @@ function SavedSearchEditForm({
           type="button"
           onClick={onDone}
           disabled={pending}
-          className="inline-flex items-center rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
+          className={BD_SECONDARY_BUTTON}
         >
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-        >
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+        <button type="submit" disabled={pending} className={BD_SAVE_BUTTON}>
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Save · creates v{nextVersion}
         </button>
       </div>
@@ -406,11 +408,11 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+      <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
         {label}
       </span>
       {hint && <span className="mt-0.5 block text-[11px] text-court-fg-dim">{hint}</span>}
-      <div className="mt-1">{children}</div>
+      <div className="mt-1.5">{children}</div>
     </label>
   );
 }
@@ -436,7 +438,7 @@ function DeleteSavedSearchBtn({ id, name }: { id: string; name: string }) {
       onClick={onClick}
       disabled={pending}
       aria-label={`Delete ${name}`}
-      className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300 disabled:opacity-50"
+      className="rounded-full p-1.5 text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300 disabled:opacity-50"
     >
       {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
     </button>
@@ -465,7 +467,7 @@ function DeleteVerticalBtn({ id, disabled }: { id: string; disabled: boolean }) 
       onClick={onClick}
       title={disabled ? "Delete the vertical's saved searches first" : "Delete vertical"}
       className={cn(
-        "rounded-md p-1.5 text-court-fg-muted transition",
+        "rounded-full p-1.5 text-court-fg-muted transition",
         disabled
           ? "cursor-not-allowed opacity-40"
           : "cursor-pointer hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300",
@@ -500,17 +502,17 @@ function NewVerticalForm({ onClose }: { onClose: () => void }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="flex flex-col gap-3 rounded-md border border-court-brand bg-court-surface p-3"
+      className="flex flex-col gap-3 rounded-2xl bg-court-brand-tint p-4"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-court-brand-dark">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
           New vertical
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Cancel"
-          className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+          className="rounded-full p-1 text-court-brand-dark/70 hover:bg-court-surface hover:text-court-brand-dark"
         >
           <X className="h-3.5 w-3.5" />
         </button>
@@ -523,7 +525,7 @@ function NewVerticalForm({ onClose }: { onClose: () => void }) {
             onChange={(e) => setName(e.target.value)}
             placeholder="e.g. Public Accounting"
             required
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            className={`${BD_TEXT_INPUT} block w-full`}
           />
         </Field>
         <Field label="Slug" hint="URL-safe identifier; leave blank to auto-generate">
@@ -532,28 +534,24 @@ function NewVerticalForm({ onClose }: { onClose: () => void }) {
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
             placeholder="e.g. public-accounting"
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            className={`${BD_TEXT_INPUT} block w-full font-mono text-[12px]`}
           />
         </Field>
       </div>
       {error && (
-        <p className="text-xs text-red-600 dark:text-red-300">{error}</p>
+        <p className="text-[11px] text-red-600 dark:text-red-300">{error}</p>
       )}
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={onClose}
           disabled={pending}
-          className="inline-flex items-center rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
+          className={BD_SECONDARY_BUTTON}
         >
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-        >
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+        <button type="submit" disabled={pending} className={BD_SAVE_BUTTON}>
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Create
         </button>
       </div>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Pencil, Trash2, X, Save, Loader2 } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatBdDate } from "@/app/bd/date-format";
 import {
@@ -11,6 +11,12 @@ import {
   deleteSendingDomain,
   type SendingDomainStatus,
 } from "./actions";
+import {
+  BD_SAVE_BUTTON,
+  BD_SECONDARY_BUTTON,
+  BD_TEXT_INPUT,
+  bdStatusChipClass,
+} from "./spec-classes";
 
 export type ApolloMailboxState =
   | { state: "unavailable" }
@@ -35,6 +41,12 @@ export type DomainRow = {
 const STATUSES: SendingDomainStatus[] = ["HEALTHY", "WARMING", "COOLED"];
 const OWNERS = ["Andrew", "Austin"];
 
+function domainInitials(domain: string): string {
+  // First two letters of the leftmost label (e.g. "outreach6" → "OU").
+  const label = domain.split(".")[0] ?? domain;
+  return label.slice(0, 2).toUpperCase() || "?";
+}
+
 export function DomainsSection({ domains }: { domains: DomainRow[] }) {
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -42,14 +54,14 @@ export function DomainsSection({ domains }: { domains: DomainRow[] }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-court-fg-muted">
+        <p className="text-[11px] text-court-fg-muted">
           Priority is the rotation order — slot 1 picks next.
         </p>
         {!adding && (
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-court-surface-subtle px-3 text-[11px] font-medium text-court-fg transition hover:bg-court-brand-tint hover:text-court-brand-dark"
           >
             <Plus className="h-3.5 w-3.5" /> Add domain
           </button>
@@ -58,9 +70,9 @@ export function DomainsSection({ domains }: { domains: DomainRow[] }) {
 
       {adding && <AddDomainForm onClose={() => setAdding(false)} />}
 
-      <div className="overflow-hidden rounded-lg border border-court-border bg-court-surface">
+      <div className="overflow-hidden rounded-2xl bg-court-surface-subtle/50">
         <table className="w-full text-sm">
-          <thead className="bg-court-surface-subtle text-[11px] uppercase tracking-wide text-court-fg-muted">
+          <thead className="text-[10px] uppercase tracking-[0.18em] text-court-fg-muted">
             <tr>
               <Th className="w-12">#</Th>
               <Th>Domain</Th>
@@ -71,7 +83,7 @@ export function DomainsSection({ domains }: { domains: DomainRow[] }) {
               <Th className="text-right">Actions</Th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-court-border">
+          <tbody className="divide-y divide-court-border-soft">
             {domains.length === 0 && (
               <tr>
                 <Td colSpan={7} className="text-center text-court-fg-muted">
@@ -114,21 +126,24 @@ function DomainRowView({
 
   if (isEditing) {
     return (
-      <tr className="bg-court-surface-subtle/40">
+      <tr className="bg-court-surface">
         <Td className="font-mono tabular-nums text-court-fg-dim">{row.priority}</Td>
         <Td>
-          <input
-            type="text"
-            value={domain}
-            onChange={(e) => setDomain(e.target.value)}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2 py-1 font-mono text-[12px] text-court-fg"
-          />
+          <div className="flex items-center gap-2.5">
+            <DomainInitialsSquare domain={domain} />
+            <input
+              type="text"
+              value={domain}
+              onChange={(e) => setDomain(e.target.value)}
+              className={`${BD_TEXT_INPUT} w-full font-mono text-[12px]`}
+            />
+          </div>
         </Td>
         <Td>
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value as SendingDomainStatus)}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg"
+            className={`${BD_TEXT_INPUT} w-full text-[12px]`}
           >
             {STATUSES.map((s) => (
               <option key={s} value={s}>
@@ -144,7 +159,7 @@ function DomainRowView({
           <select
             value={owner}
             onChange={(e) => setOwner(e.target.value)}
-            className="block w-full rounded-md border border-court-border bg-court-surface px-2 py-1 text-xs text-court-fg"
+            className={`${BD_TEXT_INPUT} w-full text-[12px]`}
           >
             {OWNERS.map((o) => (
               <option key={o} value={o}>
@@ -160,7 +175,7 @@ function DomainRowView({
               type="button"
               onClick={onClose}
               disabled={pending}
-              className="rounded-md p-1.5 text-court-fg-muted hover:bg-court-surface hover:text-court-fg disabled:opacity-50"
+              className="rounded-full p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-50"
               aria-label="Cancel"
             >
               <X className="h-3.5 w-3.5" />
@@ -175,9 +190,9 @@ function DomainRowView({
                   onClose();
                 });
               }}
-              className="inline-flex items-center gap-1 rounded-md border border-court-brand bg-court-brand-tint px-2.5 py-1 text-xs font-semibold text-court-brand-dark transition hover:bg-court-brand/25 disabled:opacity-60"
+              className={BD_SAVE_BUTTON}
             >
-              {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Save
             </button>
           </div>
@@ -187,9 +202,14 @@ function DomainRowView({
   }
 
   return (
-    <tr>
+    <tr className="bg-court-surface">
       <Td className="font-mono tabular-nums text-court-fg-dim">{row.priority}</Td>
-      <Td className="font-mono text-[12px] text-court-fg">{row.domain}</Td>
+      <Td>
+        <div className="flex items-center gap-2.5">
+          <DomainInitialsSquare domain={row.domain} />
+          <span className="font-mono text-[12px] font-medium text-court-fg">{row.domain}</span>
+        </div>
+      </Td>
       <Td>
         <StatusPill status={row.status} />
       </Td>
@@ -205,7 +225,7 @@ function DomainRowView({
           <button
             type="button"
             onClick={onEdit}
-            className="rounded-md p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+            className="rounded-full p-1.5 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
             aria-label={`Edit ${row.domain}`}
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -214,6 +234,17 @@ function DomainRowView({
         </div>
       </Td>
     </tr>
+  );
+}
+
+function DomainInitialsSquare({ domain }: { domain: string }) {
+  return (
+    <span
+      aria-hidden
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-[10px] font-bold text-court-brand-dark"
+    >
+      {domainInitials(domain)}
+    </span>
   );
 }
 
@@ -242,24 +273,24 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
   return (
     <form
       onSubmit={onSubmit}
-      className="flex flex-col gap-3 rounded-lg border border-court-brand bg-court-surface p-4"
+      className="flex flex-col gap-3 rounded-2xl bg-court-brand-tint p-4"
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-court-brand-dark">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
           Add domain
         </span>
         <button
           type="button"
           onClick={onClose}
           aria-label="Cancel"
-          className="rounded-md p-1 text-court-fg-muted hover:bg-court-surface-subtle hover:text-court-fg"
+          className="rounded-full p-1 text-court-brand-dark/70 hover:bg-court-surface hover:text-court-brand-dark"
         >
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <label className="block sm:col-span-2">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+          <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark/80">
             Domain
           </span>
           <input
@@ -268,17 +299,17 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
             onChange={(e) => setDomain(e.target.value)}
             placeholder="outreach6.breakpointconnect.com"
             required
-            className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 font-mono text-[12px] text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            className={`${BD_TEXT_INPUT} mt-1 w-full font-mono text-[12px]`}
           />
         </label>
         <label className="block">
-          <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+          <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark/80">
             Inbox owner
           </span>
           <select
             value={owner}
             onChange={(e) => setOwner(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-court-border bg-court-surface px-2.5 py-1.5 text-sm text-court-fg shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-court-brand/40"
+            className={`${BD_TEXT_INPUT} mt-1 w-full`}
           >
             {OWNERS.map((o) => (
               <option key={o} value={o}>
@@ -290,7 +321,7 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
       </div>
 
       <fieldset>
-        <span className="block text-[11px] font-semibold uppercase tracking-wide text-court-fg-muted">
+        <span className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark/80">
           Starting status
         </span>
         <div className="mt-1 inline-flex items-center gap-2">
@@ -298,10 +329,10 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
             <label
               key={s}
               className={cn(
-                "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium",
+                "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11px] font-medium",
                 status === s
-                  ? "border-court-brand bg-court-brand-tint text-court-brand-dark"
-                  : "border-court-border bg-court-surface text-court-fg-muted hover:text-court-fg",
+                  ? "bg-court-brand text-white"
+                  : "bg-court-surface text-court-fg-muted hover:text-court-fg",
               )}
             >
               <input
@@ -317,23 +348,19 @@ function AddDomainForm({ onClose }: { onClose: () => void }) {
         </div>
       </fieldset>
 
-      {error && <p className="text-xs text-red-600 dark:text-red-300">{error}</p>}
+      {error && <p className="text-[11px] text-red-600 dark:text-red-300">{error}</p>}
 
       <div className="flex items-center justify-end gap-2">
         <button
           type="button"
           onClick={onClose}
           disabled={pending}
-          className="inline-flex items-center rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:bg-court-surface-subtle disabled:opacity-60"
+          className={BD_SECONDARY_BUTTON}
         >
           Cancel
         </button>
-        <button
-          type="submit"
-          disabled={pending}
-          className="inline-flex items-center gap-1.5 rounded-md border border-court-brand bg-court-brand-tint px-3 py-1.5 text-xs font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 disabled:opacity-60"
-        >
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+        <button type="submit" disabled={pending} className={BD_SAVE_BUTTON}>
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Add
         </button>
       </div>
@@ -359,7 +386,7 @@ function DeleteDomainBtn({ id, domain }: { id: string; domain: string }) {
           }
         });
       }}
-      className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300 disabled:opacity-50"
+      className="rounded-full p-1.5 text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950/40 dark:hover:text-red-300 disabled:opacity-50"
       aria-label={`Remove ${domain}`}
     >
       {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
@@ -368,18 +395,11 @@ function DeleteDomainBtn({ id, domain }: { id: string; domain: string }) {
 }
 
 function StatusPill({ status }: { status: string }) {
-  const cls =
-    status === "HEALTHY"
-      ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
-      : status === "WARMING"
-        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200"
-        : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
-  const label = status === "HEALTHY" ? "Healthy" : status === "WARMING" ? "Warming" : "Cooled";
-  return (
-    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold", cls)}>
-      {label}
-    </span>
-  );
+  const normalized = (status === "HEALTHY" || status === "WARMING" || status === "COOLED"
+    ? status
+    : "COOLED") as "HEALTHY" | "WARMING" | "COOLED";
+  const label = normalized === "HEALTHY" ? "Healthy" : normalized === "WARMING" ? "Warming" : "Cooled";
+  return <span className={bdStatusChipClass(normalized)}>{label}</span>;
 }
 
 function ApolloMailboxCell({ apollo }: { apollo: ApolloMailboxState }) {
@@ -391,13 +411,13 @@ function ApolloMailboxCell({ apollo }: { apollo: ApolloMailboxState }) {
   }
   const connectedCls =
     apollo.connection === "Connected"
-      ? "border-court-brand/30 bg-court-brand-tint text-court-brand-dark"
-      : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200";
+      ? "bg-court-brand-tint text-court-brand-dark"
+      : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200";
   return (
     <div className="flex flex-col gap-0.5 text-[11px] text-court-fg-muted">
       <span
         className={cn(
-          "inline-flex w-fit items-center rounded-full border px-2 py-0.5 font-semibold",
+          "inline-flex h-6 w-fit items-center rounded-full px-2.5 text-[10px] font-semibold uppercase tracking-wider",
           connectedCls,
         )}
       >
@@ -414,7 +434,7 @@ function ApolloMailboxCell({ apollo }: { apollo: ApolloMailboxState }) {
 }
 
 function Th({ children, className }: { children?: React.ReactNode; className?: string }) {
-  return <th className={cn("px-3 py-2 text-left font-medium", className)}>{children}</th>;
+  return <th className={cn("px-3 py-2.5 text-left font-medium", className)}>{children}</th>;
 }
 
 function Td({
@@ -427,7 +447,7 @@ function Td({
   colSpan?: number;
 }) {
   return (
-    <td className={cn("px-3 py-2 text-court-fg", className)} colSpan={colSpan}>
+    <td className={cn("px-3 py-3 text-court-fg", className)} colSpan={colSpan}>
       {children}
     </td>
   );

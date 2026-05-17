@@ -195,6 +195,8 @@ export default async function BdSettingsPage() {
 
       <CollapsibleSection
         id="verticals"
+        variant="bd"
+        eyebrow="Targeting"
         title="Verticals & Saved Searches"
         description="Targets for the morning TheirStack discovery run. Each saved search defines who Apollo enriches and which sequence picks them up."
       >
@@ -203,6 +205,8 @@ export default async function BdSettingsPage() {
 
       <CollapsibleSection
         id="apollo"
+        variant="bd"
+        eyebrow="Integration"
         title="Apollo Integration"
         description="Outbound execution layer. Ace orchestrates, Apollo sends."
       >
@@ -215,6 +219,8 @@ export default async function BdSettingsPage() {
 
       <CollapsibleSection
         id="contact-targeting"
+        variant="bd"
+        eyebrow="Contacts"
         title="Contact Targeting"
         description="Per-vertical title priority used by Apollo decision-maker fetches. Primary first, small-firm fallback only when no primary returned, max one practice-specific."
       >
@@ -223,6 +229,8 @@ export default async function BdSettingsPage() {
 
       <CollapsibleSection
         id="sending-domains"
+        variant="bd"
+        eyebrow="Deliverability"
         title="Sending Domains"
         description="Warmed domains Apollo rotates outbound across. Five healthy slots is the rotation pool."
       >
@@ -231,6 +239,8 @@ export default async function BdSettingsPage() {
 
       <CollapsibleSection
         id="daily-limits"
+        variant="bd"
+        eyebrow="Guardrails"
         title="Daily Limits"
         description="Org and per-vertical contact caps plus blackout windows and the kill switch."
       >
@@ -239,6 +249,8 @@ export default async function BdSettingsPage() {
 
       <CollapsibleSection
         id="reply-routing"
+        variant="bd"
+        eyebrow="Inbound"
         title="Reply Routing"
         description="Replies land in Ace Mail tagged BD. Toggles below shape the downstream behavior."
       >
