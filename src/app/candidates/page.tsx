@@ -244,19 +244,23 @@ function SelectField({
   );
 }
 
-// Field label. Small uppercase eyebrow per the polish spec —
-// text-[10px] font-semibold tracking-[0.18em] uppercase muted.
+// Field label. Sits under a SectionTitle inside the same section.
+// Lighter weight + muted color so it reads as the subordinate heading
+// in the two-tier hierarchy.
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
       {children}
     </label>
   );
 }
 
+// Section group header. One step heavier than FieldLabel + full
+// text-court-fg so the five rail sections (Identity / Compensation /
+// Location / Employment / Activity) read as a distinct tier.
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+    <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-court-fg">
       {children}
     </div>
   );
@@ -320,7 +324,7 @@ function TagInput({
   }
 
   return (
-    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
+    <div className="flex min-h-8 flex-wrap items-center gap-1 rounded-xl border border-court-border bg-court-surface px-1.5 py-0.5 focus-within:border-court-accent focus-within:ring-2 focus-within:ring-court-accent/20">
       {values.map((p) => {
         const tintCls = p.exclude
           ? "bg-red-100 text-red-700"
@@ -1378,11 +1382,11 @@ export default function CandidatesPage() {
         <div className="border-t border-court-border bg-court-surface px-3 py-2">
           <Button
             type="button"
-            variant="primary"
+            variant="secondary"
             size="sm"
             onClick={onSaveCurrent}
             disabled={!hasFilters}
-            className="h-9 w-full rounded-full border-court-accent bg-court-accent text-[12.5px] font-semibold text-white hover:bg-court-accent-dark"
+            className="h-9 w-full rounded-full border-court-accent bg-court-surface text-[12.5px] font-semibold text-court-accent hover:bg-court-brand-tint"
           >
             <Bookmark className="h-3.5 w-3.5" />
             Save search
