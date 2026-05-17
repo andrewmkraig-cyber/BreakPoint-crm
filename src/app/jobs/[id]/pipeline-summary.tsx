@@ -218,17 +218,20 @@ export function JobPipelineSummary({
   // without taking a full screen of vertical space. Click-to-expand
   // behavior is unchanged.
   const chipBoxClass = compact
-    ? "flex items-center justify-between gap-2 rounded-md border px-2 py-1 text-left transition"
+    ? "inline-flex h-8 items-center gap-2 rounded-full border px-3 text-[11px] font-semibold uppercase tracking-wider transition"
     : "flex flex-col items-center justify-center rounded-lg border px-3 py-2 text-center transition";
   const chipLabelClass = compact
-    ? "flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider"
+    ? "flex items-center gap-1"
     : "flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider";
   const chipCountClass = compact
-    ? "font-serif text-base font-bold leading-none tabular-nums"
+    ? "tabular-nums"
     : "font-serif text-2xl font-bold leading-none";
   const chipGridClass = compact
     ? "flex flex-wrap gap-1.5"
     : "grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8";
+  const zeroChipClass = compact
+    ? "border-transparent bg-court-brand-tint/40 text-court-fg-dim"
+    : "";
 
   return (
     <div>
@@ -244,9 +247,10 @@ export function JobPipelineSummary({
               onClick={() => setActiveTab(active ? null : it.bucket)}
               className={cn(
                 chipBoxClass,
-                STAGE_TONE[it.bucket],
+                clickable ? STAGE_TONE[it.bucket] : zeroChipClass || STAGE_TONE[it.bucket],
                 active && "ring-2 ring-offset-1 ring-brand/40",
-                !clickable && "opacity-60 cursor-default hover:border-inherit",
+                !clickable && !compact && "opacity-60 cursor-default hover:border-inherit",
+                !clickable && compact && "cursor-default hover:border-transparent",
               )}
             >
               <span className={chipLabelClass}>
@@ -266,10 +270,14 @@ export function JobPipelineSummary({
             }
             className={cn(
               chipBoxClass,
-              "border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-400",
+              liveMatchedCount > 0
+                ? "border-emerald-300 bg-emerald-50 text-emerald-800 hover:border-emerald-400"
+                : zeroChipClass || "border-emerald-300 bg-emerald-50 text-emerald-800",
               matchedActive && "ring-2 ring-offset-1 ring-brand/40",
-              liveMatchedCount === 0 &&
+              liveMatchedCount === 0 && !compact &&
                 "opacity-60 cursor-default hover:border-inherit",
+              liveMatchedCount === 0 && compact &&
+                "cursor-default hover:border-transparent",
             )}
           >
             <span className={chipLabelClass}>

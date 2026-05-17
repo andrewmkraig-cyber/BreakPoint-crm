@@ -92,8 +92,8 @@ export function JobOverviewTab({
         <JobOverviewActionButtons jobId={state.jobId} lifecycle={state.lifecycle} />
       </section>
 
-      <section className="rounded-xl border border-court-border/40 bg-court-surface p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <InlineTextCell
             icon={<Briefcase className="h-3.5 w-3.5" />}
             label="Employment"
@@ -173,7 +173,7 @@ function CellShell({
         {icon}
         {label}
       </div>
-      <div className="mt-1 text-sm text-court-fg">{children}</div>
+      <div className="mt-1.5 font-serif text-[28px] font-extrabold leading-tight text-court-fg">{children}</div>
     </div>
   );
 }
@@ -226,10 +226,10 @@ function StatusCell({ lifecycle }: { lifecycle: JobLifecycle }) {
 }
 
 const inlineInputCls =
-  "block w-full rounded border border-court-accent bg-white px-1.5 py-0.5 text-sm text-court-fg focus:outline-none focus:ring-2 focus:ring-court-accent/30";
+  "block w-full rounded border border-court-accent bg-white px-1.5 py-0.5 text-sm font-sans font-normal text-court-fg focus:outline-none focus:ring-2 focus:ring-court-accent/30";
 
 const cellButtonCls =
-  "block w-full rounded text-left text-sm text-court-fg hover:bg-court-surface-subtle hover:text-court-accent-dark";
+  "block w-full rounded text-left text-court-fg hover:text-court-brand-dark";
 
 function InlineTextCell({
   icon,
@@ -293,7 +293,7 @@ function InlineTextCell({
           aria-label={`Edit ${label}`}
           className={cellButtonCls}
         >
-          {value || <span className="text-court-fg-muted">—</span>}
+          {value || <span className="text-court-fg-dim">—</span>}
         </button>
       )}
     </CellShell>
@@ -374,7 +374,7 @@ function InlineNumberCell({
           {value != null ? (
             String(value)
           ) : (
-            <span className="text-court-fg-muted">—</span>
+            <span className="text-court-fg-dim">—</span>
           )}
         </button>
       )}
