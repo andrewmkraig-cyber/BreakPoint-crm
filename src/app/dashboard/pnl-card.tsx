@@ -70,13 +70,16 @@ export function PnlCard({ data }: { data: PnlData }) {
   const profitToneClass = profitPositive ? "text-court-brand" : "text-red-500";
 
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
       <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
           Profit &amp; Loss
         </p>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
-          YTD {year} · placement fees vs operating spend
+        <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
+          YTD {year}
+        </p>
+        <p className="mt-0.5 text-[11px] text-court-fg-muted">
+          Placement fees vs operating spend
         </p>
       </div>
 

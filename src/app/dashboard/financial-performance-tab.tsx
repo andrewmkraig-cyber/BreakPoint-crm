@@ -1,11 +1,3 @@
-import {
-  CircleDollarSign,
-  PercentCircle,
-  Scale,
-  Sparkles,
-  Wallet,
-} from "lucide-react";
-import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { ExpenseAddForm } from "@/app/dashboard/expense-add-form";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -935,13 +927,13 @@ export async function FinancialPerformanceTab({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
           {eyebrowLabel}
         </p>
         {showExpenses ? (
           <p
             className={
-              "text-xs " +
+              "text-[11px] " +
               (mercuryConnected ? "text-court-fg-muted" : "text-court-fg-dim")
             }
           >
@@ -951,31 +943,11 @@ export async function FinancialPerformanceTab({
       </div>
       {showRevenueProfitability && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <KpiTile
-            label="Total Revenue"
-            value={formatUsd(revenueUsd)}
-            icon={CircleDollarSign}
-            live={revenueUsd > 0}
-          />
-          <KpiTile
-            label="Gross Margin"
-            value={grossMarginLabel}
-            icon={PercentCircle}
-            live={grossMarginPct != null && grossMarginPct > 0}
-          />
-          <KpiTile label="Net Margin" value={netMarginLabel} icon={Scale} />
-          <KpiTile
-            label="Total Expenses"
-            value={formatUsd(expensesUsd)}
-            icon={Wallet}
-            live={expensesUsd > 0}
-          />
-          <KpiTile
-            label="Blended ROI"
-            value={roiLabel}
-            icon={Sparkles}
-            live={blendedRoiPct != null && blendedRoiPct > 0}
-          />
+          <FinancesKpiTile label="Total Revenue" value={formatUsd(revenueUsd)} isEmpty={revenueUsd === 0} />
+          <FinancesKpiTile label="Gross Margin" value={grossMarginLabel} isEmpty={grossMarginPct == null || grossMarginPct === 0} />
+          <FinancesKpiTile label="Net Margin" value={netMarginLabel} isEmpty={netMarginLabel === "—" || netMarginLabel === "0.0%"} />
+          <FinancesKpiTile label="Total Expenses" value={formatUsd(expensesUsd)} isEmpty={expensesUsd === 0} />
+          <FinancesKpiTile label="Blended ROI" value={roiLabel} isEmpty={blendedRoiPct == null || blendedRoiPct === 0} />
         </div>
       )}
 
@@ -1217,12 +1189,43 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
-      <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+    <div className="rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
         {title}
       </p>
-      <p className="mt-0.5 text-xs text-court-fg-muted">{subline}</p>
+      <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
+        {subline}
+      </p>
       {children}
+    </div>
+  );
+}
+
+// Spec rule 5 — KPI card scoped to the Finances surface so the
+// 36px serif value treatment doesn't ripple into Clubhouse /
+// Scoreboard which keep their own tile chromes.
+function FinancesKpiTile({
+  label,
+  value,
+  isEmpty,
+}: {
+  label: string;
+  value: string;
+  isEmpty: boolean;
+}) {
+  return (
+    <div className="flex h-full flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+        {label}
+      </p>
+      <p
+        className={
+          "mt-3 font-serif text-[36px] font-extrabold leading-none tabular-nums " +
+          (isEmpty ? "text-court-border opacity-50" : "text-court-fg")
+        }
+      >
+        {value}
+      </p>
     </div>
   );
 }
@@ -1261,9 +1264,9 @@ function BarRow({
             {pctLabel}
           </div>
         </div>
-        <div className="mt-1 h-1 overflow-hidden rounded-full bg-court-surface-subtle">
+        <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-court-surface-subtle">
           <div
-            className="h-full rounded-full bg-court-brand"
+            className="h-full rounded-full bg-court-accent"
             style={{ width: `${Math.max(0, Math.min(100, pctOfMax))}%` }}
           />
         </div>
@@ -1322,17 +1325,20 @@ function TrendCard({
   const forecastLabel = `${formatUsd(forecastQuarterUsd)} forecast ${quarterLabel} close`;
 
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
             Trend · {quarterLabel}
           </p>
-          <p className="mt-0.5 text-xs text-court-fg-muted">
-            Monthly close-out vs {formatUsd(QUARTERLY_REVENUE_GOAL_USD)} quarterly goal
+          <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
+            Monthly close-out
+          </p>
+          <p className="mt-0.5 text-[11px] text-court-fg-muted">
+            vs {formatUsd(QUARTERLY_REVENUE_GOAL_USD)} quarterly goal
           </p>
         </div>
-        <div className="shrink-0 text-right text-xs font-semibold tabular-nums text-court-fg">
+        <div className="shrink-0 text-right font-mono text-[12px] font-semibold tabular-nums text-court-fg">
           {progressLabel}
         </div>
       </div>
@@ -1480,13 +1486,16 @@ function SubscriptionsCard({
       : "— margin";
 
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
       <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
-          Subscriptions &amp; tools
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+          Subscriptions &amp; Tools
         </p>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
-          Catalog of recurring and one-time spend, plus money in
+        <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
+          Catalog of recurring and one-time spend
+        </p>
+        <p className="mt-0.5 text-[11px] text-court-fg-muted">
+          Plus money in to balance the ledger
         </p>
       </div>
 
@@ -1538,13 +1547,16 @@ function RoiCard({
   blendedRoiPct: number | null;
 }) {
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
       <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
-          ROI per tool
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+          ROI per Tool
         </p>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
-          Spend vs revenue attributed to deals sourced through it
+        <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
+          Spend vs revenue attributed
+        </p>
+        <p className="mt-0.5 text-[11px] text-court-fg-muted">
+          To deals sourced through each tool
         </p>
       </div>
 
@@ -1579,42 +1591,46 @@ function RoiCard({
 }
 
 function RoiRowItem({ row }: { row: RoiRow }) {
-  const roiLabel =
-    row.roiPct != null
-      ? `${ROI_INT_FMT.format(Math.round(row.roiPct))}%`
-      : "—";
+  const hasRoi = row.roiPct != null;
+  const roiLabel = hasRoi
+    ? `${ROI_INT_FMT.format(Math.round(row.roiPct!))}%`
+    : "—";
   const initials = avatarFor(row.toolName);
+  const roiChipCls = !hasRoi
+    ? "text-court-border"
+    : row.roiPct! >= 0
+      ? "bg-court-accent-tint text-court-brand-dark"
+      : "bg-red-50 text-red-500";
   return (
-    <li className={`${ROI_GRID} items-center gap-2 px-1 py-2 text-sm`}>
+    <li className={`${ROI_GRID} items-center gap-2 px-1 py-2.5 text-[13px]`}>
       <div className="flex min-w-0 items-center gap-2">
-        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-court-surface-subtle text-xs font-bold text-court-fg-muted">
+        <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-court-surface-subtle text-[10px] font-bold text-court-brand-dark">
           {initials}
         </span>
         <span
-          className="min-w-0 truncate font-medium text-court-fg"
+          className="min-w-0 truncate text-[13px] font-medium text-court-fg"
           title={row.toolName}
         >
           {row.toolName}
         </span>
       </div>
-      <span className="text-right tabular-nums text-court-fg">
-        {formatUsd(row.spendUsd)}
+      <span className="text-right font-mono text-[12px] tabular-nums text-court-fg">
+        {row.spendUsd > 0 ? formatUsd(row.spendUsd) : <span className="text-court-border">—</span>}
       </span>
-      <span className="text-right tabular-nums text-court-fg">
-        {row.revUsd > 0 ? formatUsd(row.revUsd) : "—"}
+      <span className="text-right font-mono text-[12px] tabular-nums text-court-fg">
+        {row.revUsd > 0 ? formatUsd(row.revUsd) : <span className="text-court-border">—</span>}
       </span>
-      <span
-        className={
-          "text-right font-semibold tabular-nums " +
-          (row.roiPct == null
-            ? "text-court-fg-dim"
-            : row.roiPct >= 0
-              ? "text-court-fg"
-              : "text-red-600")
-        }
-      >
-        {roiLabel}
-      </span>
+      {hasRoi ? (
+        <span className="flex justify-end">
+          <span
+            className={`inline-flex h-6 items-center rounded-full px-2.5 text-[10px] font-semibold tabular-nums ${roiChipCls}`}
+          >
+            {roiLabel}
+          </span>
+        </span>
+      ) : (
+        <span className="text-right text-[12px] tabular-nums text-court-border">—</span>
+      )}
     </li>
   );
 }
@@ -1693,23 +1709,25 @@ function MonthlyOperatingCostCard({
   );
 
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
       <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
           Monthly Operating Cost
         </p>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
-          What it costs to keep the lights on each month.
+        <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
+          Keeping the lights on
         </p>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-3 rounded-xl bg-court-brand-tint/50 px-4 py-2">
-        <span className="text-xs font-extrabold uppercase tracking-[0.14em] text-court-brand-dark">
+      {/* Spec rule 3: Total Run Rate panel — bordered tile sized
+          to read as the primary takeaway in the card. */}
+      <div className="mb-4 mt-4 rounded-xl border border-court-accent/30 bg-court-surface-subtle p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
           Total Monthly Run Rate
-        </span>
-        <span className="text-xs font-extrabold tabular-nums text-court-brand-dark">
+        </p>
+        <p className="mt-1 font-serif text-[32px] font-extrabold leading-none tabular-nums text-court-fg">
           {formatUsdCents(totalMonthlyRunRate)}
-        </span>
+        </p>
       </div>
 
       {rows.length === 0 ? (
@@ -1717,32 +1735,24 @@ function MonthlyOperatingCostCard({
           No recurring subscriptions logged yet — monthly run rate will land here once tools are tracked.
         </EmptyBlock>
       ) : (
-        <div className="mt-4">
-          <div
-            className={`${OPERATING_COST_GRID} gap-2 px-1 pb-1 text-[10px] font-extrabold uppercase tracking-[0.12em] text-court-fg-muted`}
-          >
-            <span>Tool</span>
-            <span className="text-right">Monthly Cost</span>
-          </div>
-          <ul className="divide-y divide-court-border-soft">
-            {rows.map((r) => (
-              <li
-                key={r.key}
-                className={`${OPERATING_COST_GRID} items-center gap-2 px-1 py-2 text-sm`}
+        <ul className="divide-y divide-court-border-soft">
+          {rows.map((r) => (
+            <li
+              key={r.key}
+              className={`${OPERATING_COST_GRID} items-center gap-2 py-2.5`}
+            >
+              <span
+                className="min-w-0 truncate text-[13px] text-court-fg"
+                title={r.toolName}
               >
-                <span
-                  className="min-w-0 truncate font-medium text-court-fg"
-                  title={r.toolName}
-                >
-                  {r.toolName}
-                </span>
-                <span className="text-right font-semibold tabular-nums text-court-fg">
-                  {formatUsdCents(r.monthlyEquivUsd)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+                {r.toolName}
+              </span>
+              <span className="text-right font-mono text-[12px] tabular-nums text-court-fg">
+                {formatUsdCents(r.monthlyEquivUsd)}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
@@ -1781,12 +1791,12 @@ function ProfitabilitySection({
 
 function MarginsCard({ data }: { data: MarginsCardData }) {
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
       <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
           Margins
         </p>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
+        <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
           Three layers, same revenue base
         </p>
       </div>

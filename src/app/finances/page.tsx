@@ -1,11 +1,10 @@
-import { AlertTriangle, CheckCircle, Clock, Receipt } from "lucide-react";
-import { TabStrip } from "@/components/ui/tab-strip";
+import Link from "next/link";
 import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
-import { KpiTile } from "@/app/dashboard/kpi-tile";
-import { PeriodTabs } from "@/app/dashboard/period-tabs";
+import { PeriodPillToggle } from "@/app/dashboard/period-pill-toggle";
 import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
 import { SendTestInvoiceButton } from "@/app/invoices/send-test-invoice-button";
+import { cn } from "@/lib/utils";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
   getInvoiceSummary,
@@ -38,12 +37,50 @@ const INVOICE_FILTERS: Array<{ value: InvoiceListFilter; label: string }> = [
   { value: "void", label: "Void" },
 ];
 
-const STATUS_COPY: Record<string, { label: string; tone: string }> = {
-  DRAFT: { label: "Draft", tone: "bg-court-surface-subtle text-court-fg" },
-  SENT: { label: "Sent", tone: "bg-amber-50 text-amber-800 border border-amber-200" },
-  PAID: { label: "Paid", tone: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
-  VOID: { label: "Void", tone: "bg-slate-100 text-slate-500 border border-slate-200" },
-};
+// Spec rule 4: PAID / PENDING / OVERDUE chips. DRAFT + VOID stay
+// outside the spec list — render with the neutral subtle treatment so
+// they still read as chips alongside the spec'd three.
+type ChipTone = "paid" | "pending" | "overdue" | "neutral";
+
+function statusFor(
+  rawStatus: string,
+  isOverdue: boolean,
+): { label: string; tone: ChipTone } {
+  if (isOverdue) return { label: "Overdue", tone: "overdue" };
+  switch (rawStatus) {
+    case "PAID":
+      return { label: "Paid", tone: "paid" };
+    case "SENT":
+      return { label: "Pending", tone: "pending" };
+    case "DRAFT":
+      return { label: "Draft", tone: "neutral" };
+    case "VOID":
+      return { label: "Void", tone: "neutral" };
+    default:
+      return { label: rawStatus, tone: "neutral" };
+  }
+}
+
+function StatusChip({ tone, label }: { tone: ChipTone; label: string }) {
+  const cls =
+    tone === "paid"
+      ? "bg-court-accent-tint text-court-brand-dark"
+      : tone === "pending"
+        ? "bg-amber-50 text-amber-700"
+        : tone === "overdue"
+          ? "bg-red-50 text-red-500"
+          : "bg-court-surface-subtle text-court-fg-muted";
+  return (
+    <span
+      className={cn(
+        "inline-flex h-7 items-center rounded-full px-3 text-[11px] font-semibold uppercase tracking-wider",
+        cls,
+      )}
+    >
+      {label}
+    </span>
+  );
+}
 
 function formatUsd(cents: number): string {
   return (cents / 100).toLocaleString("en-US", {
@@ -73,6 +110,41 @@ function formatDate(d: Date | null): string {
 type RawParams = { tab?: string; filter?: string; period?: string };
 type ParamsInput = Promise<RawParams> | RawParams;
 
+// Spec rule 1: underline tab strip with active 2px border-court-accent
+// bottom border + brand-dark semibold label, h-10. Inactive: muted with
+// hover bump to court-fg.
+function FinancesTabStrip({ tab }: { tab: FinancesTab }) {
+  return (
+    <nav
+      role="tablist"
+      aria-label="Finances sections"
+      className="flex flex-wrap gap-0 border-b border-court-border"
+    >
+      {TAB_ITEMS.map((item) => {
+        const active = item.id === tab;
+        return (
+          <Link
+            key={item.id}
+            role="tab"
+            aria-selected={active}
+            aria-current={active ? "page" : undefined}
+            href={item.href}
+            scroll={false}
+            className={cn(
+              "-mb-px inline-flex h-10 items-center border-b-2 px-4 text-[13px] transition-colors",
+              active
+                ? "border-court-accent font-semibold text-court-brand-dark"
+                : "border-transparent text-court-fg-muted hover:text-court-fg",
+            )}
+          >
+            {item.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default async function FinancesPage({
   searchParams,
 }: {
@@ -83,20 +155,18 @@ export default async function FinancesPage({
   const period = resolveDashboardPeriod(params.period);
 
   return (
-    <div className="flex w-full flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <TabStrip<FinancesTab>
-          ariaLabel="Finances sections"
-          activeId={tab}
-          items={TAB_ITEMS}
-        />
-        {tab === "overview" ? <PeriodTabs period={period} /> : null}
+    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
+      <div className="flex w-full flex-col gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <FinancesTabStrip tab={tab} />
+          {tab === "overview" ? <PeriodPillToggle period={period} /> : null}
+        </div>
+        {tab === "overview" && (
+          <FinancialPerformanceTab mode="revenue-profitability" period={period} />
+        )}
+        {tab === "invoices" && <InvoicesTab rawFilter={params.filter} />}
+        {tab === "expenses" && <FinancialPerformanceTab mode="expenses" />}
       </div>
-      {tab === "overview" && (
-        <FinancialPerformanceTab mode="revenue-profitability" period={period} />
-      )}
-      {tab === "invoices" && <InvoicesTab rawFilter={params.filter} />}
-      {tab === "expenses" && <FinancialPerformanceTab mode="expenses" />}
     </div>
   );
 }
@@ -113,86 +183,47 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-        BILLED, COLLECTED &amp; OUTSTANDING
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+        Billed, Collected &amp; Outstanding
       </p>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <KpiTile
-          label="Outstanding"
-          value={formatUsd(summary.outstandingCents)}
-          icon={Clock}
-          live={summary.outstandingCents > 0}
-        />
-        <KpiTile
-          label="Overdue"
-          value={formatUsd(summary.overdueCents)}
-          icon={AlertTriangle}
-          live={summary.overdueCents > 0}
-        />
-        <KpiTile
-          label="Billed This Quarter"
-          value={formatUsd(summary.billedThisQuarterCents)}
-          icon={Receipt}
-          live={summary.billedThisQuarterCents > 0}
-        />
-        <KpiTile
-          label="Collected This Quarter"
-          value={formatUsd(summary.collectedThisQuarterCents)}
-          icon={CheckCircle}
-          live={summary.collectedThisQuarterCents > 0}
-        />
+        <InvoicesKpiCard label="Outstanding" value={formatUsd(summary.outstandingCents)} isEmpty={summary.outstandingCents === 0} />
+        <InvoicesKpiCard label="Overdue" value={formatUsd(summary.overdueCents)} isEmpty={summary.overdueCents === 0} />
+        <InvoicesKpiCard label="Billed This Quarter" value={formatUsd(summary.billedThisQuarterCents)} isEmpty={summary.billedThisQuarterCents === 0} />
+        <InvoicesKpiCard label="Collected This Quarter" value={formatUsd(summary.collectedThisQuarterCents)} isEmpty={summary.collectedThisQuarterCents === 0} />
       </div>
 
-      <div className="rounded-3xl bg-court-surface shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
-        <div className="flex flex-col gap-3 border-b border-court-border p-6 pb-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="overflow-hidden rounded-2xl border-0 bg-court-surface shadow-sm">
+        <div className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
               Invoices
             </p>
-            <h2 className="mt-1 font-serif text-xl font-bold tracking-tight text-court-fg">
+            <h2 className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
               {INVOICE_FILTERS.find((f) => f.value === filter)?.label ?? "All"} invoices
             </h2>
           </div>
-          <TabStrip<InvoiceListFilter>
-            ariaLabel="Invoice filter"
-            activeId={filter}
-            items={INVOICE_FILTERS.map((f) => ({
-              id: f.value,
-              label: f.label,
-              href:
-                f.value === "all"
-                  ? "/finances?tab=invoices"
-                  : `/finances?tab=invoices&filter=${f.value}`,
-            }))}
-          />
+          <InvoiceFilterChips filter={filter} />
         </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-court-border bg-court-surface-subtle/50">
-                {[
-                  "Invoice",
-                  "Client",
-                  "Candidate / Role",
-                  "Amount",
-                  "Issued",
-                  "Due",
-                  "Status",
-                ].map((h) => (
+            <thead className="bg-court-surface-subtle">
+              <tr>
+                {["Invoice", "Client", "Candidate / Role", "Amount", "Issued", "Due", "Status"].map((h) => (
                   <th
                     key={h}
-                    className="px-6 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted"
+                    className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted"
                   >
                     {h}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-court-border-soft">
               {invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-6 py-14 text-center text-[13px] text-court-fg-muted">
+                  <td colSpan={7} className="py-14 text-center text-[13px] text-court-fg-muted">
                     No invoices yet.
                   </td>
                 </tr>
@@ -203,39 +234,38 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
                   const candName = inv.candidate
                     ? `${inv.candidate.firstName} ${inv.candidate.lastName ?? ""}`.trim()
                     : "—";
-                  const status = STATUS_COPY[inv.status] ?? { label: inv.status, tone: "bg-court-surface-subtle text-court-fg" };
-                  const isOverdue = inv.status === "SENT" && inv.dueDate && inv.dueDate < new Date();
+                  const isOverdue = !!(
+                    inv.status === "SENT" &&
+                    inv.dueDate &&
+                    inv.dueDate < new Date()
+                  );
+                  const status = statusFor(inv.status, isOverdue);
                   return (
                     <InvoiceRow key={inv.id} href={`/invoices/${inv.id}`}>
-                      <td className="px-6 py-3 align-top">
+                      <td className="px-5 py-3 align-middle">
                         <span className="font-mono text-[12px] font-semibold text-court-fg">
                           {inv.invoiceNumber}
                         </span>
                       </td>
-                      <td className="px-6 py-3 align-top">
+                      <td className="px-5 py-3 align-middle">
                         <div className="font-medium text-court-fg">{inv.client?.name ?? "—"}</div>
                         {primary?.name ? (
-                          <div className="text-[12px] text-court-fg-muted">{primary.name}</div>
+                          <div className="text-[11px] text-court-fg-muted">{primary.name}</div>
                         ) : null}
                       </td>
-                      <td className="px-6 py-3 align-top">
+                      <td className="px-5 py-3 align-middle">
                         <div className="font-medium text-court-fg">{candName}</div>
-                        <div className="text-[12px] text-court-fg-muted">{inv.roleTitle ?? "—"}</div>
+                        <div className="text-[11px] text-court-fg-muted">{inv.roleTitle ?? "—"}</div>
                       </td>
-                      <td className="px-6 py-3 align-top tabular-nums">{formatUsdDecimal(inv.feeAmount)}</td>
-                      <td className="px-6 py-3 align-top text-court-fg-muted">{formatDate(inv.startDate)}</td>
-                      <td className={"px-6 py-3 align-top " + (isOverdue ? "font-semibold text-red-700" : "text-court-fg-muted")}>
+                      <td className="px-5 py-3 align-middle font-bold tabular-nums text-court-fg">
+                        {formatUsdDecimal(inv.feeAmount)}
+                      </td>
+                      <td className="px-5 py-3 align-middle text-[11px] text-court-fg-muted">{formatDate(inv.startDate)}</td>
+                      <td className={cn("px-5 py-3 align-middle text-[11px]", isOverdue ? "font-semibold text-red-700" : "text-court-fg-muted")}>
                         {formatDate(inv.dueDate)}
                       </td>
-                      <td className="px-6 py-3 align-top">
-                        <span
-                          className={
-                            "inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wider " +
-                            status.tone
-                          }
-                        >
-                          {status.label}
-                        </span>
+                      <td className="px-5 py-3 align-middle">
+                        <StatusChip tone={status.tone} label={status.label} />
                       </td>
                     </InvoiceRow>
                   );
@@ -253,3 +283,55 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
   );
 }
 
+function InvoicesKpiCard({
+  label,
+  value,
+  isEmpty,
+}: {
+  label: string;
+  value: string;
+  isEmpty: boolean;
+}) {
+  return (
+    <div className="flex h-full flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+        {label}
+      </p>
+      <p
+        className={cn(
+          "mt-3 font-serif text-[36px] font-extrabold leading-none tabular-nums",
+          isEmpty ? "text-court-border opacity-50" : "text-court-fg",
+        )}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function InvoiceFilterChips({ filter }: { filter: InvoiceListFilter }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {INVOICE_FILTERS.map((f) => {
+        const active = f.value === filter;
+        const href = f.value === "all" ? "/finances?tab=invoices" : `/finances?tab=invoices&filter=${f.value}`;
+        return (
+          <Link
+            key={f.value}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            scroll={false}
+            className={cn(
+              "inline-flex h-8 items-center rounded-full px-3 text-[11px] font-semibold transition",
+              active
+                ? "bg-court-accent-tint text-court-brand-dark"
+                : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg",
+            )}
+          >
+            {f.label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
