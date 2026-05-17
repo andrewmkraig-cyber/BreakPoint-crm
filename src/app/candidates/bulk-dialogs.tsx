@@ -27,7 +27,7 @@ import {
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
+import type { MergeFieldValues } from "@/lib/merge-fields";
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -296,6 +296,30 @@ function templateNeedsJob(template: ActiveTemplateSummary): boolean {
   return textNeedsJob(template.subject) || textNeedsJob(template.body);
 }
 
+// Resolve ONLY the job-context tokens against the picked job's merge
+// values. Unlike applyMergeFields (which builds a map over every
+// MERGE_FIELDS entry and blanks anything the values map didn't fill),
+// this leaves candidate-recipient tokens like [Candidate First Name]
+// and {{candidate.first_name}} intact so bulkSendEmail can resolve
+// them per recipient at send time. Without this scope, the composer
+// would render "Hi ," because the candidate token gets blanked the
+// moment a job is picked.
+function applyJobTokensOnly(text: string, jobValues: MergeFieldValues): string {
+  const map: Record<string, string | undefined> = {
+    "[Job Title]": jobValues.jobTitle,
+    "[Job Location]": jobValues.jobLocation,
+    "[Client Company Name]": jobValues.clientCompanyName,
+    "[Client Company Website]": jobValues.clientCompanyWebsite,
+    "[Client Company LinkedIn]": jobValues.clientCompanyLinkedIn,
+  };
+  let out = text;
+  for (const [token, value] of Object.entries(map)) {
+    if (typeof value !== "string") continue;
+    out = out.split(token).join(value);
+  }
+  return out;
+}
+
 export function BulkEmailDialog({
   candidateIds,
   onClose,
@@ -393,8 +417,8 @@ export function BulkEmailDialog({
     template: ActiveTemplateSummary,
     jobValues?: MergeFieldValues,
   ) {
-    const subject = jobValues ? applyMergeFields(template.subject, jobValues) : template.subject;
-    const body = jobValues ? applyMergeFields(template.body, jobValues) : template.body;
+    const subject = jobValues ? applyJobTokensOnly(template.subject, jobValues) : template.subject;
+    const body = jobValues ? applyJobTokensOnly(template.body, jobValues) : template.body;
     setExternalDraft({ subject, body });
   }
 
@@ -749,7 +773,7 @@ export function BulkEmailDialog({
                 {openTemplate && (
                   <div
                     role="menu"
-                    className="absolute bottom-full left-0 z-20 mb-1 max-h-80 w-80 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+                    className="absolute bottom-full right-0 z-20 mb-1 max-h-80 w-80 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
                   >
                     {pendingJobPick ? (
                       <div>
