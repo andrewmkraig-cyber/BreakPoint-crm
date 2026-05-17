@@ -113,7 +113,7 @@ function ScoreboardKpiTile({ label, value, sub }: { label: string; value: string
       title={sub}
       className="flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
     >
-      <p className="text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">{label}</p>
+      <p className="min-h-[32px] text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">{label}</p>
       <div
         className={
           "mt-1.5 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums " +

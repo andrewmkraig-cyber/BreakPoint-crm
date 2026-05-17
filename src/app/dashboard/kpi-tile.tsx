@@ -37,7 +37,7 @@ export function KpiTile({
           : undefined
       }
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-h-[32px] items-center gap-2">
         <div
           className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
           aria-hidden
