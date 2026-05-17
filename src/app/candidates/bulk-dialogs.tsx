@@ -778,24 +778,23 @@ export function BulkEmailDialog({
               <p className="mt-1 text-xs text-court-fg-muted">
                 Job context fields (<code>[Job Title]</code>, <code>[Client Company Name]</code>, etc.) will be filled the same way for every recipient at send time.
               </p>
-              {jobsLoading ? (
+              {jobsLoading || jobs === null ? (
                 <div className="mt-3 inline-flex items-center gap-2 text-xs text-court-fg-muted">
                   <Loader2 className="h-3 w-3 animate-spin" /> Loading jobs…
+                </div>
+              ) : jobs.length === 0 ? (
+                <div className="mt-3 rounded-md border border-dashed border-court-border bg-court-surface-subtle/40 px-3 py-3 text-center text-xs text-court-fg-muted">
+                  No open jobs found for this org.
                 </div>
               ) : (
                 <select
                   value={pickedJobKey}
                   onChange={(e) => setPickedJobKey(e.target.value)}
                   disabled={resolvingJob}
-                  size={Math.min(6, Math.max(3, (jobs ?? []).length || 1))}
+                  size={Math.min(6, Math.max(3, jobs.length))}
                   className="mt-3 w-full rounded-md border border-court-border bg-court-surface px-2 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
                 >
-                  {(jobs ?? []).length === 0 && (
-                    <option value="" disabled>
-                      No open jobs
-                    </option>
-                  )}
-                  {(jobs ?? []).map((j) => (
+                  {jobs.map((j) => (
                     <option key={j.key} value={j.key}>
                       {j.label}
                     </option>
@@ -814,7 +813,7 @@ export function BulkEmailDialog({
                 <button
                   type="button"
                   onClick={() => void onConfirmJobPick()}
-                  disabled={!pickedJobKey || resolvingJob || jobsLoading}
+                  disabled={!pickedJobKey || resolvingJob || jobsLoading || jobs === null}
                   className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
                 >
                   {resolvingJob ? (
