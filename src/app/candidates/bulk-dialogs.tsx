@@ -27,7 +27,7 @@ import {
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
 import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
-import type { MergeFieldValues } from "@/lib/merge-fields";
+import { applyMergeFields, type MergeFieldValues } from "@/lib/merge-fields";
 
 // Shared bulk-action modals used by both the /candidates global page
 // and the job Matches tab. Extracted out of candidates-view.tsx so the
@@ -322,10 +322,12 @@ export function BulkEmailDialog({
   const [localTemplates, setLocalTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
   const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
-  // Native select on purpose: the bulk modal has its own stacking/overlay
-  // context that kept breaking custom popovers. Individual composer keeps
-  // its popover.
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  // Anchored popover for the Use Template button. Same visual pattern as
+  // the individual mail composer (mail-composer.tsx) — no backdrop
+  // dismiss; clicking the button re-toggles. The previous backdrop +
+  // localTemplateOpen pair fought the bulk modal's stacking context and
+  // got stuck open on every parent re-render.
+  const [openTemplate, setOpenTemplate] = useState(false);
   // Fresh object per pick so EmailComposer's externalDraft effect re-fires
   // even when the same template is picked twice.
   const [externalDraft, setExternalDraft] = useState<{ subject: string; body: string } | null>(null);
@@ -351,15 +353,14 @@ export function BulkEmailDialog({
     };
   }, []);
 
-  // Two-step Use Template → Pick Job overlay. Now just tracks which
-  // template is awaiting a job pick; no parked Promise.
+  // Two-step Use Template → Pick Job flow. The popover swaps content
+  // when pendingJobPick is set; no separate overlay.
   const [pendingJobPick, setPendingJobPick] = useState<{
     template: ActiveTemplateSummary;
   } | null>(null);
   const [jobMergeValues, setJobMergeValues] = useState<MergeFieldValues | null>(null);
   const [jobs, setJobs] = useState<BulkPickerJob[] | null>(null);
   const [jobsLoading, setJobsLoading] = useState(false);
-  const [pickedJobKey, setPickedJobKey] = useState("");
   const [resolvingJob, setResolvingJob] = useState(false);
 
   // Lazy-load the org's open jobs the first time the picker opens.
@@ -382,16 +383,22 @@ export function BulkEmailDialog({
     })();
   }, [pendingJobPick, jobs, jobsLoading]);
 
-  function applyTemplateDraft(template: ActiveTemplateSummary) {
-    setExternalDraft({ subject: template.subject, body: template.body });
+  // Push a draft into EmailComposer. When jobValues is provided, the job
+  // tokens ([Job Title], [Client Company Name], etc.) are resolved before
+  // the composer sees them — so the recruiter reads the real role name in
+  // the subject/body instead of raw placeholders. Per-recipient candidate
+  // tokens ([Candidate First Name], etc.) stay as tokens and resolve
+  // server-side at send time.
+  function applyTemplateDraft(
+    template: ActiveTemplateSummary,
+    jobValues?: MergeFieldValues,
+  ) {
+    const subject = jobValues ? applyMergeFields(template.subject, jobValues) : template.subject;
+    const body = jobValues ? applyMergeFields(template.body, jobValues) : template.body;
+    setExternalDraft({ subject, body });
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
-    // Reset the select to placeholder up front so the same template can be
-    // re-picked later (native selects don't fire onChange when the value
-    // doesn't change). The template object is captured in
-    // pendingJobPick / externalDraft below — the select's value is UI-only.
-    setSelectedTemplateId("");
     if (
       !template ||
       typeof template.id !== "string" ||
@@ -404,19 +411,15 @@ export function BulkEmailDialog({
     if (!templateNeedsJob(template)) {
       setJobMergeValues(null);
       applyTemplateDraft(template);
+      setOpenTemplate(false);
       return;
     }
+    // Swap the popover into "pick a job" mode; keep openTemplate true.
     setPendingJobPick({ template });
   }
 
-  async function onConfirmJobPick() {
+  async function onPickJob(job: BulkPickerJob) {
     if (!pendingJobPick) return;
-    if (!pickedJobKey) return;
-    const job = jobs?.find((j) => j.key === pickedJobKey);
-    if (!job) {
-      toast.error("Couldn't find that job in the loaded list.");
-      return;
-    }
     const template = pendingJobPick.template;
     setResolvingJob(true);
     try {
@@ -427,10 +430,9 @@ export function BulkEmailDialog({
         clientRfId: job.clientRfId,
       });
       setJobMergeValues(values);
-      applyTemplateDraft(template);
+      applyTemplateDraft(template, values);
       setPendingJobPick(null);
-      setPickedJobKey("");
-      setSelectedTemplateId("");
+      setOpenTemplate(false);
     } catch (e) {
       toast.error("Couldn't resolve job fields", {
         description: e instanceof Error ? e.message : "Server error",
@@ -441,9 +443,9 @@ export function BulkEmailDialog({
   }
 
   function onCancelJobPick() {
+    // Back to template list; keep the popover open so the recruiter can
+    // pick a different template without re-clicking Use Template.
     setPendingJobPick(null);
-    setPickedJobKey("");
-    setSelectedTemplateId("");
   }
 
   // Recipients panel state — lazy-fetched on first toggle expand so a
@@ -712,6 +714,7 @@ export function BulkEmailDialog({
         <div className="flex-1 overflow-y-auto">
           <EmailComposer
             title={`Bulk email — ${n} recipient${n === 1 ? "" : "s"}`}
+            subtitle={`To: ${n} selected candidate${n === 1 ? "" : "s"}`}
             initial={initial}
             onClose={onClose}
             onSend={onSend}
@@ -723,18 +726,15 @@ export function BulkEmailDialog({
             sendingLabel="Sending…"
             sendDisabled={confirmDraft !== null}
             footerExtras={
-              <div className="relative inline-flex">
-                <FileText className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg" />
-                <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-court-fg" />
-                <select
-                  value={selectedTemplateId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    if (!id) return;
-                    const t = localTemplates.find((x) => x.id === id);
-                    if (!t) return;
-                    setSelectedTemplateId(id);
-                    onPickLocalTemplate(t);
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !openTemplate;
+                    setOpenTemplate(next);
+                    // Closing the popover also cancels any in-flight job
+                    // pick so re-opening starts back at the template list.
+                    if (!next && pendingJobPick) onCancelJobPick();
                   }}
                   disabled={
                     !localTemplatesLoaded ||
@@ -742,23 +742,89 @@ export function BulkEmailDialog({
                     localTemplates.length === 0
                   }
                   title="Apply a saved template to this bulk email"
-                  className="appearance-none rounded-md border border-court-border bg-court-surface pl-8 pr-7 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
                 >
-                  <option value="">
-                    {!localTemplatesLoaded
-                      ? "Loading templates..."
-                      : localTemplatesError
-                        ? "Couldn't load templates"
-                        : localTemplates.length === 0
-                          ? "No active templates"
-                          : "Select template..."}
-                  </option>
-                  {localTemplates.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
+                  <FileText className="h-3.5 w-3.5" /> Use Template <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {openTemplate && (
+                  <div
+                    role="menu"
+                    className="absolute bottom-full left-0 z-20 mb-1 max-h-80 w-80 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg"
+                  >
+                    {pendingJobPick ? (
+                      <div>
+                        <div className="flex items-center justify-between border-b border-court-border px-3 py-1.5">
+                          <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
+                            {pendingJobPick.template.name} · pick a job
+                          </span>
+                          <button
+                            type="button"
+                            onClick={onCancelJobPick}
+                            disabled={resolvingJob}
+                            className="text-[10px] font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
+                          >
+                            Back
+                          </button>
+                        </div>
+                        {jobsLoading || jobs === null ? (
+                          <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Loading jobs…
+                          </div>
+                        ) : jobs.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-court-fg-muted">
+                            No open jobs found.
+                          </div>
+                        ) : (
+                          jobs.map((j) => (
+                            <button
+                              key={j.key}
+                              type="button"
+                              disabled={resolvingJob}
+                              onClick={() => void onPickJob(j)}
+                              className="block w-full truncate px-3 py-1.5 text-left text-xs text-court-fg transition hover:bg-court-accent-tint/40 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {j.label}
+                            </button>
+                          ))
+                        )}
+                        {resolvingJob && (
+                          <div className="flex items-center gap-2 border-t border-court-border px-3 py-1.5 text-[10px] text-court-fg-muted">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Resolving job fields…
+                          </div>
+                        )}
+                      </div>
+                    ) : !localTemplatesLoaded ? (
+                      <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
+                        <Loader2 className="h-3 w-3 animate-spin" /> Loading templates…
+                      </div>
+                    ) : localTemplatesError ? (
+                      <div className="px-3 py-2 text-xs text-court-fg-muted">{localTemplatesError}.</div>
+                    ) : localTemplates.length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-court-fg-muted">
+                        No templates yet. Create one in Settings &gt; Templates.
+                      </div>
+                    ) : (
+                      localTemplates.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => onPickLocalTemplate(t)}
+                          className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg transition hover:bg-court-accent-tint/40"
+                        >
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="truncate text-xs font-medium">{t.name}</span>
+                            {t.category && (
+                              <span className="shrink-0 text-[10px] uppercase tracking-wider text-court-fg-muted">
+                                {t.category}
+                              </span>
+                            )}
+                          </span>
+                          <span className="truncate text-[10px] text-court-fg-muted">{t.subject}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
             }
           />
@@ -768,65 +834,6 @@ export function BulkEmailDialog({
             </div>
           )}
         </div>
-
-        {pendingJobPick && (
-          <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
-              <h3 className="font-serif text-base font-semibold text-court-fg">
-                Pick a job for &ldquo;{pendingJobPick.template.name}&rdquo;
-              </h3>
-              <p className="mt-1 text-xs text-court-fg-muted">
-                Job context fields (<code>[Job Title]</code>, <code>[Client Company Name]</code>, etc.) will be filled the same way for every recipient at send time.
-              </p>
-              {jobsLoading || jobs === null ? (
-                <div className="mt-3 inline-flex items-center gap-2 text-xs text-court-fg-muted">
-                  <Loader2 className="h-3 w-3 animate-spin" /> Loading jobs…
-                </div>
-              ) : jobs.length === 0 ? (
-                <div className="mt-3 rounded-md border border-dashed border-court-border bg-court-surface-subtle/40 px-3 py-3 text-center text-xs text-court-fg-muted">
-                  No open jobs found for this org.
-                </div>
-              ) : (
-                <select
-                  value={pickedJobKey}
-                  onChange={(e) => setPickedJobKey(e.target.value)}
-                  disabled={resolvingJob}
-                  size={Math.min(6, Math.max(3, jobs.length))}
-                  className="mt-3 w-full rounded-md border border-court-border bg-court-surface px-2 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
-                >
-                  {jobs.map((j) => (
-                    <option key={j.key} value={j.key}>
-                      {j.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={onCancelJobPick}
-                  disabled={resolvingJob}
-                  className="rounded-md px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void onConfirmJobPick()}
-                  disabled={!pickedJobKey || resolvingJob || jobsLoading || jobs === null}
-                  className="inline-flex items-center gap-1 rounded-md bg-brand px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition hover:bg-brand-dark disabled:opacity-60"
-                >
-                  {resolvingJob ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Send className="h-3 w-3" />
-                  )}
-                  Use this job
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
 
         {confirmDraft && (
           <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
