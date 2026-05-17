@@ -1774,7 +1774,7 @@ export default function CandidatesPage() {
                       variant="secondary"
                       onClick={openBulkEmail}
                       disabled={bulkLoading}
-                      className="px-2.5 py-1 text-sm"
+                      className="border-orange-500 bg-orange-500 px-2.5 py-1 text-sm text-white hover:bg-orange-600"
                     >
                       <Mail className="h-3.5 w-3.5" />
                       Email
