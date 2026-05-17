@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -353,37 +353,51 @@ export function BulkEmailDialog({
   async function resolveTemplate(
     template: ActiveTemplateSummary,
   ): Promise<{ subject: string; body: string }> {
-    // eslint-disable-next-line no-console
-    console.log("[bulk] resolveTemplate entered", {
-      name: template?.name,
-      id: template?.id,
-      hasSubject: typeof template?.subject === "string",
-      hasBody: typeof template?.body === "string",
-      keys: template ? Object.keys(template) : null,
-    });
-    // No job tokens → resolve immediately with the raw template; the
-    // composer applies subject/body and the server still does the
+    // Defensive shape guard. Throwing here surfaces in EmailComposer's
+    // onPickTemplate try/catch and toasts a real error instead of
+    // letting the transition spin forever on undefined fields.
+    if (
+      !template ||
+      typeof template.id !== "string" ||
+      typeof template.subject !== "string" ||
+      typeof template.body !== "string"
+    ) {
+      throw new Error("Template is missing required fields.");
+    }
+    // No job tokens means resolve immediately with the raw template;
+    // the composer applies subject/body and the server still does the
     // per-recipient candidate merge at send time.
     if (!templateNeedsJob(template)) {
-      // eslint-disable-next-line no-console
-      console.log("[bulk] non-job template, resolving immediately");
       return { subject: template.subject, body: template.body };
     }
-    // Job tokens present → park the resolver and pop the picker.
+    // Job tokens present means park the resolver and pop the picker.
     // Returning the template literal (tokens unresolved) lets the
     // composer apply it as-is; jobMergeValues set during the pick is
-    // what bulkSendEmail uses to fill tokens server-side per
-    // recipient. If the recruiter cancels, jobMergeValues stays null
-    // and the send-time guard catches it.
-    // eslint-disable-next-line no-console
-    console.log("[bulk] job template detected, parking promise");
+    // what bulkSendEmail uses to fill tokens server-side per recipient.
+    // If the recruiter cancels, jobMergeValues stays null and the
+    // send-time guard catches it.
     await new Promise<void>((resolveOuter) => {
       setPendingJobPick({ template, resolve: resolveOuter });
     });
-    // eslint-disable-next-line no-console
-    console.log("[bulk] parked promise resolved, returning template literal");
     return { subject: template.subject, body: template.body };
   }
+
+  // Unmount safety. The EmailComposer parks a Promise inside
+  // resolveTemplate; if BulkEmailDialog unmounts mid-pick (recruiter
+  // hits the close X or escapes out), the parked resolver would be
+  // garbage-collected without firing, leaving the awaiting transition
+  // permanently pending. Mirror pendingJobPick into a ref so the
+  // unmount cleanup can call .resolve() directly without depending on
+  // stale state.
+  const pendingJobPickRef = useRef<typeof pendingJobPick>(null);
+  useEffect(() => {
+    pendingJobPickRef.current = pendingJobPick;
+  }, [pendingJobPick]);
+  useEffect(() => {
+    return () => {
+      pendingJobPickRef.current?.resolve();
+    };
+  }, []);
 
   // Always-unblock pattern: the parked Promise inside resolveTemplate
   // MUST resolve on every exit from this handler, otherwise the

@@ -350,29 +350,28 @@ export function EmailComposer({
   }, [showTemplatePicker, templatesLoaded, templateFilter]);
 
   function onPickTemplate(tpl: ActiveTemplateSummary) {
-    // eslint-disable-next-line no-console
-    console.log("[composer] onPickTemplate clicked", {
-      name: tpl?.name,
-      id: tpl?.id,
-      hasSubject: typeof tpl?.subject === "string",
-      hasBody: typeof tpl?.body === "string",
-      keys: tpl ? Object.keys(tpl) : null,
-      tplIsNull: tpl == null,
-    });
+    // Defensive shape guard. A malformed template object (missing
+    // id / subject / body) would either spin the transition forever
+    // or throw a TypeError deep inside resolveTemplate that's hard
+    // to attribute. Toast and bail cleanly so the recruiter sees
+    // what's wrong instead of an infinite Use Template spinner.
+    if (
+      !tpl ||
+      typeof tpl.id !== "string" ||
+      typeof tpl.subject !== "string" ||
+      typeof tpl.body !== "string"
+    ) {
+      toast.error("Couldn't apply template", {
+        description: "Template data is incomplete.",
+      });
+      setTemplateOpen(false);
+      return;
+    }
     setTemplateOpen(false);
     setErr(null);
     startApply(async () => {
-      // eslint-disable-next-line no-console
-      console.log("[composer] startApply entered", { tplName: tpl?.name });
       try {
         const resolved = resolveTemplate ? await resolveTemplate(tpl) : { subject: tpl.subject, body: tpl.body };
-        // eslint-disable-next-line no-console
-        console.log("[composer] resolveTemplate returned", {
-          isNull: resolved == null,
-          keys: resolved ? Object.keys(resolved) : null,
-          subjectType: typeof resolved?.subject,
-          bodyType: typeof resolved?.body,
-        });
         if (!subject.trim() || confirmReplace(subject, resolved.subject)) setSubject(resolved.subject);
         // Templates come in as marker-flavored text; for rich text mode we run
         // them through the caller-supplied HTML converter so the editor can
