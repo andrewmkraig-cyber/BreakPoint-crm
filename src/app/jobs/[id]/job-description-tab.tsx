@@ -43,6 +43,13 @@ const JD_PILL_SECONDARY_CLASS = cn(
   JD_PILL_BASE_CLASS,
   "border border-court-border bg-court-surface text-court-fg hover:border-court-brand/40",
 );
+// Copy button on the Generated JD card is intentionally one notch
+// smaller per spec #4 — h-8 / text-[12px] reads as a quieter
+// secondary action next to the inline Edit / Save controls.
+const JD_PILL_COPY_CLASS = cn(
+  "h-8 rounded-full px-3 text-[12px] font-semibold",
+  "border border-court-border bg-court-surface text-court-fg hover:border-court-brand/40",
+);
 
 // Job Description tab — single card showing the polished JD with
 // Copy / Regenerate / Edit affordances. Source URL parsing now lives on
@@ -413,7 +420,7 @@ function GeneratedJdCard({
               size="sm"
               onClick={onCopy}
               disabled={!hasDescription}
-              className={JD_PILL_SECONDARY_CLASS}
+              className={JD_PILL_COPY_CLASS}
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? "Copied" : "Copy JD"}
