@@ -7,8 +7,6 @@ import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX, X } from "lucid
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
-import { TabStrip } from "@/components/ui/tab-strip";
 import {
   keepCandidateForJob,
   keepLocalCandidateForJob,
@@ -26,14 +24,9 @@ import { setCandidateNavList } from "@/lib/candidate-nav";
 export type AppliedRow = {
   candidateId: number | string;
   candidateName: string;
-  // Phase 2: jobId can be either a legacy numeric RF id or a cuid for
-  // Ace-native Jobs. The job detail route accepts both (see
-  // getJobByIdentifier) so the JobCell href works for either shape.
   jobId: number | string;
   jobTitle: string;
   jobLocation: string;
-  // clientRfId is null for Ace-native Clients; the applicants table
-  // only uses it for informational grouping, so keep nullability here.
   clientRfId: number | null;
   clientName: string;
   appliedAt: string | null;
@@ -51,19 +44,15 @@ export type KeptRow = {
   keptAt: string;
 };
 
-// Render the source token coming back from Placement.source / RF
-// source_name into a human label for the table cell. Add new mappings
-// here as we stamp new sources from elsewhere in the app.
 function formatSourceLabel(raw: string | null): string {
   if (!raw) return "—";
   if (raw === "recruiter_applied") return "Recruiter Applied";
   return raw;
 }
 
-// Stack the job title + location on one line and the client beneath,
-// matching how the Candidate Profile job cards render. Avoid the prior
-// "(untitled job)" sentinel — the resolver upstream now falls through
-// to a real "Untitled role" label or the override.
+// Spec rule 2: applied role text-[12px] font-medium hover:text-court-brand-dark.
+// Source + date go in a mono 11px muted line on the row, so JobCell now
+// only renders the title + location + client name (no metadata).
 function JobCell({
   jobId,
   jobTitle,
@@ -78,11 +67,37 @@ function JobCell({
   const headLine = jobLocation ? `${jobTitle} - ${jobLocation}` : jobTitle;
   return (
     <div>
-      <Link href={`/jobs/${jobId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
+      <Link
+        href={`/jobs/${jobId}`}
+        className="text-[12px] font-medium text-court-fg hover:text-court-brand-dark"
+      >
         {headLine}
       </Link>
-      {clientName && <div className="text-xs text-court-fg-muted">{clientName}</div>}
+      {clientName && (
+        <div className="text-[11px] text-court-fg-muted">{clientName}</div>
+      )}
     </div>
+  );
+}
+
+// Spec rule 3 — status pills.
+function StatusChip({ status }: { status: "new" | "reviewed" | "rejected" }) {
+  const label = status === "new" ? "New" : status === "reviewed" ? "Kept" : "Rejected";
+  const cls =
+    status === "new"
+      ? "bg-court-accent-tint text-court-brand-dark"
+      : status === "reviewed"
+        ? "bg-court-surface-subtle text-court-fg-muted"
+        : "bg-red-50 text-red-500";
+  return (
+    <span
+      className={cn(
+        "inline-flex h-7 items-center rounded-full px-3 text-[11px] font-semibold",
+        cls,
+      )}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -95,9 +110,6 @@ function rowKey(r: { candidateId: number | string; jobId: number | string }): st
   return `${r.candidateId}-${r.jobId}`;
 }
 
-// Single source of truth for dispatching a per-row reject — used by
-// both the row-level Reject button (Applied tab) and the bulk handler.
-// Returns the action result so callers can tally ok/fail counts.
 async function rejectOneApplicant(
   r: { candidateId: number | string; jobId: number | string; clientRfId: number | null },
   previousStage: "applied" | "kept",
@@ -144,9 +156,6 @@ export function ApplicantsView({
   );
   const sortedKept = useMemo(() => sortKept(kept, sortKey, sortDir), [kept, sortKey, sortDir]);
 
-  // Bulk selection — keyed by `${candidateId}-${jobId}` (same key as
-  // the table row). Selection clears on tab switch so a stale set
-  // can't bulk-reject rows the recruiter can no longer see.
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
   const [bulkRejectOpen, setBulkRejectOpen] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
@@ -185,10 +194,6 @@ export function ApplicantsView({
   }
 
   async function onBulkRejectConfirm({ sendRejectionEmail: _sendRejectionEmail }: { sendRejectionEmail: boolean }) {
-    // Applicant-tab reject actions don't yet support a send-email
-    // toggle (only the placement-id-keyed pipeline reject does), so
-    // the dialog's checkbox is informational here. Underscored param
-    // documents the intentional drop.
     void _sendRejectionEmail;
     const keys = new Set(selectedKeys);
     if (keys.size === 0) return;
@@ -229,10 +234,6 @@ export function ApplicantsView({
     router.refresh();
   }
 
-  // Stash the active tab's row ids (in current sort order) so the
-  // candidate profile's Prev/Next nav can walk them. Re-runs when the
-  // tab flips or the sort changes — the nav follows whichever slice
-  // the recruiter is actually staring at.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const visible = tab === "applied" ? sortedApplied : sortedKept;
@@ -252,90 +253,122 @@ export function ApplicantsView({
     }
   }
 
-  const colSpan = tab === "applied" ? 6 : 5;
+  // Spec rule 5: large serif count + "applicants" muted; zero count
+  // dims to text-court-border opacity-50 per rule 6.
+  const visibleCount = visibleRows.length;
+  const colSpan = tab === "applied" ? 7 : 6;
 
   return (
-    <div className="space-y-4">
-      <TabStrip<Tab>
-        ariaLabel="Applicant scope"
-        activeId={tab}
-        onChange={setTab}
-        items={[
-          { id: "applied", label: "Applied", count: applied.length },
-          { id: "kept", label: "Kept", count: kept.length },
-        ]}
-      />
-
-      {selectedKeys.size > 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-court-accent/40 bg-court-accent-tint px-4 py-2 text-sm shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="font-semibold text-court-fg">
-              {selectedKeys.size} selected
-            </span>
-            <button
-              type="button"
-              onClick={() => setSelectedKeys(new Set())}
-              className="inline-flex items-center gap-1 text-xs text-court-fg-muted transition hover:text-court-fg"
+    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div className="flex items-baseline gap-2">
+            <span
+              className={cn(
+                "font-serif text-[22px] font-extrabold leading-none tabular-nums",
+                visibleCount === 0 ? "text-court-border opacity-50" : "text-court-fg",
+              )}
             >
-              <X className="h-3 w-3" /> Clear
-            </button>
+              {visibleCount}
+            </span>
+            <span className="text-[13px] text-court-fg-muted">
+              {visibleCount === 1 ? "applicant" : "applicants"}
+            </span>
           </div>
-          <div className="flex items-center gap-2">
+          <FilterChips
+            tab={tab}
+            onTab={setTab}
+            counts={{ applied: applied.length, kept: kept.length }}
+          />
+        </div>
+
+        {selectedKeys.size > 0 && (
+          <div className="flex items-center justify-between rounded-2xl border-0 bg-court-accent-tint px-4 py-2.5 text-sm shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="font-semibold text-court-brand-dark">
+                {selectedKeys.size} selected
+              </span>
+              <button
+                type="button"
+                onClick={() => setSelectedKeys(new Set())}
+                className="inline-flex items-center gap-1 text-[12px] text-court-fg-muted transition hover:text-court-fg"
+              >
+                <X className="h-3 w-3" /> Clear
+              </button>
+            </div>
             <Button
               type="button"
               variant="reject"
               size="sm"
               onClick={() => setBulkRejectOpen(true)}
               disabled={bulkBusy}
-              className="h-7 px-3 text-[11px]"
+              className="h-8 rounded-full px-4 text-[12px]"
             >
               {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <UserX className="h-3 w-3" />}
               Reject {selectedKeys.size}
             </Button>
           </div>
-        </div>
-      )}
+        )}
 
-      <div className="overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-left text-sm">
-            <DataTableHead>
-              <tr>
-                <DataTableHeaderCell align="center">
-                  <input
-                    ref={headerCheckboxRef}
-                    type="checkbox"
-                    aria-label="Select all rows on this tab"
-                    checked={allSelected}
-                    disabled={visibleKeys.length === 0}
-                    onChange={toggleAll}
-                    className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
+        <div className="overflow-hidden rounded-2xl border-0 bg-court-surface shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[960px] text-left text-sm">
+              <thead className="bg-court-surface-subtle">
+                <tr>
+                  <th scope="col" className="w-px px-3 py-3 text-center">
+                    <input
+                      ref={headerCheckboxRef}
+                      type="checkbox"
+                      aria-label="Select all rows on this tab"
+                      checked={allSelected}
+                      disabled={visibleKeys.length === 0}
+                      onChange={toggleAll}
+                      className="h-3.5 w-3.5 cursor-pointer accent-brand disabled:cursor-not-allowed disabled:opacity-40"
+                    />
+                  </th>
+                  <ColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
+                  <ColHeader label="Applied Role" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
+                  <ColHeader
+                    label={tab === "applied" ? "Applied" : "Kept Since"}
+                    active={sortKey === "when"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("when")}
                   />
-                </DataTableHeaderCell>
-                <ColHeader label="Candidate" active={sortKey === "name"} dir={sortDir} onClick={() => toggleSort("name")} />
-                <ColHeader label="Job" active={sortKey === "job"} dir={sortDir} onClick={() => toggleSort("job")} />
-                <ColHeader
-                  label={tab === "applied" ? "Date Applied" : "Kept Since"}
-                  active={sortKey === "when"}
-                  dir={sortDir}
-                  onClick={() => toggleSort("when")}
-                  align="center"
-                />
-                {tab === "applied" && (
-                  <ColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} align="center" />
-                )}
-                <DataTableHeaderCell align="right">Actions</DataTableHeaderCell>
-              </tr>
-            </DataTableHead>
-            <tbody className="divide-y divide-court-border-soft">
-              {tab === "applied" ? (
-                sortedApplied.length === 0 ? (
-                  <EmptyRow label="No applicants in this view." colSpan={colSpan} />
+                  {tab === "applied" && (
+                    <ColHeader label="Source" active={sortKey === "source"} dir={sortDir} onClick={() => toggleSort("source")} />
+                  )}
+                  <th scope="col" className="px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+                    Status
+                  </th>
+                  <th scope="col" className="px-5 py-3 text-right text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-court-border-soft">
+                {tab === "applied" ? (
+                  sortedApplied.length === 0 ? (
+                    <EmptyRow label="No applicants in this view." colSpan={colSpan} />
+                  ) : (
+                    sortedApplied.map((r) => {
+                      const key = rowKey(r);
+                      return (
+                        <AppliedRowView
+                          key={key}
+                          row={r}
+                          selected={selectedKeys.has(key)}
+                          onToggle={() => toggleRow(key)}
+                        />
+                      );
+                    })
+                  )
+                ) : sortedKept.length === 0 ? (
+                  <EmptyRow label="No kept candidates yet." colSpan={colSpan} />
                 ) : (
-                  sortedApplied.map((r) => {
+                  sortedKept.map((r) => {
                     const key = rowKey(r);
                     return (
-                      <AppliedRowView
+                      <KeptRowView
                         key={key}
                         row={r}
                         selected={selectedKeys.has(key)}
@@ -343,35 +376,74 @@ export function ApplicantsView({
                       />
                     );
                   })
-                )
-              ) : sortedKept.length === 0 ? (
-                <EmptyRow label="No kept candidates yet." colSpan={colSpan} />
-              ) : (
-                sortedKept.map((r) => {
-                  const key = rowKey(r);
-                  return (
-                    <KeptRowView
-                      key={key}
-                      row={r}
-                      selected={selectedKeys.has(key)}
-                      onToggle={() => toggleRow(key)}
-                    />
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+        {bulkRejectOpen && (
+          <RejectCandidateDialog
+            candidateName={`${selectedKeys.size} candidate${selectedKeys.size === 1 ? "" : "s"}`}
+            onClose={() => {
+              if (!bulkBusy) setBulkRejectOpen(false);
+            }}
+            onConfirm={onBulkRejectConfirm}
+          />
+        )}
       </div>
-      {bulkRejectOpen && (
-        <RejectCandidateDialog
-          candidateName={`${selectedKeys.size} candidate${selectedKeys.size === 1 ? "" : "s"}`}
-          onClose={() => {
-            if (!bulkBusy) setBulkRejectOpen(false);
-          }}
-          onConfirm={onBulkRejectConfirm}
-        />
-      )}
+    </div>
+  );
+}
+
+// Spec rule 5 — Applied / Kept rendered as h-8 rounded-full pill
+// filter chips with an accent-tint active state.
+function FilterChips({
+  tab,
+  onTab,
+  counts,
+}: {
+  tab: Tab;
+  onTab: (next: Tab) => void;
+  counts: { applied: number; kept: number };
+}) {
+  const items: ReadonlyArray<{ id: Tab; label: string; count: number }> = [
+    { id: "applied", label: "Applied", count: counts.applied },
+    { id: "kept", label: "Kept", count: counts.kept },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Applicant scope"
+      className="inline-flex items-center gap-1.5"
+    >
+      {items.map((item) => {
+        const active = tab === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => onTab(item.id)}
+            className={cn(
+              "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] font-semibold transition",
+              active
+                ? "bg-court-accent-tint text-court-brand-dark"
+                : "bg-court-surface-subtle text-court-fg-muted hover:text-court-fg",
+            )}
+          >
+            {item.label}
+            <span
+              className={cn(
+                "tabular-nums",
+                active ? "text-court-brand-dark/70" : "text-court-fg-muted/70",
+              )}
+            >
+              {item.count}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -379,7 +451,7 @@ export function ApplicantsView({
 function EmptyRow({ label, colSpan }: { label: string; colSpan: number }) {
   return (
     <tr>
-      <td colSpan={colSpan} className="px-5 py-12 text-center text-sm text-court-fg-muted">
+      <td colSpan={colSpan} className="py-12 text-center text-[13px] text-court-fg-muted">
         {label}
       </td>
     </tr>
@@ -391,30 +463,35 @@ function ColHeader({
   active,
   dir,
   onClick,
-  align = "left",
 }: {
   label: string;
   active: boolean;
   dir: SortDir;
   onClick: () => void;
-  align?: "left" | "center" | "right";
 }) {
   return (
-    <DataTableHeaderCell align={align}>
+    <th scope="col" className="px-5 py-3">
       <button
         type="button"
         onClick={onClick}
         className={cn(
-          "inline-flex items-center gap-1 uppercase tracking-wide",
+          "inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.18em]",
           active ? "text-court-fg" : "text-court-fg-muted hover:text-court-fg",
         )}
       >
         {label}
         {active && (dir === "asc" ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />)}
       </button>
-    </DataTableHeaderCell>
+    </th>
   );
 }
+
+// Spec rule 4: action buttons rounded-full h-8 text-[12px] font-semibold
+// routed through button.tsx. The Submit Link mirrors the same shape so
+// the row reads as one button family.
+const ACTION_SHAPE = "h-8 rounded-full px-3 text-[12px]";
+const LINK_BUTTON_PRIMARY =
+  "inline-flex h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-full border border-court-brand bg-court-brand-tint px-3 text-[12px] font-semibold text-court-brand-dark shadow-sm transition hover:bg-court-brand/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-court-accent/50";
 
 function AppliedRowView({
   row,
@@ -441,8 +518,8 @@ function AppliedRowView({
   }
 
   return (
-    <tr className="transition hover:bg-court-accent-tint/40">
-      <td className="w-px px-3 py-3 align-top text-center">
+    <tr className="transition hover:bg-court-surface-subtle/60">
+      <td className="w-px px-3 py-3 align-middle text-center">
         <input
           type="checkbox"
           aria-label={`Select ${row.candidateName}`}
@@ -451,12 +528,15 @@ function AppliedRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-5 py-3 align-top">
-        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
+      <td className="px-5 py-3 align-middle">
+        <Link
+          href={`/candidates/${row.candidateId}`}
+          className="text-[13px] font-semibold text-court-fg hover:text-court-brand-dark"
+        >
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-5 py-3 align-middle">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -464,35 +544,32 @@ function AppliedRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
-      <td className="px-5 py-3 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-5 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
+        {formatDate(row.appliedAt)}
+      </td>
+      <td className="px-5 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
+        {formatSourceLabel(row.source)}
+      </td>
+      <td className="px-5 py-3 align-middle">
+        <StatusChip status="new" />
+      </td>
+      <td className="px-5 py-3 align-middle">
         <div className="flex flex-nowrap items-center justify-end gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
-          {/* Submit / Keep / Reject share the row-action chip style
-              (rounded-md, tinted bg with proper dark variants, label
-              hidden below sm so the three buttons never wrap into an
-              ugly stack on narrow viewports). Submit is a Link because
-              it deep-links to the candidate profile's submittal
-              composer; the actual stage move to "submitted" happens
-              when the recruiter hits Send in the composer. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className={ROW_ACTION_CLASS.primary}
+            className={LINK_BUTTON_PRIMARY}
             title="Submit candidate"
           >
             <Send className="h-3 w-3" />
             <span className="hidden sm:inline">Submit</span>
           </Link>
-          {/* Phase 4b: Keep / Reject fire inline regardless of job
-              identity shape. The server actions accept either a numeric
-              jobRfId (RF-imported) or a cuid jobId (Ace-native); clients
-              pick the right field here. */}
-          <RowActionButton
-            tone="keep"
-            label="Keep"
-            icon={<Bookmark className="h-3 w-3" />}
+          <Button
+            type="button"
+            variant="keep"
+            size="sm"
             disabled={isPending}
+            className={ACTION_SHAPE}
             onClick={() => {
               const isAceJob = typeof row.jobId === "string";
               const jobRfId = isAceJob ? null : (row.jobId as number);
@@ -516,14 +593,21 @@ function AppliedRowView({
                 "Kept",
               );
             }}
-          />
-          <RowActionButton
-            tone="reject"
-            label="Reject"
-            icon={<UserX className="h-3 w-3" />}
+          >
+            <Bookmark className="h-3 w-3" />
+            <span className="hidden sm:inline">Keep</span>
+          </Button>
+          <Button
+            type="button"
+            variant="reject"
+            size="sm"
             disabled={isPending}
+            className={ACTION_SHAPE}
             onClick={() => runAction(() => rejectOneApplicant(row, "applied"), "Rejected")}
-          />
+          >
+            <UserX className="h-3 w-3" />
+            <span className="hidden sm:inline">Reject</span>
+          </Button>
         </div>
       </td>
     </tr>
@@ -555,8 +639,8 @@ function KeptRowView({
   }
 
   return (
-    <tr className="transition hover:bg-court-accent-tint/40">
-      <td className="w-px px-3 py-3 align-top text-center">
+    <tr className="transition hover:bg-court-surface-subtle/60">
+      <td className="w-px px-3 py-3 align-middle text-center">
         <input
           type="checkbox"
           aria-label={`Select ${row.candidateName}`}
@@ -565,12 +649,15 @@ function KeptRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-5 py-3 align-top">
-        <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
+      <td className="px-5 py-3 align-middle">
+        <Link
+          href={`/candidates/${row.candidateId}`}
+          className="text-[13px] font-semibold text-court-fg hover:text-court-brand-dark"
+        >
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-5 py-3 align-middle">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -578,28 +665,29 @@ function KeptRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-5 py-3 align-middle font-mono text-[11px] text-court-fg-muted">
+        {formatDate(row.keptAt)}
+      </td>
+      <td className="px-5 py-3 align-middle">
+        <StatusChip status="reviewed" />
+      </td>
+      <td className="px-5 py-3 align-middle">
         <div className="flex flex-nowrap items-center justify-end gap-1.5">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
-          {/* Submit / Remove share the row-action chip style — same
-              tinted rounded-md treatment as the Applied tab so the two
-              tabs read as a matched pair. Submit deep-links to the
-              candidate profile's submittal composer; the placement
-              transitions to "submitted" when the recruiter hits Send. */}
           <Link
             href={`/candidates/${row.candidateId}?compose=submittal&jobId=${row.jobId}`}
-            className={ROW_ACTION_CLASS.primary}
+            className={LINK_BUTTON_PRIMARY}
             title="Submit candidate"
           >
             <Send className="h-3 w-3" />
             <span className="hidden sm:inline">Submit</span>
           </Link>
-          <RowActionButton
-            tone="reject"
-            label="Remove"
-            icon={<UserX className="h-3 w-3" />}
+          <Button
+            type="button"
+            variant="reject"
+            size="sm"
             disabled={isPending}
+            className={ACTION_SHAPE}
             onClick={() => {
               const isAceJob = typeof row.jobId === "string";
               const jobRfId = isAceJob ? null : (row.jobId as number);
@@ -620,65 +708,13 @@ function KeptRowView({
                 "Removed",
               );
             }}
-          />
+          >
+            <UserX className="h-3 w-3" />
+            <span className="hidden sm:inline">Remove</span>
+          </Button>
         </div>
       </td>
     </tr>
-  );
-}
-
-// Shared row-action chip styles. All three tones (primary/keep/reject)
-// share the same shape, padding, and font so Submit/Keep/Reject read
-// as one button family. Each tone carries its own light + dark
-// palette — the dark variants drop the saturated bg-X-50 tiles down
-// to bg-X-950/40 so they don't pop on a dark page. Submit uses court-
-// brand tokens because primary action color follows whichever Court
-// Mode is active.
-const ROW_ACTION_BASE =
-  "inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2.5 text-[11px] font-semibold shadow-sm transition disabled:opacity-60";
-
-// Token-aligned twins of Button "primary" / "keep" / "reject" variants
-// so the row-action chips read identically to the shared <Button>
-// primitive without forcing every row into the larger <Button> sizing.
-const ROW_ACTION_CLASS = {
-  primary: cn(
-    ROW_ACTION_BASE,
-    "border-court-brand bg-court-brand-tint text-court-brand-dark hover:bg-court-brand/25",
-  ),
-  keep: cn(
-    ROW_ACTION_BASE,
-    "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-200 dark:hover:bg-blue-950/60",
-  ),
-  reject: cn(
-    ROW_ACTION_BASE,
-    "border-red-200 bg-red-50 text-red-600 hover:bg-red-100 dark:border-red-900 dark:bg-red-950/40 dark:text-red-200 dark:hover:bg-red-950/60",
-  ),
-};
-
-function RowActionButton({
-  tone,
-  label,
-  icon,
-  onClick,
-  disabled,
-}: {
-  tone: "primary" | "keep" | "reject";
-  label: string;
-  icon: React.ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={label}
-      className={ROW_ACTION_CLASS[tone]}
-    >
-      {icon}
-      <span className="hidden sm:inline">{label}</span>
-    </button>
   );
 }
 
