@@ -337,55 +337,43 @@ export function EmailComposer({
     });
   }
 
+  // Load templates once when the picker is first opened. Intentionally
+  // omits templateFilter from deps: an inline filter prop is recreated
+  // every render, which would cancel + restart this effect on every
+  // re-render and leave the dropdown stuck on "Loading…". The filter
+  // is applied at render time via visibleTemplates below.
   useEffect(() => {
-    console.log("[composer:templates] effect fired", {
-      showTemplatePicker,
-      templatesLoaded,
-      hasFilter: typeof templateFilter === "function",
-    });
-    if (!showTemplatePicker || templatesLoaded) {
-      console.log("[composer:templates] effect skipped — picker off or already loaded");
-      return;
-    }
+    if (!showTemplatePicker || templatesLoaded) return;
     let cancelled = false;
-    const startedAt = Date.now();
-    console.log("[composer:templates] calling listActiveTemplates()");
-    // 5s timeout so a hung server action stops the spinner instead
-    // of looking like the dropdown is permanently loading.
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
-      console.error("[composer:templates] timed out after 5s", { ms: Date.now() - startedAt });
       setTemplatesError("Couldn't load templates");
       setTemplatesLoaded(true);
     }, 5000);
     listActiveTemplates()
       .then((list) => {
-        console.log("[composer:templates] resolved", {
-          ms: Date.now() - startedAt,
-          count: Array.isArray(list) ? list.length : "(not an array)",
-          cancelled,
-        });
         if (cancelled) return;
         clearTimeout(timeoutId);
-        const filtered = templateFilter ? list.filter(templateFilter) : list;
-        console.log("[composer:templates] post-filter count", filtered.length);
-        setTemplates(filtered);
+        setTemplates(list);
         setTemplatesError(null);
         setTemplatesLoaded(true);
       })
-      .catch((err) => {
-        console.error("[composer:templates] failed", { ms: Date.now() - startedAt, err });
+      .catch(() => {
         if (cancelled) return;
         clearTimeout(timeoutId);
         setTemplatesError("Couldn't load templates");
         setTemplatesLoaded(true);
       });
     return () => {
-      console.log("[composer:templates] cleanup running", { ms: Date.now() - startedAt });
       cancelled = true;
       clearTimeout(timeoutId);
     };
-  }, [showTemplatePicker, templatesLoaded, templateFilter]);
+  }, [showTemplatePicker, templatesLoaded]);
+
+  const visibleTemplates = useMemo(
+    () => (templateFilter ? templates.filter(templateFilter) : templates),
+    [templates, templateFilter],
+  );
 
   function onPickTemplate(tpl: ActiveTemplateSummary) {
     // Defensive shape guard. A malformed template object (missing
@@ -790,10 +778,10 @@ export function EmailComposer({
                         {templatesLoaded && templatesError && (
                           <li className="px-3 py-2 text-xs text-court-fg-muted">{templatesError}.</li>
                         )}
-                        {templatesLoaded && !templatesError && templates.length === 0 && (
+                        {templatesLoaded && !templatesError && visibleTemplates.length === 0 && (
                           <li className="px-3 py-2 text-xs text-court-fg-muted">No active templates.</li>
                         )}
-                        {templates.map((t) => (
+                        {visibleTemplates.map((t) => (
                           <li key={t.id}>
                             <button
                               type="button"
