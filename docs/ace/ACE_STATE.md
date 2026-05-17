@@ -1,10 +1,54 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 52.0
+Last updated: 2026-05-17 · Ace 53.0
 
 ## Current Status
-Current Version: Ace 52.0
+Current Version: Ace 53.0
 Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 53.0 (2026-05-17)
+
+Settings surfaces unified on the new card + row spec (closes the
+"all settings" entry in the queued Ace 52 redesign prompts 11-17).
+
+### Settings visual redesign (`ebd23c3`)
+Every settings page now renders against the same chrome:
+
+- **Page bg** — `bg-court-surface-subtle` wraps the layout so the
+  white section cards pop.
+- **Sidebar nav** — wrapped in a `rounded-2xl bg-court-surface
+  shadow-sm p-3` card. Active items: `bg-court-accent-tint
+  text-court-brand-dark font-semibold` in `h-9 rounded-lg` pills;
+  inactive: `text-court-fg-muted hover:bg-court-surface-subtle`.
+- **Section cards** — `CollapsibleSection` default + bd variants
+  collapsed into one chrome: `rounded-2xl border-0 bg-court-surface
+  shadow-sm p-6 mb-4` with `10px tracking-[0.18em]
+  text-court-brand-dark` eyebrow above an `18px font-bold
+  font-serif` title and `12px text-court-fg-muted` description.
+- **Eyebrows** — each page passes a category eyebrow (Display,
+  Alerts, AI Rules, Identity, Email, Automation, Integrations).
+- **Row pattern** — Notifications, Triggers, Personal Trainer,
+  Connectors, and Templates lists render as `divide-y
+  divide-court-border-soft`, `py-3.5` rows with `13px font-medium`
+  labels and `11px text-court-fg-muted` helper text.
+- **Inputs** — `h-10 rounded-xl border-court-border` with
+  `focus:ring-2 focus:ring-court-accent/10`. Branding, Templates,
+  Triggers, Personal Trainer, Mercury all converged on this.
+- **Primary buttons** — `h-9 rounded-full bg-court-accent text-white
+  text-[12.5px] font-semibold`. Secondary: same shape, surface bg,
+  `border-court-border hover:border-court-accent/40`.
+- **Action buttons** in rows — `h-8 rounded-full` (templates edit /
+  trash, personal-trainer rule actions).
+- **Connected status chip** — `rounded-full bg-court-accent-tint
+  text-court-brand-dark text-[10px] font-semibold px-3 h-6` for
+  every connector that reports `Connected` (Gmail, Teams, Mercury,
+  Gmail Push). Disconnect / degraded keep their existing semantic
+  colors.
+
+Per rule 12, every value lands on a Court Mode token — no hex
+literals. Templates ditched the bordered card layout for a row;
+body preview moved out of the list (still in the modal editor) so
+the per-row info density matches the rest of the settings surface.
 
 ## What Shipped in Ace 52.0 (2026-05-17)
 
