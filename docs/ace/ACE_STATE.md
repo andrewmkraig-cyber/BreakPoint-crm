@@ -1,10 +1,62 @@
 # ACE_STATE.md
-Last updated: 2026-05-16 · Ace 50.0
+Last updated: 2026-05-17 · Ace 51.0
 
 ## Current Status
-Current Version: Ace 50.0
-Last Shipped: 2026-05-16
+Current Version: Ace 51.0
+Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 51.0 (2026-05-17)
+
+Big-haul session. Resume storage moved off Postgres bytes to Vercel Blob; bulk email landed end-to-end on the candidate search surface and the per-job Matches tab; Gmail push notifications are live (no more polling-tab dependency); Microsoft Teams OAuth + Teams meetings as an interview option; Triggers UI for per-trigger template + approve-before-send; Find Matches now reads explicit searchKeywords off the job; candidate search rows + resume viewer got a keyword highlighting + snippet polish pass.
+
+### Vercel Blob migration — resume bytes off Postgres
+- **Schema + write paths (`ec6fc03`, `7040d1e`).** `CandidateResume.blobUrl` + `redactedBlobUrl` columns added. Upload, brand-resume, and generate-resume write paths now `put()` to Vercel Blob and persist the URL; the legacy inline `data` / `redactedData` columns stay nullable for the duration of the migration. Delete cleans up the Blob before dropping the DB row so we don't leak orphan objects.
+- **Read paths + private-access fix (`657589e`, `0ed462f`).** New `getResumeBytes(url)` helper in `src/lib/resume-blob.ts` resolves blobUrl-first with a Postgres-bytes fallback; every read path (PDF viewer, redacted variant, submittal attachment, AI Workspace ingestion) routes through it. Private Blob reads need `get(url, { access: "private" })` — the by-id route was failing on the public default. `55a9471` fixes the by-id route to serve the redacted variant off `redactedBlobUrl` when the request asks for it.
+- **Backfill script (`a5e171c`).** `scripts/migrate-resumes-to-blob.ts` walks every `CandidateResume` row, uploads the existing bytes to Blob, sets `blobUrl` (+ `redactedBlobUrl` if redacted bytes exist), and nulls the inline columns. Idempotent; safe to re-run.
+
+### Bulk email to candidates — search surface + Matches tab
+- **Search-surface dialog (`1074402`).** New `BulkEmailDialog` in `src/app/candidates/bulk-dialogs.tsx`. Multi-select on `/candidates`, click Email → modal wraps `EmailComposer`. Recipients resolved server-side from each candidate's email-on-file via `bulkSendEmail`. Per-recipient merge field resolution (Candidate First Name, Last Name, Current Title, Current Company). ActivityLog row per successful send.
+- **Hidden To/Cc/Bcc + > 25 confirm gate (`21d09b2`).** Composer hides recipient inputs (`hideRecipientFields`) so the recruiter can't accidentally type the wrong address. Sends > 25 trigger an explicit "Are you sure?" overlay.
+- **Generate/Edit with Claude + view recipients + job picker (`04de163`, `df3c6fd`, `07d173e`).** AI prompt panel above the composer drives Generate. Recipients panel toggle shows the resolved list with "no email on file" warnings. Templates that reference `[Job Title]` / `[Client Company Name]` etc. open a job picker; the picker uses the same two-step flow the individual composer uses. Earlier hang where the picker spun indefinitely was a missing resolve on the error path — fixed.
+- **Bulk email from per-job Matches tab (`993f7b9`).** Same dialog wired into `/jobs/[id]?tab=matches` so the recruiter can bulk-email a vetted match set without leaving the job.
+- **Template picker rebuilt to match individual composer (`a3136d9`, `7696634`, `384b60c`).** Imperative `applyDraftRef` on EmailComposer replaced with declarative `externalDraft` prop (the ref silently no-opped when `.current` was unset). The footerExtras select went through several iterations and is now an anchored button + popover matching `mail-composer.tsx`'s pattern; job picker swaps the popover content inline instead of a separate modal. `applyTemplateDraft` pre-resolves job tokens via `applyMergeFields` so the composer shows the real role name, not `[Job Title]` placeholder. `subtitle="To: N selected candidates"` shows the recipient count under the title.
+- **Status:** template picker rewrite is on `main` at `384b60c`. Pending Andrew's browser verification.
+
+### Gmail push notifications — webhook + watch + auto-renew
+- **Push receiver + watch registration (`0bbb172`).** `/api/webhooks/gmail` accepts Pub/Sub push messages, decodes the base64 envelope, resolves the userId from `emailAddress`, runs a history-id delta against the stored `Account.gmailHistoryId`, and fires `sendPushToUser` per new thread. `users.watch` registration + Pub/Sub topic wiring lives behind a Settings ▸ Notifications toggle. Auto-renew cron at `/api/cron/gmail-watch-renew` re-arms before the 7-day expiration window so push doesn't silently die.
+- **Service-worker badge refresh (`01884fb`).** Push handler in `public/sw.js` posts to all visible clients via `client.postMessage({ type: "GMAIL_PUSH" })`; mail context listens and bumps the unread query immediately instead of waiting on the 30s poll. Closes the Ace 50 known issue.
+
+### Microsoft Teams OAuth + meeting type selector
+- **Microsoft OAuth + connector card (`b6e788e`).** `MicrosoftToken` Prisma model (access + refresh + expires + scope, org-scoped). `/api/auth/microsoft/start` + `/api/auth/microsoft/callback` run the Graph API consent flow. Teams card added to Settings ▸ Connectors with Connect / Disconnect actions and a status pill.
+- **Meeting type selector on interview scheduler (`9f73483`).** New `meetingType` field on the schedule modal — `Google Meet` (default) or `Microsoft Teams`. Teams branch hits `POST /me/onlineMeetings` via Graph API, returns the join link, and embeds it into the calendar event the same way the existing Meet path does. Removes the Google Meet anonymous-access workaround for client-side recruiters whose orgs are MS-shop.
+
+### Triggers UI — per-trigger template + approve-before-send
+- **TriggerRule model + Settings UI (`fb25d58`).** New `TriggerRule` Prisma model (per-org, per-trigger). Settings ▸ Triggers renders the available triggers with enable/disable toggle, template selector (from active templates), and approve-before-send checkbox per rule. Foundation for surfacing template sends as drafts the recruiter eyeballs before launch.
+
+### Template send-as-draft (Gmail Drafts vs Send)
+- **`sendAsDraft` flag honored end-to-end (`9944f10`).** Template send path checks the rule's `sendAsDraft` flag and routes to `createGmailDraft` instead of `sendGmail` when on. Andrew can stage a template, draft it for review, then send manually. Closes Active Sequence item 2 from the Ace 50 roadmap.
+
+### Find Matches keyword scoring + Job Description tab additions
+- **`searchKeywords` field on jobs (`a2c43cf`, `a63b482`).** New `Job.searchKeywords String[]` column. Editable on the Job Description tab as a tag-input. Find Matches scoring now weights candidates whose resume / experience text overlaps these keywords; same field also seeds the Boolean search default for that job. Replaces the old "the description text drives matching" implicit signal with an explicit recruiter knob.
+- **Internal notes on the JD tab (`a63b482`).** Free-text Internal Recruiter Notes block (org-private; never exposed to candidates / public board). Saves on blur via the same pattern as the Notes field on Overview.
+- **Keyword scoring in candidate search (`a63b482`).** The candidate search route now ranks results by the explicit-keyword overlap when the user is searching from a job context. Stable ordering for the recruiter who's iterating filters on the same role.
+
+### Candidate search polish + PDF keyword highlighting + resume snippets
+- **Row breathing room + readable snippet (`d0d33d5`).** Candidate search rows on `/candidates` got more vertical padding, a heavier name, and a snippet line that reads at the same weight as body copy instead of a muted footer.
+- **PDF keyword highlighting via pdfjs text layer (`5605b0c`, `c947319`, `65507c2`, `63fb997`).** The resume viewer in the candidate split-view now overlays `<mark>`-style highlights on every matched search token by hooking into pdfjs's text layer DIVs. Word-boundary matching (so "ax" doesn't highlight inside "tax"), reduced opacity, multiply blend mode so the highlight reads against the PDF without obscuring the text. Falls back to an extractedText snippet panel when PDF alignment fails (scanned-image PDFs).
+- **Resume match snippets panel (`8867d75`, `1dadfde`).** Multi-color snippet panel renders beside the PDF (not below) on the candidate profile embed view. One color per keyword so the recruiter can scan which tokens hit where without re-reading the full resume.
+
+### Mobile UX polish
+- **Settings nav horizontal pill strip (`9143c92`).** Closes the Ace 50 known issue. All 11 Settings categories now render as a horizontally-scrollable pill strip below `lg` (same pattern as `MobileBucketTabs` on `/phone`) instead of stacking vertically above the panel content.
+- **BD tab in mobile PWA nav + Boolean search clip fix (`f44ea28`).** BottomNav was missing the BD entry on mobile; added. Boolean search input on `/candidates` was getting horizontally clipped under the mobile filter sheet — input width corrected.
+
+## Known Issues Carrying Into Ace 52
+- **Bulk email template picker pending browser verification.** The `384b60c` rewrite (anchored Use Template popover + in-popover job picker + `externalDraft` declarative sync) compiles and lands on `main` but Andrew has not yet eyeballed the live flow end-to-end. First task next session: test, confirm, then move to candidate-lists bulk email.
+- **Candidate lists bulk email not built yet.** Bulk email currently only ships from `/candidates` search and `/jobs/[id]?tab=matches`. Sending from a saved Candidate List queued — next session after bulk-email verification.
+- **`design/phase-1` branch has Cursor UI redesign Phases 1-2 not merged to main.** Local branch carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard / placements / finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Not yet merged; review pending. Treat the branch as in-progress experimental work — `main` is the source of truth for everything in this 51.0 entry.
+- **Mac PWA still not appearing in System Settings > Notifications** (Chrome PWA registration quirk on macOS — carried from Ace 50, not code-related).
+- **Unread badge count still drifting in places.** The mail-side fix from this session (push-driven refresh) handles the Gmail leg; Quo + reminder legs still need an audit pass before the aggregate is provably correct.
 
 ## What Shipped in Ace 50.0 (2026-05-16)
 

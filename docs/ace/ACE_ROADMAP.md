@@ -1,27 +1,27 @@
 # Ace Roadmap
-Last updated: 2026-05-16 · Ace 50.0
+Last updated: 2026-05-17 · Ace 51.0
 
 ## Active Build Sequence
-Design overhaul polish pass is substantially complete after Ace 50.0 — dark token rebuild (Clay + Grass), tables/lists row styling, segmented controls (canonical TabStrip migration), spacing + border reduction, dashboard card chrome unification, candidate profile polish, and outbound SMS bubble color all shipped. Remaining design items move to the queued list below; Ace 51 opens on the numbered priority sequence. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
+Ace 51.0 closed Vercel Blob migration, template send-as-draft, Gmail push notifications, Microsoft Teams + meeting-type selector, Triggers UI, bulk email to candidates (search + Matches tab), Find Matches keyword scoring with explicit `searchKeywords`, candidate search + PDF resume highlighting polish, and the Settings nav mobile pill strip. Ace 52 opens on bulk email verification + lists extension, then the remaining numbered sequence. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
 
-1. **Vercel Blob Migration + S3 Backup Cron** — pre-launch hardening. Migrate `CandidateResume` file bytes from Postgres to Vercel Blob (Postgres column drops to a Blob URL). Add a recurring S3 backup cron mirroring Blob + critical Postgres tables so the team has off-platform restore points.
-2. **Template send-as-draft** — when sending from a template, write to Gmail Drafts instead of Send so Andrew can eyeball before launch. Two prompts already drafted in the Ace 47.0 session, paste-ready.
+1. **Bulk email — verify + extend to Candidate Lists** — Andrew browser-verifies the `384b60c` bulk template picker rewrite end-to-end (anchored Use Template popover, in-popover job picker, externalDraft sync, resolved job tokens). Then wire the same dialog into the Candidate Lists surface so the recruiter can send to a saved list without rebuilding the recipient set every time. Inherits per-recipient merge + > 25 confirm gate from the search-surface implementation.
+2. **S3 Backup Cron** — pre-launch hardening follow-up to the Vercel Blob migration. Recurring cron mirrors the Blob bucket + critical Postgres tables (Candidate, Client, Job, Placement, Interview, CandidateResume metadata) to S3 so the team has off-platform restore points if Vercel or Neon ever goes sideways.
 3. **Public Jobs Board — BreakPoint Website Sync** — Ace is source of truth. Website reads sanitized public API only. Client names NEVER exposed. Poster always BreakPoint Talent. Public API at `ace.breakpointtalent.com/api/public/jobs`. Safe fields only: title, location, employment type, salary range, public description, posted date, apply URL. Never returns client name, logo, contacts, fees, internal notes, placement data. New Job fields: `publishedToWebsite`, `publishedAt`, `publicSlug`, `publicTitle`, `publicDescription`, `publicLocation`, `publicSalaryRange`, `publicEmploymentType`, `publicApplyUrl`. Phase 2 later: applications flow back into Ace, source tagged "BreakPoint Website".
 4. **Client Preference Learning + Personal Trainer Suggestions** — capture per-client signal (placed candidates' patterns, rejection reasons, must-haves vs nice-to-haves) and surface it as Personal Trainer rule suggestions Andrew can accept / edit / dismiss inside Settings > Personal Trainer.
-5. **Gmail push notifications via Google Pub/Sub** — wire `users.watch` + a Pub/Sub topic so new mail fires a server-side push without depending on a polling tab being open. Replaces the current `/api/push/fire` client-relay path for mail (calendar reminders stay client-relayed for now).
+
+## Branch Status
+- **`design/phase-1`** — local-only branch with Cursor UI redesign Phases 1-2 not yet merged to `main`. Carries `86d3e31` (Phase 1 design system foundation), `38f119c` (Phase 2a card shells on dashboard/placements/finances), `d7f5437` (Phase 2b TableRow + TableCell on list views), `c0fb973` (Phase 2c sidebar polish + list table chrome). Review pending; `main` is the source of truth for shipped state until this lands.
 
 ## Queued From Session
 Items scoped during recent sessions. Each needs its own prompt before slotting into the active build sequence.
 
 - **`UnderlineTabLink` canonical helper** — extract the shared underline-tab anchor markup (used by client detail tabs migrated in Ace 49.0 and any future tab strip that renders as `<a>` links instead of buttons) into a single component so the active/inactive class set lives in one file. Mirrors `TabStrip` for the link-anchor case.
-- **Settings nav horizontal pill strip on mobile** — Ace 49 dropped the `hidden lg:block` gate so the nav now stacks vertically above content on phones (functional but tall — 11 category links). Convert to a horizontal scrollable pill strip matching the `MobileBucketTabs` pattern from `/phone`.
 - **`+ New` menu — New Event + New Reminder entries** — ComposeFAB currently doesn't surface calendar event / reminder creation; both flows exist via the calendar drawer but need to be reachable from the global add affordance.
 - **Notification read-state sync for Quo** — reading a Quo thread on the Quo app side doesn't clear the Ace badge (Quo has no read-receipt webhook event). Workaround would be a periodic Quo API poll (rate-limit risk) or a manual "Mark as read in Quo" affordance on the thread.
-- **Unread badge count showing incorrect total** — sidebar / topbar unread badge surfaces a number that doesn't match the actual unread thread count. Needs an audit pass across the Gmail unread query, Quo unread count, and reminder due count to identify which input is drifting before fixing the aggregate.
+- **Unread badge count — Quo + reminder legs audit** — Gmail leg fixed in Ace 51 via push-driven refresh. Quo unread count + reminder due count still need an audit pass before the aggregate badge is provably correct.
 - **Tighter applied-jobs strip** — PlacementActionsIsland refactor required first; needs its own scoped prompt.
-- **Skills/keywords field on Job Description tab** — feeds Find Matches scoring and Boolean search. Add to the Boolean search prompt when that ships.
 - **JD/email markdown architecture verification** — `[Job Description]` merge field HTML injection (Candidate Recruit template merge fields wired in Ace 41 but verify end-to-end with real job data).
-- **Bulk email to candidates** — multi-candidate email send from search surface, scheduled send, 30-60 sec throttle, 5-domain rotation sharing BD warmed pool.
+- **Bulk email scheduled send + throttle** — Ace 51 ships bulk email synchronously. Phase-2 work: scheduled send time picker, 30-60 sec throttle, 5-domain rotation sharing the BD warmed pool.
 - **Search expansion map** — geocoded map visualization over Candidate Sourcing Surface.
 - **Mercury + QuickBooks integration follow-through** — Mercury feed is live for the Finances module as of Ace 46; QuickBooks sync + variable-cost categorization still pending.
 
@@ -90,6 +90,21 @@ Revisit at scale or workflow change — do not build now.
 - All SaaS / productization: BYOC, Stripe billing, public REST API, MCP server, SOC 2, external SSO, multi-tenant onboarding, marketing site.
 
 ---
+
+## Completed - Ace 51.0 Vercel Blob + bulk email + Gmail push + Teams + Triggers + Find Matches keywords + mobile polish (May 17, 2026)
+
+Closes the Vercel Blob migration, template send-as-draft, and Gmail push items from the Ace 50 active sequence. Bulk email to candidates lands end-to-end on the search surface and Matches tab (Lists extension queued for Ace 52 verification pass). Microsoft Teams + meeting-type selector ship alongside Triggers UI + searchKeywords-driven Find Matches scoring.
+
+- **Vercel Blob migration** — `CandidateResume.blobUrl` + `redactedBlobUrl` columns, upload + brand + generate paths upload to Blob, delete cleans up Blob first. New `getResumeBytes` helper resolves blobUrl-first with Postgres-bytes fallback; private Blob reads use `get(url, { access: "private" })`. Backfill script migrates existing rows and nulls inline data columns.
+- **Bulk email to candidates** — new `BulkEmailDialog` wraps EmailComposer with hidden recipient inputs, > 25 confirm gate, recipients-panel toggle, AI prompt panel + Generate / Edit with Claude, job picker for templates with job-context tokens. Wired into `/candidates` search surface and `/jobs/[id]?tab=matches`. Template picker rebuilt to match individual composer style (`384b60c`): imperative `applyDraftRef` replaced with declarative `externalDraft` prop; anchored Use Template popover with in-popover job picker; `applyTemplateDraft` pre-resolves `[Job Title]` / `[Client Company Name]` via `applyMergeFields`. Pending Andrew's browser verification.
+- **Gmail push notifications** — `/api/webhooks/gmail` Pub/Sub receiver decodes the envelope, runs a history-id delta against `Account.gmailHistoryId`, fires `sendPushToUser` per new thread. `users.watch` registration + auto-renew cron at `/api/cron/gmail-watch-renew`. Settings ▸ Notifications toggle. Service worker posts `GMAIL_PUSH` to visible clients so mail context bumps the unread query immediately instead of waiting on the 30s poll.
+- **Microsoft Teams OAuth + meeting type selector** — `MicrosoftToken` Prisma model (org-scoped, access + refresh + expires + scope). `/api/auth/microsoft/start` + `/callback` run the Graph consent flow. Teams connector card in Settings. Interview scheduler `meetingType` field defaults to Google Meet; Teams branch hits `POST /me/onlineMeetings` and embeds the join link the same way as Meet. Eliminates the Meet anonymous-access workaround for MS-shop clients.
+- **Triggers UI** — `TriggerRule` model (per-org, per-trigger). Settings ▸ Triggers renders the available triggers with enable/disable, template selector, and approve-before-send checkbox per rule.
+- **Template send-as-draft** — `sendAsDraft` rule flag routes template sends to `createGmailDraft` instead of `sendGmail` when on. Andrew can stage a template, draft it for review, then send manually.
+- **Find Matches keyword scoring** — new `Job.searchKeywords String[]` column, editable on the JD tab as a tag-input. Find Matches scoring weights candidates whose resume / experience text overlaps these keywords. Same field seeds the Boolean search default for that job. Replaces the implicit "description text drives matching" signal with an explicit recruiter knob. Candidate search route ranks by explicit-keyword overlap when searching from a job context.
+- **Internal notes on Job Description tab** — free-text Internal Recruiter Notes block on the JD tab (org-private; never exposed to candidates or the public board). Save-on-blur, same pattern as Overview Notes.
+- **Candidate search row polish + PDF keyword highlighting + resume snippets** — row vertical padding bumped, name heavier, snippet line at body weight. Resume PDF viewer overlays `<mark>`-style highlights via pdfjs text layer (word-boundary match, reduced opacity, multiply blend mode). Falls back to extractedText snippet panel for scanned-image PDFs. Snippets panel renders beside the PDF, multi-color per keyword.
+- **Settings nav mobile pill strip** — closes Ace 50 known issue. All 11 Settings categories render as a horizontal scrollable pill strip below `lg`, matching the `MobileBucketTabs` pattern from `/phone`. BD tab also added to the mobile PWA BottomNav; Boolean search input clipping fixed on `/candidates` mobile filter sheet.
 
 ## Completed - Ace 49.0 PWA infrastructure + web push + mobile UX pass + composer Claude fixes (May 15, 2026)
 
