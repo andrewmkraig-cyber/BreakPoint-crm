@@ -13,12 +13,12 @@ export function SectionCard({
   children: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
-      <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
+    <div className="rounded-xl border border-court-border bg-court-surface p-4 shadow-sm">
+      <div className="mb-3 flex items-center justify-between border-b border-court-border pb-2">
         <h2 className="font-serif text-base font-semibold text-court-fg">{title}</h2>
         {right}
       </div>
-      <div className="p-5">{children}</div>
+      <div>{children}</div>
     </div>
   );
 }
@@ -40,7 +40,7 @@ export function LabeledField({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">{label}</span>
       <input
         type={type}
         value={value}
@@ -71,7 +71,7 @@ export function LabeledTextarea({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">{label}</span>
       <textarea
         value={value}
         rows={rows}

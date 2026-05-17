@@ -34,7 +34,7 @@ export function ActivityPanel({ interviews }: { interviews: ActivityInterview[] 
   const total = past.length;
 
   return (
-    <section className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm">
+    <section className="rounded-xl border border-court-border bg-court-surface shadow-sm">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
@@ -67,7 +67,7 @@ export function ActivityPanel({ interviews }: { interviews: ActivityInterview[] 
         <div className="border-t border-court-border px-5 py-4 space-y-5">
           <ActivitySection title="Interview history" emptyText="No past interviews yet.">
             {past.length === 0 ? null : (
-              <ul className="space-y-1.5">
+              <ul>
                 {past
                   .slice()
                   .sort((a, b) => new Date(b.scheduledAt).getTime() - new Date(a.scheduledAt).getTime())
@@ -97,7 +97,7 @@ function ActivitySection({
 }) {
   return (
     <div>
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+      <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
         {title}
       </div>
       <div className="mt-1.5">{children ?? <p className="text-xs text-court-fg-muted">{emptyText}</p>}</div>
@@ -129,12 +129,12 @@ function InterviewHistoryRow({ iv }: { iv: ActivityInterview }) {
     minute: "2-digit",
   });
   return (
-    <li className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-court-border/40 bg-court-surface-subtle/40 px-3 py-2 text-xs">
+    <li className="flex flex-wrap items-center justify-between gap-2 border-b border-court-border py-2 text-xs last:border-b-0">
       <div className="flex min-w-0 flex-1 flex-col">
         <span className="truncate font-medium text-court-fg">
           {formattedWhen} · {iv.durationMin}m · {formatType(iv.type)}
         </span>
-        <span className="truncate text-[11px] text-court-fg-muted">
+        <span className="truncate text-xs text-court-fg-muted">
           {iv.jobTitle}
           {iv.attendees.length > 0 ? ` · with ${iv.attendees.map((a) => a.name).join(", ")}` : ""}
           {iv.source === "client_scheduled" ? " · Client-scheduled" : ""}

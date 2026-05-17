@@ -29,6 +29,12 @@ type Common<TId extends string> = {
    *   doesn't ripple through Dashboard / Jobs / Applicants / etc.
    */
   variant?: "default" | "underline";
+  /**
+   * "default" — natural-height tabs (~28px). "lg" — h-10 tabs for primary
+   * page-level surfaces (candidate profile). Opt-in so existing tab strips
+   * across the app stay their original size.
+   */
+  size?: "default" | "lg";
 };
 
 type ControlledProps<TId extends string> = Common<TId> & {
@@ -42,8 +48,9 @@ type LinkProps<TId extends string> = Common<TId> & {
 export function TabStrip<TId extends string = string>(
   props: ControlledProps<TId> | LinkProps<TId>,
 ) {
-  const { items, activeId, ariaLabel, className, fullWidth, variant = "default" } = props;
+  const { items, activeId, ariaLabel, className, fullWidth, variant = "default", size = "default" } = props;
   const isUnderline = variant === "underline";
+  const isLg = size === "lg";
 
   return (
     <div
@@ -64,14 +71,16 @@ export function TabStrip<TId extends string = string>(
               // bottom border when active. -mb-px tucks the active
               // border underneath the strip's own border so the seam
               // reads as one line, not two.
-              "inline-flex items-center gap-1 -mb-px border-b-2 px-3 py-2 text-[13px] transition-colors",
+              "inline-flex items-center gap-1 -mb-px border-b-2 px-3 text-[13px] transition-colors",
+              isLg ? "h-10" : "py-2",
               fullWidth && "flex-1 justify-center",
               active
                 ? "border-court-brand-dark font-semibold text-court-brand-dark"
                 : "border-transparent font-medium text-court-fg-muted hover:text-court-fg",
             )
           : cn(
-              "inline-flex items-center gap-1 rounded-md border px-2.5 py-1 text-[13px] transition-colors",
+              "inline-flex items-center gap-1 rounded-md border px-2.5 text-[13px] transition-colors",
+              isLg ? "h-10" : "py-1",
               fullWidth && "flex-1 justify-center",
               active
                 ? "border-court-brand bg-transparent font-semibold text-court-brand"

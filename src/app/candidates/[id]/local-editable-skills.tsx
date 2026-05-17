@@ -80,13 +80,13 @@ export function LocalEditableSkills({
         {skills.map((s, i) => (
           <span
             key={`${s}-${i}`}
-            className="inline-flex items-center gap-1 rounded-full bg-brand-tint px-2 py-0.5 text-[11px] font-medium text-brand-dark"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 text-xs text-court-fg"
           >
             {s}
             <button
               type="button"
               onClick={() => removeAt(i)}
-              className="rounded-full p-0.5 hover:bg-brand/20"
+              className="rounded-full p-0.5 text-court-fg-muted hover:bg-court-border hover:text-court-fg"
               aria-label={`Remove ${s}`}
             >
               <X className="h-2.5 w-2.5" />

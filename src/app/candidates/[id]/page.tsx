@@ -791,6 +791,7 @@ function UnderlineTabs({ tab, candidateId }: { tab: CandidateTab; candidateId: n
     <TabStrip<CandidateTab>
       activeId={tab}
       ariaLabel="Candidate profile sections"
+      size="lg"
       items={[
         { id: "profile", label: "Profile", href: `/candidates/${candidateId}` },
         { id: "game-plan", label: "Game Plan", href: `/candidates/${candidateId}?tab=game-plan` },
