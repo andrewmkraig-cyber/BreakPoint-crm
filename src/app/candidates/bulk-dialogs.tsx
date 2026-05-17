@@ -385,28 +385,41 @@ export function BulkEmailDialog({
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
-    if (
-      !template ||
-      typeof template.id !== "string" ||
-      typeof template.subject !== "string" ||
-      typeof template.body !== "string"
-    ) {
-      toast.error("Template is missing required fields.");
-      setSelectedTemplateId("");
-      return;
+    console.log("onPickLocalTemplate called", template?.name);
+    try {
+      if (
+        !template ||
+        typeof template.id !== "string" ||
+        typeof template.subject !== "string" ||
+        typeof template.body !== "string"
+      ) {
+        console.log("onPickLocalTemplate: missing required fields", {
+          hasTemplate: !!template,
+          idType: typeof template?.id,
+          subjectType: typeof template?.subject,
+          bodyType: typeof template?.body,
+        });
+        toast.error("Template is missing required fields.");
+        setSelectedTemplateId("");
+        return;
+      }
+      const needsJob = templateNeedsJob(template);
+      console.log("onPickLocalTemplate: needsJob?", needsJob);
+      if (!needsJob) {
+        setJobMergeValues(null);
+        applyTemplateDraft(template);
+        setSelectedTemplateId("");
+        console.log("onPickLocalTemplate: applied draft (no job tokens)");
+        return;
+      }
+      setPendingJobPick({ template });
+      console.log("onPickLocalTemplate: opened job picker");
+    } catch (err) {
+      console.error("onPickLocalTemplate threw", err);
+      toast.error("Couldn't apply template", {
+        description: err instanceof Error ? err.message : String(err),
+      });
     }
-    if (!templateNeedsJob(template)) {
-      // No job tokens. Apply directly and clear any stale job context
-      // from a previous template pick in the same dialog session.
-      setJobMergeValues(null);
-      applyTemplateDraft(template);
-      setSelectedTemplateId("");
-      return;
-    }
-    // Job tokens present. Pop the picker; apply only after the
-    // recruiter confirms a job (or cancels, in which case nothing
-    // changes in the composer).
-    setPendingJobPick({ template });
   }
 
   async function onConfirmJobPick() {
