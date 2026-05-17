@@ -17,6 +17,33 @@ import {
   saveJobSearchKeywords,
 } from "@/app/jobs/[id]/job-overview-actions";
 
+// Shared section-card chrome for every card in this tab — kept in one
+// place so the Generated JD / Notes / Keywords surfaces stay locked to
+// the same border-less, rounded-2xl shell with consistent inner padding
+// and title scale.
+const JD_CARD_CLASS =
+  "rounded-2xl border-0 bg-court-surface p-5 shadow-sm";
+const JD_CARD_TITLE_CLASS =
+  "text-[15px] font-semibold text-court-fg";
+
+// Inputs / textareas: soft border, brand-tinted focus ring. The cn()
+// callers prepend layout classes (mt-3 w-full resize-y, font-mono for
+// the JD editor) so this constant carries the visual chrome only.
+const JD_INPUT_CLASS =
+  "rounded-xl border border-court-border bg-court-surface px-3 py-2 text-[13px] text-court-fg shadow-sm focus:border-court-brand focus:outline-none focus:ring-2 focus:ring-court-brand/10";
+
+// Pill buttons. Layered on top of the shared Button variants — Button's
+// cn() merge means rounded-full / h-9 / text-[12.5px] win over the
+// variant defaults. Spec sizing applies whether the underlying variant
+// is primary, secondary, or ghost.
+const JD_PILL_BASE_CLASS =
+  "h-9 rounded-full px-4 text-[12.5px] font-semibold";
+const JD_PILL_PRIMARY_CLASS = JD_PILL_BASE_CLASS;
+const JD_PILL_SECONDARY_CLASS = cn(
+  JD_PILL_BASE_CLASS,
+  "border border-court-border bg-court-surface text-court-fg hover:border-court-brand/40",
+);
+
 // Job Description tab — single card showing the polished JD with
 // Copy / Regenerate / Edit affordances. Source URL parsing now lives on
 // /jobs/new (parse-on-create); the raw paste and internal-notes cards
@@ -153,11 +180,11 @@ function InternalNotesCard({
   }
 
   return (
-    <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
+    <div className={JD_CARD_CLASS}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-court-fg">Internal Recruiter Notes</h2>
-          <p className="text-[11px] text-court-fg-muted">
+          <h2 className={JD_CARD_TITLE_CLASS}>Internal Recruiter Notes</h2>
+          <p className="mt-1 text-[11px] text-court-fg-muted">
             Private notes — never shown to candidates or clients.
           </p>
         </div>
@@ -173,10 +200,7 @@ function InternalNotesCard({
         onBlur={() => void commit()}
         rows={5}
         placeholder="e.g. salary is flexible up to 140k for a strong candidate, client hates LinkedIn-only outreach, never submit anyone from competitor X"
-        className={cn(
-          "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-        )}
+        className={cn("mt-3 w-full resize-y", JD_INPUT_CLASS)}
       />
     </div>
   );
@@ -218,12 +242,22 @@ function SearchKeywordsCard({
     }
   }
 
+  // Live chip preview of whatever's typed in the textarea. Splits on
+  // commas and newlines, trims, drops empties — same loose contract the
+  // server-side keyword consumers (find-matches, boolean search) use,
+  // so the chips read as a faithful preview of what'll actually be
+  // searched against.
+  const chips = value
+    .split(/[,\n]+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+
   return (
-    <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
+    <div className={JD_CARD_CLASS}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-court-fg">Search Keywords</h2>
-          <p className="text-[11px] text-court-fg-muted">
+          <h2 className={JD_CARD_TITLE_CLASS}>Search Keywords</h2>
+          <p className="mt-1 text-[11px] text-court-fg-muted">
             Used for Find Matches scoring and Boolean candidate search.
           </p>
         </div>
@@ -239,11 +273,20 @@ function SearchKeywordsCard({
         onBlur={() => void commit()}
         rows={3}
         placeholder="e.g. python, kubernetes, terraform, distributed systems"
-        className={cn(
-          "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 text-sm text-court-fg shadow-sm",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
-        )}
+        className={cn("mt-3 w-full resize-y", JD_INPUT_CLASS)}
       />
+      {chips.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {chips.map((c, i) => (
+            <span
+              key={`${c}-${i}`}
+              className="inline-flex items-center rounded-full border-0 bg-court-brand-tint px-3 py-1 text-[11px] font-medium text-court-brand-dark"
+            >
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -352,12 +395,12 @@ function GeneratedJdCard({
   }
 
   return (
-    <div className="rounded-xl border border-court-border/40 bg-court-surface p-5 shadow-sm">
+    <div className={JD_CARD_CLASS}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-court-fg">Generated job description</h2>
+          <h2 className={JD_CARD_TITLE_CLASS}>Generated job description</h2>
           {generatedAt ? (
-            <p className="text-[11px] text-court-fg-muted">
+            <p className="mt-1 text-[11px] text-court-fg-muted">
               Last generated {formatRelativeOrAbsolute(generatedAt)}
             </p>
           ) : null}
@@ -370,6 +413,7 @@ function GeneratedJdCard({
               size="sm"
               onClick={onCopy}
               disabled={!hasDescription}
+              className={JD_PILL_SECONDARY_CLASS}
             >
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? "Copied" : "Copy JD"}
@@ -380,16 +424,31 @@ function GeneratedJdCard({
               size="sm"
               onClick={onStartEdit}
               disabled={!hasDescription}
+              className={JD_PILL_SECONDARY_CLASS}
             >
               <Pencil className="h-3.5 w-3.5" /> Edit
             </Button>
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={onCancelEdit} disabled={saving}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onCancelEdit}
+              disabled={saving}
+              className={JD_PILL_SECONDARY_CLASS}
+            >
               <X className="h-3.5 w-3.5" /> Cancel
             </Button>
-            <Button type="button" variant="primary" size="sm" onClick={onSaveEdit} disabled={saving}>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              onClick={onSaveEdit}
+              disabled={saving}
+              className={JD_PILL_PRIMARY_CLASS}
+            >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
               Save
             </Button>
@@ -403,14 +462,14 @@ function GeneratedJdCard({
           onChange={(e) => setDraft(e.target.value)}
           rows={20}
           className={cn(
-            "mt-3 w-full resize-y rounded-md border border-court-border bg-court-bg px-3 py-2 font-mono text-xs leading-relaxed text-court-fg shadow-sm",
-            "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+            "mt-3 w-full resize-y font-mono leading-relaxed",
+            JD_INPUT_CLASS,
           )}
         />
       ) : hasDescription ? (
         <div
           className={cn(
-            "mt-3 text-sm leading-relaxed text-court-fg",
+            "mt-3 rounded-xl bg-court-brand-tint/40 p-4 text-sm leading-relaxed text-court-fg",
             // Paragraphs + inline marks. Headings get an explicit two-step
             // scale so H2 ("A Bit About Us") sits visibly heavier than H3
             // ("Key Responsibilities"). H1 is unused in the JD format but
