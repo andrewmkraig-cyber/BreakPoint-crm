@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight } from "lucide-react";
+import { ArrowUpRight, CalendarDays } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
@@ -124,7 +124,8 @@ export function ThisWeekWidgetClient({
     <section className="flex h-full flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+          <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+            <CalendarDays className="h-4 w-4 text-court-brand-dark" aria-hidden />
             THIS WEEK
           </div>
           <h2

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, ClipboardList, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { WordOfDayCard } from "@/components/word-of-day-card";
 import { ChessPuzzle } from "@/components/chess-puzzle";
@@ -210,9 +210,10 @@ export function NewsFeed() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2
-            className="font-semibold tracking-[-0.035em] text-court-fg"
+            className="flex items-center gap-2 font-semibold tracking-[-0.035em] text-court-fg"
             style={{ fontSize: "18px", lineHeight: 1.15 }}
           >
+            <ClipboardList className="h-4 w-4 text-court-brand-dark" aria-hidden />
             Today&apos;s Briefing
           </h2>
           <p

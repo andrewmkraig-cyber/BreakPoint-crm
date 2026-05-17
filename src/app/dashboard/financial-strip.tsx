@@ -1,5 +1,6 @@
 "use client";
 
+import { DollarSign } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -62,7 +63,8 @@ export function FinancialStrip({
   return (
     <section className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
+          <DollarSign className="h-4 w-4 text-court-brand-dark" aria-hidden />
           Billing Tower
         </div>
         <select

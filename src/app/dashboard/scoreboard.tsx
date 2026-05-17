@@ -1,5 +1,10 @@
 import {
   ArrowUpRight,
+  BarChart3,
+  Clock,
+  DollarSign,
+  type LucideIcon,
+  Target,
   Trophy,
 } from "lucide-react";
 import {
@@ -64,21 +69,24 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
   const pipelineSub = pipelineFeeMissing
     ? `${kpis.pipelineCount} ${kpis.pipelineCount === 1 ? "deal" : "deals"} · fee unset`
     : "Active offers + pending starts";
-  const tiles: Array<{ label: string; value: string; sub: string }> = [
+  const tiles: Array<{ label: string; value: string; sub: string; icon: LucideIcon }> = [
     {
       label: "Pipeline Value",
       value: kpis.pipelineValueUsd != null ? formatMoneyShort(kpis.pipelineValueUsd) : "—",
       sub: pipelineSub,
+      icon: DollarSign,
     },
     {
       label: "Avg Fee Size",
       value: kpis.avgFeeSizeUsd != null ? formatMoneyShort(kpis.avgFeeSizeUsd) : "—",
       sub: kpis.avgFeeSizeUsd != null ? "Per placement, last 90 days" : "No placements in last 90 days",
+      icon: BarChart3,
     },
     {
       label: "Placements",
       value: String(kpis.placementsQtd),
       sub: periodLabel,
+      icon: Trophy,
     },
     {
       label: "Win Rate",
@@ -87,6 +95,7 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
         kpis.winRatePct != null
           ? `${kpis.winRateNumerator} placed · ${kpis.winRateDenominator} submitted (90d)`
           : "No submits logged in last 90 days",
+      icon: Target,
     },
     {
       label: "Avg Days to Fill",
@@ -95,6 +104,7 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
         kpis.avgDaysToFill != null
           ? "Avg, job posted → placed (90d)"
           : "No placements in last 90 days",
+      icon: Clock,
     },
   ];
   return (
@@ -106,14 +116,34 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
   );
 }
 
-function ScoreboardKpiTile({ label, value, sub }: { label: string; value: string; sub: string }) {
+function ScoreboardKpiTile({
+  label,
+  value,
+  sub,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  icon: LucideIcon;
+}) {
   const isEmpty = value === "—";
   return (
     <div
       title={sub}
       className="flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
     >
-      <p className="min-h-[32px] text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">{label}</p>
+      <div className="flex min-h-[32px] items-center gap-2">
+        <div
+          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
+          aria-hidden
+        >
+          <Icon className="h-3 w-3" />
+        </div>
+        <p className="min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+          {label}
+        </p>
+      </div>
       <div
         className={
           "mt-1.5 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums " +
