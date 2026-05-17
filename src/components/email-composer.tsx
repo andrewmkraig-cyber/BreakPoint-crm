@@ -338,32 +338,50 @@ export function EmailComposer({
   }
 
   useEffect(() => {
-    if (!showTemplatePicker || templatesLoaded) return;
+    console.log("[composer:templates] effect fired", {
+      showTemplatePicker,
+      templatesLoaded,
+      hasFilter: typeof templateFilter === "function",
+    });
+    if (!showTemplatePicker || templatesLoaded) {
+      console.log("[composer:templates] effect skipped — picker off or already loaded");
+      return;
+    }
     let cancelled = false;
+    const startedAt = Date.now();
+    console.log("[composer:templates] calling listActiveTemplates()");
     // 5s timeout so a hung server action stops the spinner instead
     // of looking like the dropdown is permanently loading.
     const timeoutId = setTimeout(() => {
       if (cancelled) return;
-      console.error("[composer] listActiveTemplates timed out after 5s");
+      console.error("[composer:templates] timed out after 5s", { ms: Date.now() - startedAt });
       setTemplatesError("Couldn't load templates");
       setTemplatesLoaded(true);
     }, 5000);
     listActiveTemplates()
       .then((list) => {
+        console.log("[composer:templates] resolved", {
+          ms: Date.now() - startedAt,
+          count: Array.isArray(list) ? list.length : "(not an array)",
+          cancelled,
+        });
         if (cancelled) return;
         clearTimeout(timeoutId);
-        setTemplates(templateFilter ? list.filter(templateFilter) : list);
+        const filtered = templateFilter ? list.filter(templateFilter) : list;
+        console.log("[composer:templates] post-filter count", filtered.length);
+        setTemplates(filtered);
         setTemplatesError(null);
         setTemplatesLoaded(true);
       })
       .catch((err) => {
+        console.error("[composer:templates] failed", { ms: Date.now() - startedAt, err });
         if (cancelled) return;
         clearTimeout(timeoutId);
-        console.error("[composer] listActiveTemplates failed", err);
         setTemplatesError("Couldn't load templates");
         setTemplatesLoaded(true);
       });
     return () => {
+      console.log("[composer:templates] cleanup running", { ms: Date.now() - startedAt });
       cancelled = true;
       clearTimeout(timeoutId);
     };
