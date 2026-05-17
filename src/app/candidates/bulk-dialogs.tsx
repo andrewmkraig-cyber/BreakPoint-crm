@@ -387,6 +387,11 @@ export function BulkEmailDialog({
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
+    // Reset the select to placeholder up front so the same template can be
+    // re-picked later (native selects don't fire onChange when the value
+    // doesn't change). The template object is captured in
+    // pendingJobPick / externalDraft below — the select's value is UI-only.
+    setSelectedTemplateId("");
     if (
       !template ||
       typeof template.id !== "string" ||
@@ -394,13 +399,11 @@ export function BulkEmailDialog({
       typeof template.body !== "string"
     ) {
       toast.error("Template is missing required fields.");
-      setSelectedTemplateId("");
       return;
     }
     if (!templateNeedsJob(template)) {
       setJobMergeValues(null);
       applyTemplateDraft(template);
-      setSelectedTemplateId("");
       return;
     }
     setPendingJobPick({ template });
@@ -748,7 +751,7 @@ export function BulkEmailDialog({
                         ? "Couldn't load templates"
                         : localTemplates.length === 0
                           ? "No active templates"
-                          : "Use Template"}
+                          : "Select template..."}
                   </option>
                   {localTemplates.map((t) => (
                     <option key={t.id} value={t.id}>
@@ -767,7 +770,7 @@ export function BulkEmailDialog({
         </div>
 
         {pendingJobPick && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
             <div className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
               <h3 className="font-serif text-base font-semibold text-court-fg">
                 Pick a job for &ldquo;{pendingJobPick.template.name}&rdquo;
@@ -826,7 +829,7 @@ export function BulkEmailDialog({
         )}
 
         {confirmDraft && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
+          <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-court-bg/85 p-6 backdrop-blur-sm">
             <div className="w-full max-w-sm rounded-xl border border-court-border bg-court-surface p-5 shadow-xl">
               <h3 className="font-serif text-base font-semibold text-court-fg">
                 Confirm bulk send
