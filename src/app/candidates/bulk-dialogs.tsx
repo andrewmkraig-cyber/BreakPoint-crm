@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -317,8 +317,8 @@ export function BulkEmailDialog({
   // built-in showTemplatePicker because the two-step job-tokens flow
   // required parking a Promise inside the composer's onPickTemplate
   // transition, which left the picker stuck whenever the parent re-
-  // rendered. Driving the composer's draft from outside via
-  // applyDraftRef makes this a normal local UI flow.
+  // rendered. Driving the composer's draft from outside via the
+  // declarative externalDraft prop makes this a normal local UI flow.
   const [localTemplates, setLocalTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
   const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
@@ -326,7 +326,9 @@ export function BulkEmailDialog({
   // context that kept breaking custom popovers. Individual composer keeps
   // its popover.
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
-  const applyDraftRef = useRef<((d: { subject: string; body: string }) => void) | null>(null);
+  // Fresh object per pick so EmailComposer's externalDraft effect re-fires
+  // even when the same template is picked twice.
+  const [externalDraft, setExternalDraft] = useState<{ subject: string; body: string } | null>(null);
 
   // Load active templates once when the bulk dialog mounts so the
   // picker dropdown opens instantly with the full list.
@@ -381,45 +383,27 @@ export function BulkEmailDialog({
   }, [pendingJobPick, jobs, jobsLoading]);
 
   function applyTemplateDraft(template: ActiveTemplateSummary) {
-    applyDraftRef.current?.({ subject: template.subject, body: template.body });
+    setExternalDraft({ subject: template.subject, body: template.body });
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
-    console.log("onPickLocalTemplate called", template?.name);
-    try {
-      if (
-        !template ||
-        typeof template.id !== "string" ||
-        typeof template.subject !== "string" ||
-        typeof template.body !== "string"
-      ) {
-        console.log("onPickLocalTemplate: missing required fields", {
-          hasTemplate: !!template,
-          idType: typeof template?.id,
-          subjectType: typeof template?.subject,
-          bodyType: typeof template?.body,
-        });
-        toast.error("Template is missing required fields.");
-        setSelectedTemplateId("");
-        return;
-      }
-      const needsJob = templateNeedsJob(template);
-      console.log("onPickLocalTemplate: needsJob?", needsJob);
-      if (!needsJob) {
-        setJobMergeValues(null);
-        applyTemplateDraft(template);
-        setSelectedTemplateId("");
-        console.log("onPickLocalTemplate: applied draft (no job tokens)");
-        return;
-      }
-      setPendingJobPick({ template });
-      console.log("onPickLocalTemplate: opened job picker");
-    } catch (err) {
-      console.error("onPickLocalTemplate threw", err);
-      toast.error("Couldn't apply template", {
-        description: err instanceof Error ? err.message : String(err),
-      });
+    if (
+      !template ||
+      typeof template.id !== "string" ||
+      typeof template.subject !== "string" ||
+      typeof template.body !== "string"
+    ) {
+      toast.error("Template is missing required fields.");
+      setSelectedTemplateId("");
+      return;
     }
+    if (!templateNeedsJob(template)) {
+      setJobMergeValues(null);
+      applyTemplateDraft(template);
+      setSelectedTemplateId("");
+      return;
+    }
+    setPendingJobPick({ template });
   }
 
   async function onConfirmJobPick() {
@@ -731,7 +715,7 @@ export function BulkEmailDialog({
             hideRecipientFields
             enableEditWithClaude
             onGenerate={onGenerateBody}
-            applyDraftRef={applyDraftRef}
+            externalDraft={externalDraft}
             sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
             sendingLabel="Sending…"
             sendDisabled={confirmDraft !== null}
