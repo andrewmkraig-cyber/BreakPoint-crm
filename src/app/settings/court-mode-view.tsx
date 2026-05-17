@@ -130,14 +130,14 @@ export function CourtModeView() {
 
   return (
     <div className="space-y-3">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+      <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
         Court Mode
       </div>
 
       {/* Light / Dark toggle. Every surface honors it, including
           Night Court (Night Light vs. Night Dark are the two
           palettes inside the one Night tile). */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="inline-flex items-center rounded-full border border-court-border bg-court-surface p-0.5">
         <ThemeButton
           active={theme === "light"}
           onClick={() => setTheme("light")}
@@ -175,13 +175,16 @@ export function CourtModeView() {
               onClick={() => setSurface(s.id)}
               aria-pressed={active}
               className={cn(
-                "group flex flex-col overflow-hidden rounded-xl border-2 text-left transition",
+                "group flex flex-col rounded-xl border-2 border-transparent bg-court-brand-tint p-4 text-left transition-all",
                 active
-                  ? "border-court-accent ring-2 ring-court-accent/20"
-                  : "border-court-border hover:border-court-fg-muted",
+                  ? "border-court-accent shadow-md"
+                  : "hover:border-court-accent/40",
               )}
             >
-              <div className="relative h-[110px] w-full" style={{ background: p.bg }}>
+              <div
+                className="relative h-[110px] w-full overflow-hidden rounded-2xl shadow-md"
+                style={{ background: p.bg }}
+              >
                 <div
                   className="absolute inset-y-0 left-0 w-[36%] border-r"
                   style={{ background: p.sidebar, borderColor: p.border }}
@@ -213,18 +216,17 @@ export function CourtModeView() {
                   />
                 )}
               </div>
-              <div
-                className={cn(
-                  "flex items-center justify-between border-t px-3 py-2.5",
-                  active ? "bg-court-accent-tint" : "bg-court-surface",
-                )}
-                style={{ borderColor: "var(--court-border)" }}
-              >
-                <span className={cn("text-sm font-semibold", active ? "text-court-accent-dark" : "text-court-fg")}>
+              <div className="mt-2 flex items-center justify-between">
+                <span
+                  className={cn(
+                    "text-[12px] font-semibold",
+                    active ? "text-court-brand-dark" : "text-court-fg",
+                  )}
+                >
                   {s.label}
                 </span>
                 {active && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-court-accent-dark">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-court-brand-dark">
                     Active
                   </span>
                 )}
@@ -261,10 +263,10 @@ function ThemeButton({
       aria-label={ariaLabel}
       title={title}
       className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-full border px-4 text-sm font-medium transition",
+        "inline-flex h-8 items-center gap-2 rounded-full px-4 text-sm font-medium transition",
         active
-          ? "border-court-accent bg-court-accent-tint text-court-accent-dark"
-          : "border-court-border bg-court-surface-subtle text-court-fg-muted hover:text-court-fg",
+          ? "bg-court-brand-tint font-semibold text-court-brand-dark"
+          : "text-court-fg-muted hover:text-court-fg",
         disabled && "cursor-not-allowed opacity-40 hover:text-court-fg-muted",
       )}
     >
