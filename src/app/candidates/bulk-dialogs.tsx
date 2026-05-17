@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -346,12 +346,13 @@ export function BulkEmailDialog({
   const [localTemplates, setLocalTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
   const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
-  // Anchored popover for the Use Template button. Same visual pattern as
-  // the individual mail composer (mail-composer.tsx) — no backdrop
-  // dismiss; clicking the button re-toggles. The previous backdrop +
-  // localTemplateOpen pair fought the bulk modal's stacking context and
-  // got stuck open on every parent re-render.
+  // Anchored popover for the Use Template button. No backdrop overlay —
+  // dismiss is handled by a document-level pointerdown listener scoped
+  // to the wrapper ref below. The previous full-screen backdrop fought
+  // the bulk modal's stacking context and stayed stuck open on every
+  // parent re-render.
   const [openTemplate, setOpenTemplate] = useState(false);
+  const templateContainerRef = useRef<HTMLDivElement | null>(null);
   // Fresh object per pick so EmailComposer's externalDraft effect re-fires
   // even when the same template is picked twice.
   const [externalDraft, setExternalDraft] = useState<{ subject: string; body: string } | null>(null);
@@ -406,6 +407,33 @@ export function BulkEmailDialog({
       }
     })();
   }, [pendingJobPick, jobs, jobsLoading]);
+
+  // Dismiss the Use Template popover when the recruiter clicks anywhere
+  // outside the button + popover container, or hits Escape. Scoped to
+  // mount time of `openTemplate` so we don't pay listener cost when the
+  // popover is closed. Also resets pendingJobPick so re-opening starts
+  // back at the template list instead of the job picker.
+  useEffect(() => {
+    if (!openTemplate) return;
+    function onDocPointer(e: PointerEvent) {
+      const el = templateContainerRef.current;
+      if (!el) return;
+      if (el.contains(e.target as Node)) return;
+      setOpenTemplate(false);
+      setPendingJobPick(null);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setOpenTemplate(false);
+      setPendingJobPick(null);
+    }
+    document.addEventListener("pointerdown", onDocPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDocPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openTemplate]);
 
   // Push a draft into EmailComposer. When jobValues is provided, the job
   // tokens ([Job Title], [Client Company Name], etc.) are resolved before
@@ -746,11 +774,12 @@ export function BulkEmailDialog({
             enableEditWithClaude
             onGenerate={onGenerateBody}
             externalDraft={externalDraft}
+            perRecipientCandidateHint
             sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
             sendingLabel="Sending…"
             sendDisabled={confirmDraft !== null}
             footerExtras={
-              <div className="relative">
+              <div className="relative" ref={templateContainerRef}>
                 <button
                   type="button"
                   onClick={() => {

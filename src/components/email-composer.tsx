@@ -144,6 +144,12 @@ export type EmailComposerProps = {
   // pass a fresh object each pick to retrigger. The composer's own
   // showTemplatePicker stays off in that flow.
   externalDraft?: { subject: string; body: string } | null;
+  // When true, the composer renders a banner under the body listing any
+  // unresolved candidate-shaped merge tokens (e.g. [Candidate First Name]
+  // or {{candidate.first_name}}) and notes that they'll be filled per
+  // recipient at send time. Opt-in so non-bulk callers (submittal,
+  // interview invite) stay unchanged.
+  perRecipientCandidateHint?: boolean;
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -182,6 +188,7 @@ export function EmailComposer({
   richTextBody = false,
   toEditorHtml,
   externalDraft,
+  perRecipientCandidateHint = false,
 }: EmailComposerProps) {
   // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
   // win over the legacy combined ccBccOptions. The BCC pool is always
@@ -395,6 +402,20 @@ export function EmailComposer({
     () => (templateFilter ? templates.filter(templateFilter) : templates),
     [templates, templateFilter],
   );
+
+  // Bulk-email helper: scan the current subject + body for candidate-shaped
+  // merge tokens that bulkSendEmail will resolve per recipient on the
+  // server. Used only when the caller opts in via perRecipientCandidateHint
+  // — gives the recruiter the same visual reassurance the /mail composer
+  // provides for unresolved fields, without changing the existing
+  // composer behavior for submittal or interview-invite callers.
+  const perRecipientTokens = useMemo<string[]>(() => {
+    if (!perRecipientCandidateHint) return [];
+    const haystack = `${subject}\n${body}`;
+    const brackets = haystack.match(/\[Candidate [^\]\n]+\]/g) ?? [];
+    const braces = haystack.match(/\{\{candidate\.[a-zA-Z0-9_]+\}\}/g) ?? [];
+    return Array.from(new Set([...brackets, ...braces]));
+  }, [perRecipientCandidateHint, subject, body]);
 
   function onPickTemplate(tpl: ActiveTemplateSummary) {
     // Defensive shape guard. A malformed template object (missing
@@ -765,6 +786,21 @@ export function EmailComposer({
           )}
         </div>
 
+        {perRecipientCandidateHint && perRecipientTokens.length > 0 && (
+          <div className="mx-5 mb-2 rounded-md border border-court-border/60 bg-court-surface-subtle/60 px-3 py-2 text-[11px] text-court-fg">
+            <span className="font-medium text-court-fg-muted">
+              These candidate fields will be filled per recipient at send time:
+            </span>{" "}
+            {perRecipientTokens.map((tag, i) => (
+              <span key={tag}>
+                <code className="rounded bg-court-surface px-1 py-0.5 font-mono text-[10px] text-court-fg">
+                  {tag}
+                </code>
+                {i < perRecipientTokens.length - 1 ? " " : ""}
+              </span>
+            ))}
+          </div>
+        )}
         {helperText && <div className="px-5 pb-2 text-[11px] text-court-fg-muted">{helperText}</div>}
         {err && <div className="mx-5 mb-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-800">{err}</div>}
 
