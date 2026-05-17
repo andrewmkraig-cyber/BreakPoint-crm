@@ -107,8 +107,8 @@ export async function MyDashboard({
 
   return (
     <div className="flex w-full flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-court-border bg-court-surface px-4 py-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           {activityEyebrow}
         </p>
         <ClubhousePeriodTabs period={period} />

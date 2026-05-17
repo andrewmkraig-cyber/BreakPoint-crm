@@ -44,14 +44,16 @@ export function KpiTile({
         >
           <Icon className="h-3 w-3" />
         </div>
-        <div className="min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+        <div className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           {label}
         </div>
       </div>
       <div
         className={cn(
-          "mt-1.5 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums",
-          isZero ? "text-court-fg-dim" : "text-court-fg",
+          "mt-1.5 text-center font-serif text-[26px] leading-none tracking-[-0.04em] tabular-nums",
+          isZero
+            ? "font-semibold text-court-fg-muted opacity-50"
+            : "font-bold text-court-fg",
         )}
       >
         {value}
