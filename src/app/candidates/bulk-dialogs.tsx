@@ -323,7 +323,24 @@ export function BulkEmailDialog({
   const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
   const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
   const [localTemplateOpen, setLocalTemplateOpen] = useState(false);
+  const localTemplateContainerRef = useRef<HTMLDivElement>(null);
   const applyDraftRef = useRef<((d: { subject: string; body: string }) => void) | null>(null);
+
+  // Document-level mousedown dismiss for the local Use Template dropdown.
+  // The previous full-viewport <div fixed inset-0 z-[60]> backdrop pattern
+  // sat directly over the trigger button while open and trapped the next
+  // click — the picker would not appear to open at all. Same fix that
+  // EditWithClaudeMenu uses for the same reason.
+  useEffect(() => {
+    if (!localTemplateOpen) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const node = localTemplateContainerRef.current;
+      if (node && node.contains(e.target as Node)) return;
+      setLocalTemplateOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [localTemplateOpen]);
 
   // Load active templates once when the bulk dialog mounts so the
   // picker dropdown opens instantly with the full list.
@@ -717,7 +734,7 @@ export function BulkEmailDialog({
             sendingLabel="Sending…"
             sendDisabled={confirmDraft !== null}
             footerExtras={
-              <div className="relative">
+              <div ref={localTemplateContainerRef} className="relative">
                 <button
                   type="button"
                   onClick={() => setLocalTemplateOpen((v) => !v)}
@@ -727,47 +744,44 @@ export function BulkEmailDialog({
                   <ChevronDown className="h-3.5 w-3.5" />
                 </button>
                 {localTemplateOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-[60]"
-                      onClick={() => setLocalTemplateOpen(false)}
-                    />
-                    <div className="absolute bottom-full right-0 z-[70] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
-                      <ul className="max-h-80 overflow-y-auto py-1 text-sm">
-                        {!localTemplatesLoaded && (
+                  <div
+                    role="menu"
+                    className="absolute bottom-full right-0 z-[1200] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg"
+                  >
+                    <ul className="max-h-80 overflow-y-auto py-1 text-sm">
+                      {!localTemplatesLoaded && (
+                        <li className="px-3 py-2 text-xs text-court-fg-muted">
+                          Loading templates…
+                        </li>
+                      )}
+                      {localTemplatesLoaded && localTemplatesError && (
+                        <li className="px-3 py-2 text-xs text-court-fg-muted">
+                          {localTemplatesError}.
+                        </li>
+                      )}
+                      {localTemplatesLoaded &&
+                        !localTemplatesError &&
+                        localTemplates.length === 0 && (
                           <li className="px-3 py-2 text-xs text-court-fg-muted">
-                            Loading templates…
+                            No active templates.
                           </li>
                         )}
-                        {localTemplatesLoaded && localTemplatesError && (
-                          <li className="px-3 py-2 text-xs text-court-fg-muted">
-                            {localTemplatesError}.
-                          </li>
-                        )}
-                        {localTemplatesLoaded &&
-                          !localTemplatesError &&
-                          localTemplates.length === 0 && (
-                            <li className="px-3 py-2 text-xs text-court-fg-muted">
-                              No active templates.
-                            </li>
-                          )}
-                        {localTemplates.map((t) => (
-                          <li key={t.id}>
-                            <button
-                              type="button"
-                              onClick={() => onPickLocalTemplate(t)}
-                              className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg hover:bg-court-brand-tint"
-                            >
-                              <span className="font-medium">{t.name}</span>
-                              <span className="truncate text-[11px] text-court-fg-muted">
-                                {t.subject}
-                              </span>
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </>
+                      {localTemplates.map((t) => (
+                        <li key={t.id}>
+                          <button
+                            type="button"
+                            onClick={() => onPickLocalTemplate(t)}
+                            className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg hover:bg-court-brand-tint"
+                          >
+                            <span className="font-medium">{t.name}</span>
+                            <span className="truncate text-[11px] text-court-fg-muted">
+                              {t.subject}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             }
