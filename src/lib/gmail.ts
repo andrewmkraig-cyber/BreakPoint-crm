@@ -397,6 +397,10 @@ export type MailListThread = {
   // ship it as an ISO string for the client formatter.
   timestampIso: string | null;
   unread: boolean;
+  // All Gmail label IDs on the most recent message — system labels
+  // (INBOX, UNREAD, etc.) and user labels mixed. ThreadRow filters
+  // to user labels via the labels-by-id map maintained in mail-view.
+  labelIds: string[];
 };
 
 type GmailListThreadsResponse = {
@@ -508,6 +512,7 @@ export async function listGmailThreads(
         subject: subject || "(no subject)",
         timestampIso: isoTs,
         unread: labels.includes("UNREAD"),
+        labelIds: labels,
       } satisfies MailListThread;
     }),
   );

@@ -198,6 +198,17 @@ export function MailView({
             .map((l) => ({ id: l.id, name: l.name })),
     [labels],
   );
+  // Lookup the ThreadRow uses to render a chip per user label on a
+  // thread. Hashing on user-label ids alone naturally drops Gmail
+  // system labels (INBOX, UNREAD, CATEGORY_*, etc.) — those never
+  // appear in this map so no per-row filter is needed.
+  const userLabelNamesById = useMemo(() => {
+    const m = new Map<string, string>();
+    if (userLabels) {
+      for (const l of userLabels) m.set(l.id, l.name);
+    }
+    return m;
+  }, [userLabels]);
   const labelTree = useMemo(() => (labels ? buildLabelTree(labels) : []), [labels]);
   // Flat list of every parent (has-children) node path, for the
   // Collapse all / Expand all toggle below the Inbox card.
@@ -1251,6 +1262,7 @@ export function MailView({
                   checked={selectedIds.has(t.id)}
                   anySelected={selectedIds.size > 0}
                   selectedIds={selectedIds}
+                  labelNamesById={userLabelNamesById}
                   onOpen={() => setSelected(t.id)}
                   onArchive={() => archiveThread(t.id)}
                   onToggle={() => toggleSelectedId(t.id)}
@@ -1323,6 +1335,7 @@ function ThreadRow({
   checked,
   anySelected,
   selectedIds,
+  labelNamesById,
   onOpen,
   onArchive,
   onToggle,
@@ -1333,10 +1346,17 @@ function ThreadRow({
   checked: boolean;
   anySelected: boolean;
   selectedIds: Set<string>;
+  labelNamesById: Map<string, string>;
   onOpen: () => void;
   onArchive: () => void;
   onToggle: () => void;
 }) {
+  // User labels applied to this thread (system labels naturally drop
+  // out — they're not in the lookup map). Empty for unlabeled threads
+  // so the chip row collapses without reserving space.
+  const userLabelNames = t.labelIds
+    .map((id) => labelNamesById.get(id))
+    .filter((n): n is string => typeof n === "string");
   // Checkbox visibility: hidden until you hover the row, OR pinned
   // visible whenever the row is checked / any row is checked. Keeps
   // the inbox visually clean in zero-selection state but doesn't
@@ -1388,10 +1408,21 @@ function ThreadRow({
         (dragging ? " opacity-50" : "")
       }
     >
+      <div
+        aria-hidden={!t.unread}
+        className="flex w-3 shrink-0 items-center justify-center pl-1"
+      >
+        {t.unread ? (
+          <span
+            aria-label="Unread"
+            className="h-2 w-2 rounded-full bg-court-accent"
+          />
+        ) : null}
+      </div>
       <label
         onClick={(e) => e.stopPropagation()}
         className={
-          "flex cursor-pointer items-center pl-3 pr-1 transition " +
+          "flex cursor-pointer items-center pl-1 pr-1 transition " +
           (checkboxVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100")
         }
       >
@@ -1425,6 +1456,18 @@ function ThreadRow({
           {t.subject}
         </div>
         <div className="w-full truncate text-[11.5px] text-court-fg-muted">{t.snippet}</div>
+        {userLabelNames.length > 0 ? (
+          <div className="mt-1 flex w-full flex-wrap items-center gap-1">
+            {userLabelNames.map((name) => (
+              <span
+                key={name}
+                className="rounded-full bg-court-surface-subtle px-2 py-0.5 text-[10px] text-court-fg-muted"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+        ) : null}
       </button>
       <button
         type="button"
