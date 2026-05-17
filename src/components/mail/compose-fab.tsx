@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  CalendarPlus,
   GripVertical,
   Mail,
   MessageSquare,
@@ -577,6 +578,26 @@ export function ComposeFAB() {
     setView("notes");
   }
 
+  function pickCalendarEvent() {
+    closeAll();
+    // Same dispatch the TopBar "+ New event" button uses. Only fires
+    // when the listener is already mounted (i.e. the user is on
+    // /calendar). On any other route we set a session-storage flag and
+    // navigate — calendar-view picks the flag up on mount and opens
+    // the modal once, then clears it.
+    if (pathname === "/calendar") {
+      window.dispatchEvent(new CustomEvent("ace:calendar:new-event"));
+      return;
+    }
+    try {
+      window.sessionStorage.setItem("ace.calendar.openNewEvent", "1");
+    } catch {
+      // Quota / private mode: best-effort. Worst case the recruiter
+      // lands on /calendar and clicks New event themselves.
+    }
+    router.push("/calendar");
+  }
+
   function pickRecent(t: RecentThread) {
     setPendingContact({
       candidateId: t.candidateId,
@@ -731,6 +752,12 @@ export function ComposeFAB() {
                 label="New Email"
                 hint="Compose & send"
                 onClick={pickEmail}
+              />
+              <ActionRow
+                icon={<CalendarPlus className="h-4 w-4" />}
+                label="New Event"
+                hint="Schedule on the calendar"
+                onClick={pickCalendarEvent}
               />
               <ActionRow
                 icon={<MessageSquare className="h-4 w-4" />}

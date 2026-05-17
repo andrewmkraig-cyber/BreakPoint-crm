@@ -187,31 +187,50 @@ export function CalendarView({
   // each event.
   const teamMode = scope !== "me";
 
-  // Standalone "New event" modal (CreateEventModal) — separate from the
-  // edit drawer's legacy create-mode. The drawer keeps its grid-slot
-  // drag-to-create path; the modal is the entry point for the explicit
-  // "+ New event" affordances (subheader button and global TopBar
-  // dispatch). Lays the groundwork for the "+ New" menu that item 3
-  // adds (New Event / New Reminder).
+  // Standalone "New event" modal (CreateEventModal). Now the entry
+  // point for every create surface: subheader button, global TopBar
+  // dispatch, ComposeFAB menu, and grid empty-slot clicks. The edit
+  // drawer's legacy `create` mode is no longer wired to a caller.
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [modalPrefill, setModalPrefill] = useState<
+    { date: Date; hour?: number; minute?: number } | null
+  >(null);
+  const openCreateModal = useCallback(
+    (prefill?: { date: Date; hour?: number; minute?: number }) => {
+      setModalPrefill(prefill ?? null);
+      setCreateModalOpen(true);
+    },
+    [],
+  );
 
-  // Global TopBar dispatches `ace:calendar:new-event` from the "+ New
-  // event" button; route it into the new modal rather than the old
-  // drawer create flow.
+  // Global TopBar + ComposeFAB dispatch `ace:calendar:new-event` from
+  // their "+ New event" entries. Always opens with no prefill so the
+  // modal defaults to "now, rounded up." Grid slot clicks go through
+  // openCreateAt with the clicked date/time as prefill.
   useEffect(() => {
-    const handler = () => setCreateModalOpen(true);
+    const handler = () => openCreateModal();
     window.addEventListener("ace:calendar:new-event", handler);
     return () => window.removeEventListener("ace:calendar:new-event", handler);
-  }, []);
+  }, [openCreateModal]);
+
+  // Cross-route entry: the ComposeFAB on a non-/calendar page can't
+  // dispatch the event directly (no listener mounted yet), so it sets
+  // a sessionStorage flag and navigates. We pick the flag up on mount
+  // and open the modal once. Cleared synchronously so a manual refresh
+  // doesn't re-trigger.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem("ace.calendar.openNewEvent") === "1") {
+      window.sessionStorage.removeItem("ace.calendar.openNewEvent");
+      openCreateModal();
+    }
+  }, [openCreateModal]);
   const openCreateAt = (
     date: Date,
     hour?: number,
     minute?: number,
   ) => {
-    setSelectedEvent(null);
-    setCreatePrefill({ date, hour, minute });
-    setDrawerMode("create");
-    setDrawerOpen(true);
+    openCreateModal({ date, hour, minute });
   };
   const openEdit = (ev: CalendarEvent) => {
     setSelectedEvent(ev);
@@ -379,7 +398,11 @@ export function CalendarView({
 
       <CreateEventModal
         open={createModalOpen}
-        onClose={() => setCreateModalOpen(false)}
+        prefill={modalPrefill}
+        onClose={() => {
+          setCreateModalOpen(false);
+          setModalPrefill(null);
+        }}
         onCreated={() => router.refresh()}
       />
     </div>
