@@ -13,30 +13,43 @@ function initials(name: string) {
 // are intentional — these are data-driven identity colors (same client
 // always gets the same swatch), not theme-driven tokens. The Court Mode
 // surfaces around the avatar still track the palette.
-function initialsBg(name: string) {
-  const palette = ["#3F6B2E", "#5A9642", "#1F2937", "#475569", "#92400E", "#7C2D12"];
+const CLIENT_COLOR_PALETTE = ["#3F6B2E", "#5A9642", "#1F2937", "#475569", "#92400E", "#7C2D12"];
+
+export function clientIdentityColor(name: string): string {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
-  return palette[h % palette.length];
+  return CLIENT_COLOR_PALETTE[h % CLIENT_COLOR_PALETTE.length];
 }
 
 export function ClientLogo({
   domain,
   name,
   size = 40,
+  variant = "auto",
+  shape = "rounded",
 }: {
   domain?: string | null;
   name: string;
   size?: number;
+  /**
+   * "auto" (default) — favicon if domain is present, colored initials
+   * square as fallback. "initials" — always the colored identity square,
+   * never the favicon (used by the redesigned clients grid card where
+   * the identity color is the card's accent anchor).
+   */
+  variant?: "auto" | "initials";
+  /** "rounded" (default) — rounded-lg. "squircle" — rounded-xl, matches the directory card spec. */
+  shape?: "rounded" | "squircle";
 }) {
   const [failed, setFailed] = useState(false);
-  const bg = useMemo(() => initialsBg(name), [name]);
+  const bg = useMemo(() => clientIdentityColor(name), [name]);
+  const radius = shape === "squircle" ? "rounded-xl" : "rounded-lg";
 
-  if (!domain || failed) {
+  if (variant === "initials" || !domain || failed) {
     return (
       <div
-        className="flex shrink-0 items-center justify-center rounded-lg font-semibold text-white"
-        style={{ width: size, height: size, background: bg, fontSize: size * 0.38 }}
+        className={`flex shrink-0 items-center justify-center ${radius} font-extrabold text-white`}
+        style={{ width: size, height: size, background: bg, fontSize: size * 0.32 }}
         aria-label={name}
       >
         {initials(name)}
@@ -55,7 +68,7 @@ export function ClientLogo({
       alt={`${name} logo`}
       width={size}
       height={size}
-      className="shrink-0 rounded-lg border border-court-border bg-court-surface object-contain p-1"
+      className={`shrink-0 ${radius} border border-court-border bg-court-surface object-contain p-1`}
       style={{ width: size, height: size }}
       onError={() => setFailed(true)}
     />

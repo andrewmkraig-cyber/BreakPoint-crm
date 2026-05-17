@@ -211,6 +211,18 @@ export default async function ClientDetailPage({
         break;
     }
   }
+  // Stat strip's progress bars are scaled to the largest stage value
+  // on this client, so the busiest stage fills its bar end-to-end and
+  // the rest render proportional. All-zeros → all bars empty.
+  const maxStripValue = Math.max(
+    counts.submitted,
+    counts.interviewing,
+    counts.offer,
+    counts.pendingStart,
+    counts.hired,
+    0,
+  );
+
   // Per-job row counters: another Prisma groupBy keyed by (jobRfId, stage)
   // so each job's row in the Jobs table reads from canonical Neon stages
   // rather than RFCandidate.jobs[]. Same pattern as the strip above.
@@ -291,12 +303,39 @@ export default async function ClientDetailPage({
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Stat label="Submitted" value={counts.submitted} tone="brand" href={`/pipeline?clientId=${client.id}&stage=submitted`} />
-        <Stat label="Interviewing" value={counts.interviewing} tone="brand" href={`/pipeline?clientId=${client.id}&stage=interviewing`} />
-        <Stat label="Offer" value={counts.offer} tone="brand" href={`/pipeline?clientId=${client.id}&stage=offer`} />
-        <Stat label="Pending Start" value={counts.pendingStart} tone="brand" href={`/pipeline?clientId=${client.id}&stage=pending_start`} />
-        <Stat label="Hired" value={counts.hired} tone="brand" href={`/pipeline?clientId=${client.id}&stage=hired`} />
+      <div className="rounded-2xl bg-court-surface p-5 shadow-sm">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-5 md:grid-cols-5">
+          <Stat
+            label="Submitted"
+            value={counts.submitted}
+            max={maxStripValue}
+            href={`/pipeline?clientId=${client.id}&stage=submitted`}
+          />
+          <Stat
+            label="Interviewing"
+            value={counts.interviewing}
+            max={maxStripValue}
+            href={`/pipeline?clientId=${client.id}&stage=interviewing`}
+          />
+          <Stat
+            label="Offer"
+            value={counts.offer}
+            max={maxStripValue}
+            href={`/pipeline?clientId=${client.id}&stage=offer`}
+          />
+          <Stat
+            label="Pending Start"
+            value={counts.pendingStart}
+            max={maxStripValue}
+            href={`/pipeline?clientId=${client.id}&stage=pending_start`}
+          />
+          <Stat
+            label="Hired"
+            value={counts.hired}
+            max={maxStripValue}
+            href={`/pipeline?clientId=${client.id}&stage=hired`}
+          />
+        </div>
       </div>
 
       <Tabs
@@ -341,8 +380,8 @@ export default async function ClientDetailPage({
             </dl>
           </div>
 
-          <div className="rounded-xl border border-court-border/40 bg-court-surface shadow-sm lg:col-span-3">
-            <div className="flex items-center justify-between border-b border-court-border px-5 py-3">
+          <div className="rounded-2xl bg-court-surface shadow-sm lg:col-span-3">
+            <div className="flex items-center justify-between border-b border-court-border-soft px-5 py-3">
               <h2 className="font-serif text-lg font-semibold text-court-fg">Jobs</h2>
               <span className="text-xs text-court-fg-muted">
                 {openJobs.length} open · {closedJobs.length} closed
@@ -353,24 +392,24 @@ export default async function ClientDetailPage({
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-court-border bg-court-surface-subtle/60 text-[11px] uppercase tracking-wider text-court-fg-muted">
+                  <thead className="border-b border-court-border-soft text-[11px] uppercase tracking-wider text-court-fg-muted">
                     <tr>
-                      <th className="px-5 py-2.5 font-medium">Job</th>
-                      <th className="px-5 py-2.5 font-medium">Status</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Submitted</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Interviewing</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Offer</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Pending Start</th>
-                      <th className="px-5 py-2.5 text-right font-medium">Hired</th>
+                      <th className="px-4 py-2.5 font-medium">Job</th>
+                      <th className="px-4 py-2.5 font-medium">Status</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Submitted</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Interviewing</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Offer</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Pending Start</th>
+                      <th className="px-4 py-2.5 text-right font-medium">Hired</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-court-border">
+                  <tbody className="divide-y divide-court-border-soft">
                     {[...openJobs, ...closedJobs].map((j) => {
                       const isOpen = openJobs.includes(j);
                       const c = jobCountsById.get(j.id) ?? emptyJobCounts();
                       return (
                         <tr key={j.id} className="transition hover:bg-brand-tint/40">
-                          <td className="px-5 py-2.5">
+                          <td className="px-4 py-3">
                             <Link
                               href={`/jobs/${j.id}`}
                               className="flex items-center gap-2 font-medium text-court-fg hover:text-brand-dark"
@@ -379,7 +418,7 @@ export default async function ClientDetailPage({
                               <span>{j.name ?? j.title ?? "(untitled)"}</span>
                             </Link>
                           </td>
-                          <td className="px-5 py-2.5">
+                          <td className="px-4 py-3">
                             <span
                               className={cn(
                                 "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
@@ -389,35 +428,35 @@ export default async function ClientDetailPage({
                               {isOpen ? "Active" : "Closed"}
                             </span>
                           </td>
-                          <td className="px-5 py-2.5 text-right">
+                          <td className="px-4 py-3 text-right">
                             <JobCountPill
                               value={c.submitted}
                               tone="submitted"
                               href={c.submitted > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=submitted` : undefined}
                             />
                           </td>
-                          <td className="px-5 py-2.5 text-right">
+                          <td className="px-4 py-3 text-right">
                             <JobCountPill
                               value={c.interviewing}
                               tone="interviewing"
                               href={c.interviewing > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=interviewing` : undefined}
                             />
                           </td>
-                          <td className="px-5 py-2.5 text-right">
+                          <td className="px-4 py-3 text-right">
                             <JobCountPill
                               value={c.offer}
                               tone="offer"
                               href={c.offer > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=offer` : undefined}
                             />
                           </td>
-                          <td className="px-5 py-2.5 text-right">
+                          <td className="px-4 py-3 text-right">
                             <JobCountPill
                               value={c.pendingStart}
                               tone="pendingStart"
                               href={c.pendingStart > 0 ? `/pipeline?clientId=${client.id}&jobId=${j.id}&stage=pending_start` : undefined}
                             />
                           </td>
-                          <td className="px-5 py-2.5 text-right">
+                          <td className="px-4 py-3 text-right">
                             <JobCountPill
                               value={c.hired}
                               tone="hired"
@@ -589,7 +628,7 @@ function Tabs({
     { id: "activity", label: "Activity", href: `/clients/${slug}?tab=activity` },
     { id: "email", label: "Email", href: `/clients/${slug}?tab=email` },
   ];
-  return <TabStrip<ClientTab> ariaLabel="Client section" activeId={tab} items={items} />;
+  return <TabStrip<ClientTab> ariaLabel="Client section" activeId={tab} items={items} variant="underline" />;
 }
 
 function Detail({ label, icon, children }: { label: string; icon?: React.ReactNode; children: React.ReactNode }) {
@@ -607,33 +646,39 @@ function Detail({ label, icon, children }: { label: string; icon?: React.ReactNo
 function Stat({
   label,
   value,
-  tone,
+  max,
   href,
 }: {
   label: string;
-  value: string | number;
-  tone: "brand" | "blue" | "purple" | "amber" | "emerald";
+  value: number;
+  max: number;
   href?: string;
 }) {
-  const cls = {
-    brand: "text-brand-dark",
-    blue: "text-blue-700",
-    purple: "text-purple-700",
-    amber: "text-amber-700",
-    emerald: "text-emerald-700",
-  }[tone];
-  const effective = typeof value === "number" && value === 0 ? "text-court-fg-muted/60" : cls;
+  const blank = value === 0;
+  const ratio = max > 0 ? Math.min(1, value / max) : 0;
   const inner = (
     <>
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
-      <div className={cn("font-serif text-3xl font-extrabold leading-none tracking-tight", effective)}>{value}</div>
+      <div
+        className={cn(
+          "font-serif text-4xl font-extrabold leading-none tracking-tight",
+          blank ? "text-court-fg-dim" : "text-court-fg",
+        )}
+      >
+        {value}
+      </div>
+      <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">{label}</div>
+      <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-court-border-soft">
+        <div
+          className="h-full rounded-full bg-court-brand transition-all"
+          style={{ width: `${ratio * 100}%` }}
+        />
+      </div>
     </>
   );
-  const wrapperCls =
-    "flex items-baseline justify-between gap-3 rounded-xl border border-court-border/40 bg-court-surface px-3.5 py-2 shadow-sm";
+  const wrapperCls = "flex flex-col";
   if (href) {
     return (
-      <Link href={href} className={cn(wrapperCls, "transition hover:border-court-accent hover:shadow-sm")}>
+      <Link href={href} className={cn(wrapperCls, "transition hover:opacity-80")}>
         {inner}
       </Link>
     );

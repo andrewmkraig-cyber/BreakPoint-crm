@@ -25,8 +25,9 @@ type Common<TId extends string> = {
   /**
    * "default" — bordered chip with subtle bg (existing app-wide tabs).
    * "underline" — opt-in flat style: 2px brand bottom border on active, no pill bg.
-   *   Used by /pipeline. Other consumers stay on "default" so this change
-   *   doesn't ripple through Dashboard / Jobs / Applicants / etc.
+   *   Used by /pipeline, /clients, and /clients/[id]. Other consumers
+   *   stay on "default" so this style doesn't ripple through Dashboard /
+   *   Jobs / Applicants / etc.
    */
   variant?: "default" | "underline";
   /**
@@ -57,9 +58,9 @@ export function TabStrip<TId extends string = string>(
       role="tablist"
       aria-label={ariaLabel}
       className={cn(
-        "inline-flex flex-wrap items-center gap-1",
+        "inline-flex flex-wrap items-center",
+        isUnderline ? "gap-0 border-b border-court-border" : "gap-1",
         fullWidth && "flex w-full",
-        isUnderline && "gap-0 border-b border-court-border",
         className,
       )}
     >
