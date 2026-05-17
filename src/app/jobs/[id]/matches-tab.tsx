@@ -1863,7 +1863,7 @@ export function MatchesTab({
                       size="sm"
                       onClick={() => setEmailDialogOpen(true)}
                       disabled={bulkInFlight}
-                      className="border-orange-500 bg-orange-500 px-2.5 py-1 text-sm text-white hover:bg-orange-600"
+                      className="border-orange-500 bg-transparent px-2.5 py-1 text-sm text-orange-600 hover:bg-orange-50"
                     >
                       <Mail className="h-3.5 w-3.5" />
                       Email
