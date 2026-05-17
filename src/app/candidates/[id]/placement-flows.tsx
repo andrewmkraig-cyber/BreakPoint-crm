@@ -3,13 +3,21 @@
 import { useEffect, useRef, useState, useTransition, type ChangeEvent, type DragEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Briefcase,
+  Bookmark,
+  CalendarClock,
+  CheckCircle2,
   ChevronDown,
+  CornerUpLeft,
+  DollarSign,
   Edit3,
+  Eye,
+  Handshake,
   Loader2,
+  MoreHorizontal,
   Plus,
   RotateCcw,
   Save,
+  Send,
   Sparkles,
   UploadCloud,
   UserX,
@@ -26,11 +34,15 @@ import {
   applyCandidateToJob,
   cancelPlacement,
   confirmStart,
+  deletePlacement,
   deliverCandidateConfirmation,
   generateSubmittal,
   getCandidatePlacementSnapshots,
+  keepCandidate,
   listSubmittalResumeOptions,
   moveCancelledToAceStage,
+  moveToApplied,
+  moveToKept,
   reapplyCancelledPlacement,
   recordOffer,
   recordPlacement,
@@ -63,7 +75,6 @@ import {
   formatInterviewWhen as formatInterviewWhenShared,
   formatInterviewNextLine,
 } from "@/lib/interview-format";
-import { PipelineRowActions } from "@/app/jobs/[id]/pipeline-row-actions";
 import { LEAD_SOURCES } from "@/lib/lead-sources";
 
 export type ClientContactRef = {
@@ -529,13 +540,17 @@ export function PlacementActions({
       )}
 
       {!chromeless && (
-        <div className="divide-y divide-court-border/40 rounded-xl border border-court-border/40 bg-court-surface">
+        <div className="divide-y divide-court-border-soft">
           {jobsState.map((j) => (
             <JobActionRow
               key={j.jobRfId}
               job={j}
               candidateRfId={candidateRfId}
               candidateName={[candidateFirstName, candidateLastName].filter(Boolean).join(" ")}
+              onOpenSubmit={(jobRfId) => {
+                setSubmitInitialJobRfId(jobRfId);
+                setSubmitOpen(true);
+              }}
               onOffer={() => setOfferFor(j)}
               onPlacement={() => setPlacementFor(j)}
               onConfirm={() => setConfirmFor(j)}
@@ -742,6 +757,7 @@ function JobActionRow({
   job,
   candidateRfId,
   candidateName,
+  onOpenSubmit,
   onOffer,
   onPlacement,
   onConfirm,
@@ -754,6 +770,7 @@ function JobActionRow({
   job: PlacementContextJob;
   candidateRfId: number;
   candidateName: string;
+  onOpenSubmit: (jobRfId: number) => void;
   onOffer: () => void;
   onPlacement: () => void;
   onConfirm: () => void;
@@ -788,12 +805,11 @@ function JobActionRow({
 
   return (
     <div className={isSubdued ? "opacity-50 transition-opacity hover:opacity-100" : undefined}>
-      <div className="flex items-center justify-between gap-3 px-3 py-1.5">
+      <div className="flex items-center justify-between gap-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
-          <Briefcase className="h-3 w-3 shrink-0 text-court-fg-muted" />
           <span className="truncate text-sm font-medium text-court-fg">{job.jobTitle}</span>
           {job.clientName && (
-            <span className="truncate text-[11px] text-court-fg-muted">· {job.clientName}</span>
+            <span className="truncate text-[11px] text-court-fg-muted">{job.clientName}</span>
           )}
           {/* No label prop — StageBadge falls back to its canonical
               bucket label so an Ace-side stage move shows immediately
@@ -812,38 +828,24 @@ function JobActionRow({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          {/* Action set parity with the Job-page Pipeline rows. The
-              dialog-heavy actions (Schedule / Offer / Placement /
-              Confirm / Cancel) hand back to the existing profile-side
-              dialog state via the inline callbacks; the lighter ones
-              (Apply / Submit / Keep / Reject / Reapply) call the
-              same server actions PipelineRowActions uses on the Job
-              page. */}
-          <PipelineRowActions
+          <AppliedJobRowActions
             candidateRfId={candidateRfId}
             candidateName={candidateName}
-            jobRfId={job.jobRfId}
-            clientRfId={job.clientRfId}
-            jobTitle={job.jobTitle}
-            clientName={job.clientName}
-            stage={effective}
-            placementId={job.placement?.id ?? null}
+            job={job}
+            effective={effective}
+            onOpenSubmit={onOpenSubmit}
             onSchedule={onSchedule}
             onOffer={onOffer}
             onPlacement={onPlacement}
-            onConfirmStart={onConfirm}
-            onCancelPlacement={onCancel}
-            onRejectDialog={onReject}
+            onConfirm={onConfirm}
+            onReject={onReject}
             onPlacementRemoved={onPlacementRemoved}
           />
-          {isCancelled && job.placement && (
-            <CancelledRowActions placementId={job.placement.id} />
-          )}
         </div>
       </div>
 
       {isCancelled && job.placement?.cancellationReason && (
-        <div className="px-3 pb-1.5 text-[11px] text-red-700">
+        <div className="pb-2 text-[11px] text-red-700">
           Reason: {CANCEL_REASON_LABELS[job.placement.cancellationReason] ?? job.placement.cancellationReason}
           {job.placement.cancellationDetail ? ` — ${job.placement.cancellationDetail}` : ""}
         </div>
@@ -869,12 +871,62 @@ const CANCEL_REASON_LABELS: Record<string, string> = {
   other: "Other",
 };
 
-function CancelledRowActions({ placementId }: { placementId: string }) {
+// Stage-keyed slim actions menu for the applied-jobs strip on the
+// candidate profile. Replaces the wide chip row that PipelineRowActions
+// renders on the Job page — same server actions, same callback handoffs
+// to the dialog state above (Offer / Placement / Schedule / Reject /
+// Cancel), just collapsed into a single kebab menu so the strip stays
+// quiet visually. Job-page rows still use PipelineRowActions as is.
+type MenuItem = {
+  key: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  onClick: () => void;
+  tone?: "default" | "primary" | "danger";
+  separator?: boolean;
+};
+
+function AppliedJobRowActions({
+  candidateRfId,
+  candidateName,
+  job,
+  effective,
+  onOpenSubmit,
+  onSchedule,
+  onOffer,
+  onPlacement,
+  onConfirm,
+  onReject,
+  onPlacementRemoved,
+}: {
+  candidateRfId: number;
+  candidateName: string;
+  job: PlacementContextJob;
+  // Normalized stage string (lowercase, trimmed). Typed as plain string
+  // rather than PipelineBucket because legacy RF-imported placements
+  // can carry off-spec values like "disqualified" that the canonical
+  // bucket union doesn't include — the switch below handles both.
+  effective: string;
+  onOpenSubmit: (jobRfId: number) => void;
+  onSchedule: () => void;
+  onOffer: () => void;
+  onPlacement: () => void;
+  onConfirm: () => void;
+  onReject: () => void;
+  onPlacementRemoved?: (placementId: string) => void;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  function run(label: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
+  const profileHref = `/candidates/${candidateRfId}`;
+  const jobRfId = job.jobRfId;
+  const clientRfId = job.clientRfId;
+  const jobTitle = job.jobTitle;
+  const clientName = job.clientName;
+  const placementId = job.placement?.id ?? null;
+
+  function runLight(label: string, fn: () => Promise<{ ok: boolean; error?: string }>) {
     setOpen(false);
     startTransition(async () => {
       const result = await fn();
@@ -887,16 +939,200 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
     });
   }
 
+  function handleSubmit() {
+    setOpen(false);
+    onOpenSubmit(jobRfId);
+  }
+
+  function handleApply() {
+    runLight(`Applied ${candidateName}`, () =>
+      applyCandidateToJob({ candidateRfId, jobRfId, clientRfId, jobTitle, clientName }),
+    );
+  }
+
+  function handleKeep() {
+    runLight(`Kept ${candidateName}`, () =>
+      keepCandidate({ candidateRfId, jobRfId, clientRfId }),
+    );
+  }
+
+  function handleMoveToKept() {
+    runLight("Moved back to Kept", () =>
+      moveToKept({
+        candidateRfId,
+        jobRfId,
+        clientRfId,
+        previousStage: effective as Parameters<typeof moveToKept>[0]["previousStage"],
+      }),
+    );
+  }
+
+  function handleMoveToApplied() {
+    runLight("Moved back to Applied", () =>
+      moveToApplied({
+        candidateRfId,
+        jobRfId,
+        clientRfId,
+        previousStage: effective as Parameters<typeof moveToApplied>[0]["previousStage"],
+      }),
+    );
+  }
+
+  function handleUnreject() {
+    if (
+      !confirm(
+        `Reapply ${candidateName}? They will be restored to the candidate pool for this job with a clean slate.`,
+      )
+    )
+      return;
+    runLight(`Reapplied ${candidateName}`, () =>
+      unrejectCandidateJob({
+        candidateRfId,
+        jobRfId,
+        clientRfId,
+        targetStage: "submitted",
+      }),
+    );
+  }
+
+  // Legacy "disqualified" RF-imported rows have no rejected→submitted
+  // transition; deleting the Placement is the only path back. Mirror
+  // the disqualified branch from PipelineRowActions so the row clears
+  // out of local state without a refresh re-resurrecting it.
+  function handleUnrejectViaDelete() {
+    if (!placementId) {
+      toast.error("Can't reapply", { description: "No local placement id — refresh and try again." });
+      return;
+    }
+    if (
+      !confirm(
+        `Reapply ${candidateName}? This deletes the disqualified placement row so the candidate gets a clean slate for this job.`,
+      )
+    )
+      return;
+    const pid = placementId;
+    setOpen(false);
+    startTransition(async () => {
+      const result = await deletePlacement(pid);
+      if (!result.ok) {
+        toast.error("Couldn't reapply", { description: result.error });
+        return;
+      }
+      toast.success(`Reapplied ${candidateName}`);
+      if (onPlacementRemoved) onPlacementRemoved(pid);
+      else router.refresh();
+    });
+  }
+
+  function handleView() {
+    setOpen(false);
+    router.push(profileHref);
+  }
+
+  const items: MenuItem[] = (() => {
+    switch (effective) {
+      case "sourced":
+        return [
+          { key: "submit", label: "Submit", icon: Send, tone: "primary", onClick: handleSubmit },
+          { key: "apply", label: "Apply", icon: Plus, onClick: handleApply },
+          { key: "keep", label: "Keep", icon: Bookmark, onClick: handleKeep },
+          { key: "reject", label: "Reject", icon: UserX, tone: "danger", separator: true, onClick: () => { setOpen(false); onReject(); } },
+        ];
+      case "applied":
+        return [
+          { key: "submit", label: "Submit", icon: Send, tone: "primary", onClick: handleSubmit },
+          { key: "schedule", label: "Schedule interview", icon: CalendarClock, onClick: () => { setOpen(false); onSchedule(); } },
+          { key: "reject", label: "Reject", icon: UserX, tone: "danger", separator: true, onClick: () => { setOpen(false); onReject(); } },
+        ];
+      case "kept":
+        return [
+          { key: "submit", label: "Submit", icon: Send, tone: "primary", onClick: handleSubmit },
+          { key: "moveToApplied", label: "Move to Applied", icon: CornerUpLeft, onClick: handleMoveToApplied },
+          { key: "reject", label: "Reject", icon: UserX, tone: "danger", separator: true, onClick: () => { setOpen(false); onReject(); } },
+        ];
+      case "submitted":
+        return [
+          { key: "schedule", label: "Schedule interview", icon: CalendarClock, onClick: () => { setOpen(false); onSchedule(); } },
+          { key: "moveToKept", label: "Move to Kept", icon: CornerUpLeft, onClick: handleMoveToKept },
+          { key: "reject", label: "Reject", icon: UserX, tone: "danger", separator: true, onClick: () => { setOpen(false); onReject(); } },
+        ];
+      case "interviewing":
+        return [
+          { key: "schedule", label: "Schedule another interview", icon: CalendarClock, onClick: () => { setOpen(false); onSchedule(); } },
+          { key: "offer", label: "Offer", icon: DollarSign, onClick: () => { setOpen(false); onOffer(); } },
+          { key: "reject", label: "Reject", icon: UserX, tone: "danger", separator: true, onClick: () => { setOpen(false); onReject(); } },
+        ];
+      case "offer":
+        return [
+          { key: "editOffer", label: "Edit offer", icon: Edit3, onClick: () => { setOpen(false); onOffer(); } },
+          { key: "placement", label: "Record placement", icon: Handshake, tone: "primary", onClick: () => { setOpen(false); onPlacement(); } },
+          { key: "reject", label: "Reject", icon: UserX, tone: "danger", separator: true, onClick: () => { setOpen(false); onReject(); } },
+        ];
+      case "pending_start":
+        // Cancel + Reject intentionally omitted: cancellation lives
+        // inside the Edit Placement modal (it has the cancel-reason
+        // picker the menu can't carry) and Reject doesn't apply to a
+        // candidate who's already been placed.
+        return [
+          { key: "editPlacement", label: "Edit placement", icon: Edit3, onClick: () => { setOpen(false); onPlacement(); } },
+          { key: "confirm", label: "Confirm start", icon: CheckCircle2, tone: "primary", onClick: () => { setOpen(false); onConfirm(); } },
+        ];
+      case "hired":
+        return [
+          { key: "view", label: "Open profile", icon: Eye, onClick: handleView },
+        ];
+      case "rejected":
+        return [
+          { key: "reapply", label: "Reapply", icon: RotateCcw, tone: "primary", onClick: handleUnreject },
+        ];
+      case "disqualified":
+        return [
+          { key: "reapply", label: "Reapply", icon: RotateCcw, tone: "primary", onClick: handleUnrejectViaDelete },
+        ];
+      case "cancelled":
+        // Cancelled-specific entries match the old CancelledRowActions
+        // menu so the recruiter still has Reapply / Move to Sourced /
+        // Move to Applied / Remove-from-Job after a placement was
+        // killed. placementId guard returns the bare View when it's
+        // somehow missing (legacy data).
+        if (!placementId) {
+          return [{ key: "view", label: "Open profile", icon: Eye, onClick: handleView }];
+        }
+        return [
+          { key: "reapply", label: "Reapply (move to Submitted)", icon: RotateCcw, tone: "primary", onClick: () => runLight("Moved to Submitted", () => reapplyCancelledPlacement({ placementId })) },
+          { key: "toSourced", label: "Move to Sourced", icon: CornerUpLeft, onClick: () => runLight("Moved to Sourced", () => moveCancelledToAceStage({ placementId, target: "sourced" })) },
+          { key: "toApplied", label: "Move to Applied", icon: CornerUpLeft, onClick: () => runLight("Moved to Applied", () => moveCancelledToAceStage({ placementId, target: "applied" })) },
+          {
+            key: "remove",
+            label: "Remove from job",
+            icon: UserX,
+            tone: "danger",
+            separator: true,
+            onClick: () => {
+              if (!confirm("Remove this candidate from the job entirely? This deletes the row.")) {
+                setOpen(false);
+                return;
+              }
+              runLight("Removed from job", () => removeCancelledFromJob({ placementId }));
+            },
+          },
+        ];
+      default:
+        return [{ key: "view", label: "Open profile", icon: Eye, onClick: handleView }];
+    }
+  })();
+
   return (
     <div className="relative">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         disabled={isPending}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark disabled:opacity-60"
+        aria-label="Row actions"
+        title="Actions"
+        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg disabled:opacity-60"
       >
-        {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ChevronDown className="h-3.5 w-3.5" />}
-        Actions
+        {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
       </button>
       {open && (
         <>
@@ -905,64 +1141,33 @@ function CancelledRowActions({ placementId }: { placementId: string }) {
               this, the click bubbled up to the backdrop's onClose and
               the whole dialog unmounted (taking any state with it). */}
           <div className="fixed inset-0 z-[60]" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-[70] mt-1 w-60 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
+          <div className="absolute right-0 z-[70] mt-1 w-56 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
             <ul className="py-1 text-sm">
-              <li>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("Moved to Submitted", () =>
-                      reapplyCancelledPlacement({ placementId }),
-                    )
-                  }
-                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
-                >
-                  Reapply (move to Submitted)
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("Moved to Sourced", () =>
-                      moveCancelledToAceStage({ placementId, target: "sourced" }),
-                    )
-                  }
-                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
-                >
-                  Move to Sourced
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() =>
-                    run("Moved to Applied", () =>
-                      moveCancelledToAceStage({ placementId, target: "applied" }),
-                    )
-                  }
-                  className="block w-full px-3 py-2 text-left text-court-fg hover:bg-court-brand-tint"
-                >
-                  Move to Applied
-                </button>
-              </li>
-              <li>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!confirm("Remove this candidate from the job entirely? This deletes the row.")) {
-                      setOpen(false);
-                      return;
-                    }
-                    run("Removed from job", () =>
-                      removeCancelledFromJob({ placementId }),
-                    );
-                  }}
-                  className="block w-full border-t border-court-border px-3 py-2 text-left text-red-700 hover:bg-red-50"
-                >
-                  Remove from Job
-                </button>
-              </li>
+              {items.map((item) => {
+                const Icon = item.icon;
+                const toneClass =
+                  item.tone === "danger"
+                    ? "text-red-700 hover:bg-red-50"
+                    : item.tone === "primary"
+                      ? "text-court-fg hover:bg-court-brand-tint"
+                      : "text-court-fg hover:bg-court-brand-tint";
+                return (
+                  <li key={item.key}>
+                    <button
+                      type="button"
+                      onClick={item.onClick}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-2 text-left",
+                        toneClass,
+                        item.separator && "border-t border-court-border",
+                      )}
+                    >
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span className="truncate">{item.label}</span>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </>

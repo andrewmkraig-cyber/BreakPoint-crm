@@ -225,6 +225,24 @@ export function CalendarView({
       openCreateModal();
     }
   }, [openCreateModal]);
+
+  // Reminder-side mirror of the New event entries above. The Reminders
+  // panel owns its own form-open state internally, so we bump an
+  // increment-only signal that the panel's effect treats as "open the
+  // inline form." Same dispatch + sessionStorage handoff pattern.
+  const [reminderOpenSignal, setReminderOpenSignal] = useState(0);
+  useEffect(() => {
+    const handler = () => setReminderOpenSignal((n) => n + 1);
+    window.addEventListener("ace:calendar:new-reminder", handler);
+    return () => window.removeEventListener("ace:calendar:new-reminder", handler);
+  }, []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.sessionStorage.getItem("ace.calendar.openNewReminder") === "1") {
+      window.sessionStorage.removeItem("ace.calendar.openNewReminder");
+      setReminderOpenSignal((n) => n + 1);
+    }
+  }, []);
   const openCreateAt = (
     date: Date,
     hour?: number,
@@ -384,6 +402,7 @@ export function CalendarView({
             onDismiss={dismissReminder}
             onSnooze={snoozeReminder}
             onCreate={handleCreateReminder}
+            openSignal={reminderOpenSignal}
           />
         </aside>
       </div>
