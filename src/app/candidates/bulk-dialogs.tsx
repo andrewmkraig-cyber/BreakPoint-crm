@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
-  FileText,
   Loader2,
   Send,
   ListPlus,
@@ -322,28 +321,11 @@ export function BulkEmailDialog({
   const [localTemplates, setLocalTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
   const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
-  const [localTemplateOpen, setLocalTemplateOpen] = useState(false);
-  const localTemplateTriggerRef = useRef<HTMLButtonElement>(null);
-  const localTemplatePanelRef = useRef<HTMLDivElement>(null);
+  // Native select on purpose: the bulk modal has its own stacking/overlay
+  // context that kept breaking custom popovers. Individual composer keeps
+  // its popover.
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const applyDraftRef = useRef<((d: { subject: string; body: string }) => void) | null>(null);
-
-  // Outside-click dismiss for the local Use Template dropdown. Uses `click`
-  // (not `mousedown`) so the trigger's own click handler runs first and the
-  // toggle isn't immediately undone. Checks BOTH the trigger and the panel
-  // refs so a click on either is treated as inside.
-  useEffect(() => {
-    if (!localTemplateOpen) return;
-    function onDocClick(e: MouseEvent) {
-      const target = e.target as Node;
-      const trigger = localTemplateTriggerRef.current;
-      const panel = localTemplatePanelRef.current;
-      if (trigger && trigger.contains(target)) return;
-      if (panel && panel.contains(target)) return;
-      setLocalTemplateOpen(false);
-    }
-    document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
-  }, [localTemplateOpen]);
 
   // Load active templates once when the bulk dialog mounts so the
   // picker dropdown opens instantly with the full list.
@@ -402,7 +384,6 @@ export function BulkEmailDialog({
   }
 
   function onPickLocalTemplate(template: ActiveTemplateSummary) {
-    setLocalTemplateOpen(false);
     if (
       !template ||
       typeof template.id !== "string" ||
@@ -410,6 +391,7 @@ export function BulkEmailDialog({
       typeof template.body !== "string"
     ) {
       toast.error("Template is missing required fields.");
+      setSelectedTemplateId("");
       return;
     }
     if (!templateNeedsJob(template)) {
@@ -417,6 +399,7 @@ export function BulkEmailDialog({
       // from a previous template pick in the same dialog session.
       setJobMergeValues(null);
       applyTemplateDraft(template);
+      setSelectedTemplateId("");
       return;
     }
     // Job tokens present. Pop the picker; apply only after the
@@ -446,6 +429,7 @@ export function BulkEmailDialog({
       applyTemplateDraft(template);
       setPendingJobPick(null);
       setPickedJobKey("");
+      setSelectedTemplateId("");
     } catch (e) {
       toast.error("Couldn't resolve job fields", {
         description: e instanceof Error ? e.message : "Server error",
@@ -458,6 +442,7 @@ export function BulkEmailDialog({
   function onCancelJobPick() {
     setPendingJobPick(null);
     setPickedJobKey("");
+    setSelectedTemplateId("");
   }
 
   // Recipients panel state — lazy-fetched on first toggle expand so a
@@ -737,61 +722,41 @@ export function BulkEmailDialog({
             sendingLabel="Sending…"
             sendDisabled={confirmDraft !== null}
             footerExtras={
-              <div className="relative">
-                <button
-                  ref={localTemplateTriggerRef}
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setLocalTemplateOpen((v) => !v);
+              <label className="inline-flex items-center gap-2 text-xs font-semibold text-court-fg">
+                Template:
+                <select
+                  value={selectedTemplateId}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    if (!id) return;
+                    const t = localTemplates.find((x) => x.id === id);
+                    if (!t) return;
+                    setSelectedTemplateId(id);
+                    onPickLocalTemplate(t);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+                  disabled={
+                    !localTemplatesLoaded ||
+                    Boolean(localTemplatesError) ||
+                    localTemplates.length === 0
+                  }
+                  className="rounded-md border border-court-border bg-court-surface px-2 py-1.5 text-xs font-normal text-court-fg shadow-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
                 >
-                  <FileText className="h-3.5 w-3.5" /> Use Template
-                  <ChevronDown className="h-3.5 w-3.5" />
-                </button>
-                {localTemplateOpen && (
-                  <div
-                    ref={localTemplatePanelRef}
-                    role="menu"
-                    className="absolute bottom-full right-0 z-[1200] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg"
-                  >
-                    <ul className="max-h-80 overflow-y-auto py-1 text-sm">
-                      {!localTemplatesLoaded && (
-                        <li className="px-3 py-2 text-xs text-court-fg-muted">
-                          Loading templates…
-                        </li>
-                      )}
-                      {localTemplatesLoaded && localTemplatesError && (
-                        <li className="px-3 py-2 text-xs text-court-fg-muted">
-                          {localTemplatesError}.
-                        </li>
-                      )}
-                      {localTemplatesLoaded &&
-                        !localTemplatesError &&
-                        localTemplates.length === 0 && (
-                          <li className="px-3 py-2 text-xs text-court-fg-muted">
-                            No active templates.
-                          </li>
-                        )}
-                      {localTemplates.map((t) => (
-                        <li key={t.id}>
-                          <button
-                            type="button"
-                            onClick={() => onPickLocalTemplate(t)}
-                            className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg hover:bg-court-brand-tint"
-                          >
-                            <span className="font-medium">{t.name}</span>
-                            <span className="truncate text-[11px] text-court-fg-muted">
-                              {t.subject}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
+                  <option value="">
+                    {!localTemplatesLoaded
+                      ? "Loading templates..."
+                      : localTemplatesError
+                        ? "Couldn't load templates"
+                        : localTemplates.length === 0
+                          ? "No active templates"
+                          : "Select template..."}
+                  </option>
+                  {localTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
             }
           />
           {jobMergeValues && (
