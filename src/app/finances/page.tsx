@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { FinancialPerformanceTab } from "@/app/dashboard/financial-performance-tab";
+import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { PeriodPillToggle } from "@/app/dashboard/period-pill-toggle";
 import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { InvoiceRow } from "@/app/invoices/invoice-row";
@@ -187,10 +188,10 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
         Billed, Collected &amp; Outstanding
       </p>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <InvoicesKpiCard label="Outstanding" value={formatUsd(summary.outstandingCents)} isEmpty={summary.outstandingCents === 0} />
-        <InvoicesKpiCard label="Overdue" value={formatUsd(summary.overdueCents)} isEmpty={summary.overdueCents === 0} />
-        <InvoicesKpiCard label="Billed This Quarter" value={formatUsd(summary.billedThisQuarterCents)} isEmpty={summary.billedThisQuarterCents === 0} />
-        <InvoicesKpiCard label="Collected This Quarter" value={formatUsd(summary.collectedThisQuarterCents)} isEmpty={summary.collectedThisQuarterCents === 0} />
+        <KpiTile label="Outstanding" value={formatUsd(summary.outstandingCents)} zeroDim />
+        <KpiTile label="Overdue" value={formatUsd(summary.overdueCents)} zeroDim />
+        <KpiTile label="Billed This Quarter" value={formatUsd(summary.billedThisQuarterCents)} zeroDim />
+        <KpiTile label="Collected This Quarter" value={formatUsd(summary.collectedThisQuarterCents)} zeroDim />
       </div>
 
       <div className="overflow-hidden rounded-2xl border-0 bg-court-surface shadow-sm">
@@ -279,32 +280,6 @@ async function InvoicesTab({ rawFilter }: { rawFilter: string | undefined }) {
       <div className="flex justify-end">
         <SendTestInvoiceButton />
       </div>
-    </div>
-  );
-}
-
-function InvoicesKpiCard({
-  label,
-  value,
-  isEmpty,
-}: {
-  label: string;
-  value: string;
-  isEmpty: boolean;
-}) {
-  return (
-    <div className="flex h-full flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-3 font-serif text-[36px] font-extrabold leading-none tabular-nums",
-          isEmpty ? "text-court-border opacity-50" : "text-court-fg",
-        )}
-      >
-        {value}
-      </p>
     </div>
   );
 }

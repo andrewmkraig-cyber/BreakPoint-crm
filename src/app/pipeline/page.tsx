@@ -319,7 +319,7 @@ export default async function PipelinePage({
   }
 
   return (
-    <div>
+    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
       {backToClient && (
         <Link
           href={backToClient.href}

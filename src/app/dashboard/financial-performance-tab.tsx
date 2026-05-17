@@ -1,4 +1,5 @@
 import { ExpenseAddForm } from "@/app/dashboard/expense-add-form";
+import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { prisma } from "@/lib/prisma";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import {
@@ -943,11 +944,11 @@ export async function FinancialPerformanceTab({
       </div>
       {showRevenueProfitability && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <FinancesKpiTile label="Total Revenue" value={formatUsd(revenueUsd)} isEmpty={revenueUsd === 0} />
-          <FinancesKpiTile label="Gross Margin" value={grossMarginLabel} isEmpty={grossMarginPct == null || grossMarginPct === 0} />
-          <FinancesKpiTile label="Net Margin" value={netMarginLabel} isEmpty={netMarginLabel === "—" || netMarginLabel === "0.0%"} />
-          <FinancesKpiTile label="Total Expenses" value={formatUsd(expensesUsd)} isEmpty={expensesUsd === 0} />
-          <FinancesKpiTile label="Blended ROI" value={roiLabel} isEmpty={blendedRoiPct == null || blendedRoiPct === 0} />
+          <KpiTile label="Total Revenue" value={formatUsd(revenueUsd)} zeroDim />
+          <KpiTile label="Gross Margin" value={grossMarginLabel} zeroDim />
+          <KpiTile label="Net Margin" value={netMarginLabel} zeroDim />
+          <KpiTile label="Total Expenses" value={formatUsd(expensesUsd)} zeroDim />
+          <KpiTile label="Blended ROI" value={roiLabel} zeroDim />
         </div>
       )}
 
@@ -1197,35 +1198,6 @@ function Panel({
         {subline}
       </p>
       {children}
-    </div>
-  );
-}
-
-// Spec rule 5 — KPI card scoped to the Finances surface so the
-// 36px serif value treatment doesn't ripple into Clubhouse /
-// Scoreboard which keep their own tile chromes.
-function FinancesKpiTile({
-  label,
-  value,
-  isEmpty,
-}: {
-  label: string;
-  value: string;
-  isEmpty: boolean;
-}) {
-  return (
-    <div className="flex h-full flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
-        {label}
-      </p>
-      <p
-        className={
-          "mt-3 font-serif text-[36px] font-extrabold leading-none tabular-nums " +
-          (isEmpty ? "text-court-border opacity-50" : "text-court-fg")
-        }
-      >
-        {value}
-      </p>
     </div>
   );
 }

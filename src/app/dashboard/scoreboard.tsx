@@ -7,6 +7,7 @@ import {
   Target,
   Trophy,
 } from "lucide-react";
+import { KpiTile } from "@/app/dashboard/kpi-tile";
 import {
   formatMoneyShort,
   getScoreboardData,
@@ -108,45 +109,15 @@ function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {tiles.map((t) => (
-        <ScoreboardKpiTile key={t.label} {...t} />
+        <KpiTile
+          key={t.label}
+          label={t.label}
+          value={t.value}
+          icon={t.icon}
+          subtext={t.sub}
+          zeroDim
+        />
       ))}
-    </div>
-  );
-}
-
-function ScoreboardKpiTile({
-  label,
-  value,
-  sub,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  icon: LucideIcon;
-}) {
-  // Treat "—" placeholders the same as numeric zero — both are "no
-  // data" states and should read dimmed against the card.
-  const isEmpty = value === "—" || value === "0" || value === "$0";
-  return (
-    <div
-      title={sub}
-      className="flex h-full flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm"
-    >
-      <div className="flex items-center gap-2">
-        <Icon className="h-3 w-3 text-court-fg-muted" aria-hidden />
-        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
-          {label}
-        </p>
-      </div>
-      <div
-        className={
-          "mt-3 font-serif text-[42px] font-extrabold leading-none tabular-nums " +
-          (isEmpty ? "text-court-border opacity-50" : "text-court-fg")
-        }
-      >
-        {value}
-      </div>
     </div>
   );
 }

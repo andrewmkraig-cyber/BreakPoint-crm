@@ -2,24 +2,38 @@ import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-// Canonical KPI tile used across Clubhouse, Scoreboard, and Finances.
-// Spec: rounded-2xl bg-court-surface px-3 py-2.5 with the long-shadow
-// chrome; label is 10px extrabold uppercase; value is 26px Bricolage
-// (font-serif) bold. The optional `live` flag swaps the resting shadow
-// for a sage-tinted one so recruiters can see which tiles moved this
-// week, without altering label/value size.
+// Canonical KPI tile used across Clubhouse, Scoreboard, Placements,
+// and Finances. Optional icon shows the tinted square chrome when
+// passed; optional subtext renders below the value for context
+// (period, count, hint). The `live` flag swaps the resting shadow
+// for a sage-tinted one so recruiters can see which tiles moved
+// this week; `zeroDim` dims the value when it represents "no data".
 export function KpiTile({
   label,
   value,
   icon: Icon,
+  subtext,
   live = false,
+  zeroDim = false,
 }: {
   label: string;
   value: number | string;
-  icon: LucideIcon;
+  icon?: LucideIcon;
+  subtext?: string;
   live?: boolean;
+  zeroDim?: boolean;
 }) {
-  const isZero = value === 0 || value === "0";
+  // "Empty" covers literal zero plus the formatted-zero strings we
+  // produce across surfaces: "$0", "0%", "0.0%", "0d", and the "—"
+  // placeholder used when underlying data is null. Keep this list in
+  // sync with formatters in scoreboard/finances tabs so zeroDim
+  // matches the prior per-surface isEmpty checks.
+  const isEmpty =
+    value === 0 ||
+    value === "0" ||
+    value === "—" ||
+    (typeof value === "string" && /^\$?0(\.0+)?[%d]?$/.test(value));
+  const dim = zeroDim && isEmpty;
   return (
     <div
       className={cn(
@@ -38,12 +52,14 @@ export function KpiTile({
       }
     >
       <div className="flex min-h-[32px] items-center gap-2">
-        <div
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
-          aria-hidden
-        >
-          <Icon className="h-3 w-3" />
-        </div>
+        {Icon && (
+          <div
+            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
+            aria-hidden
+          >
+            <Icon className="h-3 w-3" />
+          </div>
+        )}
         <div className="min-w-0 flex-1 text-xs font-semibold uppercase tracking-wider text-court-fg-muted">
           {label}
         </div>
@@ -51,13 +67,18 @@ export function KpiTile({
       <div
         className={cn(
           "mt-1.5 text-center font-serif text-[26px] leading-none tracking-[-0.04em] tabular-nums",
-          isZero
-            ? "font-semibold text-court-fg-muted opacity-50"
+          dim
+            ? "font-semibold text-court-border opacity-50"
             : "font-bold text-court-fg",
         )}
       >
         {value}
       </div>
+      {subtext && (
+        <div className="mt-1 text-center text-[11px] text-court-fg-muted">
+          {subtext}
+        </div>
+      )}
     </div>
   );
 }

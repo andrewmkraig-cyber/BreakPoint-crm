@@ -4,6 +4,7 @@ import {
   type LedgerRow,
 } from "@/components/placements/placements-ledger";
 import { PlacementsMapCard } from "@/components/placements/placements-map-card";
+import { KpiTile } from "@/app/dashboard/kpi-tile";
 import { PeriodTabs } from "@/app/dashboard/period-tabs";
 import { resolveDashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
@@ -13,7 +14,6 @@ import {
   type PlacementsDashboardRow,
 } from "@/lib/placements-dashboard";
 import { aggregateByCity, formatMoneyShort } from "@/lib/placements-map-geo";
-import { cn } from "@/lib/utils";
 
 export function resolvePlacementsPeriod(
   raw: string | undefined | null,
@@ -45,39 +45,25 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
         <PeriodTabs period={period} />
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <MetricCard label="Fees" value={metrics.fees > 0 ? formatMoneyShort(metrics.fees) : "—"} zero={metrics.fees === 0} />
-        <MetricCard label="Revenue" value={metrics.revenue > 0 ? formatMoneyShort(metrics.revenue) : "—"} zero={metrics.revenue === 0} />
-        <MetricCard label="Pending Starts" value={String(metrics.pendingStarts)} zero={metrics.pendingStarts === 0} />
+        <KpiTile
+          label="Fees"
+          value={metrics.fees > 0 ? formatMoneyShort(metrics.fees) : "—"}
+          zeroDim
+        />
+        <KpiTile
+          label="Revenue"
+          value={metrics.revenue > 0 ? formatMoneyShort(metrics.revenue) : "—"}
+          zeroDim
+        />
+        <KpiTile
+          label="Pending Starts"
+          value={String(metrics.pendingStarts)}
+          zeroDim
+        />
       </div>
       <PlacementsLedger rows={ledgerRows} title={LEDGER_TITLE[period]} />
       <PlacementsBreakdowns rows={rows} />
       <PlacementsMapCard cities={cities} totalFee={totalFee} />
-    </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  zero,
-}: {
-  label: string;
-  value: string;
-  zero: boolean;
-}) {
-  return (
-    <div className="rounded-2xl bg-court-surface p-5 shadow-sm">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
-        {label}
-      </p>
-      <p
-        className={cn(
-          "mt-2 font-serif text-[42px] font-extrabold leading-none tabular-nums",
-          zero ? "text-court-fg-dim opacity-50" : "text-court-fg",
-        )}
-      >
-        {value}
-      </p>
     </div>
   );
 }
