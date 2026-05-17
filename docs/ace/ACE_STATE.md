@@ -1,10 +1,52 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 53.0
+Last updated: 2026-05-17 · Ace 54.0
 
 ## Current Status
-Current Version: Ace 53.0
+Current Version: Ace 54.0
 Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 54.0 (2026-05-17)
+
+Scoreboard visual redesign — closes the scoreboard entry from the
+queued visual redesign Prompts 11-17.
+
+### Scoreboard rebuilt on the unified card + row spec (`1251b9a`)
+- **Page bg** — `bg-court-surface-subtle` wraps the whole
+  `Scoreboard` server component so the white cards pop.
+- **Period toggle** — new `PeriodPillToggle` client component
+  (`src/app/dashboard/period-pill-toggle.tsx`): rounded-full shell
+  on `bg-court-surface` with `p-0.5`, active option uses
+  `bg-court-accent-tint text-court-brand-dark font-semibold` in
+  `h-8 px-4`. `PeriodTabs` (TabStrip wrapper) intentionally
+  untouched so Placements + Finances tab strips don't shift.
+- **KPI tiles** (`ScoreboardKpiTile`) — `rounded-2xl border-0
+  shadow-sm p-5`. Eyebrow: `text-[10px] font-semibold
+  tracking-[0.18em] text-court-fg-muted`. Value: `font-serif
+  text-[42px] font-extrabold leading-none`. Empty / zero values
+  dim to `text-court-border opacity-50`.
+- **Leaderboard rows** (Top Clients, Top Roles) — divide-y
+  `divide-court-border-soft` rows inside the card. Rank: mono
+  `text-[13px] text-court-fg-muted w-6`. Name: `text-[13px]
+  font-semibold text-court-fg`. Value: bold right-aligned. Below
+  each row, an `h-[3px] bg-court-accent rounded-full` progress
+  bar sized to the row's share of the top value.
+- **Activity feed** (Momentum) — `rounded-2xl border-0 shadow-sm
+  p-4` card with divide-y rows; avatar + semibold name + 12.5px
+  muted action + right-aligned 10px relative time.
+- **Section headers** unified — 10px tracking-[0.18em]
+  `text-court-brand-dark` eyebrow + 18px `font-serif font-bold`
+  title (via new `SectionHeader` helper inside `scoreboard.tsx`).
+  Funnel, Cash Forecast, Top Clients, Top Roles, Momentum, Goal
+  Pacing all converge on this.
+- **Card shells** — every scoreboard card dropped the
+  `rounded-3xl` + long-shadow chrome in favor of `rounded-2xl
+  border-0 shadow-sm` so the surface lands on the same chrome the
+  Settings refresh in Ace 53 introduced.
+- **Goal Pacing** — `revenueFormatted` bumped from 26px semibold
+  to 42px extrabold to match the KPI tile spec.
+
+Per rule 12, every token Court Mode. No hex literals introduced.
 
 ## What Shipped in Ace 53.0 (2026-05-17)
 
