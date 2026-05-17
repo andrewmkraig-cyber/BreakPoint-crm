@@ -1,10 +1,16 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 51.0
+Last updated: 2026-05-17 · Ace 51.1
 
 ## Current Status
-Current Version: Ace 51.0
+Current Version: Ace 51.1
 Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 51.1 (2026-05-17)
+
+Mail UI polish pass on `src/app/mail/mail-view.tsx`. Folder sidebar, thread list, and reader pane retuned to the live-screenshot spec: tighter neutral borders (`court-border-soft`), softer hover/active backgrounds on Inbox/Sent/Drafts/threads (`court-accent-tint/50` hover, `court-accent-tint/40` active), labels header in `text-[10px] tracking-[0.18em]` uppercase, thread count header padded to `py-3` with the same eyebrow style, thread sender bumped to `text-[13px]` (bold when unread / normal when read), subject to `text-[12.5px] font-medium`, preview to `text-[11.5px]`, reader subject up to `text-[20px] font-bold`, and the 6 reader-pane action buttons (Reply, Reply All, Forward, Archive, Mark Unread, Pop out) standardized to `h-8 px-3 rounded-lg text-[12px]` with a `court-accent/40` hover border. All hex literals previously hardcoded on the Inbox / Sent / Drafts rows replaced with Court Mode tokens per rule 12.
+
+Intentionally deferred from the spec: (a) per-row unread dot — element doesn't exist in `ThreadRow` today and adding it conflicts with the "do not move any elements" constraint, (b) per-row label chips — same reason, no chip plumbing on `MailListThread`, (c) message body typography — body renders inside the sandboxed `EmailHtmlViewer` iframe and can't be reached from parent CSS, (d) Playfair Display font — mapped to the existing `font-serif` token (Bricolage Grotesque) rather than introducing a new family, (e) reader-pane Move To button left at its current size since it uses the shared `MoveToMenu` component that's also rendered in the bulk-selection toolbar.
 
 ## What Shipped in Ace 51.0 (2026-05-17)
 

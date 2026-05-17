@@ -1,5 +1,5 @@
 # Ace Roadmap
-Last updated: 2026-05-17 · Ace 51.0
+Last updated: 2026-05-17 · Ace 51.1
 
 ## Active Build Sequence
 Ace 51.0 closed Vercel Blob migration, template send-as-draft, Gmail push notifications, Microsoft Teams + meeting-type selector, Triggers UI, bulk email to candidates (search + Matches tab), Find Matches keyword scoring with explicit `searchKeywords`, candidate search + PDF resume highlighting polish, and the Settings nav mobile pill strip. Ace 52 opens on bulk email verification + lists extension, then the remaining numbered sequence. Each numbered item ships start-to-finish before the next begins unless an explicit prereq is called out inline.
