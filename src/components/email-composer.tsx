@@ -138,6 +138,12 @@ export type EmailComposerProps = {
   // Only used when richTextBody is true. If unset the raw string is handed
   // to the editor as-is, which is fine for callers that already produce HTML.
   toEditorHtml?: (source: string) => string;
+  // Imperative apply hook. When provided, the composer publishes a
+  // setter to applyDraftRef.current so the parent can push a new
+  // subject + body into the composer (e.g. from its own template
+  // picker). Bulk email uses this to keep the built-in template picker
+  // off while still driving the composer's draft from outside.
+  applyDraftRef?: { current: ((d: { subject: string; body: string }) => void) | null };
 };
 
 // Composable Gmail-backed editor. Handles To / CC / BCC / Subject / Body
@@ -175,6 +181,7 @@ export function EmailComposer({
   bodyFormattingShortcuts = false,
   richTextBody = false,
   toEditorHtml,
+  applyDraftRef,
 }: EmailComposerProps) {
   // Resolve effective Cc / Bcc option pools. Explicit ccOptions/bccOptions
   // win over the legacy combined ccBccOptions. The BCC pool is always
@@ -217,6 +224,24 @@ export function EmailComposer({
     if (!draftKey) return;
     writeDraft(draftKey, { subject, body });
   }, [draftKey, subject, body]);
+
+  // Publish an imperative setter for parents that drive the draft from
+  // outside (bulk email's local template picker). Cleared on unmount so
+  // late callers don't write into a dead composer.
+  useEffect(() => {
+    if (!applyDraftRef) return;
+    applyDraftRef.current = (d) => {
+      setSubject(d.subject);
+      setBody(d.body);
+      if (richTextBody) {
+        const html = toEditorHtml ? toEditorHtml(d.body) : d.body;
+        richTextRef.current?.setHtml(html);
+      }
+    };
+    return () => {
+      applyDraftRef.current = null;
+    };
+  }, [applyDraftRef, richTextBody, toEditorHtml]);
 
   const [templates, setTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);

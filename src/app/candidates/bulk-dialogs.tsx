@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
+  FileText,
   Loader2,
   Send,
   ListPlus,
@@ -25,7 +26,7 @@ import {
 } from "@/app/candidates/bulk-actions";
 import type { CandidateListSummary } from "@/app/candidates/lists-actions";
 import { EmailComposer, type EmailDraft } from "@/components/email-composer";
-import type { ActiveTemplateSummary } from "@/app/email/actions";
+import { listActiveTemplates, type ActiveTemplateSummary } from "@/app/email/actions";
 import type { MergeFieldValues } from "@/lib/merge-fields";
 
 // Shared bulk-action modals used by both the /candidates global page
@@ -312,17 +313,43 @@ export function BulkEmailDialog({
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
-  // Two-step Use Template → Pick Job flow, modeled on mail-composer's
-  // recruitMode bail. When the recruiter picks a template that
-  // contains job tokens, resolveTemplate parks the in-flight Promise
-  // here and shows an overlay job picker. The recruiter picks a job
-  // (or cancels), the parked Promise resolves, and EmailComposer
-  // continues applying the template. Stored merge values get passed
-  // to bulkSendEmail at send time so the server fills the tokens per
-  // recipient.
+  // Local "Use Template" picker. Bulk email bypasses EmailComposer's
+  // built-in showTemplatePicker because the two-step job-tokens flow
+  // required parking a Promise inside the composer's onPickTemplate
+  // transition, which left the picker stuck whenever the parent re-
+  // rendered. Driving the composer's draft from outside via
+  // applyDraftRef makes this a normal local UI flow.
+  const [localTemplates, setLocalTemplates] = useState<ActiveTemplateSummary[]>([]);
+  const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
+  const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
+  const [localTemplateOpen, setLocalTemplateOpen] = useState(false);
+  const applyDraftRef = useRef<((d: { subject: string; body: string }) => void) | null>(null);
+
+  // Load active templates once when the bulk dialog mounts so the
+  // picker dropdown opens instantly with the full list.
+  useEffect(() => {
+    let cancelled = false;
+    listActiveTemplates()
+      .then((list) => {
+        if (cancelled) return;
+        setLocalTemplates(list);
+        setLocalTemplatesError(null);
+        setLocalTemplatesLoaded(true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLocalTemplatesError("Couldn't load templates");
+        setLocalTemplatesLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Two-step Use Template → Pick Job overlay. Now just tracks which
+  // template is awaiting a job pick; no parked Promise.
   const [pendingJobPick, setPendingJobPick] = useState<{
     template: ActiveTemplateSummary;
-    resolve: () => void;
   } | null>(null);
   const [jobMergeValues, setJobMergeValues] = useState<MergeFieldValues | null>(null);
   const [jobs, setJobs] = useState<BulkPickerJob[] | null>(null);
@@ -350,87 +377,43 @@ export function BulkEmailDialog({
     })();
   }, [pendingJobPick, jobs, jobsLoading]);
 
-  async function resolveTemplate(
-    template: ActiveTemplateSummary,
-  ): Promise<{ subject: string; body: string }> {
-    // Defensive shape guard. Throwing here surfaces in EmailComposer's
-    // onPickTemplate try/catch and toasts a real error instead of
-    // letting the transition spin forever on undefined fields.
+  function applyTemplateDraft(template: ActiveTemplateSummary) {
+    applyDraftRef.current?.({ subject: template.subject, body: template.body });
+  }
+
+  function onPickLocalTemplate(template: ActiveTemplateSummary) {
+    setLocalTemplateOpen(false);
     if (
       !template ||
       typeof template.id !== "string" ||
       typeof template.subject !== "string" ||
       typeof template.body !== "string"
     ) {
-      throw new Error("Template is missing required fields.");
+      toast.error("Template is missing required fields.");
+      return;
     }
-    // No job tokens means resolve immediately with the raw template;
-    // the composer applies subject/body and the server still does the
-    // per-recipient candidate merge at send time.
     if (!templateNeedsJob(template)) {
-      return { subject: template.subject, body: template.body };
+      // No job tokens. Apply directly and clear any stale job context
+      // from a previous template pick in the same dialog session.
+      setJobMergeValues(null);
+      applyTemplateDraft(template);
+      return;
     }
-    // Job tokens present means park the resolver and pop the picker.
-    // Returning the template literal (tokens unresolved) lets the
-    // composer apply it as-is; jobMergeValues set during the pick is
-    // what bulkSendEmail uses to fill tokens server-side per recipient.
-    // If the recruiter cancels, jobMergeValues stays null and the
-    // send-time guard catches it.
-    await new Promise<void>((resolveOuter) => {
-      setPendingJobPick({ template, resolve: resolveOuter });
-    });
-    return { subject: template.subject, body: template.body };
+    // Job tokens present. Pop the picker; apply only after the
+    // recruiter confirms a job (or cancels, in which case nothing
+    // changes in the composer).
+    setPendingJobPick({ template });
   }
 
-  // Unmount safety. The EmailComposer parks a Promise inside
-  // resolveTemplate; if BulkEmailDialog unmounts mid-pick (recruiter
-  // hits the close X or escapes out), the parked resolver would be
-  // garbage-collected without firing, leaving the awaiting transition
-  // permanently pending. Mirror pendingJobPick into a ref so the
-  // unmount cleanup can call .resolve() directly without depending on
-  // stale state.
-  const pendingJobPickRef = useRef<typeof pendingJobPick>(null);
-  useEffect(() => {
-    pendingJobPickRef.current = pendingJobPick;
-  }, [pendingJobPick]);
-  useEffect(() => {
-    return () => {
-      pendingJobPickRef.current?.resolve();
-    };
-  }, []);
-
-  // Always-unblock pattern: the parked Promise inside resolveTemplate
-  // MUST resolve on every exit from this handler, otherwise the
-  // EmailComposer's onPickTemplate stays pending and its Use Template
-  // spinner spins forever. Earlier version only resolved on the
-  // success path; a throw from getJobMergeValuesForBulk (or any of
-  // the early-return guards firing while pendingJobPick was set)
-  // left the composer hanging.
   async function onConfirmJobPick() {
     if (!pendingJobPick) return;
-    const parked = pendingJobPick;
-    const finish = (values: MergeFieldValues | null) => {
-      setJobMergeValues(values);
-      parked.resolve();
-      setPendingJobPick(null);
-      setPickedJobKey("");
-    };
-    if (!pickedJobKey) {
-      // "Use this job" pressed with no selection — bail without a
-      // toast (button is disabled in this state anyway, this is just
-      // defensive).
-      finish(null);
-      return;
-    }
+    if (!pickedJobKey) return;
     const job = jobs?.find((j) => j.key === pickedJobKey);
     if (!job) {
-      // Picked id isn't in the loaded list (jobs reloaded between
-      // pick + confirm, or list arrived empty). Fall back to raw
-      // tokens and let the send-time guard catch.
       toast.error("Couldn't find that job in the loaded list.");
-      finish(null);
       return;
     }
+    const template = pendingJobPick.template;
     setResolvingJob(true);
     try {
       const values = await getJobMergeValuesForBulk({
@@ -439,27 +422,20 @@ export function BulkEmailDialog({
         clientCuid: job.clientCuid,
         clientRfId: job.clientRfId,
       });
-      finish(values);
+      setJobMergeValues(values);
+      applyTemplateDraft(template);
+      setPendingJobPick(null);
+      setPickedJobKey("");
     } catch (e) {
-      // Surface the error but still unblock the composer — the
-      // template applies with literal tokens, jobMergeValues stays
-      // null, and onSend's textNeedsJob guard prevents the send
-      // until the recruiter picks a job that resolves, removes the
-      // tokens, or chooses a different template.
       toast.error("Couldn't resolve job fields", {
         description: e instanceof Error ? e.message : "Server error",
       });
-      finish(null);
     } finally {
       setResolvingJob(false);
     }
   }
 
   function onCancelJobPick() {
-    if (!pendingJobPick) return;
-    const parked = pendingJobPick;
-    setJobMergeValues(null);
-    parked.resolve();
     setPendingJobPick(null);
     setPickedJobKey("");
   }
@@ -733,18 +709,72 @@ export function BulkEmailDialog({
             initial={initial}
             onClose={onClose}
             onSend={onSend}
-            showTemplatePicker
-            resolveTemplate={resolveTemplate}
             hideRecipientFields
             enableEditWithClaude
             onGenerate={onGenerateBody}
+            applyDraftRef={applyDraftRef}
             sendLabel={`Send to ${n} candidate${n === 1 ? "" : "s"}`}
             sendingLabel="Sending…"
-            sendDisabled={confirmDraft !== null || pendingJobPick !== null}
+            sendDisabled={confirmDraft !== null}
+            footerExtras={
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setLocalTemplateOpen((v) => !v)}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
+                >
+                  <FileText className="h-3.5 w-3.5" /> Use Template
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
+                {localTemplateOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-[60]"
+                      onClick={() => setLocalTemplateOpen(false)}
+                    />
+                    <div className="absolute bottom-full right-0 z-[70] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg">
+                      <ul className="max-h-80 overflow-y-auto py-1 text-sm">
+                        {!localTemplatesLoaded && (
+                          <li className="px-3 py-2 text-xs text-court-fg-muted">
+                            Loading templates…
+                          </li>
+                        )}
+                        {localTemplatesLoaded && localTemplatesError && (
+                          <li className="px-3 py-2 text-xs text-court-fg-muted">
+                            {localTemplatesError}.
+                          </li>
+                        )}
+                        {localTemplatesLoaded &&
+                          !localTemplatesError &&
+                          localTemplates.length === 0 && (
+                            <li className="px-3 py-2 text-xs text-court-fg-muted">
+                              No active templates.
+                            </li>
+                          )}
+                        {localTemplates.map((t) => (
+                          <li key={t.id}>
+                            <button
+                              type="button"
+                              onClick={() => onPickLocalTemplate(t)}
+                              className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg hover:bg-court-brand-tint"
+                            >
+                              <span className="font-medium">{t.name}</span>
+                              <span className="truncate text-[11px] text-court-fg-muted">
+                                {t.subject}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </>
+                )}
+              </div>
+            }
           />
           {jobMergeValues && (
             <div className="border-t border-court-border bg-court-surface-subtle/40 px-5 py-1.5 text-[11px] text-court-fg-muted">
-              Job context resolved — recipients will receive filled job fields at send time.
+              Job context resolved. Recipients will receive filled job fields at send time.
             </div>
           )}
         </div>
