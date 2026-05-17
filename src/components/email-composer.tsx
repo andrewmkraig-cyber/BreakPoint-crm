@@ -350,11 +350,17 @@ export function EmailComposer({
   }, [showTemplatePicker, templatesLoaded, templateFilter]);
 
   function onPickTemplate(tpl: ActiveTemplateSummary) {
+    // eslint-disable-next-line no-console
+    console.log("[composer] onPickTemplate clicked", tpl.name);
     setTemplateOpen(false);
     setErr(null);
     startApply(async () => {
+      // eslint-disable-next-line no-console
+      console.log("[composer] startApply entered");
       try {
         const resolved = resolveTemplate ? await resolveTemplate(tpl) : { subject: tpl.subject, body: tpl.body };
+        // eslint-disable-next-line no-console
+        console.log("[composer] resolveTemplate returned", resolved);
         if (!subject.trim() || confirmReplace(subject, resolved.subject)) setSubject(resolved.subject);
         // Templates come in as marker-flavored text; for rich text mode we run
         // them through the caller-supplied HTML converter so the editor can

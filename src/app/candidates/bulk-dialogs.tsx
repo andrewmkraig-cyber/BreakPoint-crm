@@ -352,10 +352,14 @@ export function BulkEmailDialog({
   async function resolveTemplate(
     template: ActiveTemplateSummary,
   ): Promise<{ subject: string; body: string }> {
+    // eslint-disable-next-line no-console
+    console.log("[bulk] resolveTemplate entered", template.name);
     // No job tokens → resolve immediately with the raw template; the
     // composer applies subject/body and the server still does the
     // per-recipient candidate merge at send time.
     if (!templateNeedsJob(template)) {
+      // eslint-disable-next-line no-console
+      console.log("[bulk] non-job template, resolving immediately");
       return { subject: template.subject, body: template.body };
     }
     // Job tokens present → park the resolver and pop the picker.
@@ -364,6 +368,8 @@ export function BulkEmailDialog({
     // what bulkSendEmail uses to fill tokens server-side per
     // recipient. If the recruiter cancels, jobMergeValues stays null
     // and the send-time guard catches it.
+    // eslint-disable-next-line no-console
+    console.log("[bulk] job template detected, parking promise");
     await new Promise<void>((resolveOuter) => {
       setPendingJobPick({ template, resolve: resolveOuter });
     });
