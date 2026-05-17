@@ -1,16 +1,51 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 51.1
+Last updated: 2026-05-17 · Ace 52.0
 
 ## Current Status
-Current Version: Ace 51.1
+Current Version: Ace 52.0
 Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
 
-## What Shipped in Ace 51.1 (2026-05-17)
+## What Shipped in Ace 52.0 (2026-05-17)
 
-Mail UI polish pass on `src/app/mail/mail-view.tsx`. Folder sidebar, thread list, and reader pane retuned to the live-screenshot spec: tighter neutral borders (`court-border-soft`), softer hover/active backgrounds on Inbox/Sent/Drafts/threads (`court-accent-tint/50` hover, `court-accent-tint/40` active), labels header in `text-[10px] tracking-[0.18em]` uppercase, thread count header padded to `py-3` with the same eyebrow style, thread sender bumped to `text-[13px]` (bold when unread / normal when read), subject to `text-[12.5px] font-medium`, preview to `text-[11.5px]`, reader subject up to `text-[20px] font-bold`, and the 6 reader-pane action buttons (Reply, Reply All, Forward, Archive, Mark Unread, Pop out) standardized to `h-8 px-3 rounded-lg text-[12px]` with a `court-accent/40` hover border. All hex literals previously hardcoded on the Inbox / Sent / Drafts rows replaced with Court Mode tokens per rule 12.
+Same-day follow-on ship after Ace 51.0 closed in the morning. Visual redesign pass covering ten surfaces, bulk email extended to Candidate Lists, calendar create flow lands end-to-end (grid slot click, ComposeFAB New Event + New Reminder, TO/CC/BCC with autocomplete, Teams OAuth reconnected), and a stack of UI fixes that came out of the redesign work.
 
-Intentionally deferred from the spec: (a) per-row unread dot — element doesn't exist in `ThreadRow` today and adding it conflicts with the "do not move any elements" constraint, (b) per-row label chips — same reason, no chip plumbing on `MailListThread`, (c) message body typography — body renders inside the sandboxed `EmailHtmlViewer` iframe and can't be reached from parent CSS, (d) Playfair Display font — mapped to the existing `font-serif` token (Bricolage Grotesque) rather than introducing a new family, (e) reader-pane Move To button left at its current size since it uses the shared `MoveToMenu` component that's also rendered in the bulk-selection toolbar.
+### Visual redesign pass — Prompts 1-10
+Court Mode tokens enforced throughout per rule 12. Each surface was retuned to a screenshot-driven visual spec (hex literals mapped to `court-*` tokens before write). Surfaces covered in this batch:
+
+1. **Dashboard / Clubhouse** (`cdf7ece`) — KPI tile chrome, Today's Briefing card, panel surfaces.
+2. **Pipeline** (`9e08beb`) — table-stays-default, kanban-spec applied to row/column surfaces.
+3. **Candidates search** (`b09ab5e`) — surfaces only, layout untouched; row chrome, snippet line, rail.
+4. **Candidate profile** (`da8992d`) — surfaces only; header + sections + tab strip.
+5. **Jobs grid + detail** (`ba38673`) — surfaces only; card chrome + detail panels.
+6. **Job Description tab** (`2dfb72c`, `5629d89`) — JD surfaces; Copy JD button shrunk to `h-8 / text-[12px]`.
+7. **Clients directory + detail** (`a987d66`) — list + profile chrome.
+8. **BD dashboard** — surfaces only; carried in the same chain.
+9. **BD settings panels** (`5327215`) — Settings ▸ BD card chrome retuned.
+10. **Mail UI** (`76292b6`) — folder sidebar, thread list, reader pane retuned. Hex literals on Inbox/Sent/Drafts swapped for Court Mode tokens. Sender / subject / preview sizes bumped to spec; reader subject to `text-[20px] font-bold`; 6 reader-pane action buttons standardized to `h-8 px-3 rounded-lg text-[12px] hover:border-court-accent/40`. Deferred (no plumbing today): per-row unread dot, per-row label chip, iframe message-body typography, Playfair → font-serif mapping (Bricolage Grotesque), reader-pane Move To sizing (shared `MoveToMenu` component used by bulk toolbar).
+
+Prompts 11-17 still pending (phone, appearance, placements, all settings, scoreboard, applicants, finances) — queued on the roadmap.
+
+### Bulk email — Candidate Lists extension (`0b9ba57`)
+Same `BulkEmailDialog` from the search-surface implementation now wired into the Candidate Lists surface. Recruiter can send to a saved list without rebuilding the recipient set. Inherits per-recipient merge field resolution and the >25 confirm gate from the prior implementation. Closes the Ace 51 known issue.
+
+### Calendar create flow — grid slot + ComposeFAB
+- **Calendar New Event modal with meeting type + provider routing** (`2efad52`). New event modal with meetingType (Google Meet / Microsoft Teams) and provider-aware Graph API / Google routing on save.
+- **Grid slot click + ComposeFAB wired into new event modal** (`a0971e1`). Clicking a slot in week/day view pre-fills date + start/end time; ComposeFAB `+ New ▸ New Event` opens the same modal.
+- **CC chip field on create event modal + tighter client picker mapping** (`c47f88c`). CC row added; client picker resolves to the right Client record across both cuid and legacyRfId conventions.
+- **Candidate / Client typeaheads replaced with TO/CC/BCC chip inputs** (`8c0729f`). Event guest entry uses the same chip pattern as the mail composer To/Cc/Bcc rows.
+- **Typeahead contact suggestions on TO/CC/BCC chip inputs** (`f56b6be`). Same 3-source merge (Ace Candidates / Ace Contacts / Gmail Sent recipients) the mail composer uses, dropped into the event modal chip inputs.
+- **New Reminder entry in ComposeFAB** (`d710390`). ComposeFAB now surfaces New Event + New Reminder alongside the existing actions; closes the "+ New menu — New Event + New Reminder entries" queued item from Ace 51.
+- **Teams OAuth reconnected** — the Microsoft Teams meeting branch shipped in Ace 51 needed a reconnect after the Settings UI refactor moved the connector card.
+
+### Calendar + UI fixes
+- **Mini calendar prev/next month buttons wired** (`8f0e0ab`). Mini cal navigation arrows previously no-op; now drive the visible month state.
+- **Drop-up fix on typeahead** — TO/CC/BCC autocomplete dropdown flips upward when it would clip the viewport bottom (mail composer + event modal share the same input component).
+- **Applied-jobs strip tightened** (`d710390`). Dense layout pass on the per-candidate applied-jobs row; closes the "Tighter applied-jobs strip" queued item.
+- **Resume PDF viewer no longer clips** (`823ff9d`). Height cap on the candidate-profile embed PDF viewer removed; recruiter can read the full first page without scrolling against the iframe bounds.
+- **DeleteClientButton fix** (`823ff9d`). Inlined the delete button to fix the missing-import error on `/clients/[id]`.
+- **Unused imports / params cleanup after applied-jobs refactor** (`755f91b`).
+- **KPI tile label alignment** (`9e8da16`). KPI tile label container gets `min-h-[32px]` so single-line and double-line labels align on the baseline across the dashboard strip.
 
 ## What Shipped in Ace 51.0 (2026-05-17)
 
