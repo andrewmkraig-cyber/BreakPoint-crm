@@ -1,11 +1,12 @@
 "use client";
 
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import type { CalendarTeamMember } from "@/lib/calendar/types";
 import {
   addDays,
+  addMonths,
   getDaysInMonth,
   getMondayOfWeek,
   getMonthName,
@@ -65,25 +66,34 @@ function MiniMonth({
   currentWeekStart: Date;
   today: Date;
 }) {
+  // Mini-cal owns its own displayed month so the recruiter can flip
+  // through months in the rail without dragging the main grid along.
+  // Seeded from the parent's monthStart on first mount; subsequent
+  // changes to the parent's currentDate don't reseed this state —
+  // matches Google Calendar's behavior where the side cal is a
+  // standalone navigator. "Jump to today" lives in the main header's
+  // Today button; the rail intentionally has no analog.
+  const [viewMonth, setViewMonth] = useState<Date>(monthStart);
+
   // Mon-first 6×7 grid for the displayed month. Cells outside the
   // month fade to ~60% opacity; the current week is tinted; today
   // gets the brand pill.
   const cells = useMemo(() => {
-    const gridStart = getMondayOfWeek(monthStart);
+    const gridStart = getMondayOfWeek(viewMonth);
     const days: Array<{ date: Date; outsideMonth: boolean }> = [];
-    const daysInMonth = getDaysInMonth(monthStart);
+    const daysInMonth = getDaysInMonth(viewMonth);
     // 6 weeks × 7 days covers any month layout. Trim trailing all-out
     // rows to keep the mini-cal compact.
     for (let i = 0; i < 42; i += 1) {
       const d = addDays(gridStart, i);
-      days.push({ date: d, outsideMonth: d.getMonth() !== monthStart.getMonth() });
+      days.push({ date: d, outsideMonth: d.getMonth() !== viewMonth.getMonth() });
     }
     // Trim trailing rows that are entirely outside the month.
     while (days.length > 28 && days.slice(-7).every((c) => c.outsideMonth)) {
       days.splice(-7, 7);
     }
     return { days, daysInMonth };
-  }, [monthStart]);
+  }, [viewMonth]);
 
   const weekEnd = addDays(currentWeekStart, 4);
 
@@ -91,11 +101,12 @@ function MiniMonth({
     <div className="rounded-2xl border border-court-border bg-court-surface p-3.5 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
         <div className="font-serif text-sm font-semibold text-court-fg">
-          {getMonthName(monthStart)} {monthStart.getFullYear()}
+          {getMonthName(viewMonth)} {viewMonth.getFullYear()}
         </div>
         <div className="flex items-center gap-0.5">
           <button
             type="button"
+            onClick={() => setViewMonth((m) => addMonths(m, -1))}
             aria-label="Previous month"
             className="grid h-[22px] w-[22px] place-items-center rounded-full border border-court-border text-court-fg-muted hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
           >
@@ -103,6 +114,7 @@ function MiniMonth({
           </button>
           <button
             type="button"
+            onClick={() => setViewMonth((m) => addMonths(m, 1))}
             aria-label="Next month"
             className="grid h-[22px] w-[22px] place-items-center rounded-full border border-court-border text-court-fg-muted hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
           >
