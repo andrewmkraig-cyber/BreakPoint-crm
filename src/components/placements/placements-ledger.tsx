@@ -66,13 +66,13 @@ const STATUS_LABEL: Record<PlacementsDashboardBillingStatus, string> = {
 
 const STATUS_PILL: Record<PlacementsDashboardBillingStatus, string> = {
   PENDING_START:
-    "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-900",
+    "bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-200",
   BILLED:
-    "bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-950/40 dark:text-blue-200 dark:border-blue-900",
+    "bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-200",
   COLLECTED:
-    "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-200 dark:border-emerald-900",
+    "bg-court-brand-tint text-court-brand-dark dark:bg-emerald-950/40 dark:text-emerald-200",
   OVERDUE:
-    "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-200 dark:border-red-900",
+    "bg-red-50 text-red-500 dark:bg-red-950/40 dark:text-red-300",
 };
 
 function toDrawerContext(row: LedgerRow): PlacementDrawerContext {
@@ -128,7 +128,7 @@ export function PlacementsLedger({
   );
 
   return (
-    <div className="rounded-3xl bg-court-surface shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="rounded-2xl bg-court-surface shadow-sm">
       <div className="flex flex-col gap-2.5 px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-court-fg-muted">
           {title}
@@ -174,15 +174,15 @@ export function PlacementsLedger({
       <div className="mt-2.5 overflow-x-auto">
         <table className="w-full border-collapse text-[13px]">
           <thead>
-            <tr className="border-y border-court-border-soft text-left text-[10px] uppercase tracking-wide text-court-fg-muted">
-              <th className="px-4 py-1.5 font-semibold">Candidate</th>
-              <th className="px-3 py-1.5 font-semibold">Role</th>
-              <th className="px-3 py-1.5 font-semibold">Client</th>
-              <th className="px-3 py-1.5 font-semibold">City</th>
-              <th className="px-3 py-1.5 font-semibold">Start</th>
-              <th className="px-3 py-1.5 text-right font-semibold">Fee</th>
-              <th className="px-3 py-1.5 font-semibold">Source</th>
-              <th className="px-4 py-1.5 font-semibold">Billing</th>
+            <tr className="border-y border-court-border-soft bg-court-brand-tint/40 text-left text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
+              <th className="px-4 py-3 font-semibold">Candidate</th>
+              <th className="px-3 py-3 font-semibold">Role</th>
+              <th className="px-3 py-3 font-semibold">Client</th>
+              <th className="px-3 py-3 font-semibold">City</th>
+              <th className="px-3 py-3 font-semibold">Start</th>
+              <th className="px-3 py-3 text-right font-semibold">Fee</th>
+              <th className="px-3 py-3 font-semibold">Source</th>
+              <th className="px-4 py-3 font-semibold">Billing</th>
             </tr>
           </thead>
           <tbody>
@@ -190,7 +190,7 @@ export function PlacementsLedger({
               <tr>
                 <td
                   colSpan={8}
-                  className="px-4 py-6 text-center text-[13px] text-court-fg-muted"
+                  className="px-4 py-8 text-center text-[13px] text-court-fg-muted"
                 >
                   {rows.length === 0
                     ? "No placements in this window."
@@ -238,36 +238,38 @@ function LedgerTableRow({
       tabIndex={0}
       role="button"
       aria-label={`Edit placement for ${candidateLabel}`}
-      className="cursor-pointer border-b border-court-border-soft transition hover:bg-court-brand-tint/40 focus:bg-court-brand-tint/40 focus:outline-none"
+      className="cursor-pointer border-b border-court-border-soft transition hover:bg-court-brand-tint/60 focus:bg-court-brand-tint/60 focus:outline-none"
     >
-      <td className="px-4 py-1.5 align-middle font-medium text-court-fg">
+      <td className="px-4 py-2.5 align-middle text-[13px] font-semibold text-court-fg">
         {candidateLabel}
       </td>
-      <td className="px-3 py-1.5 align-middle text-court-fg">{row.roleTitle ?? "—"}</td>
-      <td className="px-3 py-1.5 align-middle">
-        <div className="font-medium text-court-fg">{row.clientName || "—"}</div>
+      <td className="px-3 py-2.5 align-middle text-[12px] text-court-fg-muted">
+        {row.roleTitle ?? "—"}
+      </td>
+      <td className="px-3 py-2.5 align-middle">
+        <div className="text-[12px] text-court-fg-muted">{row.clientName || "—"}</div>
         <div className="text-[11px] text-court-fg-muted">
           {row.clientIndustry ?? "—"}
         </div>
       </td>
-      <td className="px-3 py-1.5 align-middle text-court-fg-muted">
+      <td className="px-3 py-2.5 align-middle text-[12px] text-court-fg-muted">
         {row.city ?? "—"}
       </td>
-      <td className="px-3 py-1.5 align-middle tabular-nums text-court-fg-muted">
+      <td className="px-3 py-2.5 align-middle text-[11px] tabular-nums text-court-fg-muted">
         {row.startDateLabel ?? "—"}
       </td>
-      <td className="px-3 py-1.5 text-right align-middle tabular-nums font-medium text-court-fg">
+      <td className="px-3 py-2.5 text-right align-middle font-mono font-bold tabular-nums text-court-fg">
         {row.feeAmount != null && row.feeAmount > 0
           ? formatMoneyShort(row.feeAmount)
           : "—"}
       </td>
-      <td className="px-3 py-1.5 align-middle text-court-fg-muted">
+      <td className="px-3 py-2.5 align-middle text-[12px] text-court-fg-muted">
         {row.leadSource ?? "—"}
       </td>
       <td className="px-4 py-1.5 align-middle">
         <span
           className={
-            "inline-flex items-center justify-center whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide " +
+            "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-full px-3 text-[11px] font-semibold uppercase tracking-wide " +
             STATUS_PILL[row.billingStatus]
           }
         >
