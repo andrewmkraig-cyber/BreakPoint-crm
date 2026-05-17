@@ -213,12 +213,18 @@ function buildQuery(f: Filters): string {
 // rest of the rail instead of holding a hardcoded white that glares
 // against a dark page bg.
 const inputCls =
-  "block h-8 w-full rounded-md border border-court-border bg-court-surface px-2.5 text-xs text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-9 w-full rounded-xl border border-court-border bg-court-surface px-2.5 text-[13px] text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10";
+
+// Variant for the active Keyword/Boolean input — applied when filters.q
+// has a value so the rail's main entry point picks up a brand-tinted
+// border to signal "this is what's driving the result set."
+const inputClsActive =
+  "block h-9 w-full rounded-xl border border-court-accent/50 bg-court-surface px-2.5 text-[13px] text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10";
 
 // Bare select class. Wrap with SelectField so the inline chevron paints
 // over the native arrow we strip with appearance-none.
 const selectBareCls =
-  "block h-8 w-full appearance-none rounded-md border border-court-border bg-court-surface pl-2.5 pr-7 text-xs text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/20";
+  "block h-9 w-full appearance-none rounded-xl border border-court-border bg-court-surface pl-2.5 pr-7 text-[13px] text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10";
 
 function SelectField({
   className,
@@ -238,10 +244,11 @@ function SelectField({
   );
 }
 
-// Sentence-case field label. Replaces the old all-caps eyebrow.
+// Field label. Small uppercase eyebrow per the polish spec —
+// text-[10px] font-semibold tracking-[0.18em] uppercase muted.
 function FieldLabel({ children }: { children: ReactNode }) {
   return (
-    <label className="mb-0.5 block text-[10.5px] font-semibold tracking-normal text-court-fg-muted">
+    <label className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
       {children}
     </label>
   );
@@ -249,7 +256,7 @@ function FieldLabel({ children }: { children: ReactNode }) {
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <div className="mb-1 text-xs font-semibold tracking-normal text-court-fg">
+    <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
       {children}
     </div>
   );
@@ -381,7 +388,7 @@ function SortHeader({
         ? "justify-center"
         : "justify-start";
   return (
-    <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted">
+    <th className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
       <span className={`inline-flex items-center gap-1 ${justify}`}>
         {label}
       </span>
@@ -406,7 +413,7 @@ function SortableHeader({
   const active = sort?.column === column;
   return (
     <th
-      className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest text-court-fg-muted"
+      className="px-3 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted"
       aria-sort={
         active ? (sort?.direction === "asc" ? "ascending" : "descending") : "none"
       }
@@ -1126,7 +1133,7 @@ export default function CandidatesPage() {
     // 6px the bg-court-bg handle column shows as a green strip in dark
     // Grass mode between AppShell's nav and this aside — the aside's
     // bg-court-surface visually consumes the handle once they overlap.
-    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
+    <div className="-mb-6 -ml-[18px] -mr-6 -mt-4 flex h-[calc(100vh-80px)] overflow-hidden bg-court-brand-tint/60 md:-mb-8 md:-ml-[22px] md:-mr-8 md:-mt-4 xl:-ml-[38px] xl:-mr-8 2xl:-ml-[54px] 2xl:-mr-12">
       {/* Mobile filter sheet wrapper. md:contents makes the wrapper
           inert at md+ so the aside renders as a direct flex child
           exactly as before. On phones, the wrapper becomes a fixed
@@ -1194,7 +1201,7 @@ export default function CandidatesPage() {
                   value={filters.q}
                   onChange={(e) => setField("q", e.target.value)}
                   placeholder=""
-                  className={inputCls}
+                  className={filters.q.trim() ? inputClsActive : inputCls}
                 />
               </div>
               <div>
@@ -1375,7 +1382,7 @@ export default function CandidatesPage() {
             size="sm"
             onClick={onSaveCurrent}
             disabled={!hasFilters}
-            className="h-8 w-full rounded-full"
+            className="h-9 w-full rounded-full border-court-accent bg-court-accent text-[12.5px] font-semibold text-white hover:bg-court-accent-dark"
           >
             <Bookmark className="h-3.5 w-3.5" />
             Save search
@@ -1623,7 +1630,7 @@ export default function CandidatesPage() {
           </section>
         </div>
       ) : (
-        <section className="flex flex-1 flex-col bg-court-bg">
+        <section className="flex flex-1 flex-col bg-transparent">
           {/* Results header strip — count on the left, Saved Lists pill
               on the right. justify-between pins the two ends; the count
               + label keep items-baseline alignment internally while the
@@ -1657,10 +1664,10 @@ export default function CandidatesPage() {
                 )}
               </button>
               <div className="flex items-baseline gap-2.5">
-                <span className="font-serif text-[28px] font-extrabold leading-none text-court-fg">
+                <span className="font-serif text-[24px] font-extrabold leading-none text-court-fg">
                   {total ?? 0}
                 </span>
-                <span className="text-sm text-court-fg-muted">
+                <span className="text-[13px] text-court-fg-muted">
                   {!hasFilters
                     ? "No filters applied yet"
                     : (total ?? 0) === 0
@@ -1782,7 +1789,7 @@ export default function CandidatesPage() {
               )}
               <div className="flex-1 overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="border-b border-court-border bg-court-surface-subtle">
+                <thead className="border-b border-court-border bg-court-brand-tint">
                   <tr>
                     <th className="w-10 px-3 py-2">
                       <input
@@ -1830,7 +1837,7 @@ export default function CandidatesPage() {
                 </thead>
                 <tbody
                   className={
-                    "divide-y divide-court-border/60 transition-opacity " +
+                    "divide-y divide-court-border-soft transition-opacity " +
                     (loading ? "opacity-50" : "opacity-100")
                   }
                 >
@@ -1848,7 +1855,7 @@ export default function CandidatesPage() {
                     <Fragment key={c.id}>
                     <tr
                       onClick={() => setSelectedId(c.id)}
-                      className="h-14 cursor-pointer py-1 transition hover:bg-court-accent-tint/40"
+                      className="h-14 cursor-pointer py-1 transition hover:bg-court-brand-tint/60"
                     >
                       <td
                         className="w-10 px-3"
@@ -1869,37 +1876,37 @@ export default function CandidatesPage() {
                           className="h-4 w-4 cursor-pointer accent-brand"
                         />
                       </td>
-                      <td className="px-3 text-sm font-semibold text-court-fg">
+                      <td className="px-3 text-[13px] font-semibold text-court-fg">
                         <Highlight text={c.name} tokens={matchTokens} />
                       </td>
-                      <td className="px-3 text-court-fg-muted">
+                      <td className="px-3 text-[13px] text-court-fg">
                         {c.title ? (
                           <Highlight text={c.title} tokens={matchTokens} />
                         ) : (
                           "—"
                         )}
                       </td>
-                      <td className="px-3 text-court-fg-muted">
+                      <td className="px-3 text-[12px] text-court-fg-muted">
                         {c.employer ? (
                           <Highlight text={c.employer} tokens={matchTokens} />
                         ) : (
                           "—"
                         )}
                       </td>
-                      <td className="px-3 text-court-fg-muted">
+                      <td className="px-3 text-[12px] text-court-fg-muted">
                         {c.location ? (
                           <Highlight text={c.location} tokens={matchTokens} />
                         ) : (
                           "—"
                         )}
                       </td>
-                      <td className="px-3 text-right tabular-nums text-court-fg-muted">
+                      <td className="px-3 text-right font-mono text-[11px] tabular-nums text-court-fg-muted">
                         {c.salary}
                       </td>
-                      <td className="px-3 text-court-fg-muted">
+                      <td className="px-3 font-mono text-[11px] text-court-fg-muted">
                         {c.lastApply}
                       </td>
-                      <td className="px-3 text-court-fg-muted">
+                      <td className="px-3 font-mono text-[11px] text-court-fg-muted">
                         {c.lastAction}
                       </td>
                     </tr>
@@ -1911,7 +1918,7 @@ export default function CandidatesPage() {
                       // divide-y on the next candidate's data row).
                       <tr
                         onClick={() => setSelectedId(c.id)}
-                        className="!border-t-0 cursor-pointer transition hover:bg-court-accent-tint/40"
+                        className="!border-t-0 cursor-pointer transition hover:bg-court-brand-tint/60"
                       >
                         <td className="px-3" />
                         <td
