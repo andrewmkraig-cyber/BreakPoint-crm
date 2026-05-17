@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -27,6 +27,7 @@ import {
   getStartOfMonth,
 } from "@/lib/calendar/week";
 
+import { CreateEventModal } from "./create-event-modal";
 import { createReminder, dismissReminder as dismissReminderAction } from "./reminder-actions";
 
 // Persist the recruiter's "show / hide" choices for each teammate
@@ -186,23 +187,21 @@ export function CalendarView({
   // each event.
   const teamMode = scope !== "me";
 
-  const openCreate = () => {
-    setSelectedEvent(null);
-    setCreatePrefill(null);
-    setDrawerMode("create");
-    setDrawerOpen(true);
-  };
+  // Standalone "New event" modal (CreateEventModal) — separate from the
+  // edit drawer's legacy create-mode. The drawer keeps its grid-slot
+  // drag-to-create path; the modal is the entry point for the explicit
+  // "+ New event" affordances (subheader button and global TopBar
+  // dispatch). Lays the groundwork for the "+ New" menu that item 3
+  // adds (New Event / New Reminder).
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
-  // The "+ New event" button now lives in the global TopBar, which sits
-  // above the calendar tree. It dispatches a window event when clicked;
-  // we listen here so the local drawer state still opens.
+  // Global TopBar dispatches `ace:calendar:new-event` from the "+ New
+  // event" button; route it into the new modal rather than the old
+  // drawer create flow.
   useEffect(() => {
-    const handler = () => openCreate();
+    const handler = () => setCreateModalOpen(true);
     window.addEventListener("ace:calendar:new-event", handler);
     return () => window.removeEventListener("ace:calendar:new-event", handler);
-    // openCreate closes over stable setState identifiers — safe to
-    // subscribe once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const openCreateAt = (
     date: Date,
@@ -300,6 +299,7 @@ export function CalendarView({
         onSync={handleSync}
         isSyncing={isSyncing}
         latestSyncedAt={latestSyncedAt}
+        onNewEvent={() => setCreateModalOpen(true)}
       />
 
       <div className="flex min-w-0 gap-5">
@@ -376,6 +376,12 @@ export function CalendarView({
         prefill={drawerMode === "create" ? createPrefill : null}
         onClose={closeDrawer}
       />
+
+      <CreateEventModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        onCreated={() => router.refresh()}
+      />
     </div>
   );
 }
@@ -407,6 +413,7 @@ function CalSubheader({
   onSync,
   isSyncing,
   latestSyncedAt,
+  onNewEvent,
 }: {
   view: CalendarView;
   // Null when the rail is in a mixed state (some teammates hidden,
@@ -422,6 +429,7 @@ function CalSubheader({
   onSync: () => void;
   isSyncing: boolean;
   latestSyncedAt: Date | null;
+  onNewEvent: () => void;
 }) {
   const headerText =
     view === "day"
@@ -475,6 +483,14 @@ function CalSubheader({
         </div>
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={onNewEvent}
+          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-3.5 text-[12.5px] font-medium text-court-fg transition hover:border-court-brand/40 hover:bg-court-brand-tint hover:text-court-brand-dark"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          New event
+        </button>
         <button
           type="button"
           onClick={onSync}

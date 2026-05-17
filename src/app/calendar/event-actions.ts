@@ -5,10 +5,13 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
+import { logActivity } from "@/lib/activity";
 import {
+  createCalendarEvent,
   deleteCalendarEvent,
   patchCalendarEventDetails,
 } from "@/lib/google-calendar";
+import { createTeamsMeeting } from "@/lib/microsoft-graph";
 import { prisma } from "@/lib/prisma";
 import type { CalendarEventType } from "@/lib/calendar/types";
 
@@ -259,6 +262,260 @@ export async function updateCalendarEventAction(
   // a save from the dashboard tile lands in Neon but the reopened drawer
   // keeps showing the pre-save type / reminder state.
   revalidatePath("/dashboard");
+}
+
+export type CreateMeetingType =
+  | "google_meet"
+  | "teams"
+  | "in_person"
+  | "phone"
+  | "none";
+
+export type CreateCalendarEventInput = {
+  title: string;
+  // Local-date string in YYYY-MM-DD; the action assembles the
+  // start/end ISO strings against America/New_York rather than
+  // forcing the client to do timezone math.
+  date: string;
+  // HH:MM 24h. Ignored when allDay is true.
+  startTime: string;
+  endTime: string;
+  allDay: boolean;
+  meetingType: CreateMeetingType;
+  location: string | null;
+  notes: string | null;
+  candidateId: string | null;
+  clientId: string | null;
+};
+
+export type CreateCalendarEventResult =
+  | { ok: true; eventId: string; meetLink: string | null }
+  | { ok: false; error: string };
+
+// All-day events render in Google as a single date range with no
+// timezone — start/end use the YYYY-MM-DD form. For Ace mirror rows
+// we still store concrete Date objects (midnight to midnight ET) so
+// the grid math reuses the same code path as timed events.
+const ET_TIMEZONE = "America/New_York";
+
+function buildStartEndForDay(date: string): { startISO: string; endISO: string; durationMin: number; startDate: Date; endDate: Date } {
+  // YYYY-MM-DD → assume midnight ET → 24h block
+  const parts = date.split("-");
+  if (parts.length !== 3) throw new Error("Invalid date");
+  const [y, m, d] = parts.map((p) => Number.parseInt(p, 10));
+  if (![y, m, d].every((n) => Number.isFinite(n))) {
+    throw new Error("Invalid date");
+  }
+  // 12:00 UTC keeps us inside the same calendar day for ET regardless
+  // of DST — the grid only reads startTime.getDate() / .getMonth() /
+  // .getFullYear() in local time, and ET is always UTC-4 or UTC-5.
+  const startDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const endDate = new Date(Date.UTC(y, m - 1, d + 1, 12, 0, 0));
+  return {
+    startISO: startDate.toISOString(),
+    endISO: endDate.toISOString(),
+    durationMin: 24 * 60,
+    startDate,
+    endDate,
+  };
+}
+
+function buildStartEndForTimed(
+  date: string,
+  startTime: string,
+  endTime: string,
+): { startISO: string; endISO: string; durationMin: number; startDate: Date; endDate: Date } {
+  const startLocal = new Date(`${date}T${startTime}:00`);
+  const endLocal = new Date(`${date}T${endTime}:00`);
+  if (Number.isNaN(startLocal.getTime()) || Number.isNaN(endLocal.getTime())) {
+    throw new Error("Invalid start/end time");
+  }
+  if (endLocal.getTime() <= startLocal.getTime()) {
+    throw new Error("End must be after start");
+  }
+  const durationMin = Math.max(
+    1,
+    Math.round((endLocal.getTime() - startLocal.getTime()) / 60_000),
+  );
+  return {
+    startISO: startLocal.toISOString(),
+    endISO: endLocal.toISOString(),
+    durationMin,
+    startDate: startLocal,
+    endDate: endLocal,
+  };
+}
+
+function deriveEventType(
+  candidateId: string | null,
+  clientId: string | null,
+): CalendarEventType {
+  if (candidateId && clientId) return "interview";
+  if (candidateId) return "candidate";
+  if (clientId) return "client";
+  return "other";
+}
+
+export async function createCalendarEventAction(
+  input: CreateCalendarEventInput,
+): Promise<CreateCalendarEventResult> {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return { ok: false, error: "Unauthorized" };
+    }
+    const org = await getCurrentOrg();
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email },
+      select: { id: true, email: true },
+    });
+    if (!user) {
+      return { ok: false, error: "Session user missing from Neon" };
+    }
+
+    const title = input.title.trim();
+    if (!title) return { ok: false, error: "Title is required" };
+
+    const range = input.allDay
+      ? buildStartEndForDay(input.date)
+      : buildStartEndForTimed(input.date, input.startTime, input.endTime);
+
+    // Teams requires its own connected token at the org level — fail
+    // early so the recruiter doesn't see a half-created Google event.
+    if (input.meetingType === "teams") {
+      const token = await prisma.microsoftToken.findUnique({
+        where: { organizationId: org.id },
+        select: { id: true },
+      });
+      if (!token) {
+        return {
+          ok: false,
+          error: "Microsoft Teams isn't connected for this org. Connect it in Settings → Connectors first.",
+        };
+      }
+    }
+
+    // Build the description: optional notes first, then a Teams join
+    // line appended below so the link survives Google's rendering even
+    // when the location field is reserved for an in-person address.
+    let description = input.notes?.trim() ?? "";
+    let mirroredLocation: string | null = null;
+    if (input.meetingType === "in_person" && input.location?.trim()) {
+      mirroredLocation = input.location.trim();
+    }
+
+    const wantsMeet = input.meetingType === "google_meet";
+    const created = await createCalendarEvent({
+      userId: user.id,
+      summary: title,
+      description,
+      startISO: range.startISO,
+      durationMin: range.durationMin,
+      createMeet: wantsMeet,
+      location: mirroredLocation ?? undefined,
+      sendUpdates: false,
+      timeZone: ET_TIMEZONE,
+    });
+
+    let meetLink: string | null = created.meetLink ?? null;
+
+    if (input.meetingType === "teams") {
+      try {
+        const meeting = await createTeamsMeeting({
+          organizationId: org.id,
+          startISO: range.startISO,
+          endISO: range.endISO,
+          subject: title,
+        });
+        meetLink = meeting.joinWebUrl;
+        // Patch the Google event description so the join URL renders
+        // in the calendar invite + grid drawer alongside any notes.
+        const teamsLine = `Microsoft Teams: ${meeting.joinWebUrl}`;
+        description = description ? `${description}\n\n${teamsLine}` : teamsLine;
+        await patchCalendarEventDetails({
+          userId: user.id,
+          eventId: created.eventId,
+          calendarId: "primary",
+          sendUpdates: "none",
+          description,
+        });
+      } catch (e) {
+        // Roll back the Google event so we never leave an orphan with
+        // no working join link.
+        try {
+          await deleteCalendarEvent({
+            userId: user.id,
+            eventId: created.eventId,
+            sendUpdates: false,
+          });
+        } catch {
+          // best-effort
+        }
+        return {
+          ok: false,
+          error: e instanceof Error
+            ? `Teams meeting create failed: ${e.message}`
+            : "Teams meeting create failed.",
+        };
+      }
+    }
+
+    // Mirror to Neon so the new event renders immediately without
+    // waiting for the next /api/calendar/sync. Primary calendar id on
+    // Google Workspace == the user's email; on the next full sync the
+    // upsert key (organizationId + googleEventId + calendarId) lines
+    // up and the row updates in place instead of duplicating.
+    const calendarId = user.email ?? "primary";
+    const eventType = deriveEventType(input.candidateId, input.clientId);
+    const mirror = await prisma.calendarEvent.create({
+      data: {
+        organizationId: org.id,
+        googleEventId: created.eventId,
+        calendarId,
+        calendarName: "primary",
+        calendarColor: null,
+        title,
+        description: description || null,
+        startTime: range.startDate,
+        endTime: range.endDate,
+        allDay: input.allDay,
+        location: mirroredLocation,
+        meetLink,
+        htmlLink: created.htmlLink,
+        candidateId: input.candidateId,
+        clientId: input.clientId,
+        typeOverride: eventType,
+        syncedAt: new Date(),
+      },
+      select: { id: true },
+    });
+
+    await logActivity({
+      organizationId: org.id,
+      userId: user.id,
+      actionType: "calendar_event_created",
+      targetType: "calendar_event",
+      targetId: mirror.id,
+      metadata: {
+        title,
+        meetingType: input.meetingType,
+        candidateId: input.candidateId,
+        clientId: input.clientId,
+        allDay: input.allDay,
+        startISO: range.startISO,
+      },
+    });
+
+    revalidatePath("/calendar");
+    revalidatePath("/dashboard");
+
+    return { ok: true, eventId: mirror.id, meetLink };
+  } catch (e) {
+    return {
+      ok: false,
+      error: e instanceof Error ? e.message : "Failed to create event.",
+    };
+  }
 }
 
 export async function deleteCalendarEventAction(input: {
