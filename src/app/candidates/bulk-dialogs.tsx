@@ -323,23 +323,26 @@ export function BulkEmailDialog({
   const [localTemplatesLoaded, setLocalTemplatesLoaded] = useState(false);
   const [localTemplatesError, setLocalTemplatesError] = useState<string | null>(null);
   const [localTemplateOpen, setLocalTemplateOpen] = useState(false);
-  const localTemplateContainerRef = useRef<HTMLDivElement>(null);
+  const localTemplateTriggerRef = useRef<HTMLButtonElement>(null);
+  const localTemplatePanelRef = useRef<HTMLDivElement>(null);
   const applyDraftRef = useRef<((d: { subject: string; body: string }) => void) | null>(null);
 
-  // Document-level mousedown dismiss for the local Use Template dropdown.
-  // The previous full-viewport <div fixed inset-0 z-[60]> backdrop pattern
-  // sat directly over the trigger button while open and trapped the next
-  // click — the picker would not appear to open at all. Same fix that
-  // EditWithClaudeMenu uses for the same reason.
+  // Outside-click dismiss for the local Use Template dropdown. Uses `click`
+  // (not `mousedown`) so the trigger's own click handler runs first and the
+  // toggle isn't immediately undone. Checks BOTH the trigger and the panel
+  // refs so a click on either is treated as inside.
   useEffect(() => {
     if (!localTemplateOpen) return;
-    function onDocMouseDown(e: MouseEvent) {
-      const node = localTemplateContainerRef.current;
-      if (node && node.contains(e.target as Node)) return;
+    function onDocClick(e: MouseEvent) {
+      const target = e.target as Node;
+      const trigger = localTemplateTriggerRef.current;
+      const panel = localTemplatePanelRef.current;
+      if (trigger && trigger.contains(target)) return;
+      if (panel && panel.contains(target)) return;
       setLocalTemplateOpen(false);
     }
-    document.addEventListener("mousedown", onDocMouseDown);
-    return () => document.removeEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("click", onDocClick);
+    return () => document.removeEventListener("click", onDocClick);
   }, [localTemplateOpen]);
 
   // Load active templates once when the bulk dialog mounts so the
@@ -734,11 +737,12 @@ export function BulkEmailDialog({
             sendingLabel="Sending…"
             sendDisabled={confirmDraft !== null}
             footerExtras={
-              <div ref={localTemplateContainerRef} className="relative">
+              <div className="relative">
                 <button
+                  ref={localTemplateTriggerRef}
                   type="button"
-                  onClick={() => {
-                    console.log("Use Template clicked");
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setLocalTemplateOpen((v) => !v);
                   }}
                   className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
@@ -748,6 +752,7 @@ export function BulkEmailDialog({
                 </button>
                 {localTemplateOpen && (
                   <div
+                    ref={localTemplatePanelRef}
                     role="menu"
                     className="absolute bottom-full right-0 z-[1200] mb-1 w-80 overflow-hidden rounded-lg border border-court-border bg-court-surface shadow-lg"
                   >
