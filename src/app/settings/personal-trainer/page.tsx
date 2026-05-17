@@ -18,6 +18,7 @@ export default async function PersonalTrainerSettingsPage() {
   return (
     <CollapsibleSection
       id="personal-trainer"
+      eyebrow="AI Rules"
       title="Personal Trainer"
       description="Standing rules injected into every Claude response across Ace."
     >

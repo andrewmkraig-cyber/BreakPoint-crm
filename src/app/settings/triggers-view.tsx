@@ -27,16 +27,18 @@ export function TriggersView({
 }) {
   return (
     <div className="space-y-6">
-      <AutoSendCandidateConfirmationRow initial={autoSendCandidateConfirmation} />
+      <div className="divide-y divide-court-border-soft">
+        <AutoSendCandidateConfirmationRow initial={autoSendCandidateConfirmation} />
+      </div>
 
-      <div className="space-y-3">
+      <div className="space-y-2">
         <div>
-          <h3 className="text-sm font-semibold text-court-fg">Per-trigger rules</h3>
-          <p className="mt-1 text-xs text-court-fg-muted">
+          <h3 className="text-[13px] font-semibold text-court-fg">Per-trigger rules</h3>
+          <p className="mt-0.5 text-[11px] text-court-fg-muted">
             Pick which template each pipeline action sends, route any of them through Gmail Drafts for approval, or pause a trigger entirely. Leaving everything default keeps the current behavior.
           </p>
         </div>
-        <div className="divide-y divide-court-border rounded-md border border-court-border">
+        <div className="divide-y divide-court-border-soft">
           {rules.map((rule) => (
             <TriggerRuleRowEditor
               key={rule.triggerKey}
@@ -70,12 +72,12 @@ function AutoSendCandidateConfirmationRow({ initial }: { initial: boolean }) {
   }
 
   return (
-    <label className="flex items-start justify-between gap-4 rounded-md border border-court-border p-3">
+    <label className="flex items-start justify-between gap-4 py-3.5">
       <div className="min-w-0">
-        <div className="text-sm font-semibold text-court-fg">
+        <div className="text-[13px] font-medium text-court-fg">
           Auto-send candidate confirmation after submittal
         </div>
-        <div className="mt-1 text-xs text-court-fg-muted">
+        <div className="mt-0.5 text-[11px] text-court-fg-muted">
           When on, the &ldquo;BreakPoint Talent has reviewed&hellip;&rdquo; email is sent immediately after a successful client submittal. When off, it lands in your Gmail Drafts for review.
         </div>
       </div>
@@ -143,27 +145,27 @@ function TriggerRuleRowEditor({
   const hasNoTemplates = templates.length === 0;
 
   return (
-    <div className="flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between">
+    <div className="flex flex-col gap-3 py-3.5 sm:flex-row sm:items-start sm:justify-between">
       <div className="min-w-0 sm:flex-1">
-        <div className="text-sm font-semibold text-court-fg">{rule.label}</div>
-        <div className="mt-1 text-xs text-court-fg-muted">{rule.description}</div>
+        <div className="text-[13px] font-medium text-court-fg">{rule.label}</div>
+        <div className="mt-0.5 text-[11px] text-court-fg-muted">{rule.description}</div>
       </div>
 
       <div className="flex flex-col gap-2 sm:w-72 sm:shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-medium text-court-fg">Enabled</span>
+          <span className="text-[12px] font-medium text-court-fg">Enabled</span>
           <Toggle checked={enabled} pending={pending} onToggle={onToggleEnabled} />
         </div>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs font-medium text-court-fg">Template</span>
+          <span className="text-[12px] font-medium text-court-fg">Template</span>
           <select
             value={templateId}
             onChange={(e) => onTemplateChange(e.target.value)}
             disabled={pending || hasNoTemplates}
             className={cn(
-              "w-full rounded-md border border-court-border bg-court-bg px-2 py-1 text-xs text-court-fg",
-              "focus:outline-none focus:ring-2 focus:ring-brand/40",
+              "h-10 w-full rounded-xl border border-court-border bg-court-surface px-3 text-[13px] text-court-fg",
+              "focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10",
               (pending || hasNoTemplates) && "opacity-60",
             )}
           >
@@ -182,7 +184,7 @@ function TriggerRuleRowEditor({
         </label>
 
         <div className="flex items-center justify-between gap-3">
-          <span className="text-xs font-medium text-court-fg">Approve before sending</span>
+          <span className="text-[12px] font-medium text-court-fg">Approve before sending</span>
           <Toggle checked={sendAsDraft} pending={pending} onToggle={onToggleDraft} />
         </div>
       </div>
@@ -208,7 +210,7 @@ function Toggle({
       disabled={pending}
       className={cn(
         "relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors",
-        checked ? "bg-brand" : "bg-court-fg-muted/40",
+        checked ? "bg-court-accent" : "bg-court-fg-muted/40",
         pending && "opacity-60",
       )}
     >

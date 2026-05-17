@@ -54,6 +54,7 @@ export default async function ConnectorsSettingsPage() {
   return (
     <CollapsibleSection
       id="connectors"
+      eyebrow="Integrations"
       title="Connectors"
       description="Live health of Gmail, Claude, Quo, and Mercury."
     >
@@ -63,9 +64,7 @@ export default async function ConnectorsSettingsPage() {
         quo={connectors.quo}
         gmailPush={gmailPush}
       />
-      <div className="mt-2">
-        <MercuryConnectorCard maskedKey={mercuryMasked} />
-      </div>
+      <MercuryConnectorCard maskedKey={mercuryMasked} />
     </CollapsibleSection>
   );
 }

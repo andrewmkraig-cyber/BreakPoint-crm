@@ -9,7 +9,6 @@ import {
   uploadBrandingLogo,
 } from "@/app/settings/branding-actions";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 
 // Max matches MAX_LOGO_BYTES server-side — double-enforced so a user
 // gets feedback before a 500KB+ file leaves the browser.
@@ -151,7 +150,7 @@ export function BrandingView({
               type="button"
               onClick={onPickLogo}
               disabled={uploading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg shadow-sm transition hover:text-brand-dark disabled:opacity-60"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40 disabled:opacity-60"
             >
               {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
               Replace logo
@@ -175,15 +174,15 @@ export function BrandingView({
       </div>
 
       <div className="flex items-center justify-end gap-2">
-        <Button
+        <button
           type="button"
-          size="sm"
           onClick={onSave}
           disabled={saving}
+          className="inline-flex h-9 items-center gap-1.5 rounded-full bg-court-accent px-4 text-[12.5px] font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           {saving && <Loader2 className="h-3 w-3 animate-spin" />}
           Save branding
-        </Button>
+        </button>
       </div>
 
       {signaturePreviewHtml && (
@@ -223,15 +222,15 @@ function Field({
 }) {
   return (
     <label className="block text-sm">
-      <span className="text-[11px] uppercase tracking-wider text-court-fg-muted">{label}</span>
+      <span className="text-[11px] font-medium uppercase tracking-wider text-court-fg-muted">{label}</span>
       <input
         value={value}
         onChange={(e) => onChange(e.target.value)}
         readOnly={readOnly}
         placeholder={placeholder}
         className={cn(
-          "mt-1 w-full rounded-lg border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60",
-          "focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20",
+          "mt-1 h-10 w-full rounded-xl border border-court-border bg-court-surface px-3 text-[13px] text-court-fg placeholder:text-court-fg-muted/60",
+          "focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10",
           readOnly && "cursor-not-allowed opacity-70",
         )}
       />

@@ -122,7 +122,7 @@ function TrainerTab({
         onChange={(e) => setText(e.target.value)}
         rows={3}
         placeholder="Type a rule and press Add. Example: Never start a bullet with He."
-        className="block w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+        className="block w-full resize-y rounded-xl border border-court-border bg-court-surface px-3 py-2 text-[13px] text-court-fg placeholder:text-court-fg-muted focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10"
       />
       {error && <p className="text-xs text-red-600">{error}</p>}
       <div>
@@ -130,12 +130,12 @@ function TrainerTab({
           type="button"
           onClick={handleAdd}
           disabled={pending}
-          className="rounded-md bg-court-accent px-4 py-2 text-sm font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center rounded-full bg-court-accent px-4 text-[12.5px] font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           {pending ? "Adding..." : "Add Rule"}
         </button>
       </div>
-      <p className="text-xs text-court-fg-muted">
+      <p className="text-[11px] text-court-fg-muted">
         Rules apply to every Claude response across Ace - Game Plan, email
         composer, edit-with-Claude, call summaries, and the new-client
         auto-parse.
@@ -163,7 +163,7 @@ function RulesTab({
     );
   }
   return (
-    <ul className="divide-y divide-court-border">
+    <ul className="divide-y divide-court-border-soft">
       {rules.map((rule) => (
         <RuleRow
           key={rule.id}
@@ -227,12 +227,12 @@ function RuleRow({
 
   if (editing) {
     return (
-      <li className="py-3">
+      <li className="py-3.5">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={3}
-          className="block w-full resize-y rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-court-accent focus:outline-none focus:ring-1 focus:ring-court-accent"
+          className="block w-full resize-y rounded-xl border border-court-border bg-court-surface px-3 py-2 text-[13px] text-court-fg focus:border-court-accent focus:outline-none focus:ring-2 focus:ring-court-accent/10"
         />
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
         <div className="mt-2 flex items-center gap-2">
@@ -240,7 +240,7 @@ function RuleRow({
             type="button"
             onClick={handleSave}
             disabled={pending}
-            className="rounded-md bg-court-accent px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
+            className="inline-flex h-9 items-center rounded-full bg-court-accent px-4 text-[12.5px] font-semibold text-white transition hover:bg-court-accent-dark disabled:cursor-not-allowed disabled:opacity-60"
           >
             {pending ? "Saving..." : "Save"}
           </button>
@@ -252,7 +252,7 @@ function RuleRow({
               setError(null);
             }}
             disabled={pending}
-            className="rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-xs font-medium text-court-fg-muted transition hover:bg-court-surface-subtle"
+            className="inline-flex h-9 items-center rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40"
           >
             Cancel
           </button>
@@ -262,8 +262,8 @@ function RuleRow({
   }
 
   return (
-    <li className="flex items-start justify-between gap-3 py-3">
-      <p className="min-w-0 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-court-fg">
+    <li className="flex items-start justify-between gap-3 py-3.5">
+      <p className="min-w-0 flex-1 whitespace-pre-wrap text-[13px] font-medium leading-relaxed text-court-fg">
         {rule.text}
       </p>
       <div className="flex shrink-0 items-center gap-1">
@@ -274,7 +274,7 @@ function RuleRow({
             setEditing(true);
           }}
           aria-label="Edit rule"
-          className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-court-fg-muted transition hover:bg-court-surface-subtle hover:text-court-fg"
         >
           <Pencil className="h-4 w-4" />
         </button>
@@ -283,7 +283,7 @@ function RuleRow({
           onClick={handleDelete}
           disabled={pending}
           aria-label="Delete rule"
-          className="rounded-md p-1.5 text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-full text-court-fg-muted transition hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Trash2 className="h-4 w-4" />
         </button>

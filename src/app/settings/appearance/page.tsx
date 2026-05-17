@@ -7,7 +7,7 @@ export default function AppearanceSettingsPage() {
   return (
     <CollapsibleSection
       id="appearance"
-      variant="bd"
+      eyebrow="Display"
       title="Court Mode"
       description="Pick the palette Ace renders with. Persists per browser via localStorage and flips instantly."
     >

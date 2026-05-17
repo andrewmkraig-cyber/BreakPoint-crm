@@ -32,6 +32,7 @@ export default async function TemplatesSettingsPage() {
   return (
     <CollapsibleSection
       id="templates"
+      eyebrow="Email"
       title="Templates"
       description="Reusable subject + body. Use the Insert Field picker to add merge fields."
     >

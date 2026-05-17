@@ -36,7 +36,7 @@ export function ConnectorsView({
   gmailPush: GmailPushStatus;
 }) {
   return (
-    <div className="space-y-2">
+    <div className="divide-y divide-court-border-soft">
       <ConnectorRow
         status={gmail}
         action={
@@ -48,7 +48,7 @@ export function ConnectorsView({
                   void signIn("google", { callbackUrl: "/settings" });
                 });
               }}
-              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40"
             >
               <RefreshCw className="h-3 w-3" />
               Reconnect
@@ -72,14 +72,13 @@ export function ConnectorsView({
               href="https://my.openphone.com"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
+              className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40"
             >
               <ExternalLink className="h-3 w-3" />
               Open Quo
             </a>
             <span className="text-[11px] italic text-court-fg-muted">
-              Sessions are managed at quo.com — sign in there if you got
-              logged out.
+              Sessions are managed at quo.com.
             </span>
           </div>
         }
@@ -160,18 +159,18 @@ function MicrosoftTeamsConnectorRow() {
       : "Connect your Microsoft account to generate Teams meeting links when scheduling interviews.";
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div className="flex items-start justify-between gap-4 py-3.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Video className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-          <span className="text-sm font-semibold text-court-fg">Microsoft Teams</span>
+          <span className="text-[13px] font-medium text-court-fg">Microsoft Teams</span>
           {!loading && connected && (
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+            <span className="inline-flex h-6 items-center rounded-full bg-court-accent-tint px-3 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark">
               Connected
             </span>
           )}
         </div>
-        <div className="mt-1 truncate text-xs text-court-fg-muted">
+        <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
           {connected && email ? (
             <>
               <span className="font-mono">{email}</span> · {detail}
@@ -189,7 +188,7 @@ function MicrosoftTeamsConnectorRow() {
             type="button"
             onClick={() => void disconnect()}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40 disabled:opacity-60"
           >
             {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
             Disconnect
@@ -197,7 +196,7 @@ function MicrosoftTeamsConnectorRow() {
         ) : (
           <a
             href="/api/auth/microsoft"
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface"
+            className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40"
           >
             <ExternalLink className="h-3 w-3" />
             Connect Microsoft
@@ -259,38 +258,41 @@ function GmailPushNotificationsRow({
     : "Not enabled — turn on for instant mail alerts even when Ace is closed";
 
   return (
-    <div className="space-y-1">
-      <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Bell className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-            <span className="text-sm font-semibold text-court-fg">
-              Gmail Push Notifications
+    <div className="flex items-start justify-between gap-4 py-3.5">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <Bell className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
+          <span className="text-[13px] font-medium text-court-fg">
+            Gmail Push Notifications
+          </span>
+          {current.enabled && (
+            <span className="inline-flex h-6 items-center rounded-full bg-court-accent-tint px-3 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark">
+              Active
             </span>
-          </div>
-          <div className="mt-1 truncate text-xs text-court-fg-muted">
-            {detail}
-          </div>
+          )}
         </div>
-        <div className="shrink-0">
-          <button
-            type="button"
-            onClick={() => void enableOrRenew()}
-            disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
-          >
-            {busy ? (
-              <Loader2 className="h-3 w-3 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3 w-3" />
-            )}
-            {current.enabled ? "Renew" : "Enable"}
-          </button>
+        <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
+          {detail}
         </div>
+        <p className="mt-0.5 text-[11px] italic text-court-fg-muted">
+          Renew every 7 days — watches expire automatically.
+        </p>
       </div>
-      <p className="pl-1 text-[11px] italic text-court-fg-muted">
-        Renew every 7 days — watches expire automatically.
-      </p>
+      <div className="shrink-0">
+        <button
+          type="button"
+          onClick={() => void enableOrRenew()}
+          disabled={busy}
+          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40 disabled:opacity-60"
+        >
+          {busy ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          {current.enabled ? "Renew" : "Enable"}
+        </button>
+      </div>
     </div>
   );
 }
@@ -343,13 +345,13 @@ function SpotifyConnectorRow() {
   }
 
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div className="flex items-start justify-between gap-4 py-3.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <Music className="h-3.5 w-3.5 text-emerald-600" aria-hidden />
-          <span className="text-sm font-semibold text-court-fg">Spotify</span>
+          <span className="text-[13px] font-medium text-court-fg">Spotify</span>
         </div>
-        <div className="mt-1 truncate text-xs text-court-fg-muted">
+        <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
           Floating Spotify panel session. Disconnecting clears the
           access + refresh tokens; reconnect from the panel itself.
         </div>
@@ -359,7 +361,7 @@ function SpotifyConnectorRow() {
           type="button"
           onClick={() => void disconnect()}
           disabled={busy}
-          className="inline-flex items-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1 text-xs font-semibold text-court-fg transition hover:bg-court-surface disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-court-border bg-court-surface px-4 text-[12.5px] font-semibold text-court-fg transition hover:border-court-accent/40 disabled:opacity-60"
         >
           {busy ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -381,16 +383,16 @@ function ConnectorRow({
   action: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-lg border border-court-border bg-court-surface-subtle/40 px-4 py-3">
+    <div className="flex items-start justify-between gap-4 py-3.5">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <StateDot state={status.state} />
-          <span className="text-sm font-semibold text-court-fg">
+          <span className="text-[13px] font-medium text-court-fg">
             {status.label}
           </span>
           <StateLabel state={status.state} />
         </div>
-        <div className="mt-1 truncate text-xs text-court-fg-muted">
+        <div className="mt-0.5 truncate text-[11px] text-court-fg-muted">
           {status.account ? (
             <>
               <span className="font-mono">{status.account}</span> · {status.detail}
@@ -408,7 +410,7 @@ function ConnectorRow({
 function StateDot({ state }: { state: ConnectorState }) {
   const cls =
     state === "connected"
-      ? "bg-emerald-500"
+      ? "bg-court-accent"
       : state === "degraded"
         ? "bg-amber-500"
         : "bg-red-500";
@@ -422,11 +424,17 @@ function StateLabel({ state }: { state: ConnectorState }) {
       : state === "degraded"
         ? "Degraded"
         : "Disconnected";
-  const cls =
-    state === "connected"
-      ? "text-emerald-700"
-      : state === "degraded"
-        ? "text-amber-700"
-        : "text-red-700";
-  return <span className={`text-[11px] font-semibold uppercase tracking-wider ${cls}`}>{text}</span>;
+  if (state === "connected") {
+    return (
+      <span className="inline-flex h-6 items-center rounded-full bg-court-accent-tint px-3 text-[10px] font-semibold uppercase tracking-wider text-court-brand-dark">
+        {text}
+      </span>
+    );
+  }
+  const cls = state === "degraded" ? "text-amber-700" : "text-red-700";
+  return (
+    <span className={`text-[10px] font-semibold uppercase tracking-wider ${cls}`}>
+      {text}
+    </span>
+  );
 }

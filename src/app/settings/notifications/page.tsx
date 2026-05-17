@@ -9,6 +9,7 @@ export default function NotificationsSettingsPage() {
   return (
     <CollapsibleSection
       id="notifications"
+      eyebrow="Alerts"
       title="Notification Preferences"
       description="In-app popups + sounds for new mail, calls, and texts."
     >
@@ -16,29 +17,33 @@ export default function NotificationsSettingsPage() {
           actually has to be opted into per-device, so it shouldn't sit
           buried under preference + sound rows the recruiter is likely
           to skim past. */}
-      <div className="mb-5">
-        <div className="mb-3">
-          <div className="text-sm font-semibold text-court-fg">
-            Push notifications
+      <div className="divide-y divide-court-border-soft">
+        <div className="flex flex-col gap-3 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium text-court-fg">
+              Push notifications
+            </div>
+            <div className="mt-0.5 text-[11px] text-court-fg-muted">
+              Get notified on this device when new mail, texts, or calls
+              arrive, even when Ace isn&apos;t open.
+            </div>
           </div>
-          <div className="mt-0.5 text-xs text-court-fg-muted">
-            Get notified on this device when new mail, texts, or calls
-            arrive, even when Ace isn&apos;t open.
-          </div>
+          <PushPermissionButton />
         </div>
-        <PushPermissionButton />
-      </div>
-      <div className="border-t border-court-border pt-5">
-        <NotificationPreferencesView />
-      </div>
-      <div className="mt-5 border-t border-court-border pt-5">
-        <div className="mb-3">
-          <div className="text-sm font-semibold text-court-fg">Notification sounds</div>
-          <div className="mt-0.5 text-xs text-court-fg-muted">
-            Pick a sound for new mail and another for texts/calls.
-          </div>
+        <div className="py-3.5">
+          <NotificationPreferencesView />
         </div>
-        <NotificationSoundsView />
+        <div className="py-3.5">
+          <div className="mb-3">
+            <div className="text-[13px] font-medium text-court-fg">
+              Notification sounds
+            </div>
+            <div className="mt-0.5 text-[11px] text-court-fg-muted">
+              Pick a sound for new mail and another for texts/calls.
+            </div>
+          </div>
+          <NotificationSoundsView />
+        </div>
       </div>
     </CollapsibleSection>
   );

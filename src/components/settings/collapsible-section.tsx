@@ -5,9 +5,6 @@ import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const LS_PREFIX = "ace-settings-collapsed:";
-// Custom event that the Settings TOC fires when the user clicks a TOC
-// link. Lets a collapsed section auto-expand even when the URL hash
-// already pointed at it (which would otherwise produce no hashchange).
 export const SETTINGS_EXPAND_EVENT = "settings:expand";
 
 function persistKeyFor(title: ReactNode): string | null {
@@ -24,7 +21,8 @@ export function CollapsibleSection({
   children,
   className,
   headerExtra,
-  variant = "default",
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  variant: _variant = "default",
   eyebrow,
 }: {
   id?: string;
@@ -35,14 +33,14 @@ export function CollapsibleSection({
   className?: string;
   headerExtra?: ReactNode;
   /**
-   * "default" — the original chrome (rounded-xl card, accent rail,
-   * serif title, used by every non-BD settings page).
-   * "bd" — opt-in BD-Settings spec: rounded-2xl, no border, shadow-sm
-   * shell with an uppercase brand-dark eyebrow above an 18px Playfair
-   * title. Other settings pages keep the default look.
+   * Retained as a prop for backwards compatibility with existing call
+   * sites. All variants now render the unified settings spec
+   * (rounded-2xl, border-0, eyebrow + 18px serif title + 12px muted
+   * description). The `_variant` rename signals it is intentionally
+   * ignored.
    */
   variant?: "default" | "bd";
-  /** Small uppercase label rendered above the title in the bd variant. */
+  /** Small uppercase label rendered above the title. Falls back to the title text when it is a string. */
   eyebrow?: ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -63,13 +61,6 @@ export function CollapsibleSection({
     } catch {}
   }, [title, open]);
 
-  // Auto-expand when the URL hash matches this section. Covers three
-  // entry paths: (1) initial mount with a hash already in the URL,
-  // (2) the browser firing hashchange when the recruiter clicks a TOC
-  // anchor that updates the hash, (3) the TOC's custom event that
-  // fires even when the hash didn't change (clicking the same link
-  // twice). All three converge on a single setOpen(true) so a
-  // collapsed section never blocks scroll-to.
   useEffect(() => {
     if (!id) return;
     const expandIfMatch = (target: string) => {
@@ -97,14 +88,11 @@ export function CollapsibleSection({
     };
   }, [id]);
 
-  const isBd = variant === "bd";
-
   return (
     <section
       id={id}
       className={cn(
-        "scroll-mt-24 bg-court-surface shadow-sm",
-        isBd ? "rounded-2xl" : "rounded-xl border border-court-border",
+        "scroll-mt-24 mb-4 rounded-2xl border-0 bg-court-surface p-6 shadow-sm",
         className,
       )}
     >
@@ -112,40 +100,22 @@ export function CollapsibleSection({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className={cn(
-          "flex w-full items-start justify-between gap-3 text-left transition hover:bg-court-surface-subtle/40",
-          isBd ? "rounded-t-2xl px-6 pt-6 pb-4" : "rounded-t-xl px-6 py-5",
-        )}
+        className="-mx-2 -mt-2 mb-1 flex w-[calc(100%+1rem)] items-start justify-between gap-3 rounded-lg px-2 py-2 text-left transition hover:bg-court-surface-subtle/60"
       >
-        <div className={cn("flex min-w-0 flex-1 items-start gap-3", isBd && "gap-0")}>
-          {!isBd && (
-            <span aria-hidden="true" className="mt-2 h-4 w-1 shrink-0 rounded-full bg-court-accent" />
+        <div className="min-w-0 flex-1">
+          {eyebrow && (
+            <p className="mb-1 text-[10px] font-semibold uppercase leading-none tracking-[0.18em] text-court-brand-dark">
+              {eyebrow}
+            </p>
           )}
-          <div className="min-w-0 flex-1">
-            {isBd && eyebrow && (
-              <p className="mb-1 text-[10px] font-semibold uppercase leading-none tracking-[0.18em] text-court-brand-dark">
-                {eyebrow}
-              </p>
-            )}
-            <h2
-              className={cn(
-                "font-serif leading-tight text-court-fg",
-                isBd ? "mb-1 text-[18px] font-bold" : "text-xl font-semibold",
-              )}
-            >
-              {title}
-            </h2>
-            {description && (
-              <p
-                className={cn(
-                  "leading-relaxed text-court-fg-muted",
-                  isBd ? "text-[12px]" : "mt-1.5 text-[13px]",
-                )}
-              >
-                {description}
-              </p>
-            )}
-          </div>
+          <h2 className="mb-1 font-serif text-[18px] font-bold leading-tight text-court-fg">
+            {title}
+          </h2>
+          {description && (
+            <p className="text-[12px] leading-relaxed text-court-fg-muted">
+              {description}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-2 pt-1">
           {headerExtra}
@@ -157,15 +127,7 @@ export function CollapsibleSection({
           />
         </div>
       </button>
-      {open && (
-        <div
-          className={cn(
-            isBd ? "px-6 pb-6" : "border-t border-court-border px-6 py-5",
-          )}
-        >
-          {children}
-        </div>
-      )}
+      {open && <div className="mt-5">{children}</div>}
     </section>
   );
 }

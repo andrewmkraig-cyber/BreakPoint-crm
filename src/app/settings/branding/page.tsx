@@ -46,6 +46,7 @@ export default async function BrandingSettingsPage() {
     return (
       <CollapsibleSection
         id="branding"
+        eyebrow="Identity"
         title="Branding & Signature"
         description="Used on every email you send from Ace."
       >

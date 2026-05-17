@@ -68,8 +68,7 @@ export function SettingsNav() {
         })}
       </nav>
 
-      {/* Desktop (lg+): vertical stacked nav with left-rail accent.
-          Unchanged from the original layout. */}
+      {/* Desktop (lg+): vertical stacked nav inside the sidebar card. */}
       <nav aria-label="Settings sections" className="hidden space-y-0.5 lg:block">
         {SETTINGS_CATEGORIES.map((c) => {
           const active = isActive(c.slug);
@@ -79,10 +78,10 @@ export function SettingsNav() {
               href={`/settings/${c.slug}`}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "block border-l-2 px-3 py-2 text-sm font-medium transition",
+                "flex h-9 items-center rounded-lg px-3 text-[13px] transition",
                 active
-                  ? "border-court-accent bg-court-surface-subtle text-court-fg"
-                  : "border-transparent text-court-fg-muted hover:bg-court-surface-subtle/60 hover:text-court-fg",
+                  ? "bg-court-accent-tint font-semibold text-court-brand-dark"
+                  : "text-court-fg-muted hover:bg-court-surface-subtle",
               )}
             >
               {c.label}
