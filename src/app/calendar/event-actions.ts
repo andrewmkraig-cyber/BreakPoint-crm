@@ -286,12 +286,21 @@ export type CreateCalendarEventInput = {
   notes: string | null;
   candidateId: string | null;
   clientId: string | null;
-  // Free-text email addresses entered as chips in the CC field.
-  // Each address becomes a Google attendee with responseStatus
-  // "needsAction". When at least one CC is present we flip
-  // sendUpdates so Google actually mails the invite — otherwise the
-  // attendees row lands silently and the recipients never see it.
+  // Free-text email addresses entered as chips in the modal's TO /
+  // CC / BCC fields. Google Calendar's attendees array does NOT
+  // distinguish TO/CC/BCC — every entry is just an attendee — so
+  // the three lists are flattened into one attendees payload here.
+  // We preserve the TO/CC/BCC split in the activity log metadata for
+  // audit, but the recipients see only "you're invited," not which
+  // bucket they sat in. BCC is therefore visible to other attendees
+  // in the Google UI; if true blind-cc is ever needed it would have
+  // to be a separate per-recipient send-as-organizer flow.
+  // When any recipient is present we flip sendUpdates so Google
+  // actually mails the invite — otherwise the attendees row lands
+  // silently and nobody sees it.
+  to: string[];
   cc: string[];
+  bcc: string[];
 };
 
 export type CreateCalendarEventResult =
@@ -410,13 +419,31 @@ export async function createCalendarEventAction(
       mirroredLocation = input.location.trim();
     }
 
-    const ccAttendees = (input.cc ?? [])
-      .map((s) => s.trim())
-      .filter((s) => s.length > 0)
-      .map((email) => ({
-        email,
-        responseStatus: "needsAction" as const,
-      }));
+    const cleanList = (list: string[] | undefined): string[] => {
+      const seen = new Set<string>();
+      const out: string[] = [];
+      for (const raw of list ?? []) {
+        const trimmed = raw.trim();
+        if (!trimmed) continue;
+        const key = trimmed.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(trimmed);
+      }
+      return out;
+    };
+    const toList = cleanList(input.to);
+    const ccList = cleanList(input.cc);
+    const bccList = cleanList(input.bcc);
+    // Flatten into one attendees payload. Google has no TO/CC/BCC
+    // attendee distinction; the recruiter's grouping in the modal
+    // is preserved in the activity log only. Cross-bucket dedup so
+    // an address typed twice doesn't generate a duplicate invite.
+    const allRecipients = cleanList([...toList, ...ccList, ...bccList]);
+    const recipientAttendees = allRecipients.map((email) => ({
+      email,
+      responseStatus: "needsAction" as const,
+    }));
 
     const wantsMeet = input.meetingType === "google_meet";
     const created = await createCalendarEvent({
@@ -427,11 +454,11 @@ export async function createCalendarEventAction(
       durationMin: range.durationMin,
       createMeet: wantsMeet,
       location: mirroredLocation ?? undefined,
-      // Notify CC'd attendees so the invite lands in their inbox.
+      // Notify recipients so the invite lands in their inbox.
       // Without this, Google saves the attendees row but suppresses
       // the email and the recruiter ends up texting them the link.
-      sendUpdates: ccAttendees.length > 0,
-      attendees: ccAttendees.length > 0 ? ccAttendees : undefined,
+      sendUpdates: recipientAttendees.length > 0,
+      attendees: recipientAttendees.length > 0 ? recipientAttendees : undefined,
       timeZone: ET_TIMEZONE,
     });
 
@@ -485,11 +512,11 @@ export async function createCalendarEventAction(
     // up and the row updates in place instead of duplicating.
     const calendarId = user.email ?? "primary";
     const eventType = deriveEventType(input.candidateId, input.clientId);
-    // Mirror attendees so the drawer renders the CC list immediately
-    // without waiting for the next full sync. Shape matches what
-    // google-sync writes: { email, responseStatus, ... }.
-    const mirroredAttendees = ccAttendees.length > 0
-      ? ccAttendees.map((a) => ({ email: a.email, responseStatus: a.responseStatus }))
+    // Mirror attendees so the drawer renders the recipient list
+    // immediately without waiting for the next full sync. Shape
+    // matches what google-sync writes: { email, responseStatus }.
+    const mirroredAttendees = recipientAttendees.length > 0
+      ? recipientAttendees.map((a) => ({ email: a.email, responseStatus: a.responseStatus }))
       : null;
 
     const mirror = await prisma.calendarEvent.create({
@@ -527,7 +554,9 @@ export async function createCalendarEventAction(
         meetingType: input.meetingType,
         candidateId: input.candidateId,
         clientId: input.clientId,
-        ccCount: ccAttendees.length,
+        toCount: toList.length,
+        ccCount: ccList.length,
+        bccCount: bccList.length,
         allDay: input.allDay,
         startISO: range.startISO,
       },

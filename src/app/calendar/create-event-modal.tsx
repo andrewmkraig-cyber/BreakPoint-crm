@@ -1,18 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import {
-  quickSearchCandidates,
-  type QuickSearchRow,
-} from "@/app/candidates/actions";
-import {
-  quickSearchClients,
-  type QuickClientRow,
-} from "@/app/clients/actions";
 
 import {
   createCalendarEventAction,
@@ -95,9 +87,9 @@ export function CreateEventModal({
   const [meetingType, setMeetingType] = useState<CreateMeetingType>("google_meet");
   const [location, setLocation] = useState("");
   const [notes, setNotes] = useState("");
-  const [candidate, setCandidate] = useState<{ id: string; name: string } | null>(null);
-  const [client, setClient] = useState<{ id: string; name: string } | null>(null);
+  const [to, setTo] = useState<string[]>([]);
   const [cc, setCc] = useState<string[]>([]);
+  const [bcc, setBcc] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -114,9 +106,9 @@ export function CreateEventModal({
     setMeetingType("google_meet");
     setLocation("");
     setNotes("");
-    setCandidate(null);
-    setClient(null);
+    setTo([]);
     setCc([]);
+    setBcc([]);
     setSubmitting(false);
     setErr(null);
   }, [open, defaultStart, defaultEnd]);
@@ -139,9 +131,15 @@ export function CreateEventModal({
         meetingType,
         location: meetingType === "in_person" ? location.trim() || null : null,
         notes: notes.trim() || null,
-        candidateId: candidate?.id ?? null,
-        clientId: client?.id ?? null,
+        // Candidate / client linkage was removed from this modal. The
+        // action's signature still accepts them for any future caller
+        // (e.g. a candidate-profile "Schedule" entry point); we pass
+        // null here so this surface stays purely calendar-focused.
+        candidateId: null,
+        clientId: null,
+        to,
         cc,
+        bcc,
       });
       if (!res.ok) {
         setErr(res.error);
@@ -169,13 +167,13 @@ export function CreateEventModal({
         onClick={(e) => e.stopPropagation()}
         className="flex max-h-[90vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-court-border bg-court-surface shadow-2xl"
       >
-        <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-3">
+        <div className="flex items-start justify-between gap-3 border-b border-court-border px-5 py-2.5">
           <div>
             <h2 className="font-serif text-base font-semibold text-court-fg">
               New event
             </h2>
-            <p className="mt-0.5 text-xs text-court-fg-muted">
-              Creates a Google Calendar event and links it to the optional candidate / client.
+            <p className="mt-0.5 text-[11px] text-court-fg-muted">
+              Creates a Google Calendar event and emails invites to any TO / CC / BCC addresses.
             </p>
           </div>
           <button
@@ -189,7 +187,7 @@ export function CreateEventModal({
           </button>
         </div>
 
-        <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm">
+        <div className="flex-1 space-y-2 overflow-y-auto px-5 py-3 text-sm">
           <Field label="Title" required>
             <input
               type="text"
@@ -198,7 +196,7 @@ export function CreateEventModal({
               placeholder="e.g. Intro call with Linda"
               disabled={submitting}
               autoFocus
-              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             />
           </Field>
 
@@ -209,11 +207,11 @@ export function CreateEventModal({
                 value={date}
                 onChange={(e) => setDate(e.target.value)}
                 disabled={submitting}
-                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
               />
             </Field>
             <Field label="All day">
-              <label className="flex h-[38px] items-center gap-2 text-xs text-court-fg-muted">
+              <label className="flex h-[34px] items-center gap-2 text-xs text-court-fg-muted">
                 <input
                   type="checkbox"
                   checked={allDay}
@@ -234,7 +232,7 @@ export function CreateEventModal({
                   value={startTime}
                   onChange={(e) => setStartTime(e.target.value)}
                   disabled={submitting}
-                  className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+                  className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
                 />
               </Field>
               <Field label="End">
@@ -243,7 +241,7 @@ export function CreateEventModal({
                   value={endTime}
                   onChange={(e) => setEndTime(e.target.value)}
                   disabled={submitting}
-                  className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+                  className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
                 />
               </Field>
             </div>
@@ -254,7 +252,7 @@ export function CreateEventModal({
               value={meetingType}
               onChange={(e) => setMeetingType(e.target.value as CreateMeetingType)}
               disabled={submitting}
-              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             >
               {MEETING_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
@@ -270,7 +268,7 @@ export function CreateEventModal({
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="123 Main St, New York, NY"
                 disabled={submitting}
-                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+                className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
               />
             </Field>
           )}
@@ -280,32 +278,23 @@ export function CreateEventModal({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Agenda, dial-in extras, prep links…"
-              rows={3}
+              rows={2}
               disabled={submitting}
-              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
+              className="w-full rounded-md border border-court-border bg-court-surface px-3 py-1.5 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             />
           </Field>
 
-          <Field label="CC">
-            <CcChipInput value={cc} onChange={setCc} disabled={submitting} />
+          <Field label="To">
+            <EmailChipInput value={to} onChange={setTo} disabled={submitting} />
           </Field>
 
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Candidate">
-              <CandidatePicker
-                value={candidate}
-                onChange={setCandidate}
-                disabled={submitting}
-              />
-            </Field>
-            <Field label="Client">
-              <ClientPicker
-                value={client}
-                onChange={setClient}
-                disabled={submitting}
-              />
-            </Field>
-          </div>
+          <Field label="CC">
+            <EmailChipInput value={cc} onChange={setCc} disabled={submitting} />
+          </Field>
+
+          <Field label="BCC">
+            <EmailChipInput value={bcc} onChange={setBcc} disabled={submitting} />
+          </Field>
 
           {err && (
             <div className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-800">
@@ -314,7 +303,7 @@ export function CreateEventModal({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-court-border px-5 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-court-border px-5 py-2.5">
           <Button
             type="button"
             variant="secondary"
@@ -358,7 +347,7 @@ function Field({
 }) {
   return (
     <label className="block">
-      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-court-fg-muted">
+      <div className="mb-0.5 text-[10px] font-semibold uppercase tracking-wider text-court-fg-muted">
         {label}
         {required && <span className="ml-0.5 text-red-600">*</span>}
       </div>
@@ -367,208 +356,16 @@ function Field({
   );
 }
 
-// Shared typeahead. Owns its own query/results/open state. Calls
-// `search(query)` debounced by DEBOUNCE_MS and renders `renderRow`
-// for each result. Selecting a row hands `{ id, name }` to the
-// parent and closes the dropdown.
-const DEBOUNCE_MS = 200;
-
-function TypeaheadPicker<T extends { id: string }>({
-  placeholder,
-  value,
-  onChange,
-  disabled,
-  search,
-  toRow,
-}: {
-  placeholder: string;
-  value: { id: string; name: string } | null;
-  onChange: (next: { id: string; name: string } | null) => void;
-  disabled?: boolean;
-  search: (q: string) => Promise<T[]>;
-  toRow: (r: T) => { id: string; name: string; subtitle?: string };
-}) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<T[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [open, setOpen] = useState(false);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  // Debounced search. Empty query clears results without hitting the
-  // server so the dropdown stays quiet for a focused-but-empty input.
-  useEffect(() => {
-    if (value) return; // selection is committed; don't re-fetch on each keystroke
-    if (!query.trim()) {
-      setResults([]);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    const t = setTimeout(async () => {
-      try {
-        const rows = await search(query);
-        if (!cancelled) setResults(rows);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }, DEBOUNCE_MS);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [query, value, search]);
-
-  // Close on outside click.
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: PointerEvent) {
-      if (!containerRef.current) return;
-      if (containerRef.current.contains(e.target as Node)) return;
-      setOpen(false);
-    }
-    document.addEventListener("pointerdown", onDoc);
-    return () => document.removeEventListener("pointerdown", onDoc);
-  }, [open]);
-
-  return (
-    <div className="relative" ref={containerRef}>
-      {value ? (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-court-border bg-court-surface-subtle/60 px-3 py-2 text-sm text-court-fg">
-          <span className="min-w-0 truncate">{value.name}</span>
-          <button
-            type="button"
-            onClick={() => {
-              onChange(null);
-              setQuery("");
-              setOpen(true);
-            }}
-            disabled={disabled}
-            aria-label="Clear selection"
-            className="rounded-md p-1 text-court-fg-muted transition hover:text-court-fg disabled:opacity-60"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      ) : (
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => setOpen(true)}
-          placeholder={placeholder}
-          disabled={disabled}
-          className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
-        />
-      )}
-      {open && !value && query.trim().length > 0 && (
-        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
-          {loading && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs text-court-fg-muted">
-              <Loader2 className="h-3 w-3 animate-spin" /> Searching…
-            </div>
-          )}
-          {!loading && results.length === 0 && (
-            <div className="px-3 py-2 text-xs text-court-fg-muted">No matches.</div>
-          )}
-          {!loading && results.map((r) => {
-            const row = toRow(r);
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => {
-                  onChange({ id: row.id, name: row.name });
-                  setOpen(false);
-                  setQuery("");
-                }}
-                className="flex w-full flex-col gap-0.5 px-3 py-1.5 text-left text-court-fg transition hover:bg-court-accent-tint/40"
-              >
-                <span className="truncate text-xs font-medium">{row.name}</span>
-                {row.subtitle && (
-                  <span className="truncate text-[10px] text-court-fg-muted">
-                    {row.subtitle}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CandidatePicker({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: { id: string; name: string } | null;
-  onChange: (v: { id: string; name: string } | null) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <TypeaheadPicker<QuickSearchRow>
-      placeholder="Search candidates…"
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-      search={async (q) => {
-        const res = await quickSearchCandidates(q);
-        return res.ok ? res.rows : [];
-      }}
-      toRow={(r) => ({
-        id: r.id,
-        name: r.name,
-        subtitle: [r.title, r.employer].filter(Boolean).join(" · ") || undefined,
-      })}
-    />
-  );
-}
-
-function ClientPicker({
-  value,
-  onChange,
-  disabled,
-}: {
-  value: { id: string; name: string } | null;
-  onChange: (v: { id: string; name: string } | null) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <TypeaheadPicker<QuickClientRow>
-      placeholder="Search clients…"
-      value={value}
-      onChange={onChange}
-      disabled={disabled}
-      // quickSearchClients also returns a `domain` field. We
-      // deliberately project it back out here — the picker stores
-      // exactly { id, name }, so the Neon client cuid lands on
-      // CalendarEvent.clientId on submit. Adding the domain back as
-      // a subtitle on the dropdown row is fine for disambiguation,
-      // but it must never participate in the selected value.
-      search={async (q) => {
-        const res = await quickSearchClients(q);
-        return res.ok ? res.rows : [];
-      }}
-      toRow={(r) => ({
-        id: r.id,
-        name: r.name,
-        subtitle: r.domain ?? undefined,
-      })}
-    />
-  );
-}
-
 // Free-text email tag input. Enter or comma commits the typed value
 // as a chip; Backspace on an empty input removes the last chip; the
 // chip's × removes it explicitly. Values normalize via trim() and
 // dedupe case-insensitively so a recruiter pasting "Linda@x.com,
-// linda@x.com" doesn't end up CC'ing the same address twice.
-function CcChipInput({
+// linda@x.com" doesn't end up inviting the same address twice. Used
+// by the modal's TO / CC / BCC fields — Google Calendar doesn't
+// natively distinguish those buckets in its attendees payload, so
+// the split is purely a recruiter-side organization hint that the
+// server action preserves in activity metadata only.
+function EmailChipInput({
   value,
   onChange,
   disabled,
@@ -603,7 +400,7 @@ function CcChipInput({
 
   return (
     <div
-      className="flex min-h-[38px] w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
+      className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
     >
       {value.map((email, i) => (
         <span
@@ -635,7 +432,7 @@ function CcChipInput({
           } else if (e.key === "Tab" && draft.trim().length > 0) {
             // Commit on Tab so focus moves AND the pending email lands
             // — without this, a recruiter who types one address and
-            // tabs to Candidate ships an event with an empty CC list.
+            // tabs to the next field ships an event without it.
             commit(draft);
           }
         }}
