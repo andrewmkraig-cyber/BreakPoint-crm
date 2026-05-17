@@ -737,7 +737,10 @@ export function BulkEmailDialog({
               <div ref={localTemplateContainerRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => setLocalTemplateOpen((v) => !v)}
+                  onClick={() => {
+                    console.log("Use Template clicked");
+                    setLocalTemplateOpen((v) => !v);
+                  }}
                   className="inline-flex items-center gap-1.5 rounded-md border border-court-border bg-court-surface px-3 py-2 text-xs font-semibold text-court-fg shadow-sm transition hover:border-brand/40 hover:text-brand-dark"
                 >
                   <FileText className="h-3.5 w-3.5" /> Use Template
