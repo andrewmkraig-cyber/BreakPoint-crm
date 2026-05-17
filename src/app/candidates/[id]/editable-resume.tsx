@@ -585,15 +585,21 @@ export function EditableResume({
           )}
         >
           {selected.mimeType === "application/pdf" || selected.kind === "redacted" ? (
+            // No fixed height cap: previously `[height:calc(100vh-200px)]`
+            // clipped the inner scroll area on short viewports and on
+            // multi-page resumes whose first page exceeded the cap, so
+            // the bottom of the document was unreachable. Now the
+            // viewer grows to fit every rendered page and the natural
+            // page scroll handles overflow. Toolbar scrolls with it.
             <PdfCanvasViewer
               key={previewUrl}
               src={previewUrl}
-              className="min-h-[900px] w-full rounded-b-xl [height:calc(100vh-200px)]"
+              className="min-h-[900px] w-full rounded-b-xl"
             />
           ) : docx ? (
             <DocxPreview
               idOrRfId={candidateRfId ?? candidateId}
-              className="min-h-[900px] w-full overflow-auto rounded-b-xl [height:calc(100vh-200px)]"
+              className="min-h-[900px] w-full rounded-b-xl"
             />
           ) : (
             <div className="flex h-64 flex-col items-center justify-center gap-2 border-t border-dashed border-court-border bg-court-surface-subtle/40 text-sm text-court-fg-muted">
