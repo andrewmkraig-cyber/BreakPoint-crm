@@ -220,6 +220,7 @@ export function EmailComposer({
 
   const [templates, setTemplates] = useState<ActiveTemplateSummary[]>([]);
   const [templatesLoaded, setTemplatesLoaded] = useState(false);
+  const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [templateOpen, setTemplateOpen] = useState(false);
   const [isApplying, startApply] = useTransition();
 
@@ -339,13 +340,32 @@ export function EmailComposer({
   useEffect(() => {
     if (!showTemplatePicker || templatesLoaded) return;
     let cancelled = false;
-    listActiveTemplates().then((list) => {
+    // 5s timeout so a hung server action stops the spinner instead
+    // of looking like the dropdown is permanently loading.
+    const timeoutId = setTimeout(() => {
       if (cancelled) return;
-      setTemplates(templateFilter ? list.filter(templateFilter) : list);
+      console.error("[composer] listActiveTemplates timed out after 5s");
+      setTemplatesError("Couldn't load templates");
       setTemplatesLoaded(true);
-    });
+    }, 5000);
+    listActiveTemplates()
+      .then((list) => {
+        if (cancelled) return;
+        clearTimeout(timeoutId);
+        setTemplates(templateFilter ? list.filter(templateFilter) : list);
+        setTemplatesError(null);
+        setTemplatesLoaded(true);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        clearTimeout(timeoutId);
+        console.error("[composer] listActiveTemplates failed", err);
+        setTemplatesError("Couldn't load templates");
+        setTemplatesLoaded(true);
+      });
     return () => {
       cancelled = true;
+      clearTimeout(timeoutId);
     };
   }, [showTemplatePicker, templatesLoaded, templateFilter]);
 
@@ -749,7 +769,10 @@ export function EmailComposer({
                         {!templatesLoaded && (
                           <li className="px-3 py-2 text-xs text-court-fg-muted">Loading templates…</li>
                         )}
-                        {templatesLoaded && templates.length === 0 && (
+                        {templatesLoaded && templatesError && (
+                          <li className="px-3 py-2 text-xs text-court-fg-muted">{templatesError}.</li>
+                        )}
+                        {templatesLoaded && !templatesError && templates.length === 0 && (
                           <li className="px-3 py-2 text-xs text-court-fg-muted">No active templates.</li>
                         )}
                         {templates.map((t) => (
