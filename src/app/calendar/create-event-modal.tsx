@@ -97,6 +97,7 @@ export function CreateEventModal({
   const [notes, setNotes] = useState("");
   const [candidate, setCandidate] = useState<{ id: string; name: string } | null>(null);
   const [client, setClient] = useState<{ id: string; name: string } | null>(null);
+  const [cc, setCc] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -115,6 +116,7 @@ export function CreateEventModal({
     setNotes("");
     setCandidate(null);
     setClient(null);
+    setCc([]);
     setSubmitting(false);
     setErr(null);
   }, [open, defaultStart, defaultEnd]);
@@ -139,6 +141,7 @@ export function CreateEventModal({
         notes: notes.trim() || null,
         candidateId: candidate?.id ?? null,
         clientId: client?.id ?? null,
+        cc,
       });
       if (!res.ok) {
         setErr(res.error);
@@ -281,6 +284,10 @@ export function CreateEventModal({
               disabled={submitting}
               className="w-full rounded-md border border-court-border bg-court-surface px-3 py-2 text-sm text-court-fg placeholder:text-court-fg-muted/60 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:opacity-60"
             />
+          </Field>
+
+          <Field label="CC">
+            <CcChipInput value={cc} onChange={setCc} disabled={submitting} />
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
@@ -537,11 +544,108 @@ function ClientPicker({
       value={value}
       onChange={onChange}
       disabled={disabled}
+      // quickSearchClients also returns a `domain` field. We
+      // deliberately project it back out here — the picker stores
+      // exactly { id, name }, so the Neon client cuid lands on
+      // CalendarEvent.clientId on submit. Adding the domain back as
+      // a subtitle on the dropdown row is fine for disambiguation,
+      // but it must never participate in the selected value.
       search={async (q) => {
         const res = await quickSearchClients(q);
         return res.ok ? res.rows : [];
       }}
-      toRow={(r) => ({ id: r.id, name: r.name, subtitle: r.domain ?? undefined })}
+      toRow={(r) => ({
+        id: r.id,
+        name: r.name,
+        subtitle: r.domain ?? undefined,
+      })}
     />
+  );
+}
+
+// Free-text email tag input. Enter or comma commits the typed value
+// as a chip; Backspace on an empty input removes the last chip; the
+// chip's × removes it explicitly. Values normalize via trim() and
+// dedupe case-insensitively so a recruiter pasting "Linda@x.com,
+// linda@x.com" doesn't end up CC'ing the same address twice.
+function CcChipInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+
+  function commit(raw: string) {
+    const parts = raw
+      .split(/[,;\s]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+    if (parts.length === 0) return;
+    const seen = new Set(value.map((v) => v.toLowerCase()));
+    const next = [...value];
+    for (const p of parts) {
+      const key = p.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      next.push(p);
+    }
+    onChange(next);
+    setDraft("");
+  }
+
+  function removeAt(i: number) {
+    onChange(value.filter((_, idx) => idx !== i));
+  }
+
+  return (
+    <div
+      className="flex min-h-[38px] w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
+    >
+      {value.map((email, i) => (
+        <span
+          key={`${email}-${i}`}
+          className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] text-court-fg"
+        >
+          {email}
+          <button
+            type="button"
+            onClick={() => removeAt(i)}
+            disabled={disabled}
+            aria-label={`Remove ${email}`}
+            className="text-court-fg-muted hover:text-court-fg disabled:opacity-60"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="email"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            e.preventDefault();
+            commit(draft);
+          } else if (e.key === "Backspace" && draft.length === 0 && value.length > 0) {
+            removeAt(value.length - 1);
+          } else if (e.key === "Tab" && draft.trim().length > 0) {
+            // Commit on Tab so focus moves AND the pending email lands
+            // — without this, a recruiter who types one address and
+            // tabs to Candidate ships an event with an empty CC list.
+            commit(draft);
+          }
+        }}
+        onBlur={() => {
+          if (draft.trim().length > 0) commit(draft);
+        }}
+        placeholder={value.length === 0 ? "email@example.com, …" : ""}
+        disabled={disabled}
+        className="min-w-[140px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none disabled:opacity-60"
+      />
+    </div>
   );
 }

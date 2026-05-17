@@ -286,6 +286,12 @@ export type CreateCalendarEventInput = {
   notes: string | null;
   candidateId: string | null;
   clientId: string | null;
+  // Free-text email addresses entered as chips in the CC field.
+  // Each address becomes a Google attendee with responseStatus
+  // "needsAction". When at least one CC is present we flip
+  // sendUpdates so Google actually mails the invite — otherwise the
+  // attendees row lands silently and the recipients never see it.
+  cc: string[];
 };
 
 export type CreateCalendarEventResult =
@@ -404,6 +410,14 @@ export async function createCalendarEventAction(
       mirroredLocation = input.location.trim();
     }
 
+    const ccAttendees = (input.cc ?? [])
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .map((email) => ({
+        email,
+        responseStatus: "needsAction" as const,
+      }));
+
     const wantsMeet = input.meetingType === "google_meet";
     const created = await createCalendarEvent({
       userId: user.id,
@@ -413,7 +427,11 @@ export async function createCalendarEventAction(
       durationMin: range.durationMin,
       createMeet: wantsMeet,
       location: mirroredLocation ?? undefined,
-      sendUpdates: false,
+      // Notify CC'd attendees so the invite lands in their inbox.
+      // Without this, Google saves the attendees row but suppresses
+      // the email and the recruiter ends up texting them the link.
+      sendUpdates: ccAttendees.length > 0,
+      attendees: ccAttendees.length > 0 ? ccAttendees : undefined,
       timeZone: ET_TIMEZONE,
     });
 
@@ -467,6 +485,13 @@ export async function createCalendarEventAction(
     // up and the row updates in place instead of duplicating.
     const calendarId = user.email ?? "primary";
     const eventType = deriveEventType(input.candidateId, input.clientId);
+    // Mirror attendees so the drawer renders the CC list immediately
+    // without waiting for the next full sync. Shape matches what
+    // google-sync writes: { email, responseStatus, ... }.
+    const mirroredAttendees = ccAttendees.length > 0
+      ? ccAttendees.map((a) => ({ email: a.email, responseStatus: a.responseStatus }))
+      : null;
+
     const mirror = await prisma.calendarEvent.create({
       data: {
         organizationId: org.id,
@@ -482,6 +507,7 @@ export async function createCalendarEventAction(
         location: mirroredLocation,
         meetLink,
         htmlLink: created.htmlLink,
+        attendees: mirroredAttendees ?? undefined,
         candidateId: input.candidateId,
         clientId: input.clientId,
         typeOverride: eventType,
@@ -501,6 +527,7 @@ export async function createCalendarEventAction(
         meetingType: input.meetingType,
         candidateId: input.candidateId,
         clientId: input.clientId,
+        ccCount: ccAttendees.length,
         allDay: input.allDay,
         startISO: range.startISO,
       },

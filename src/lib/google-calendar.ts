@@ -50,7 +50,15 @@ export async function getFreshAccessToken(userId: string): Promise<string> {
   return json.access_token;
 }
 
-export type CalendarAttendee = { email: string; displayName?: string };
+export type CalendarAttendee = {
+  email: string;
+  displayName?: string;
+  // Google's status enum. Omit to let Google default to "needsAction"
+  // for added attendees. Set explicitly when the caller wants the
+  // value reflected in the API payload (e.g. the CC field in the
+  // calendar create modal).
+  responseStatus?: "needsAction" | "declined" | "tentative" | "accepted";
+};
 
 export type CreateCalendarEventInput = {
   userId: string;
@@ -119,7 +127,12 @@ export async function createCalendarEvent(
     guestsCanModify: false,
   };
   if (input.attendees && input.attendees.length > 0) {
-    body.attendees = input.attendees.map((a) => ({ email: a.email, displayName: a.displayName }));
+    body.attendees = input.attendees.map((a) => {
+      const out: Record<string, string> = { email: a.email };
+      if (a.displayName) out.displayName = a.displayName;
+      if (a.responseStatus) out.responseStatus = a.responseStatus;
+      return out;
+    });
   }
   if (input.location) body.location = input.location;
   const willAttachExistingMeet =
