@@ -574,6 +574,128 @@ export async function createCalendarEventAction(
   }
 }
 
+export type QuickContactSuggestion = {
+  // Display label rendered in the dropdown row. "First Last (email)"
+  // for candidate matches; "Client Company Name (contact email)" for
+  // contacts attached to a client; falls back to the contact's own
+  // name when no client is linked.
+  label: string;
+  // Plain email address committed into the chip when the recruiter
+  // picks this row.
+  email: string;
+};
+
+const QUICK_CONTACT_LIMIT = 8;
+
+// Unified typeahead backing the CreateEventModal's TO / CC / BCC
+// chip inputs. Searches Neon candidates and Neon contacts (which
+// hang off Client) in one round trip, projects to a flat
+// { label, email } shape, dedupes by email case-insensitively, and
+// caps the combined list at 8 rows. Returns [] when the query is
+// shorter than 2 characters so the modal doesn't render a dropdown
+// for an empty / one-char input.
+export async function quickSearchContacts(
+  query: string,
+): Promise<QuickContactSuggestion[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  const org = await getCurrentOrg();
+
+  // Two parallel queries — small org-scoped result sets, no need for
+  // a fancier ranking pipeline. We over-fetch each side (LIMIT 8) so
+  // a candidate-heavy or contact-heavy match doesn't starve the
+  // other category before dedup + final cap.
+  const [candidates, contacts] = await Promise.all([
+    prisma.candidate.findMany({
+      where: {
+        organizationId: org.id,
+        email: { not: null },
+        OR: [
+          { firstName: { contains: q, mode: "insensitive" } },
+          { lastName: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+      take: QUICK_CONTACT_LIMIT,
+      select: { firstName: true, lastName: true, email: true },
+    }),
+    prisma.contact.findMany({
+      where: {
+        organizationId: org.id,
+        emails: { isEmpty: false },
+        OR: [
+          { name: { contains: q, mode: "insensitive" } },
+          { firstName: { contains: q, mode: "insensitive" } },
+          { lastName: { contains: q, mode: "insensitive" } },
+          // Postgres String[] `has` is exact-match only — fine for the
+          // "user typed a full email" case; partial-email matches
+          // surface via the related client name + contact name.
+          { emails: { has: q } },
+          { client: { name: { contains: q, mode: "insensitive" } } },
+        ],
+      },
+      orderBy: { updatedAt: "desc" },
+      take: QUICK_CONTACT_LIMIT,
+      select: {
+        name: true,
+        firstName: true,
+        lastName: true,
+        emails: true,
+        client: { select: { name: true } },
+      },
+    }),
+  ]);
+
+  const out: QuickContactSuggestion[] = [];
+
+  for (const c of candidates) {
+    if (!c.email) continue;
+    const fullName = [c.firstName, c.lastName]
+      .map((p) => p?.trim() ?? "")
+      .filter((p) => p.length > 0)
+      .join(" ")
+      .trim();
+    const label = fullName ? `${fullName} (${c.email})` : c.email;
+    out.push({ label, email: c.email });
+  }
+
+  for (const c of contacts) {
+    const contactName = (
+      c.name ??
+      [c.firstName, c.lastName]
+        .map((p) => p?.trim() ?? "")
+        .filter((p) => p.length > 0)
+        .join(" ")
+    )?.trim();
+    // Prompt's mental model is "Company Name (email)" for clients.
+    // Fall back to the contact's own name if the contact isn't linked
+    // to a Client, so an unlinked contact still surfaces with a label
+    // instead of just "Contact (email)".
+    const display = c.client?.name?.trim() || contactName || "Contact";
+    for (const email of c.emails) {
+      const trimmedEmail = email?.trim();
+      if (!trimmedEmail) continue;
+      out.push({ label: `${display} (${trimmedEmail})`, email: trimmedEmail });
+    }
+  }
+
+  // Dedupe by email (case-insensitive) and cap at the combined limit.
+  // Candidates land first so a Candidate.email match wins over a
+  // Contact row that happens to carry the same address.
+  const seen = new Set<string>();
+  const deduped: QuickContactSuggestion[] = [];
+  for (const s of out) {
+    const key = s.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(s);
+    if (deduped.length >= QUICK_CONTACT_LIMIT) break;
+  }
+  return deduped;
+}
+
 export async function deleteCalendarEventAction(input: {
   id: string;
   notifyAll: boolean;

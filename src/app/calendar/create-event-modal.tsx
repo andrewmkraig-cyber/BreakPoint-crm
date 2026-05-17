@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -8,7 +8,9 @@ import { Button } from "@/components/ui/button";
 
 import {
   createCalendarEventAction,
+  quickSearchContacts,
   type CreateMeetingType,
+  type QuickContactSuggestion,
 } from "./event-actions";
 
 // Meeting-type dropdown options. Values mirror CreateMeetingType in
@@ -285,15 +287,30 @@ export function CreateEventModal({
           </Field>
 
           <Field label="To">
-            <EmailChipInput value={to} onChange={setTo} disabled={submitting} />
+            <EmailChipInput
+              value={to}
+              onChange={setTo}
+              disabled={submitting}
+              search={quickSearchContacts}
+            />
           </Field>
 
           <Field label="CC">
-            <EmailChipInput value={cc} onChange={setCc} disabled={submitting} />
+            <EmailChipInput
+              value={cc}
+              onChange={setCc}
+              disabled={submitting}
+              search={quickSearchContacts}
+            />
           </Field>
 
           <Field label="BCC">
-            <EmailChipInput value={bcc} onChange={setBcc} disabled={submitting} />
+            <EmailChipInput
+              value={bcc}
+              onChange={setBcc}
+              disabled={submitting}
+              search={quickSearchContacts}
+            />
           </Field>
 
           {err && (
@@ -356,25 +373,44 @@ function Field({
   );
 }
 
-// Free-text email tag input. Enter or comma commits the typed value
-// as a chip; Backspace on an empty input removes the last chip; the
-// chip's × removes it explicitly. Values normalize via trim() and
-// dedupe case-insensitively so a recruiter pasting "Linda@x.com,
-// linda@x.com" doesn't end up inviting the same address twice. Used
-// by the modal's TO / CC / BCC fields — Google Calendar doesn't
+// Free-text email tag input with optional Neon-backed typeahead.
+//
+// Manual entry: Enter or comma commits the typed value as a chip;
+// Backspace on an empty input removes the last chip; the chip's ×
+// removes it explicitly. Tab and blur commit pending text so a
+// recruiter who types and tabs away doesn't drop the address.
+// Values normalize via trim() and dedupe case-insensitively.
+//
+// Typeahead (when `search` is provided): once the draft hits 2+
+// characters the component debounces a search call and renders a
+// dropdown of matches. ArrowDown / ArrowUp navigate, Enter commits
+// the highlighted row (or the typed draft when no row is highlighted),
+// Escape dismisses the dropdown without clearing the draft. The
+// dropdown filters out any suggestion whose email is already on the
+// chip list so picking the same person twice isn't even offered.
+//
+// Used by the modal's TO / CC / BCC fields — Google Calendar doesn't
 // natively distinguish those buckets in its attendees payload, so
 // the split is purely a recruiter-side organization hint that the
 // server action preserves in activity metadata only.
+const SEARCH_DEBOUNCE_MS = 200;
+
 function EmailChipInput({
   value,
   onChange,
   disabled,
+  search,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
   disabled?: boolean;
+  search?: (query: string) => Promise<QuickContactSuggestion[]>;
 }) {
   const [draft, setDraft] = useState("");
+  const [suggestions, setSuggestions] = useState<QuickContactSuggestion[]>([]);
+  const [highlighted, setHighlighted] = useState(-1);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   function commit(raw: string) {
     const parts = raw
@@ -392,57 +428,181 @@ function EmailChipInput({
     }
     onChange(next);
     setDraft("");
+    setSuggestions([]);
+    setOpen(false);
+    setHighlighted(-1);
   }
 
   function removeAt(i: number) {
     onChange(value.filter((_, idx) => idx !== i));
   }
 
+  // Debounced typeahead lookup. Empty / short queries skip the round
+  // trip and close the dropdown. Already-selected emails are filtered
+  // out of the suggestion list before render so the dropdown doesn't
+  // offer dup candidates.
+  useEffect(() => {
+    if (!search) return;
+    const q = draft.trim();
+    if (q.length < 2) {
+      setSuggestions([]);
+      setOpen(false);
+      setHighlighted(-1);
+      return;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const rows = await search(q);
+        if (cancelled) return;
+        const selected = new Set(value.map((v) => v.toLowerCase()));
+        const filtered = rows.filter(
+          (r) => !selected.has(r.email.toLowerCase()),
+        );
+        setSuggestions(filtered);
+        setOpen(filtered.length > 0);
+        setHighlighted(filtered.length > 0 ? 0 : -1);
+      } catch {
+        if (!cancelled) {
+          setSuggestions([]);
+          setOpen(false);
+          setHighlighted(-1);
+        }
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [draft, search, value]);
+
+  // Outside-click dismiss for the dropdown. Scoped to the wrapper so
+  // a click that happens to land on a row inside the dropdown is
+  // already inside containerRef and doesn't close prematurely.
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: PointerEvent) {
+      if (!containerRef.current) return;
+      if (containerRef.current.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    document.addEventListener("pointerdown", onDoc);
+    return () => document.removeEventListener("pointerdown", onDoc);
+  }, [open]);
+
   return (
-    <div
-      className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
-    >
-      {value.map((email, i) => (
-        <span
-          key={`${email}-${i}`}
-          className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] text-court-fg"
-        >
-          {email}
-          <button
-            type="button"
-            onClick={() => removeAt(i)}
-            disabled={disabled}
-            aria-label={`Remove ${email}`}
-            className="text-court-fg-muted hover:text-court-fg disabled:opacity-60"
+    <div className="relative" ref={containerRef}>
+      <div
+        className="flex min-h-[34px] w-full flex-wrap items-center gap-1 rounded-md border border-court-border bg-court-surface px-2 py-1 text-sm focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/20"
+      >
+        {value.map((email, i) => (
+          <span
+            key={`${email}-${i}`}
+            className="inline-flex items-center gap-1 rounded-full bg-court-surface-subtle px-2 py-0.5 text-[11px] text-court-fg"
           >
-            <X className="h-3 w-3" />
-          </button>
-        </span>
-      ))}
-      <input
-        type="email"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === ",") {
-            e.preventDefault();
-            commit(draft);
-          } else if (e.key === "Backspace" && draft.length === 0 && value.length > 0) {
-            removeAt(value.length - 1);
-          } else if (e.key === "Tab" && draft.trim().length > 0) {
-            // Commit on Tab so focus moves AND the pending email lands
-            // — without this, a recruiter who types one address and
-            // tabs to the next field ships an event without it.
-            commit(draft);
-          }
-        }}
-        onBlur={() => {
-          if (draft.trim().length > 0) commit(draft);
-        }}
-        placeholder={value.length === 0 ? "email@example.com, …" : ""}
-        disabled={disabled}
-        className="min-w-[140px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none disabled:opacity-60"
-      />
+            {email}
+            <button
+              type="button"
+              onClick={() => removeAt(i)}
+              disabled={disabled}
+              aria-label={`Remove ${email}`}
+              className="text-court-fg-muted hover:text-court-fg disabled:opacity-60"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
+        <input
+          type="email"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown" && open && suggestions.length > 0) {
+              e.preventDefault();
+              setHighlighted((h) => (h + 1) % suggestions.length);
+              return;
+            }
+            if (e.key === "ArrowUp" && open && suggestions.length > 0) {
+              e.preventDefault();
+              setHighlighted((h) =>
+                h <= 0 ? suggestions.length - 1 : h - 1,
+              );
+              return;
+            }
+            if (e.key === "Escape" && open) {
+              e.preventDefault();
+              setOpen(false);
+              setHighlighted(-1);
+              return;
+            }
+            if (e.key === "Enter") {
+              e.preventDefault();
+              if (open && highlighted >= 0 && suggestions[highlighted]) {
+                commit(suggestions[highlighted].email);
+              } else {
+                commit(draft);
+              }
+              return;
+            }
+            if (e.key === ",") {
+              e.preventDefault();
+              commit(draft);
+              return;
+            }
+            if (
+              e.key === "Backspace" &&
+              draft.length === 0 &&
+              value.length > 0
+            ) {
+              removeAt(value.length - 1);
+              return;
+            }
+            if (e.key === "Tab" && draft.trim().length > 0) {
+              // Commit on Tab so focus moves AND the pending email
+              // lands — without this, a recruiter who types one
+              // address and tabs to the next field ships an event
+              // without it.
+              commit(draft);
+            }
+          }}
+          onBlur={() => {
+            // Blur commits the raw draft, NOT a highlighted suggestion
+            // — picking from the dropdown is an explicit click/Enter
+            // action. Without the draft check, clicking a row inside
+            // the dropdown would race the blur and double-commit.
+            if (draft.trim().length > 0) commit(draft);
+          }}
+          placeholder={value.length === 0 ? "email@example.com, …" : ""}
+          disabled={disabled}
+          className="min-w-[140px] flex-1 bg-transparent px-1 py-0.5 text-sm outline-none disabled:opacity-60"
+        />
+      </div>
+      {open && suggestions.length > 0 && (
+        <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-56 overflow-y-auto rounded-md border border-court-border bg-court-surface shadow-lg">
+          {suggestions.map((s, i) => (
+            <button
+              key={`${s.email}-${i}`}
+              type="button"
+              // Use mousedown not click so the commit happens BEFORE
+              // the input's blur fires — otherwise blur's commit(draft)
+              // races and may shadow the suggestion click.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                commit(s.email);
+              }}
+              onMouseEnter={() => setHighlighted(i)}
+              className={
+                "block w-full truncate px-3 py-1.5 text-left text-xs transition " +
+                (i === highlighted
+                  ? "bg-court-accent-tint/60 text-court-fg"
+                  : "text-court-fg hover:bg-court-accent-tint/40")
+              }
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
