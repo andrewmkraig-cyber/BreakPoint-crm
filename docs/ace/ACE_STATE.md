@@ -1,10 +1,82 @@
 # ACE_STATE.md
-Last updated: 2026-05-17 · Ace 55.0
+Last updated: 2026-05-17 · Ace 56.0
 
 ## Current Status
-Current Version: Ace 55.0
+Current Version: Ace 56.0
 Last Shipped: 2026-05-17
 Live at: ace.breakpointtalent.com
+
+## What Shipped in Ace 56.0 (2026-05-17)
+
+Finances tabs redesign — closes the finances entry from the queued
+visual redesign Prompts 11-17.
+
+### Finances rebuilt on the unified card + chip spec (`7095091`)
+- **Page bg** — `bg-court-surface-subtle` wraps the entire
+  `/finances` route (Revenue & Profitability, Invoices, Expenses
+  all inherit it).
+- **Tab strip** — custom underline nav rendered in
+  `src/app/finances/page.tsx` (not via shared `TabStrip`) so the
+  active border lands on `border-court-accent` per spec rule 1.
+  Active tab is h-10 with `font-semibold text-court-brand-dark`;
+  inactive tabs are muted with hover bump to `text-court-fg`. The
+  Revenue & Profitability tab swaps the chip-style `PeriodTabs` for
+  the spec'd `PeriodPillToggle` (h-8 rounded-full pills).
+- **Invoices tab** —
+  - KPI strip: 4× `FinancesKpiCard` chrome (rounded-2xl border-0
+    shadow-sm p-5) with 36px font-serif extrabold values; zero
+    values dim to `text-court-border opacity-50`.
+  - Table card: `rounded-2xl border-0 shadow-sm`. Header:
+    `bg-court-surface-subtle py-3 px-5` with 10px
+    `tracking-[0.18em]` uppercase muted column labels.
+  - Rows: `divide-court-border-soft`. Invoice number in
+    `font-mono text-[12px] font-semibold`; client name medium;
+    amount in `font-bold tabular-nums`; due date red when overdue.
+  - Status chips on `h-7 rounded-full px-3 text-[11px]
+    font-semibold uppercase tracking-wider`: **Paid** =
+    accent-tint brand-dark, **Pending** = `bg-amber-50
+    text-amber-700`, **Overdue** = `bg-red-50 text-red-500`. Draft
+    + Void fall back to neutral subtle.
+  - Filter row swapped from underline TabStrip to spec'd
+    `h-8 rounded-full` filter chips (All / Drafts / Sent /
+    Overdue / Paid / Void).
+- **Revenue & Profitability tab** —
+  - Shared `KpiTile` swapped for inline `FinancesKpiTile` so the
+    36px serif extrabold treatment doesn't ripple into Clubhouse
+    or Scoreboard (each surface keeps its own size).
+  - `Panel` (By client / By source), `TrendCard`, `MarginsCard`,
+    `PnlCard` all dropped `rounded-3xl` long-shadow for
+    `rounded-2xl border-0 shadow-sm` and 10px
+    `tracking-[0.18em] text-court-brand-dark` eyebrow + 18px
+    serif title.
+  - `BarRow` progress bars resized from `h-1 bg-court-brand` to
+    `h-[3px] bg-court-accent rounded-full` per spec rule 5.
+- **Expenses tab** —
+  - `SubscriptionsCard`, `MonthlyOperatingCostCard`, `RoiCard`
+    converged on the rounded-2xl border-0 shadow-sm chrome with
+    the same eyebrow + title pattern.
+  - Monthly Operating Cost run-rate panel per spec rule 3:
+    `rounded-xl border border-court-accent/30
+    bg-court-surface-subtle p-4 mb-4` with 10px muted uppercase
+    label + 32px font-serif extrabold tabular value.
+  - `SubscriptionsList` tool initials: bumped from `rounded-md
+    h-7 w-7 text-court-fg-muted` to spec'd `rounded-lg h-8 w-8
+    text-[10px] font-bold text-court-brand-dark`.
+  - `MatchedPill` restyled to `h-6 rounded-full px-2.5
+    bg-court-accent-tint text-court-brand-dark`. New
+    `UnmatchedLabel` renders plain `text-court-border` per rule 2.
+  - Cost columns in the recurring / one-time rows now render in
+    `font-mono text-[12px]` for ledger alignment.
+  - ROI rows: tool initials match (h-8 rounded-lg). Spend +
+    revenue rendered in `font-mono`; missing data shown as a
+    `text-court-border` em-dash instead of `—` in `fg-dim` per
+    rule 6. ROI moved into an `h-6 rounded-full` chip —
+    accent-tint when positive, `bg-red-50 text-red-500` when
+    negative; missing keeps the `text-court-border` em-dash.
+
+Per rule 12 every value lands on a Court Mode token. Red is the
+exception (Overdue chip / negative ROI chip) — same intent the
+existing red-50 carriers used, just rebound to the spec'd values.
 
 ## What Shipped in Ace 55.0 (2026-05-17)
 
