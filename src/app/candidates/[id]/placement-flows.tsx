@@ -6,7 +6,6 @@ import {
   Bookmark,
   CalendarClock,
   CheckCircle2,
-  ChevronDown,
   CornerUpLeft,
   DollarSign,
   Edit3,
@@ -555,9 +554,7 @@ export function PlacementActions({
               onPlacement={() => setPlacementFor(j)}
               onConfirm={() => setConfirmFor(j)}
               onSchedule={() => setScheduleFor(j)}
-              onClientInvite={() => setClientInviteFor(j)}
               onReject={() => setRejectFor(j)}
-              onCancel={() => setCancelFor(j)}
               onEditInterview={(interview) => setRescheduleFor({ interview, job: j })}
               onPlacementRemoved={handlePlacementRemoved}
             />
@@ -763,7 +760,6 @@ function JobActionRow({
   onConfirm,
   onSchedule,
   onReject,
-  onCancel,
   onEditInterview,
   onPlacementRemoved,
 }: {
@@ -775,9 +771,7 @@ function JobActionRow({
   onPlacement: () => void;
   onConfirm: () => void;
   onSchedule: () => void;
-  onClientInvite: () => void;
   onReject: () => void;
-  onCancel: () => void;
   onEditInterview: (interview: InterviewSummary) => void;
   onPlacementRemoved?: (placementId: string) => void;
 }) {
