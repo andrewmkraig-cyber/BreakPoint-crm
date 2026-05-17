@@ -15,7 +15,7 @@ import {
   ClientDrilldownTrigger,
   RoleDrilldownTrigger,
 } from "@/app/dashboard/scoreboard-drilldowns";
-import { PeriodTabs } from "@/app/dashboard/period-tabs";
+import { PeriodPillToggle } from "@/app/dashboard/period-pill-toggle";
 import type { DashboardPeriod } from "@/app/dashboard/period-tabs-shared";
 import { getCurrentOrg } from "@/lib/auth/getCurrentOrg";
 import { GoalPacingCard, getGoalPacingData } from "@/app/dashboard/goal-pacing";
@@ -36,24 +36,26 @@ export async function Scoreboard({
   ]);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand">
-          DEAL FLOW &amp; FORECAST
-        </p>
-        <PeriodTabs period={period} />
+    <div className="-m-4 min-h-[calc(100vh-6rem)] bg-court-surface-subtle p-4 sm:-m-6 sm:p-6">
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+            Deal Flow &amp; Forecast
+          </p>
+          <PeriodPillToggle period={period} />
+        </div>
+        <KpiRow kpis={data.kpis} periodLabel={data.period.label} />
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <FunnelCard funnel={data.funnel} />
+          <CashForecastCard cash={data.cashForecast} />
+        </div>
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+          <TopClientsCard rows={data.topClients} />
+          <TopRolesCard rows={data.topRoles} />
+          <MomentumCard events={data.momentum} />
+        </div>
+        <GoalPacingCard data={goalPacing} />
       </div>
-      <KpiRow kpis={data.kpis} periodLabel={data.period.label} />
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <FunnelCard funnel={data.funnel} />
-        <CashForecastCard cash={data.cashForecast} />
-      </div>
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
-        <TopClientsCard rows={data.topClients} />
-        <TopRolesCard rows={data.topRoles} />
-        <MomentumCard events={data.momentum} />
-      </div>
-      <GoalPacingCard data={goalPacing} />
     </div>
   );
 }
@@ -61,10 +63,6 @@ export async function Scoreboard({
 type Kpis = Awaited<ReturnType<typeof getScoreboardData>>["kpis"];
 
 function KpiRow({ kpis, periodLabel }: { kpis: Kpis; periodLabel: string }) {
-  // When there are open deals but every one has a null/zero fee, the
-  // dashboard would otherwise read "$0 · Active offers + pending starts"
-  // and hide the gap. Surface the count + "fee unset" instead so the
-  // missing data is obvious enough to act on.
   const pipelineFeeMissing = kpis.pipelineValueUsd == null && kpis.pipelineCount > 0;
   const pipelineSub = pipelineFeeMissing
     ? `${kpis.pipelineCount} ${kpis.pipelineCount === 1 ? "deal" : "deals"} · fee unset`
@@ -127,27 +125,24 @@ function ScoreboardKpiTile({
   sub: string;
   icon: LucideIcon;
 }) {
-  const isEmpty = value === "—";
+  // Treat "—" placeholders the same as numeric zero — both are "no
+  // data" states and should read dimmed against the card.
+  const isEmpty = value === "—" || value === "0" || value === "$0";
   return (
     <div
       title={sub}
-      className="flex h-full min-h-[84px] flex-col rounded-2xl bg-court-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]"
+      className="flex h-full flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm"
     >
-      <div className="flex min-h-[32px] items-center gap-2">
-        <div
-          className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-court-brand-tint text-court-brand-dark"
-          aria-hidden
-        >
-          <Icon className="h-3 w-3" />
-        </div>
-        <p className="min-w-0 flex-1 text-[10px] font-extrabold uppercase tracking-wide text-court-fg-muted">
+      <div className="flex items-center gap-2">
+        <Icon className="h-3 w-3 text-court-fg-muted" aria-hidden />
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
           {label}
         </p>
       </div>
       <div
         className={
-          "mt-1.5 text-center font-serif text-[26px] font-bold leading-none tracking-[-0.04em] tabular-nums " +
-          (isEmpty ? "text-court-fg-dim" : "text-court-fg")
+          "mt-3 font-serif text-[42px] font-extrabold leading-none tabular-nums " +
+          (isEmpty ? "text-court-border opacity-50" : "text-court-fg")
         }
       >
         {value}
@@ -166,15 +161,7 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
     { name: "Placed", n: funnel.placed },
   ];
   const top = stages[0].n;
-  // Scale every bar against the largest stage value so the widest stage
-  // always reads as 100%. Interview can exceed Submitted (multi-interview
-  // candidates), so anchoring to Submitted alone overflowed the row.
   const maxStage = stages.reduce((m, s) => Math.max(m, s.n), 0);
-  // Submitted → Interview reads as `submitted / interview` so the funnel
-  // top line matches the bar order; with multiple interviews per
-  // candidate the raw interview count can exceed submits, so the literal
-  // pair is the only honest reading. Interview Coverage below caps each
-  // candidate at 1 to surface the conversion rate cleanly.
   const ratios = [
     {
       label: "Submitted → Interview",
@@ -193,14 +180,12 @@ function FunnelCard({ funnel }: { funnel: Funnel }) {
     },
   ];
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)] lg:col-span-2">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Deal Funnel</p>
-          <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">Submitted → Placed</h3>
-          <p className="text-xs text-court-fg-muted">Activity through each gate, last 90 days.</p>
-        </div>
-      </div>
+    <div className="rounded-2xl border-0 bg-court-surface p-5 shadow-sm lg:col-span-2">
+      <SectionHeader
+        eyebrow="Deal Funnel"
+        title="Submitted → Placed"
+        description="Activity through each gate, last 90 days."
+      />
       {top === 0 ? (
         <EmptyBlock>No submit activity logged in the last 90 days yet.</EmptyBlock>
       ) : (
@@ -267,10 +252,6 @@ function RatioTile({ label, num, den }: { label: string; num: number; den: numbe
   );
 }
 
-// Distinct-candidate variant. Each candidate counts at most once toward
-// the numerator regardless of how many interviews they had, so the %
-// reads as "share of submitted candidates that reached an interview"
-// instead of an event-over-event rate.
 function CoverageTile({
   label,
   pct,
@@ -306,8 +287,6 @@ function CoverageTile({
 type Cash = Awaited<ReturnType<typeof getScoreboardData>>["cashForecast"];
 
 function CashForecastCard({ cash }: { cash: Cash }) {
-  // Bar widths show each row's share of the largest cash bucket so the
-  // four lines compare visually instead of all reading full-width.
   const maxAmount = Math.max(
     cash.pendingStartUsd,
     cash.billedUsd,
@@ -317,10 +296,12 @@ function CashForecastCard({ cash }: { cash: Cash }) {
   const widthPct = (amount: number) =>
     maxAmount > 0 ? Math.max(8, Math.round((amount / maxAmount) * 100)) : 0;
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">Cash Forecast</p>
-      <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">Pipeline → Bank</h3>
-      <p className="text-xs text-court-fg-muted">What&apos;s expected to land where.</p>
+    <div className="rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
+      <SectionHeader
+        eyebrow="Cash Forecast"
+        title="Pipeline → Bank"
+        description="What's expected to land where."
+      />
       <div className="mt-3 space-y-2">
         <ForecastRow
           label="Pending Start"
@@ -389,33 +370,21 @@ type TopClient = Awaited<ReturnType<typeof getScoreboardData>>["topClients"][num
 function TopClientsCard({ rows }: { rows: TopClient[] }) {
   const maxFee = rows.length > 0 ? rows[0].feeUsd : 0;
   return (
-    <ListCard eyebrow="Who&apos;s paying" title="Top Clients · Revenue">
+    <ListCard eyebrow="Who's paying" title="Top Clients · Revenue">
       {rows.length === 0 ? (
         <EmptyBlock>No placements with logged fees yet.</EmptyBlock>
       ) : (
-        <ul className="mt-3 space-y-1">
-          {rows.map((r) => (
+        <ul className="mt-4 divide-y divide-court-border-soft">
+          {rows.map((r, i) => (
             <li key={r.id}>
               <ClientDrilldownTrigger clientId={r.clientId} clientName={r.name}>
-                <div className="px-1 py-1.5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-court-fg">{r.name}</div>
-                      <div className="truncate text-xs text-court-fg-muted">
-                        {r.placements} placement{r.placements === 1 ? "" : "s"}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-sm font-semibold tabular-nums tracking-tight text-court-fg">
-                      {formatMoneyShort(r.feeUsd)}
-                    </div>
-                  </div>
-                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-court-surface-subtle">
-                    <div
-                      className="h-full rounded-full bg-court-brand"
-                      style={{ width: `${maxFee > 0 ? Math.round((r.feeUsd / maxFee) * 100) : 0}%` }}
-                    />
-                  </div>
-                </div>
+                <LeaderboardRow
+                  rank={i + 1}
+                  name={r.name}
+                  hint={`${r.placements} placement${r.placements === 1 ? "" : "s"}`}
+                  value={formatMoneyShort(r.feeUsd)}
+                  pct={maxFee > 0 ? Math.round((r.feeUsd / maxFee) * 100) : 0}
+                />
               </ClientDrilldownTrigger>
             </li>
           ))}
@@ -434,27 +403,17 @@ function TopRolesCard({ rows }: { rows: TopRole[] }) {
       {rows.length === 0 ? (
         <EmptyBlock>No closed roles yet.</EmptyBlock>
       ) : (
-        <ul className="mt-3 space-y-1">
-          {rows.map((r) => (
+        <ul className="mt-4 divide-y divide-court-border-soft">
+          {rows.map((r, i) => (
             <li key={r.title}>
               <RoleDrilldownTrigger roleTitle={r.title}>
-                <div className="px-1 py-1.5">
-                  <div className="flex items-baseline justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="truncate text-sm font-medium text-court-fg">{r.title}</div>
-                      <div className="truncate text-xs text-court-fg-muted">
-                        {r.avgFeeUsd != null ? `Avg fee ${formatMoneyShort(r.avgFeeUsd)}` : "Fee not logged"}
-                      </div>
-                    </div>
-                    <div className="shrink-0 text-sm font-semibold tabular-nums text-court-fg">{r.placements}</div>
-                  </div>
-                  <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-court-surface-subtle">
-                    <div
-                      className="h-full rounded-full bg-court-brand"
-                      style={{ width: `${maxCount > 0 ? Math.round((r.placements / maxCount) * 100) : 0}%` }}
-                    />
-                  </div>
-                </div>
+                <LeaderboardRow
+                  rank={i + 1}
+                  name={r.title}
+                  hint={r.avgFeeUsd != null ? `Avg fee ${formatMoneyShort(r.avgFeeUsd)}` : "Fee not logged"}
+                  value={String(r.placements)}
+                  pct={maxCount > 0 ? Math.round((r.placements / maxCount) * 100) : 0}
+                />
               </RoleDrilldownTrigger>
             </li>
           ))}
@@ -464,43 +423,89 @@ function TopRolesCard({ rows }: { rows: TopRole[] }) {
   );
 }
 
+function LeaderboardRow({
+  rank,
+  name,
+  hint,
+  value,
+  pct,
+}: {
+  rank: number;
+  name: string;
+  hint: string;
+  value: string;
+  pct: number;
+}) {
+  return (
+    <div className="py-3">
+      <div className="flex items-baseline justify-between gap-3 px-1">
+        <div className="flex min-w-0 items-baseline gap-2">
+          <span className="w-6 shrink-0 font-mono text-[13px] text-court-fg-muted">
+            {rank}
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-[13px] font-semibold text-court-fg">{name}</div>
+            <div className="truncate text-[11px] text-court-fg-muted">{hint}</div>
+          </div>
+        </div>
+        <div className="shrink-0 text-right font-bold tabular-nums text-court-fg">
+          {value}
+        </div>
+      </div>
+      <div className="mt-2 h-[3px] overflow-hidden rounded-full bg-court-surface-subtle">
+        <div
+          className="h-full rounded-full bg-court-accent"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 type MomentumEvent = Awaited<ReturnType<typeof getScoreboardData>>["momentum"][number];
 
 function MomentumCard({ events }: { events: MomentumEvent[] }) {
   return (
-    <ListCard eyebrow="Momentum" title="Recent deal moves">
+    <div className="rounded-2xl border-0 bg-court-surface p-4 shadow-sm">
+      <div className="px-1">
+        <SectionHeader eyebrow="Momentum" title="Recent deal moves" />
+      </div>
       {events.length === 0 ? (
         <EmptyBlock>Nothing has moved in the last 30 days.</EmptyBlock>
       ) : (
-        <ul className="mt-3 space-y-1">
+        <ul className="mt-3 divide-y divide-court-border-soft">
           {events.map((e) => (
-            <li key={e.id} className="flex items-start gap-2.5 py-1.5">
+            <li key={e.id} className="flex items-start gap-3 py-3">
               <span
                 className={
-                  "grid h-6 w-6 shrink-0 place-items-center rounded-full " +
+                  "grid h-7 w-7 shrink-0 place-items-center rounded-full " +
                   (e.kind === "win"
-                    ? "bg-court-brand-tint text-court-brand-dark"
+                    ? "bg-court-accent-tint text-court-brand-dark"
                     : "bg-blue-50 text-blue-700")
                 }
+                aria-hidden
               >
                 {e.kind === "win" ? <Trophy className="h-3 w-3" /> : <ArrowUpRight className="h-3 w-3" />}
               </span>
               <div className="min-w-0 flex-1">
-                <div className="text-sm">
+                <div className="text-[12.5px]">
                   <span className="font-semibold text-court-fg">{e.candidateName}</span>{" "}
-                  <span className="text-court-fg">{e.eventLabel}</span>
+                  <span className="text-court-fg-muted">{e.eventLabel}</span>
                 </div>
-                <div className="text-xs text-court-fg-muted">
-                  {e.clientName}
-                  {e.clientName ? <span className="mx-1.5 text-court-fg-dim">·</span> : null}
-                  {formatRelative(e.eventAt)}
-                </div>
+                {e.clientName && (
+                  <div className="truncate text-[11px] text-court-fg-muted">
+                    {e.clientName}
+                  </div>
+                )}
               </div>
+              <span className="shrink-0 text-right text-[10px] text-court-fg-muted">
+                {formatRelative(e.eventAt)}
+              </span>
             </li>
           ))}
         </ul>
       )}
-    </ListCard>
+    </div>
   );
 }
 
@@ -514,10 +519,33 @@ function ListCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
-      <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">{eyebrow}</p>
-      <h3 className="mt-1 font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">{title}</h3>
+    <div className="rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
+      <SectionHeader eyebrow={eyebrow} title={title} />
       {children}
+    </div>
+  );
+}
+
+function SectionHeader({
+  eyebrow,
+  title,
+  description,
+}: {
+  eyebrow: string;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div>
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+        {eyebrow}
+      </p>
+      <h3 className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
+        {title}
+      </h3>
+      {description && (
+        <p className="mt-0.5 text-[12px] text-court-fg-muted">{description}</p>
+      )}
     </div>
   );
 }

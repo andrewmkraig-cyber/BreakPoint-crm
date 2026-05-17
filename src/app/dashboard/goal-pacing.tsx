@@ -185,12 +185,12 @@ export async function getGoalPacingData(
 
 export function GoalPacingCard({ data }: { data: GoalPacingCardData }) {
   return (
-    <div className="flex flex-col rounded-3xl bg-court-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_8px_20px_rgba(0,0,0,0.08)]">
+    <div className="flex flex-col rounded-2xl border-0 bg-court-surface p-5 shadow-sm">
       <div>
-        <p className="font-serif text-base font-bold tracking-tight text-court-fg sm:text-lg">
-          Goal pacing
+        <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-court-brand-dark">
+          Goal Pacing
         </p>
-        <p className="mt-0.5 text-xs text-court-fg-muted">
+        <p className="font-serif text-[18px] font-bold tracking-tight text-court-fg">
           Where the desk sits vs plan
         </p>
       </div>
@@ -248,10 +248,10 @@ function PacingBlock({
   const barWidth = Math.max(0, Math.min(100, pctToGoal));
   return (
     <div className={className}>
-      <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-court-fg-muted">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-court-fg-muted">
         {eyebrow}
       </p>
-      <p className="mt-2 font-serif text-[26px] font-semibold leading-none tabular-nums text-court-fg">
+      <p className="mt-2 font-serif text-[42px] font-extrabold leading-none tabular-nums text-court-fg">
         {revenueFormatted}
       </p>
       <p className="mt-1 text-xs text-court-fg-muted">
