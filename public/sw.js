@@ -150,4 +150,16 @@ self.addEventListener("notificationclick", (event) => {
       return self.clients.openWindow(url);
     }),
   );
+  // Drop the home-screen badge dot the moment the user acknowledges the
+  // notification by tapping it. The push handler sets the dot when Ace
+  // is closed; without this clear, the dot lingers until Ace opens and
+  // the client-side 30s poll runs mail-tab-title-sync's recount.
+  self.navigator.clearAppBadge?.().catch(() => {});
+});
+
+// Dismiss/swipe handler. Same badge-clear policy as click: any
+// acknowledgment (even just dismissing) should drop the home-screen dot
+// so it doesn't outlive the notification that produced it.
+self.addEventListener("notificationclose", () => {
+  self.navigator.clearAppBadge?.().catch(() => {});
 });
