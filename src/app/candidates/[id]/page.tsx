@@ -846,7 +846,7 @@ const APPLY_LINK_CLASS =
   "inline-flex items-center justify-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 shadow-sm transition hover:bg-amber-100 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-950/60";
 
 const ADD_NOTE_LINK_CLASS =
-  "inline-flex items-center justify-center gap-1.5 rounded-full border border-court-border bg-court-surface-subtle px-3 py-1.5 text-sm font-medium text-court-fg shadow-sm transition hover:bg-court-surface";
+  "inline-flex items-center justify-center gap-1.5 rounded-md border border-slate-300 bg-slate-100 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-200 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-200 dark:hover:bg-slate-800";
 
 function UnderlineTabs({
   tab,
