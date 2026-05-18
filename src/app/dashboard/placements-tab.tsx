@@ -45,21 +45,27 @@ export async function PlacementsTab({ period }: { period: PlacementsDashboardPer
         <PeriodTabs period={period} />
       </div>
       <div className="grid grid-cols-3 gap-3 max-w-2xl">
-        <KpiTile
-          label="Fees"
-          value={metrics.fees > 0 ? formatMoneyShort(metrics.fees) : "—"}
-          zeroDim
-        />
-        <KpiTile
-          label="Revenue"
-          value={metrics.revenue > 0 ? formatMoneyShort(metrics.revenue) : "—"}
-          zeroDim
-        />
-        <KpiTile
-          label="Pending Starts"
-          value={String(metrics.pendingStarts)}
-          zeroDim
-        />
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile
+            label="Fees"
+            value={metrics.fees > 0 ? formatMoneyShort(metrics.fees) : "—"}
+            zeroDim
+          />
+        </div>
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile
+            label="Revenue"
+            value={metrics.revenue > 0 ? formatMoneyShort(metrics.revenue) : "—"}
+            zeroDim
+          />
+        </div>
+        <div className="rounded-2xl shadow-sm">
+          <KpiTile
+            label="Pending Starts"
+            value={String(metrics.pendingStarts)}
+            zeroDim
+          />
+        </div>
       </div>
       <PlacementsLedger rows={ledgerRows} title={LEDGER_TITLE[period]} />
       <PlacementsBreakdowns rows={rows} />
