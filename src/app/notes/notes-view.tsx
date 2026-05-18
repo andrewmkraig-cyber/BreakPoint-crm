@@ -55,7 +55,7 @@ export function NotesView({
           </p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="flex flex-wrap items-start gap-4">
           {initialNotes.map((n) => (
             <NoteCard key={n.id} note={n} />
           ))}

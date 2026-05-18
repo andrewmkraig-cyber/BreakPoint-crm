@@ -84,7 +84,7 @@ export function NoteCard({ note }: { note: NoteRow }) {
     note.candidates.length + note.clients.length + note.jobs.length;
 
   return (
-    <div className="group relative rounded-md border border-amber-200/80 bg-amber-50 p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-amber-900/50 dark:bg-amber-950/30">
+    <div className="group relative w-fit min-w-[12rem] max-w-xs break-words rounded-md border border-amber-200/80 bg-amber-50 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-amber-900/50 dark:bg-amber-950/30">
       {note.pinned && (
         <span className="absolute right-5 top-5 inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-800 dark:border-amber-800 dark:bg-amber-900/50 dark:text-amber-200">
           <Pin className="h-3 w-3" /> Pinned
@@ -133,7 +133,11 @@ export function NoteCard({ note }: { note: NoteRow }) {
       ) : (
         <>
           {note.title && (
-            <div className="mb-1 pr-20 text-base font-semibold text-court-fg">
+            <div
+              className={`mb-1 text-sm font-semibold text-court-fg ${
+                note.pinned ? "pr-16" : ""
+              }`}
+            >
               {note.title}
             </div>
           )}
