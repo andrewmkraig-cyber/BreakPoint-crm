@@ -6,7 +6,12 @@ import { Search, Loader2, MapPin } from "lucide-react";
 import { Pagination } from "@/components/pagination";
 import { SortableHeader, type SortDirection } from "@/components/sortable-header";
 import { cn } from "@/lib/utils";
-import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import {
+  DataTableBody,
+  DataTableHead,
+  DataTableHeaderCell,
+  DataTableRow,
+} from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 
 export type JobLifecycle = "active" | "private" | "inactive";
@@ -169,10 +174,10 @@ export function JobsView(props: JobsViewProps) {
                 <DataTableHeaderCell align="right"><SortableHeader label="Hired" columnKey="hired" activeKey={sort} activeDir={dir} buildHref={buildSortHref} align="right" /></DataTableHeaderCell>
               </tr>
             </DataTableHead>
-            <tbody>
+            <DataTableBody>
               {rows.length === 0 && !error && (
                 <tr>
-                  <td colSpan={8} className="px-5 py-12 text-center text-sm text-court-fg-muted">
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-court-fg-muted">
                     {tab === "active"
                       ? "No active jobs"
                       : tab === "private"
@@ -183,12 +188,12 @@ export function JobsView(props: JobsViewProps) {
                 </tr>
               )}
               {rows.map((r) => (
-                <tr
+                <DataTableRow
                   key={r.id}
-                  className="cursor-pointer border-b border-court-border/40 transition hover:bg-court-surface-subtle"
+                  className="group cursor-pointer"
                   onClick={() => router.push(`/jobs/${r.slug}`)}
                 >
-                  <td className="px-5 py-3 align-top font-medium text-court-fg">
+                  <td className="px-4 py-3 align-top font-medium text-court-fg">
                     {/* Whole row navigates to the job — the client name
                         cell intentionally has no separate <Link>, so a
                         click anywhere in the row (including this cell)
@@ -206,10 +211,10 @@ export function JobsView(props: JobsViewProps) {
                       )}
                     </span>
                   </td>
-                  <td className="px-5 py-3 align-top text-court-fg">
+                  <td className="px-4 py-3 align-top text-court-fg">
                     <div className="font-medium">{r.title}</div>
                   </td>
-                  <td className="px-5 py-3 align-top text-court-fg-muted">
+                  <td className="px-4 py-3 align-top text-court-fg-muted">
                     {r.location ? (
                       <span className="inline-flex items-center gap-1">
                         <MapPin className="h-3 w-3 text-court-fg-muted" />
@@ -219,22 +224,22 @@ export function JobsView(props: JobsViewProps) {
                       "—"
                     )}
                   </td>
-                  <td className="px-5 py-3 align-top text-court-fg-muted">{r.compensation || "—"}</td>
-                  <td className="px-5 py-3 align-top text-court-fg-muted">
+                  <td className="px-4 py-3 align-top text-court-fg-muted">{r.compensation || "—"}</td>
+                  <td className="px-4 py-3 align-top text-court-fg-muted">
                     {r.lastEditedAt ? new Date(r.lastEditedAt).toLocaleDateString() : "—"}
                   </td>
-                  <td className="px-5 py-3 align-top text-right">
+                  <td className="px-4 py-3 align-top text-right">
                     <CountPill value={r.submittedCount} />
                   </td>
-                  <td className="px-5 py-3 align-top text-right">
+                  <td className="px-4 py-3 align-top text-right">
                     <CountPill value={r.interviewingCount} />
                   </td>
-                  <td className="px-5 py-3 align-top text-right">
+                  <td className="px-4 py-3 align-top text-right">
                     <CountPill value={r.hiredCount} />
                   </td>
-                </tr>
+                </DataTableRow>
               ))}
-            </tbody>
+            </DataTableBody>
           </table>
         </div>
         <Pagination

@@ -7,7 +7,12 @@ import { Bookmark, ChevronDown, ChevronUp, Loader2, Send, UserX, X } from "lucid
 import { toast } from "sonner";
 import { cn, formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { DataTableHead, DataTableHeaderCell } from "@/components/ui/data-table";
+import {
+  DataTableBody,
+  DataTableHead,
+  DataTableHeaderCell,
+  DataTableRow,
+} from "@/components/ui/data-table";
 import { TabStrip } from "@/components/ui/tab-strip";
 import {
   keepCandidateForJob,
@@ -327,7 +332,7 @@ export function ApplicantsView({
                 <DataTableHeaderCell align="right">Actions</DataTableHeaderCell>
               </tr>
             </DataTableHead>
-            <tbody className="divide-y divide-court-border-soft">
+            <DataTableBody>
               {tab === "applied" ? (
                 sortedApplied.length === 0 ? (
                   <EmptyRow label="No applicants in this view." colSpan={colSpan} />
@@ -359,7 +364,7 @@ export function ApplicantsView({
                   );
                 })
               )}
-            </tbody>
+            </DataTableBody>
           </table>
         </div>
       </div>
@@ -441,7 +446,7 @@ function AppliedRowView({
   }
 
   return (
-    <tr className="transition hover:bg-court-accent-tint/40">
+    <DataTableRow>
       <td className="w-px px-3 py-3 align-top text-center">
         <input
           type="checkbox"
@@ -451,12 +456,12 @@ function AppliedRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-4 py-3 align-top">
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-4 py-3 align-top">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -464,10 +469,10 @@ function AppliedRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
-      <td className="px-5 py-3 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
-      <td className="px-5 py-3 align-top">
-        <div className="flex flex-nowrap items-center justify-end gap-1.5">
+      <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.appliedAt)}</td>
+      <td className="px-4 py-3 align-top text-center text-sm text-court-fg-muted">{formatSourceLabel(row.source)}</td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit / Keep / Reject share the row-action chip style
               (rounded-md, tinted bg with proper dark variants, label
@@ -526,7 +531,7 @@ function AppliedRowView({
           />
         </div>
       </td>
-    </tr>
+    </DataTableRow>
   );
 }
 
@@ -555,7 +560,7 @@ function KeptRowView({
   }
 
   return (
-    <tr className="transition hover:bg-court-accent-tint/40">
+    <DataTableRow>
       <td className="w-px px-3 py-3 align-top text-center">
         <input
           type="checkbox"
@@ -565,12 +570,12 @@ function KeptRowView({
           className="h-3.5 w-3.5 cursor-pointer accent-brand"
         />
       </td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-4 py-3 align-top">
         <Link href={`/candidates/${row.candidateId}`} className="font-medium text-court-fg hover:text-court-accent-dark">
           {row.candidateName}
         </Link>
       </td>
-      <td className="px-5 py-3 align-top">
+      <td className="px-4 py-3 align-top">
         <JobCell
           jobId={row.jobId}
           jobTitle={row.jobTitle}
@@ -578,9 +583,9 @@ function KeptRowView({
           clientName={row.clientName}
         />
       </td>
-      <td className="px-5 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
-      <td className="px-5 py-3 align-top">
-        <div className="flex flex-nowrap items-center justify-end gap-1.5">
+      <td className="px-4 py-3 align-top text-center text-xs text-court-fg-muted">{formatDate(row.keptAt)}</td>
+      <td className="px-4 py-3 align-top">
+        <div className="flex flex-row flex-nowrap items-center justify-end gap-2">
           {isPending && <Loader2 className="h-3 w-3 animate-spin text-court-fg-muted" />}
           {/* Submit / Remove share the row-action chip style — same
               tinted rounded-md treatment as the Applied tab so the two
@@ -623,7 +628,7 @@ function KeptRowView({
           />
         </div>
       </td>
-    </tr>
+    </DataTableRow>
   );
 }
 
