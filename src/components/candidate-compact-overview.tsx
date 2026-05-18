@@ -40,14 +40,12 @@ export function CandidateCompactOverview({
       <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
         <Field label="Title">{currentDesignation || "—"}</Field>
         <Field label="Employer">{currentOrganization || "—"}</Field>
-        <Field label="Location">{formatLocation(location) || "—"}</Field>
-        <Field label="Comp">{compensation || "—"}</Field>
-        <Field label="Email">
+        <Field label="Email" wide noTruncate>
           {email ? (
             <EmailPopupLauncher
               email={email}
               candidateRef={candidateRef}
-              className="inline-flex max-w-full items-center gap-1 truncate text-brand-dark hover:underline"
+              className="inline-flex max-w-full items-center gap-1 break-all text-brand-dark hover:underline"
               context={{
                 candidate: {
                   firstName: firstName ?? "",
@@ -59,13 +57,13 @@ export function CandidateCompactOverview({
               }}
             >
               <Mail className="h-3 w-3 shrink-0" />
-              <span className="truncate">{email}</span>
+              <span className="break-all">{email}</span>
             </EmailPopupLauncher>
           ) : (
             <span className="text-court-fg-muted">—</span>
           )}
         </Field>
-        <Field label="Phone">
+        <Field label="Phone" wide noTruncate>
           {phone ? (
             <a
               href={`tel:${phone}`}
@@ -78,6 +76,8 @@ export function CandidateCompactOverview({
             <span className="text-court-fg-muted">—</span>
           )}
         </Field>
+        <Field label="Location">{formatLocation(location) || "—"}</Field>
+        <Field label="Comp">{compensation || "—"}</Field>
         <Field label="LinkedIn" wide>
           {linkedinProfile ? (
             <a
@@ -101,17 +101,26 @@ function Field({
   label,
   children,
   wide,
+  noTruncate,
 }: {
   label: string;
   children: React.ReactNode;
   wide?: boolean;
+  noTruncate?: boolean;
 }) {
   return (
     <div className={wide ? "col-span-2" : undefined}>
       <dt className="text-[10px] uppercase tracking-wide text-court-fg-muted">
         {label}
       </dt>
-      <dd className="mt-0.5 truncate text-sm text-court-fg">{children}</dd>
+      <dd
+        className={
+          "mt-0.5 text-sm text-court-fg " +
+          (noTruncate ? "break-words" : "truncate")
+        }
+      >
+        {children}
+      </dd>
     </div>
   );
 }
